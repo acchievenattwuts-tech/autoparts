@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────
+// Auth
+// ─────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STAFF)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sales     Sale[]
+  purchases Purchase[]
+  expenses  Expense[]
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+// ─────────────────────────────────────────
+// Car / Category Master Data
+// ─────────────────────────────────────────
+
+model CarBrand {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  carModels CarModel[]
+}
+
+model CarModel {
+  id         String    @id @default(cuid())
+  name       String
+  carBrandId String
+  carBrand   CarBrand  @relation(fields: [carBrandId], references: [id])
+  createdAt  DateTime  @default(now())
+  products   ProductCarModel[]
+
+  @@unique([name, carBrandId])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+model Supplier {
+  id           String         @id @default(cuid())
+  name         String         @unique
+  contactName  String?
+  phone        String?
+  address      String?
+  createdAt    DateTime       @default(now())
+  purchases    Purchase[]
+  purchaseItems PurchaseItem[]
+}
+
+// ─────────────────────────────────────────
+// Product
+// ─────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  brand       String?
+  shelfLocation String?
+  costPrice   Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice   Decimal  @default(0) @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  minStock    Int      @default(1)
+  unit        String   @default("ชิ้น")
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  aliases          ProductAlias[]
+  carModels        ProductCarModel[]
+  purchaseItems    PurchaseItem[]
+  saleItems        SaleItem[]
+  stockTransactions StockTransaction[]
+  warranties       Warranty[]
+}
+
+model ProductAlias {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  alias     String
+  createdAt DateTime @default(now())
+
+  @@unique([productId, alias])
+  @@index([alias])
+}
+
+model ProductCarModel {
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  carModelId String
+  carModel   CarModel @relation(fields: [carModelId], references: [id])
+
+  @@id([productId, carModelId])
+}
+
+// ─────────────────────────────────────────
+// Stock
+// ─────────────────────────────────────────
+
+model StockTransaction {
+  id          String            @id @default(cuid())
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id])
+  type        StockTransactionType
+  quantity    Int
+  note        String?
+  referenceId String?
+  createdAt   DateTime          @default(now())
+}
+
+enum StockTransactionType {
+  PURCHASE_IN
+  SALE_OUT
+  ADJUST_IN
+  ADJUST_OUT
+  RETURN_IN
+}
+
+// ─────────────────────────────────────────
+// Purchase (ซื้อสินค้าเข้า)
+// ─────────────────────────────────────────
+
+model Purchase {
+  id          String         @id @default(cuid())
+  purchaseNo  String         @unique
+  supplierId  String?
+  supplier    Supplier?      @relation(fields: [supplierId], references: [id])
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  totalAmount Decimal        @db.Decimal(10, 2)
+  discount    Decimal        @default(0) @db.Decimal(10, 2)
+  netAmount   Decimal        @db.Decimal(10, 2)
+  note        String?
+  purchaseDate DateTime      @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  items       PurchaseItem[]
+}
+
+model PurchaseItem {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  quantity    Int
+  costPrice   Decimal  @db.Decimal(10, 2)
+  totalAmount Decimal  @db.Decimal(10, 2)
+}
+
+// ─────────────────────────────────────────
+// Sale (ขายสินค้า)
+// ─────────────────────────────────────────
+
+model Sale {
+  id           String     @id @default(cuid())
+  saleNo       String     @unique
+  customerName String?
+  customerPhone String?
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  totalAmount  Decimal    @db.Decimal(10, 2)
+  discount     Decimal    @default(0) @db.Decimal(10, 2)
+  netAmount    Decimal    @db.Decimal(10, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  note         String?
+  saleDate     DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  items        SaleItem[]
+  warranties   Warranty[]
+}
+
+model SaleItem {
+  id          String   @id @default(cuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Int
+  salePrice   Decimal  @db.Decimal(10, 2)
+  costPrice   Decimal  @db.Decimal(10, 2)
+  totalAmount Decimal  @db.Decimal(10, 2)
+  warranty    Warranty?
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CREDIT
+}
+
+// ─────────────────────────────────────────
+// Warranty (ประกันสินค้า)
+// ─────────────────────────────────────────
+
+model Warranty {
+  id            String    @id @default(cuid())
+  saleId        String
+  sale          Sale      @relation(fields: [saleId], references: [id])
+  saleItemId    String    @unique
+  saleItem      SaleItem  @relation(fields: [saleItemId], references: [id])
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id])
+  warrantyMonths Int
+  startDate     DateTime
+  endDate       DateTime
+  note          String?
+  createdAt     DateTime  @default(now())
+}
+
+// ─────────────────────────────────────────
+// Expense (ค่าใช้จ่ายอื่นๆ)
+// ─────────────────────────────────────────
+
+model Expense {
+  id          String      @id @default(cuid())
+  category    ExpenseCategory
+  description String
+  amount      Decimal     @db.Decimal(10, 2)
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  expenseDate DateTime    @default(now())
+  note        String?
+  createdAt   DateTime    @default(now())
+}
+
+enum ExpenseCategory {
+  RENT
+  UTILITIES
+  SALARY
+  TRANSPORT
+  MARKETING
+  MAINTENANCE
+  OTHER
+}
+
+// ─────────────────────────────────────────
+// Site Content (สำหรับ Admin แก้ไขหน้าเว็บ)
+// ─────────────────────────────────────────
+
+model SiteContent {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
