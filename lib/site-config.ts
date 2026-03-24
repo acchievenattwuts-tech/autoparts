@@ -12,6 +12,14 @@ export interface SiteConfig {
   shopLogoUrl: string;
   heroTitle: string;
   heroSubtitle: string;
+  shopFacebookUrl: string;
+  shopFacebookEnabled: boolean;
+  shopTiktokUrl: string;
+  shopTiktokEnabled: boolean;
+  shopShopeeUrl: string;
+  shopShopeeEnabled: boolean;
+  shopLazadaUrl: string;
+  shopLazadaEnabled: boolean;
 }
 
 const defaultConfig: SiteConfig = {
@@ -25,6 +33,14 @@ const defaultConfig: SiteConfig = {
   shopLogoUrl: "",
   heroTitle: "ศรีวรรณ อะไหล่แอร์",
   heroSubtitle: "อะไหล่แอร์และหม้อน้ำรถยนต์ทุกยี่ห้อ คุณภาพดี ราคายุติธรรม",
+  shopFacebookUrl: "",
+  shopFacebookEnabled: false,
+  shopTiktokUrl: "",
+  shopTiktokEnabled: false,
+  shopShopeeUrl: "",
+  shopShopeeEnabled: false,
+  shopLazadaUrl: "",
+  shopLazadaEnabled: false,
 };
 
 export const getSiteConfig = unstable_cache(
@@ -43,6 +59,14 @@ export const getSiteConfig = unstable_cache(
       shopLogoUrl: map["shop_logo_url"] ?? defaultConfig.shopLogoUrl,
       heroTitle: map["hero_title"] ?? defaultConfig.heroTitle,
       heroSubtitle: map["hero_subtitle"] ?? defaultConfig.heroSubtitle,
+      shopFacebookUrl: map["shop_facebook_url"] ?? defaultConfig.shopFacebookUrl,
+      shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
+      shopTiktokUrl: map["shop_tiktok_url"] ?? defaultConfig.shopTiktokUrl,
+      shopTiktokEnabled: map["shop_tiktok_enabled"] === "true",
+      shopShopeeUrl: map["shop_shopee_url"] ?? defaultConfig.shopShopeeUrl,
+      shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
+      shopLazadaUrl: map["shop_lazada_url"] ?? defaultConfig.shopLazadaUrl,
+      shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
     };
   },
   ["site-config"],

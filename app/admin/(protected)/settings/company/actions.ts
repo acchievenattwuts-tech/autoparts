@@ -15,6 +15,14 @@ const companySchema = z.object({
   shop_logo_url: z.string(),
   hero_title: z.string(),
   hero_subtitle: z.string(),
+  shop_facebook_url: z.string(),
+  shop_facebook_enabled: z.string(),
+  shop_tiktok_url: z.string(),
+  shop_tiktok_enabled: z.string(),
+  shop_shopee_url: z.string(),
+  shop_shopee_enabled: z.string(),
+  shop_lazada_url: z.string(),
+  shop_lazada_enabled: z.string(),
 });
 
 export async function updateCompanySettings(formData: FormData) {

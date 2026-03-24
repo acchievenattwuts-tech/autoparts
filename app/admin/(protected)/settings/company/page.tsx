@@ -1,5 +1,5 @@
 import { getSiteConfig } from "@/lib/site-config";
-import CompanySettingsForm from "./CompanySettingsForm";
+import CompanySettingsForm from "@/components/shared/CompanySettingsForm";
 
 const CompanySettingsPage = async () => {
   const config = await getSiteConfig();
