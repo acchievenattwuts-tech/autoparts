@@ -6,20 +6,23 @@ import FeaturedProducts from "@/components/shared/FeaturedProducts";
 import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
 import FloatingLine from "@/components/shared/FloatingLine";
+import { getSiteConfig } from "@/lib/site-config";
 
-const Home = () => {
+const Home = async () => {
+  const config = await getSiteConfig();
+
   return (
     <>
-      <Navbar />
+      <Navbar shopName={config.shopName} shopSlogan={config.shopSlogan} lineUrl={config.shopLineUrl} />
       <main>
-        <Hero />
+        <Hero heroTitle={config.heroTitle} heroSubtitle={config.heroSubtitle} lineUrl={config.shopLineUrl} />
         <ProductCategories />
         <WhyUs />
         <FeaturedProducts />
-        <LineCTA />
+        <LineCTA lineId={config.shopLineId} lineUrl={config.shopLineUrl} />
       </main>
-      <Footer />
-      <FloatingLine />
+      <Footer config={config} />
+      <FloatingLine lineUrl={config.shopLineUrl} />
     </>
   );
 };

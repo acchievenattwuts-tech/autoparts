@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-const LINE_OA_URL = "https://lin.ee/18P0SqG";
-
-const FloatingLine = () => {
+const FloatingLine = ({ lineUrl = "https://lin.ee/18P0SqG" }: { lineUrl?: string }) => {
+  const LINE_OA_URL = lineUrl;
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return null;

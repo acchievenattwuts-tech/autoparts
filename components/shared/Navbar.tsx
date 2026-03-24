@@ -10,10 +10,17 @@ const navLinks = [
   { label: "ติดต่อ", href: "#contact" },
 ];
 
-const LINE_OA_URL = "https://lin.ee/18P0SqG";
+interface NavbarProps {
+  shopName?: string;
+  shopSlogan?: string;
+  lineUrl?: string;
+}
 
-const Navbar = () => {
+const Navbar = ({ shopName = "ศรีวรรณ อะไหล่แอร์", lineUrl = "https://lin.ee/18P0SqG" }: NavbarProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const nameParts = shopName.split(" ");
+  const firstName = nameParts[0] ?? shopName;
+  const restName = nameParts.slice(1).join(" ");
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100">
@@ -25,8 +32,8 @@ const Navbar = () => {
               <span className="text-white font-bold text-sm">ศว</span>
             </div>
             <div className="leading-tight">
-              <p className="font-bold text-[#1e3a5f] text-sm leading-none">ศรีวรรณ</p>
-              <p className="text-[#f97316] text-xs font-medium">อะไหล่แอร์</p>
+              <p className="font-bold text-[#1e3a5f] text-sm leading-none">{firstName}</p>
+              <p className="text-[#f97316] text-xs font-medium">{restName}</p>
             </div>
           </a>
 
@@ -53,7 +60,7 @@ const Navbar = () => {
               <span>080-000-0000</span>
             </a>
             <a
-              href={LINE_OA_URL}
+              href={lineUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 bg-[#06C755] hover:bg-[#05a847] text-white text-sm font-semibold px-4 py-2 rounded-full transition-colors"
@@ -92,7 +99,7 @@ const Navbar = () => {
             ))}
           </nav>
           <a
-            href={LINE_OA_URL}
+            href={lineUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-3 flex items-center justify-center gap-2 bg-[#06C755] text-white text-sm font-semibold px-4 py-3 rounded-full transition-colors"

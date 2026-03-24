@@ -3,14 +3,16 @@ import bcrypt from "bcryptjs";
 import { db } from "../lib/db";
 
 async function main() {
-  // Admin user
+  // Admin user — email field ใช้เป็น username (ค่า: "admin")
   const hashedPassword = await bcrypt.hash("admin1234", 12);
+  // ลบ user เดิม (ถ้ามี) เพื่อให้ใช้ username ใหม่
+  await db.user.deleteMany({ where: { email: "admin@sriwanairparts.com" } });
   const admin = await db.user.upsert({
-    where: { email: "admin@sriwanairparts.com" },
+    where: { email: "admin" },
     update: {},
     create: {
       name: "ผู้ดูแลระบบ",
-      email: "admin@sriwanairparts.com",
+      email: "admin",
       password: hashedPassword,
       role: "ADMIN",
     },

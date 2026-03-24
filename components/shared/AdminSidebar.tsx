@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Receipt,
   BarChart3,
+  Settings,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,12 @@ const navItems = [
     section: "รายงาน",
     items: [
       { label: "รายงาน", href: "/admin/reports", icon: BarChart3 },
+    ],
+  },
+  {
+    section: "ระบบ",
+    items: [
+      { label: "ตั้งค่าร้านค้า", href: "/admin/settings/company", icon: Settings },
     ],
   },
 ];

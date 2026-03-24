@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Plus, X, Upload, Loader2 } from "lucide-react";
 import type { Product, ProductAlias } from "@/lib/generated/prisma";
-import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/products/actions";
+import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 
 interface CarModelOption {
   id: string;

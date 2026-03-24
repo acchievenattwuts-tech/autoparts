@@ -7,7 +7,7 @@ import { Eye, EyeOff, LogIn, Wrench } from "lucide-react";
 
 const LoginPage = () => {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -19,7 +19,7 @@ const LoginPage = () => {
     setLoading(true);
 
     const result = await signIn("credentials", {
-      email,
+      username,
       password,
       redirect: false,
     });
@@ -27,7 +27,7 @@ const LoginPage = () => {
     setLoading(false);
 
     if (result?.error) {
-      setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+      setError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
     } else {
       router.push("/admin");
       router.refresh();
@@ -37,7 +37,6 @@ const LoginPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1e3a5f] to-[#0f2240] flex items-center justify-center p-4 font-sarabun">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-        {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-[#1e3a5f] rounded-2xl mb-4">
             <Wrench className="text-[#f97316]" size={32} />
@@ -46,16 +45,16 @@ const LoginPage = () => {
           <p className="text-gray-500 text-sm mt-1">ระบบจัดการหลังบ้าน</p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">อีเมล</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">ชื่อผู้ใช้</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@sriwanairparts.com"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
               required
+              autoComplete="username"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent text-sm"
             />
           </div>
@@ -69,6 +68,7 @@ const LoginPage = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent text-sm pr-10"
               />
               <button

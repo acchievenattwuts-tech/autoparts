@@ -1,14 +1,26 @@
 import { ArrowRight, ShieldCheck, Truck, Clock } from "lucide-react";
 
-const LINE_OA_URL = "https://lin.ee/18P0SqG";
-
 const badges = [
   { icon: ShieldCheck, label: "อะไหล่แท้ 100%" },
   { icon: Truck, label: "ส่งทั่วประเทศ" },
   { icon: Clock, label: "บริการรวดเร็ว" },
 ];
 
-const Hero = () => {
+interface HeroProps {
+  heroTitle?: string;
+  heroSubtitle?: string;
+  lineUrl?: string;
+}
+
+const Hero = ({
+  heroTitle = "ศรีวรรณ อะไหล่แอร์",
+  heroSubtitle = "ครบครันทุกอะไหล่แอร์และหม้อน้ำรถยนต์ทุกยี่ห้อ ราคายุติธรรม สินค้าแท้ ส่งตรงถึงมือคุณ",
+  lineUrl = "https://lin.ee/18P0SqG",
+}: HeroProps) => {
+  const [titleMain, titleSub] = heroTitle.includes(" ")
+    ? [heroTitle.split(" ").slice(0, -1).join(" "), heroTitle.split(" ").slice(-1)[0]]
+    : [heroTitle, ""];
+
   return (
     <section
       id="home"
@@ -39,14 +51,16 @@ const Hero = () => {
             </div>
 
             <h1 className="font-kanit text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight mb-4">
-              ศรีวรรณ
-              <br />
-              <span className="text-[#f97316]">อะไหล่แอร์</span>
+              {titleMain}
+              {titleSub && (
+                <>
+                  <br />
+                  <span className="text-[#f97316]">{titleSub}</span>
+                </>
+              )}
             </h1>
             <p className="text-white/70 text-lg sm:text-xl leading-relaxed mb-8">
-              ครบครันทุกอะไหล่แอร์และหม้อน้ำรถยนต์ทุกยี่ห้อ
-              <br className="hidden sm:block" />
-              ราคายุติธรรม สินค้าแท้ ส่งตรงถึงมือคุณ
+              {heroSubtitle}
             </p>
 
             {/* CTA Buttons */}
@@ -59,7 +73,7 @@ const Hero = () => {
                 <ArrowRight className="w-4 h-4" />
               </a>
               <a
-                href={LINE_OA_URL}
+                href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 bg-[#06C755] hover:bg-[#05a847] text-white font-semibold px-6 py-3.5 rounded-full transition-all hover:scale-105 shadow-lg shadow-green-500/30"

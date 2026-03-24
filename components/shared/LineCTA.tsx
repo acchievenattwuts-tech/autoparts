@@ -1,9 +1,13 @@
 import Image from "next/image";
 
-const LINE_OA_URL = "https://lin.ee/18P0SqG";
-const LINE_ID = "@435adwz";
+interface LineCTAProps {
+  lineUrl?: string;
+  lineId?: string;
+}
 
-const LineCTA = () => {
+const LineCTA = ({ lineUrl = "https://lin.ee/18P0SqG", lineId = "@435adwz" }: LineCTAProps) => {
+  const LINE_OA_URL = lineUrl;
+  const LINE_ID = lineId;
   return (
     <section id="contact" className="py-20 bg-[#1e3a5f] relative overflow-hidden">
       {/* Background decoration */}

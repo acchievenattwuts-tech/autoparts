@@ -14,7 +14,13 @@
       "Bash(npx tsc:*)",
       "Bash(node -e \"const z = require\\(''./node_modules/zod''\\); const r = z.string\\(\\).min\\(1\\).safeParse\\(''''\\); console.log\\(Object.keys\\(r.error\\)\\)\")",
       "Bash(node -e \"const z = require\\(''./node_modules/zod''\\); const r = z.string\\(\\).min\\(1\\).safeParse\\(''''\\); const err = r.error; console.log\\(err.issues ? ''has issues'' : ''no issues'', err.errors ? ''has errors'' : ''no errors'', JSON.stringify\\(err.issues?.slice\\(0,1\\)\\)\\)\")",
-      "Bash(ls /d/autoparts/app/admin/products/[id]/edit/)"
+      "Bash(ls /d/autoparts/app/admin/products/[id]/edit/)",
+      "Bash(cp app/admin/layout.tsx \"app/admin/\\(protected\\)/layout.tsx\")",
+      "Bash(cp app/admin/page.tsx \"app/admin/\\(protected\\)/page.tsx\")",
+      "Bash(cp -r app/admin/master/. \"app/admin/\\(protected\\)/master/\")",
+      "Bash(cp -r app/admin/products/. \"app/admin/\\(protected\\)/products/\")",
+      "Bash(rm app/admin/layout.tsx app/admin/page.tsx)",
+      "Bash(rm -rf app/admin/master app/admin/products)"
     ]
   }
 }
