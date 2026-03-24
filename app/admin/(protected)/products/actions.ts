@@ -4,24 +4,31 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { requireAuth } from "@/lib/require-auth";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 // ─── Zod Schema ───────────────────────────────────────────────────────────────
 
 const productSchema = z.object({
-  code: z.string().min(1, "กรุณากรอกรหัสสินค้า"),
-  name: z.string().min(1, "กรุณากรอกชื่อสินค้า"),
-  categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่"),
-  brand: z.string().optional(),
-  shelfLocation: z.string().optional(),
-  costPrice: z.coerce.number().min(0).default(0),
-  salePrice: z.coerce.number().min(0).default(0),
-  unit: z.string().default("ชิ้น"),
-  minStock: z.coerce.number().int().min(0).default(1),
-  description: z.string().optional(),
-  imageUrl: z.string().optional(),
-  stock: z.coerce.number().int().min(0).default(0),
-  aliases: z.array(z.string()).default([]),
-  carModelIds: z.array(z.string()).default([]),
+  code: z.string().min(1, "กรุณากรอกรหัสสินค้า").max(50),
+  name: z.string().min(1, "กรุณากรอกชื่อสินค้า").max(200),
+  categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่").max(50),
+  brand: z.string().max(100).optional(),
+  shelfLocation: z.string().max(50).optional(),
+  costPrice: z.coerce.number().min(0).max(9_999_999).default(0),
+  salePrice: z.coerce.number().min(0).max(9_999_999).default(0),
+  unit: z.string().max(20).default("ชิ้น"),
+  minStock: z.coerce.number().int().min(0).max(99_999).default(1),
+  description: z.string().max(2000).optional(),
+  imageUrl: z.string().url().max(500).optional().or(z.literal("")),
+  stock: z.coerce.number().int().min(0).max(999_999).default(0),
+  aliases: z.array(z.string().max(100)).max(20).default([]),
+  carModelIds: z.array(z.string().max(50)).max(100).default([]),
 });
 
 type ProductInput = z.infer<typeof productSchema>;
@@ -81,6 +88,12 @@ const parseProductFormData = (
 export const createProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
@@ -129,10 +142,7 @@ export const createProduct = async (
     revalidatePath("/admin/products");
     return {};
   } catch (err) {
-    if (
-      err instanceof Error &&
-      err.message.includes("Unique constraint")
-    ) {
+    if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };
     }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -143,6 +153,17 @@ export const updateProduct = async (
   id: string,
   formData: FormData
 ): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  // Validate ID format
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสสินค้าไม่ถูกต้อง" };
+  }
+
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
@@ -184,10 +205,7 @@ export const updateProduct = async (
     revalidatePath(`/admin/products/${id}/edit`);
     return {};
   } catch (err) {
-    if (
-      err instanceof Error &&
-      err.message.includes("Unique constraint")
-    ) {
+    if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };
     }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -197,6 +215,16 @@ export const updateProduct = async (
 export const deleteProduct = async (
   id: string
 ): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสสินค้าไม่ถูกต้อง" };
+  }
+
   try {
     await db.product.delete({ where: { id } });
     revalidatePath("/admin/products");
@@ -209,9 +237,31 @@ export const deleteProduct = async (
 export const uploadProductImage = async (
   formData: FormData
 ): Promise<{ url?: string; error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { error: "กรุณาเลือกไฟล์รูปภาพ" };
+  }
+
+  // Validate MIME type
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP, GIF)" };
+  }
+
+  // Validate file size
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return { error: "ขนาดไฟล์ต้องไม่เกิน 5MB" };
+  }
+
+  // Validate file extension
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp, gif" };
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -224,8 +274,9 @@ export const uploadProductImage = async (
   try {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-    const fileName = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
-    const filePath = `products/${fileName}`;
+    // Use random UUID + timestamp to prevent filename enumeration
+    const safeFileName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const filePath = `products/${safeFileName}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
@@ -238,7 +289,7 @@ export const uploadProductImage = async (
       });
 
     if (uploadError) {
-      return { error: `อัปโหลดไม่สำเร็จ: ${uploadError.message}` };
+      return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
     }
 
     const {

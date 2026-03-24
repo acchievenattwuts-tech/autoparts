@@ -3,24 +3,24 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requireAuth } from "@/lib/require-auth";
 
 const categorySchema = z.object({
-  name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่"),
+  name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
 });
 
 export const createCategory = async (formData: FormData): Promise<{ error?: string }> => {
-  const parsed = categorySchema.safeParse({
-    name: formData.get("name"),
-  });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
+  const parsed = categorySchema.safeParse({ name: formData.get("name") });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   try {
-    await db.category.create({
-      data: { name: parsed.data.name },
-    });
+    await db.category.create({ data: { name: parsed.data.name } });
     revalidatePath("/admin/master/categories");
     return {};
   } catch {
@@ -29,6 +29,16 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
 };
 
 export const deleteCategory = async (id: string): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
   try {
     await db.category.delete({ where: { id } });
     revalidatePath("/admin/master/categories");

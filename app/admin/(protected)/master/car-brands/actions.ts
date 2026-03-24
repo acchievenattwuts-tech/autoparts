@@ -3,29 +3,29 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requireAuth } from "@/lib/require-auth";
 
 const brandSchema = z.object({
-  name: z.string().min(1, "กรุณากรอกชื่อยี่ห้อรถ"),
+  name: z.string().min(1, "กรุณากรอกชื่อยี่ห้อรถ").max(100),
 });
 
 const modelSchema = z.object({
-  name: z.string().min(1, "กรุณากรอกชื่อรุ่นรถ"),
-  carBrandId: z.string().min(1, "ไม่พบยี่ห้อรถ"),
+  name: z.string().min(1, "กรุณากรอกชื่อรุ่นรถ").max(100),
+  carBrandId: z.string().min(1, "ไม่พบยี่ห้อรถ").max(50),
 });
 
 export const createCarBrand = async (formData: FormData): Promise<{ error?: string }> => {
-  const parsed = brandSchema.safeParse({
-    name: formData.get("name"),
-  });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
+  const parsed = brandSchema.safeParse({ name: formData.get("name") });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
   try {
-    await db.carBrand.create({
-      data: { name: parsed.data.name },
-    });
+    await db.carBrand.create({ data: { name: parsed.data.name } });
     revalidatePath("/admin/master/car-brands");
     return {};
   } catch {
@@ -34,6 +34,16 @@ export const createCarBrand = async (formData: FormData): Promise<{ error?: stri
 };
 
 export const deleteCarBrand = async (id: string): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
   try {
     await db.carBrand.delete({ where: { id } });
     revalidatePath("/admin/master/car-brands");
@@ -44,21 +54,21 @@ export const deleteCarBrand = async (id: string): Promise<{ error?: string }> =>
 };
 
 export const createCarModel = async (formData: FormData): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
   const parsed = modelSchema.safeParse({
     name: formData.get("name"),
     carBrandId: formData.get("carBrandId"),
   });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
     await db.carModel.create({
-      data: {
-        name: parsed.data.name,
-        carBrandId: parsed.data.carBrandId,
-      },
+      data: { name: parsed.data.name, carBrandId: parsed.data.carBrandId },
     });
     revalidatePath("/admin/master/car-brands");
     return {};
@@ -68,6 +78,16 @@ export const createCarModel = async (formData: FormData): Promise<{ error?: stri
 };
 
 export const deleteCarModel = async (id: string): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
   try {
     await db.carModel.delete({ where: { id } });
     revalidatePath("/admin/master/car-brands");

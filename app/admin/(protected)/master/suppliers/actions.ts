@@ -3,25 +3,29 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { requireAuth } from "@/lib/require-auth";
 
 const supplierSchema = z.object({
-  name: z.string().min(1, "กรุณากรอกชื่อผู้จำหน่าย"),
-  contactName: z.string().optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
+  name: z.string().min(1, "กรุณากรอกชื่อผู้จำหน่าย").max(200),
+  contactName: z.string().max(100).optional(),
+  phone: z.string().max(20).optional(),
+  address: z.string().max(500).optional(),
 });
 
 export const createSupplier = async (formData: FormData): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
   const parsed = supplierSchema.safeParse({
     name: formData.get("name"),
     contactName: formData.get("contactName") || undefined,
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
   });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
     await db.supplier.create({
@@ -43,16 +47,23 @@ export const updateSupplier = async (
   id: string,
   formData: FormData
 ): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
   const parsed = supplierSchema.safeParse({
     name: formData.get("name"),
     contactName: formData.get("contactName") || undefined,
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
   });
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
     await db.supplier.update({
@@ -72,6 +83,16 @@ export const updateSupplier = async (
 };
 
 export const deleteSupplier = async (id: string): Promise<{ error?: string }> => {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
   try {
     await db.supplier.delete({ where: { id } });
     revalidatePath("/admin/master/suppliers");
