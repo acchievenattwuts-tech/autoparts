@@ -1,7 +1,6 @@
+import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { PrismaClient } from "../lib/generated/prisma";
-
-const db = new PrismaClient();
+import { db } from "../lib/db";
 
 async function main() {
   // Admin user
