@@ -5,7 +5,16 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "WebSearch",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(npx prisma:*)",
+      "Bash(node -e \"require\\(''dotenv/config''\\); console.log\\(process.env.DATABASE_URL ? ''OK'' : ''MISSING''\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(curl -s --connect-timeout 5 -o /dev/null -w \"%{http_code}\" https://db.lueeusrezzhokfikxjgi.supabase.co)",
+      "Bash(ls /d/autoparts/.env*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"const z = require\\(''./node_modules/zod''\\); const r = z.string\\(\\).min\\(1\\).safeParse\\(''''\\); console.log\\(Object.keys\\(r.error\\)\\)\")",
+      "Bash(node -e \"const z = require\\(''./node_modules/zod''\\); const r = z.string\\(\\).min\\(1\\).safeParse\\(''''\\); const err = r.error; console.log\\(err.issues ? ''has issues'' : ''no issues'', err.errors ? ''has errors'' : ''no errors'', JSON.stringify\\(err.issues?.slice\\(0,1\\)\\)\\)\")",
+      "Bash(ls /d/autoparts/app/admin/products/[id]/edit/)"
     ]
   }
 }
