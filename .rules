@@ -37,3 +37,50 @@
 - Use Tailwind CSS for all styling.
 - Avoid inline styles.
 - Ensure responsive design (mobile-first).
+
+## 7. Security Standards (OWASP Top 10 + Modern Web)
+
+### Input & Validation
+- **Always validate with Zod** on the server side — never trust client-supplied data.
+- **Never use raw SQL** or string interpolation in queries — use Prisma's parameterized API only.
+- **Sanitize all user-facing output** — never render user input as raw HTML (`dangerouslySetInnerHTML` is banned unless content is sanitized via a library like `DOMPurify`).
+- Validate file uploads: check MIME type, file size, and extension on the server before storing.
+
+### Authentication & Authorization
+- **Protect every admin route** via NextAuth session check — never rely on client-side redirect alone.
+- Use `auth()` or session checks at the top of every Server Action that mutates data.
+- **Never expose user passwords, tokens, or secrets** in API responses or client-side code.
+- Passwords must be hashed with `bcryptjs` (min cost factor 12) — never store plaintext.
+- Session tokens must be `httpOnly`, `Secure`, and `SameSite=Lax` (Next.js/NextAuth defaults — do not override them).
+
+### Environment & Secrets
+- **Never hardcode secrets**, API keys, or credentials in source code — use `.env.local` only.
+- Variables prefixed `NEXT_PUBLIC_` are exposed to the browser — never put secrets there.
+- Always add sensitive files (`.env`, `.env.local`) to `.gitignore`.
+
+### HTTP & Headers
+- Add security headers in `next.config.ts`:
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy` to disable unused browser features
+- Use `Content-Security-Policy` (CSP) for all pages that don't require third-party inline scripts.
+
+### API & Server Actions
+- **All Server Actions must verify the user session** before performing any write operation.
+- Return generic error messages to the client — never expose stack traces or DB errors.
+- Always wrap async operations in try-catch; log errors server-side, return safe messages client-side.
+- Rate-limit sensitive endpoints (login, OTP, file upload) — use middleware or an upstream layer.
+
+### Dependencies
+- Run `npm audit` regularly and fix high/critical vulnerabilities before deploying.
+- Pin dependency versions in `package.json`; avoid `*` or overly broad ranges.
+- Prefer well-maintained packages with active security disclosure policies.
+
+### Logging & Monitoring
+- Never log sensitive data (passwords, tokens, PII) to the console or log files.
+- Use structured logging on the server; errors should include request context but never secrets.
+
+### CSRF & CORS
+- Next.js Server Actions are CSRF-protected by default — do not disable this behavior.
+- For any custom API routes (`/api/*`), restrict `Access-Control-Allow-Origin` to known domains only — never use `*` in production.
