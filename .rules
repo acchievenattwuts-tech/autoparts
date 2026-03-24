@@ -1,0 +1,39 @@
+# Next.js 15 & TypeScript Project Rules
+
+## 1. Technical Stack
+- Framework: Next.js 15 (App Router)
+- Language: TypeScript (Strict mode)
+- Styling: Tailwind CSS
+- Components: Shadcn UI (Radix UI)
+- Icons: Lucide React
+- Validation: Zod
+
+## 2. General Principles
+- **No 'any'**: Never use the `any` type. Define proper interfaces or types.
+- **Functional Components**: Use arrow functions for all components.
+- **Client vs Server**: Default to Server Components. Use `'use client'` only when interactivity (useState, useEffect) or browser APIs are required.
+- **Clean Code**: Follow DRY (Don't Repeat Yourself) and SOLID principles.
+
+## 3. Naming Conventions
+- Components: PascalCase (e.g., `UserButton.tsx`)
+- Folders/Files in App Router: kebab-case (e.g., `user-profile/page.tsx`)
+- Utils/Hooks: camelCase (e.g., `useLocalStorage.ts`)
+
+## 4. Folder Structure Standards
+- `/app`: All routes and layouts.
+- `/components/ui`: Atomic components (Shadcn).
+- `/components/shared`: Reusable business components.
+- `/lib`: Server-side utilities, DB clients (Prisma/Drizzle).
+- `/hooks`: Custom React hooks.
+- `/types`: Shared TypeScript definitions.
+
+## 5. Agent-Specific Instructions
+- **Plan First**: Before writing code, summarize the plan in the chat and ask for confirmation.
+- **Check Environment**: Always verify if required environment variables exist in `.env.example` before implementation.
+- **Verify Build**: After significant changes, run `npm run build` or `next lint` to ensure no regressions.
+- **Error Handling**: Always wrap async operations (API routes, Server Actions) in try-catch blocks and use Zod for input validation.
+
+## 6. CSS & UI
+- Use Tailwind CSS for all styling.
+- Avoid inline styles.
+- Ensure responsive design (mobile-first).
