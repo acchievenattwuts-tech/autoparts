@@ -62,7 +62,8 @@
 - เชื่อมต่อ Supabase PostgreSQL (Session pooler port 5432)
 - รัน `prisma db push` สร้าง table สำเร็จ
 - Push ขึ้น GitHub: `acchievenattwuts-tech/autoparts`
-- **TODO:** Deploy บน Vercel + ผูก custom domain
+- Deploy บน Vercel สำเร็จ ✓
+- **TODO:** ผูก custom domain (ถ้าต้องการ)
 
 ### 🔲 Phase 2 — Admin Auth + สินค้า
 **เป้าหมาย:** Admin login + CRUD สินค้าครบถ้วน
