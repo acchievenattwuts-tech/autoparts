@@ -101,6 +101,31 @@
 - [ ] Report ประกันที่กำลังจะหมด
 - [ ] Export Excel / PDF
 
+### 🔲 Phase 7 — SEO + AEO (AI Engine Optimization)
+**เป้าหมาย:** ติดอันดับ Google + ขึ้นใน AI search (ChatGPT, Perplexity, Google AI Overview)
+
+**SEO พื้นฐาน:**
+- [ ] Next.js Metadata API — title, description, canonical URL ทุกหน้า
+- [ ] Open Graph + Twitter Card (แชร์ใน social ได้สวย)
+- [ ] `sitemap.xml` — dynamic (ครอบคลุมหน้าสินค้าทุกชิ้น)
+- [ ] `robots.txt`
+- [ ] Core Web Vitals — ปรับ loading speed, image optimization
+- [ ] URL structure — `/products/[category]/[slug]` อ่านง่าย
+
+**Structured Data (Schema.org JSON-LD) — สำคัญมากสำหรับ AI:**
+- [ ] `LocalBusiness` — ชื่อร้าน, ที่อยู่, เบอร์, เวลาทำการ
+- [ ] `Product` — ชื่อสินค้า, ราคา, รูป, คำอธิบาย, ยี่ห้อ
+- [ ] `BreadcrumbList` — navigation path
+- [ ] `FAQPage` — คำถามที่พบบ่อย (ขึ้น AI Overview ได้ง่าย)
+- [ ] `Organization` — ข้อมูลองค์กร/ร้านค้า
+
+**AEO — ให้ AI search อ้างอิงได้:**
+- [ ] หน้า `/about` — แนะนำร้าน, ประวัติ, ความเชี่ยวชาญ (E-E-A-T)
+- [ ] หน้า `/faq` — คำถามที่ลูกค้าถามบ่อย เช่น "คอมเพรสเซอร์แอร์โตโยต้ากี่บาท"
+- [ ] หน้า `/blog` หรือ `/knowledge` — บทความให้ความรู้เรื่องอะไหล่แอร์
+- [ ] เนื้อหาสินค้า — คำอธิบายละเอียด ใช้ภาษาธรรมชาติ ตอบคำถามลูกค้าได้
+- [ ] `llms.txt` — ไฟล์แนะนำร้านสำหรับ AI crawlers (เทรนใหม่ปี 2025)
+
 ---
 
 ## Environment Variables ที่ต้องมี
