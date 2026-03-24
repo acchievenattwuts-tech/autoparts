@@ -76,30 +76,51 @@ model Supplier {
 // ─────────────────────────────────────────
 
 model Product {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  categoryId  String
-  category    Category @relation(fields: [categoryId], references: [id])
-  brand       String?
-  shelfLocation String?
-  costPrice   Decimal  @default(0) @db.Decimal(10, 2)
-  salePrice   Decimal  @default(0) @db.Decimal(10, 2)
-  stock       Int      @default(0)
-  minStock    Int      @default(1)
-  unit        String   @default("ชิ้น")
-  imageUrl    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  description      String?
+  categoryId       String
+  category         Category @relation(fields: [categoryId], references: [id])
+  brand            String?
+  shelfLocation    String?
+  costPrice        Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice        Decimal  @default(0) @db.Decimal(10, 2)
+  stock            Int      @default(0)   // ระบบจัดการเท่านั้น ไม่ให้ user ระบุ
+  minStock         Int      @default(1)
+  // หน่วยนับ — ระบุชื่อหน่วยที่ใช้ในแต่ละบริบท (ต้องตรงกับ ProductUnit.name ของสินค้านี้)
+  saleUnitName     String   @default("ชิ้น")
+  purchaseUnitName String   @default("ชิ้น")
+  reportUnitName   String   @default("ชิ้น")
+  imageUrl         String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   aliases          ProductAlias[]
   carModels        ProductCarModel[]
+  units            ProductUnit[]
   purchaseItems    PurchaseItem[]
   saleItems        SaleItem[]
   stockTransactions StockTransaction[]
   warranties       Warranty[]
+}
+
+// หน่วยนับของสินค้า — 1 สินค้า มีได้หลายหน่วย
+// หน่วยหลัก (isBase = true) ต้องมี scale = 1 เสมอ
+// หน่วยอื่นๆ scale คือจำนวนหน่วยย่อย (base units) ต่อ 1 หน่วยนั้น
+// เช่น: ชิ้น (isBase, scale=1), โหล (scale=12), กล่อง (scale=6)
+model ProductUnit {
+  id        String   @id @default(cuid())
+  productId String
+  name      String
+  scale     Float    // base unit scale = 1, โหล = 12, กล่อง = 6 ฯลฯ
+  isBase    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, name])
 }
 
 model ProductAlias {

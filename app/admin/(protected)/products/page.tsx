@@ -179,7 +179,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       >
                         {product.stock}
                       </span>
-                      <span className="text-gray-400 text-xs ml-1">{product.unit}</span>
+                      <span className="text-gray-400 text-xs ml-1">{product.reportUnitName}</span>
                     </td>
 
                     {/* สถานะ */}

@@ -17,6 +17,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
       include: {
         aliases: true,
         carModels: { select: { carModelId: true } },
+        units: { orderBy: { isBase: "desc" } },
       },
     }),
     db.category.findMany({ orderBy: { name: "asc" } }),

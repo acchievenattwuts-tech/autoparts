@@ -37,7 +37,8 @@
 | CarBrand / CarModel | ยี่ห้อ/รุ่นรถ |
 | Category | หมวดหมู่สินค้า |
 | Supplier | ซัพพลายเออร์ |
-| Product | สินค้า (มี shelfLocation, stock) |
+| Product | สินค้า (stock = system-managed, มี saleUnitName/purchaseUnitName/reportUnitName) |
+| ProductUnit | หน่วยนับต่อสินค้า (isBase=true → scale=1, อื่นๆ scale=จำนวนหน่วยย่อย) |
 | ProductAlias | ชื่อเรียกอื่นๆ สำหรับ search |
 | ProductCarModel | สินค้า ↔ รุ่นรถ (many-to-many) |
 | StockTransaction | ประวัติการเปลี่ยนแปลง stock |
@@ -79,14 +80,36 @@
 - [ ] Upload รูปสินค้าไปยัง Supabase Storage
 - [ ] สร้าง seed script (`prisma/seed.ts`) สำหรับ admin user แรก
 
-### 🔲 Phase 3 — Stock + ซื้อ + ขาย + เอกสาร
-- [ ] ระบบ Stock — ดู stock, ปรับยอด manual, ประวัติการเปลี่ยนแปลง
-- [ ] ระบบซื้อ — บันทึกการซื้อสินค้าเข้า, อัพเดต stock อัตโนมัติ
-- [ ] ระบบขาย — บันทึกการขาย, ลด stock อัตโนมัติ
+### 🔲 Phase 3 — BF + Stock + ซื้อ + ขาย + เอกสาร
+
+#### 3.0 ตรวจสอบโครงสร้าง DB (ผลกระทบจาก Multi-Unit)
+- [ ] **ReviewDB**: `StockTransaction.quantity` ปัจจุบันเป็น Int ใน base unit
+  → ต้องเพิ่ม `unitName String?` + `unitScale Float?` เพื่อบันทึกว่าใช้หน่วยอะไรในแต่ละ transaction
+- [ ] `PurchaseItem.quantity` → ต้องเพิ่ม `unitName` (ใช้ purchaseUnitName ของสินค้า)
+- [ ] `SaleItem.quantity` → ต้องเพิ่ม `unitName` (ใช้ saleUnitName ของสินค้า)
+- [ ] Logic แปลงหน่วย: stockChange = quantity × unit.scale (คำนวณจาก ProductUnit.scale)
+- [ ] ทุก transaction ที่กระทบ stock ต้อง convert เป็น base unit ก่อนบันทึก
+
+#### 3.1 ระบบ BF (ยอดยกมา / Beginning Balance)
+- [ ] หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น (แทนการใส่ stock ตอนสร้างสินค้า)
+- [ ] เลือกสินค้า, ระบุจำนวน, เลือกหน่วย (จาก ProductUnit ของสินค้านั้น), ระบุวันที่ BF
+- [ ] สร้าง `StockTransaction` type = `BALANCE_FORWARD` → อัปเดต `Product.stock`
+- [ ] แสดงประวัติ BF ที่บันทึกแล้ว
+
+#### 3.2 ระบบ Stock
+- [ ] ดู stock คงเหลือทุกสินค้า (แสดงใน base unit + หน่วยรายงาน)
+- [ ] ปรับยอด manual (ADJUST_IN / ADJUST_OUT) พร้อมระบุหน่วย
+- [ ] ประวัติการเปลี่ยนแปลง stock ต่อสินค้า
+
+#### 3.3 ระบบซื้อ + ขาย
+- [ ] ระบบซื้อ — บันทึกการซื้อสินค้าเข้า ใช้ purchaseUnitName, อัพเดต stock อัตโนมัติ
+- [ ] ระบบขาย — บันทึกการขาย ใช้ saleUnitName, ลด stock อัตโนมัติ
 - [ ] สร้าง Server Actions สำหรับทุก transaction
-- [ ] **ใบแจ้งหนี้ (Invoice)** — สร้าง/พิมพ์ใบแจ้งหนี้จากรายการขาย พร้อมเลขที่เอกสาร, ข้อมูลลูกค้า, รายการสินค้า, ยอดรวม
-- [ ] **ใบเสร็จรับเงิน (Receipt)** — สร้าง/พิมพ์ใบเสร็จหลังชำระเงิน, แสดงข้อมูลร้าน, ลายเซ็น, QR Code ชำระเงิน
-- [ ] Export เอกสารเป็น PDF (ใช้ `@react-pdf/renderer` หรือ `html2pdf`)
+
+#### 3.4 เอกสาร
+- [ ] **ใบแจ้งหนี้ (Invoice)** — เลขที่เอกสาร, ข้อมูลลูกค้า, รายการสินค้า+หน่วย, ยอดรวม
+- [ ] **ใบเสร็จรับเงิน (Receipt)** — ข้อมูลร้าน, ลายเซ็น, QR Code ชำระเงิน
+- [ ] Export PDF (`@react-pdf/renderer` หรือ `html2pdf`)
 - [ ] Print โดยตรงจากเบราว์เซอร์
 
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย

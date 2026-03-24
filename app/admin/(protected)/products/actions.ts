@@ -12,7 +12,13 @@ const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-// ─── Zod Schema ───────────────────────────────────────────────────────────────
+// ─── Zod Schemas ─────────────────────────────────────────────────────────────
+
+const productUnitSchema = z.object({
+  name: z.string().min(1, "ชื่อหน่วยต้องไม่ว่าง").max(20),
+  scale: z.coerce.number().positive("scale ต้องมากกว่า 0").max(999999),
+  isBase: z.boolean(),
+});
 
 const productSchema = z.object({
   code: z.string().min(1, "กรุณากรอกรหัสสินค้า").max(50),
@@ -22,13 +28,15 @@ const productSchema = z.object({
   shelfLocation: z.string().max(50).optional(),
   costPrice: z.coerce.number().min(0).max(9_999_999).default(0),
   salePrice: z.coerce.number().min(0).max(9_999_999).default(0),
-  unit: z.string().max(20).default("ชิ้น"),
   minStock: z.coerce.number().int().min(0).max(99_999).default(1),
+  saleUnitName: z.string().min(1).max(20).default("ชิ้น"),
+  purchaseUnitName: z.string().min(1).max(20).default("ชิ้น"),
+  reportUnitName: z.string().min(1).max(20).default("ชิ้น"),
   description: z.string().max(2000).optional(),
   imageUrl: z.string().url().max(500).optional().or(z.literal("")),
-  stock: z.coerce.number().int().min(0).max(999_999).default(0),
   aliases: z.array(z.string().max(100)).max(20).default([]),
   carModelIds: z.array(z.string().max(50)).max(100).default([]),
+  units: z.array(productUnitSchema).min(1, "ต้องมีหน่วยนับอย่างน้อย 1 หน่วย").max(20),
 });
 
 type ProductInput = z.infer<typeof productSchema>;
@@ -40,24 +48,55 @@ const parseProductFormData = (
 ): { success: true; data: ProductInput } | { success: false; error: string } => {
   let aliases: string[] = [];
   let carModelIds: string[] = [];
+  let units: z.infer<typeof productUnitSchema>[] = [];
 
   try {
-    const aliasesRaw = formData.get("aliases");
-    if (typeof aliasesRaw === "string" && aliasesRaw) {
-      aliases = JSON.parse(aliasesRaw) as string[];
-    }
+    const raw = formData.get("aliases");
+    if (typeof raw === "string" && raw) aliases = JSON.parse(raw) as string[];
   } catch {
     return { success: false, error: "รูปแบบข้อมูล aliases ไม่ถูกต้อง" };
   }
 
   try {
-    const carModelIdsRaw = formData.get("carModelIds");
-    if (typeof carModelIdsRaw === "string" && carModelIdsRaw) {
-      carModelIds = JSON.parse(carModelIdsRaw) as string[];
-    }
+    const raw = formData.get("carModelIds");
+    if (typeof raw === "string" && raw) carModelIds = JSON.parse(raw) as string[];
   } catch {
     return { success: false, error: "รูปแบบข้อมูล carModelIds ไม่ถูกต้อง" };
   }
+
+  try {
+    const raw = formData.get("units");
+    if (typeof raw === "string" && raw) units = JSON.parse(raw) as typeof units;
+  } catch {
+    return { success: false, error: "รูปแบบข้อมูลหน่วยนับไม่ถูกต้อง" };
+  }
+
+  // Validate: exactly one base unit with scale = 1
+  const baseUnits = units.filter((u) => u.isBase);
+  if (baseUnits.length !== 1) {
+    return { success: false, error: "ต้องมีหน่วยหลักหนึ่งหน่วย (scale = 1)" };
+  }
+  if (baseUnits[0].scale !== 1) {
+    return { success: false, error: "หน่วยหลักต้องมี scale = 1 เสมอ" };
+  }
+
+  // Validate unit names are unique
+  const names = units.map((u) => u.name);
+  if (new Set(names).size !== names.length) {
+    return { success: false, error: "ชื่อหน่วยนับต้องไม่ซ้ำกัน" };
+  }
+
+  const saleUnitName = formData.get("saleUnitName") as string;
+  const purchaseUnitName = formData.get("purchaseUnitName") as string;
+  const reportUnitName = formData.get("reportUnitName") as string;
+
+  // Validate unit names exist in units list
+  if (!names.includes(saleUnitName))
+    return { success: false, error: "หน่วยขายไม่พบในรายการหน่วยนับ" };
+  if (!names.includes(purchaseUnitName))
+    return { success: false, error: "หน่วยซื้อไม่พบในรายการหน่วยนับ" };
+  if (!names.includes(reportUnitName))
+    return { success: false, error: "หน่วยรายงานไม่พบในรายการหน่วยนับ" };
 
   const parsed = productSchema.safeParse({
     code: formData.get("code"),
@@ -67,13 +106,15 @@ const parseProductFormData = (
     shelfLocation: formData.get("shelfLocation") || undefined,
     costPrice: formData.get("costPrice"),
     salePrice: formData.get("salePrice"),
-    unit: formData.get("unit") || "ชิ้น",
     minStock: formData.get("minStock"),
+    saleUnitName,
+    purchaseUnitName,
+    reportUnitName,
     description: formData.get("description") || undefined,
     imageUrl: formData.get("imageUrl") || undefined,
-    stock: formData.get("stock"),
     aliases,
     carModelIds,
+    units,
   });
 
   if (!parsed.success) {
@@ -97,17 +138,36 @@ export const createProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, carModelIds, stock, ...productData } = result.data;
+  const { aliases, carModelIds, units, ...productData } = result.data;
 
   try {
     await db.$transaction(async (tx) => {
       const product = await tx.product.create({
         data: {
-          ...productData,
-          stock,
+          code: productData.code,
+          name: productData.name,
+          categoryId: productData.categoryId,
+          brand: productData.brand,
+          shelfLocation: productData.shelfLocation,
           costPrice: productData.costPrice,
           salePrice: productData.salePrice,
+          minStock: productData.minStock,
+          saleUnitName: productData.saleUnitName,
+          purchaseUnitName: productData.purchaseUnitName,
+          reportUnitName: productData.reportUnitName,
+          description: productData.description,
+          imageUrl: productData.imageUrl || null,
+          stock: 0, // stock เริ่มต้น = 0 เสมอ (ใช้ระบบ BF ใน Phase 3)
         },
+      });
+
+      await tx.productUnit.createMany({
+        data: units.map((u) => ({
+          productId: product.id,
+          name: u.name,
+          scale: u.scale,
+          isBase: u.isBase,
+        })),
       });
 
       if (aliases.length > 0) {
@@ -124,17 +184,6 @@ export const createProduct = async (
             carModelId,
           })),
           skipDuplicates: true,
-        });
-      }
-
-      if (stock > 0) {
-        await tx.stockTransaction.create({
-          data: {
-            productId: product.id,
-            type: "ADJUST_IN",
-            quantity: stock,
-            note: "ยอดเริ่มต้น",
-          },
         });
       }
     });
@@ -159,7 +208,6 @@ export const updateProduct = async (
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
-  // Validate ID format
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
     return { error: "รหัสสินค้าไม่ถูกต้อง" };
   }
@@ -167,20 +215,41 @@ export const updateProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, carModelIds, stock, ...productData } = result.data;
+  const { aliases, carModelIds, units, ...productData } = result.data;
 
   try {
     await db.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
         data: {
-          ...productData,
-          stock,
+          code: productData.code,
+          name: productData.name,
+          categoryId: productData.categoryId,
+          brand: productData.brand,
+          shelfLocation: productData.shelfLocation,
           costPrice: productData.costPrice,
           salePrice: productData.salePrice,
+          minStock: productData.minStock,
+          saleUnitName: productData.saleUnitName,
+          purchaseUnitName: productData.purchaseUnitName,
+          reportUnitName: productData.reportUnitName,
+          description: productData.description,
+          imageUrl: productData.imageUrl || null,
         },
       });
 
+      // Sync units — delete all and recreate
+      await tx.productUnit.deleteMany({ where: { productId: id } });
+      await tx.productUnit.createMany({
+        data: units.map((u) => ({
+          productId: id,
+          name: u.name,
+          scale: u.scale,
+          isBase: u.isBase,
+        })),
+      });
+
+      // Sync aliases
       await tx.productAlias.deleteMany({ where: { productId: id } });
       if (aliases.length > 0) {
         await tx.productAlias.createMany({
@@ -189,6 +258,7 @@ export const updateProduct = async (
         });
       }
 
+      // Sync car models
       await tx.productCarModel.deleteMany({ where: { productId: id } });
       if (carModelIds.length > 0) {
         await tx.productCarModel.createMany({
@@ -248,17 +318,12 @@ export const uploadProductImage = async (
     return { error: "กรุณาเลือกไฟล์รูปภาพ" };
   }
 
-  // Validate MIME type
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
     return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP, GIF)" };
   }
-
-  // Validate file size
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return { error: "ขนาดไฟล์ต้องไม่เกิน 5MB" };
   }
-
-  // Validate file extension
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp, gif" };
@@ -266,36 +331,23 @@ export const uploadProductImage = async (
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
   if (!supabaseUrl || !supabaseAnonKey) {
     return { error: "ไม่พบการตั้งค่า Supabase" };
   }
 
   try {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-    // Use random UUID + timestamp to prevent filename enumeration
     const safeFileName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
     const filePath = `products/${safeFileName}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    const buffer = new Uint8Array(await file.arrayBuffer());
 
     const { error: uploadError } = await supabase.storage
       .from("products")
-      .upload(filePath, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
+      .upload(filePath, buffer, { contentType: file.type, upsert: false });
 
-    if (uploadError) {
-      return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
-    }
+    if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
 
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("products").getPublicUrl(filePath);
-
+    const { data: { publicUrl } } = supabase.storage.from("products").getPublicUrl(filePath);
     return { url: publicUrl };
   } catch {
     return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
