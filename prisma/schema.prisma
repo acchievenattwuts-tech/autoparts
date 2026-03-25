@@ -27,6 +27,7 @@ model User {
   adjustments     Adjustment[]
   creditNotes     CreditNote[]
   purchaseReturns PurchaseReturn[]
+  receipts        Receipt[]
 }
 
 enum Role {
@@ -260,7 +261,9 @@ model Customer {
   note            String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  sales     Sale[]
+  sales       Sale[]
+  receipts    Receipt[]
+  creditNotes CreditNote[]
 
   @@index([name])
 }
@@ -298,6 +301,7 @@ model Sale {
   items         SaleItem[]
   warranties    Warranty[]
   creditNotes   CreditNote[]
+  receipts      ReceiptItem[]
 }
 
 enum SaleType {
@@ -415,6 +419,8 @@ model CreditNote {
   cnDate        DateTime        @default(now())
   saleId        String?         // อ้างอิงใบขายเดิม
   sale          Sale?           @relation(fields: [saleId], references: [id])
+  customerId    String?
+  customer      Customer?       @relation(fields: [customerId], references: [id])
   customerName  String?
   customerPhone String?
   userId        String
@@ -520,4 +526,34 @@ enum VatType {
   NO_VAT        // ไม่มีภาษี
   EXCLUDING_VAT // ราคาไม่รวม VAT (VAT แยก)
   INCLUDING_VAT // ราคารวม VAT แล้ว
+}
+
+// ─────────────────────────────────────────
+// Receipt (ใบเสร็จรับเงิน — รับชำระหนี้ขายเชื่อ)
+// ─────────────────────────────────────────
+
+model Receipt {
+  id            String        @id @default(cuid())
+  receiptNo     String        @unique
+  receiptDate   DateTime      @default(now())
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  customerName  String?       // fallback
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  note          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  items         ReceiptItem[]
+}
+
+model ReceiptItem {
+  id          String   @id @default(cuid())
+  receiptId   String
+  receipt     Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  paidAmount  Decimal  @db.Decimal(10, 2)
 }

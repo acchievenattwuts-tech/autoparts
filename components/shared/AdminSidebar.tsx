@@ -22,6 +22,7 @@ import {
   RotateCcw,
   ClipboardList,
   Users,
+  FileCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,7 @@ const navItems = [
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX },
+      { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck },
       { label: "ประกันสินค้า", href: "/admin/warranties", icon: ShieldCheck },
       { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt },
     ],

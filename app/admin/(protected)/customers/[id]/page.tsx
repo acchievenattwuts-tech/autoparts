@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
-import { SaleType, PaymentMethod } from "@/lib/generated/prisma";
+import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
@@ -22,28 +22,90 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   CREDIT:   "เครดิต",
 };
 
+type SaleStatus = "UNPAID" | "PARTIAL" | "PAID";
+
+const statusLabel: Record<SaleStatus, string> = {
+  UNPAID:  "ยังไม่ชำระ",
+  PARTIAL: "ชำระบางส่วน",
+  PAID:    "ชำระครบ",
+};
+
+const statusBadge: Record<SaleStatus, string> = {
+  UNPAID:  "bg-red-100 text-red-700",
+  PARTIAL: "bg-yellow-100 text-yellow-700",
+  PAID:    "bg-green-100 text-green-700",
+};
+
 const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
 
-  const customer = await db.customer.findUnique({
-    where: { id },
-    include: {
-      sales: {
-        orderBy: { saleDate: "desc" },
-        take: 50,
-        select: {
-          id:            true,
-          saleNo:        true,
-          saleDate:      true,
-          netAmount:     true,
-          saleType:      true,
-          paymentMethod: true,
-          _count: { select: { items: true } },
+  const [customer, creditSales, receipts, creditNotes] = await Promise.all([
+    db.customer.findUnique({
+      where: { id },
+      include: {
+        sales: {
+          orderBy: { saleDate: "desc" },
+          take: 50,
+          select: {
+            id:            true,
+            saleNo:        true,
+            saleDate:      true,
+            netAmount:     true,
+            saleType:      true,
+            paymentType:   true,
+            paymentMethod: true,
+            _count: { select: { items: true } },
+          },
         },
       },
-    },
-  });
+    }),
+
+    db.sale.findMany({
+      where: { customerId: id, paymentType: SalePaymentType.CREDIT_SALE },
+      select: {
+        id:        true,
+        saleNo:    true,
+        saleDate:  true,
+        netAmount: true,
+        receipts:  { select: { paidAmount: true } },
+      },
+      orderBy: { saleDate: "desc" },
+    }),
+
+    db.receipt.findMany({
+      where: { customerId: id },
+      select: {
+        receiptNo:     true,
+        receiptDate:   true,
+        totalAmount:   true,
+        paymentMethod: true,
+      },
+      orderBy: { receiptDate: "desc" },
+      take: 20,
+    }),
+
+    db.creditNote.findMany({
+      where: { customerId: id, settlementType: "CREDIT_DEBT" },
+      select: { cnNo: true, totalAmount: true, cnDate: true },
+    }),
+  ]);
+
   if (!customer) notFound();
+
+  // AR balance calculation
+  const totalCreditSales    = creditSales.reduce((sum, s) => sum + Number(s.netAmount), 0);
+  const totalPaidViaReceipts = receipts.reduce((sum, r) => sum + Number(r.totalAmount), 0);
+  const totalCNDebt         = creditNotes.reduce((sum, cn) => sum + Number(cn.totalAmount), 0);
+  const arBalance           = Math.max(0, totalCreditSales - totalPaidViaReceipts - totalCNDebt);
+
+  // Per-sale status
+  const salesWithStatus = creditSales.map((s) => {
+    const paid        = s.receipts.reduce((sum, r) => sum + Number(r.paidAmount), 0);
+    const outstanding = Math.max(0, Number(s.netAmount) - paid);
+    const status: SaleStatus =
+      paid === 0 ? "UNPAID" : outstanding <= 0 ? "PAID" : "PARTIAL";
+    return { ...s, paid, outstanding, status };
+  });
 
   const totalSpent = customer.sales.reduce((sum, s) => sum + Number(s.netAmount), 0);
 
@@ -106,6 +168,16 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
         </div>
       </div>
 
+      {/* AR balance */}
+      {arBalance > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
+          <p className="text-sm text-orange-600 font-medium">ยอดค้างชำระ (AR)</p>
+          <p className="text-2xl font-bold text-orange-700">
+            {arBalance.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+          </p>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -123,6 +195,96 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <p className="text-xs text-gray-400 mt-1">ครั้ง</p>
         </div>
       </div>
+
+      {/* Credit sales with status */}
+      {salesWithStatus.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการขายเชื่อ</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบขาย</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
+                  <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรวม</th>
+                  <th className="text-right py-3 px-4 font-medium text-gray-600">ชำระแล้ว</th>
+                  <th className="text-right py-3 px-4 font-medium text-gray-600">ค้างชำระ</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesWithStatus.map((s) => (
+                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="py-3 px-4 font-mono">
+                      <Link href={`/admin/sales/${s.id}`} className="text-[#1e3a5f] hover:underline font-medium">
+                        {s.saleNo}
+                      </Link>
+                    </td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {new Date(s.saleDate).toLocaleDateString("th-TH")}
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-800">
+                      {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-4 text-right text-gray-600">
+                      {s.paid.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-4 text-right font-medium text-orange-600">
+                      {s.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge[s.status]}`}>
+                        {statusLabel[s.status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent receipts */}
+      {receipts.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">ประวัติใบเสร็จรับเงิน</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบเสร็จ</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทาง</th>
+                  <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรับชำระ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipts.slice(0, 10).map((r) => (
+                  <tr key={r.receiptNo} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {new Date(r.receiptDate).toLocaleDateString("th-TH")}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        {paymentMethodLabel[r.paymentMethod]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-medium text-gray-900">
+                      {Number(r.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Purchase history */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -165,7 +327,11 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {s.paymentMethod ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod) : "-"}
+                      {s.paymentType === SalePaymentType.CREDIT_SALE
+                        ? <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">เชื่อ</span>
+                        : s.paymentMethod
+                          ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod)
+                          : "-"}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{s._count.items} รายการ</td>
                     <td className="py-3 px-4">

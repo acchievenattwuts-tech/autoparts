@@ -116,12 +116,12 @@
 - ครอบคลุม: ซื้อ, คืนซัพพลายเออร์, ขาย, CN — คำนวณ subtotalAmount + vatAmount realtime
 - ตั้งค่า VAT default ได้ที่ `/admin/settings/company`
 
-#### 🔲 3.8 โมดูลใบเสร็จรับเงิน / Accounts Receivable (ยังไม่ได้ทำ)
-- [ ] บันทึกการรับชำระสำหรับการขายเชื่อ (Sale.paymentType=CREDIT_SALE)
-- [ ] CN ประเภทตั้งหนี้ (settlementType=CREDIT_DEBT) — บันทึกลดยอดหนี้
-- [ ] เก็บยอดลูกหนี้ค้างชำระต่อลูกค้า (Accounts Receivable)
-- [ ] พิมพ์ใบเสร็จรับเงิน (browser print + PDF export)
-- [ ] แสดงยอดค้างชำระในหน้า Customer profile
+#### ✅ 3.8 โมดูลใบเสร็จรับเงิน / Accounts Receivable (เสร็จแล้ว)
+- [x] บันทึกการรับชำระสำหรับการขายเชื่อ (Sale.paymentType=CREDIT_SALE)
+- [x] CN ประเภทตั้งหนี้ (settlementType=CREDIT_DEBT) — บันทึกลดยอดหนี้
+- [x] เก็บยอดลูกหนี้ค้างชำระต่อลูกค้า (Accounts Receivable)
+- [x] พิมพ์ใบเสร็จรับเงิน (browser print)
+- [x] แสดงยอดค้างชำระในหน้า Customer profile
 
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย (ยังไม่ได้ทำ)
 - [ ] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน

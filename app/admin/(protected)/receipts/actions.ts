@@ -1,0 +1,138 @@
+"use server";
+
+import { db } from "@/lib/db";
+import { auth } from "@/auth";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { generateReceiptNo } from "@/lib/doc-number";
+import { PaymentMethod } from "@/lib/generated/prisma";
+
+// ─────────────────────────────────────────
+// getCreditSalesForCustomer
+// ─────────────────────────────────────────
+
+export interface CreditSaleItem {
+  id: string;
+  saleNo: string;
+  saleDate: string;
+  netAmount: number;
+  paidAmount: number;
+  outstanding: number;
+}
+
+export async function getCreditSalesForCustomer(customerId: string): Promise<CreditSaleItem[]> {
+  const session = await auth();
+  if (!session?.user?.id) return [];
+
+  if (!customerId) return [];
+
+  const sales = await db.sale.findMany({
+    where: { customerId, paymentType: "CREDIT_SALE" },
+    orderBy: { saleDate: "asc" },
+    select: {
+      id:        true,
+      saleNo:    true,
+      saleDate:  true,
+      netAmount: true,
+      receipts:  { select: { paidAmount: true } },
+    },
+  });
+
+  return sales
+    .map((s) => {
+      const paid        = s.receipts.reduce((sum, r) => sum + Number(r.paidAmount), 0);
+      const outstanding = Math.max(0, Number(s.netAmount) - paid);
+      return {
+        id:          s.id,
+        saleNo:      s.saleNo,
+        saleDate:    s.saleDate.toISOString(),
+        netAmount:   Number(s.netAmount),
+        paidAmount:  paid,
+        outstanding,
+      };
+    })
+    .filter((s) => s.outstanding > 0);
+}
+
+// ─────────────────────────────────────────
+// createReceipt
+// ─────────────────────────────────────────
+
+const receiptItemSchema = z.object({
+  saleId:     z.string().min(1),
+  paidAmount: z.coerce.number().positive(),
+});
+
+const receiptSchema = z.object({
+  customerId:    z.string().optional(),
+  customerName:  z.string().max(100).optional(),
+  receiptDate:   z.string().min(1),
+  paymentMethod: z.nativeEnum(PaymentMethod),
+  note:          z.string().max(500).optional(),
+  items:         z.array(receiptItemSchema).min(1, "ต้องมีรายการชำระอย่างน้อย 1 รายการ"),
+});
+
+export async function createReceipt(
+  formData: FormData,
+): Promise<{ success: boolean; receiptNo?: string; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { success: false, error: "กรุณาเข้าสู่ระบบก่อน" };
+  }
+
+  let parsed: z.infer<typeof receiptSchema>;
+  try {
+    const raw = {
+      customerId:    formData.get("customerId") ?? undefined,
+      customerName:  formData.get("customerName") ?? undefined,
+      receiptDate:   formData.get("receiptDate"),
+      paymentMethod: formData.get("paymentMethod"),
+      note:          formData.get("note") ?? undefined,
+      items:         JSON.parse((formData.get("items") as string) ?? "[]"),
+    };
+    parsed = receiptSchema.parse(raw);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      const issues = err.issues;
+      return { success: false, error: issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    }
+    return { success: false, error: "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  try {
+    const docDate     = new Date(parsed.receiptDate);
+    const receiptNo   = await generateReceiptNo(docDate);
+    const totalAmount = parsed.items.reduce((sum, item) => sum + item.paidAmount, 0);
+
+    await db.$transaction(async (tx) => {
+      const receipt = await tx.receipt.create({
+        data: {
+          receiptNo,
+          receiptDate:   docDate,
+          customerId:    parsed.customerId || null,
+          customerName:  parsed.customerName || null,
+          userId:        session.user!.id,
+          totalAmount,
+          paymentMethod: parsed.paymentMethod,
+          note:          parsed.note || null,
+        },
+      });
+
+      await tx.receiptItem.createMany({
+        data: parsed.items.map((item) => ({
+          receiptId:  receipt.id,
+          saleId:     item.saleId,
+          paidAmount: item.paidAmount,
+        })),
+      });
+    });
+
+    revalidatePath("/admin/receipts");
+    revalidatePath("/admin/customers");
+
+    return { success: true, receiptNo };
+  } catch (err) {
+    console.error("[createReceipt] error:", err);
+    return { success: false, error: "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้" };
+  }
+}
