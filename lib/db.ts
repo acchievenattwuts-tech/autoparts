@@ -1,4 +1,3 @@
-import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma";
 
@@ -7,13 +6,13 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const pool = new Pool({
+  // Pass PoolConfig directly to avoid type conflict between pg versions
+  const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL,
     max: 1,                      // 1 connection per serverless instance
     idleTimeoutMillis: 10_000,   // release idle connection after 10s
     connectionTimeoutMillis: 5_000,
   });
-  const adapter = new PrismaPg(pool);
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
