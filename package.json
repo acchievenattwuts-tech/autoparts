@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",
+    "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

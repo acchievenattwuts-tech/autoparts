@@ -32,7 +32,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
       "font-src 'self' data:",
       // Allow API calls to Supabase
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.sriwanparts.com",
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in",
       // Block embedding this site in iframes anywhere
       "frame-ancestors 'none'",
       // Restrict base tag hijacking

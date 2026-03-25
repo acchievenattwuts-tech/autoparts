@@ -44,7 +44,8 @@
 | StockCard | บัตรสต็อกสินค้า — source of truth การเคลื่อนไหว stock (qty/price ใน base unit) |
 | Purchase / PurchaseItem | ระบบซื้อสินค้าเข้า |
 | PurchaseReturn / PurchaseReturnItem | คืนสินค้าให้ซัพพลายเออร์ (RETURN_OUT) |
-| Sale / SaleItem | ระบบขาย |
+| Customer | ข้อมูลลูกค้า (รหัส, ชื่อ, เบอร์, ที่อยู่, เลขภาษี) |
+| Sale / SaleItem | ระบบขาย (saleType: RETAIL/WHOLESALE) |
 | CreditNote / CreditNoteItem | CN ฝั่งขาย — เราออกให้ลูกค้า (RETURN=คืนของ / DISCOUNT=ลดราคา) |
 | Adjustment / AdjustmentItem | ปรับสต็อก +/- พร้อมเหตุผล |
 | Warranty | ประกันสินค้า (เริ่มนับจากวันขาย) |
@@ -104,6 +105,15 @@
 
 #### ✅ 3.x เพิ่มเติม
 - `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้ (หาร scale)
+
+### ✅ Phase 2.5 — ระบบลูกค้า (Customer Module)
+- CRUD ลูกค้า: list (พร้อม search), create, edit, delete (ป้องกันลบถ้ามียอดขาย)
+- หน้าโปรไฟล์ลูกค้า: ข้อมูล + สถิติ (ยอดซื้อรวม, จำนวนครั้ง) + ประวัติการซื้อ
+- เชื่อม Sale ↔ Customer: ใบขายเลือกลูกค้าจากระบบ + auto-fill ชื่อ/เบอร์
+- ประเภทการขาย (saleType): RETAIL=ขายปลีก (badge เขียว), WHOLESALE=ขายส่ง (badge น้ำเงิน)
+- แสดง saleType badge ในหน้า sales list + sales detail
+- แสดง customer link (→ /admin/customers/{id}) ใน sales detail
+- Sidebar: เพิ่มเมนู "ลูกค้า" ใต้หัวข้อ "ระบบงาน"
 
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย
   - type=DISCOUNT: ลดราคา → ไม่กระทบ stock

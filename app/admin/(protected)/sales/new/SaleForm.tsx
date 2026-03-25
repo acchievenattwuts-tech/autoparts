@@ -13,6 +13,13 @@ interface ProductOption {
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
+interface CustomerOption {
+  id:    string;
+  name:  string;
+  phone: string | null;
+  code:  string | null;
+}
+
 interface LineItem {
   productId: string;
   unitName:  string;
@@ -25,11 +32,14 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0 });
 
-const SaleForm = ({ products }: { products: ProductOption[] }) => {
+const SaleForm = ({ products, customers }: { products: ProductOption[]; customers: CustomerOption[] }) => {
   const [isPending, startTransition] = useTransition();
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
-  const [items, setItems]     = useState<LineItem[]>([emptyItem()]);
+  const [error, setError]         = useState("");
+  const [success, setSuccess]     = useState("");
+  const [items, setItems]         = useState<LineItem[]>([emptyItem()]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [customerNameOverride, setCustomerNameOverride] = useState("");
+  const [customerPhoneOverride, setCustomerPhoneOverride] = useState("");
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
@@ -55,6 +65,18 @@ const SaleForm = ({ products }: { products: ProductOption[] }) => {
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
 
+  const handleCustomerChange = (customerId: string) => {
+    setSelectedCustomerId(customerId);
+    if (customerId) {
+      const found = customers.find((c) => c.id === customerId);
+      setCustomerNameOverride(found?.name ?? "");
+      setCustomerPhoneOverride(found?.phone ?? "");
+    } else {
+      setCustomerNameOverride("");
+      setCustomerPhoneOverride("");
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
@@ -77,6 +99,9 @@ const SaleForm = ({ products }: { products: ProductOption[] }) => {
       } else {
         setSuccess(`บันทึกสำเร็จ เลขที่ใบขาย: ${result.saleNo}`);
         setItems([emptyItem()]);
+        setSelectedCustomerId("");
+        setCustomerNameOverride("");
+        setCustomerPhoneOverride("");
         form.reset();
       }
     });
@@ -108,13 +133,38 @@ const SaleForm = ({ products }: { products: ProductOption[] }) => {
             />
           </div>
           <div>
+            <label className={labelCls}>ลูกค้า</label>
+            <select
+              name="customerId"
+              value={selectedCustomerId}
+              onChange={(e) => handleCustomerChange(e.target.value)}
+              className={`${inputCls} bg-white`}
+            >
+              <option value="">-- ลูกค้าทั่วไป --</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.code ? `[${c.code}] ` : ""}{c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>ประเภทการขาย</label>
+            <select name="saleType" className={`${inputCls} bg-white`}>
+              <option value="RETAIL">ขายปลีก</option>
+              <option value="WHOLESALE">ขายส่ง</option>
+            </select>
+          </div>
+          <div>
             <label className={labelCls}>ชื่อลูกค้า</label>
             <input
               type="text"
               name="customerName"
               maxLength={100}
+              value={customerNameOverride}
+              onChange={(e) => setCustomerNameOverride(e.target.value)}
               className={inputCls}
-              placeholder="ไม่ระบุ"
+              placeholder="ไม่ระบุ (หรือพิมพ์ชื่อเอง)"
             />
           </div>
           <div>
@@ -123,6 +173,8 @@ const SaleForm = ({ products }: { products: ProductOption[] }) => {
               type="tel"
               name="customerPhone"
               maxLength={20}
+              value={customerPhoneOverride}
+              onChange={(e) => setCustomerPhoneOverride(e.target.value)}
               className={inputCls}
               placeholder="ไม่ระบุ"
             />

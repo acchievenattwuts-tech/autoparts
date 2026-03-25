@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { PaymentMethod } from "@/lib/generated/prisma";
+import { PaymentMethod, SaleType } from "@/lib/generated/prisma";
 
 const saleItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -17,6 +17,8 @@ const saleItemSchema = z.object({
 
 const saleSchema = z.object({
   saleDate:      z.string().min(1, "กรุณาระบุวันที่"),
+  customerId:    z.string().max(50).optional(),
+  saleType:      z.nativeEnum(SaleType).default(SaleType.RETAIL),
   customerName:  z.string().max(100).optional(),
   customerPhone: z.string().max(20).optional(),
   discount:      z.coerce.number().min(0).default(0),
@@ -41,6 +43,8 @@ export async function createSale(
 
   const parsed = saleSchema.safeParse({
     saleDate:      formData.get("saleDate"),
+    customerId:    formData.get("customerId") || undefined,
+    saleType:      formData.get("saleType") || SaleType.RETAIL,
     customerName:  formData.get("customerName") || undefined,
     customerPhone: formData.get("customerPhone") || undefined,
     discount:      formData.get("discount") || 0,
@@ -52,6 +56,8 @@ export async function createSale(
 
   const {
     saleDate,
+    customerId,
+    saleType,
     customerName,
     customerPhone,
     discount,
@@ -73,6 +79,8 @@ export async function createSale(
       const sale = await tx.sale.create({
         data: {
           saleNo,
+          customerId:    customerId ?? null,
+          saleType,
           customerName:  customerName ?? null,
           customerPhone: customerPhone ?? null,
           userId:        session.user!.id!,

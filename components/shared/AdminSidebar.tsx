@@ -21,6 +21,7 @@ import {
   FileX,
   RotateCcw,
   ClipboardList,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ const navItems = [
   {
     section: "ระบบงาน",
     items: [
+      { label: "ลูกค้า", href: "/admin/customers", icon: Users },
       { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart },
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp },

@@ -6,21 +6,27 @@ import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
 
 const NewSalePage = async () => {
-  const products = await db.product.findMany({
-    where: { isActive: true },
-    orderBy: { code: "asc" },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      salePrice: true,
-      saleUnitName: true,
-      units: {
-        select: { name: true, scale: true, isBase: true },
-        orderBy: { isBase: "desc" },
+  const [products, customers] = await Promise.all([
+    db.product.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        salePrice: true,
+        saleUnitName: true,
+        units: {
+          select: { name: true, scale: true, isBase: true },
+          orderBy: { isBase: "desc" },
+        },
       },
-    },
-  });
+    }),
+    db.customer.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true, code: true },
+    }),
+  ]);
 
   // Convert Decimal to number for client component serialization
   const productOptions = products.map((p) => ({
@@ -45,7 +51,7 @@ const NewSalePage = async () => {
         <span className="text-sm font-medium text-gray-700">บันทึกการขายใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">บันทึกการขายสินค้า</h1>
-      <SaleForm products={productOptions} />
+      <SaleForm products={productOptions} customers={customers} />
     </div>
   );
 };

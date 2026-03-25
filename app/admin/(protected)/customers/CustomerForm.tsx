@@ -1,0 +1,169 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { CheckCircle } from "lucide-react";
+import { createCustomer, updateCustomer } from "./actions";
+
+interface CustomerFormProps {
+  customer?: {
+    id:      string;
+    code:    string | null;
+    name:    string;
+    phone:   string | null;
+    address: string | null;
+    taxId:   string | null;
+    note:    string | null;
+  };
+}
+
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+
+const CustomerForm = ({ customer }: CustomerFormProps) => {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error,   setError]   = useState("");
+  const [success, setSuccess] = useState("");
+
+  const isEdit = Boolean(customer);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    const formData = new FormData(e.currentTarget);
+
+    startTransition(async () => {
+      const result = isEdit
+        ? await updateCustomer(customer!.id, formData)
+        : await createCustomer(formData);
+
+      if (result.error) {
+        setError(result.error);
+      } else if (isEdit) {
+        setSuccess("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+      } else {
+        router.push("/admin/customers");
+      }
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+          ข้อมูลลูกค้า
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* รหัสลูกค้า */}
+          <div>
+            <label className={labelCls}>รหัสลูกค้า</label>
+            <input
+              type="text"
+              name="code"
+              maxLength={20}
+              defaultValue={customer?.code ?? ""}
+              className={inputCls}
+              placeholder="เช่น C0001"
+            />
+          </div>
+
+          {/* ชื่อลูกค้า */}
+          <div>
+            <label className={labelCls}>
+              ชื่อลูกค้า <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              name="name"
+              required
+              maxLength={100}
+              defaultValue={customer?.name ?? ""}
+              className={inputCls}
+              placeholder="ชื่อ-นามสกุล หรือชื่อบริษัท"
+            />
+          </div>
+
+          {/* เบอร์โทร */}
+          <div>
+            <label className={labelCls}>เบอร์โทร</label>
+            <input
+              type="tel"
+              name="phone"
+              maxLength={20}
+              defaultValue={customer?.phone ?? ""}
+              className={inputCls}
+              placeholder="0xx-xxx-xxxx"
+            />
+          </div>
+
+          {/* เลขผู้เสียภาษี */}
+          <div>
+            <label className={labelCls}>เลขผู้เสียภาษี</label>
+            <input
+              type="text"
+              name="taxId"
+              maxLength={20}
+              defaultValue={customer?.taxId ?? ""}
+              className={inputCls}
+              placeholder="13 หลัก"
+            />
+          </div>
+
+          {/* ที่อยู่ */}
+          <div className="md:col-span-2">
+            <label className={labelCls}>ที่อยู่</label>
+            <textarea
+              name="address"
+              rows={3}
+              maxLength={300}
+              defaultValue={customer?.address ?? ""}
+              className={inputCls}
+              placeholder="ที่อยู่สำหรับออกเอกสาร"
+            />
+          </div>
+
+          {/* หมายเหตุ */}
+          <div className="md:col-span-2">
+            <label className={labelCls}>หมายเหตุ</label>
+            <textarea
+              name="note"
+              rows={2}
+              maxLength={500}
+              defaultValue={customer?.note ?? ""}
+              className={inputCls}
+              placeholder="หมายเหตุเพิ่มเติม"
+            />
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
+          <CheckCircle size={16} className="text-green-600" />
+          <p className="text-sm text-green-600">{success}</p>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+        >
+          {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "เพิ่มลูกค้า"}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+export default CustomerForm;

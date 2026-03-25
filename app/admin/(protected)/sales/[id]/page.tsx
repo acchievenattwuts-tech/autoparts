@@ -2,14 +2,25 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { ChevronLeft, Printer } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
+import { SaleType } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
   TRANSFER: "โอนเงิน",
   CREDIT:   "เครดิต",
+};
+
+const saleTypeLabel: Record<SaleType, string> = {
+  RETAIL:    "ปลีก",
+  WHOLESALE: "ส่ง",
+};
+
+const saleTypeBadge: Record<SaleType, string> = {
+  RETAIL:    "bg-green-100 text-green-700",
+  WHOLESALE: "bg-blue-100 text-blue-700",
 };
 
 const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -26,7 +37,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             },
           },
         },
-        user: { select: { name: true } },
+        user:     { select: { name: true } },
+        customer: { select: { id: true, name: true, phone: true } },
       },
     }),
     db.siteContent.findMany({
@@ -85,11 +97,28 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             </div>
             <div>
               <p className="text-gray-500 mb-1">ลูกค้า</p>
-              <p className="font-medium text-gray-900">{sale.customerName ?? "-"}</p>
+              {sale.customer ? (
+                <Link
+                  href={`/admin/customers/${sale.customer.id}`}
+                  className="font-medium text-[#1e3a5f] hover:underline"
+                >
+                  {sale.customer.name}
+                </Link>
+              ) : (
+                <p className="font-medium text-gray-900">{sale.customerName ?? "-"}</p>
+              )}
             </div>
             <div>
               <p className="text-gray-500 mb-1">เบอร์โทร</p>
-              <p className="font-medium text-gray-900">{sale.customerPhone ?? "-"}</p>
+              <p className="font-medium text-gray-900">
+                {sale.customer?.phone ?? sale.customerPhone ?? "-"}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 mb-1">ประเภทการขาย</p>
+              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${saleTypeBadge[sale.saleType]}`}>
+                {saleTypeLabel[sale.saleType]}
+              </span>
             </div>
             <div>
               <p className="text-gray-500 mb-1">ช่องทางชำระ</p>
