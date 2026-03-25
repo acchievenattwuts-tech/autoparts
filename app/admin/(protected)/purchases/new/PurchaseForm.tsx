@@ -9,7 +9,7 @@ interface ProductOption {
   code: string;
   name: string;
   purchaseUnitName: string;
-  avgCost: number;
+  costPrice: number;
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
@@ -48,7 +48,7 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
         if (field === "productId") {
           const prod = products.find((p) => p.id === String(value));
           updated.unitName  = prod?.purchaseUnitName ?? "";
-          updated.costPrice = prod?.avgCost ?? 0;
+          updated.costPrice = prod?.costPrice ?? 0;
         }
         return updated;
       })
@@ -157,7 +157,6 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-32">ราคาทุน/หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32">Landed Cost</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
                 <th className="w-8" />
               </tr>
@@ -198,11 +197,6 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
                         onChange={(e) => updateItem(i, "costPrice", Number(e.target.value))}
                         className={inputCls} placeholder="0.00" />
                     </td>
-                    <td className="py-2 px-2">
-                      <input type="number" value={item.landedCost} min={0} step={0.01}
-                        onChange={(e) => updateItem(i, "landedCost", Number(e.target.value))}
-                        className={inputCls} placeholder="0.00" />
-                    </td>
                     <td className="py-2 px-2 text-right font-medium text-gray-700">
                       {(item.qty * item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
@@ -220,21 +214,21 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
             </tbody>
             <tfoot>
               <tr className="border-t border-gray-100">
-                <td colSpan={5} className="py-2 px-2 text-right text-sm text-gray-500">รวมก่อนส่วนลด</td>
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">รวมก่อนส่วนลด</td>
                 <td className="py-2 px-2 text-right text-gray-700">
                   {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>
               <tr>
-                <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500">ส่วนลด</td>
+                <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ส่วนลด</td>
                 <td className="py-1 px-2 text-right text-red-500">
                   -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>
               <tr className="border-t border-gray-200">
-                <td colSpan={5} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
                 <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>

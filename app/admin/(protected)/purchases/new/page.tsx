@@ -15,7 +15,7 @@ const NewPurchasePage = async () => {
         code: true,
         name: true,
         purchaseUnitName: true,
-        avgCost: true,
+        costPrice: true,
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -30,7 +30,7 @@ const NewPurchasePage = async () => {
     code: p.code,
     name: p.name,
     purchaseUnitName: p.purchaseUnitName,
-    avgCost: Number(p.avgCost),
+    costPrice: Number(p.costPrice),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 
