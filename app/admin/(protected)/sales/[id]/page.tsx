@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
-import { FulfillmentType, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -31,6 +31,15 @@ const fulfillmentLabel: Record<FulfillmentType, string> = {
 const fulfillmentBadge: Record<FulfillmentType, string> = {
   PICKUP:   "bg-gray-100 text-gray-600",
   DELIVERY: "bg-purple-100 text-purple-700",
+};
+
+const paymentTypeLabel: Record<SalePaymentType, string> = {
+  CASH_SALE:   "ขายสด",
+  CREDIT_SALE: "ขายเชื่อ",
+};
+const paymentTypeBadge: Record<SalePaymentType, string> = {
+  CASH_SALE:   "bg-emerald-100 text-emerald-700",
+  CREDIT_SALE: "bg-orange-100 text-orange-700",
 };
 
 const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -131,9 +140,19 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               </span>
             </div>
             <div>
+              <p className="text-gray-500 mb-1">ประเภทการชำระ</p>
+              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentTypeBadge[sale.paymentType]}`}>
+                {paymentTypeLabel[sale.paymentType]}
+              </span>
+            </div>
+            <div>
               <p className="text-gray-500 mb-1">ช่องทางชำระ</p>
               <p className="font-medium text-gray-900">
-                {paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod}
+                {sale.paymentType === "CREDIT_SALE"
+                  ? "ขายเชื่อ"
+                  : sale.paymentMethod
+                    ? (paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod)
+                    : "-"}
               </p>
             </div>
             <div>
@@ -275,8 +294,14 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               </span>
             </div>
             <div className="flex justify-between text-gray-600 pt-1">
-              <span>ช่องทางชำระ</span>
-              <span>{paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod}</span>
+              <span>การชำระเงิน</span>
+              <span>
+                {sale.paymentType === "CREDIT_SALE"
+                  ? "ขายเชื่อ"
+                  : sale.paymentMethod
+                    ? (paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod)
+                    : "-"}
+              </span>
             </div>
           </div>
         </div>

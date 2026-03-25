@@ -43,6 +43,7 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState("");
   const [discount, setDiscount] = useState(0);
 
+  const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">("CASH_SALE");
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingFee, setShippingFee]         = useState(0);
@@ -121,6 +122,7 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
         setCustomerNameOverride("");
         setCustomerPhoneOverride("");
         setDiscount(0);
+        setPaymentType("CASH_SALE");
         setFulfillmentType("PICKUP");
         setShippingAddress("");
         setShippingFee(0);
@@ -197,6 +199,35 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
             />
           </div>
           <div>
+            <label className={labelCls}>ประเภทการชำระ</label>
+            <input type="hidden" name="paymentType" value={paymentType} />
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPaymentType("CASH_SALE")}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  paymentType === "CASH_SALE"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ขายสด
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentType("CREDIT_SALE")}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  paymentType === "CREDIT_SALE"
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ขายเชื่อ
+              </button>
+            </div>
+          </div>
+          {paymentType === "CASH_SALE" && (
+          <div>
             <label className={labelCls}>ช่องทางชำระเงิน</label>
             <select name="paymentMethod" className={`${inputCls} bg-white`}>
               <option value="CASH">เงินสด</option>
@@ -204,6 +235,7 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
               <option value="CREDIT">เครดิต</option>
             </select>
           </div>
+          )}
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
             <input
@@ -446,9 +478,19 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isPending ? "กำลังบันทึก..." : "บันทึกการขาย"}
+          {isPending ? (
+            <span className="inline-flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              กำลังบันทึก...
+            </span>
+          ) : (
+            "บันทึกการขาย"
+          )}
         </button>
       </div>
     </form>

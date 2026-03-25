@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye } from "lucide-react";
-import { FulfillmentType, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -29,6 +29,15 @@ const fulfillmentLabel: Record<FulfillmentType, string> = {
 const fulfillmentBadge: Record<FulfillmentType, string> = {
   PICKUP:   "bg-gray-100 text-gray-600",
   DELIVERY: "bg-purple-100 text-purple-700",
+};
+
+const paymentTypeLabel: Record<SalePaymentType, string> = {
+  CASH_SALE:   "สด",
+  CREDIT_SALE: "เชื่อ",
+};
+const paymentTypeBadge: Record<SalePaymentType, string> = {
+  CASH_SALE:   "bg-emerald-100 text-emerald-700",
+  CREDIT_SALE: "bg-orange-100 text-orange-700",
 };
 
 const SalesPage = async () => {
@@ -62,6 +71,7 @@ const SalesPage = async () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ลูกค้า</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">ขายสด/เชื่อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">การจัดส่ง</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
@@ -72,7 +82,7 @@ const SalesPage = async () => {
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400">
                     ยังไม่มีรายการขาย
                   </td>
                 </tr>
@@ -92,6 +102,11 @@ const SalesPage = async () => {
                       </span>
                     </td>
                     <td className="py-3 px-4">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentTypeBadge[s.paymentType]}`}>
+                        {paymentTypeLabel[s.paymentType]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fulfillmentBadge[s.fulfillmentType]}`}>
                         {fulfillmentLabel[s.fulfillmentType]}
                       </span>
@@ -101,7 +116,7 @@ const SalesPage = async () => {
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod}
+                      {s.paymentMethod ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod) : "-"}
                     </td>
                     <td className="py-3 px-4">
                       <Link

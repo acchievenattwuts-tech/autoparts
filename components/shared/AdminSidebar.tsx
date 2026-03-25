@@ -32,13 +32,10 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    label: "สินค้า",
-    href: "/admin/products",
-    icon: Package,
-  },
-  {
     section: "ข้อมูลหลัก",
     items: [
+      { label: "สินค้า", href: "/admin/products", icon: Package },
+      { label: "ลูกค้า", href: "/admin/customers", icon: Users },
       { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags },
       { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award },
       { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car },
@@ -56,7 +53,6 @@ const navItems = [
   {
     section: "ระบบงาน",
     items: [
-      { label: "ลูกค้า", href: "/admin/customers", icon: Users },
       { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart },
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp },

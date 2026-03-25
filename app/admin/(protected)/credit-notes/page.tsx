@@ -3,11 +3,22 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { CreditNoteType } from "@/lib/generated/prisma";
+import { CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
   DISCOUNT: "ลดราคา",
+  OTHER:    "อื่นๆ",
+};
+
+const settlementTypeLabel: Record<CNSettlementType, string> = {
+  CASH_REFUND: "คืนเงินสด",
+  CREDIT_DEBT: "ตั้งหนี้",
+};
+
+const settlementTypeBadge: Record<CNSettlementType, string> = {
+  CASH_REFUND: "bg-emerald-100 text-emerald-700",
+  CREDIT_DEBT: "bg-orange-100 text-orange-700",
 };
 
 const CreditNotesPage = async () => {
@@ -40,6 +51,7 @@ const CreditNotesPage = async () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ CN</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">การชำระ CN</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">อ้างอิงใบขาย</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรวม</th>
@@ -48,7 +60,7 @@ const CreditNotesPage = async () => {
             <tbody>
               {creditNotes.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="text-center py-12 text-gray-400">
                     ยังไม่มีรายการ Credit Note
                   </td>
                 </tr>
@@ -68,6 +80,11 @@ const CreditNotesPage = async () => {
                         }`}
                       >
                         {cnTypeLabel[cn.type]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${settlementTypeBadge[cn.settlementType]}`}>
+                        {settlementTypeLabel[cn.settlementType]}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-gray-600">

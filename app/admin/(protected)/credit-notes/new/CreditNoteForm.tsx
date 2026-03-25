@@ -40,10 +40,11 @@ const CreditNoteForm = ({
   sales: SaleOption[];
 }) => {
   const [isPending, startTransition] = useTransition();
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
-  const [items, setItems]     = useState<LineItem[]>([emptyItem()]);
-  const [cnType, setCnType]   = useState<"RETURN" | "DISCOUNT">("RETURN");
+  const [error, setError]         = useState("");
+  const [success, setSuccess]     = useState("");
+  const [items, setItems]         = useState<LineItem[]>([emptyItem()]);
+  const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">("RETURN");
+  const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">("CASH_REFUND");
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -91,6 +92,7 @@ const CreditNoteForm = ({
         setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
         setItems([emptyItem()]);
         setCnType("RETURN");
+        setSettlementType("CASH_REFUND");
         form.reset();
       }
     });
@@ -128,17 +130,46 @@ const CreditNoteForm = ({
             </select>
           </div>
           <div>
+            <label className={labelCls}>การชำระ CN</label>
+            <input type="hidden" name="settlementType" value={settlementType} />
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSettlementType("CASH_REFUND")}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  settlementType === "CASH_REFUND"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                คืนเป็นเงินสด
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettlementType("CREDIT_DEBT")}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  settlementType === "CREDIT_DEBT"
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ตั้งหนี้
+              </button>
+            </div>
+          </div>
+          <div>
             <label className={labelCls}>
               ประเภท CN <span className="text-red-500">*</span>
             </label>
             <select
               name="type"
               value={cnType}
-              onChange={(e) => setCnType(e.target.value as "RETURN" | "DISCOUNT")}
+              onChange={(e) => setCnType(e.target.value as "RETURN" | "DISCOUNT" | "OTHER")}
               className={`${inputCls} bg-white`}
             >
               <option value="RETURN">รับคืนสินค้า</option>
-              <option value="DISCOUNT">ลดราคา/ส่วนลด</option>
+              <option value="DISCOUNT">ส่วนราคา / ส่วนลด</option>
+              <option value="OTHER">อื่นๆ</option>
             </select>
           </div>
           <div className="md:col-span-3">
@@ -162,7 +193,7 @@ const CreditNoteForm = ({
         ) : (
           <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>ไม่กระทบสต็อก — ใช้สำหรับออกใบลดหนี้ประเภทส่วนลดราคาเท่านั้น</span>
+            <span>ไม่กระทบสต็อก — ใช้สำหรับออกใบลดหนี้ประเภทส่วนลดราคาหรืออื่นๆ เท่านั้น</span>
           </div>
         )}
       </div>
@@ -298,9 +329,19 @@ const CreditNoteForm = ({
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isPending ? "กำลังบันทึก..." : "บันทึก Credit Note"}
+          {isPending ? (
+            <span className="inline-flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              กำลังบันทึก...
+            </span>
+          ) : (
+            "บันทึก Credit Note"
+          )}
         </button>
       </div>
     </form>

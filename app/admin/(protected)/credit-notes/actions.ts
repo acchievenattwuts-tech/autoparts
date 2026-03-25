@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { CreditNoteType } from "@/lib/generated/prisma";
+import { CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -16,11 +16,12 @@ const cnItemSchema = z.object({
 });
 
 const cnSchema = z.object({
-  cnDate:  z.string().min(1, "กรุณาระบุวันที่"),
-  saleId:  z.string().max(50).optional(),
-  type:    z.nativeEnum(CreditNoteType),
-  note:    z.string().max(500).optional(),
-  items:   z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
+  cnDate:         z.string().min(1, "กรุณาระบุวันที่"),
+  saleId:         z.string().max(50).optional(),
+  type:           z.nativeEnum(CreditNoteType),
+  settlementType: z.nativeEnum(CNSettlementType).default(CNSettlementType.CASH_REFUND),
+  note:           z.string().max(500).optional(),
+  items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
 export async function createCreditNote(
@@ -38,15 +39,16 @@ export async function createCreditNote(
   }
 
   const parsed = cnSchema.safeParse({
-    cnDate:  formData.get("cnDate"),
-    saleId:  formData.get("saleId") || undefined,
-    type:    formData.get("type"),
-    note:    formData.get("note") || undefined,
+    cnDate:         formData.get("cnDate"),
+    saleId:         formData.get("saleId") || undefined,
+    type:           formData.get("type"),
+    settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
+    note:           formData.get("note") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, saleId, type, note, items: validItems } = parsed.data;
+  const { cnDate, saleId, type, settlementType, note, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
 
@@ -59,12 +61,13 @@ export async function createCreditNote(
       const cn = await tx.creditNote.create({
         data: {
           cnNo,
-          saleId:      saleId || null,
-          userId:      session.user!.id!,
+          saleId:         saleId || null,
+          userId:         session.user!.id!,
           type,
+          settlementType,
           totalAmount,
-          note:        note ?? null,
-          cnDate:      docDate,
+          note:           note ?? null,
+          cnDate:         docDate,
         },
       });
 

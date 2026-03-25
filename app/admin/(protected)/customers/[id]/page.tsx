@@ -165,7 +165,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod}
+                      {s.paymentMethod ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod) : "-"}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{s._count.items} รายการ</td>
                     <td className="py-3 px-4">

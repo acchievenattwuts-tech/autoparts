@@ -271,6 +271,7 @@ model Sale {
   customerName  String?     // fallback ถ้าไม่เลือกจาก Customer
   customerPhone String?
   saleType        SaleType        @default(RETAIL)
+  paymentType     SalePaymentType @default(CASH_SALE)
   fulfillmentType FulfillmentType @default(PICKUP)
   shippingAddress String?
   shippingFee     Decimal?        @db.Decimal(10, 2)
@@ -279,7 +280,7 @@ model Sale {
   totalAmount   Decimal     @db.Decimal(10, 2)
   discount      Decimal     @default(0) @db.Decimal(10, 2)
   netAmount     Decimal     @db.Decimal(10, 2)
-  paymentMethod PaymentMethod @default(CASH)
+  paymentMethod PaymentMethod? @default(CASH)
   note          String?
   saleDate      DateTime    @default(now())
   createdAt     DateTime    @default(now())
@@ -404,6 +405,7 @@ model CreditNote {
   userId        String
   user          User            @relation(fields: [userId], references: [id])
   type          CreditNoteType  // RETURN = คืนสินค้า (กระทบ stock), DISCOUNT = ลดราคา
+  settlementType CNSettlementType @default(CASH_REFUND)
   totalAmount   Decimal         @db.Decimal(10, 2)
   note          String?
   createdAt     DateTime        @default(now())
@@ -426,6 +428,17 @@ model CreditNoteItem {
 enum CreditNoteType {
   RETURN    // คืนสินค้า — กระทบ stock (RETURN_IN) + avgCost ไม่เปลี่ยน
   DISCOUNT  // ลดราคา — ไม่กระทบ stock
+  OTHER     // อื่นๆ — ไม่กระทบ stock
+}
+
+enum SalePaymentType {
+  CASH_SALE   // ขายสด
+  CREDIT_SALE // ขายเชื่อ
+}
+
+enum CNSettlementType {
+  CASH_REFUND  // คืนเป็นเงินสด
+  CREDIT_DEBT  // ตั้งหนี้
 }
 
 // ─────────────────────────────────────────

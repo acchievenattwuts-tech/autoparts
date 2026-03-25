@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { FulfillmentType, PaymentMethod, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, PaymentMethod, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 
 const saleItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -19,13 +19,14 @@ const saleSchema = z.object({
   saleDate:        z.string().min(1, "กรุณาระบุวันที่"),
   customerId:      z.string().max(50).optional(),
   saleType:        z.nativeEnum(SaleType).default(SaleType.RETAIL),
+  paymentType:     z.nativeEnum(SalePaymentType).default(SalePaymentType.CASH_SALE),
   fulfillmentType: z.nativeEnum(FulfillmentType).default(FulfillmentType.PICKUP),
   customerName:    z.string().max(100).optional(),
   customerPhone:   z.string().max(20).optional(),
   shippingAddress: z.string().max(500).optional(),
   shippingFee:     z.coerce.number().min(0).default(0),
   discount:        z.coerce.number().min(0).default(0),
-  paymentMethod:   z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  paymentMethod:   z.nativeEnum(PaymentMethod).optional(),
   note:            z.string().max(500).optional(),
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
@@ -48,13 +49,14 @@ export async function createSale(
     saleDate:        formData.get("saleDate"),
     customerId:      formData.get("customerId")      || undefined,
     saleType:        formData.get("saleType")        || SaleType.RETAIL,
+    paymentType:     formData.get("paymentType")     || SalePaymentType.CASH_SALE,
     fulfillmentType: formData.get("fulfillmentType") || FulfillmentType.PICKUP,
     customerName:    formData.get("customerName")    || undefined,
     customerPhone:   formData.get("customerPhone")   || undefined,
     shippingAddress: formData.get("shippingAddress") || undefined,
     shippingFee:     formData.get("shippingFee")     || 0,
     discount:        formData.get("discount")        || 0,
-    paymentMethod:   formData.get("paymentMethod")   || PaymentMethod.CASH,
+    paymentMethod:   formData.get("paymentMethod")   || undefined,
     note:            formData.get("note")            || undefined,
     items,
   });
@@ -64,6 +66,7 @@ export async function createSale(
     saleDate,
     customerId,
     saleType,
+    paymentType,
     fulfillmentType,
     customerName,
     customerPhone,
@@ -90,6 +93,7 @@ export async function createSale(
           saleNo,
           customerId:      customerId      ?? null,
           saleType,
+          paymentType,
           fulfillmentType,
           shippingAddress: shippingAddress ?? null,
           shippingFee,
@@ -99,7 +103,7 @@ export async function createSale(
           totalAmount,
           discount,
           netAmount,
-          paymentMethod,
+          paymentMethod:   paymentMethod   ?? null,
           note:            note            ?? null,
           saleDate:        docDate,
         },
