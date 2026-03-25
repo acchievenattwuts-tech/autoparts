@@ -20,6 +20,8 @@ export interface SiteConfig {
   shopShopeeEnabled: boolean;
   shopLazadaUrl: string;
   shopLazadaEnabled: boolean;
+  vatType: string; // "NO_VAT" | "EXCLUDING_VAT" | "INCLUDING_VAT"
+  vatRate: number; // e.g. 7
 }
 
 const defaultConfig: SiteConfig = {
@@ -41,6 +43,8 @@ const defaultConfig: SiteConfig = {
   shopShopeeEnabled: false,
   shopLazadaUrl: "",
   shopLazadaEnabled: false,
+  vatType: "NO_VAT",
+  vatRate: 7,
 };
 
 export const getSiteConfig = unstable_cache(
@@ -67,6 +71,8 @@ export const getSiteConfig = unstable_cache(
       shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
       shopLazadaUrl: map["shop_lazada_url"] ?? defaultConfig.shopLazadaUrl,
       shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
+      vatType: map["vat_type"] ?? defaultConfig.vatType,
+      vatRate: Number(map["vat_rate"] ?? defaultConfig.vatRate),
     };
   },
   ["site-config"],

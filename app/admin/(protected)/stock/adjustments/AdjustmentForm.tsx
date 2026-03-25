@@ -124,7 +124,7 @@ const AdjustmentForm = ({ products }: { products: ProductOption[] }) => {
                       onChange={(e) => updateItem(i, "unitName", e.target.value)}
                       disabled={!item.productId}
                       className={`${inputCls} bg-white`}>
-                      <option value="">-- หน่วย --</option>
+                      <option value="">-- โปรดระบุ --</option>
                       {units.map((u) => (
                         <option key={u.name} value={u.name}>{u.name}</option>
                       ))}

@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
+import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -22,6 +23,8 @@ const cnSchema = z.object({
   settlementType: z.nativeEnum(CNSettlementType).default(CNSettlementType.CASH_REFUND),
   refundMethod:   z.nativeEnum(CNRefundMethod).optional(),
   note:           z.string().max(500).optional(),
+  vatType:        z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate:        z.coerce.number().min(0).max(100).default(0),
   items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -46,13 +49,16 @@ export async function createCreditNote(
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
     refundMethod:   (formData.get("refundMethod") as CNRefundMethod) || undefined,
     note:           formData.get("note") || undefined,
+    vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:        formData.get("vatRate") || 0,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, saleId, type, settlementType, refundMethod, note, items: validItems } = parsed.data;
+  const { cnDate, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
 
   const docDate = new Date(cnDate);
   const cnNo    = await generateDocNo("CN", docDate);
@@ -68,7 +74,11 @@ export async function createCreditNote(
           type,
           settlementType,
           refundMethod:   refundMethod ?? null,
-          totalAmount,
+          totalAmount:    netAmount,
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
           note:           note ?? null,
           cnDate:         docDate,
         },
@@ -85,15 +95,17 @@ export async function createCreditNote(
         const scale     = Number(unit.scale);
         const qtyInBase = item.qty * scale;
         const itemTotal = item.qty * item.salePrice;
+        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
         // Create CreditNoteItem (real DB field names: creditNoteId, qty, unitPrice, amount)
         await tx.creditNoteItem.create({
           data: {
-            creditNoteId: cn.id,
-            productId:    item.productId,
-            qty:          Math.round(qtyInBase),
-            unitPrice:    item.salePrice,
-            amount:       itemTotal,
+            creditNoteId:  cn.id,
+            productId:     item.productId,
+            qty:           Math.round(qtyInBase),
+            unitPrice:     item.salePrice,
+            amount:        itemTotal,
+            subtotalAmount: itemSubtotal,
           },
         });
 

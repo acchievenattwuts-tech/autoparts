@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createPurchaseReturn } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
+import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 
 interface ProductOption {
   id: string;
@@ -37,15 +38,21 @@ const PurchaseReturnForm = ({
   products,
   suppliers,
   purchases,
+  defaultVatType,
+  defaultVatRate,
 }: {
   products:  ProductOption[];
   suppliers: SupplierOption[];
   purchases: PurchaseOption[];
+  defaultVatType: string;
+  defaultVatRate: number;
 }) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
   const [items, setItems]     = useState<LineItem[]>([emptyItem()]);
+  const [vatType, setVatType] = useState<string>(defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
 
   const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -77,6 +84,12 @@ const PurchaseReturnForm = ({
     return prod.avgCost * scale;
   };
 
+  const totalBeforeVat = items.reduce((sum, item) => {
+    const cost = getDisplayCost(item.productId, item.unitName);
+    return sum + item.qty * cost;
+  }, 0);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(totalBeforeVat, vatType as VatType, vatRate);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
@@ -91,6 +104,8 @@ const PurchaseReturnForm = ({
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("items", JSON.stringify(items));
+    formData.set("vatType", vatType);
+    formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
       const result = await createPurchaseReturn(formData);
@@ -99,6 +114,8 @@ const PurchaseReturnForm = ({
       } else {
         setSuccess(`บันทึกสำเร็จ เลขที่คืนสินค้า: ${result.returnNo}`);
         setItems([emptyItem()]);
+        setVatType(defaultVatType);
+        setVatRate(defaultVatRate);
         form.reset();
       }
     });
@@ -156,6 +173,40 @@ const PurchaseReturnForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
+
+          {/* VAT Settings */}
+          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
+            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setVatType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    vatType === t
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  {VAT_TYPE_LABELS[t]}
+                </button>
+              ))}
+              {vatType !== "NO_VAT" && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <input
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    min={0} max={100} step={0.01}
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -211,7 +262,7 @@ const PurchaseReturnForm = ({
                         disabled={!item.productId}
                         className={`${inputCls} bg-white`}
                       >
-                        <option value="">หน่วย</option>
+                        <option value="">-- โปรดระบุ --</option>
                         {units.map((u) => (
                           <option key={u.name} value={u.name}>
                             {u.name}
@@ -252,6 +303,44 @@ const PurchaseReturnForm = ({
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr className="border-t border-gray-100">
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">ยอดรวม</td>
+                <td className="py-2 px-2 text-right text-gray-700">
+                  {totalBeforeVat.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+                <td />
+              </tr>
+              {vatType !== "NO_VAT" && (
+                <>
+                  <tr>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                      ยอดก่อนภาษี
+                    </td>
+                    <td className="py-1 px-2 text-right text-gray-700">
+                      {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td />
+                  </tr>
+                  <tr>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                      VAT {vatRate}%
+                    </td>
+                    <td className="py-1 px-2 text-right text-gray-700">
+                      +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td />
+                  </tr>
+                </>
+              )}
+              <tr className="border-t border-gray-200">
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
+                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base">
+                  {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
         <p className="mt-3 text-xs text-gray-400">

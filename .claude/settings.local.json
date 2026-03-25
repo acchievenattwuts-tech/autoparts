@@ -38,7 +38,16 @@
       "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/new/page.tsx)",
       "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/credit-notes/new/CreditNoteForm.tsx)",
       "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/actions.ts)",
-      "Bash(ls \"D:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\"\")"
+      "Bash(ls \"D:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\"\")",
+      "Bash(sed -n '488,510p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/settings/company/page.tsx)",
+      "Bash(find d:/autoparts/lib -name site-config*)",
+      "Bash(sed -n '346,370p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(ls d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/expenses/)",
+      "Bash(ls d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchase-returns/new/)",
+      "Bash(ls d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchase-returns/)",
+      "Bash(sed -i 's|<option value=\"\"\"\">หน่วย</option>|<option value=\"\"\"\">-- โปรดระบุ --</option>|g' \"d:/autoparts/app/admin/\\(protected\\)/purchases/new/PurchaseForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/new/SaleForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/new/CreditNoteForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/purchase-returns/new/PurchaseReturnForm.tsx\")",
+      "Bash(__NEW_LINE_19c0dffcf79ffa83__ sed:*)"
     ]
   }
 }

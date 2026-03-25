@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
+import { VatType } from "@/lib/generated/prisma";
+import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
 const returnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -18,6 +20,8 @@ const returnSchema = z.object({
   purchaseId: z.string().max(50).optional(),
   supplierId: z.string().max(50).optional(),
   note:       z.string().max(500).optional(),
+  vatType:    z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate:    z.coerce.number().min(0).max(100).default(0),
   items:      z.array(returnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -40,11 +44,13 @@ export async function createPurchaseReturn(
     purchaseId: formData.get("purchaseId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
     note:       formData.get("note") || undefined,
+    vatType:    (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:    formData.get("vatRate") || 0,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { returnDate, purchaseId, supplierId, note, items: validItems } = parsed.data;
+  const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const docDate  = new Date(returnDate);
   const returnNo = await generateDocNo("RT", docDate);
@@ -53,12 +59,13 @@ export async function createPurchaseReturn(
     await db.$transaction(async (tx) => {
       // Pre-calculate: gather unit/cost data for all items
       const lineData: {
-        productId:   string;
-        unitName:    string;
-        qty:         number;
-        qtyInBase:   number;
-        costPerBase: number;
-        totalAmount: number;
+        productId:     string;
+        unitName:      string;
+        qty:           number;
+        qtyInBase:     number;
+        costPerBase:   number;
+        totalAmount:   number;
+        subtotalAmount: number;
       }[] = [];
 
       for (const item of validItems) {
@@ -76,8 +83,9 @@ export async function createPurchaseReturn(
         });
         if (!prod) throw new Error("ไม่พบสินค้า");
 
-        const costPerBase = Number(prod.avgCost);
-        const totalAmount = Math.round(qtyInBase) * costPerBase;
+        const costPerBase  = Number(prod.avgCost);
+        const totalAmount  = Math.round(qtyInBase) * costPerBase;
+        const itemSubtotal = calcItemSubtotal(totalAmount, vatType, vatRate);
 
         lineData.push({
           productId: item.productId,
@@ -86,26 +94,31 @@ export async function createPurchaseReturn(
           qtyInBase,
           costPerBase,
           totalAmount,
+          subtotalAmount: itemSubtotal,
         });
       }
 
-      const headerTotal = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
+      const rawTotal    = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
+      const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
 
       // Create PurchaseReturn header
       const pr = await tx.purchaseReturn.create({
         data: {
           returnNo,
-          purchaseId: purchaseId || null,
-          supplierId: supplierId || null,
-          userId:     session.user!.id!,
-          totalAmount: headerTotal,
-          note:        note ?? null,
-          returnDate:  docDate,
+          purchaseId:    purchaseId || null,
+          supplierId:    supplierId || null,
+          userId:        session.user!.id!,
+          totalAmount:   netAmount,
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
+          note:          note ?? null,
+          returnDate:    docDate,
         },
       });
 
       // Create items and write stock cards
-      // Real DB field names: purchaseReturnId, qty, costPrice, amount, detail
       for (const line of lineData) {
         await tx.purchaseReturnItem.create({
           data: {
@@ -114,6 +127,7 @@ export async function createPurchaseReturn(
             qty:              Math.round(line.qtyInBase),
             costPrice:        line.costPerBase,
             amount:           line.totalAmount,
+            subtotalAmount:   line.subtotalAmount,
             detail:           `คืน ${line.qty} ${line.unitName}`,
           },
         });

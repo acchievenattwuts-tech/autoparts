@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
+import { VatType } from "@/lib/generated/prisma";
+import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
 const purchaseItemSchema = z.object({
   productId:   z.string().min(1).max(50),
@@ -21,6 +23,8 @@ const purchaseSchema = z.object({
   discount:     z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),
   referenceNo:  z.string().max(100).optional(),
+  vatType:      z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate:      z.coerce.number().min(0).max(100).default(0),
   items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -42,15 +46,18 @@ export async function createPurchase(
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
+    vatType:      (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:      formData.get("vatRate") || 0,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, discount, note, referenceNo, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
-  const netAmount   = Math.max(0, totalAmount - discount);
+  const discountedTotal = Math.max(0, totalAmount - discount);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
 
   const purchaseNo = await generateDocNo("PO", new Date(purchaseDate));
 
@@ -60,14 +67,18 @@ export async function createPurchase(
       const purchase = await tx.purchase.create({
         data: {
           purchaseNo,
-          supplierId:   supplierId || null,
-          userId:       session.user!.id!,
-          totalAmount:  totalAmount,
-          discount:     discount,
-          netAmount:    netAmount,
+          supplierId:    supplierId || null,
+          userId:        session.user!.id!,
+          totalAmount:   totalAmount,
+          discount:      discount,
+          netAmount:     netAmount,
           note,
-          referenceNo:  referenceNo ?? null,
-          purchaseDate: new Date(purchaseDate),
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
+          referenceNo:   referenceNo ?? null,
+          purchaseDate:  new Date(purchaseDate),
         },
       });
 
@@ -84,16 +95,20 @@ export async function createPurchase(
         const costPerBase = item.costPrice / scale;  // convert to base unit cost
         const lcPerBase   = item.landedCost / scale;  // landed cost per base unit
 
+        const itemTotal    = item.qty * item.costPrice;
+        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+
         // Create PurchaseItem
         const purchaseItem = await tx.purchaseItem.create({
           data: {
-            purchaseId:  purchase.id,
-            productId:   item.productId,
-            supplierId:  supplierId || null,
-            quantity:    Math.round(qtyInBase),
-            costPrice:   costPerBase,
-            totalAmount: item.qty * item.costPrice,
-            landedCost:  item.landedCost,
+            purchaseId:    purchase.id,
+            productId:     item.productId,
+            supplierId:    supplierId || null,
+            quantity:      Math.round(qtyInBase),
+            costPrice:     costPerBase,
+            totalAmount:   itemTotal,
+            subtotalAmount: itemSubtotal,
+            landedCost:    item.landedCost,
           },
         });
 

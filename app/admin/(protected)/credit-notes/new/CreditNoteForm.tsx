@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createCreditNote } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
+import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 
 interface ProductOption {
   id: string;
@@ -35,9 +36,13 @@ const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePr
 const CreditNoteForm = ({
   products,
   sales,
+  defaultVatType,
+  defaultVatRate,
 }: {
   products: ProductOption[];
   sales: SaleOption[];
+  defaultVatType: string;
+  defaultVatRate: number;
 }) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
@@ -46,6 +51,8 @@ const CreditNoteForm = ({
   const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">("RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">("CASH_REFUND");
   const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">("CASH");
+  const [vatType, setVatType] = useState<string>(defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -69,6 +76,7 @@ const CreditNoteForm = ({
     products.find((p) => p.id === productId)?.units ?? [];
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType as VatType, vatRate);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -84,6 +92,8 @@ const CreditNoteForm = ({
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("items", JSON.stringify(items));
+    formData.set("vatType", vatType);
+    formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
       const result = await createCreditNote(formData);
@@ -95,6 +105,8 @@ const CreditNoteForm = ({
         setCnType("RETURN");
         setSettlementType("CASH_REFUND");
         setRefundMethod("CASH");
+        setVatType(defaultVatType);
+        setVatRate(defaultVatRate);
         form.reset();
       }
     });
@@ -206,6 +218,40 @@ const CreditNoteForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
+
+          {/* VAT Settings */}
+          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
+            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setVatType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    vatType === t
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  {VAT_TYPE_LABELS[t]}
+                </button>
+              ))}
+              {vatType !== "NO_VAT" && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <input
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    min={0} max={100} step={0.01}
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Type info box */}
@@ -273,7 +319,7 @@ const CreditNoteForm = ({
                         disabled={!item.productId}
                         className={`${inputCls} bg-white`}
                       >
-                        <option value="">หน่วย</option>
+                        <option value="">-- โปรดระบุ --</option>
                         {units.map((u) => (
                           <option key={u.name} value={u.name}>
                             {u.name}
@@ -323,12 +369,41 @@ const CreditNoteForm = ({
               })}
             </tbody>
             <tfoot>
+              <tr className="border-t border-gray-100">
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">ยอดรวม</td>
+                <td className="py-2 px-2 text-right text-gray-700">
+                  {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+                <td />
+              </tr>
+              {vatType !== "NO_VAT" && (
+                <>
+                  <tr>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                      ยอดก่อนภาษี
+                    </td>
+                    <td className="py-1 px-2 text-right text-gray-700">
+                      {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td />
+                  </tr>
+                  <tr>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                      VAT {vatRate}%
+                    </td>
+                    <td className="py-1 px-2 text-right text-gray-700">
+                      +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td />
+                  </tr>
+                </>
+              )}
               <tr className="border-t border-gray-200">
                 <td colSpan={4} className="py-3 px-2 text-right text-sm font-medium text-gray-600">
                   ยอดรวม CN
                 </td>
                 <td className="py-3 px-2 text-right font-bold text-gray-900">
-                  {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>

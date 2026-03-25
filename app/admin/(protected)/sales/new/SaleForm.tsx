@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createSale } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
+import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 
 interface ProductOption {
   id: string;
@@ -33,7 +34,17 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0 });
 
-const SaleForm = ({ products, customers }: { products: ProductOption[]; customers: CustomerOption[] }) => {
+const SaleForm = ({
+  products,
+  customers,
+  defaultVatType,
+  defaultVatRate,
+}: {
+  products: ProductOption[];
+  customers: CustomerOption[];
+  defaultVatType: string;
+  defaultVatRate: number;
+}) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
@@ -47,6 +58,9 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
   const [shippingAddress, setShippingAddress] = useState("");
   const [shippingFee, setShippingFee]         = useState(0);
+
+  const [vatType, setVatType] = useState<string>(defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
@@ -72,7 +86,8 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
   const effectiveShippingFee = fulfillmentType === "DELIVERY" ? shippingFee : 0;
-  const netAmount = Math.max(0, totalAmount + effectiveShippingFee - discount);
+  const discountedTotal = Math.max(0, totalAmount + effectiveShippingFee - discount);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -110,6 +125,8 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
     formData.set("fulfillmentType", fulfillmentType);
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
+    formData.set("vatType", vatType);
+    formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
       const result = await createSale(formData);
@@ -126,6 +143,8 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
         setFulfillmentType("PICKUP");
         setShippingAddress("");
         setShippingFee(0);
+        setVatType(defaultVatType);
+        setVatRate(defaultVatRate);
         form.reset();
       }
     });
@@ -258,6 +277,40 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
               placeholder="หมายเหตุ"
             />
           </div>
+
+          {/* VAT Settings */}
+          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
+            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+            <div className="flex flex-wrap gap-2 items-center">
+              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setVatType(t)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                    vatType === t
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  }`}
+                >
+                  {VAT_TYPE_LABELS[t]}
+                </button>
+              ))}
+              {vatType !== "NO_VAT" && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <input
+                    type="number"
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    min={0} max={100} step={0.01}
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -377,7 +430,7 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
                         disabled={!item.productId}
                         className={`${inputCls} bg-white`}
                       >
-                        <option value="">หน่วย</option>
+                        <option value="">-- โปรดระบุ --</option>
                         {units.map((u) => (
                           <option key={u.name} value={u.name}>
                             {u.name}
@@ -452,6 +505,22 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
                 -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
+            {vatType !== "NO_VAT" && (
+              <>
+                <div className="flex justify-between text-gray-600">
+                  <span>ยอดก่อนภาษี</span>
+                  <span className="font-medium">
+                    {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>VAT {vatRate}%</span>
+                  <span className="font-medium">
+                    +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
               <span>ยอดสุทธิ</span>
               <span className="text-[#1e3a5f]">

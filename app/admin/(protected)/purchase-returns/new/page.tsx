@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { getSiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 
 const NewPurchaseReturnPage = async () => {
-  const [products, suppliers, purchases] = await Promise.all([
+  const [products, suppliers, purchases, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -30,6 +31,7 @@ const NewPurchaseReturnPage = async () => {
       take:    30,
       select: { id: true, purchaseNo: true },
     }),
+    getSiteConfig(),
   ]);
 
   const productOptions = products.map((p) => ({
@@ -57,6 +59,8 @@ const NewPurchaseReturnPage = async () => {
         products={productOptions}
         suppliers={suppliers}
         purchases={purchases}
+        defaultVatType={config.vatType}
+        defaultVatRate={config.vatRate}
       />
     </div>
   );

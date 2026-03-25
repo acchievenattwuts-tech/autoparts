@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { getSiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
 
 const NewSalePage = async () => {
-  const [products, customers] = await Promise.all([
+  const [products, customers, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -26,6 +27,7 @@ const NewSalePage = async () => {
       orderBy: { name: "asc" },
       select: { id: true, name: true, phone: true, code: true, shippingAddress: true },
     }),
+    getSiteConfig(),
   ]);
 
   // Convert Decimal to number for client component serialization
@@ -51,7 +53,7 @@ const NewSalePage = async () => {
         <span className="text-sm font-medium text-gray-700">บันทึกการขายใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">บันทึกการขายสินค้า</h1>
-      <SaleForm products={productOptions} customers={customers} />
+      <SaleForm products={productOptions} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

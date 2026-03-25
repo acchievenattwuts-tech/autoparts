@@ -68,7 +68,7 @@ const BfForm = ({ products }: { products: ProductOption[] }) => {
               <label className={labelCls}>หน่วยนับ <span className="text-red-500">*</span></label>
               <select name="unitName" required className={`${inputCls} bg-white`}
                 disabled={!selectedProduct}>
-                <option value="">-- เลือกหน่วย --</option>
+                <option value="">-- โปรดระบุ --</option>
                 {selectedProduct?.units.map((u) => (
                   <option key={u.name} value={u.name}>
                     {u.name}{u.isBase ? " (หน่วยหลัก)" : ` (1 ${u.name} = ${u.scale} หน่วยหลัก)`}

@@ -29,6 +29,8 @@ const companySchema = z.object({
   shop_shopee_enabled: z.enum(["true", "false"]),
   shop_lazada_url: urlOrEmpty,
   shop_lazada_enabled: z.enum(["true", "false"]),
+  vat_type: z.enum(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"]),
+  vat_rate: z.coerce.number().min(0).max(100).transform(String),
 });
 
 export async function updateCompanySettings(formData: FormData) {

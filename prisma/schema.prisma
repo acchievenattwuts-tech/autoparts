@@ -218,6 +218,10 @@ model Purchase {
   discount    Decimal        @default(0) @db.Decimal(10, 2)
   netAmount   Decimal        @db.Decimal(10, 2)
   note        String?
+  vatType       VatType @default(NO_VAT)
+  vatRate       Decimal @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
+  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   referenceNo String? // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
   purchaseDate DateTime      @default(now())
   createdAt   DateTime       @default(now())
@@ -237,6 +241,7 @@ model PurchaseItem {
   quantity    Int
   costPrice   Decimal  @db.Decimal(10, 2)
   totalAmount Decimal  @db.Decimal(10, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   landedCost  Decimal  @default(0) @db.Decimal(10, 2) // ค่าใช้จ่ายแนบ (ขนส่ง ฯลฯ) ต่อรายการ
 }
 
@@ -283,6 +288,10 @@ model Sale {
   netAmount     Decimal     @db.Decimal(10, 2)
   paymentMethod PaymentMethod? @default(CASH)
   note          String?
+  vatType       VatType @default(NO_VAT)
+  vatRate       Decimal @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
+  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   saleDate      DateTime    @default(now())
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -311,6 +320,7 @@ model SaleItem {
   salePrice   Decimal  @db.Decimal(10, 2)
   costPrice   Decimal  @db.Decimal(10, 2)
   totalAmount Decimal  @db.Decimal(10, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   warranty    Warranty?
 }
 
@@ -352,6 +362,10 @@ model Expense {
   user        User        @relation(fields: [userId], references: [id])
   expenseDate DateTime    @default(now())
   note        String?
+  vatType       VatType @default(NO_VAT)
+  vatRate       Decimal @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
+  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   createdAt   DateTime    @default(now())
 }
 
@@ -410,6 +424,10 @@ model CreditNote {
   refundMethod  CNRefundMethod? // ใช้เมื่อ settlementType=CASH_REFUND
   totalAmount   Decimal         @db.Decimal(10, 2)
   note          String?
+  vatType       VatType @default(NO_VAT)
+  vatRate       Decimal @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
+  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   items         CreditNoteItem[]
@@ -424,6 +442,7 @@ model CreditNoteItem {
   qty          Decimal    @default(0) @db.Decimal(12, 4) // base unit (ใช้เมื่อ type=RETURN)
   unitPrice    Decimal    @default(0) @db.Decimal(10, 2) // ราคาขาย/หน่วย
   amount       Decimal    @default(0) @db.Decimal(10, 2) // จำนวนเงิน CN รายการนี้
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   detail       String?
 }
 
@@ -464,6 +483,10 @@ model PurchaseReturn {
   user        User                 @relation(fields: [userId], references: [id])
   totalAmount Decimal              @db.Decimal(10, 2)
   note        String?
+  vatType       VatType @default(NO_VAT)
+  vatRate       Decimal @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
+  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   items       PurchaseReturnItem[]
@@ -478,6 +501,7 @@ model PurchaseReturnItem {
   qty              Decimal        @db.Decimal(12, 4) // base unit — กระทบ stock (RETURN_OUT)
   costPrice        Decimal        @db.Decimal(10, 2) // ราคาทุน/หน่วย ที่คืน
   amount           Decimal        @db.Decimal(10, 2)
+  subtotalAmount   Decimal        @default(0) @db.Decimal(10, 2)
   detail           String?
 }
 
@@ -490,4 +514,10 @@ model SiteContent {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+}
+
+enum VatType {
+  NO_VAT        // ไม่มีภาษี
+  EXCLUDING_VAT // ราคาไม่รวม VAT (VAT แยก)
+  INCLUDING_VAT // ราคารวม VAT แล้ว
 }

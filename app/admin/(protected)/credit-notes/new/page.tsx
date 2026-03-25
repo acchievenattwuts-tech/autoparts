@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { getSiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
 
 const NewCreditNotePage = async () => {
-  const [products, sales] = await Promise.all([
+  const [products, sales, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -32,6 +33,7 @@ const NewCreditNotePage = async () => {
         saleDate:     true,
       },
     }),
+    getSiteConfig(),
   ]);
 
   const productOptions = products.map((p) => ({
@@ -63,7 +65,7 @@ const NewCreditNotePage = async () => {
         <span className="text-sm font-medium text-gray-700">สร้าง CN ใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
-      <CreditNoteForm products={productOptions} sales={saleOptions} />
+      <CreditNoteForm products={productOptions} sales={saleOptions} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

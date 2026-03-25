@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { FulfillmentType, PaymentMethod, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, PaymentMethod, SalePaymentType, SaleType, VatType } from "@/lib/generated/prisma";
+import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
 const saleItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -28,6 +29,8 @@ const saleSchema = z.object({
   discount:        z.coerce.number().min(0).default(0),
   paymentMethod:   z.nativeEnum(PaymentMethod).optional(),
   note:            z.string().max(500).optional(),
+  vatType:         z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate:         z.coerce.number().min(0).max(100).default(0),
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -58,6 +61,8 @@ export async function createSale(
     discount:        formData.get("discount")        || 0,
     paymentMethod:   formData.get("paymentMethod")   || undefined,
     note:            formData.get("note")            || undefined,
+    vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:         formData.get("vatRate")         || 0,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -75,12 +80,15 @@ export async function createSale(
     discount,
     paymentMethod,
     note,
+    vatType,
+    vatRate,
     items: validItems,
   } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
-  const netAmount   = Math.max(0, totalAmount + shippingFee - discount);
+  const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
 
   const docDate = new Date(saleDate);
   const saleNo  = await generateDocNo("SO", docDate);
@@ -103,6 +111,10 @@ export async function createSale(
           totalAmount,
           discount,
           netAmount,
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
           paymentMethod:   paymentMethod   ?? null,
           note:            note            ?? null,
           saleDate:        docDate,
@@ -128,15 +140,19 @@ export async function createSale(
         if (!prod) throw new Error(`ไม่พบสินค้า`);
         const costPerBase = Number(prod.avgCost);
 
+        const itemTotal    = item.qty * item.salePrice;
+        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+
         // Create SaleItem
         const saleItem = await tx.saleItem.create({
           data: {
-            saleId:      sale.id,
-            productId:   item.productId,
-            quantity:    Math.round(qtyInBase),
-            salePrice:   item.salePrice,
-            costPrice:   costPerBase,
-            totalAmount: item.qty * item.salePrice,
+            saleId:        sale.id,
+            productId:     item.productId,
+            quantity:      Math.round(qtyInBase),
+            salePrice:     item.salePrice,
+            costPrice:     costPerBase,
+            totalAmount:   itemTotal,
+            subtotalAmount: itemSubtotal,
           },
         });
 

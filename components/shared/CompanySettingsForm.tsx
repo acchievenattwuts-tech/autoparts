@@ -225,6 +225,38 @@ const CompanySettingsForm = ({ config }: { config: SiteConfig }) => {
         </div>
       </div>
 
+      {/* VAT Settings */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+          การตั้งค่าภาษี (VAT)
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>ประเภทภาษีเริ่มต้น</label>
+            <select name="vat_type" defaultValue={config.vatType} className={`${inputClass} bg-white`}>
+              <option value="NO_VAT">ไม่มีภาษี (No VAT)</option>
+              <option value="EXCLUDING_VAT">ราคาไม่รวม VAT (Excl. VAT)</option>
+              <option value="INCLUDING_VAT">ราคารวม VAT แล้ว (Incl. VAT)</option>
+            </select>
+            <p className="mt-1 text-xs text-gray-400">ค่าเริ่มต้นสำหรับทุก transaction ใหม่ (สามารถเปลี่ยนแปลงได้ต่อรายการ)</p>
+          </div>
+          <div>
+            <label className={labelClass}>อัตราภาษี VAT (%)</label>
+            <input
+              type="number"
+              name="vat_rate"
+              defaultValue={config.vatRate}
+              min={0}
+              max={100}
+              step={0.01}
+              className={inputClass}
+              placeholder="7"
+            />
+            <p className="mt-1 text-xs text-gray-400">อัตราภาษีมูลค่าเพิ่ม เช่น 7 สำหรับ 7%</p>
+          </div>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="font-kanit font-semibold text-gray-800 mb-4">หน้าแรก (Hero Section)</h2>
