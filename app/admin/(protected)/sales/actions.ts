@@ -91,7 +91,8 @@ export async function createSale(
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
 
   const docDate = new Date(saleDate);
-  const saleNo  = await generateDocNo("SO", docDate);
+  const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
+  const saleNo  = await generateDocNo(salePrefix, docDate);
 
   try {
     await db.$transaction(async (tx) => {

@@ -53,7 +53,7 @@ export async function createPurchaseReturn(
   const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const docDate  = new Date(returnDate);
-  const returnNo = await generateDocNo("RT", docDate);
+  const returnNo = await generateDocNo("CNRR", docDate);
 
   try {
     await db.$transaction(async (tx) => {

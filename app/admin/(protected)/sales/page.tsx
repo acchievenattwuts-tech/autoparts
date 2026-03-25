@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye } from "lucide-react";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import SalesFilterBar from "./SalesFilterBar";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -40,8 +41,18 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
   CREDIT_SALE: "bg-orange-100 text-orange-700",
 };
 
-const SalesPage = async () => {
+const SalesPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ paymentType?: string }>;
+}) => {
+  const params = await searchParams;
+  const paymentTypeFilter = params.paymentType;
+
   const sales = await db.sale.findMany({
+    where: paymentTypeFilter && paymentTypeFilter !== "ALL"
+      ? { paymentType: paymentTypeFilter as SalePaymentType }
+      : undefined,
     orderBy: { saleDate: "desc" },
     take: 100,
     include: {
@@ -60,6 +71,10 @@ const SalesPage = async () => {
         >
           <Plus size={16} /> บันทึกการขายใหม่
         </Link>
+      </div>
+
+      <div className="mb-4">
+        <SalesFilterBar />
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

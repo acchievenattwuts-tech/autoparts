@@ -59,7 +59,7 @@ export async function createPurchase(
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
 
-  const purchaseNo = await generateDocNo("PO", new Date(purchaseDate));
+  const purchaseNo = await generateDocNo("RR", new Date(purchaseDate));
 
   try {
     await db.$transaction(async (tx) => {
