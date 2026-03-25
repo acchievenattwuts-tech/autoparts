@@ -22,6 +22,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       : undefined,
     include: {
       category: { select: { name: true } },
+      brand: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -147,7 +148,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     <td className="py-3 px-4 text-gray-800">
                       <p className="font-medium">{product.name}</p>
                       {product.brand && (
-                        <p className="text-xs text-gray-400">{product.brand}</p>
+                        <p className="text-xs text-gray-400">{product.brand.name}</p>
                       )}
                     </td>
 
