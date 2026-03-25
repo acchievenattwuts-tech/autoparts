@@ -15,6 +15,7 @@ import {
   BarChart3,
   Settings,
   X,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ const navItems = [
     section: "ข้อมูลหลัก",
     items: [
       { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags },
+      { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award },
       { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck },
     ],

@@ -11,7 +11,7 @@ interface EditProductPageProps {
 const EditProductPage = async ({ params }: EditProductPageProps) => {
   const { id } = await params;
 
-  const [product, categories, carBrands] = await Promise.all([
+  const [product, categories, carBrands, partsBrands] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -27,6 +27,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         carModels: { orderBy: { name: "asc" } },
       },
     }),
+    db.partsBrand.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   if (!product) {
@@ -55,7 +56,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         </div>
       </div>
 
-      <ProductForm categories={categories} carBrands={carBrands} product={product} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} product={product} />
     </div>
   );
 };

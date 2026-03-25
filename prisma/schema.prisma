@@ -72,17 +72,29 @@ model Supplier {
 }
 
 // ─────────────────────────────────────────
+// Parts Brand Master
+// ─────────────────────────────────────────
+
+model PartsBrand {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+// ─────────────────────────────────────────
 // Product
 // ─────────────────────────────────────────
 
 model Product {
-  id               String   @id @default(cuid())
-  code             String   @unique
+  id               String      @id @default(cuid())
+  code             String      @unique
   name             String
   description      String?
   categoryId       String
-  category         Category @relation(fields: [categoryId], references: [id])
-  brand            String?
+  category         Category    @relation(fields: [categoryId], references: [id])
+  brandId          String?
+  brand            PartsBrand? @relation(fields: [brandId], references: [id])
   shelfLocation    String?
   costPrice        Decimal  @default(0) @db.Decimal(10, 2)
   salePrice        Decimal  @default(0) @db.Decimal(10, 2)

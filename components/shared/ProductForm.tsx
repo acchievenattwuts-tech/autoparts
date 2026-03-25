@@ -12,6 +12,7 @@ import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(p
 interface CarModelOption { id: string; name: string }
 interface CarBrandOption { id: string; name: string; carModels: CarModelOption[] }
 interface CategoryOption { id: string; name: string }
+interface PartsBrandOption { id: string; name: string }
 
 interface UnitRow {
   name: string;
@@ -22,6 +23,7 @@ interface UnitRow {
 interface ProductFormProps {
   categories: CategoryOption[];
   carBrands: CarBrandOption[];
+  partsBrands: PartsBrandOption[];
   product?: Product & {
     aliases: ProductAlias[];
     carModels: { carModelId: string }[];
@@ -37,7 +39,7 @@ const sectionCls = "bg-white rounded-xl shadow-sm border border-gray-100 p-6";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const ProductForm = ({ categories, carBrands, product }: ProductFormProps) => {
+const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -236,8 +238,12 @@ const ProductForm = ({ categories, carBrands, product }: ProductFormProps) => {
           </div>
           <div>
             <label className={labelCls}>แบรนด์อะไหล่</label>
-            <input type="text" name="brand" defaultValue={product?.brand ?? ""}
-              placeholder="เช่น Denso, NRF, Bosch" className={inputCls} />
+            <select name="brandId" defaultValue={product?.brandId ?? ""} className={`${inputCls} bg-white`}>
+              <option value="">-- ไม่ระบุแบรนด์ --</option>
+              {partsBrands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={labelCls}>ตำแหน่ง Shelf</label>

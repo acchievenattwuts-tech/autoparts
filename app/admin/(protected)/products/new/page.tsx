@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import ProductForm from "@/components/shared/ProductForm";
 
 const NewProductPage = async () => {
-  const [categories, carBrands] = await Promise.all([
+  const [categories, carBrands, partsBrands] = await Promise.all([
     db.category.findMany({ orderBy: { name: "asc" } }),
     db.carBrand.findMany({
       orderBy: { name: "asc" },
@@ -12,6 +12,7 @@ const NewProductPage = async () => {
         carModels: { orderBy: { name: "asc" } },
       },
     }),
+    db.partsBrand.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -31,7 +32,7 @@ const NewProductPage = async () => {
 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">เพิ่มสินค้าใหม่</h1>
 
-      <ProductForm categories={categories} carBrands={carBrands} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} />
     </div>
   );
 };
