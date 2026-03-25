@@ -45,6 +45,7 @@ const CreditNoteForm = ({
   const [items, setItems]         = useState<LineItem[]>([emptyItem()]);
   const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">("RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">("CASH_REFUND");
+  const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">("CASH");
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -93,6 +94,7 @@ const CreditNoteForm = ({
         setItems([emptyItem()]);
         setCnType("RETURN");
         setSettlementType("CASH_REFUND");
+        setRefundMethod("CASH");
         form.reset();
       }
     });
@@ -132,6 +134,7 @@ const CreditNoteForm = ({
           <div>
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />
+            <input type="hidden" name="refundMethod" value={settlementType === "CASH_REFUND" ? refundMethod : ""} />
             <div className="flex rounded-lg border border-gray-300 overflow-hidden">
               <button
                 type="button"
@@ -157,6 +160,27 @@ const CreditNoteForm = ({
               </button>
             </div>
           </div>
+          {settlementType === "CASH_REFUND" && (
+            <div>
+              <label className={labelCls}>ช่องทางการคืนเงิน <span className="text-red-500">*</span></label>
+              <div className="flex gap-2">
+                {(["CASH", "TRANSFER"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setRefundMethod(m)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      refundMethod === m
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                    }`}
+                  >
+                    {m === "CASH" ? "เงินสด" : "โอนเงิน"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <label className={labelCls}>
               ประเภท CN <span className="text-red-500">*</span>

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -20,6 +20,7 @@ const cnSchema = z.object({
   saleId:         z.string().max(50).optional(),
   type:           z.nativeEnum(CreditNoteType),
   settlementType: z.nativeEnum(CNSettlementType).default(CNSettlementType.CASH_REFUND),
+  refundMethod:   z.nativeEnum(CNRefundMethod).optional(),
   note:           z.string().max(500).optional(),
   items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
@@ -43,12 +44,13 @@ export async function createCreditNote(
     saleId:         formData.get("saleId") || undefined,
     type:           formData.get("type"),
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
+    refundMethod:   (formData.get("refundMethod") as CNRefundMethod) || undefined,
     note:           formData.get("note") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, saleId, type, settlementType, note, items: validItems } = parsed.data;
+  const { cnDate, saleId, type, settlementType, refundMethod, note, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
 
@@ -65,6 +67,7 @@ export async function createCreditNote(
           userId:         session.user!.id!,
           type,
           settlementType,
+          refundMethod:   refundMethod ?? null,
           totalAmount,
           note:           note ?? null,
           cnDate:         docDate,

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
@@ -25,7 +25,14 @@ const CreditNotesPage = async () => {
   const creditNotes = await db.creditNote.findMany({
     orderBy: { cnDate: "desc" },
     take:    100,
-    include: {
+    select: {
+      id:            true,
+      cnNo:          true,
+      cnDate:        true,
+      type:          true,
+      settlementType: true,
+      refundMethod:  true,
+      totalAmount:   true,
       sale: { select: { saleNo: true } },
       _count: { select: { items: true } },
     },
@@ -83,9 +90,16 @@ const CreditNotesPage = async () => {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${settlementTypeBadge[cn.settlementType]}`}>
-                        {settlementTypeLabel[cn.settlementType]}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${settlementTypeBadge[cn.settlementType]}`}>
+                          {settlementTypeLabel[cn.settlementType]}
+                        </span>
+                        {cn.refundMethod && (
+                          <span className="text-xs text-gray-400">
+                            ({cn.refundMethod === CNRefundMethod.CASH ? "เงินสด" : "โอนเงิน"})
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-gray-600">
                       {cn.sale ? (

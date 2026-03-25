@@ -9,6 +9,7 @@ interface ProductOption {
   code: string;
   name: string;
   purchaseUnitName: string;
+  avgCost: number;
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
@@ -29,6 +30,7 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
+  const [discount, setDiscount] = useState(0);
   const [items, setItems]     = useState<LineItem[]>([
     { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 },
   ]);
@@ -45,7 +47,8 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
         const updated = { ...item, [field]: value };
         if (field === "productId") {
           const prod = products.find((p) => p.id === String(value));
-          updated.unitName = prod?.purchaseUnitName ?? "";
+          updated.unitName  = prod?.purchaseUnitName ?? "";
+          updated.costPrice = prod?.avgCost ?? 0;
         }
         return updated;
       })
@@ -56,6 +59,7 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
     products.find((p) => p.id === productId)?.units ?? [];
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
+  const netAmount   = Math.max(0, totalAmount - discount);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -69,6 +73,7 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
 
     const formData = new FormData(e.currentTarget);
     formData.set("items", JSON.stringify(items));
+    formData.set("discount", String(discount));
 
     startTransition(async () => {
       const result = await createPurchase(formData);
@@ -76,6 +81,7 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
       else {
         setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
         setItems([{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
+        setDiscount(0);
         (e.target as HTMLFormElement).reset();
       }
     });
@@ -105,10 +111,28 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
             </select>
           </div>
           <div>
-            <label className={labelCls}>ส่วนลดรวม (บาท)</label>
-            <input type="number" name="discount" min={0} step={0.01} defaultValue={0} className={inputCls} />
+            <label className={labelCls}>เลขที่เอกสารอ้างอิง</label>
+            <input
+              type="text"
+              name="referenceNo"
+              maxLength={100}
+              className={inputCls}
+              placeholder="เช่น เลขที่ใบกำกับซัพพลายเออร์"
+            />
           </div>
-          <div className="md:col-span-3">
+          <div>
+            <label className={labelCls}>ส่วนลดรวม (บาท)</label>
+            <input
+              type="number"
+              name="discount"
+              min={0}
+              step={0.01}
+              value={discount}
+              onChange={(e) => setDiscount(Number(e.target.value))}
+              className={inputCls}
+            />
+          </div>
+          <div className="md:col-span-2">
             <label className={labelCls}>หมายเหตุ</label>
             <input type="text" name="note" maxLength={500} className={inputCls} placeholder="หมายเหตุ" />
           </div>
@@ -195,12 +219,24 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-200">
-                <td colSpan={5} className="py-3 px-2 text-right text-sm font-medium text-gray-600">
-                  รวมทั้งสิ้น
-                </td>
-                <td className="py-3 px-2 text-right font-bold text-gray-900">
+              <tr className="border-t border-gray-100">
+                <td colSpan={5} className="py-2 px-2 text-right text-sm text-gray-500">รวมก่อนส่วนลด</td>
+                <td className="py-2 px-2 text-right text-gray-700">
                   {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+                <td />
+              </tr>
+              <tr>
+                <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500">ส่วนลด</td>
+                <td className="py-1 px-2 text-right text-red-500">
+                  -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </td>
+                <td />
+              </tr>
+              <tr className="border-t border-gray-200">
+                <td colSpan={5} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
+                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base">
+                  {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>
@@ -223,8 +259,16 @@ const PurchaseForm = ({ products, suppliers }: { products: ProductOption[]; supp
 
       <div className="flex justify-end gap-3">
         <button type="submit" disabled={isPending}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60">
-          {isPending ? "กำลังบันทึก..." : "บันทึกใบซื้อ"}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+          {isPending ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              กำลังบันทึก...
+            </>
+          ) : "บันทึกใบซื้อ"}
         </button>
       </div>
     </form>

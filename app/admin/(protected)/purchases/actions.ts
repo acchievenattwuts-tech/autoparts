@@ -20,6 +20,7 @@ const purchaseSchema = z.object({
   purchaseDate: z.string().min(1),
   discount:     z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),
+  referenceNo:  z.string().max(100).optional(),
   items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -40,11 +41,12 @@ export async function createPurchase(
     purchaseDate: formData.get("purchaseDate"),
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
+    referenceNo:  formData.get("referenceNo") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, discount, note, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, discount, note, referenceNo, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
@@ -64,6 +66,7 @@ export async function createPurchase(
           discount:     discount,
           netAmount:    netAmount,
           note,
+          referenceNo:  referenceNo ?? null,
           purchaseDate: new Date(purchaseDate),
         },
       });

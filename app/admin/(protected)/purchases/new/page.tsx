@@ -6,7 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseForm from "./PurchaseForm";
 
 const NewPurchasePage = async () => {
-  const [products, suppliers] = await Promise.all([
+  const [rawProducts, suppliers] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -15,6 +15,7 @@ const NewPurchasePage = async () => {
         code: true,
         name: true,
         purchaseUnitName: true,
+        avgCost: true,
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -23,6 +24,15 @@ const NewPurchasePage = async () => {
     }),
     db.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
+
+  const products = rawProducts.map((p) => ({
+    id: p.id,
+    code: p.code,
+    name: p.name,
+    purchaseUnitName: p.purchaseUnitName,
+    avgCost: Number(p.avgCost),
+    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+  }));
 
   return (
     <div>

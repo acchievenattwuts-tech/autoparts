@@ -32,7 +32,13 @@
       "Bash(grep -r \"SiteContent\\\\|siteContent\" /d/autoparts/lib/ /d/autoparts/app/ --include=*.ts --include=*.tsx -l)",
       "Bash(git commit:*)",
       "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/products/)",
-      "Bash(grep -n \"Printer\" /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)"
+      "Bash(grep -n \"Printer\" /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)",
+      "Bash(find d:/autoparts/app/admin -name *.tsx)",
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/new/PurchaseForm.tsx)",
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/new/page.tsx)",
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/credit-notes/new/CreditNoteForm.tsx)",
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/actions.ts)",
+      "Bash(ls \"D:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\"\")"
     ]
   }
 }

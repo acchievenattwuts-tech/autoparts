@@ -218,6 +218,7 @@ model Purchase {
   discount    Decimal        @default(0) @db.Decimal(10, 2)
   netAmount   Decimal        @db.Decimal(10, 2)
   note        String?
+  referenceNo String? // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
   purchaseDate DateTime      @default(now())
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -406,6 +407,7 @@ model CreditNote {
   user          User            @relation(fields: [userId], references: [id])
   type          CreditNoteType  // RETURN = คืนสินค้า (กระทบ stock), DISCOUNT = ลดราคา
   settlementType CNSettlementType @default(CASH_REFUND)
+  refundMethod  CNRefundMethod? // ใช้เมื่อ settlementType=CASH_REFUND
   totalAmount   Decimal         @db.Decimal(10, 2)
   note          String?
   createdAt     DateTime        @default(now())
@@ -439,6 +441,11 @@ enum SalePaymentType {
 enum CNSettlementType {
   CASH_REFUND  // คืนเป็นเงินสด
   CREDIT_DEBT  // ตั้งหนี้
+}
+
+enum CNRefundMethod {
+  CASH     // เงินสด
+  TRANSFER // โอนเงิน
 }
 
 // ─────────────────────────────────────────
