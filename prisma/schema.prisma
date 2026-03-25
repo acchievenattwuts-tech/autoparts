@@ -21,9 +21,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sales     Sale[]
-  purchases Purchase[]
-  expenses  Expense[]
+  sales           Sale[]
+  purchases       Purchase[]
+  expenses        Expense[]
+  adjustments     Adjustment[]
+  creditNotes     CreditNote[]
+  purchaseReturns PurchaseReturn[]
 }
 
 enum Role {
@@ -67,8 +70,9 @@ model Supplier {
   phone        String?
   address      String?
   createdAt    DateTime       @default(now())
-  purchases    Purchase[]
-  purchaseItems PurchaseItem[]
+  purchases       Purchase[]
+  purchaseItems   PurchaseItem[]
+  purchaseReturns PurchaseReturn[]
 }
 
 // ─────────────────────────────────────────
@@ -110,13 +114,16 @@ model Product {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  aliases          ProductAlias[]
-  carModels        ProductCarModel[]
-  units            ProductUnit[]
-  purchaseItems    PurchaseItem[]
-  saleItems        SaleItem[]
-  stockCards       StockCard[]
-  warranties       Warranty[]
+  aliases             ProductAlias[]
+  carModels           ProductCarModel[]
+  units               ProductUnit[]
+  purchaseItems       PurchaseItem[]
+  saleItems           SaleItem[]
+  stockCards          StockCard[]
+  warranties          Warranty[]
+  adjustmentItems     AdjustmentItem[]
+  creditNoteItems     CreditNoteItem[]
+  purchaseReturnItems PurchaseReturnItem[]
 }
 
 // หน่วยนับของสินค้า — 1 สินค้า มีได้หลายหน่วย
@@ -189,9 +196,10 @@ enum StockCardSource {
   BF         // ยอดยกมา (Beginning Forward)
   PURCHASE   // ซื้อเข้า
   SALE       // ขายออก
-  RETURN_IN  // รับคืนจากลูกค้า
-  ADJUST_IN  // ปรับเพิ่ม
-  ADJUST_OUT // ปรับลด
+  RETURN_IN  // รับคืนจากลูกค้า (CreditNote type=RETURN)
+  RETURN_OUT // คืนสินค้าให้ซัพพลายเออร์ (PurchaseReturn)
+  ADJUST_IN  // ปรับเพิ่ม (Adjustment)
+  ADJUST_OUT // ปรับลด (Adjustment)
 }
 
 // ─────────────────────────────────────────
@@ -212,7 +220,8 @@ model Purchase {
   purchaseDate DateTime      @default(now())
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
-  items       PurchaseItem[]
+  items           PurchaseItem[]
+  purchaseReturns PurchaseReturn[]
 }
 
 model PurchaseItem {
@@ -249,6 +258,7 @@ model Sale {
   updatedAt    DateTime   @updatedAt
   items        SaleItem[]
   warranties   Warranty[]
+  creditNotes  CreditNote[]
 }
 
 model SaleItem {
@@ -313,6 +323,104 @@ enum ExpenseCategory {
   MARKETING
   MAINTENANCE
   OTHER
+}
+
+// ─────────────────────────────────────────
+// Adjustment (ปรับสต็อก + / -)
+// ─────────────────────────────────────────
+
+model Adjustment {
+  id         String           @id @default(cuid())
+  adjustNo   String           @unique
+  adjustDate DateTime         @default(now())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id])
+  note       String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  items      AdjustmentItem[]
+}
+
+model AdjustmentItem {
+  id           String     @id @default(cuid())
+  adjustmentId String
+  adjustment   Adjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+  qtyAdjust    Decimal    @db.Decimal(12, 4) // + = เพิ่ม (ADJUST_IN), - = ลด (ADJUST_OUT) ใน base unit
+  reason       String?    // เหตุผลการปรับ เช่น สินค้าเสียหาย, นับสต็อก
+}
+
+// ─────────────────────────────────────────
+// Credit Note (CN ฝั่งขาย — เราออกให้ลูกค้า)
+// ─────────────────────────────────────────
+
+model CreditNote {
+  id            String          @id @default(cuid())
+  cnNo          String          @unique
+  cnDate        DateTime        @default(now())
+  saleId        String?         // อ้างอิงใบขายเดิม
+  sale          Sale?           @relation(fields: [saleId], references: [id])
+  customerName  String?
+  customerPhone String?
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  type          CreditNoteType  // RETURN = คืนสินค้า (กระทบ stock), DISCOUNT = ลดราคา
+  totalAmount   Decimal         @db.Decimal(10, 2)
+  note          String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  items         CreditNoteItem[]
+}
+
+model CreditNoteItem {
+  id           String     @id @default(cuid())
+  creditNoteId String
+  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  productId    String?
+  product      Product?   @relation(fields: [productId], references: [id])
+  qty          Decimal    @default(0) @db.Decimal(12, 4) // base unit (ใช้เมื่อ type=RETURN)
+  unitPrice    Decimal    @default(0) @db.Decimal(10, 2) // ราคาขาย/หน่วย
+  amount       Decimal    @default(0) @db.Decimal(10, 2) // จำนวนเงิน CN รายการนี้
+  detail       String?
+}
+
+enum CreditNoteType {
+  RETURN    // คืนสินค้า — กระทบ stock (RETURN_IN) + avgCost ไม่เปลี่ยน
+  DISCOUNT  // ลดราคา — ไม่กระทบ stock
+}
+
+// ─────────────────────────────────────────
+// Purchase Return (คืนสินค้าให้ซัพพลายเออร์)
+// ─────────────────────────────────────────
+
+model PurchaseReturn {
+  id          String               @id @default(cuid())
+  returnNo    String               @unique
+  returnDate  DateTime             @default(now())
+  purchaseId  String?              // อ้างอิงใบซื้อเดิม
+  purchase    Purchase?            @relation(fields: [purchaseId], references: [id])
+  supplierId  String?
+  supplier    Supplier?            @relation(fields: [supplierId], references: [id])
+  userId      String
+  user        User                 @relation(fields: [userId], references: [id])
+  totalAmount Decimal              @db.Decimal(10, 2)
+  note        String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  items       PurchaseReturnItem[]
+}
+
+model PurchaseReturnItem {
+  id               String         @id @default(cuid())
+  purchaseReturnId String
+  purchaseReturn   PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product        @relation(fields: [productId], references: [id])
+  qty              Decimal        @db.Decimal(12, 4) // base unit — กระทบ stock (RETURN_OUT)
+  costPrice        Decimal        @db.Decimal(10, 2) // ราคาทุน/หน่วย ที่คืน
+  amount           Decimal        @db.Decimal(10, 2)
+  detail           String?
 }
 
 // ─────────────────────────────────────────

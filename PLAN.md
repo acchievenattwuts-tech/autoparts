@@ -41,9 +41,12 @@
 | ProductUnit | หน่วยนับต่อสินค้า (isBase=true → scale=1, อื่นๆ scale=จำนวนหน่วยย่อย) |
 | ProductAlias | ชื่อเรียกอื่นๆ สำหรับ search |
 | ProductCarModel | สินค้า ↔ รุ่นรถ (many-to-many) |
-| StockTransaction | ประวัติการเปลี่ยนแปลง stock |
+| StockCard | บัตรสต็อกสินค้า — source of truth การเคลื่อนไหว stock (qty/price ใน base unit) |
 | Purchase / PurchaseItem | ระบบซื้อสินค้าเข้า |
+| PurchaseReturn / PurchaseReturnItem | คืนสินค้าให้ซัพพลายเออร์ (RETURN_OUT) |
 | Sale / SaleItem | ระบบขาย |
+| CreditNote / CreditNoteItem | CN ฝั่งขาย — เราออกให้ลูกค้า (RETURN=คืนของ / DISCOUNT=ลดราคา) |
+| Adjustment / AdjustmentItem | ปรับสต็อก +/- พร้อมเหตุผล |
 | Warranty | ประกันสินค้า (เริ่มนับจากวันขาย) |
 | Expense | ค่าใช้จ่ายอื่นๆ |
 | SiteContent | Admin แก้ไขข้อความหน้าเว็บ |
@@ -97,16 +100,23 @@
 - [ ] แสดงประวัติ BF ที่บันทึกแล้ว
 
 #### 3.2 ระบบ Stock
-- [ ] ดู stock คงเหลือทุกสินค้า (แสดงใน base unit + หน่วยรายงาน)
-- [ ] ปรับยอด manual (ADJUST_IN / ADJUST_OUT) พร้อมระบุหน่วย
-- [ ] ประวัติการเปลี่ยนแปลง stock ต่อสินค้า
+- [ ] ดู stock คงเหลือทุกสินค้า (แสดงใน base unit + หน่วยรายงาน พร้อมเลือกหน่วยได้)
+- [ ] **Stock Card** — แสดงบัตรสต็อกรายสินค้า (qtyIn/qtyOut/qtyBalance/priceBalance) เลือกหน่วยแสดงได้ (หาร scale)
+- [ ] **Adjustment (ปรับสต็อก)** — บันทึก ADJUST_IN / ADJUST_OUT พร้อมเหตุผล → เขียน StockCard + อัปเดต Product.stock
 
 #### 3.3 ระบบซื้อ + ขาย
-- [ ] ระบบซื้อ — บันทึกการซื้อสินค้าเข้า ใช้ purchaseUnitName, อัพเดต stock อัตโนมัติ
-- [ ] ระบบขาย — บันทึกการขาย ใช้ saleUnitName, ลด stock อัตโนมัติ
-- [ ] สร้าง Server Actions สำหรับทุก transaction
+- [ ] **ซื้อสินค้า (Purchase)** — บันทึกใบซื้อ, อัปเดต stock, คำนวณ avgCost ใหม่ทุกครั้ง
+- [ ] **ขายสินค้า (Sale)** — บันทึกใบขาย, ลด stock, บันทึก priceOut = avgCost ณ วันขาย
+- [ ] StockCard logic: ทุก transaction เขียน StockCard + อัปเดต Product.stock + Product.avgCost ใน $transaction เดียว
+- [ ] Moving Average Cost formula: `avgCost ใหม่ = (stock × avgCost + qty × unitCost) / (stock + qty)`
 
-#### 3.4 เอกสาร
+#### 3.4 เอกสารคืนสินค้า / ลดหนี้
+- [ ] **Credit Note (CN ฝั่งขาย)** — เราออกให้ลูกค้า
+  - type=RETURN: คืนสินค้า → stock +qty (RETURN_IN), avgCost ไม่เปลี่ยน
+  - type=DISCOUNT: ลดราคา → ไม่กระทบ stock
+- [ ] **Purchase Return (คืนให้ซัพพลายเออร์)** → stock -qty (RETURN_OUT), คำนวณ avgCost ใหม่
+
+#### 3.5 เอกสารออก
 - [ ] **ใบแจ้งหนี้ (Invoice)** — เลขที่เอกสาร, ข้อมูลลูกค้า, รายการสินค้า+หน่วย, ยอดรวม
 - [ ] **ใบเสร็จรับเงิน (Receipt)** — ข้อมูลร้าน, ลายเซ็น, QR Code ชำระเงิน
 - [ ] Export PDF (`@react-pdf/renderer` หรือ `html2pdf`)
