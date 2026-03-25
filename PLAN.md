@@ -134,7 +134,12 @@
 
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย
 - [ ] ระบบประกัน — เริ่มนับจากวันที่ขาย, แสดงสถานะหมดประกัน
-- [ ] ระบบค่าใช้จ่าย — บันทึกตาม category (ค่าเช่า, ไฟ, เงินเดือน ฯลฯ)
+- [ ] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category (ค่าเช่า, ไฟ, เงินเดือน ฯลฯ)
+  - Schema พร้อมแล้ว (vatType, vatRate, subtotalAmount, vatAmount เพิ่มแล้ว)
+  - [ ] หน้า list ค่าใช้จ่าย + ปุ่มเพิ่มใหม่
+  - [ ] Form บันทึกค่าใช้จ่าย: category, description, amount, วันที่, note
+  - [ ] เพิ่ม VAT toggle (NoVAT/ExclVAT/InclVAT) + คำนวณ subtotalAmount, vatAmount, netAmount
+  - [ ] ดึง VAT default จาก company settings (เหมือนโมดูลอื่น)
 
 ### 🔲 Phase 5 — ระบบค้นหา
 - [ ] Full-text search สินค้า (ค้นได้จากชื่อ, โค้ด, alias, ยี่ห้อรถ, รุ่นรถ)
