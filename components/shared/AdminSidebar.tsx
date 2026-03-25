@@ -18,6 +18,9 @@ import {
   Award,
   Archive,
   RefreshCw,
+  FileX,
+  RotateCcw,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -46,13 +49,16 @@ const navItems = [
     items: [
       { label: "ยอดยกมา (BF)", href: "/admin/stock/bf", icon: Archive },
       { label: "ปรับสต็อก", href: "/admin/stock/adjustments", icon: RefreshCw },
+      { label: "บัตรสต็อก", href: "/admin/stock/card", icon: ClipboardList },
     ],
   },
   {
     section: "ระบบงาน",
     items: [
       { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart },
+      { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp },
+      { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX },
       { label: "ประกันสินค้า", href: "/admin/warranties", icon: ShieldCheck },
       { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt },
     ],

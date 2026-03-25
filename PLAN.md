@@ -59,60 +59,53 @@
 - Navbar, Hero, ProductCategories, WhyUs, FeaturedProducts, LineCTA, Footer
 - FloatingLine button (LINE OA)
 - Font: Kanit (heading) + Sarabun (body)
-- LINE link: `https://lin.ee/18P0SqG`
+- Social links: Facebook, TikTok, Shopee, Lazada (show/hide toggle)
 
 ### ✅ Phase 1 — Setup DB + Deploy (เสร็จแล้ว)
 - ติดตั้ง Prisma v7 + สร้าง schema ครบทุกระบบ
 - เชื่อมต่อ Supabase PostgreSQL (Session pooler port 5432)
-- รัน `prisma db push` สร้าง table สำเร็จ
-- Push ขึ้น GitHub: `acchievenattwuts-tech/autoparts`
 - Deploy บน Vercel สำเร็จ ✓
-- **TODO:** ผูก custom domain (ถ้าต้องการ)
 
-### 🔲 Phase 2 — Admin Auth + สินค้า
-**เป้าหมาย:** Admin login + CRUD สินค้าครบถ้วน
+### ✅ Phase 2 — Admin Auth + สินค้า (เสร็จแล้ว)
+- NextAuth.js v5 (Credentials provider) + Login page + Middleware
+- Admin layout + Sidebar navigation
+- Dashboard (summary cards)
+- CRUD สินค้า (list, create, edit, delete) + Upload รูป Supabase Storage
+- Multi-unit (ProductUnit + scale)
+- Master data: Category, CarBrand/CarModel, Supplier, PartsBrand
+- Security headers (CSP, HSTS, X-Frame-Options ฯลฯ)
 
-งานที่ต้องทำ:
-- [ ] ติดตั้ง NextAuth.js v5 (Credentials provider)
-- [ ] สร้าง `/app/admin/login/page.tsx`
-- [ ] สร้าง middleware.ts (protect `/admin/*` routes)
-- [ ] Admin layout (`/app/admin/layout.tsx`) — sidebar navigation
-- [ ] หน้า Dashboard (`/app/admin/page.tsx`) — summary cards
-- [ ] CRUD สินค้า (`/app/admin/products/`) — list, create, edit, delete
-- [ ] จัดการ CarBrand/CarModel/Category/Supplier (master data)
-- [ ] Upload รูปสินค้าไปยัง Supabase Storage
-- [ ] สร้าง seed script (`prisma/seed.ts`) สำหรับ admin user แรก
+### ✅ Phase 3 — BF + Stock + ซื้อ + ขาย + เอกสาร (เสร็จแล้ว)
 
-### 🔲 Phase 3 — BF + Stock + ซื้อ + ขาย + เอกสาร
+#### ✅ 3.0 โครงสร้าง DB + MAVG Engine
+- StockCard เป็น source of truth — qty/price ใน base unit ทั้งหมด
+- avgCost (Moving Average Cost) เก็บใน Product + StockCard.priceBalance
+- `lib/stock-card.ts` — MAVG engine (`writeStockCard`)
+- `lib/doc-number.ts` — document number generator
 
-#### 3.0 ตรวจสอบโครงสร้าง DB (ผลกระทบจาก Multi-Unit)
-- [ ] **ReviewDB**: `StockTransaction.quantity` ปัจจุบันเป็น Int ใน base unit
-  → ต้องเพิ่ม `unitName String?` + `unitScale Float?` เพื่อบันทึกว่าใช้หน่วยอะไรในแต่ละ transaction
-- [ ] `PurchaseItem.quantity` → ต้องเพิ่ม `unitName` (ใช้ purchaseUnitName ของสินค้า)
-- [ ] `SaleItem.quantity` → ต้องเพิ่ม `unitName` (ใช้ saleUnitName ของสินค้า)
-- [ ] Logic แปลงหน่วย: stockChange = quantity × unit.scale (คำนวณจาก ProductUnit.scale)
-- [ ] ทุก transaction ที่กระทบ stock ต้อง convert เป็น base unit ก่อนบันทึก
+#### ✅ 3.1 ระบบ BF (ยอดยกมา)
+- หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน
+- สร้าง StockCard source=BF → อัปเดต Product.stock + avgCost
 
-#### 3.1 ระบบ BF (ยอดยกมา / Beginning Balance)
-- [ ] หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น (แทนการใส่ stock ตอนสร้างสินค้า)
-- [ ] เลือกสินค้า, ระบุจำนวน, เลือกหน่วย (จาก ProductUnit ของสินค้านั้น), ระบุวันที่ BF
-- [ ] สร้าง `StockTransaction` type = `BALANCE_FORWARD` → อัปเดต `Product.stock`
-- [ ] แสดงประวัติ BF ที่บันทึกแล้ว
+#### ✅ 3.2 ปรับสต็อก (Adjustment)
+- หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล
+- สร้าง Adjustment + AdjustmentItem → เขียน StockCard ADJUST_IN/ADJUST_OUT
 
-#### 3.2 ระบบ Stock
-- [ ] ดู stock คงเหลือทุกสินค้า (แสดงใน base unit + หน่วยรายงาน พร้อมเลือกหน่วยได้)
-- [ ] **Stock Card** — แสดงบัตรสต็อกรายสินค้า (qtyIn/qtyOut/qtyBalance/priceBalance) เลือกหน่วยแสดงได้ (หาร scale)
-- [ ] **Adjustment (ปรับสต็อก)** — บันทึก ADJUST_IN / ADJUST_OUT พร้อมเหตุผล → เขียน StockCard + อัปเดต Product.stock
+#### ✅ 3.3 ระบบซื้อ + ขาย
+- `/admin/purchases` — ใบซื้อสินค้า + MAVG คำนวณ avgCost ใหม่ทุกครั้ง
+- `/admin/sales` — บันทึกการขาย + snapshot avgCost ลง SaleItem.costPrice
 
-#### 3.3 ระบบซื้อ + ขาย
-- [ ] **ซื้อสินค้า (Purchase)** — บันทึกใบซื้อ, อัปเดต stock, คำนวณ avgCost ใหม่ทุกครั้ง
-- [ ] **ขายสินค้า (Sale)** — บันทึกใบขาย, ลด stock, บันทึก priceOut = avgCost ณ วันขาย
-- [ ] StockCard logic: ทุก transaction เขียน StockCard + อัปเดต Product.stock + Product.avgCost ใน $transaction เดียว
-- [ ] Moving Average Cost formula: `avgCost ใหม่ = (stock × avgCost + qty × unitCost) / (stock + qty)`
+#### ✅ 3.4 เอกสารคืนสินค้า / ลดหนี้
+- `/admin/credit-notes` — CN ฝั่งขาย (RETURN=รับคืน+RETURN_IN, DISCOUNT=ลดราคา)
+- `/admin/purchase-returns` — คืนให้ซัพพลายเออร์ (RETURN_OUT)
 
-#### 3.4 เอกสารคืนสินค้า / ลดหนี้
-- [ ] **Credit Note (CN ฝั่งขาย)** — เราออกให้ลูกค้า
-  - type=RETURN: คืนสินค้า → stock +qty (RETURN_IN), avgCost ไม่เปลี่ยน
+#### ✅ 3.5 เอกสารออก
+- `/admin/sales/[id]` — ดูรายละเอียดใบขาย + พิมพ์ใบเสร็จรับเงิน (browser print)
+
+#### ✅ 3.x เพิ่มเติม
+- `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้ (หาร scale)
+
+### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย
   - type=DISCOUNT: ลดราคา → ไม่กระทบ stock
 - [ ] **Purchase Return (คืนให้ซัพพลายเออร์)** → stock -qty (RETURN_OUT), คำนวณ avgCost ใหม่
 

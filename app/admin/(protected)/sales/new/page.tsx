@@ -1,0 +1,53 @@
+export const dynamic = "force-dynamic";
+
+import { db } from "@/lib/db";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+import SaleForm from "./SaleForm";
+
+const NewSalePage = async () => {
+  const products = await db.product.findMany({
+    where: { isActive: true },
+    orderBy: { code: "asc" },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      salePrice: true,
+      saleUnitName: true,
+      units: {
+        select: { name: true, scale: true, isBase: true },
+        orderBy: { isBase: "desc" },
+      },
+    },
+  });
+
+  // Convert Decimal to number for client component serialization
+  const productOptions = products.map((p) => ({
+    id:           p.id,
+    code:         p.code,
+    name:         p.name,
+    salePrice:    Number(p.salePrice),
+    saleUnitName: p.saleUnitName,
+    units:        p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+  }));
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-6">
+        <Link
+          href="/admin/sales"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+        >
+          <ChevronLeft size={16} /> รายการขายทั้งหมด
+        </Link>
+        <span className="text-gray-300">/</span>
+        <span className="text-sm font-medium text-gray-700">บันทึกการขายใหม่</span>
+      </div>
+      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">บันทึกการขายสินค้า</h1>
+      <SaleForm products={productOptions} />
+    </div>
+  );
+};
+
+export default NewSalePage;

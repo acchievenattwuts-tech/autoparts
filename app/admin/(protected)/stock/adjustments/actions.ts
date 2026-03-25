@@ -10,7 +10,7 @@ import { generateDocNo } from "@/lib/doc-number";
 const adjustItemSchema = z.object({
   productId: z.string().min(1).max(50),
   unitName:  z.string().min(1).max(20),
-  qty:       z.coerce.number().positive(),
+  qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   type:      z.enum(["ADJUST_IN", "ADJUST_OUT"]),
   reason:    z.string().max(200).optional(),
 });

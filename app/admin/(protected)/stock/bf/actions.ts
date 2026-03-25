@@ -1,9 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAuth } from "@/lib/require-auth";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 
@@ -19,7 +19,8 @@ const bfSchema = z.object({
 export async function createBF(
   formData: FormData
 ): Promise<{ success?: boolean; docNo?: string; error?: string }> {
-  try { await requireAuth(); } catch { return { error: "ไม่มีสิทธิ์เข้าถึง" }; }
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = bfSchema.safeParse({
     productId:       formData.get("productId"),

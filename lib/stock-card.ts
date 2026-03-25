@@ -71,7 +71,7 @@ export async function writeStockCard(
         newBaPrice = newBaTotal / newBaQty;
       } else {
         // Was zero — start fresh
-        newBaPrice = qIn > 0 ? pIn + (qIn > 0 ? lc / qIn : 0) : 0;
+        newBaPrice = pIn + (lc / qIn);
         newBaTotal = newBaPrice * newBaQty;
       }
     }
