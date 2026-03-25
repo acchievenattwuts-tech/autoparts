@@ -57,7 +57,8 @@ export async function createBF(
     });
     revalidatePath("/admin/stock/bf");
     return { success: true, docNo };
-  } catch {
+  } catch (err) {
+    console.error("[createBF]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

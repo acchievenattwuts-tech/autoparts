@@ -136,7 +136,7 @@ export async function createPurchaseReturn(
     revalidatePath("/admin/products");
     return { success: true, returnNo };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
-    return { error: msg };
+    console.error("[createPurchaseReturn]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

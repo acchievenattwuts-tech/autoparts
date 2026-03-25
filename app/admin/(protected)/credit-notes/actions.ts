@@ -112,7 +112,7 @@ export async function createCreditNote(
     revalidatePath("/admin/products");
     return { success: true, cnNo };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
-    return { error: msg };
+    console.error("[createCreditNote]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

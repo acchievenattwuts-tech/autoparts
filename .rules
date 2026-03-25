@@ -84,3 +84,86 @@
 ### CSRF & CORS
 - Next.js Server Actions are CSRF-protected by default — do not disable this behavior.
 - For any custom API routes (`/api/*`), restrict `Access-Control-Allow-Origin` to known domains only — never use `*` in production.
+
+## 8. AI Decision-Making Rules
+
+### เมื่อไหร่ต้องถามก่อน (Ask Before Acting)
+- **Schema เปลี่ยน**: ถ้างานต้องแก้ `prisma/schema.prisma` ให้สรุป field ที่จะเพิ่ม/แก้/ลบ และขอ confirm ก่อนเสมอ — การเปลี่ยน schema กระทบ DB จริง
+- **ลบข้อมูล**: ห้ามเขียน delete/drop/truncate โดยไม่ได้รับคำสั่งชัดเจน
+- **งานใหม่ที่ไม่อยู่ใน roadmap**: ถ้า feature ที่ขอไม่มีใน PLAN.md ให้ถามว่าจะเพิ่มใน phase ไหนก่อน
+- **เปลี่ยน logic ทางธุรกิจ**: เช่น สูตร MAVG, การคำนวณราคา, การตัด stock — ต้องอธิบายก่อนทำ
+
+### การตัดสินใจเรื่อง Schema
+- ใช้ `prisma db push` เท่านั้น (ไม่ใช่ `migrate dev`) เพราะ Supabase Transaction pooler ไม่รองรับ shadow DB
+- Decimal fields ที่เป็นราคา/ต้นทุน: ใช้ `@db.Decimal(10,2)` เสมอ
+- Decimal fields ที่เป็นจำนวน (qty): ใช้ `@db.Decimal(12,4)` เพื่อรองรับทศนิยมหน่วยนับ
+- ทุก quantity ใน StockCard ต้องเป็น **base unit** (scale=1) เสมอ — แปลงหน่วยเฉพาะตอนแสดงผล
+
+### การตัดสินใจเรื่อง Stock / MAVG
+- ทุก transaction ที่กระทบ stock ต้องเรียก `writeStockCard()` ภายใน `db.$transaction()` เสมอ
+- ห้ามอัปเดต `Product.stock` หรือ `Product.avgCost` โดยตรง — ต้องผ่าน `writeStockCard()` เท่านั้น
+- avgCost เปลี่ยนได้เฉพาะเมื่อมีสินค้าเข้า (qtyIn > 0) — การขายออกไม่เปลี่ยน avgCost
+- Document number format: `{PREFIX}{YYYYMMDD}{4-digit}` — ใช้ `generateDocNo()` เสมอ อย่า hardcode
+
+### การตัดสินใจเรื่อง UI/UX
+- ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม
+- Form ที่มีหลาย line items ให้ส่งเป็น JSON ผ่าน `formData.set("items", JSON.stringify(items))`
+- แสดง error แบบ user-friendly เป็นภาษาไทย — ห้าม expose stack trace หรือ DB error
+- Success message ต้องแสดงเลขที่เอกสาร (docNo) ทุกครั้งที่สร้างเอกสารสำเร็จ
+
+### การตัดสินใจเรื่อง Performance
+- ใช้ `select` ระบุ field ที่ต้องการเสมอ — ห้าม fetch ทุก field ถ้าไม่จำเป็น
+- หน้า list ที่มีข้อมูลเยอะให้ใส่ `take: 100` หรือ pagination
+- ใช้ `Promise.all()` เมื่อต้อง fetch หลาย query พร้อมกันและไม่มี dependency กัน
+
+### สิ่งที่ห้ามทำโดยเด็ดขาด
+- ห้ามแก้ไข `lib/generated/prisma/` — เป็น auto-generated file
+- ห้าม import `pg.Pool` โดยตรง — ใช้ `PrismaPg({ connectionString, ... })` แทน (หลีกเลี่ยง type conflict)
+- ห้ามใช้ `any` type ทุกกรณี
+- ห้าม commit ไฟล์ `.env`, `.env.local` หรือ file ที่มี secret
+
+## 9. Performance Standards (Nasdaq-Grade)
+
+### เป้าหมาย
+- **Page load ต้องไม่เกิน 3 วินาที** (TTFB + render) ทุกหน้า ทั้ง admin และหน้าร้าน
+- ตั้งเป้า Core Web Vitals ระดับ "Good":
+  - LCP (Largest Contentful Paint) < 2.5s
+  - FID / INP < 200ms
+  - CLS (Cumulative Layout Shift) < 0.1
+- มาตรฐานความเร็วและคุณภาพ code เทียบเท่าระบบ trading platform ระดับ Nasdaq — **ความเร็วมาก่อน แต่ข้อมูลและความถูกต้องต้องไม่เสียหาย**
+
+### Database Query
+- **ห้าม N+1 query** — ใช้ `include` / `select` nested แทนการ query ใน loop
+- ใช้ `select` ระบุเฉพาะ field ที่ใช้งานจริงทุกครั้ง — ห้าม fetch ทุก column โดยไม่จำเป็น
+- หน้า list ต้องมี `take` จำกัดจำนวน (สูงสุด 100-200 rows ต่อหน้า) หรือใช้ pagination
+- Index ที่จำเป็น: field ที่ใช้ใน `where`, `orderBy`, หรือ foreign key ที่ query บ่อย ต้องมี `@@index`
+- ใช้ `Promise.all()` เมื่อต้อง fetch หลาย query แบบ parallel ที่ไม่มี dependency กัน
+- Query ภายใน `$transaction` ให้เรียงตาม dependency — ห้ามเปิด transaction ทิ้งไว้นานโดยไม่จำเป็น
+
+### Server Components & Caching
+- ใช้ Next.js Server Components ให้มากที่สุด — ลด JavaScript ที่ส่งไป client
+- หน้าที่ข้อมูลเปลี่ยนบ่อย: ใช้ `export const dynamic = "force-dynamic"`
+- หน้าที่ข้อมูลไม่เปลี่ยน: ใช้ static generation หรือ `revalidate` เพื่อ cache
+- ใช้ `revalidatePath()` หลัง mutation เพื่อ invalidate cache เฉพาะหน้าที่เกี่ยวข้อง — ไม่ revalidate ทั้งหมด
+
+### Images & Assets
+- ใช้ `next/image` ทุกครั้งสำหรับรูปภาพ — ได้ WebP + lazy load + size optimization อัตโนมัติ
+- ระบุ `sizes` prop ให้ตรงกับ layout จริง เพื่อให้ browser โหลด srcset ที่เหมาะสม
+- Font: ใช้ `next/font` (Kanit, Sarabun) เพื่อ preload และหลีกเลี่ยง FOUT (Flash of Unstyled Text)
+
+### Frontend Bundle
+- ห้าม import library ทั้ง package ถ้าใช้แค่บางส่วน — ใช้ named import เสมอ (e.g., `import { format } from "date-fns"`)
+- Client Components (`"use client"`) ต้องเล็กและ focused — ห้ามใส่ logic ที่ทำ server ได้ไว้ใน client
+- ใช้ `useTransition` สำหรับ Server Action calls เพื่อไม่ block UI
+
+### Code Quality (Nasdaq-Grade Standards)
+- **ทุก function ต้องมี single responsibility** — ถ้า function ยาวกว่า 60 บรรทัด ให้แยกออก
+- **ห้าม magic number** — ค่าคงที่ต้องตั้งชื่อ const ให้อ่านเข้าใจ (e.g., `MAX_ITEMS = 100`)
+- **Error ต้องจัดการครบ** — ทุก async function ต้องมี try-catch และ return type ชัดเจน
+- **Type safety 100%** — ไม่มี `any`, ไม่มี type assertion (`as`) โดยไม่จำเป็น
+- ก่อน deploy ทุกครั้ง: ผ่าน `npm run build` โดยไม่มี error และไม่มี TypeScript warning
+
+### การตรวจสอบ Performance ก่อน Commit
+- ถ้าเพิ่ม query ใหม่ในหน้าที่มีข้อมูลเยอะ ให้ประเมินว่า query นั้นจะช้าเมื่อ data โต (เช่น StockCard 10,000+ rows)
+- StockCard query ต้องใช้ index `[productId, docDate, sorder]` เสมอ — ห้าม full scan
+- ถ้า page load ของหน้าใดมีแนวโน้มเกิน 3 วินาที ให้แจ้ง user และเสนอ solution (pagination, index, caching) ก่อน implement

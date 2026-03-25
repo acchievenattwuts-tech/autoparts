@@ -135,7 +135,7 @@ export async function createSale(
     revalidatePath("/admin/products");
     return { success: true, saleNo };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
-    return { error: msg };
+    console.error("[createSale]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getSiteConfig } from "@/lib/site-config";
 import CompanySettingsForm from "@/components/shared/CompanySettingsForm";
 

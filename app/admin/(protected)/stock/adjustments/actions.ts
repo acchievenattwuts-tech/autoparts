@@ -89,7 +89,8 @@ export async function createAdjustment(
 
     revalidatePath("/admin/stock/adjustments");
     return { success: true, adjustNo };
-  } catch {
+  } catch (err) {
+    console.error("[createAdjustment]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

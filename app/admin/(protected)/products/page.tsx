@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { db } from "@/lib/db";
 import Link from "next/link";
 import Image from "next/image";
@@ -25,6 +27,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       brand: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: 200,
   });
 
   return (

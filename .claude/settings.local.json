@@ -23,7 +23,14 @@
       "Bash(rm -rf app/admin/master app/admin/products)",
       "Bash(git add:*)",
       "Bash(git commit -m \"fix: prevent admin static generation + limit DB pool size:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/new/)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/new/)",
+      "Bash(grep -r \"SiteContent\\\\|siteContent\" /d/autoparts/lib/ /d/autoparts/app/ --include=*.ts --include=*.tsx -l)",
+      "Bash(git commit:*)"
     ]
   }
 }

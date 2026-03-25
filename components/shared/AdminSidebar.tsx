@@ -49,7 +49,7 @@ const navItems = [
     items: [
       { label: "ยอดยกมา (BF)", href: "/admin/stock/bf", icon: Archive },
       { label: "ปรับสต็อก", href: "/admin/stock/adjustments", icon: RefreshCw },
-      { label: "บัตรสต็อก", href: "/admin/stock/card", icon: ClipboardList },
+      { label: "Stock Card MAVG", href: "/admin/stock/card", icon: ClipboardList },
     ],
   },
   {

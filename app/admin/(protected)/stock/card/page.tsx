@@ -76,7 +76,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
     <div>
       <div className="flex items-center gap-3 mb-6">
         <ClipboardList size={22} className="text-[#1e3a5f]" />
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">บัตรสต็อกสินค้า</h1>
+        <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
       </div>
 
       {/* Product selector */}
@@ -265,7 +265,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       {!selectedProduct && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
           <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">เลือกสินค้าเพื่อดูบัตรสต็อก</p>
+          <p className="text-gray-400 text-sm">เลือกสินค้าเพื่อดู Stock Card MAVG</p>
         </div>
       )}
     </div>
