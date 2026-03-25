@@ -6,12 +6,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 const customerSchema = z.object({
-  code:    z.string().max(20).optional(),
-  name:    z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
-  phone:   z.string().max(20).optional(),
-  address: z.string().max(300).optional(),
-  taxId:   z.string().max(20).optional(),
-  note:    z.string().max(500).optional(),
+  code:            z.string().max(20).optional(),
+  name:            z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
+  phone:           z.string().max(20).optional(),
+  address:         z.string().max(300).optional(),
+  shippingAddress: z.string().max(500).optional(),
+  taxId:           z.string().max(20).optional(),
+  note:            z.string().max(500).optional(),
 });
 
 export async function createCustomer(
@@ -21,26 +22,28 @@ export async function createCustomer(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
-    code:    formData.get("code")    || undefined,
-    name:    formData.get("name"),
-    phone:   formData.get("phone")   || undefined,
-    address: formData.get("address") || undefined,
-    taxId:   formData.get("taxId")   || undefined,
-    note:    formData.get("note")    || undefined,
+    code:            formData.get("code")            || undefined,
+    name:            formData.get("name"),
+    phone:           formData.get("phone")           || undefined,
+    address:         formData.get("address")         || undefined,
+    shippingAddress: formData.get("shippingAddress") || undefined,
+    taxId:           formData.get("taxId")           || undefined,
+    note:            formData.get("note")            || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { code, name, phone, address, taxId, note } = parsed.data;
+  const { code, name, phone, address, shippingAddress, taxId, note } = parsed.data;
 
   try {
     const customer = await db.customer.create({
       data: {
-        code:    code    ?? null,
+        code:            code            ?? null,
         name,
-        phone:   phone   ?? null,
-        address: address ?? null,
-        taxId:   taxId   ?? null,
-        note:    note    ?? null,
+        phone:           phone           ?? null,
+        address:         address         ?? null,
+        shippingAddress: shippingAddress ?? null,
+        taxId:           taxId           ?? null,
+        note:            note            ?? null,
       },
     });
     revalidatePath("/admin/customers");
@@ -59,27 +62,29 @@ export async function updateCustomer(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
-    code:    formData.get("code")    || undefined,
-    name:    formData.get("name"),
-    phone:   formData.get("phone")   || undefined,
-    address: formData.get("address") || undefined,
-    taxId:   formData.get("taxId")   || undefined,
-    note:    formData.get("note")    || undefined,
+    code:            formData.get("code")            || undefined,
+    name:            formData.get("name"),
+    phone:           formData.get("phone")           || undefined,
+    address:         formData.get("address")         || undefined,
+    shippingAddress: formData.get("shippingAddress") || undefined,
+    taxId:           formData.get("taxId")           || undefined,
+    note:            formData.get("note")            || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { code, name, phone, address, taxId, note } = parsed.data;
+  const { code, name, phone, address, shippingAddress, taxId, note } = parsed.data;
 
   try {
     await db.customer.update({
       where: { id },
       data: {
-        code:    code    ?? null,
+        code:            code            ?? null,
         name,
-        phone:   phone   ?? null,
-        address: address ?? null,
-        taxId:   taxId   ?? null,
-        note:    note    ?? null,
+        phone:           phone           ?? null,
+        address:         address         ?? null,
+        shippingAddress: shippingAddress ?? null,
+        taxId:           taxId           ?? null,
+        note:            note            ?? null,
       },
     });
     revalidatePath("/admin/customers");

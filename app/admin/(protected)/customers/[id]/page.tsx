@@ -91,6 +91,12 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               <p className="font-medium text-gray-900">{customer.address}</p>
             </div>
           )}
+          {customer.shippingAddress && (
+            <div className="sm:col-span-2 md:col-span-3">
+              <p className="text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+              <p className="font-medium text-gray-900">{customer.shippingAddress}</p>
+            </div>
+          )}
           {customer.note && (
             <div className="sm:col-span-2 md:col-span-3">
               <p className="text-gray-500 mb-1">หมายเหตุ</p>

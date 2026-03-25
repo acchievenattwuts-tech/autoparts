@@ -24,7 +24,7 @@ const NewSalePage = async () => {
     }),
     db.customer.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, phone: true, code: true },
+      select: { id: true, name: true, phone: true, code: true, shippingAddress: true },
     }),
   ]);
 

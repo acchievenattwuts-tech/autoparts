@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
-import { SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, SaleType } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -21,6 +21,16 @@ const saleTypeLabel: Record<SaleType, string> = {
 const saleTypeBadge: Record<SaleType, string> = {
   RETAIL:    "bg-green-100 text-green-700",
   WHOLESALE: "bg-blue-100 text-blue-700",
+};
+
+const fulfillmentLabel: Record<FulfillmentType, string> = {
+  PICKUP:   "หน้าร้าน",
+  DELIVERY: "จัดส่ง",
+};
+
+const fulfillmentBadge: Record<FulfillmentType, string> = {
+  PICKUP:   "bg-gray-100 text-gray-600",
+  DELIVERY: "bg-purple-100 text-purple-700",
 };
 
 const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -127,9 +137,29 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               </p>
             </div>
             <div>
+              <p className="text-gray-500 mb-1">การจัดส่ง</p>
+              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fulfillmentBadge[sale.fulfillmentType]}`}>
+                {fulfillmentLabel[sale.fulfillmentType]}
+              </span>
+            </div>
+            <div>
               <p className="text-gray-500 mb-1">ผู้บันทึก</p>
               <p className="font-medium text-gray-900">{sale.user?.name ?? "-"}</p>
             </div>
+            {sale.fulfillmentType === "DELIVERY" && sale.shippingAddress && (
+              <div className="col-span-2 md:col-span-3">
+                <p className="text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+                <p className="font-medium text-gray-900">{sale.shippingAddress}</p>
+              </div>
+            )}
+            {sale.fulfillmentType === "DELIVERY" && sale.shippingFee !== null && Number(sale.shippingFee) > 0 && (
+              <div>
+                <p className="text-gray-500 mb-1">ค่าจัดส่ง</p>
+                <p className="font-medium text-gray-900">
+                  {Number(sale.shippingFee).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                </p>
+              </div>
+            )}
             {sale.note && (
               <div className="col-span-2 md:col-span-3">
                 <p className="text-gray-500 mb-1">หมายเหตุ</p>
@@ -228,6 +258,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <span>ยอดรวม</span>
               <span>{Number(sale.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
             </div>
+            {sale.shippingFee !== null && Number(sale.shippingFee) > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>ค่าจัดส่ง</span>
+                <span>+{Number(sale.shippingFee).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+              </div>
+            )}
             <div className="flex justify-between text-gray-600">
               <span>ส่วนลด</span>
               <span>-{Number(sale.discount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>

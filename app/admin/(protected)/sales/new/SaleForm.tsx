@@ -14,10 +14,11 @@ interface ProductOption {
 }
 
 interface CustomerOption {
-  id:    string;
-  name:  string;
-  phone: string | null;
-  code:  string | null;
+  id:              string;
+  name:            string;
+  phone:           string | null;
+  code:            string | null;
+  shippingAddress: string | null;
 }
 
 interface LineItem {
@@ -40,6 +41,11 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerNameOverride, setCustomerNameOverride] = useState("");
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState("");
+  const [discount, setDiscount] = useState(0);
+
+  const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [shippingFee, setShippingFee]         = useState(0);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
@@ -64,6 +70,8 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
     products.find((p) => p.id === productId)?.units ?? [];
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
+  const effectiveShippingFee = fulfillmentType === "DELIVERY" ? shippingFee : 0;
+  const netAmount = Math.max(0, totalAmount + effectiveShippingFee - discount);
 
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
@@ -71,9 +79,11 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
       const found = customers.find((c) => c.id === customerId);
       setCustomerNameOverride(found?.name ?? "");
       setCustomerPhoneOverride(found?.phone ?? "");
+      setShippingAddress(found?.shippingAddress ?? "");
     } else {
       setCustomerNameOverride("");
       setCustomerPhoneOverride("");
+      setShippingAddress("");
     }
   };
 
@@ -88,9 +98,17 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
     }
 
+    if (fulfillmentType === "DELIVERY" && !shippingAddress.trim()) {
+      setError("กรุณาระบุที่อยู่จัดส่ง");
+      return;
+    }
+
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("items", JSON.stringify(items));
+    formData.set("fulfillmentType", fulfillmentType);
+    formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
+    formData.set("shippingFee", String(effectiveShippingFee));
 
     startTransition(async () => {
       const result = await createSale(formData);
@@ -102,15 +120,14 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
         setSelectedCustomerId("");
         setCustomerNameOverride("");
         setCustomerPhoneOverride("");
+        setDiscount(0);
+        setFulfillmentType("PICKUP");
+        setShippingAddress("");
+        setShippingFee(0);
         form.reset();
       }
     });
   };
-
-  // Compute discount from form state — we use a local state trick via controlled inputs
-  // Since discount is a form field (uncontrolled), we read it live for the summary
-  const [discount, setDiscount] = useState(0);
-  const netAmount = Math.max(0, totalAmount - discount);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -209,6 +226,71 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
               placeholder="หมายเหตุ"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Fulfillment section */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+          การจัดส่ง
+        </h2>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700 w-24 shrink-0">การจัดส่ง</label>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setFulfillmentType("PICKUP")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  fulfillmentType === "PICKUP"
+                    ? "bg-[#1e3a5f] text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                หน้าร้าน (รับเอง)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFulfillmentType("DELIVERY")}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  fulfillmentType === "DELIVERY"
+                    ? "bg-purple-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                จัดส่ง
+              </button>
+            </div>
+          </div>
+
+          {fulfillmentType === "DELIVERY" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className="md:col-span-2">
+                <label className={labelCls}>
+                  ที่อยู่จัดส่ง <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  maxLength={500}
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className={inputCls}
+                  placeholder="ที่อยู่จัดส่งสินค้า"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>ค่าจัดส่ง (บาท)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={shippingFee}
+                  onChange={(e) => setShippingFee(Number(e.target.value))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -324,6 +406,14 @@ const SaleForm = ({ products, customers }: { products: ProductOption[]; customer
                 {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
+            {fulfillmentType === "DELIVERY" && shippingFee > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>ค่าจัดส่ง</span>
+                <span className="font-medium text-purple-600">
+                  +{shippingFee.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between text-gray-600">
               <span>ส่วนลด</span>
               <span className="font-medium text-red-500">

@@ -7,13 +7,14 @@ import { createCustomer, updateCustomer } from "./actions";
 
 interface CustomerFormProps {
   customer?: {
-    id:      string;
-    code:    string | null;
-    name:    string;
-    phone:   string | null;
-    address: string | null;
-    taxId:   string | null;
-    note:    string | null;
+    id:              string;
+    code:            string | null;
+    name:            string;
+    phone:           string | null;
+    address:         string | null;
+    shippingAddress: string | null;
+    taxId:           string | null;
+    note:            string | null;
   };
 }
 
@@ -123,6 +124,19 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               defaultValue={customer?.address ?? ""}
               className={inputCls}
               placeholder="ที่อยู่สำหรับออกเอกสาร"
+            />
+          </div>
+
+          {/* ที่อยู่จัดส่ง */}
+          <div className="md:col-span-2">
+            <label className={labelCls}>ที่อยู่จัดส่ง</label>
+            <textarea
+              name="shippingAddress"
+              rows={3}
+              maxLength={500}
+              defaultValue={customer?.shippingAddress ?? ""}
+              className={inputCls}
+              placeholder="ที่อยู่จัดส่งสินค้า (ถ้าต่างจากที่อยู่ปกติ)"
             />
           </div>
 

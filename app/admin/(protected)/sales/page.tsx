@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye } from "lucide-react";
-import { SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, SaleType } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -19,6 +19,16 @@ const saleTypeLabel: Record<SaleType, string> = {
 const saleTypeBadge: Record<SaleType, string> = {
   RETAIL:    "bg-green-100 text-green-700",
   WHOLESALE: "bg-blue-100 text-blue-700",
+};
+
+const fulfillmentLabel: Record<FulfillmentType, string> = {
+  PICKUP:   "หน้าร้าน",
+  DELIVERY: "จัดส่ง",
+};
+
+const fulfillmentBadge: Record<FulfillmentType, string> = {
+  PICKUP:   "bg-gray-100 text-gray-600",
+  DELIVERY: "bg-purple-100 text-purple-700",
 };
 
 const SalesPage = async () => {
@@ -52,6 +62,7 @@ const SalesPage = async () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ลูกค้า</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">การจัดส่ง</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทางชำระ</th>
@@ -61,7 +72,7 @@ const SalesPage = async () => {
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400">
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
                     ยังไม่มีรายการขาย
                   </td>
                 </tr>
@@ -78,6 +89,11 @@ const SalesPage = async () => {
                     <td className="py-3 px-4">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${saleTypeBadge[s.saleType]}`}>
                         {saleTypeLabel[s.saleType]}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fulfillmentBadge[s.fulfillmentType]}`}>
+                        {fulfillmentLabel[s.fulfillmentType]}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{s._count.items} รายการ</td>

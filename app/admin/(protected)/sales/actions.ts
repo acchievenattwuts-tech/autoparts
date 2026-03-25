@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
-import { PaymentMethod, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, PaymentMethod, SaleType } from "@/lib/generated/prisma";
 
 const saleItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -16,15 +16,18 @@ const saleItemSchema = z.object({
 });
 
 const saleSchema = z.object({
-  saleDate:      z.string().min(1, "กรุณาระบุวันที่"),
-  customerId:    z.string().max(50).optional(),
-  saleType:      z.nativeEnum(SaleType).default(SaleType.RETAIL),
-  customerName:  z.string().max(100).optional(),
-  customerPhone: z.string().max(20).optional(),
-  discount:      z.coerce.number().min(0).default(0),
-  paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
-  note:          z.string().max(500).optional(),
-  items:         z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
+  saleDate:        z.string().min(1, "กรุณาระบุวันที่"),
+  customerId:      z.string().max(50).optional(),
+  saleType:        z.nativeEnum(SaleType).default(SaleType.RETAIL),
+  fulfillmentType: z.nativeEnum(FulfillmentType).default(FulfillmentType.PICKUP),
+  customerName:    z.string().max(100).optional(),
+  customerPhone:   z.string().max(20).optional(),
+  shippingAddress: z.string().max(500).optional(),
+  shippingFee:     z.coerce.number().min(0).default(0),
+  discount:        z.coerce.number().min(0).default(0),
+  paymentMethod:   z.nativeEnum(PaymentMethod).default(PaymentMethod.CASH),
+  note:            z.string().max(500).optional(),
+  items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
 export async function createSale(
@@ -42,14 +45,17 @@ export async function createSale(
   }
 
   const parsed = saleSchema.safeParse({
-    saleDate:      formData.get("saleDate"),
-    customerId:    formData.get("customerId") || undefined,
-    saleType:      formData.get("saleType") || SaleType.RETAIL,
-    customerName:  formData.get("customerName") || undefined,
-    customerPhone: formData.get("customerPhone") || undefined,
-    discount:      formData.get("discount") || 0,
-    paymentMethod: formData.get("paymentMethod") || PaymentMethod.CASH,
-    note:          formData.get("note") || undefined,
+    saleDate:        formData.get("saleDate"),
+    customerId:      formData.get("customerId")      || undefined,
+    saleType:        formData.get("saleType")        || SaleType.RETAIL,
+    fulfillmentType: formData.get("fulfillmentType") || FulfillmentType.PICKUP,
+    customerName:    formData.get("customerName")    || undefined,
+    customerPhone:   formData.get("customerPhone")   || undefined,
+    shippingAddress: formData.get("shippingAddress") || undefined,
+    shippingFee:     formData.get("shippingFee")     || 0,
+    discount:        formData.get("discount")        || 0,
+    paymentMethod:   formData.get("paymentMethod")   || PaymentMethod.CASH,
+    note:            formData.get("note")            || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -58,8 +64,11 @@ export async function createSale(
     saleDate,
     customerId,
     saleType,
+    fulfillmentType,
     customerName,
     customerPhone,
+    shippingAddress,
+    shippingFee,
     discount,
     paymentMethod,
     note,
@@ -68,7 +77,7 @@ export async function createSale(
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
-  const netAmount   = Math.max(0, totalAmount - discount);
+  const netAmount   = Math.max(0, totalAmount + shippingFee - discount);
 
   const docDate = new Date(saleDate);
   const saleNo  = await generateDocNo("SO", docDate);
@@ -79,17 +88,20 @@ export async function createSale(
       const sale = await tx.sale.create({
         data: {
           saleNo,
-          customerId:    customerId ?? null,
+          customerId:      customerId      ?? null,
           saleType,
-          customerName:  customerName ?? null,
-          customerPhone: customerPhone ?? null,
-          userId:        session.user!.id!,
+          fulfillmentType,
+          shippingAddress: shippingAddress ?? null,
+          shippingFee,
+          customerName:    customerName    ?? null,
+          customerPhone:   customerPhone   ?? null,
+          userId:          session.user!.id!,
           totalAmount,
           discount,
           netAmount,
           paymentMethod,
-          note: note ?? null,
-          saleDate: docDate,
+          note:            note            ?? null,
+          saleDate:        docDate,
         },
       });
 
