@@ -115,7 +115,7 @@ model Product {
   units            ProductUnit[]
   purchaseItems    PurchaseItem[]
   saleItems        SaleItem[]
-  stockTransactions StockTransaction[]
+  stockCards       StockCard[]
   warranties       Warranty[]
 }
 
@@ -157,29 +157,41 @@ model ProductCarModel {
 }
 
 // ─────────────────────────────────────────
-// Stock
+// Stock Card (บัตรสต็อกสินค้า)
+// ─────────────────────────────────────────
+// เป็น source of truth ของการเคลื่อนไหวสินค้า
+// qty และ price ทั้งหมดอยู่ใน "หน่วยหลัก" (base unit, scale=1) ของสินค้านั้น
 // ─────────────────────────────────────────
 
-model StockTransaction {
-  id           String               @id @default(cuid())
+model StockCard {
+  id           String          @id @default(cuid())
   productId    String
-  product      Product              @relation(fields: [productId], references: [id])
-  type         StockTransactionType
-  quantity     Int                  // จำนวน (+ = IN, - = OUT)
-  unitCost     Decimal              @default(0) @db.Decimal(10, 2) // ราคาทุนต่อหน่วย ณ วันนั้น
-  avgCostAfter Decimal              @default(0) @db.Decimal(10, 2) // ต้นทุนถั่วเฉลี่ยหลัง transaction นี้ (สำหรับ stock card)
-  stockAfter   Int                  @default(0)                    // จำนวนคงเหลือหลัง transaction (สำหรับ stock card)
-  note         String?
-  referenceId  String?              // FK ไปยัง PurchaseItem.id หรือ SaleItem.id
-  createdAt    DateTime             @default(now())
+  product      Product         @relation(fields: [productId], references: [id])
+  docNo        String          // เลขที่เอกสาร
+  docDate      DateTime        // วันที่เอกสาร
+  source       StockCardSource // แหล่งที่มา
+  sorder       Int             // ลำดับ สำหรับเรียงภายในวันเดียวกันของสินค้าเดียวกัน
+  qtyIn        Decimal         @default(0) @db.Decimal(12, 4) // จำนวนเข้า (base unit)
+  qtyOut       Decimal         @default(0) @db.Decimal(12, 4) // จำนวนออก (base unit)
+  qtyBalance   Decimal         @default(0) @db.Decimal(12, 4) // คงเหลือสะสม (base unit)
+  priceIn      Decimal         @default(0) @db.Decimal(10, 4) // ราคาทุน/หน่วย ที่ซื้อเข้า (base unit)
+  priceOut     Decimal         @default(0) @db.Decimal(10, 4) // avgCost ณ เวลาขายออก (base unit)
+  priceBalance Decimal         @default(0) @db.Decimal(10, 4) // avgCost หลัง transaction นี้ (base unit)
+  detail       String?         // รายละเอียด
+  referenceId  String?         // อ้างอิง PurchaseItem.id / SaleItem.id / BF id ฯลฯ
+  createdAt    DateTime        @default(now())
+
+  @@index([productId, docDate, sorder])
+  @@index([docNo])
 }
 
-enum StockTransactionType {
-  PURCHASE_IN
-  SALE_OUT
-  ADJUST_IN
-  ADJUST_OUT
-  RETURN_IN
+enum StockCardSource {
+  BF         // ยอดยกมา (Beginning Forward)
+  PURCHASE   // ซื้อเข้า
+  SALE       // ขายออก
+  RETURN_IN  // รับคืนจากลูกค้า
+  ADJUST_IN  // ปรับเพิ่ม
+  ADJUST_OUT // ปรับลด
 }
 
 // ─────────────────────────────────────────
