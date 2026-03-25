@@ -123,7 +123,6 @@ const LoginPage = () => {
     } else {
       clearLockout();
       router.push("/admin");
-      router.refresh();
     }
   };
 
