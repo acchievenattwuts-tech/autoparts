@@ -181,6 +181,7 @@ model StockCard {
   qtyIn        Decimal         @default(0) @db.Decimal(12, 4) // จำนวนเข้า (base unit)
   qtyOut       Decimal         @default(0) @db.Decimal(12, 4) // จำนวนออก (base unit)
   qtyBalance   Decimal         @default(0) @db.Decimal(12, 4) // คงเหลือสะสม (base unit)
+  landedCost   Decimal         @default(0) @db.Decimal(10, 2) // ค่าขนส่ง/ค่าแนบที่รวมใน avgCost
   priceIn      Decimal         @default(0) @db.Decimal(10, 4) // ราคาทุน/หน่วย ที่ซื้อเข้า (base unit)
   priceOut     Decimal         @default(0) @db.Decimal(10, 4) // avgCost ณ เวลาขายออก (base unit)
   priceBalance Decimal         @default(0) @db.Decimal(10, 4) // avgCost หลัง transaction นี้ (base unit)
@@ -235,6 +236,7 @@ model PurchaseItem {
   quantity    Int
   costPrice   Decimal  @db.Decimal(10, 2)
   totalAmount Decimal  @db.Decimal(10, 2)
+  landedCost  Decimal  @default(0) @db.Decimal(10, 2) // ค่าใช้จ่ายแนบ (ขนส่ง ฯลฯ) ต่อรายการ
 }
 
 // ─────────────────────────────────────────

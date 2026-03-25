@@ -16,6 +16,8 @@ import {
   Settings,
   X,
   Award,
+  Archive,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +39,13 @@ const navItems = [
       { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award },
       { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck },
+    ],
+  },
+  {
+    section: "สต็อก",
+    items: [
+      { label: "ยอดยกมา (BF)", href: "/admin/stock/bf", icon: Archive },
+      { label: "ปรับสต็อก", href: "/admin/stock/adjustments", icon: RefreshCw },
     ],
   },
   {
