@@ -44,13 +44,13 @@
 | StockCard | บัตรสต็อกสินค้า — source of truth การเคลื่อนไหว stock (qty/price ใน base unit) |
 | Purchase / PurchaseItem | ระบบซื้อสินค้าเข้า |
 | PurchaseReturn / PurchaseReturnItem | คืนสินค้าให้ซัพพลายเออร์ (RETURN_OUT) |
-| Customer | ข้อมูลลูกค้า (รหัส, ชื่อ, เบอร์, ที่อยู่, เลขภาษี) |
-| Sale / SaleItem | ระบบขาย (saleType: RETAIL/WHOLESALE) |
-| CreditNote / CreditNoteItem | CN ฝั่งขาย — เราออกให้ลูกค้า (RETURN=คืนของ / DISCOUNT=ลดราคา) |
+| Customer | ข้อมูลลูกค้า (รหัส, ชื่อ, เบอร์, ที่อยู่, เลขภาษี, ที่อยู่จัดส่ง) |
+| Sale / SaleItem | ระบบขาย (saleType: RETAIL/WHOLESALE, paymentType: CASH/CREDIT, fulfillmentType: PICKUP/DELIVERY) |
+| CreditNote / CreditNoteItem | CN ฝั่งขาย — settlementType: CASH_REFUND/CREDIT_DEBT |
 | Adjustment / AdjustmentItem | ปรับสต็อก +/- พร้อมเหตุผล |
 | Warranty | ประกันสินค้า (เริ่มนับจากวันขาย) |
-| Expense | ค่าใช้จ่ายอื่นๆ |
-| SiteContent | Admin แก้ไขข้อความหน้าเว็บ |
+| Expense | ค่าใช้จ่ายอื่นๆ (schema พร้อม, UI ยังไม่ได้ทำ) |
+| SiteContent | Admin แก้ไขข้อความหน้าเว็บ + company settings + VAT config |
 
 ---
 
@@ -65,95 +65,85 @@
 ### ✅ Phase 1 — Setup DB + Deploy (เสร็จแล้ว)
 - ติดตั้ง Prisma v7 + สร้าง schema ครบทุกระบบ
 - เชื่อมต่อ Supabase PostgreSQL (Session pooler port 5432)
-- Deploy บน Vercel สำเร็จ ✓
+- Deploy บน Vercel + domain sriwanparts.com ✓
 
 ### ✅ Phase 2 — Admin Auth + สินค้า (เสร็จแล้ว)
 - NextAuth.js v5 (Credentials provider) + Login page + Middleware
-- Admin layout + Sidebar navigation
+- Admin layout + Sidebar navigation (reorganized: สินค้า+ลูกค้า อยู่ใต้ ข้อมูลหลัก)
 - Dashboard (summary cards)
 - CRUD สินค้า (list, create, edit, delete) + Upload รูป Supabase Storage
 - Multi-unit (ProductUnit + scale)
 - Master data: Category, CarBrand/CarModel, Supplier, PartsBrand
 - Security headers (CSP, HSTS, X-Frame-Options ฯลฯ)
 
-### ✅ Phase 3 — BF + Stock + ซื้อ + ขาย + เอกสาร (เสร็จแล้ว)
+### ✅ Phase 2.5 — ระบบลูกค้า (เสร็จแล้ว)
+- CRUD ลูกค้า: list (พร้อม search), create, edit, delete (ป้องกันลบถ้ามียอดขาย)
+- หน้าโปรไฟล์ลูกค้า: ข้อมูล + สถิติ (ยอดซื้อรวม, จำนวนครั้ง) + ประวัติการซื้อ
+- ที่อยู่จัดส่ง (shippingAddress) แยกจากที่อยู่ปกติ
+- เชื่อม Sale ↔ Customer: ใบขายเลือกลูกค้าจากระบบ + auto-fill ชื่อ/เบอร์/ที่อยู่จัดส่ง
+
+### ✅ Phase 3 — Stock + ซื้อ + ขาย + เอกสาร (เสร็จแล้ว)
 
 #### ✅ 3.0 โครงสร้าง DB + MAVG Engine
 - StockCard เป็น source of truth — qty/price ใน base unit ทั้งหมด
 - avgCost (Moving Average Cost) เก็บใน Product + StockCard.priceBalance
 - `lib/stock-card.ts` — MAVG engine (`writeStockCard`)
 - `lib/doc-number.ts` — document number generator
+- `lib/vat.ts` — VAT calculation utility (calcVat, calcItemSubtotal)
 
 #### ✅ 3.1 ระบบ BF (ยอดยกมา)
 - หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน
-- สร้าง StockCard source=BF → อัปเดต Product.stock + avgCost
 
 #### ✅ 3.2 ปรับสต็อก (Adjustment)
 - หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล
-- สร้าง Adjustment + AdjustmentItem → เขียน StockCard ADJUST_IN/ADJUST_OUT
 
-#### ✅ 3.3 ระบบซื้อ + ขาย
-- `/admin/purchases` — ใบซื้อสินค้า + MAVG คำนวณ avgCost ใหม่ทุกครั้ง
-- `/admin/sales` — บันทึกการขาย + snapshot avgCost ลง SaleItem.costPrice
+#### ✅ 3.3 ระบบซื้อสินค้า
+- `/admin/purchases` — ใบซื้อ + MAVG + VAT (NoVAT/ExclVAT/InclVAT) + referenceNo + auto-fill ราคาทุน
+- `/admin/purchase-returns` — คืนให้ซัพพลายเออร์ (RETURN_OUT) + VAT
 
-#### ✅ 3.4 เอกสารคืนสินค้า / ลดหนี้
-- `/admin/credit-notes` — CN ฝั่งขาย (RETURN=รับคืน+RETURN_IN, DISCOUNT=ลดราคา)
-- `/admin/purchase-returns` — คืนให้ซัพพลายเออร์ (RETURN_OUT)
+#### ✅ 3.4 ระบบขาย
+- `/admin/sales` — บันทึกการขาย + SaleType (ปลีก/ส่ง) + PaymentType (ขายสด/ขายเชื่อ) + FulfillmentType (หน้าร้าน/จัดส่ง) + VAT
+- `/admin/sales/[id]` — รายละเอียด + พิมพ์ใบเสร็จ (browser print)
 
-#### ✅ 3.5 เอกสารออก
-- `/admin/sales/[id]` — ดูรายละเอียดใบขาย + พิมพ์ใบเสร็จรับเงิน (browser print)
+#### ✅ 3.5 Credit Note (CN ฝั่งขาย)
+- `/admin/credit-notes` — CN type: รับคืนสินค้า/ส่วนลด/อื่นๆ + SettlementType: คืนเงินสด/ตั้งหนี้ + RefundMethod: เงินสด/โอนเงิน + VAT
 
-#### ✅ 3.x เพิ่มเติม
-- `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้ (หาร scale)
+#### ✅ 3.6 Stock Card MAVG Viewer
+- `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้
 
-#### 🔲 3.6 โมดูลใบเสร็จรับเงิน (Receipt)
-- [ ] ใบเสร็จรับเงินสำหรับการขายเชื่อ (Sale.paymentType=CREDIT_SALE) — บันทึกการรับชำระ
+#### ✅ 3.7 VAT System
+- VatType enum: NO_VAT / EXCLUDING_VAT / INCLUDING_VAT
+- ครอบคลุม: ซื้อ, คืนซัพพลายเออร์, ขาย, CN — คำนวณ subtotalAmount + vatAmount realtime
+- ตั้งค่า VAT default ได้ที่ `/admin/settings/company`
+
+#### 🔲 3.8 โมดูลใบเสร็จรับเงิน / Accounts Receivable (ยังไม่ได้ทำ)
+- [ ] บันทึกการรับชำระสำหรับการขายเชื่อ (Sale.paymentType=CREDIT_SALE)
 - [ ] CN ประเภทตั้งหนี้ (settlementType=CREDIT_DEBT) — บันทึกลดยอดหนี้
 - [ ] เก็บยอดลูกหนี้ค้างชำระต่อลูกค้า (Accounts Receivable)
 - [ ] พิมพ์ใบเสร็จรับเงิน (browser print + PDF export)
 - [ ] แสดงยอดค้างชำระในหน้า Customer profile
 
-### ✅ Phase 2.5 — ระบบลูกค้า (Customer Module)
-- CRUD ลูกค้า: list (พร้อม search), create, edit, delete (ป้องกันลบถ้ามียอดขาย)
-- หน้าโปรไฟล์ลูกค้า: ข้อมูล + สถิติ (ยอดซื้อรวม, จำนวนครั้ง) + ประวัติการซื้อ
-- เชื่อม Sale ↔ Customer: ใบขายเลือกลูกค้าจากระบบ + auto-fill ชื่อ/เบอร์
-- ประเภทการขาย (saleType): RETAIL=ขายปลีก (badge เขียว), WHOLESALE=ขายส่ง (badge น้ำเงิน)
-- แสดง saleType badge ในหน้า sales list + sales detail
-- แสดง customer link (→ /admin/customers/{id}) ใน sales detail
-- Sidebar: เพิ่มเมนู "ลูกค้า" ใต้หัวข้อ "ระบบงาน"
-
-### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย
-  - type=DISCOUNT: ลดราคา → ไม่กระทบ stock
-- [ ] **Purchase Return (คืนให้ซัพพลายเออร์)** → stock -qty (RETURN_OUT), คำนวณ avgCost ใหม่
-
-#### 3.5 เอกสารออก
-- [ ] **ใบแจ้งหนี้ (Invoice)** — เลขที่เอกสาร, ข้อมูลลูกค้า, รายการสินค้า+หน่วย, ยอดรวม
-- [ ] **ใบเสร็จรับเงิน (Receipt)** — ข้อมูลร้าน, ลายเซ็น, QR Code ชำระเงิน
-- [ ] Export PDF (`@react-pdf/renderer` หรือ `html2pdf`)
-- [ ] Print โดยตรงจากเบราว์เซอร์
-
-### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย
-- [ ] ระบบประกัน — เริ่มนับจากวันที่ขาย, แสดงสถานะหมดประกัน
+### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย (ยังไม่ได้ทำ)
+- [ ] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน
 - [ ] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category (ค่าเช่า, ไฟ, เงินเดือน ฯลฯ)
   - Schema พร้อมแล้ว (vatType, vatRate, subtotalAmount, vatAmount เพิ่มแล้ว)
-  - [ ] หน้า list ค่าใช้จ่าย + ปุ่มเพิ่มใหม่
-  - [ ] Form บันทึกค่าใช้จ่าย: category, description, amount, วันที่, note
-  - [ ] เพิ่ม VAT toggle (NoVAT/ExclVAT/InclVAT) + คำนวณ subtotalAmount, vatAmount, netAmount
-  - [ ] ดึง VAT default จาก company settings (เหมือนโมดูลอื่น)
+  - [ ] หน้า list + ปุ่มเพิ่มใหม่
+  - [ ] Form: category, description, amount, วันที่, note
+  - [ ] VAT toggle (NoVAT/ExclVAT/InclVAT) + คำนวณยอดภาษี (ดึง default จาก company settings)
 
-### 🔲 Phase 5 — ระบบค้นหา
+### 🔲 Phase 5 — ระบบค้นหา (ยังไม่ได้ทำ)
 - [ ] Full-text search สินค้า (ค้นได้จากชื่อ, โค้ด, alias, ยี่ห้อรถ, รุ่นรถ)
 - [ ] ค้นหาจากหน้าร้าน (ลูกค้าใช้)
 - [ ] ค้นหาจากหลังบ้าน (admin ใช้)
 
-### 🔲 Phase 6 — Report
+### 🔲 Phase 6 — Report (ยังไม่ได้ทำ)
 - [ ] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน)
-- [ ] Report กำไร-ขาดทุน
+- [ ] Report กำไร-ขาดทุน (รวม VAT breakdown)
 - [ ] Report stock คงเหลือ + สินค้าต่ำกว่า minStock
 - [ ] Report ประกันที่กำลังจะหมด
 - [ ] Export Excel / PDF
 
-### 🔲 Phase 7 — SEO + AEO (AI Engine Optimization)
+### 🔲 Phase 7 — SEO + AEO (ยังไม่ได้ทำ)
 **เป้าหมาย:** ติดอันดับ Google + ขึ้นใน AI search (ChatGPT, Perplexity, Google AI Overview)
 
 **SEO พื้นฐาน:**
@@ -164,19 +154,18 @@
 - [ ] Core Web Vitals — ปรับ loading speed, image optimization
 - [ ] URL structure — `/products/[category]/[slug]` อ่านง่าย
 
-**Structured Data (Schema.org JSON-LD) — สำคัญมากสำหรับ AI:**
+**Structured Data (Schema.org JSON-LD):**
 - [ ] `LocalBusiness` — ชื่อร้าน, ที่อยู่, เบอร์, เวลาทำการ
 - [ ] `Product` — ชื่อสินค้า, ราคา, รูป, คำอธิบาย, ยี่ห้อ
 - [ ] `BreadcrumbList` — navigation path
-- [ ] `FAQPage` — คำถามที่พบบ่อย (ขึ้น AI Overview ได้ง่าย)
+- [ ] `FAQPage` — คำถามที่พบบ่อย
 - [ ] `Organization` — ข้อมูลองค์กร/ร้านค้า
 
 **AEO — ให้ AI search อ้างอิงได้:**
 - [ ] หน้า `/about` — แนะนำร้าน, ประวัติ, ความเชี่ยวชาญ (E-E-A-T)
-- [ ] หน้า `/faq` — คำถามที่ลูกค้าถามบ่อย เช่น "คอมเพรสเซอร์แอร์โตโยต้ากี่บาท"
+- [ ] หน้า `/faq` — คำถามที่ลูกค้าถามบ่อย
 - [ ] หน้า `/blog` หรือ `/knowledge` — บทความให้ความรู้เรื่องอะไหล่แอร์
-- [ ] เนื้อหาสินค้า — คำอธิบายละเอียด ใช้ภาษาธรรมชาติ ตอบคำถามลูกค้าได้
-- [ ] `llms.txt` — ไฟล์แนะนำร้านสำหรับ AI crawlers (เทรนใหม่ปี 2025)
+- [ ] `llms.txt` — ไฟล์แนะนำร้านสำหรับ AI crawlers
 
 ---
 
@@ -208,6 +197,10 @@ npm run dev
 
 # Build ตรวจสอบ error
 npm run build
+
+# Backup / Restore ข้อมูล
+npm run db:backup
+npm run db:restore backup-{timestamp}.json
 ```
 
 ## หมายเหตุสำคัญ
