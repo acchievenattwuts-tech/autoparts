@@ -13,12 +13,12 @@ const Home = async () => {
 
   return (
     <>
-      <Navbar shopName={config.shopName} shopSlogan={config.shopSlogan} lineUrl={config.shopLineUrl} />
+      <Navbar shopName={config.shopName} shopSlogan={config.shopSlogan} lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
       <main>
         <Hero heroTitle={config.heroTitle} heroSubtitle={config.heroSubtitle} lineUrl={config.shopLineUrl} />
         <ProductCategories />
         <WhyUs />
-        <FeaturedProducts />
+        <FeaturedProducts lineUrl={config.shopLineUrl} />
         <LineCTA lineId={config.shopLineId} lineUrl={config.shopLineUrl} />
       </main>
       <Footer config={config} />

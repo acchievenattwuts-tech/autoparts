@@ -19,6 +19,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           OR: [
             { name: { contains: search, mode: "insensitive" } },
             { code: { contains: search, mode: "insensitive" } },
+            { aliases: { some: { alias: { contains: search, mode: "insensitive" } } } },
+            { carModels: { some: { carModel: { name: { contains: search, mode: "insensitive" } } } } },
+            { carModels: { some: { carModel: { carBrand: { name: { contains: search, mode: "insensitive" } } } } } },
+            { category: { name: { contains: search, mode: "insensitive" } } },
+            { brand: { name: { contains: search, mode: "insensitive" } } },
           ],
         }
       : undefined,

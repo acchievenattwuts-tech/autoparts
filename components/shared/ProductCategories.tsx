@@ -1,42 +1,30 @@
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { type Category } from "@/types/product";
+import { db } from "@/lib/db";
 
 const LINE_OA_URL = "https://lin.ee/18P0SqG";
 
-const categories: Category[] = [
-  {
-    id: "compressor",
-    label: "คอมเพรสเซอร์แอร์",
-    description: "คอมเพรสเซอร์ทุกยี่ห้อ ทุกรุ่น ทั้งของแท้และเทียบเท่า",
-    icon: "❄️",
-  },
-  {
-    id: "radiator",
-    label: "หม้อน้ำรถยนต์",
-    description: "หม้อน้ำอลูมิเนียม / พลาสติก ครบทุกรุ่นรถ",
-    icon: "🌡️",
-  },
-  {
-    id: "condenser",
-    label: "แผงคอนเดนเซอร์",
-    description: "แผงระบายความร้อนแอร์ คุณภาพสูง ราคาโรงงาน",
-    icon: "🔲",
-  },
-  {
-    id: "hose",
-    label: "ท่อและสายแอร์",
-    description: "ท่อแอร์ สายยางแอร์ ข้อต่อ วาล์ว ครบจบในที่เดียว",
-    icon: "🔧",
-  },
-  {
-    id: "other",
-    label: "อะไหล่อื่นๆ",
-    description: "แมกเนติก คลัทช์ แผงระบายความร้อนหม้อน้ำ และอีกมากมาย",
-    icon: "⚙️",
-  },
-];
+const CATEGORY_ICON: Record<string, string> = {
+  "คอมเพรสเซอร์": "❄️",
+  "หม้อน้ำ": "🌡️",
+  "คอนเดนเซอร์": "🔲",
+  "ท่อแอร์": "🔧",
+  "ท่อ": "🔧",
+};
 
-const ProductCategories = () => {
+const getIcon = (name: string) => {
+  for (const [key, icon] of Object.entries(CATEGORY_ICON)) {
+    if (name.includes(key)) return icon;
+  }
+  return "⚙️";
+};
+
+const ProductCategories = async () => {
+  const categories = await db.category.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { products: { where: { isActive: true } } } } },
+  });
+
   return (
     <section id="categories" className="py-20 bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,40 +41,57 @@ const ProductCategories = () => {
           </p>
         </div>
 
-        {/* Bento Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {categories.map((cat, index) => (
-            <a
-              key={cat.id}
-              href={LINE_OA_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`group relative bg-white rounded-2xl p-6 border border-gray-100 hover:border-[#f97316]/40 hover:shadow-lg transition-all duration-300 cursor-pointer ${
-                index === 0 ? "lg:col-span-2" : ""
-              }`}
-            >
-              {/* Icon */}
-              <div className="text-4xl mb-4">{cat.icon}</div>
-
-              {/* Content */}
-              <h3 className="text-lg font-bold text-gray-900 group-hover:text-[#1e3a5f] transition-colors mb-2">
-                {cat.label}
-              </h3>
-              <p className="text-gray-500 text-sm leading-relaxed mb-4">
-                {cat.description}
-              </p>
-
-              {/* CTA */}
-              <div className="flex items-center gap-1.5 text-[#f97316] text-sm font-semibold">
-                สอบถามราคา
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </div>
-
-              {/* Hover accent */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[#1e3a5f]/0 to-[#f97316]/0 group-hover:from-[#1e3a5f]/3 group-hover:to-[#f97316]/5 transition-all duration-300" />
-            </a>
-          ))}
-        </div>
+        {/* Category Grid */}
+        {categories.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {categories.map((cat, index) => (
+              <Link
+                key={cat.id}
+                href={`/products?category=${encodeURIComponent(cat.name)}`}
+                className={`group relative bg-white rounded-2xl p-6 border border-gray-100 hover:border-[#f97316]/40 hover:shadow-lg transition-all duration-300 ${
+                  index === 0 ? "lg:col-span-2" : ""
+                }`}
+              >
+                <div className="text-4xl mb-4">{getIcon(cat.name)}</div>
+                <h3 className="text-lg font-bold text-gray-900 group-hover:text-[#1e3a5f] transition-colors mb-2">
+                  {cat.name}
+                </h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  {cat._count.products} รายการสินค้า
+                </p>
+                <div className="flex items-center gap-1.5 text-[#f97316] text-sm font-semibold">
+                  ดูสินค้า
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[#1e3a5f]/0 to-[#f97316]/0 group-hover:from-[#1e3a5f]/3 group-hover:to-[#f97316]/5 transition-all duration-300" />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          // Fallback: hardcoded categories before DB has data
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { label: "คอมเพรสเซอร์แอร์", desc: "ทุกยี่ห้อ ทุกรุ่น แท้และเทียบเท่า", icon: "❄️", span: true },
+              { label: "หม้อน้ำรถยนต์", desc: "อลูมิเนียม / พลาสติก ครบทุกรุ่น", icon: "🌡️", span: false },
+              { label: "แผงคอนเดนเซอร์", desc: "ระบายความร้อน คุณภาพสูง", icon: "🔲", span: false },
+              { label: "ท่อและสายแอร์", desc: "ท่อแอร์ สายยาง ข้อต่อ วาล์ว", icon: "🔧", span: false },
+              { label: "อะไหล่อื่นๆ", desc: "แมกเนติก คลัทช์ และอีกมาก", icon: "⚙️", span: false },
+            ].map((cat) => (
+              <Link
+                key={cat.label}
+                href={`/products?q=${encodeURIComponent(cat.label)}`}
+                className={`group relative bg-white rounded-2xl p-6 border border-gray-100 hover:border-[#f97316]/40 hover:shadow-lg transition-all duration-300 ${cat.span ? "lg:col-span-2" : ""}`}
+              >
+                <div className="text-4xl mb-4">{cat.icon}</div>
+                <h3 className="text-lg font-bold text-gray-900 group-hover:text-[#1e3a5f] transition-colors mb-2">{cat.label}</h3>
+                <p className="text-gray-500 text-sm mb-4">{cat.desc}</p>
+                <div className="flex items-center gap-1.5 text-[#f97316] text-sm font-semibold">
+                  ดูสินค้า <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Bottom CTA */}
         <div className="text-center mt-10">
