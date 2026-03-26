@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -131,6 +131,59 @@ export async function createCreditNote(
     return { success: true, cnNo };
   } catch (err) {
     console.error("[createCreditNote]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelCNSchema = z.object({
+  cnId:       z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelCreditNote(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelCNSchema.safeParse({
+    cnId:       formData.get("cnId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { cnId, cancelNote } = parsed.data;
+
+  const cn = await db.creditNote.findUnique({
+    where: { id: cnId },
+    include: { items: { select: { productId: true } } },
+  });
+  if (!cn)                        return { error: "ไม่พบเอกสาร" };
+  if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  const affectedProductIds = [
+    ...new Set(cn.items.map((i) => i.productId).filter((id): id is string => id !== null)),
+  ];
+
+  try {
+    await db.$transaction(async (tx) => {
+      // ถ้าเป็น RETURN ให้ลบ StockCard และ recalculate
+      if (cn.type === "RETURN" && affectedProductIds.length > 0) {
+        await tx.stockCard.deleteMany({ where: { docNo: cn.cnNo } });
+        for (const productId of affectedProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
+      }
+
+      await tx.creditNote.update({
+        where: { id: cnId },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
+    });
+    revalidatePath("/admin/credit-notes");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelCreditNote]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

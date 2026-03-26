@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import type { Prisma } from "@/lib/generated/prisma";
+import SearchBar from "@/components/shared/SearchBar";
+import CreditNoteCancelButton from "./CreditNoteCancelButton";
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
@@ -21,18 +24,35 @@ const settlementTypeBadge: Record<CNSettlementType, string> = {
   CREDIT_DEBT: "bg-orange-100 text-orange-700",
 };
 
-const CreditNotesPage = async () => {
+const CreditNotesPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) => {
+  const { q } = await searchParams;
+
+  const where: Prisma.CreditNoteWhereInput = q ? {
+    OR: [
+      { cnNo:         { contains: q, mode: "insensitive" } },
+      { customerName: { contains: q, mode: "insensitive" } },
+      { customer:     { name: { contains: q, mode: "insensitive" } } },
+      { note:         { contains: q, mode: "insensitive" } },
+    ],
+  } : {};
+
   const creditNotes = await db.creditNote.findMany({
+    where: Object.keys(where).length > 0 ? where : undefined,
     orderBy: { cnDate: "desc" },
     take:    100,
     select: {
-      id:            true,
-      cnNo:          true,
-      cnDate:        true,
-      type:          true,
+      id:             true,
+      cnNo:           true,
+      cnDate:         true,
+      type:           true,
       settlementType: true,
-      refundMethod:  true,
-      totalAmount:   true,
+      refundMethod:   true,
+      totalAmount:    true,
+      status:         true,
       sale: { select: { saleNo: true } },
       _count: { select: { items: true } },
     },
@@ -50,6 +70,14 @@ const CreditNotesPage = async () => {
         </Link>
       </div>
 
+      <div className="flex items-center justify-between mb-4 gap-4">
+        <SearchBar placeholder="ค้นหาเลขที่ CN, ชื่อลูกค้า..." />
+      </div>
+
+      {q && (
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {creditNotes.length} รายการ</p>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -62,30 +90,31 @@ const CreditNotesPage = async () => {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">อ้างอิงใบขาย</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรวม</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
+                <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
               {creditNotes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-gray-400">
-                    ยังไม่มีรายการ Credit Note
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                    {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการ Credit Note"}
                   </td>
                 </tr>
               ) : (
                 creditNotes.map((cn) => (
-                  <tr key={cn.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={cn.id}
+                    className={`border-t border-gray-50 transition-colors ${
+                      cn.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
+                    }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{cn.cnNo}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {new Date(cn.cnDate).toLocaleDateString("th-TH")}
                     </td>
                     <td className="py-3 px-4">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                          cn.type === CreditNoteType.RETURN
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-yellow-100 text-yellow-700"
-                        }`}
-                      >
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                        cn.type === CreditNoteType.RETURN ? "bg-blue-100 text-blue-700" : "bg-yellow-100 text-yellow-700"
+                      }`}>
                         {cnTypeLabel[cn.type]}
                       </span>
                     </td>
@@ -102,17 +131,27 @@ const CreditNotesPage = async () => {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {cn.sale ? (
-                        <span className="font-mono text-xs">{cn.sale.saleNo}</span>
-                      ) : (
-                        "-"
-                      )}
+                      {cn.sale ? <span className="font-mono text-xs">{cn.sale.saleNo}</span> : "-"}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-600">
-                      {cn._count.items} รายการ
-                    </td>
+                    <td className="py-3 px-4 text-right text-gray-600">{cn._count.items} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">
                       {Number(cn.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-4">
+                      {cn.status === "CANCELLED" ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          ยกเลิกแล้ว
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          ใช้งาน
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {cn.status === "ACTIVE" && (
+                        <CreditNoteCancelButton cnId={cn.id} />
+                      )}
                     </td>
                   </tr>
                 ))

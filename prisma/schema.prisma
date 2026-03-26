@@ -21,13 +21,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sales           Sale[]
-  purchases       Purchase[]
-  expenses        Expense[]
-  adjustments     Adjustment[]
-  creditNotes     CreditNote[]
-  purchaseReturns PurchaseReturn[]
-  receipts        Receipt[]
+  sales            Sale[]
+  purchases        Purchase[]
+  expenses         Expense[]
+  adjustments      Adjustment[]
+  creditNotes      CreditNote[]
+  purchaseReturns  PurchaseReturn[]
+  receipts         Receipt[]
+  balanceForwards  BalanceForward[]
 }
 
 enum Role {
@@ -125,6 +126,7 @@ model Product {
   adjustmentItems     AdjustmentItem[]
   creditNoteItems     CreditNoteItem[]
   purchaseReturnItems PurchaseReturnItem[]
+  balanceForwards     BalanceForward[]
 }
 
 // หน่วยนับของสินค้า — 1 สินค้า มีได้หลายหน่วย
@@ -204,6 +206,36 @@ enum StockCardSource {
   ADJUST_OUT // ปรับลด (Adjustment)
 }
 
+enum DocStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// ─────────────────────────────────────────
+// Balance Forward (ยอดยกมา — header document)
+// ─────────────────────────────────────────
+
+model BalanceForward {
+  id              String    @id @default(cuid())
+  docNo           String    @unique
+  docDate         DateTime
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id])
+  unitName        String    // หน่วยที่ระบุตอนบันทึก
+  qtyInBase       Decimal   @db.Decimal(12, 4) // จำนวนในหน่วยหลัก
+  costPerBaseUnit Decimal   @db.Decimal(10, 4) // ต้นทุน/หน่วยหลัก
+  note            String?
+  status          DocStatus @default(ACTIVE)
+  cancelledAt     DateTime?
+  cancelNote      String?
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@index([productId])
+  @@index([docDate])
+}
+
 // ─────────────────────────────────────────
 // Purchase (ซื้อสินค้าเข้า)
 // ─────────────────────────────────────────
@@ -224,6 +256,9 @@ model Purchase {
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
   referenceNo String? // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
+  status      DocStatus @default(ACTIVE)
+  cancelledAt DateTime?
+  cancelNote  String?
   purchaseDate DateTime      @default(now())
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -295,6 +330,9 @@ model Sale {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
+  status        DocStatus @default(ACTIVE)
+  cancelledAt   DateTime?
+  cancelNote    String?
   saleDate      DateTime    @default(now())
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -388,15 +426,18 @@ enum ExpenseCategory {
 // ─────────────────────────────────────────
 
 model Adjustment {
-  id         String           @id @default(cuid())
-  adjustNo   String           @unique
-  adjustDate DateTime         @default(now())
-  userId     String
-  user       User             @relation(fields: [userId], references: [id])
-  note       String?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  items      AdjustmentItem[]
+  id          String           @id @default(cuid())
+  adjustNo    String           @unique
+  adjustDate  DateTime         @default(now())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  note        String?
+  status      DocStatus @default(ACTIVE)
+  cancelledAt DateTime?
+  cancelNote  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  items       AdjustmentItem[]
 }
 
 model AdjustmentItem {
@@ -434,6 +475,9 @@ model CreditNote {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
+  status        DocStatus @default(ACTIVE)
+  cancelledAt   DateTime?
+  cancelNote    String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   items         CreditNoteItem[]
@@ -493,6 +537,9 @@ model PurchaseReturn {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
+  status        DocStatus @default(ACTIVE)
+  cancelledAt   DateTime?
+  cancelNote    String?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   items       PurchaseReturnItem[]
@@ -544,6 +591,9 @@ model Receipt {
   totalAmount   Decimal       @db.Decimal(10, 2)
   paymentMethod PaymentMethod
   note          String?
+  status        DocStatus @default(ACTIVE)
+  cancelledAt   DateTime?
+  cancelNote    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   items         ReceiptItem[]

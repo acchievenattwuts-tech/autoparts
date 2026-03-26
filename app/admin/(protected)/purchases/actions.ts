@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -133,6 +133,62 @@ export async function createPurchase(
     return { success: true, purchaseNo };
   } catch (err) {
     console.error("[createPurchase]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelPurchaseSchema = z.object({
+  purchaseId: z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelPurchase(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelPurchaseSchema.safeParse({
+    purchaseId: formData.get("purchaseId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { purchaseId, cancelNote } = parsed.data;
+
+  const purchase = await db.purchase.findUnique({
+    where: { id: purchaseId },
+    include: {
+      items:          { select: { productId: true } },
+      purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
+    },
+  });
+  if (!purchase)                        return { error: "ไม่พบเอกสาร" };
+  if (purchase.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  // Reference chain check: ห้ามยกเลิกถ้ามีใบคืนซัพพลายเออร์ที่ยัง active
+  if (purchase.purchaseReturns.length > 0) {
+    const nos = purchase.purchaseReturns.map((r) => r.returnNo).join(", ");
+    return { error: `ไม่สามารถยกเลิกได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบคืนก่อน` };
+  }
+
+  const affectedProductIds = [...new Set(purchase.items.map((i) => i.productId))];
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.stockCard.deleteMany({ where: { docNo: purchase.purchaseNo } });
+      for (const productId of affectedProductIds) {
+        await recalculateStockCard(tx, productId);
+      }
+      await tx.purchase.update({
+        where: { id: purchaseId },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
+    });
+    revalidatePath("/admin/purchases");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelPurchase]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

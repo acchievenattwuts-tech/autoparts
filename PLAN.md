@@ -123,6 +123,38 @@
 - [x] พิมพ์ใบเสร็จรับเงิน (browser print)
 - [x] แสดงยอดค้างชำระในหน้า Customer profile
 
+#### 🔲 3.9 Search ทุก Transaction + ประวัติเอกสาร (บางส่วนเสร็จแล้ว)
+- [x] Sales: SearchBar + filter paymentType ✅
+- [x] Purchases: SearchBar ✅
+- [x] Purchase Returns: SearchBar ✅
+- [x] Credit Notes: SearchBar ✅
+- [ ] Receipts: เพิ่ม SearchBar (ค้นหา receiptNo, customerName, note)
+- [ ] BF (ยอดยกมา): เพิ่มแสดงประวัติเอกสาร (query StockCard source=BF)
+- [ ] Adjustment: เพิ่มแสดงประวัติเอกสาร (query Adjustment model)
+
+#### 🔲 3.10 ระบบยกเลิกเอกสาร (Document Cancellation) — **ต้องแก้ Schema**
+> กฎสำคัญ: การยกเลิกต้องทำ 3 อย่างพร้อมกันใน 1 transaction:
+> 1. Re-calculate StockCard MAVG ทุกสินค้าที่ได้รับผลกระทบ
+> 2. Reverse AR/AP ถ้าเกี่ยวข้อง
+> 3. ตรวจ Reference Chain ก่อนอนุญาต
+
+**Schema ที่ต้องเพิ่ม (ต้องรัน `prisma db push` หลังแก้):**
+- เพิ่ม `enum DocStatus { ACTIVE CANCELLED }`
+- เพิ่ม `status DocStatus @default(ACTIVE)` + `cancelledAt DateTime?` + `cancelNote String?` ใน: Adjustment, Purchase, Sale, CreditNote, PurchaseReturn, Receipt
+- เพิ่ม model `BalanceForward` (BF header tracking — แยกจาก StockCard)
+
+**Lib ที่ต้องเพิ่มใน `lib/stock-card.ts`:**
+- `recalculateStockCard(productId, tx)` — re-run MAVG ทั้งหมดตั้งแต่ row แรก อัปเดต qtyBalance + priceBalance + Product.stock + Product.avgCost
+
+**Cancellation Actions ที่ต้องสร้าง:**
+- [ ] `cancelBF(docNo)` — ลบ StockCard rows ที่ docNo=BF + recalculate + update BalanceForward.status
+- [ ] `cancelAdjustment(adjustmentId)` — ลบ StockCard rows + recalculate + update Adjustment.status
+- [ ] `cancelPurchase(purchaseId)` — ตรวจ PurchaseReturn reference → ลบ StockCard + recalculate + update Purchase.status
+- [ ] `cancelSale(saleId)` — ตรวจ CN + Receipt reference → ลบ StockCard + reverse AR + update Sale.status
+- [ ] `cancelCreditNote(cnId)` — ลบ StockCard (ถ้า type=RETURN) + reverse AR (ถ้า CREDIT_DEBT) + update CreditNote.status
+- [ ] `cancelPurchaseReturn(returnId)` — ลบ StockCard + recalculate + update PurchaseReturn.status
+- [ ] `cancelReceipt(receiptId)` — reverse AR balance + update Receipt.status
+
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย (ยังไม่ได้ทำ)
 - [ ] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน
 - [ ] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category (ค่าเช่า, ไฟ, เงินเดือน ฯลฯ)

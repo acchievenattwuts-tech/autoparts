@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -151,6 +151,53 @@ export async function createPurchaseReturn(
     return { success: true, returnNo };
   } catch (err) {
     console.error("[createPurchaseReturn]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelReturnSchema = z.object({
+  returnId:   z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelPurchaseReturn(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelReturnSchema.safeParse({
+    returnId:   formData.get("returnId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { returnId, cancelNote } = parsed.data;
+
+  const ret = await db.purchaseReturn.findUnique({
+    where: { id: returnId },
+    include: { items: { select: { productId: true } } },
+  });
+  if (!ret)                        return { error: "ไม่พบเอกสาร" };
+  if (ret.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  const affectedProductIds = [...new Set(ret.items.map((i) => i.productId))];
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
+      for (const productId of affectedProductIds) {
+        await recalculateStockCard(tx, productId);
+      }
+      await tx.purchaseReturn.update({
+        where: { id: returnId },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
+    });
+    revalidatePath("/admin/purchase-returns");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelPurchaseReturn]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

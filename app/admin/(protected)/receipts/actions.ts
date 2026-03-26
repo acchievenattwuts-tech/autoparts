@@ -27,14 +27,17 @@ export async function getCreditSalesForCustomer(customerId: string): Promise<Cre
   if (!customerId) return [];
 
   const sales = await db.sale.findMany({
-    where: { customerId, paymentType: "CREDIT_SALE" },
+    where: { customerId, paymentType: "CREDIT_SALE", status: "ACTIVE" },
     orderBy: { saleDate: "asc" },
     select: {
       id:        true,
       saleNo:    true,
       saleDate:  true,
       netAmount: true,
-      receipts:  { select: { paidAmount: true } },
+      receipts:  {
+        where:  { receipt: { status: "ACTIVE" } },
+        select: { paidAmount: true },
+      },
     },
   });
 
@@ -134,5 +137,47 @@ export async function createReceipt(
   } catch (err) {
     console.error("[createReceipt] error:", err);
     return { success: false, error: "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้" };
+  }
+}
+
+const cancelReceiptSchema = z.object({
+  receiptId:  z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelReceipt(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelReceiptSchema.safeParse({
+    receiptId:  formData.get("receiptId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { receiptId, cancelNote } = parsed.data;
+
+  const receipt = await db.receipt.findUnique({
+    where: { id: receiptId },
+  });
+  if (!receipt)                        return { error: "ไม่พบเอกสาร" };
+  if (receipt.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  try {
+    await db.$transaction(async (tx) => {
+      // ยกเลิกใบเสร็จ — AR balance จะถูก reverse อัตโนมัติ
+      // (ยอดค้างชำระคำนวณจาก sale.netAmount - sum(receiptItems.paidAmount) ที่ status=ACTIVE)
+      await tx.receipt.update({
+        where: { id: receiptId },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
+    });
+    revalidatePath("/admin/receipts");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelReceipt]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

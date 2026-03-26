@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 import { FulfillmentType, PaymentMethod, SalePaymentType, SaleType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -177,6 +177,72 @@ export async function createSale(
     return { success: true, saleNo };
   } catch (err) {
     console.error("[createSale]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelSaleSchema = z.object({
+  saleId:     z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelSale(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelSaleSchema.safeParse({
+    saleId:     formData.get("saleId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { saleId, cancelNote } = parsed.data;
+
+  const sale = await db.sale.findUnique({
+    where: { id: saleId },
+    include: {
+      items:       { select: { productId: true } },
+      creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
+      receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
+    },
+  });
+  if (!sale)                        return { error: "ไม่พบเอกสาร" };
+  if (sale.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  // Reference chain: ตรวจ CN ที่ยัง active
+  if (sale.creditNotes.length > 0) {
+    const nos = sale.creditNotes.map((cn) => cn.cnNo).join(", ");
+    return { error: `ไม่สามารถยกเลิกได้ มีใบลดหนี้ที่อ้างอิงอยู่: ${nos} — กรุณายกเลิก CN ก่อน` };
+  }
+
+  // Reference chain: ตรวจใบเสร็จที่ยัง active
+  const activeReceipts = sale.receipts
+    .filter((ri) => ri.receipt.status === "ACTIVE")
+    .map((ri) => ri.receipt);
+  if (activeReceipts.length > 0) {
+    const nos = activeReceipts.map((r) => r.receiptNo).join(", ");
+    return { error: `ไม่สามารถยกเลิกได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเสร็จก่อน` };
+  }
+
+  const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.stockCard.deleteMany({ where: { docNo: sale.saleNo } });
+      for (const productId of affectedProductIds) {
+        await recalculateStockCard(tx, productId);
+      }
+      await tx.sale.update({
+        where: { id: saleId },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
+    });
+    revalidatePath("/admin/sales");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelSale]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

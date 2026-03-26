@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 
 const adjustItemSchema = z.object({
@@ -91,6 +91,62 @@ export async function createAdjustment(
     return { success: true, adjustNo };
   } catch (err) {
     console.error("[createAdjustment]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelAdjSchema = z.object({
+  adjustmentId: z.string().min(1),
+  cancelNote:   z.string().max(200).optional(),
+});
+
+export async function cancelAdjustment(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelAdjSchema.safeParse({
+    adjustmentId: formData.get("adjustmentId"),
+    cancelNote:   formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { adjustmentId, cancelNote } = parsed.data;
+
+  const adj = await db.adjustment.findUnique({
+    where: { id: adjustmentId },
+    include: { items: { select: { productId: true } } },
+  });
+  if (!adj)                        return { error: "ไม่พบเอกสาร" };
+  if (adj.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  const affectedProductIds = [...new Set(adj.items.map((i) => i.productId))];
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Delete StockCard rows for this adjustment document
+      await tx.stockCard.deleteMany({ where: { docNo: adj.adjustNo } });
+
+      // Re-calculate MAVG for each affected product
+      for (const productId of affectedProductIds) {
+        await recalculateStockCard(tx, productId);
+      }
+
+      // Mark Adjustment as CANCELLED
+      await tx.adjustment.update({
+        where: { id: adjustmentId },
+        data: {
+          status:      "CANCELLED",
+          cancelledAt: new Date(),
+          cancelNote,
+        },
+      });
+    });
+    revalidatePath("/admin/stock/adjustments");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelAdjustment]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

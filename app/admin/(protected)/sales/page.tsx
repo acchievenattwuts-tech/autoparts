@@ -4,7 +4,10 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye } from "lucide-react";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
+import SearchBar from "@/components/shared/SearchBar";
+import SaleCancelButton from "./SaleCancelButton";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -44,15 +47,26 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 const SalesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ paymentType?: string }>;
+  searchParams: Promise<{ paymentType?: string; q?: string }>;
 }) => {
   const params = await searchParams;
   const paymentTypeFilter = params.paymentType;
+  const q = params.q;
+
+  const where: Prisma.SaleWhereInput = {};
+  if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
+    where.paymentType = paymentTypeFilter as SalePaymentType;
+  }
+  if (q) {
+    where.OR = [
+      { saleNo:       { contains: q, mode: "insensitive" } },
+      { customerName: { contains: q, mode: "insensitive" } },
+      { customer:     { name: { contains: q, mode: "insensitive" } } },
+    ];
+  }
 
   const sales = await db.sale.findMany({
-    where: paymentTypeFilter && paymentTypeFilter !== "ALL"
-      ? { paymentType: paymentTypeFilter as SalePaymentType }
-      : undefined,
+    where: Object.keys(where).length > 0 ? where : undefined,
     orderBy: { saleDate: "desc" },
     take: 100,
     include: {
@@ -73,9 +87,14 @@ const SalesPage = async ({
         </Link>
       </div>
 
-      <div className="mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
         <SalesFilterBar />
+        <SearchBar placeholder="ค้นหาเลขที่ใบขาย, ชื่อลูกค้า..." />
       </div>
+
+      {q && (
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {sales.length} รายการ</p>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -91,19 +110,23 @@ const SalesPage = async ({
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทางชำระ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
                 <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-400">
-                    ยังไม่มีรายการขาย
+                  <td colSpan={11} className="text-center py-12 text-gray-400">
+                    {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการขาย"}
                   </td>
                 </tr>
               ) : (
                 sales.map((s) => (
-                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={s.id}
+                    className={`border-t border-gray-50 transition-colors ${
+                      s.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
+                    }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {new Date(s.saleDate).toLocaleDateString("th-TH")}
@@ -134,12 +157,28 @@ const SalesPage = async ({
                       {s.paymentMethod ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod) : "-"}
                     </td>
                     <td className="py-3 px-4">
-                      <Link
-                        href={`/admin/sales/${s.id}`}
-                        className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors"
-                      >
-                        <Eye size={14} /> ดูรายละเอียด
-                      </Link>
+                      {s.status === "CANCELLED" ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          ยกเลิกแล้ว
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          ใช้งาน
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2 justify-end">
+                        <Link
+                          href={`/admin/sales/${s.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors"
+                        >
+                          <Eye size={14} /> ดู
+                        </Link>
+                        {s.status === "ACTIVE" && (
+                          <SaleCancelButton saleId={s.id} />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

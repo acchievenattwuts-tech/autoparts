@@ -105,6 +105,17 @@
 - avgCost เปลี่ยนได้เฉพาะเมื่อมีสินค้าเข้า (qtyIn > 0) — การขายออกไม่เปลี่ยน avgCost
 - Document number format: `{PREFIX}{YYYYMMDD}{4-digit}` — ใช้ `generateDocNo()` เสมอ อย่า hardcode
 
+### การยกเลิกเอกสาร (Document Cancellation) — กฎสำคัญ
+
+- **Stock Re-calculate บังคับ**: ทุก transaction ที่กระทบ stock เมื่อถูกยกเลิก ต้องลบ StockCard rows ของเอกสารนั้นออก แล้วเรียก `recalculateStockCard(productId, tx)` สำหรับทุกสินค้าที่ได้รับผลกระทบ — ฟังก์ชันนี้จะ re-run MAVG ทั้งหมดตั้งแต่ต้นและอัปเดต qtyBalance + priceBalance ทุก row รวมถึง Product.stock + Product.avgCost — **ห้าม** ยกเลิกเอกสารโดยไม่ทำ recalculation
+
+- **AR/AP Clearing บังคับ**: ทุก transaction ที่เกี่ยวกับยอดค้างชำระ (ขายเชื่อ, ใบเสร็จรับเงิน, CN ประเภทตั้งหนี้) เมื่อถูกยกเลิก ยอดค้างชำระที่เกี่ยวข้องต้อง reverse ทันที — ห้ามทิ้ง AR/AP ค้างอยู่หลังยกเลิกเอกสาร
+
+- **Reference Chain Check บังคับ**: ก่อนอนุญาตยกเลิก/แก้ไขเอกสารต้นทาง ระบบต้องตรวจสอบว่ามีเอกสารปลายทางที่ยัง ACTIVE อ้างอิงอยู่หรือไม่ ถ้ามีให้ reject พร้อม error message ระบุเลขที่เอกสารปลายทาง — ลำดับการยกเลิกย้อนกลับ:
+  - ใบซื้อ → ต้องยกเลิกใบคืนซัพพลายเออร์ที่อ้างถึงก่อน
+  - ใบขาย → ต้องยกเลิก CN + ใบเสร็จรับเงินที่อ้างถึงก่อน
+  - ใบเสร็จรับเงิน → ยกเลิกได้โดยตรง (แต่ต้อง reverse AR)
+
 ### การตัดสินใจเรื่อง UI/UX
 - ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม
 - Form ที่มีหลาย line items ให้ส่งเป็น JSON ผ่าน `formData.set("items", JSON.stringify(items))`

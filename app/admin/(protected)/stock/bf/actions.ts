@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 
 const bfSchema = z.object({
@@ -44,6 +44,20 @@ export async function createBF(
 
   try {
     await db.$transaction(async (tx) => {
+      // Create BalanceForward header
+      await tx.balanceForward.create({
+        data: {
+          docNo,
+          docDate:         new Date(docDate),
+          productId,
+          unitName,
+          qtyInBase,
+          costPerBaseUnit,
+          note,
+          userId: session.user!.id!,
+        },
+      });
+
       await writeStockCard(tx, {
         productId,
         docNo,
@@ -59,6 +73,55 @@ export async function createBF(
     return { success: true, docNo };
   } catch (err) {
     console.error("[createBF]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const cancelBFSchema = z.object({
+  bfId:       z.string().min(1),
+  cancelNote: z.string().max(200).optional(),
+});
+
+export async function cancelBF(
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = cancelBFSchema.safeParse({
+    bfId:       formData.get("bfId"),
+    cancelNote: formData.get("cancelNote") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { bfId, cancelNote } = parsed.data;
+
+  const bf = await db.balanceForward.findUnique({ where: { id: bfId } });
+  if (!bf)                        return { error: "ไม่พบเอกสาร" };
+  if (bf.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Delete StockCard rows for this docNo
+      await tx.stockCard.deleteMany({ where: { docNo: bf.docNo, source: "BF" } });
+
+      // Re-calculate MAVG for this product
+      await recalculateStockCard(tx, bf.productId);
+
+      // Mark BalanceForward as CANCELLED
+      await tx.balanceForward.update({
+        where: { id: bfId },
+        data: {
+          status:      "CANCELLED",
+          cancelledAt: new Date(),
+          cancelNote,
+        },
+      });
+    });
+    revalidatePath("/admin/stock/bf");
+    return { success: true };
+  } catch (err) {
+    console.error("[cancelBF]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
