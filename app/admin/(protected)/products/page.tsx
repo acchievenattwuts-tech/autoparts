@@ -106,6 +106,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ตำแหน่ง Shelf</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ราคาขาย</th>
                 <th className="text-center py-3 px-4 font-medium text-gray-600">Stock</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-600">ประกัน</th>
                 <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">จัดการ</th>
               </tr>
@@ -113,7 +114,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400">
                     {search ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้า"}
                   </td>
                 </tr>
@@ -184,6 +185,17 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                         {product.stock}
                       </span>
                       <span className="text-gray-400 text-xs ml-1">{product.reportUnitName}</span>
+                    </td>
+
+                    {/* ประกัน */}
+                    <td className="py-3 px-4 text-center">
+                      {product.warrantyDays > 0 ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          {product.warrantyDays} วัน
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">-</span>
+                      )}
                     </td>
 
                     {/* สถานะ */}
