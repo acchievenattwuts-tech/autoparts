@@ -108,64 +108,29 @@ export async function recalculateStockCard(
 /**
  * Write one StockCard row and update Product.stock + Product.avgCost.
  * Must be called inside a db.$transaction().
+ *
+ * Supports backdating: after inserting the row, re-calculates ALL rows
+ * for this product in (docDate, sorder) order to ensure MAVG is always correct
+ * regardless of insertion order.
  */
 export async function writeStockCard(
   tx: TxClient,
   input: StockCardInput
 ): Promise<void> {
-  // 1. Get previous StockCard row for this product (latest by sorder)
-  const prevRow = await tx.stockCard.findFirst({
-    where: { productId: input.productId },
-    orderBy: [{ docDate: "desc" }, { sorder: "desc" }],
-  });
+  const qIn = input.qtyIn;
+  const qOut = input.qtyOut;
+  const pIn = input.priceIn;
+  const lc  = input.landedCost ?? 0;
 
-  const prevBaQty   = prevRow ? Number(prevRow.qtyBalance) : 0;
-  const prevBaPrice = prevRow ? Number(prevRow.priceBalance) : 0;
-  const prevBaTotal = prevBaQty * prevBaPrice;
-
-  const qIn       = input.qtyIn;
-  const qOut      = input.qtyOut;
-  const pIn       = input.priceIn;
-  const lc        = input.landedCost ?? 0;
-  const inTotal   = qIn * pIn;
-
-  const newBaQty = prevBaQty + qIn - qOut;
-
-  let newBaPrice = 0;
-  let newBaTotal = 0;
-  let priceOut   = prevBaPrice; // avgCost used for COGS on outgoing
-
-  if (qIn > 0) {
-    // Incoming (purchase, BF, return from customer, adjustment in)
-    if (newBaQty > 0) {
-      if (prevBaQty > 0) {
-        newBaTotal = prevBaTotal + inTotal - (qOut * prevBaPrice) + lc;
-        newBaPrice = newBaTotal / newBaQty;
-      } else {
-        // Was zero — start fresh
-        newBaPrice = pIn + (lc / qIn);
-        newBaTotal = newBaPrice * newBaQty;
-      }
-    }
-    // else newBaQty <= 0 → price stays 0
-  } else {
-    // Pure outgoing (sale, adjustment out, return to supplier)
-    priceOut = prevBaPrice;
-    if (newBaQty >= 0) {
-      newBaPrice = prevBaPrice; // avgCost unchanged
-      newBaTotal = prevBaTotal - (qOut * prevBaPrice);
-      if (newBaTotal < 0) newBaTotal = 0;
-    }
-  }
-
-  // 2. Get next sorder for this product
+  // Get next sorder (always append — recalculate will fix all balances)
   const lastRow = await tx.stockCard.findFirst({
     where: { productId: input.productId },
     orderBy: { sorder: "desc" },
   });
   const sorder = lastRow ? lastRow.sorder + 1 : 1;
 
-  // 3. Insert StockCard row
+  // Insert row with raw data (qtyIn, qtyOut, priceIn, landedCost are the source of truth)
+  // qtyBalance and priceBalance are placeholder — recalculateStockCard will overwrite them
   await tx.stockCard.create({
     data: {
       productId:    input.productId,
@@ -175,22 +140,16 @@ export async function writeStockCard(
       sorder,
       qtyIn:        new Prisma.Decimal(qIn),
       qtyOut:       new Prisma.Decimal(qOut),
-      qtyBalance:   new Prisma.Decimal(newBaQty),
+      qtyBalance:   new Prisma.Decimal(0),
       landedCost:   new Prisma.Decimal(lc),
       priceIn:      new Prisma.Decimal(pIn),
-      priceOut:     new Prisma.Decimal(priceOut),
-      priceBalance: new Prisma.Decimal(newBaPrice),
+      priceOut:     new Prisma.Decimal(0),
+      priceBalance: new Prisma.Decimal(0),
       detail:       input.detail,
       referenceId:  input.referenceId,
     },
   });
 
-  // 4. Update Product.stock and Product.avgCost
-  await tx.product.update({
-    where: { id: input.productId },
-    data: {
-      stock:   Math.round(newBaQty),
-      avgCost: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
-    },
-  });
+  // Re-calculate all rows in correct chronological order (handles backdating)
+  await recalculateStockCard(tx, input.productId);
 }

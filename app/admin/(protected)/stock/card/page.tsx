@@ -194,15 +194,21 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                         avgCost
                         <span className="block text-xs font-normal text-gray-400">(หน่วยหลัก)</span>
                       </th>
+                      <th className="text-right py-3 px-3 font-medium text-gray-600">
+                        มูลค่าคงเหลือ
+                        <span className="block text-xs font-normal text-gray-400">(คงเหลือ × avgCost)</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {cards.map((card, idx) => {
-                      const qIn  = Number(card.qtyIn)  / scale;
-                      const qOut = Number(card.qtyOut) / scale;
-                      const qBal = Number(card.qtyBalance) / scale;
-                      const pIn  = Number(card.priceIn);
-                      const pBal = Number(card.priceBalance);
+                      const qIn   = Number(card.qtyIn)  / scale;
+                      const qOut  = Number(card.qtyOut) / scale;
+                      const qBal  = Number(card.qtyBalance) / scale;
+                      const pIn   = Number(card.priceIn);
+                      const pBal  = Number(card.priceBalance);
+                      // มูลค่าคงเหลือ = qtyBalance (base unit) × avgCost (base unit)
+                      const totalValue = Number(card.qtyBalance) * pBal;
 
                       return (
                         <tr key={card.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
@@ -234,6 +240,11 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                           <td className="py-2.5 px-3 text-right text-[#1e3a5f] font-medium">
                             {fmtPrice(pBal)}
                           </td>
+                          <td className="py-2.5 px-3 text-right text-gray-700 font-medium">
+                            {totalValue > 0
+                              ? totalValue.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : <span className="text-gray-300">-</span>}
+                          </td>
                         </tr>
                       );
                     })}
@@ -252,6 +263,11 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                       <td className="py-3 px-3 text-right font-bold text-[#1e3a5f]">
                         {fmtPrice(Number(selectedProduct.avgCost))}
                         <span className="ml-1 text-xs font-normal text-gray-500">บาท/หน่วยหลัก</span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-bold text-gray-900">
+                        {(Number(selectedProduct.stock) * Number(selectedProduct.avgCost))
+                          .toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="ml-1 text-xs font-normal text-gray-500">บาท</span>
                       </td>
                     </tr>
                   </tfoot>
