@@ -117,6 +117,7 @@
   - ใบเสร็จรับเงิน → ยกเลิกได้โดยตรง (แต่ต้อง reverse AR)
 
 ### การตัดสินใจเรื่อง UI/UX
+- **การแสดงวันที่ทุกจุดในระบบต้องใช้ ค.ศ. (Gregorian) เสมอ** — ใช้ locale `"th-TH-u-ca-gregory"` แทน `"th-TH"` ในทุก `toLocaleDateString()` call ห้ามใช้ `"th-TH"` เพราะจะแสดงปีเป็น พ.ศ. ซึ่งทำให้สับสน
 - ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม
 - **ทุก route segment ใน `/app/admin/(protected)/` ต้องมีไฟล์ `loading.tsx`** — ทั้ง list page, detail page, new page และ edit page ห้ามลืม เพราะ Next.js ใช้ Suspense-based loading ต่อ segment; ถ้าขาด loading.tsx หน้านั้นจะไม่แสดง loading indicator เมื่อ navigate
 - Form ที่มีหลาย line items ให้ส่งเป็น JSON ผ่าน `formData.set("items", JSON.stringify(items))`

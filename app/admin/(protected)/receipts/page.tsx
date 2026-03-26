@@ -90,7 +90,7 @@ const ReceiptsPage = async ({
                     }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(r.receiptDate).toLocaleDateString("th-TH")}
+                      {new Date(r.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-gray-700">
                       {r.customer?.name ?? r.customerName ?? "-"}

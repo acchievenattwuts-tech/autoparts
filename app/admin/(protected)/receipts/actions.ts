@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -108,7 +108,7 @@ export async function createReceipt(
     const receiptNo   = await generateReceiptNo(docDate);
     const totalAmount = parsed.items.reduce((sum, item) => sum + item.paidAmount, 0);
 
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       const receipt = await tx.receipt.create({
         data: {
           receiptNo,
@@ -174,7 +174,7 @@ export async function cancelReceipt(
   const affectedSaleIds = [...new Set(receipt.items.map((i) => i.saleId).filter((id): id is string => id !== null))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       await tx.receipt.update({
         where: { id: receiptId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
@@ -241,7 +241,7 @@ export async function updateReceipt(
   const allSaleIds  = [...new Set([...oldSaleIds, ...newSaleIds])];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // 1. Delete old receipt items
       await tx.receiptItem.deleteMany({ where: { receiptId: id } });
 

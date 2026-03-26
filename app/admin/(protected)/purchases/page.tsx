@@ -80,7 +80,7 @@ const PurchasesPage = async ({
                     }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{p.purchaseNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(p.purchaseDate).toLocaleDateString("th-TH")}
+                      {new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>

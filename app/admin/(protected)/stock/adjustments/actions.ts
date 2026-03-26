@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -44,7 +44,7 @@ export async function createAdjustment(
   const adjustNo = await generateDocNo("ADJ", new Date(adjustDate));
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Create Adjustment header
       const adj = await tx.adjustment.create({
         data: {
@@ -124,7 +124,7 @@ export async function cancelAdjustment(
   const affectedProductIds = [...new Set(adj.items.map((i) => i.productId))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Delete StockCard rows for this adjustment document
       await tx.stockCard.deleteMany({ where: { docNo: adj.adjustNo } });
 

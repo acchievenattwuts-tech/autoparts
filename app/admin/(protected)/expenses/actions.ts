@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -158,7 +158,7 @@ export async function updateExpense(
   const docDate = new Date(d.expenseDate);
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       await tx.expenseItem.deleteMany({ where: { expenseId: id } });
       await tx.expense.update({
         where: { id },

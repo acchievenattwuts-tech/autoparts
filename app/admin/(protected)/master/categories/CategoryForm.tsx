@@ -84,7 +84,7 @@ const CategoryForm = ({ categories }: CategoryFormProps) => {
                   <tr key={cat.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 text-gray-800">{cat.name}</td>
                     <td className="py-3 px-4 text-gray-500">
-                      {new Date(cat.createdAt).toLocaleDateString("th-TH")}
+                      {new Date(cat.createdAt).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button

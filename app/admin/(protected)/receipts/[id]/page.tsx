@@ -93,9 +93,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             <div>
               <p className="text-gray-500 mb-1">วันที่</p>
               <p className="font-medium text-gray-900">
-                {new Date(receipt.receiptDate).toLocaleDateString("th-TH", {
-                  year: "numeric", month: "long", day: "numeric",
-                })}
+                {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
               </p>
             </div>
             <div>
@@ -158,7 +156,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(item.sale.saleDate).toLocaleDateString("th-TH")}
+                      {new Date(item.sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-800">
                       {Number(item.sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -207,7 +205,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <div className="text-right">
             <span className="text-gray-600">วันที่: </span>
             <span className="font-semibold">
-              {new Date(receipt.receiptDate).toLocaleDateString("th-TH")}
+              {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
             </span>
           </div>
           <div>
@@ -235,7 +233,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               <tr key={item.id} className="border-b border-gray-100">
                 <td className="py-1.5 font-mono text-gray-800">{item.sale.saleNo}</td>
                 <td className="py-1.5 text-gray-700">
-                  {new Date(item.sale.saleDate).toLocaleDateString("th-TH")}
+                  {new Date(item.sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                 </td>
                 <td className="py-1.5 text-right text-gray-800">
                   {Number(item.sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

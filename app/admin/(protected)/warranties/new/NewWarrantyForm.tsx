@@ -77,7 +77,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
           <option value="">-- เลือกใบขาย --</option>
           {recentSales.map((s) => (
             <option key={s.id} value={s.id}>
-              [{s.saleNo}] {new Date(s.saleDate).toLocaleDateString("th-TH")}{" "}
+              [{s.saleNo}] {new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}{" "}
               {s.customerName ? `— ${s.customerName}` : ""}
             </option>
           ))}

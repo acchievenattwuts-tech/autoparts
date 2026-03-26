@@ -121,9 +121,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             <div>
               <p className="text-gray-500 mb-1">วันที่</p>
               <p className="font-medium text-gray-900">
-                {new Date(sale.saleDate).toLocaleDateString("th-TH", {
-                  year: "numeric", month: "long", day: "numeric",
-                })}
+                {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
               </p>
             </div>
             <div>
@@ -234,7 +232,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           <div className="text-right">
             <span className="text-gray-600">วันที่: </span>
             <span className="font-semibold">
-              {new Date(sale.saleDate).toLocaleDateString("th-TH")}
+              {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
             </span>
           </div>
           <div>

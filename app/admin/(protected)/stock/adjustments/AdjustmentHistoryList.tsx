@@ -48,7 +48,7 @@ const AdjustmentHistoryList = ({ adjustments }: { adjustments: AdjDoc[] }) => {
             <div className="flex items-center gap-4">
               <span className="font-mono text-sm font-semibold text-[#1e3a5f]">{adj.adjustNo}</span>
               <span className="text-sm text-gray-500">
-                {new Date(adj.adjustDate).toLocaleDateString("th-TH")}
+                {new Date(adj.adjustDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
               </span>
               {adj.status === "CANCELLED" ? (
                 <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">

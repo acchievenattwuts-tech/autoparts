@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -56,7 +56,7 @@ export async function createPurchaseReturn(
   const returnNo = await generateDocNo("CNRR", docDate);
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Pre-calculate: gather unit/cost data for all items
       const lineData: {
         productId:     string;
@@ -184,7 +184,7 @@ export async function cancelPurchaseReturn(
   const affectedProductIds = [...new Set(ret.items.map((i) => i.productId))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);
@@ -246,7 +246,7 @@ export async function updatePurchaseReturn(
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // 1. Reverse old stock effects
       await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
       await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });

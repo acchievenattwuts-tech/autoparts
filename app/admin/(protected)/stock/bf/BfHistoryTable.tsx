@@ -54,7 +54,7 @@ const BfHistoryTable = ({ docs }: { docs: BfDoc[] }) => {
                 >
                   <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{d.docNo}</td>
                   <td className="py-3 px-4 text-gray-600">
-                    {new Date(d.docDate).toLocaleDateString("th-TH")}
+                    {new Date(d.docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                   </td>
                   <td className="py-3 px-4 text-gray-700">
                     <span className="font-mono text-xs text-gray-400">[{d.product.code}]</span>{" "}

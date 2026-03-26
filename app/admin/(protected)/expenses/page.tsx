@@ -151,7 +151,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                         {exp.expenseNo}
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(exp.expenseDate).toLocaleDateString("th-TH")}
+                        {new Date(exp.expenseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="space-y-0.5">

@@ -77,7 +77,7 @@ const PartsBrandForm = ({ brands }: { brands: PartsBrand[] }) => {
                   <tr key={brand.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 text-gray-800 font-medium">{brand.name}</td>
                     <td className="py-3 px-4 text-gray-500">
-                      {new Date(brand.createdAt).toLocaleDateString("th-TH")}
+                      {new Date(brand.createdAt).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button

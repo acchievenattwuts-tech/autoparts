@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -143,7 +143,7 @@ export const createProduct = async (
   const code = await generateProductCode();
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       const product = await tx.product.create({
         data: {
           code,
@@ -221,7 +221,7 @@ export const updateProduct = async (
   const { aliases, carModelIds, units, ...productData } = result.data;
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       await tx.product.update({
         where: { id },
         data: {

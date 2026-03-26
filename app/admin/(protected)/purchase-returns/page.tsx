@@ -81,7 +81,7 @@ const PurchaseReturnsPage = async ({
                     }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.returnNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(r.returnDate).toLocaleDateString("th-TH")}
+                      {new Date(r.returnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{r.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{r._count.items} รายการ</td>

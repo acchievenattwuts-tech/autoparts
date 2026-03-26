@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -65,7 +65,7 @@ export async function createCreditNote(
   const cnNo    = await generateDocNo("CN", docDate);
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Create CreditNote header
       const cn = await tx.creditNote.create({
         data: {
@@ -129,7 +129,7 @@ export async function createCreditNote(
 
     // Recalculate sale amountRemain if linked sale exists (DISCOUNT reduces outstanding)
     if (saleId) {
-      await db.$transaction(async (tx) => {
+      await dbTx(async (tx) => {
         await recalculateSaleAmountRemain(tx, saleId);
       });
     }
@@ -174,7 +174,7 @@ export async function cancelCreditNote(
   ];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // ถ้าเป็น RETURN ให้ลบ StockCard และ recalculate
       if (cn.type === "RETURN" && affectedProductIds.length > 0) {
         await tx.stockCard.deleteMany({ where: { docNo: cn.cnNo } });
@@ -251,7 +251,7 @@ export async function updateCreditNote(
   ];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // 1. Reverse old stock effects (only if old type was RETURN)
       if (existing.type === "RETURN" && oldProductIds.length > 0) {
         await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
@@ -323,7 +323,7 @@ export async function updateCreditNote(
     // Recalculate sale amountRemain if linked sale exists
     const effectiveSaleId = saleId || existing.saleId;
     if (effectiveSaleId) {
-      await db.$transaction(async (tx) => {
+      await dbTx(async (tx) => {
         await recalculateSaleAmountRemain(tx, effectiveSaleId);
       });
     }

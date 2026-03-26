@@ -77,7 +77,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
           <div>
             <p className="text-gray-500 mb-0.5">วันที่</p>
             <p className="font-medium text-gray-900">
-              {new Date(cn.cnDate).toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })}
+              {new Date(cn.cnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
             </p>
           </div>
           <div>

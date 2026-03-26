@@ -14,7 +14,7 @@ type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
  * CASH_SALE → amountRemain = 0 เสมอ (จ่ายสดแล้ว ไม่มี AR)
  * CANCELLED → amountRemain = 0 เสมอ
  *
- * เรียกภายใน db.$transaction() เมื่อ:
+ * เรียกภายใน dbTx() เมื่อ:
  *   - สร้าง/แก้/ยกเลิก Receipt
  *   - สร้าง/แก้/ยกเลิก CreditNote (ทุก type ที่มี saleId)
  *   - แก้/ยกเลิก Sale

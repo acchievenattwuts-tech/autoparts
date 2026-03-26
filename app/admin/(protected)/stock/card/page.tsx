@@ -218,7 +218,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                         <tr key={card.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                           <td className="py-2.5 px-3 text-gray-400 text-xs">{idx + 1}</td>
                           <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                            {new Date(card.docDate).toLocaleDateString("th-TH")}
+                            {new Date(card.docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                           </td>
                           <td className="py-2.5 px-3 font-mono text-xs text-[#1e3a5f]">{card.docNo}</td>
                           <td className="py-2.5 px-3">

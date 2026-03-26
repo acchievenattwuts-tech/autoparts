@@ -109,7 +109,7 @@ const CreditNotesPage = async ({
                     }`}>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{cn.cnNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(cn.cnDate).toLocaleDateString("th-TH")}
+                      {new Date(cn.cnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${

@@ -163,10 +163,10 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         {w.warrantyDays} วัน
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(w.startDate).toLocaleDateString("th-TH")}
+                        {new Date(w.startDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(w.endDate).toLocaleDateString("th-TH")}
+                        {new Date(w.endDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         {w.wStatus === "expired" && (

@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { recalculateStockCard } from "@/lib/stock-card";
@@ -24,7 +24,7 @@ export async function recalculateAllStockCards(): Promise<{
   try {
     // Recalculate each product sequentially inside its own transaction
     for (const product of products) {
-      await db.$transaction(async (tx) => {
+      await dbTx(async (tx) => {
         await recalculateStockCard(tx, product.id);
       });
     }

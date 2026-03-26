@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -97,7 +97,7 @@ export async function createSale(
   const saleNo  = await generateDocNo(salePrefix, docDate);
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -250,7 +250,7 @@ export async function cancelSale(
   const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       await tx.stockCard.deleteMany({ where: { docNo: sale.saleNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);
@@ -340,7 +340,7 @@ export async function updateSale(
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // 1. Reverse old stock + warranties
       await tx.stockCard.deleteMany({ where: { docNo: existing.saleNo } });
       await tx.saleItem.deleteMany({ where: { saleId: id } });

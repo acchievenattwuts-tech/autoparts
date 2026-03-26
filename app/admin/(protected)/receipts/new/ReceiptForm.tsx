@@ -289,7 +289,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
                           {sale.saleNo}
                         </td>
                         <td className="py-2 px-3 text-gray-600">
-                          {new Date(sale.saleDate).toLocaleDateString("th-TH")}
+                          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                         </td>
                         <td className="py-2 px-3 text-right text-gray-800">
                           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}

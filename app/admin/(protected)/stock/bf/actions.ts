@@ -1,6 +1,6 @@
 "use server";
 
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -43,7 +43,7 @@ export async function createBF(
   const docNo     = await generateDocNo("BF", new Date(docDate));
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Create BalanceForward header
       await tx.balanceForward.create({
         data: {
@@ -101,7 +101,7 @@ export async function cancelBF(
   if (bf.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
   try {
-    await db.$transaction(async (tx) => {
+    await dbTx(async (tx) => {
       // Delete StockCard rows for this docNo
       await tx.stockCard.deleteMany({ where: { docNo: bf.docNo, source: "BF" } });
 

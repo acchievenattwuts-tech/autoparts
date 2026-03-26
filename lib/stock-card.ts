@@ -36,7 +36,7 @@ export interface StockCardInput {
 /**
  * Re-calculate all StockCard rows for a product from scratch using MAVG formula.
  * Call this after deleting StockCard rows (i.e., document cancellation).
- * Must be called inside a db.$transaction().
+ * Must be called inside a dbTx().
  */
 export async function recalculateStockCard(
   tx: TxClient,
@@ -107,7 +107,7 @@ export async function recalculateStockCard(
 
 /**
  * Write one StockCard row and update Product.stock + Product.avgCost.
- * Must be called inside a db.$transaction().
+ * Must be called inside a dbTx().
  *
  * Supports backdating: after inserting the row, re-calculates ALL rows
  * for this product in (docDate, sorder) order to ensure MAVG is always correct
