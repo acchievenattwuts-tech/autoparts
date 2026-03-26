@@ -10,9 +10,27 @@ interface Props {
 const FeaturedProducts = async ({ lineUrl }: Props) => {
   const products = await db.product.findMany({
     where: { isActive: true, stock: { gt: 0 } },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      imageUrl: true,
+      salePrice: true,
+      stock: true,
+      reportUnitName: true,
       category: { select: { name: true } },
       brand: { select: { name: true } },
+      carModels: {
+        select: {
+          carModel: {
+            select: {
+              name: true,
+              carBrand: { select: { name: true } },
+            },
+          },
+        },
+        take: 6,
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 6,
