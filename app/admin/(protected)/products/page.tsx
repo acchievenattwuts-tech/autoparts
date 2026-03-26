@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import Image from "next/image";
 import { Plus, Search, Pencil } from "lucide-react";
 import DeleteProductButton from "./DeleteProductButton";
+import ProductImagePreview from "./ProductImagePreview";
 
 interface ProductsPageProps {
   searchParams: Promise<{ search?: string }>;
@@ -127,15 +127,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     {/* รูป */}
                     <td className="py-3 px-4">
                       {product.imageUrl ? (
-                        <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-gray-100 flex-shrink-0">
-                          <Image
-                            src={product.imageUrl}
-                            alt={product.name}
-                            fill
-                            className="object-cover"
-                            sizes="40px"
-                          />
-                        </div>
+                        <ProductImagePreview src={product.imageUrl} alt={product.name} />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
                           <span className="text-gray-300 text-xs">ไม่มี</span>
