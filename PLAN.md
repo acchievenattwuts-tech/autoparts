@@ -152,13 +152,17 @@
 - [x] Sub-routes normalize เป็น parent tab (/sales/new → /sales)
 - [x] `loading.tsx` ครบทุก route segment ใน `/admin/(protected)/` (20+ ไฟล์)
 
-### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย (ยังไม่ได้ทำ)
-- [ ] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน
-- [ ] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category (ค่าเช่า, ไฟ, เงินเดือน ฯลฯ)
-  - Schema พร้อมแล้ว (vatType, vatRate, subtotalAmount, vatAmount เพิ่มแล้ว)
-  - [ ] หน้า list + ปุ่มเพิ่มใหม่
-  - [ ] Form: category, description, amount, วันที่, note
-  - [ ] VAT toggle (NoVAT/ExclVAT/InclVAT) + คำนวณยอดภาษี (ดึง default จาก company settings)
+### ✅ Phase 4 — ประกัน + ค่าใช้จ่าย (เสร็จแล้ว)
+- [x] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน
+- [x] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category + VAT (NoVAT/ExclVAT/InclVAT)
+
+### ✅ Phase 4.1 — Edit ทุก Transaction + amountRemain Fix (เสร็จแล้ว)
+- [x] Edit pages ครบ 6 ประเภท: purchases, purchase-returns, sales, credit-notes, receipts, expenses
+- [x] ปุ่ม View (Eye) + Edit (Pencil) ทุก list page
+- [x] amountRemain fix: CASH_SALE → 0 เสมอ, CN CREDIT_DEBT หักออกจาก AR, recalculate check paymentType
+- [x] Logo upload (Supabase Storage) แทน URL input ในหน้าตั้งค่าร้านค้า
+- [x] หลังบันทึก/แก้ไข redirect กลับหน้า list อัตโนมัติ
+- [x] Product search dropdown fix: portal + fixed positioning (ไม่ถูก clip โดย overflow-x-auto)
 
 ### 🔲 Phase 5 — ระบบค้นหา (ยังไม่ได้ทำ)
 - [ ] Full-text search สินค้า (ค้นได้จากชื่อ, โค้ด, alias, ยี่ห้อรถ, รุ่นรถ)
