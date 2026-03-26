@@ -67,6 +67,7 @@ const LineCTA = ({ lineUrl = "https://lin.ee/18P0SqG", lineId = "@435adwz" }: Li
                   src="/qr-line.png"
                   alt="QR Code LINE OA ศรีวรรณ อะไหล่แอร์"
                   fill
+                  sizes="176px"
                   className="object-contain rounded-xl"
                 />
               </div>

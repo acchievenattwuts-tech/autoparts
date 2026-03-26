@@ -8,6 +8,7 @@ import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
 import FloatingLine from "@/components/shared/FloatingLine";
 import ProductFilterBar from "./ProductFilterBar";
+import Image from "next/image";
 import Link from "next/link";
 
 interface Props {
@@ -97,8 +98,17 @@ const ProductsPage = async ({ searchParams }: Props) => {
       />
       <main className="min-h-screen bg-gray-50 pt-16">
         {/* Hero bar */}
-        <div className="bg-[#1e3a5f] py-6">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="relative py-6 overflow-hidden">
+          <Image
+            src="/hero-banner.jpg"
+            alt="hero background"
+            fill
+            sizes="100vw"
+            className="object-cover object-center"
+            priority
+          />
+          <div className="absolute inset-0 bg-[#0f2140]/55" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <h1 className="font-kanit text-2xl font-bold text-white">สินค้าทั้งหมด</h1>
             {q && (
               <p className="text-white/70 text-sm mt-0.5">

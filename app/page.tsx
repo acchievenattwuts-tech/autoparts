@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Navbar from "@/components/shared/Navbar";
 import Hero from "@/components/shared/Hero";
 import ProductCategories from "@/components/shared/ProductCategories";

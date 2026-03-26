@@ -44,3 +44,4 @@ next-env.d.ts
 
 # DB snapshots (contains real data)
 prisma/scripts/snapshots/
+env

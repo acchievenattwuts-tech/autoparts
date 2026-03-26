@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ArrowRight, ShieldCheck, Truck, Clock } from "lucide-react";
 
 const badges = [
@@ -24,21 +25,19 @@ const Hero = ({
   return (
     <section
       id="home"
-      className="relative min-h-screen flex items-center bg-gradient-to-br from-[#1e3a5f] via-[#1e3a5f] to-[#0f2140] overflow-hidden"
+      className="relative min-h-screen flex items-center overflow-hidden"
     >
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-0 left-0 w-full h-full"
-          style={{
-            backgroundImage: "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
-            backgroundSize: "40px 40px",
-          }}
-        />
-      </div>
-
-      {/* Orange accent blob */}
-      <div className="absolute top-1/4 right-0 w-96 h-96 bg-[#f97316] rounded-full opacity-10 blur-3xl translate-x-1/2" />
-      <div className="absolute bottom-0 left-1/4 w-64 h-64 bg-[#f97316] rounded-full opacity-5 blur-2xl" />
+      {/* Background Image */}
+      <Image
+        src="/hero-banner2.jpg"
+        alt="hero background"
+        fill
+        sizes="100vw"
+        className="object-cover object-center"
+        priority
+      />
+      {/* Dark overlay */}
+      <div className="absolute inset-0 bg-[#0f2140]/55" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-16">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
