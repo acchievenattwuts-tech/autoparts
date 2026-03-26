@@ -74,11 +74,11 @@ const TabsBar = () => {
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 flex-shrink-0">
+    <div className="bg-gray-100 border-b border-gray-200 flex-shrink-0">
       <div
         ref={scrollRef}
-        className="flex overflow-x-auto px-1"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        className="flex overflow-x-auto pt-1.5 px-2 gap-0.5 [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar-button]:hidden"
+        style={{ scrollbarWidth: "none" }}
       >
         {tabs.map((tab) => {
           const isActive = tab.path === activePath;
@@ -88,20 +88,20 @@ const TabsBar = () => {
               data-path={tab.path}
               onClick={() => router.push(tab.path)}
               className={cn(
-                "group flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 cursor-pointer transition-colors flex-shrink-0 select-none",
+                "group flex items-center gap-1.5 px-3.5 py-2 text-sm whitespace-nowrap cursor-pointer transition-all flex-shrink-0 select-none rounded-t-lg border border-b-0",
                 isActive
-                  ? "border-[#1e3a5f] text-[#1e3a5f] font-medium bg-blue-50/50"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                  ? "bg-white text-[#1e3a5f] font-medium border-gray-200 shadow-[0_-1px_3px_rgba(0,0,0,0.04)]"
+                  : "bg-gray-100 text-gray-500 border-transparent hover:bg-gray-200/70 hover:text-gray-700"
               )}
             >
               <span>{tab.label}</span>
               <button
                 onClick={(e) => handleClose(e, tab.path)}
                 className={cn(
-                  "rounded-full p-0.5 transition-all",
+                  "rounded-full p-0.5 transition-all ml-0.5",
                   isActive
-                    ? "text-[#1e3a5f]/60 hover:text-[#1e3a5f] hover:bg-blue-100"
-                    : "text-transparent group-hover:text-gray-400 hover:!text-gray-600 hover:bg-gray-200"
+                    ? "text-gray-400 hover:text-[#1e3a5f] hover:bg-blue-100"
+                    : "text-transparent group-hover:text-gray-400 hover:!text-gray-600 hover:bg-gray-300"
                 )}
               >
                 <X size={11} />
