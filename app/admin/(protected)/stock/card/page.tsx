@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
+import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
   searchParams: Promise<{ productId?: string; unitName?: string }>;
@@ -74,9 +75,12 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <ClipboardList size={22} className="text-[#1e3a5f]" />
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <ClipboardList size={22} className="text-[#1e3a5f]" />
+          <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
+        </div>
+        <RecalculateButton />
       </div>
 
       {/* Product selector */}
