@@ -2,11 +2,19 @@
 
 import { useState } from "react";
 import AdminSidebar from "@/components/shared/AdminSidebar";
+import TabsBar from "@/components/shared/TabsBar";
 import { Menu, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useTabStore } from "@/hooks/useTabStore";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const clearAll = useTabStore((s) => s.clearAll);
+
+  const handleLogout = () => {
+    clearAll();
+    signOut({ callbackUrl: "/admin/login" });
+  };
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sarabun">
@@ -37,13 +45,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
           <div className="flex-1 lg:flex-none" />
           <button
-            onClick={() => signOut({ callbackUrl: "/admin/login" })}
+            onClick={handleLogout}
             className="flex items-center gap-2 text-sm text-gray-600 hover:text-red-600 transition-colors px-3 py-2 rounded-lg hover:bg-red-50"
           >
             <LogOut size={16} />
             <span className="hidden sm:inline">ออกจากระบบ</span>
           </button>
         </header>
+
+        {/* Tab bar */}
+        <TabsBar />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">

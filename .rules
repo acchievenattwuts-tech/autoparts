@@ -118,6 +118,7 @@
 
 ### การตัดสินใจเรื่อง UI/UX
 - ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม
+- **ทุก route segment ใน `/app/admin/(protected)/` ต้องมีไฟล์ `loading.tsx`** — ทั้ง list page, detail page, new page และ edit page ห้ามลืม เพราะ Next.js ใช้ Suspense-based loading ต่อ segment; ถ้าขาด loading.tsx หน้านั้นจะไม่แสดง loading indicator เมื่อ navigate
 - Form ที่มีหลาย line items ให้ส่งเป็น JSON ผ่าน `formData.set("items", JSON.stringify(items))`
 - แสดง error แบบ user-friendly เป็นภาษาไทย — ห้าม expose stack trace หรือ DB error
 - Success message ต้องแสดงเลขที่เอกสาร (docNo) ทุกครั้งที่สร้างเอกสารสำเร็จ
