@@ -132,17 +132,14 @@ const PurchaseReturnForm = ({
       if (isEdit && initialData) {
         const result = await updatePurchaseReturn(initialData.id, formData);
         if (result.error) setError(result.error);
-        else router.push(`/admin/purchase-returns/${initialData.id}`);
+        else router.push("/admin/purchase-returns");
       } else {
         const result = await createPurchaseReturn(formData);
         if (result.error) {
           setError(result.error);
         } else {
           setSuccess(`บันทึกสำเร็จ เลขที่คืนสินค้า: ${result.returnNo}`);
-          setItems([emptyItem()]);
-          setVatType(defaultVatType);
-          setVatRate(defaultVatRate);
-          form.reset();
+          setTimeout(() => router.push("/admin/purchase-returns"), 1500);
         }
       }
     });

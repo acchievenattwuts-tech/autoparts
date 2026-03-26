@@ -148,7 +148,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
       if (isEdit && initialData) {
         const result = await updateReceipt(initialData.id, formData);
         if (result.success) {
-          router.push(`/admin/receipts/${initialData.id}`);
+          router.push("/admin/receipts");
         } else {
           setError(result.error ?? "เกิดข้อผิดพลาด");
         }

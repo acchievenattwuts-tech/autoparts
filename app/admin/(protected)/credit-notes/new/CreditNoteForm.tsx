@@ -122,20 +122,14 @@ const CreditNoteForm = ({
       if (isEdit && initialData) {
         const result = await updateCreditNote(initialData.id, formData);
         if (result.error) setError(result.error);
-        else router.push(`/admin/credit-notes/${initialData.id}`);
+        else router.push("/admin/credit-notes");
       } else {
         const result = await createCreditNote(formData);
         if (result.error) {
           setError(result.error);
         } else {
           setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
-          setItems([emptyItem()]);
-          setCnType("RETURN");
-          setSettlementType("CASH_REFUND");
-          setRefundMethod("CASH");
-          setVatType(defaultVatType);
-          setVatRate(defaultVatRate);
-          form.reset();
+          setTimeout(() => router.push("/admin/credit-notes"), 1500);
         }
       }
     });

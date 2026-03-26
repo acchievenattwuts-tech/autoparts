@@ -88,15 +88,12 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialD
       if (isEdit && initialData) {
         const res = await updateExpense(initialData.id, fd);
         if (res.error) { setError(res.error); return; }
-        router.push(`/admin/expenses/${initialData.id}`);
+        router.push("/admin/expenses");
       } else {
         const res = await createExpense(fd);
         if (res.error) { setError(res.error); return; }
         setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${res.expenseNo}`);
-        setItems([emptyItem()]);
-        setVatType(defaultVatType);
-        setVatRate(defaultVatRate);
-        (e.target as HTMLFormElement).reset();
+        setTimeout(() => router.push("/admin/expenses"), 1500);
       }
     });
   };

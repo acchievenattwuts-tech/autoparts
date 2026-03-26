@@ -164,25 +164,14 @@ const SaleForm = ({
       if (isEdit && initialData) {
         const result = await updateSale(initialData.id, formData);
         if (result.error) setError(result.error);
-        else router.push(`/admin/sales/${initialData.id}`);
+        else router.push("/admin/sales");
       } else {
         const result = await createSale(formData);
         if (result.error) {
           setError(result.error);
         } else {
           setSuccess(`บันทึกสำเร็จ เลขที่ใบขาย: ${result.saleNo}`);
-          setItems([emptyItem()]);
-          setSelectedCustomerId("");
-          setCustomerNameOverride("");
-          setCustomerPhoneOverride("");
-          setDiscount(0);
-          setPaymentType("CASH_SALE");
-          setFulfillmentType("PICKUP");
-          setShippingAddress("");
-          setShippingFee(0);
-          setVatType(defaultVatType);
-          setVatRate(defaultVatRate);
-          form.reset();
+          setTimeout(() => router.push("/admin/sales"), 1500);
         }
       }
     });

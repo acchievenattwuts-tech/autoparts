@@ -117,17 +117,13 @@ const PurchaseForm = ({
       if (isEdit && initialData) {
         const result = await updatePurchase(initialData.id, formData);
         if (result.error) setError(result.error);
-        else router.push(`/admin/purchases/${initialData.id}`);
+        else router.push("/admin/purchases");
       } else {
         const result = await createPurchase(formData);
         if (result.error) setError(result.error);
         else {
           setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
-          setItems([{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
-          setDiscount(0);
-          setVatType(defaultVatType);
-          setVatRate(defaultVatRate);
-          (e.target as HTMLFormElement).reset();
+          setTimeout(() => router.push("/admin/purchases"), 1500);
         }
       }
     });
