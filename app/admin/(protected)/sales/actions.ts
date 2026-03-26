@@ -10,10 +10,11 @@ import { FulfillmentType, PaymentMethod, SalePaymentType, SaleType, VatType } fr
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
 const saleItemSchema = z.object({
-  productId: z.string().min(1).max(50),
-  unitName:  z.string().min(1).max(20),
-  qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
-  salePrice: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+  productId:    z.string().min(1).max(50),
+  unitName:     z.string().min(1).max(20),
+  qty:          z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
+  salePrice:    z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+  warrantyDays: z.coerce.number().int().min(0).default(0),
 });
 
 const saleSchema = z.object({
@@ -154,8 +155,26 @@ export async function createSale(
             costPrice:     costPerBase,
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
+            warrantyDays:  item.warrantyDays,
           },
         });
+
+        // Auto-create Warranty if warrantyDays > 0
+        if (item.warrantyDays > 0) {
+          const startDate = new Date(docDate);
+          const endDate   = new Date(startDate);
+          endDate.setDate(endDate.getDate() + item.warrantyDays);
+          await tx.warranty.create({
+            data: {
+              saleId:       sale.id,
+              saleItemId:   saleItem.id,
+              productId:    item.productId,
+              warrantyDays: item.warrantyDays,
+              startDate,
+              endDate,
+            },
+          });
+        }
 
         // Write StockCard (outgoing)
         await writeStockCard(tx, {
@@ -234,6 +253,8 @@ export async function cancelSale(
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);
       }
+      // ลบ warranties ที่ auto-generated จากใบขายนี้
+      await tx.warranty.deleteMany({ where: { saleId } });
       await tx.sale.update({
         where: { id: saleId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },

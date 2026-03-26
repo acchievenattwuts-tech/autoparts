@@ -124,15 +124,15 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ระยะเวลาประกัน (เดือน) <span className="text-red-500">*</span>
+                    ระยะเวลาประกัน (วัน) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
-                    name="warrantyMonths"
+                    name="warrantyDays"
                     min="1"
-                    max="120"
+                    max="36500"
                     required
-                    placeholder="เช่น 12"
+                    placeholder="เช่น 365"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
                   />
                 </div>
@@ -148,7 +148,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
               </div>
 
               <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
-                วันเริ่มต้นประกัน = วันที่ในใบขาย | วันสิ้นสุด = วันที่ขาย + จำนวนเดือน
+                วันเริ่มต้นประกัน = วันที่ในใบขาย | วันสิ้นสุด = วันที่ขาย + จำนวนวัน
               </div>
             </div>
           )}

@@ -283,6 +283,13 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
               defaultValue={product?.minStock ?? 1}
               min={0} step={1} className={inputCls} />
           </div>
+          <div>
+            <label className={labelCls}>ระยะเวลาประกัน (วัน)</label>
+            <input type="number" name="warrantyDays"
+              defaultValue={(product as { warrantyDays?: number })?.warrantyDays ?? 0}
+              min={0} step={1} className={inputCls}
+              placeholder="0 = ไม่มีประกัน" />
+          </div>
         </div>
         <p className="mt-3 text-xs text-gray-400">
           * จำนวน Stock เริ่มต้นกำหนดได้ที่ระบบ BF (ยอดยกมา) ใน Phase 3

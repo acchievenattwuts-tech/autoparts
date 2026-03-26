@@ -11,6 +11,7 @@ interface ProductOption {
   name: string;
   salePrice: number;
   saleUnitName: string;
+  warrantyDays: number;
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
@@ -23,16 +24,17 @@ interface CustomerOption {
 }
 
 interface LineItem {
-  productId: string;
-  unitName:  string;
-  qty:       number;
-  salePrice: number;
+  productId:    string;
+  unitName:     string;
+  qty:          number;
+  salePrice:    number;
+  warrantyDays: number;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0 });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0 });
 
 const SaleForm = ({
   products,
@@ -73,8 +75,9 @@ const SaleForm = ({
         const updated = { ...item, [field]: value };
         if (field === "productId") {
           const prod = products.find((p) => p.id === String(value));
-          updated.unitName  = prod?.saleUnitName ?? "";
-          updated.salePrice = prod?.salePrice ?? 0;
+          updated.unitName     = prod?.saleUnitName ?? "";
+          updated.salePrice    = prod?.salePrice ?? 0;
+          updated.warrantyDays = prod?.warrantyDays ?? 0;
         }
         return updated;
       })
@@ -400,6 +403,10 @@ const SaleForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-36">ราคาขาย/หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">
+                  ประกัน (วัน)
+                  <span className="block text-xs font-normal text-gray-400">0 = ไม่มี</span>
+                </th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
                 <th className="w-8" />
               </tr>
@@ -457,6 +464,17 @@ const SaleForm = ({
                         onChange={(e) => updateItem(i, "salePrice", Number(e.target.value))}
                         className={inputCls}
                         placeholder="0.00"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <input
+                        type="number"
+                        value={item.warrantyDays}
+                        min={0}
+                        step={1}
+                        onChange={(e) => updateItem(i, "warrantyDays", Number(e.target.value))}
+                        className={`${inputCls} ${item.warrantyDays > 0 ? "border-green-400 bg-green-50" : ""}`}
+                        placeholder="0"
                       />
                     </td>
                     <td className="py-2 px-2 text-right font-medium text-gray-700">

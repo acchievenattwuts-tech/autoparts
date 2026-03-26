@@ -6,10 +6,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 const warrantySchema = z.object({
-  saleId:        z.string().min(1),
-  saleItemId:    z.string().min(1),
-  warrantyMonths: z.coerce.number().int().positive("จำนวนเดือนต้องมากกว่า 0"),
-  note:          z.string().max(300).optional(),
+  saleId:       z.string().min(1),
+  saleItemId:   z.string().min(1),
+  warrantyDays: z.coerce.number().int().positive("จำนวนวันต้องมากกว่า 0"),
+  note:         z.string().max(300).optional(),
 });
 
 export async function createWarranty(
@@ -19,10 +19,10 @@ export async function createWarranty(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = warrantySchema.safeParse({
-    saleId:         formData.get("saleId"),
-    saleItemId:     formData.get("saleItemId"),
-    warrantyMonths: formData.get("warrantyMonths"),
-    note:           formData.get("note") || undefined,
+    saleId:       formData.get("saleId"),
+    saleItemId:   formData.get("saleItemId"),
+    warrantyDays: formData.get("warrantyDays"),
+    note:         formData.get("note") || undefined,
   });
 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -41,17 +41,17 @@ export async function createWarranty(
 
     const startDate = new Date(saleItem.sale.saleDate);
     const endDate   = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + d.warrantyMonths);
+    endDate.setDate(endDate.getDate() + d.warrantyDays);
 
     await db.warranty.create({
       data: {
-        saleId:         d.saleId,
-        saleItemId:     d.saleItemId,
-        productId:      saleItem.productId,
-        warrantyMonths: d.warrantyMonths,
+        saleId:       d.saleId,
+        saleItemId:   d.saleItemId,
+        productId:    saleItem.productId,
+        warrantyDays: d.warrantyDays,
         startDate,
         endDate,
-        note:           d.note,
+        note:         d.note,
       },
     });
 

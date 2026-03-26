@@ -19,7 +19,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     take: 200,
     select: {
       id: true,
-      warrantyMonths: true,
+      warrantyDays: true,
       startDate: true,
       endDate: true,
       note: true,
@@ -160,7 +160,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         <p className="text-xs text-gray-500">{w.sale.customerName ?? "—"}</p>
                       </td>
                       <td className="py-2.5 px-4 text-center text-gray-700 font-medium">
-                        {w.warrantyMonths} เดือน
+                        {w.warrantyDays} วัน
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
                         {new Date(w.startDate).toLocaleDateString("th-TH")}

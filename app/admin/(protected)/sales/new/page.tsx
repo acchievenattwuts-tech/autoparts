@@ -17,6 +17,7 @@ const NewSalePage = async () => {
         name: true,
         salePrice: true,
         saleUnitName: true,
+        warrantyDays: true,
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -37,6 +38,7 @@ const NewSalePage = async () => {
     name:         p.name,
     salePrice:    Number(p.salePrice),
     saleUnitName: p.saleUnitName,
+    warrantyDays: p.warrantyDays,
     units:        p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 
