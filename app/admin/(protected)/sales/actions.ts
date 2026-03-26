@@ -341,10 +341,10 @@ export async function updateSale(
 
   try {
     await dbTx(async (tx) => {
-      // 1. Reverse old stock + warranties
+      // 1. Reverse old stock + warranties (warranty ต้องลบก่อน saleItem เพราะมี FK)
       await tx.stockCard.deleteMany({ where: { docNo: existing.saleNo } });
-      await tx.saleItem.deleteMany({ where: { saleId: id } });
       await tx.warranty.deleteMany({ where: { saleId: id } });
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
       for (const productId of oldProductIds) {
         await recalculateStockCard(tx, productId);
       }
