@@ -1,42 +1,63 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
 import FloatingLine from "@/components/shared/FloatingLine";
+import ProductFilterBar from "./ProductFilterBar";
 import Link from "next/link";
 
 interface Props {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; brand?: string; model?: string }>;
 }
 
+const buildSearchWhere = (q: string) => {
+  const words = q.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return {};
+  const wordCondition = (word: string) => ({
+    OR: [
+      { name: { contains: word, mode: "insensitive" as const } },
+      { code: { contains: word, mode: "insensitive" as const } },
+      { description: { contains: word, mode: "insensitive" as const } },
+      { aliases: { some: { alias: { contains: word, mode: "insensitive" as const } } } },
+      { carModels: { some: { carModel: { name: { contains: word, mode: "insensitive" as const } } } } },
+      { carModels: { some: { carModel: { carBrand: { name: { contains: word, mode: "insensitive" as const } } } } } },
+      { category: { name: { contains: word, mode: "insensitive" as const } } },
+      { brand: { name: { contains: word, mode: "insensitive" as const } } },
+    ],
+  });
+  return words.length === 1 ? wordCondition(words[0]) : { AND: words.map(wordCondition) };
+};
+
 const ProductsPage = async ({ searchParams }: Props) => {
-  const { q, category } = await searchParams;
+  const { q, category, brand, model } = await searchParams;
   const config = await getSiteConfig();
 
-  const searchWhere = q?.trim()
-    ? {
-        OR: [
-          { name: { contains: q, mode: "insensitive" as const } },
-          { code: { contains: q, mode: "insensitive" as const } },
-          { description: { contains: q, mode: "insensitive" as const } },
-          { aliases: { some: { alias: { contains: q, mode: "insensitive" as const } } } },
-          { carModels: { some: { carModel: { name: { contains: q, mode: "insensitive" as const } } } } },
-          { carModels: { some: { carModel: { carBrand: { name: { contains: q, mode: "insensitive" as const } } } } } },
-          { category: { name: { contains: q, mode: "insensitive" as const } } },
-          { brand: { name: { contains: q, mode: "insensitive" as const } } },
-        ],
-      }
-    : {};
+  const searchWhere = q?.trim() ? buildSearchWhere(q) : {};
 
   const categoryWhere = category ? { category: { name: category } } : {};
 
-  const [products, categories] = await Promise.all([
+  const brandModelWhere =
+    brand && model
+      ? { carModels: { some: { carModel: { name: model, carBrand: { name: brand } } } } }
+      : brand
+      ? { carModels: { some: { carModel: { carBrand: { name: brand } } } } }
+      : {};
+
+  const [products, categories, carBrands] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true, ...searchWhere, ...categoryWhere },
-      include: {
+      where: { isActive: true, ...searchWhere, ...categoryWhere, ...brandModelWhere },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        imageUrl: true,
+        salePrice: true,
+        stock: true,
+        reportUnitName: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
       },
@@ -44,17 +65,15 @@ const ProductsPage = async ({ searchParams }: Props) => {
       take: 200,
     }),
     db.category.findMany({ orderBy: { name: "asc" } }),
+    db.carBrand.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        carModels: { select: { id: true, name: true }, orderBy: { name: "asc" } },
+      },
+    }),
   ]);
 
-  const buildHref = (overrides: { q?: string; category?: string }) => {
-    const params = new URLSearchParams();
-    const newQ = overrides.q ?? q;
-    const newCat = "category" in overrides ? overrides.category : category;
-    if (newQ?.trim()) params.set("q", newQ);
-    if (newCat) params.set("category", newCat);
-    const qs = params.toString();
-    return `/products${qs ? `?${qs}` : ""}`;
-  };
+  const hasFilter = q || category || brand || model;
 
   return (
     <>
@@ -67,73 +86,59 @@ const ProductsPage = async ({ searchParams }: Props) => {
       />
       <main className="min-h-screen bg-gray-50 pt-16">
         {/* Hero bar */}
-        <div className="bg-[#1e3a5f] py-8">
+        <div className="bg-[#1e3a5f] py-6">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 className="font-kanit text-3xl font-bold text-white">สินค้าทั้งหมด</h1>
+            <h1 className="font-kanit text-2xl font-bold text-white">สินค้าทั้งหมด</h1>
             {q && (
-              <p className="text-white/70 text-sm mt-1">
+              <p className="text-white/70 text-sm mt-0.5">
                 ผลการค้นหา: &ldquo;{q}&rdquo;
               </p>
             )}
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Category tabs */}
-          <div className="flex gap-2 flex-wrap mb-6">
-            <Link
-              href={buildHref({ category: undefined })}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                !category
-                  ? "bg-[#1e3a5f] text-white"
-                  : "bg-white text-gray-600 border border-gray-200 hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
-              }`}
-            >
-              ทั้งหมด
-            </Link>
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                href={buildHref({ category: cat.name })}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  category === cat.name
-                    ? "bg-[#1e3a5f] text-white"
-                    : "bg-white text-gray-600 border border-gray-200 hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
-                }`}
-              >
-                {cat.name}
-              </Link>
-            ))}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Sidebar filters */}
+            <aside className="w-full lg:w-72 shrink-0">
+              <Suspense fallback={<div className="h-64 bg-white rounded-2xl animate-pulse" />}>
+                <ProductFilterBar brands={carBrands} categories={categories} />
+              </Suspense>
+            </aside>
+
+            {/* Main content */}
+            <div className="flex-1 min-w-0">
+              {/* Result count */}
+              <p className="text-sm text-gray-500 mb-4">
+                {hasFilter ? (
+                  <>
+                    {q && <>ค้นหา &ldquo;{q}&rdquo;{" "}</>}
+                    {brand && <>{brand}{model ? ` › ${model}` : ""}{" "}</>}
+                    {category && <>{category}{" "}</>}
+                    — พบ <span className="font-semibold text-gray-800">{products.length}</span> รายการ
+                  </>
+                ) : (
+                  <>สินค้าทั้งหมด <span className="font-semibold text-gray-800">{products.length}</span> รายการ</>
+                )}
+              </p>
+
+              {/* Products grid */}
+              {products.length === 0 ? (
+                <div className="text-center py-24 text-gray-400">
+                  <p className="text-lg mb-2">ไม่พบสินค้าที่ค้นหา</p>
+                  <Link href="/products" className="text-[#1e3a5f] text-sm underline">
+                    ดูสินค้าทั้งหมด
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {products.map((product) => (
+                    <ProductCard key={product.id} product={product} lineUrl={config.shopLineUrl} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-
-          {/* Result count */}
-          <p className="text-sm text-gray-500 mb-5">
-            {q || category ? (
-              <>
-                {q && <>ค้นหา &ldquo;{q}&rdquo;{category ? ` ใน ${category}` : ""} —{" "}</>}
-                {!q && category && <>{category} — </>}
-                พบ <span className="font-semibold text-gray-800">{products.length}</span> รายการ
-              </>
-            ) : (
-              <>สินค้าทั้งหมด <span className="font-semibold text-gray-800">{products.length}</span> รายการ</>
-            )}
-          </p>
-
-          {/* Products grid */}
-          {products.length === 0 ? (
-            <div className="text-center py-24 text-gray-400">
-              <p className="text-lg mb-2">ไม่พบสินค้าที่ค้นหา</p>
-              <Link href="/products" className="text-[#1e3a5f] text-sm underline">
-                ดูสินค้าทั้งหมด
-              </Link>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} lineUrl={config.shopLineUrl} />
-              ))}
-            </div>
-          )}
         </div>
       </main>
       <Footer config={config} />
