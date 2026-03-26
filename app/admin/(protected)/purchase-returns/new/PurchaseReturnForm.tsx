@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createPurchaseReturn } from "../actions";
+import { useRouter } from "next/navigation";
+import { createPurchaseReturn, updatePurchaseReturn } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -34,6 +35,17 @@ interface LineItem {
   qty:       number;
 }
 
+interface InitialData {
+  id:         string;
+  returnDate: string;
+  purchaseId: string;
+  supplierId: string;
+  note:       string;
+  vatType:    string;
+  vatRate:    number;
+  items:      LineItem[];
+}
+
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
@@ -45,19 +57,23 @@ const PurchaseReturnForm = ({
   purchases,
   defaultVatType,
   defaultVatRate,
+  initialData,
 }: {
   products:  ProductOption[];
   suppliers: SupplierOption[];
   purchases: PurchaseOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  initialData?: InitialData;
 }) => {
+  const router = useRouter();
+  const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
-  const [items, setItems]     = useState<LineItem[]>([emptyItem()]);
-  const [vatType, setVatType] = useState<string>(defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
+  const [items, setItems]     = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -113,15 +129,21 @@ const PurchaseReturnForm = ({
     formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      const result = await createPurchaseReturn(formData);
-      if (result.error) {
-        setError(result.error);
+      if (isEdit && initialData) {
+        const result = await updatePurchaseReturn(initialData.id, formData);
+        if (result.error) setError(result.error);
+        else router.push(`/admin/purchase-returns/${initialData.id}`);
       } else {
-        setSuccess(`บันทึกสำเร็จ เลขที่คืนสินค้า: ${result.returnNo}`);
-        setItems([emptyItem()]);
-        setVatType(defaultVatType);
-        setVatRate(defaultVatRate);
-        form.reset();
+        const result = await createPurchaseReturn(formData);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setSuccess(`บันทึกสำเร็จ เลขที่คืนสินค้า: ${result.returnNo}`);
+          setItems([emptyItem()]);
+          setVatType(defaultVatType);
+          setVatRate(defaultVatRate);
+          form.reset();
+        }
       }
     });
   };
@@ -142,13 +164,13 @@ const PurchaseReturnForm = ({
               type="date"
               name="returnDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.returnDate ?? new Date().toISOString().slice(0, 10)}
               className={inputCls}
             />
           </div>
           <div>
             <label className={labelCls}>อ้างอิงใบซื้อ</label>
-            <select name="purchaseId" className={`${inputCls} bg-white`}>
+            <select name="purchaseId" defaultValue={initialData?.purchaseId ?? ""} className={`${inputCls} bg-white`}>
               <option value="">-- ไม่อ้างอิง --</option>
               {purchases.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -159,7 +181,7 @@ const PurchaseReturnForm = ({
           </div>
           <div>
             <label className={labelCls}>ซัพพลายเออร์</label>
-            <select name="supplierId" className={`${inputCls} bg-white`}>
+            <select name="supplierId" defaultValue={initialData?.supplierId ?? ""} className={`${inputCls} bg-white`}>
               <option value="">-- ไม่ระบุ --</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -174,6 +196,7 @@ const PurchaseReturnForm = ({
               type="text"
               name="note"
               maxLength={500}
+              defaultValue={initialData?.note ?? ""}
               className={inputCls}
               placeholder="หมายเหตุ"
             />
@@ -364,7 +387,7 @@ const PurchaseReturnForm = ({
           disabled={isPending}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
         >
-          {isPending ? "กำลังบันทึก..." : "บันทึกการคืนสินค้า"}
+          {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกการคืนสินค้า"}
         </button>
       </div>
     </form>

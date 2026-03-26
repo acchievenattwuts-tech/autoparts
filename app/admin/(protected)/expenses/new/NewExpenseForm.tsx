@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createExpense } from "../actions";
+import { createExpense, updateExpense } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 
@@ -18,10 +18,20 @@ interface LineItem {
   amount: number;
 }
 
+interface InitialData {
+  id: string;
+  expenseDate: string;
+  vatType: string;
+  vatRate: number;
+  note: string;
+  items: LineItem[];
+}
+
 interface Props {
   expenseCodes: ExpenseCodeOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  initialData?: InitialData;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
@@ -29,15 +39,16 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1";
 
 const emptyItem = (): LineItem => ({ expenseCodeId: "", description: "", amount: 0 });
 
-const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate }: Props) => {
+const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialData }: Props) => {
   const router = useRouter();
+  const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState("");
 
-  const [items, setItems]     = useState<LineItem[]>([emptyItem()]);
-  const [vatType, setVatType] = useState<string>(defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
+  const [items, setItems]     = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -74,13 +85,19 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate }: Props)
     fd.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      const res = await createExpense(fd);
-      if (res.error) { setError(res.error); return; }
-      setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${res.expenseNo}`);
-      setItems([emptyItem()]);
-      setVatType(defaultVatType);
-      setVatRate(defaultVatRate);
-      (e.target as HTMLFormElement).reset();
+      if (isEdit && initialData) {
+        const res = await updateExpense(initialData.id, fd);
+        if (res.error) { setError(res.error); return; }
+        router.push(`/admin/expenses/${initialData.id}`);
+      } else {
+        const res = await createExpense(fd);
+        if (res.error) { setError(res.error); return; }
+        setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${res.expenseNo}`);
+        setItems([emptyItem()]);
+        setVatType(defaultVatType);
+        setVatRate(defaultVatRate);
+        (e.target as HTMLFormElement).reset();
+      }
     });
   };
 
@@ -104,14 +121,14 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate }: Props)
           <input
             type="date"
             name="expenseDate"
-            defaultValue={new Date().toISOString().slice(0, 10)}
+            defaultValue={initialData?.expenseDate ?? new Date().toISOString().slice(0, 10)}
             required
             className={inputCls}
           />
         </div>
         <div className="md:col-span-2">
           <label className={labelCls}>หมายเหตุ</label>
-          <input type="text" name="note" maxLength={500} placeholder="หมายเหตุเอกสาร (ถ้ามี)" className={inputCls} />
+          <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} placeholder="หมายเหตุเอกสาร (ถ้ามี)" className={inputCls} />
         </div>
       </div>
 
@@ -277,7 +294,7 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate }: Props)
           disabled={isPending || expenseCodes.length === 0}
           className="px-6 py-2 bg-[#1e3a5f] hover:bg-[#163055] disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
         >
-          {isPending ? "กำลังบันทึก..." : "บันทึกค่าใช้จ่าย"}
+          {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกค่าใช้จ่าย"}
         </button>
         <button
           type="button"

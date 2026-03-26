@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseReturnCancelButton from "./PurchaseReturnCancelButton";
@@ -99,10 +99,22 @@ const PurchaseReturnsPage = async ({
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      {r.status === "ACTIVE" && (
-                        <PurchaseReturnCancelButton returnId={r.id} />
-                      )}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2 justify-end">
+                        <Link href={`/admin/purchase-returns/${r.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
+                          <Eye size={14} /> ดู
+                        </Link>
+                        {r.status === "ACTIVE" && (
+                          <>
+                            <Link href={`/admin/purchase-returns/${r.id}/edit`}
+                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                              <Pencil size={14} /> แก้ไข
+                            </Link>
+                            <PurchaseReturnCancelButton returnId={r.id} />
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

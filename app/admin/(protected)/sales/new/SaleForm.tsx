@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createSale } from "../actions";
+import { useRouter } from "next/navigation";
+import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -41,33 +42,56 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0 });
 
+interface InitialData {
+  id:              string;
+  saleDate:        string;
+  customerId:      string;
+  customerName:    string;
+  customerPhone:   string;
+  saleType:        string;
+  paymentType:     "CASH_SALE" | "CREDIT_SALE";
+  paymentMethod:   string;
+  fulfillmentType: "PICKUP" | "DELIVERY";
+  shippingAddress: string;
+  shippingFee:     number;
+  discount:        number;
+  note:            string;
+  vatType:         string;
+  vatRate:         number;
+  items:           LineItem[];
+}
+
 const SaleForm = ({
   products,
   customers,
   defaultVatType,
   defaultVatRate,
+  initialData,
 }: {
   products: ProductOption[];
   customers: CustomerOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  initialData?: InitialData;
 }) => {
+  const router = useRouter();
+  const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
-  const [items, setItems]         = useState<LineItem[]>([emptyItem()]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [customerNameOverride, setCustomerNameOverride] = useState("");
-  const [customerPhoneOverride, setCustomerPhoneOverride] = useState("");
-  const [discount, setDiscount] = useState(0);
+  const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? "");
+  const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
+  const [customerPhoneOverride, setCustomerPhoneOverride] = useState(initialData?.customerPhone ?? "");
+  const [discount, setDiscount] = useState(initialData?.discount ?? 0);
 
-  const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">("CASH_SALE");
-  const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
-  const [shippingAddress, setShippingAddress] = useState("");
-  const [shippingFee, setShippingFee]         = useState(0);
+  const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">(initialData?.paymentType ?? "CASH_SALE");
+  const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? "PICKUP");
+  const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? "");
+  const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
 
-  const [vatType, setVatType] = useState<string>(defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
@@ -137,23 +161,29 @@ const SaleForm = ({
     formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      const result = await createSale(formData);
-      if (result.error) {
-        setError(result.error);
+      if (isEdit && initialData) {
+        const result = await updateSale(initialData.id, formData);
+        if (result.error) setError(result.error);
+        else router.push(`/admin/sales/${initialData.id}`);
       } else {
-        setSuccess(`บันทึกสำเร็จ เลขที่ใบขาย: ${result.saleNo}`);
-        setItems([emptyItem()]);
-        setSelectedCustomerId("");
-        setCustomerNameOverride("");
-        setCustomerPhoneOverride("");
-        setDiscount(0);
-        setPaymentType("CASH_SALE");
-        setFulfillmentType("PICKUP");
-        setShippingAddress("");
-        setShippingFee(0);
-        setVatType(defaultVatType);
-        setVatRate(defaultVatRate);
-        form.reset();
+        const result = await createSale(formData);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setSuccess(`บันทึกสำเร็จ เลขที่ใบขาย: ${result.saleNo}`);
+          setItems([emptyItem()]);
+          setSelectedCustomerId("");
+          setCustomerNameOverride("");
+          setCustomerPhoneOverride("");
+          setDiscount(0);
+          setPaymentType("CASH_SALE");
+          setFulfillmentType("PICKUP");
+          setShippingAddress("");
+          setShippingFee(0);
+          setVatType(defaultVatType);
+          setVatRate(defaultVatRate);
+          form.reset();
+        }
       }
     });
   };
@@ -174,7 +204,7 @@ const SaleForm = ({
               type="date"
               name="saleDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.saleDate ?? new Date().toISOString().slice(0, 10)}
               className={inputCls}
             />
           </div>
@@ -196,7 +226,7 @@ const SaleForm = ({
           </div>
           <div>
             <label className={labelCls}>ประเภทการขาย</label>
-            <select name="saleType" className={`${inputCls} bg-white`}>
+            <select name="saleType" defaultValue={initialData?.saleType ?? "RETAIL"} className={`${inputCls} bg-white`}>
               <option value="RETAIL">ขายปลีก</option>
               <option value="WHOLESALE">ขายส่ง</option>
             </select>
@@ -256,7 +286,7 @@ const SaleForm = ({
           {paymentType === "CASH_SALE" && (
           <div>
             <label className={labelCls}>ช่องทางชำระเงิน</label>
-            <select name="paymentMethod" className={`${inputCls} bg-white`}>
+            <select name="paymentMethod" defaultValue={initialData?.paymentMethod ?? "CASH"} className={`${inputCls} bg-white`}>
               <option value="CASH">เงินสด</option>
               <option value="TRANSFER">โอนเงิน</option>
               <option value="CREDIT">เครดิต</option>
@@ -270,7 +300,7 @@ const SaleForm = ({
               name="discount"
               min={0}
               step={0.01}
-              defaultValue={0}
+              defaultValue={initialData?.discount ?? 0}
               onChange={(e) => setDiscount(Number(e.target.value))}
               className={inputCls}
             />
@@ -281,6 +311,7 @@ const SaleForm = ({
               type="text"
               name="note"
               maxLength={500}
+              defaultValue={initialData?.note ?? ""}
               className={inputCls}
               placeholder="หมายเหตุ"
             />
@@ -573,9 +604,7 @@ const SaleForm = ({
               </svg>
               กำลังบันทึก...
             </span>
-          ) : (
-            "บันทึกการขาย"
-          )}
+          ) : isEdit ? "บันทึกการแก้ไข" : "บันทึกการขาย"}
         </button>
       </div>
     </form>

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Receipt, Plus } from "lucide-react";
+import { Receipt, Plus, Eye, Pencil } from "lucide-react";
 import CancelExpenseButton from "./CancelExpenseButton";
 
 interface ExpensePageProps {
@@ -197,10 +197,22 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 px-4 text-right">
-                        {!isCancelled && (
-                          <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} />
-                        )}
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-2 justify-end">
+                          <Link href={`/admin/expenses/${exp.id}`}
+                            className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
+                            <Eye size={14} /> ดู
+                          </Link>
+                          {!isCancelled && (
+                            <>
+                              <Link href={`/admin/expenses/${exp.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                              <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} />
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

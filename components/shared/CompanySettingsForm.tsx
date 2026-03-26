@@ -1,9 +1,10 @@
 "use client";
 
 import { useTransition, useRef, useState } from "react";
-import { updateCompanySettings } from "@/app/admin/(protected)/settings/company/actions";
+import Image from "next/image";
+import { updateCompanySettings, uploadLogoImage } from "@/app/admin/(protected)/settings/company/actions";
 import type { SiteConfig } from "@/lib/site-config";
-import { Save, CheckCircle } from "lucide-react";
+import { Save, CheckCircle, Upload, X } from "lucide-react";
 
 const inputClass =
   "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
@@ -110,6 +111,26 @@ const CompanySettingsForm = ({ config }: { config: SiteConfig }) => {
   const [saved, setSaved] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Logo upload state
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState(config.shopLogoUrl ?? "");
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState("");
+
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoError("");
+    setLogoUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const result = await uploadLogoImage(fd);
+    setLogoUploading(false);
+    if (result.error) setLogoError(result.error);
+    else if (result.url) setLogoUrl(result.url);
+    if (logoFileRef.current) logoFileRef.current.value = "";
+  };
+
   const [facebookEnabled, setFacebookEnabled] = useState(config.shopFacebookEnabled);
   const [tiktokEnabled, setTiktokEnabled] = useState(config.shopTiktokEnabled);
   const [shopeeEnabled, setShopeeEnabled] = useState(config.shopShopeeEnabled);
@@ -155,9 +176,51 @@ const CompanySettingsForm = ({ config }: { config: SiteConfig }) => {
             <textarea name="shop_address" defaultValue={config.shopAddress} rows={2} className={inputClass} placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" />
           </div>
           <div className="md:col-span-2">
-            <label className={labelClass}>URL โลโก้ร้าน</label>
-            <input name="shop_logo_url" defaultValue={config.shopLogoUrl} className={inputClass} placeholder="https://..." />
-            <p className="text-xs text-gray-400 mt-1">อัปโหลดรูปภาพไปยัง Supabase Storage แล้วนำ URL มาวาง</p>
+            <label className={labelClass}>โลโก้ร้าน</label>
+            <input type="hidden" name="shop_logo_url" value={logoUrl} />
+            <div className="flex items-start gap-4">
+              {/* Preview */}
+              <div className="relative w-20 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {logoUrl ? (
+                  <>
+                    <Image src={logoUrl} alt="logo preview" fill className="object-contain p-1" sizes="80px" />
+                    <button
+                      type="button"
+                      onClick={() => setLogoUrl("")}
+                      className="absolute top-0.5 right-0.5 bg-white border border-gray-200 rounded-full p-0.5 hover:bg-red-50 hover:border-red-300 transition-colors"
+                    >
+                      <X size={12} className="text-gray-500 hover:text-red-500" />
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-xs text-gray-400 text-center px-1">ยังไม่มีโลโก้</span>
+                )}
+              </div>
+              {/* Upload */}
+              <div className="flex-1">
+                <input
+                  ref={logoFileRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                  className="hidden"
+                  id="logoUpload"
+                />
+                <label
+                  htmlFor="logoUpload"
+                  className={`inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm cursor-pointer transition-colors ${
+                    logoUploading
+                      ? "opacity-60 cursor-not-allowed"
+                      : "hover:border-[#1e3a5f] hover:text-[#1e3a5f] text-gray-500"
+                  }`}
+                >
+                  <Upload size={14} />
+                  {logoUploading ? "กำลังอัปโหลด..." : "เลือกไฟล์"}
+                </label>
+                <p className="text-xs text-gray-400 mt-1.5">JPG, PNG, WebP — ไม่เกิน 2MB</p>
+                {logoError && <p className="text-xs text-red-500 mt-1">{logoError}</p>}
+              </div>
+            </div>
           </div>
         </div>
       </div>

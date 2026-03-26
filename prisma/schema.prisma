@@ -257,7 +257,8 @@ model Purchase {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  referenceNo String? // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
+  referenceNo  String?  // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
+  amountRemain Decimal  @default(0) @db.Decimal(10, 2) // ยอดคงค้าง AP (สำหรับใช้ในอนาคต)
   status      DocStatus @default(ACTIVE)
   cancelledAt DateTime?
   cancelNote  String?
@@ -332,6 +333,7 @@ model Sale {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
+  amountRemain  Decimal @default(0) @db.Decimal(10, 2) // ยอดคงค้าง AR = netAmount - รับชำระแล้ว
   status        DocStatus @default(ACTIVE)
   cancelledAt   DateTime?
   cancelNote    String?

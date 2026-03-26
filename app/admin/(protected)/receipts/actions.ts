@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
 import { PaymentMethod } from "@/lib/generated/prisma";
+import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 
 // ─────────────────────────────────────────
 // getCreditSalesForCustomer
@@ -128,6 +129,10 @@ export async function createReceipt(
           paidAmount: item.paidAmount,
         })),
       });
+
+      for (const item of parsed.items) {
+        await recalculateSaleAmountRemain(tx, item.saleId);
+      }
     });
 
     revalidatePath("/admin/receipts");
@@ -161,23 +166,119 @@ export async function cancelReceipt(
 
   const receipt = await db.receipt.findUnique({
     where: { id: receiptId },
+    include: { items: { select: { saleId: true } } },
   });
   if (!receipt)                        return { error: "ไม่พบเอกสาร" };
   if (receipt.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
+  const affectedSaleIds = [...new Set(receipt.items.map((i) => i.saleId).filter((id): id is string => id !== null))];
+
   try {
     await db.$transaction(async (tx) => {
-      // ยกเลิกใบเสร็จ — AR balance จะถูก reverse อัตโนมัติ
-      // (ยอดค้างชำระคำนวณจาก sale.netAmount - sum(receiptItems.paidAmount) ที่ status=ACTIVE)
       await tx.receipt.update({
         where: { id: receiptId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
+      for (const saleId of affectedSaleIds) {
+        await recalculateSaleAmountRemain(tx, saleId);
+      }
     });
     revalidatePath("/admin/receipts");
     return { success: true };
   } catch (err) {
     console.error("[cancelReceipt]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+// ─────────────────────────────────────────
+// updateReceipt
+// ─────────────────────────────────────────
+
+export async function updateReceipt(
+  id: string,
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  }
+
+  const existing = await db.receipt.findUnique({
+    where: { id },
+    include: { items: { select: { saleId: true } } },
+  });
+  if (!existing)                       return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  let items: z.infer<typeof receiptItemSchema>[] = [];
+  try {
+    const raw = formData.get("items");
+    if (typeof raw === "string") items = JSON.parse(raw);
+  } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+
+  let parsed: z.infer<typeof receiptSchema>;
+  try {
+    parsed = receiptSchema.parse({
+      customerId:    formData.get("customerId") ?? undefined,
+      customerName:  formData.get("customerName") ?? undefined,
+      receiptDate:   formData.get("receiptDate"),
+      paymentMethod: formData.get("paymentMethod"),
+      note:          formData.get("note") ?? undefined,
+      items,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) return { error: err.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const docDate     = new Date(parsed.receiptDate);
+  const totalAmount = parsed.items.reduce((sum, item) => sum + item.paidAmount, 0);
+  const oldSaleIds  = [...new Set(existing.items.map((i) => i.saleId).filter((sid): sid is string => sid !== null))];
+  const newSaleIds  = [...new Set(parsed.items.map((i) => i.saleId))];
+  const allSaleIds  = [...new Set([...oldSaleIds, ...newSaleIds])];
+
+  try {
+    await db.$transaction(async (tx) => {
+      // 1. Delete old receipt items
+      await tx.receiptItem.deleteMany({ where: { receiptId: id } });
+
+      // 2. Update header
+      await tx.receipt.update({
+        where: { id },
+        data: {
+          receiptDate:   docDate,
+          customerId:    parsed.customerId || null,
+          customerName:  parsed.customerName || null,
+          totalAmount,
+          paymentMethod: parsed.paymentMethod,
+          note:          parsed.note || null,
+        },
+      });
+
+      // 3. Re-create receipt items
+      await tx.receiptItem.createMany({
+        data: parsed.items.map((item) => ({
+          receiptId:  id,
+          saleId:     item.saleId,
+          paidAmount: item.paidAmount,
+        })),
+      });
+
+      // 4. Recalculate amountRemain for all affected sales
+      for (const saleId of allSaleIds) {
+        await recalculateSaleAmountRemain(tx, saleId);
+      }
+    });
+
+    revalidatePath("/admin/receipts");
+    revalidatePath(`/admin/receipts/${id}`);
+    revalidatePath("/admin/customers");
+    return { success: true };
+  } catch (err) {
+    console.error("[updateReceipt]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

@@ -1,17 +1,13 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { getCreditSalesForCustomer, createReceipt, CreditSaleItem } from "../actions";
+import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 
 interface CustomerOption {
   id:   string;
   name: string;
   code: string | null;
-}
-
-interface Props {
-  customers: CustomerOption[];
 }
 
 interface SelectedItem {
@@ -21,24 +17,47 @@ interface SelectedItem {
   paidAmount:  number;
 }
 
-const ReceiptForm = ({ customers }: Props) => {
-  const router = useRouter();
+interface InitialData {
+  id:            string;
+  customerId:    string;
+  customerName:  string;
+  receiptDate:   string;
+  paymentMethod: "CASH" | "TRANSFER";
+  note:          string;
+  items:         SelectedItem[];
+}
 
-  const today = new Date().toISOString().slice(0, 10);
+interface Props {
+  customers:           CustomerOption[];
+  initialData?:        InitialData;
+  initialCreditSales?: CreditSaleItem[];
+}
 
-  const [customerId,      setCustomerId]      = useState("");
-  const [receiptDate,     setReceiptDate]      = useState(today);
-  const [creditSales,     setCreditSales]      = useState<CreditSaleItem[]>([]);
-  const [selectedItems,   setSelectedItems]    = useState<SelectedItem[]>([]);
-  const [paymentMethod,   setPaymentMethod]    = useState<"CASH" | "TRANSFER">("CASH");
-  const [note,            setNote]             = useState("");
+const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
+  const router  = useRouter();
+  const isEdit  = !!initialData;
+  const today   = new Date().toISOString().slice(0, 10);
+
+  const [customerId,      setCustomerId]      = useState(initialData?.customerId ?? "");
+  const [receiptDate,     setReceiptDate]      = useState(initialData?.receiptDate ?? today);
+  const [creditSales,     setCreditSales]      = useState<CreditSaleItem[]>(initialCreditSales ?? []);
+  const [selectedItems,   setSelectedItems]    = useState<SelectedItem[]>(initialData?.items ?? []);
+  const [paymentMethod,   setPaymentMethod]    = useState<"CASH" | "TRANSFER">(initialData?.paymentMethod ?? "CASH");
+  const [note,            setNote]             = useState(initialData?.note ?? "");
   const [isLoadingSales,  setIsLoadingSales]   = useState(false);
   const [isPending,       startTransition]     = useTransition();
   const [error,           setError]            = useState("");
   const [successMsg,      setSuccessMsg]       = useState("");
 
+  // Skip the first effect run if initialData is provided (sales already pre-loaded)
+  const skipFirstLoad = useRef(isEdit);
+
   // Load credit sales when customer changes
   useEffect(() => {
+    if (skipFirstLoad.current) {
+      skipFirstLoad.current = false;
+      return;
+    }
     if (!customerId) {
       setCreditSales([]);
       setSelectedItems([]);
@@ -126,12 +145,21 @@ const ReceiptForm = ({ customers }: Props) => {
     ));
 
     startTransition(async () => {
-      const result = await createReceipt(formData);
-      if (result.success) {
-        setSuccessMsg(`บันทึกใบเสร็จ ${result.receiptNo} สำเร็จ`);
-        setTimeout(() => router.push("/admin/receipts"), 1500);
+      if (isEdit && initialData) {
+        const result = await updateReceipt(initialData.id, formData);
+        if (result.success) {
+          router.push(`/admin/receipts/${initialData.id}`);
+        } else {
+          setError(result.error ?? "เกิดข้อผิดพลาด");
+        }
       } else {
-        setError(result.error ?? "เกิดข้อผิดพลาด");
+        const result = await createReceipt(formData);
+        if (result.success) {
+          setSuccessMsg(`บันทึกใบเสร็จ ${result.receiptNo} สำเร็จ`);
+          setTimeout(() => router.push("/admin/receipts"), 1500);
+        } else {
+          setError(result.error ?? "เกิดข้อผิดพลาด");
+        }
       }
     });
   };
@@ -327,7 +355,7 @@ const ReceiptForm = ({ customers }: Props) => {
             disabled={isPending || selectedItems.length === 0}
             className="px-6 py-2.5 bg-[#1e3a5f] hover:bg-[#162d4a] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
           >
-            {isPending ? "กำลังบันทึก..." : "บันทึกใบเสร็จ"}
+            {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบเสร็จ"}
           </button>
         </div>
       </div>

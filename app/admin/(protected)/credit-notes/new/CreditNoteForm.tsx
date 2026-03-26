@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createCreditNote } from "../actions";
+import { useRouter } from "next/navigation";
+import { createCreditNote, updateCreditNote } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -33,6 +34,19 @@ interface LineItem {
   salePrice: number;
 }
 
+interface InitialData {
+  id:             string;
+  cnDate:         string;
+  saleId:         string;
+  type:           "RETURN" | "DISCOUNT" | "OTHER";
+  settlementType: "CASH_REFUND" | "CREDIT_DEBT";
+  refundMethod:   "CASH" | "TRANSFER";
+  note:           string;
+  vatType:        string;
+  vatRate:        number;
+  items:          LineItem[];
+}
+
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
@@ -43,21 +57,25 @@ const CreditNoteForm = ({
   sales,
   defaultVatType,
   defaultVatRate,
+  initialData,
 }: {
   products: ProductOption[];
   sales: SaleOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  initialData?: InitialData;
 }) => {
+  const router = useRouter();
+  const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
-  const [items, setItems]         = useState<LineItem[]>([emptyItem()]);
-  const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">("RETURN");
-  const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">("CASH_REFUND");
-  const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">("CASH");
-  const [vatType, setVatType] = useState<string>(defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
+  const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
+  const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
+  const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -101,18 +119,24 @@ const CreditNoteForm = ({
     formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      const result = await createCreditNote(formData);
-      if (result.error) {
-        setError(result.error);
+      if (isEdit && initialData) {
+        const result = await updateCreditNote(initialData.id, formData);
+        if (result.error) setError(result.error);
+        else router.push(`/admin/credit-notes/${initialData.id}`);
       } else {
-        setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
-        setItems([emptyItem()]);
-        setCnType("RETURN");
-        setSettlementType("CASH_REFUND");
-        setRefundMethod("CASH");
-        setVatType(defaultVatType);
-        setVatRate(defaultVatRate);
-        form.reset();
+        const result = await createCreditNote(formData);
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
+          setItems([emptyItem()]);
+          setCnType("RETURN");
+          setSettlementType("CASH_REFUND");
+          setRefundMethod("CASH");
+          setVatType(defaultVatType);
+          setVatRate(defaultVatRate);
+          form.reset();
+        }
       }
     });
   };
@@ -133,13 +157,13 @@ const CreditNoteForm = ({
               type="date"
               name="cnDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.cnDate ?? new Date().toISOString().slice(0, 10)}
               className={inputCls}
             />
           </div>
           <div>
             <label className={labelCls}>อ้างอิงใบขาย</label>
-            <select name="saleId" className={`${inputCls} bg-white`}>
+            <select name="saleId" defaultValue={initialData?.saleId ?? ""} className={`${inputCls} bg-white`}>
               <option value="">-- ไม่อ้างอิง --</option>
               {sales.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -219,6 +243,7 @@ const CreditNoteForm = ({
               type="text"
               name="note"
               maxLength={500}
+              defaultValue={initialData?.note ?? ""}
               className={inputCls}
               placeholder="หมายเหตุ"
             />
@@ -436,6 +461,8 @@ const CreditNoteForm = ({
               </svg>
               กำลังบันทึก...
             </span>
+          ) : isEdit ? (
+            "บันทึกการแก้ไข"
           ) : (
             "บันทึก Credit Note"
           )}

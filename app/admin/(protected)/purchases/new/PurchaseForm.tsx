@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createPurchase } from "../actions";
+import { useRouter } from "next/navigation";
+import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -29,6 +30,18 @@ interface LineItem {
   landedCost: number;
 }
 
+interface InitialData {
+  id:           string;
+  purchaseDate: string;
+  supplierId:   string;
+  referenceNo:  string;
+  discount:     number;
+  note:         string;
+  vatType:      string;
+  vatRate:      number;
+  items:        LineItem[];
+}
+
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
@@ -37,21 +50,25 @@ const PurchaseForm = ({
   suppliers,
   defaultVatType,
   defaultVatRate,
+  initialData,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  initialData?: InitialData;
 }) => {
+  const router = useRouter();
+  const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
-  const [discount, setDiscount] = useState(0);
-  const [items, setItems]     = useState<LineItem[]>([
-    { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 },
-  ]);
-  const [vatType, setVatType] = useState<string>(defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(defaultVatRate);
+  const [discount, setDiscount] = useState(initialData?.discount ?? 0);
+  const [items, setItems]     = useState<LineItem[]>(
+    initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]
+  );
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
@@ -97,15 +114,21 @@ const PurchaseForm = ({
     formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      const result = await createPurchase(formData);
-      if (result.error) setError(result.error);
-      else {
-        setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
-        setItems([{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
-        setDiscount(0);
-        setVatType(defaultVatType);
-        setVatRate(defaultVatRate);
-        (e.target as HTMLFormElement).reset();
+      if (isEdit && initialData) {
+        const result = await updatePurchase(initialData.id, formData);
+        if (result.error) setError(result.error);
+        else router.push(`/admin/purchases/${initialData.id}`);
+      } else {
+        const result = await createPurchase(formData);
+        if (result.error) setError(result.error);
+        else {
+          setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
+          setItems([{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
+          setDiscount(0);
+          setVatType(defaultVatType);
+          setVatRate(defaultVatRate);
+          (e.target as HTMLFormElement).reset();
+        }
       }
     });
   };
@@ -121,12 +144,12 @@ const PurchaseForm = ({
           <div>
             <label className={labelCls}>วันที่ซื้อ <span className="text-red-500">*</span></label>
             <input type="date" name="purchaseDate" required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.purchaseDate ?? new Date().toISOString().slice(0, 10)}
               className={inputCls} />
           </div>
           <div>
             <label className={labelCls}>ซัพพลายเออร์</label>
-            <select name="supplierId" className={`${inputCls} bg-white`}>
+            <select name="supplierId" defaultValue={initialData?.supplierId ?? ""} className={`${inputCls} bg-white`}>
               <option value="">-- ไม่ระบุ --</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -139,6 +162,7 @@ const PurchaseForm = ({
               type="text"
               name="referenceNo"
               maxLength={100}
+              defaultValue={initialData?.referenceNo ?? ""}
               className={inputCls}
               placeholder="เช่น เลขที่ใบกำกับซัพพลายเออร์"
             />
@@ -157,7 +181,7 @@ const PurchaseForm = ({
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>หมายเหตุ</label>
-            <input type="text" name="note" maxLength={500} className={inputCls} placeholder="หมายเหตุ" />
+            <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} className={inputCls} placeholder="หมายเหตุ" />
           </div>
 
           {/* VAT Settings */}
@@ -338,7 +362,7 @@ const PurchaseForm = ({
               </svg>
               กำลังบันทึก...
             </>
-          ) : "บันทึกใบซื้อ"}
+          ) : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบซื้อ"}
         </button>
       </div>
     </form>

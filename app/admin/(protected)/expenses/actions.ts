@@ -117,3 +117,77 @@ export async function cancelExpense(
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
+
+// ─────────────────────────────────────────
+// updateExpense
+// ─────────────────────────────────────────
+
+export async function updateExpense(
+  id: string,
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  }
+
+  const existing = await db.expense.findUnique({ where: { id } });
+  if (!existing)                       return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  let items: z.infer<typeof expenseItemSchema>[] = [];
+  try {
+    const raw = formData.get("items");
+    if (typeof raw === "string") items = JSON.parse(raw);
+  } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+
+  const parsed = expenseSchema.safeParse({
+    expenseDate: formData.get("expenseDate"),
+    vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:     formData.get("vatRate") || 0,
+    note:        formData.get("note") || undefined,
+    items,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+
+  const d = parsed.data;
+  const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
+  const docDate = new Date(d.expenseDate);
+
+  try {
+    await db.$transaction(async (tx) => {
+      await tx.expenseItem.deleteMany({ where: { expenseId: id } });
+      await tx.expense.update({
+        where: { id },
+        data: {
+          expenseDate:    docDate,
+          totalAmount,
+          vatType:        d.vatType,
+          vatRate:        d.vatRate,
+          subtotalAmount,
+          vatAmount,
+          netAmount,
+          note:           d.note ?? null,
+        },
+      });
+      await tx.expenseItem.createMany({
+        data: d.items.map((it) => ({
+          expenseId:     id,
+          expenseCodeId: it.expenseCodeId,
+          description:   it.description || null,
+          amount:        it.amount,
+        })),
+      });
+    });
+
+    revalidatePath("/admin/expenses");
+    revalidatePath(`/admin/expenses/${id}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateExpense]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}

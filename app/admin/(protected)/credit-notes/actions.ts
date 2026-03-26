@@ -8,6 +8,7 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateDocNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
+import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -126,6 +127,13 @@ export async function createCreditNote(
       }
     });
 
+    // Recalculate sale amountRemain if linked sale exists (DISCOUNT reduces outstanding)
+    if (saleId) {
+      await db.$transaction(async (tx) => {
+        await recalculateSaleAmountRemain(tx, saleId);
+      });
+    }
+
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
     return { success: true, cnNo };
@@ -179,11 +187,153 @@ export async function cancelCreditNote(
         where: { id: cnId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
+      if (cn.saleId) {
+        await recalculateSaleAmountRemain(tx, cn.saleId);
+      }
     });
     revalidatePath("/admin/credit-notes");
     return { success: true };
   } catch (err) {
     console.error("[cancelCreditNote]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+// ─────────────────────────────────────────
+// updateCreditNote
+// ─────────────────────────────────────────
+
+export async function updateCreditNote(
+  id: string,
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  }
+
+  const existing = await db.creditNote.findUnique({
+    where: { id },
+    include: { items: { select: { productId: true } } },
+  });
+  if (!existing)                       return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  let items: z.infer<typeof cnItemSchema>[] = [];
+  try {
+    const raw = formData.get("items");
+    if (typeof raw === "string") items = JSON.parse(raw);
+  } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+
+  const parsed = cnSchema.safeParse({
+    cnDate:         formData.get("cnDate"),
+    saleId:         formData.get("saleId") || undefined,
+    type:           formData.get("type"),
+    settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
+    refundMethod:   (formData.get("refundMethod") as CNRefundMethod) || undefined,
+    note:           formData.get("note") || undefined,
+    vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:        formData.get("vatRate") || 0,
+    items,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { cnDate, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+
+  const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
+  const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
+
+  const docDate = new Date(cnDate);
+  const oldProductIds = [
+    ...new Set(existing.items.map((i) => i.productId).filter((pid): pid is string => pid !== null)),
+  ];
+
+  try {
+    await db.$transaction(async (tx) => {
+      // 1. Reverse old stock effects (only if old type was RETURN)
+      if (existing.type === "RETURN" && oldProductIds.length > 0) {
+        await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
+        for (const productId of oldProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
+      }
+
+      // 2. Delete old line items
+      await tx.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
+
+      // 3. Update header
+      await tx.creditNote.update({
+        where: { id },
+        data: {
+          cnDate:         docDate,
+          saleId:         saleId || null,
+          type,
+          settlementType,
+          refundMethod:   refundMethod ?? null,
+          totalAmount:    netAmount,
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
+          note:           note ?? null,
+        },
+      });
+
+      // 4. Re-create items + stock cards
+      for (const item of validItems) {
+        const unit = await tx.productUnit.findUnique({
+          where: { productId_name: { productId: item.productId, name: item.unitName } },
+        });
+        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+
+        const scale     = Number(unit.scale);
+        const qtyInBase = item.qty * scale;
+        const itemTotal = item.qty * item.salePrice;
+        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+
+        await tx.creditNoteItem.create({
+          data: {
+            creditNoteId:   id,
+            productId:      item.productId,
+            qty:            Math.round(qtyInBase),
+            unitPrice:      item.salePrice,
+            amount:         itemTotal,
+            subtotalAmount: itemSubtotal,
+          },
+        });
+
+        if (type === CreditNoteType.RETURN) {
+          await writeStockCard(tx, {
+            productId:   item.productId,
+            docNo:       existing.cnNo,
+            docDate,
+            source:      "RETURN_IN",
+            qtyIn:       qtyInBase,
+            qtyOut:      0,
+            priceIn:     0,
+            detail:      `รับคืน ${item.qty} ${item.unitName}`,
+            referenceId: id,
+          });
+        }
+      }
+    });
+
+    // Recalculate sale amountRemain if linked sale exists
+    const effectiveSaleId = saleId || existing.saleId;
+    if (effectiveSaleId) {
+      await db.$transaction(async (tx) => {
+        await recalculateSaleAmountRemain(tx, effectiveSaleId);
+      });
+    }
+
+    revalidatePath("/admin/credit-notes");
+    revalidatePath(`/admin/credit-notes/${id}`);
+    revalidatePath("/admin/products");
+    return { success: true };
+  } catch (err) {
+    console.error("[updateCreditNote]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

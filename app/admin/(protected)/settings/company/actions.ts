@@ -4,6 +4,60 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requireAuth } from "@/lib/require-auth";
+import { createClient } from "@supabase/supabase-js";
+
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
+const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+
+export async function uploadLogoImage(
+  formData: FormData
+): Promise<{ url?: string; error?: string }> {
+  try {
+    await requireAuth();
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "กรุณาเลือกไฟล์รูปภาพ" };
+  }
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP, GIF)" };
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return { error: "ขนาดไฟล์ต้องไม่เกิน 2MB" };
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp, gif" };
+  }
+
+  const supabaseUrl    = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return { error: "ไม่พบการตั้งค่า Supabase" };
+  }
+
+  try {
+    const supabase    = createClient(supabaseUrl, supabaseAnonKey);
+    const safeFileName = `logo-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const filePath    = `settings/${safeFileName}`;
+    const buffer      = new Uint8Array(await file.arrayBuffer());
+
+    const { error: uploadError } = await supabase.storage
+      .from("products")
+      .upload(filePath, buffer, { contentType: file.type, upsert: false });
+
+    if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+
+    const { data: { publicUrl } } = supabase.storage.from("products").getPublicUrl(filePath);
+    return { url: publicUrl };
+  } catch {
+    return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
+  }
+}
 
 const urlOrEmpty = z.string().max(500).refine(
   (v) => v === "" || /^https?:\/\/.+/.test(v),

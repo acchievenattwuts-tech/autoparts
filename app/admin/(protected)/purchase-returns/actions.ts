@@ -201,3 +201,123 @@ export async function cancelPurchaseReturn(
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
+
+// ─────────────────────────────────────────
+// updatePurchaseReturn
+// ─────────────────────────────────────────
+
+export async function updatePurchaseReturn(
+  id: string,
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  }
+
+  const existing = await db.purchaseReturn.findUnique({
+    where: { id },
+    include: { items: { select: { productId: true } } },
+  });
+  if (!existing)                        return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  let items: z.infer<typeof returnItemSchema>[] = [];
+  try {
+    const raw = formData.get("items");
+    if (typeof raw === "string") items = JSON.parse(raw);
+  } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+
+  const parsed = returnSchema.safeParse({
+    returnDate: formData.get("returnDate"),
+    purchaseId: formData.get("purchaseId") || undefined,
+    supplierId: formData.get("supplierId") || undefined,
+    note:       formData.get("note") || undefined,
+    vatType:    (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:    formData.get("vatRate") || 0,
+    items,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const docDate    = new Date(returnDate);
+  const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
+
+  try {
+    await db.$transaction(async (tx) => {
+      // 1. Reverse old stock effects
+      await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
+      await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
+      for (const productId of oldProductIds) {
+        await recalculateStockCard(tx, productId);
+      }
+
+      // 2. Build new line data (uses current avgCost at time of update)
+      const lineData: {
+        productId:     string;
+        unitName:      string;
+        qty:           number;
+        qtyInBase:     number;
+        costPerBase:   number;
+        totalAmount:   number;
+        subtotalAmount: number;
+      }[] = [];
+
+      for (const item of validItems) {
+        const unit = await tx.productUnit.findUnique({
+          where: { productId_name: { productId: item.productId, name: item.unitName } },
+        });
+        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+
+        const scale     = Number(unit.scale);
+        const qtyInBase = item.qty * scale;
+        const prod = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { avgCost: true },
+        });
+        if (!prod) throw new Error("ไม่พบสินค้า");
+        const costPerBase  = Number(prod.avgCost);
+        const totalAmount  = Math.round(qtyInBase) * costPerBase;
+        const itemSubtotal = calcItemSubtotal(totalAmount, vatType, vatRate);
+        lineData.push({ productId: item.productId, unitName: item.unitName, qty: item.qty, qtyInBase, costPerBase, totalAmount, subtotalAmount: itemSubtotal });
+      }
+
+      const rawTotal = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
+      const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
+
+      // 3. Update header
+      await tx.purchaseReturn.update({
+        where: { id },
+        data: { purchaseId: purchaseId || null, supplierId: supplierId || null, note: note ?? null, vatType, vatRate, totalAmount: netAmount, subtotalAmount, vatAmount, returnDate: docDate },
+      });
+
+      // 4. Re-create items + stock cards
+      for (const line of lineData) {
+        await tx.purchaseReturnItem.create({
+          data: { purchaseReturnId: id, productId: line.productId, qty: Math.round(line.qtyInBase), costPrice: line.costPerBase, amount: line.totalAmount, subtotalAmount: line.subtotalAmount, detail: `คืน ${line.qty} ${line.unitName}` },
+        });
+        await writeStockCard(tx, {
+          productId:   line.productId,
+          docNo:       existing.returnNo,
+          docDate,
+          source:      "RETURN_OUT",
+          qtyIn:       0,
+          qtyOut:      line.qtyInBase,
+          priceIn:     0,
+          detail:      `คืน ${line.qty} ${line.unitName}`,
+          referenceId: id,
+        });
+      }
+    });
+
+    revalidatePath("/admin/purchase-returns");
+    revalidatePath(`/admin/purchase-returns/${id}`);
+    revalidatePath("/admin/products");
+    return { success: true };
+  } catch (err) {
+    console.error("[updatePurchaseReturn]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}

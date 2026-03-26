@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
@@ -148,10 +148,22 @@ const CreditNotesPage = async ({
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-right">
-                      {cn.status === "ACTIVE" && (
-                        <CreditNoteCancelButton cnId={cn.id} />
-                      )}
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2 justify-end">
+                        <Link href={`/admin/credit-notes/${cn.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
+                          <Eye size={14} /> ดู
+                        </Link>
+                        {cn.status === "ACTIVE" && (
+                          <>
+                            <Link href={`/admin/credit-notes/${cn.id}/edit`}
+                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                              <Pencil size={14} /> แก้ไข
+                            </Link>
+                            <CreditNoteCancelButton cnId={cn.id} />
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

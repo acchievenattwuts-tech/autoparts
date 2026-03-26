@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
@@ -44,7 +44,6 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 
 const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
-
   const [sale, contents] = await Promise.all([
     db.sale.findUnique({
       where: { id },
@@ -96,10 +95,23 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         {/* Summary card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-            <h1 className="font-kanit text-xl font-bold text-gray-900">
-              สรุปข้อมูลใบขาย
-            </h1>
-            <PrintButton />
+            <div className="flex items-center gap-3">
+              <h1 className="font-kanit text-xl font-bold text-gray-900">สรุปข้อมูลใบขาย</h1>
+              {sale.status === "CANCELLED" ? (
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ยกเลิกแล้ว</span>
+              ) : (
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {sale.status === "ACTIVE" && (
+                <Link href={`/admin/sales/${id}/edit`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
+                  <Pencil size={14} /> แก้ไข
+                </Link>
+              )}
+              <PrintButton />
+            </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>

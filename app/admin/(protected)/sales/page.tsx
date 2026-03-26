@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
@@ -169,14 +169,18 @@ const SalesPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
-                        <Link
-                          href={`/admin/sales/${s.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors"
-                        >
+                        <Link href={`/admin/sales/${s.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
                           <Eye size={14} /> ดู
                         </Link>
                         {s.status === "ACTIVE" && (
-                          <SaleCancelButton saleId={s.id} />
+                          <>
+                            <Link href={`/admin/sales/${s.id}/edit`}
+                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                              <Pencil size={14} /> แก้ไข
+                            </Link>
+                            <SaleCancelButton saleId={s.id} />
+                          </>
                         )}
                       </div>
                     </td>
