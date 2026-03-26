@@ -11,6 +11,7 @@ type ProductForCard = {
   reportUnitName: string;
   category: { name: string };
   brand: { name: string } | null;
+  carModels?: { carModel: { name: string; carBrand: { name: string } } }[];
 };
 
 interface Props {
@@ -55,6 +56,32 @@ const ProductCard = ({ product, lineUrl }: Props) => {
         </h3>
         {product.brand && (
           <p className="text-xs text-gray-400 mt-0.5">{product.brand.name}</p>
+        )}
+
+        {product.carModels && product.carModels.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {/* Group by brand, show brand name + model names */}
+            {(() => {
+              const brandMap = new Map<string, string[]>();
+              for (const { carModel } of product.carModels) {
+                const b = carModel.carBrand.name;
+                if (!brandMap.has(b)) brandMap.set(b, []);
+                brandMap.get(b)!.push(carModel.name);
+              }
+              const entries = Array.from(brandMap.entries());
+              return entries.map(([brandName, models]) => (
+                <span
+                  key={brandName}
+                  className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium"
+                >
+                  🚗 {brandName}
+                  {models.length <= 2
+                    ? ` › ${models.join(", ")}`
+                    : ` › ${models.slice(0, 2).join(", ")} +${models.length - 2}`}
+                </span>
+              ));
+            })()}
+          </div>
         )}
 
         <div className="mt-3 flex items-center justify-between">

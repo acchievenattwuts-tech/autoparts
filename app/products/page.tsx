@@ -60,6 +60,17 @@ const ProductsPage = async ({ searchParams }: Props) => {
         reportUnitName: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
+        carModels: {
+          select: {
+            carModel: {
+              select: {
+                name: true,
+                carBrand: { select: { name: true } },
+              },
+            },
+          },
+          take: 6,
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 200,
