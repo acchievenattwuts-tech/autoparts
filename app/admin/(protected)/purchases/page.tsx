@@ -6,13 +6,17 @@ import { Plus, Eye, Pencil } from "lucide-react";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 const PurchasesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; page?: string }>;
 }) => {
-  const { q } = await searchParams;
+  const { q, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
   const where: Prisma.PurchaseWhereInput = q ? {
     OR: [
@@ -23,15 +27,26 @@ const PurchasesPage = async ({
     ],
   } : {};
 
-  const purchases = await db.purchase.findMany({
-    where: Object.keys(where).length > 0 ? where : undefined,
-    orderBy: { purchaseDate: "desc" },
-    take: 100,
-    include: {
-      supplier: { select: { name: true } },
-      items:    { select: { id: true } },
-    },
-  });
+  const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+  const [purchases, totalCount] = await Promise.all([
+    db.purchase.findMany({
+      where: whereClause,
+      orderBy: [{ purchaseDate: "desc" }, { purchaseNo: "desc" }],
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      include: {
+        supplier: { select: { name: true } },
+        items:    { select: { id: true } },
+      },
+    }),
+    db.purchase.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
 
   return (
     <div>
@@ -48,7 +63,7 @@ const PurchasesPage = async ({
       </div>
 
       {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {purchases.length} รายการ</p>
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -110,7 +125,7 @@ const PurchasesPage = async ({
                               className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
                               <Pencil size={14} /> แก้ไข
                             </Link>
-                            <PurchaseCancelButton purchaseId={p.id} />
+                            <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} />
                           </>
                         )}
                       </div>
@@ -122,6 +137,13 @@ const PurchasesPage = async ({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/purchases"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

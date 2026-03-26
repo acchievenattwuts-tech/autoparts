@@ -7,6 +7,9 @@ import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generate
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import CreditNoteCancelButton from "./CreditNoteCancelButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
@@ -27,9 +30,10 @@ const settlementTypeBadge: Record<CNSettlementType, string> = {
 const CreditNotesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; page?: string }>;
 }) => {
-  const { q } = await searchParams;
+  const { q, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
   const where: Prisma.CreditNoteWhereInput = q ? {
     OR: [
@@ -40,23 +44,34 @@ const CreditNotesPage = async ({
     ],
   } : {};
 
-  const creditNotes = await db.creditNote.findMany({
-    where: Object.keys(where).length > 0 ? where : undefined,
-    orderBy: { cnDate: "desc" },
-    take:    100,
-    select: {
-      id:             true,
-      cnNo:           true,
-      cnDate:         true,
-      type:           true,
-      settlementType: true,
-      refundMethod:   true,
-      totalAmount:    true,
-      status:         true,
-      sale: { select: { saleNo: true } },
-      _count: { select: { items: true } },
-    },
-  });
+  const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+  const [creditNotes, totalCount] = await Promise.all([
+    db.creditNote.findMany({
+      where: whereClause,
+      orderBy: [{ cnDate: "desc" }, { cnNo: "desc" }],
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      select: {
+        id:             true,
+        cnNo:           true,
+        cnDate:         true,
+        type:           true,
+        settlementType: true,
+        refundMethod:   true,
+        totalAmount:    true,
+        status:         true,
+        sale: { select: { saleNo: true } },
+        _count: { select: { items: true } },
+      },
+    }),
+    db.creditNote.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
 
   return (
     <div>
@@ -75,7 +90,7 @@ const CreditNotesPage = async ({
       </div>
 
       {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {creditNotes.length} รายการ</p>
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -160,7 +175,7 @@ const CreditNotesPage = async ({
                               className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
                               <Pencil size={14} /> แก้ไข
                             </Link>
-                            <CreditNoteCancelButton cnId={cn.id} />
+                            <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} />
                           </>
                         )}
                       </div>
@@ -172,6 +187,13 @@ const CreditNotesPage = async ({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/credit-notes"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

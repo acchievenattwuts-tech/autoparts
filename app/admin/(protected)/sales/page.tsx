@@ -2,12 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye, Pencil } from "lucide-react";
+import { Plus, Eye, Pencil, Printer } from "lucide-react";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SearchBar from "@/components/shared/SearchBar";
 import SaleCancelButton from "./SaleCancelButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -47,11 +50,12 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 const SalesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ paymentType?: string; q?: string }>;
+  searchParams: Promise<{ paymentType?: string; q?: string; page?: string }>;
 }) => {
   const params = await searchParams;
   const paymentTypeFilter = params.paymentType;
   const q = params.q;
+  const pageNum = Math.max(1, parseInt(params.page ?? "1", 10));
 
   const where: Prisma.SaleWhereInput = {};
   if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
@@ -65,15 +69,27 @@ const SalesPage = async ({
     ];
   }
 
-  const sales = await db.sale.findMany({
-    where: Object.keys(where).length > 0 ? where : undefined,
-    orderBy: { saleDate: "desc" },
-    take: 100,
-    include: {
-      _count: { select: { items: true } },
-      customer: { select: { name: true } },
-    },
-  });
+  const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+  const [sales, totalCount] = await Promise.all([
+    db.sale.findMany({
+      where: whereClause,
+      orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      include: {
+        _count: { select: { items: true } },
+        customer: { select: { name: true } },
+      },
+    }),
+    db.sale.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
+  if (paymentTypeFilter) paginationParams.paymentType = paymentTypeFilter;
 
   return (
     <div>
@@ -93,7 +109,7 @@ const SalesPage = async ({
       </div>
 
       {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {sales.length} รายการ</p>
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -169,6 +185,10 @@ const SalesPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
+                        <Link href={`/admin/sales/${s.id}`} target="_blank"
+                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                          <Printer size={14} /> พิมพ์
+                        </Link>
                         <Link href={`/admin/sales/${s.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
                           <Eye size={14} /> ดู
@@ -179,7 +199,7 @@ const SalesPage = async ({
                               className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
                               <Pencil size={14} /> แก้ไข
                             </Link>
-                            <SaleCancelButton saleId={s.id} />
+                            <SaleCancelButton saleId={s.id} docNo={s.saleNo} />
                           </>
                         )}
                       </div>
@@ -191,6 +211,13 @@ const SalesPage = async ({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/sales"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

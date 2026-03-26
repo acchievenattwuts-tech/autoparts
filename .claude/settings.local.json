@@ -83,7 +83,11 @@
       "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/[id]/edit/loading.tsx\")",
       "Bash(git pull:*)",
       "Bash(git stash:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(ls d:/autoparts/public/hero-banner*)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs sed:*)",
+      "Bash(grep -rn \"dbTx\\\\|db\\\\.$transaction\" d:/autoparts/lib/stock-card.ts d:/autoparts/lib/amount-remain.ts)"
     ]
   }
 }

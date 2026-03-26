@@ -2,11 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye, Pencil } from "lucide-react";
+import { Plus, Eye, Pencil, Printer } from "lucide-react";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import ReceiptCancelButton from "./ReceiptCancelButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH:     "เงินสด",
@@ -17,9 +20,10 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
 const ReceiptsPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; page?: string }>;
 }) => {
-  const { q } = await searchParams;
+  const { q, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
   const where: Prisma.ReceiptWhereInput = q ? {
     OR: [
@@ -30,15 +34,26 @@ const ReceiptsPage = async ({
     ],
   } : {};
 
-  const receipts = await db.receipt.findMany({
-    where: Object.keys(where).length > 0 ? where : undefined,
-    orderBy: { receiptDate: "desc" },
-    take: 100,
-    include: {
-      customer: { select: { name: true } },
-      _count:   { select: { items: true } },
-    },
-  });
+  const whereClause = Object.keys(where).length > 0 ? where : undefined;
+
+  const [receipts, totalCount] = await Promise.all([
+    db.receipt.findMany({
+      where: whereClause,
+      orderBy: [{ receiptDate: "desc" }, { receiptNo: "desc" }],
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      include: {
+        customer: { select: { name: true } },
+        _count:   { select: { items: true } },
+      },
+    }),
+    db.receipt.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
 
   return (
     <div>
@@ -57,7 +72,7 @@ const ReceiptsPage = async ({
       </div>
 
       {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {receipts.length} รายการ</p>
+        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -117,6 +132,10 @@ const ReceiptsPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
+                        <Link href={`/admin/receipts/${r.id}`} target="_blank"
+                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                          <Printer size={14} /> พิมพ์
+                        </Link>
                         <Link href={`/admin/receipts/${r.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
                           <Eye size={14} /> ดู
@@ -127,7 +146,7 @@ const ReceiptsPage = async ({
                               className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
                               <Pencil size={14} /> แก้ไข
                             </Link>
-                            <ReceiptCancelButton receiptId={r.id} />
+                            <ReceiptCancelButton receiptId={r.id} docNo={r.receiptNo} />
                           </>
                         )}
                       </div>
@@ -139,6 +158,13 @@ const ReceiptsPage = async ({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/receipts"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

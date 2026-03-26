@@ -3,20 +3,24 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 interface WarrantyPageProps {
-  searchParams: Promise<{ status?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
 }
 
 const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
-  const { status, q } = await searchParams;
+  const { status, q, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const now = new Date();
   const soonDate = new Date();
   soonDate.setDate(now.getDate() + 30);
 
-  const warranties = await db.warranty.findMany({
-    orderBy: { endDate: "asc" },
-    take: 200,
+  // Fetch all for status counts and client-side filtering by status/q
+  const allWarranties = await db.warranty.findMany({
+    orderBy: [{ startDate: "desc" }],
     select: {
       id: true,
       warrantyDays: true,
@@ -29,7 +33,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   });
 
   // Classify status
-  const withStatus = warranties.map((w) => {
+  const withStatus = allWarranties.map((w) => {
     const isExpired = w.endDate < now;
     const isSoon    = !isExpired && w.endDate <= soonDate;
     const wStatus   = isExpired ? "expired" : isSoon ? "soon" : "active";
@@ -51,6 +55,13 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     soon:    withStatus.filter((w) => w.wStatus === "soon").length,
     expired: withStatus.filter((w) => w.wStatus === "expired").length,
   };
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated = filtered.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
+  if (status) paginationParams.status = status;
 
   return (
     <div>
@@ -128,7 +139,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
           </p>
         </div>
 
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <div className="text-center py-12 text-gray-400 text-sm">ไม่พบรายการประกัน</div>
         ) : (
           <div className="overflow-x-auto">
@@ -146,11 +157,12 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((w, idx) => {
+                {paginated.map((w, idx) => {
                   const daysLeft = Math.ceil((w.endDate.getTime() - now.getTime()) / 86400000);
+                  const rowNum = (pageNum - 1) * PAGE_SIZE + idx + 1;
                   return (
                     <tr key={w.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="py-2.5 px-4 text-gray-400 text-xs">{idx + 1}</td>
+                      <td className="py-2.5 px-4 text-gray-400 text-xs">{rowNum}</td>
                       <td className="py-2.5 px-4">
                         <p className="font-medium text-gray-800">{w.product.name}</p>
                         <p className="text-xs text-gray-400">[{w.product.code}]</p>
@@ -196,6 +208,13 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/warranties"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

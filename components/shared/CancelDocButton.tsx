@@ -5,12 +5,13 @@ import { XCircle } from "lucide-react";
 
 interface CancelDocButtonProps {
   docId:      string;
+  docNo:      string;
   idFieldName: string;   // เช่น "saleId", "purchaseId", "adjustmentId"
   cancelAction: (formData: FormData) => Promise<{ success?: boolean; error?: string }>;
   onSuccess?:  () => void;
 }
 
-const CancelDocButton = ({ docId, idFieldName, cancelAction, onSuccess }: CancelDocButtonProps) => {
+const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }: CancelDocButtonProps) => {
   const [isPending, startTransition] = useTransition();
   const [showModal, setShowModal]    = useState(false);
   const [cancelNote, setCancelNote]  = useState("");
@@ -48,9 +49,12 @@ const CancelDocButton = ({ docId, idFieldName, cancelAction, onSuccess }: Cancel
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900 mb-2">ยืนยันการยกเลิกเอกสาร</h3>
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 mb-2">
+              ยืนยันการยกเลิกเอกสาร {docNo}
+            </h3>
             <p className="text-sm text-gray-500 mb-4">
-              การยกเลิกจะ re-calculate Stock MAVG ทันที และไม่สามารถกู้คืนได้
+              เอกสาร <span className="font-mono font-semibold text-gray-700">{docNo}</span> จะถูกยกเลิก
+              ระบบจะ re-calculate Stock MAVG ทันที และไม่สามารถกู้คืนได้
             </p>
 
             <div className="mb-4">

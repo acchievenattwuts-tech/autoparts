@@ -6,7 +6,7 @@ import { ClipboardList } from "lucide-react";
 import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
-  searchParams: Promise<{ productId?: string; unitName?: string }>;
+  searchParams: Promise<{ productId?: string; unitName?: string; q?: string }>;
 }
 
 const sourceLabel: Record<string, string> = {
@@ -36,7 +36,7 @@ const fmtPrice = (n: number) =>
   n === 0 ? "-" : n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
 const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
-  const { productId, unitName } = await searchParams;
+  const { productId, unitName, q } = await searchParams;
 
   // Fetch product list for selector
   const products = await db.product.findMany({
@@ -52,10 +52,21 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
     },
   });
 
-  // Selected product
+  // Filter products by search query
+  const filteredProducts = q
+    ? products.filter(
+        (p) =>
+          p.code.toLowerCase().includes(q.toLowerCase()) ||
+          p.name.toLowerCase().includes(q.toLowerCase()),
+      )
+    : [];
+
+  // Determine selected product: from productId param, or first match if only 1 result
   const selectedProduct = productId
-    ? products.find((p) => p.id === productId) ?? null
-    : null;
+    ? (products.find((p) => p.id === productId) ?? null)
+    : q && filteredProducts.length === 1
+      ? filteredProducts[0]
+      : null;
 
   // Determine display unit scale
   const selectedUnit = selectedProduct
@@ -86,27 +97,65 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       {/* Product selector */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
         <form method="GET" className="flex gap-3 flex-wrap">
+          {productId && <input type="hidden" name="productId" value={productId} />}
+          {unitName && <input type="hidden" name="unitName" value={unitName} />}
           <div className="flex-1 min-w-48">
-            <select
-              name="productId"
-              defaultValue={productId ?? ""}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm bg-white"
-            >
-              <option value="">-- เลือกสินค้า --</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  [{p.code}] {p.name}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อค้นหา..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
+            />
           </div>
           <button
             type="submit"
             className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
           >
-            ดูบัตรสต็อก
+            ค้นหา
           </button>
+          {(q || productId) && (
+            <Link
+              href="/admin/stock/card"
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"
+            >
+              ล้าง
+            </Link>
+          )}
         </form>
+
+        {/* Search results list */}
+        {q && !selectedProduct && filteredProducts.length > 0 && (
+          <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+              <p className="text-xs text-gray-500">
+                พบ <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span> — คลิกเพื่อเลือกสินค้า
+              </p>
+            </div>
+            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+              {filteredProducts.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/admin/stock/card?productId=${p.id}&q=${encodeURIComponent(q)}`}
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
+                  >
+                    <div>
+                      <span className="font-mono text-xs text-gray-500 mr-2">[{p.code}]</span>
+                      <span className="text-sm text-gray-800">{p.name}</span>
+                    </div>
+                    <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
+                      คงเหลือ {fmt(Number(p.stock))} {p.reportUnitName}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {q && !selectedProduct && filteredProducts.length === 0 && (
+          <p className="mt-3 text-sm text-gray-400">ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;</p>
+        )}
       </div>
 
       {selectedProduct && (
@@ -136,7 +185,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                   {selectedProduct.units.map((u) => (
                     <Link
                       key={u.name}
-                      href={`/admin/stock/card?productId=${selectedProduct.id}&unitName=${u.name}`}
+                      href={`/admin/stock/card?productId=${selectedProduct.id}&unitName=${u.name}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                         (selectedUnit?.name ?? "") === u.name
                           ? "bg-[#1e3a5f] text-white"
@@ -285,7 +334,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       {!selectedProduct && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
           <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">เลือกสินค้าเพื่อดู Stock Card MAVG</p>
+          <p className="text-gray-400 text-sm">ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดู Stock Card MAVG</p>
         </div>
       )}
     </div>

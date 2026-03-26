@@ -86,6 +86,7 @@ const BfHistoryTable = ({ docs }: { docs: BfDoc[] }) => {
                     {d.status === "ACTIVE" && (
                       <CancelDocButton
                         docId={d.id}
+                        docNo={d.docNo}
                         idFieldName="bfId"
                         cancelAction={cancelBF}
                         onSuccess={() => router.refresh()}

@@ -5,35 +5,47 @@ import Link from "next/link";
 import { Plus, Search, Pencil } from "lucide-react";
 import DeleteProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 interface ProductsPageProps {
-  searchParams: Promise<{ search?: string }>;
+  searchParams: Promise<{ search?: string; page?: string }>;
 }
 
 const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
-  const { search } = await searchParams;
+  const { search, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const products = await db.product.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { code: { contains: search, mode: "insensitive" } },
-            { aliases: { some: { alias: { contains: search, mode: "insensitive" } } } },
-            { carModels: { some: { carModel: { name: { contains: search, mode: "insensitive" } } } } },
-            { carModels: { some: { carModel: { carBrand: { name: { contains: search, mode: "insensitive" } } } } } },
-            { category: { name: { contains: search, mode: "insensitive" } } },
-            { brand: { name: { contains: search, mode: "insensitive" } } },
-          ],
-        }
-      : undefined,
-    include: {
-      category: { select: { name: true } },
-      brand: { select: { name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const where = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { code: { contains: search, mode: "insensitive" as const } },
+          { aliases: { some: { alias: { contains: search, mode: "insensitive" as const } } } },
+          { carModels: { some: { carModel: { name: { contains: search, mode: "insensitive" as const } } } } },
+          { carModels: { some: { carModel: { carBrand: { name: { contains: search, mode: "insensitive" as const } } } } } },
+          { category: { name: { contains: search, mode: "insensitive" as const } } },
+          { brand: { name: { contains: search, mode: "insensitive" as const } } },
+        ],
+      }
+    : undefined;
+
+  const [products, total] = await Promise.all([
+    db.product.findMany({
+      where,
+      include: {
+        category: { select: { name: true } },
+        brand: { select: { name: true } },
+      },
+      orderBy: { code: "desc" },
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+    }),
+    db.product.count({ where }),
+  ]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
@@ -89,12 +101,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             {search ? (
               <>
                 ผลการค้นหา &quot;{search}&quot;:{" "}
-                <span className="font-medium text-gray-700">{products.length} รายการ</span>
+                <span className="font-medium text-gray-700">{total} รายการ</span>
               </>
             ) : (
               <>
                 สินค้าทั้งหมด:{" "}
-                <span className="font-medium text-gray-700">{products.length} รายการ</span>
+                <span className="font-medium text-gray-700">{total} รายการ</span>
               </>
             )}
           </p>
@@ -228,6 +240,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/products"
+        searchParams={search ? { search } : {}}
+      />
     </div>
   );
 };

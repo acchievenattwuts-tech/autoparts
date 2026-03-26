@@ -4,58 +4,74 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { Receipt, Plus, Eye, Pencil } from "lucide-react";
 import CancelExpenseButton from "./CancelExpenseButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 30;
 
 interface ExpensePageProps {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }
 
 const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
-  const { q, status } = await searchParams;
+  const { q, status, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const expenses = await db.expense.findMany({
-    where: {
-      AND: [
-        status ? { status: status as "ACTIVE" | "CANCELLED" } : {},
-        q
-          ? {
-              OR: [
-                { expenseNo: { contains: q, mode: "insensitive" } },
-                { note: { contains: q, mode: "insensitive" } },
-                { items: { some: { description: { contains: q, mode: "insensitive" } } } },
-                { items: { some: { expenseCode: { name: { contains: q, mode: "insensitive" } } } } },
-              ],
-            }
-          : {},
-      ],
-    },
-    orderBy: { expenseDate: "desc" },
-    take: 100,
-    select: {
-      id:            true,
-      expenseNo:     true,
-      expenseDate:   true,
-      totalAmount:   true,
-      subtotalAmount: true,
-      vatAmount:     true,
-      vatType:       true,
-      vatRate:       true,
-      netAmount:     true,
-      note:          true,
-      status:        true,
-      cancelNote:    true,
-      items: {
-        select: {
-          id:          true,
-          amount:      true,
-          description: true,
-          expenseCode: { select: { code: true, name: true } },
+  const whereCondition = {
+    AND: [
+      status ? { status: status as "ACTIVE" | "CANCELLED" } : {},
+      q
+        ? {
+            OR: [
+              { expenseNo: { contains: q, mode: "insensitive" as const } },
+              { note: { contains: q, mode: "insensitive" as const } },
+              { items: { some: { description: { contains: q, mode: "insensitive" as const } } } },
+              { items: { some: { expenseCode: { name: { contains: q, mode: "insensitive" as const } } } } },
+            ],
+          }
+        : {},
+    ],
+  };
+
+  const [expenses, totalCount] = await Promise.all([
+    db.expense.findMany({
+      where: whereCondition,
+      orderBy: [{ expenseDate: "desc" }, { expenseNo: "desc" }],
+      take: PAGE_SIZE,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      select: {
+        id:            true,
+        expenseNo:     true,
+        expenseDate:   true,
+        totalAmount:   true,
+        subtotalAmount: true,
+        vatAmount:     true,
+        vatType:       true,
+        vatRate:       true,
+        netAmount:     true,
+        note:          true,
+        status:        true,
+        cancelNote:    true,
+        items: {
+          select: {
+            id:          true,
+            amount:      true,
+            description: true,
+            expenseCode: { select: { code: true, name: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    db.expense.count({ where: whereCondition }),
+  ]);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const activeExpenses = expenses.filter((e) => e.status === "ACTIVE");
   const totalNet = activeExpenses.reduce((s, e) => s + Number(e.netAmount), 0);
+
+  const paginationParams: Record<string, string> = {};
+  if (q) paginationParams.q = q;
+  if (status) paginationParams.status = status;
 
   return (
     <div>
@@ -112,7 +128,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            ทั้งหมด <span className="font-medium text-gray-700">{expenses.length} เอกสาร</span>
+            ทั้งหมด <span className="font-medium text-gray-700">{totalCount} เอกสาร</span>
           </p>
           <p className="text-sm font-medium text-gray-700">
             ยอดสุทธิ (ACTIVE){" "}
@@ -234,6 +250,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/expenses"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

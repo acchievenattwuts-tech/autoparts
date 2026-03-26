@@ -66,6 +66,7 @@ const AdjustmentHistoryList = ({ adjustments }: { adjustments: AdjDoc[] }) => {
               {adj.status === "ACTIVE" && (
                 <CancelDocButton
                   docId={adj.id}
+                  docNo={adj.adjustNo}
                   idFieldName="adjustmentId"
                   cancelAction={cancelAdjustment}
                   onSuccess={() => router.refresh()}
