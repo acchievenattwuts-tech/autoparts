@@ -15,6 +15,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/master/parts-brands":   "แบรนด์อะไหล่",
   "/admin/master/car-brands":     "ยี่ห้อ / รุ่นรถ",
   "/admin/master/suppliers":      "ซัพพลายเออร์",
+  "/admin/master/expense-codes":  "รหัสค่าใช้จ่าย",
   "/admin/stock/bf":              "ยอดยกมา (BF)",
   "/admin/stock/adjustments":     "ปรับสต็อก",
   "/admin/stock/card":            "Stock Card MAVG",

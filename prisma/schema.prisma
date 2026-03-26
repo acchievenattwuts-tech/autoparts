@@ -394,33 +394,52 @@ model Warranty {
 }
 
 // ─────────────────────────────────────────
+// Expense Code (รหัสค่าใช้จ่าย — master)
+// ─────────────────────────────────────────
+
+model ExpenseCode {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  name        String
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  items       ExpenseItem[]
+}
+
+// ─────────────────────────────────────────
 // Expense (ค่าใช้จ่ายอื่นๆ)
 // ─────────────────────────────────────────
 
 model Expense {
-  id          String      @id @default(cuid())
-  category    ExpenseCategory
-  description String
-  amount      Decimal     @db.Decimal(10, 2)
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  expenseDate DateTime    @default(now())
-  note        String?
-  vatType       VatType @default(NO_VAT)
-  vatRate       Decimal @default(0) @db.Decimal(5, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  createdAt   DateTime    @default(now())
+  id             String        @id @default(cuid())
+  expenseNo      String        @unique
+  expenseDate    DateTime
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  vatType        VatType       @default(NO_VAT)
+  vatRate        Decimal       @default(0) @db.Decimal(5, 2)
+  subtotalAmount Decimal       @default(0) @db.Decimal(10, 2)
+  vatAmount      Decimal       @default(0) @db.Decimal(10, 2)
+  netAmount      Decimal       @db.Decimal(10, 2)
+  note           String?
+  status         DocStatus     @default(ACTIVE)
+  cancelledAt    DateTime?
+  cancelNote     String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          ExpenseItem[]
 }
 
-enum ExpenseCategory {
-  RENT
-  UTILITIES
-  SALARY
-  TRANSPORT
-  MARKETING
-  MAINTENANCE
-  OTHER
+model ExpenseItem {
+  id            String      @id @default(cuid())
+  expenseId     String
+  expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expenseCodeId String
+  expenseCode   ExpenseCode @relation(fields: [expenseCodeId], references: [id])
+  description   String?
+  amount        Decimal     @db.Decimal(10, 2)
 }
 
 // ─────────────────────────────────────────

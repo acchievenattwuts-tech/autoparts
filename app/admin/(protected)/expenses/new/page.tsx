@@ -4,15 +4,17 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { Receipt, ChevronRight } from "lucide-react";
 import NewExpenseForm from "./NewExpenseForm";
+import { getSiteConfig } from "@/lib/site-config";
 
 const NewExpensePage = async () => {
-  const [vatTypeSetting, vatRateSetting] = await Promise.all([
-    db.siteContent.findUnique({ where: { key: "defaultVatType" } }),
-    db.siteContent.findUnique({ where: { key: "defaultVatRate" } }),
+  const [expenseCodes, config] = await Promise.all([
+    db.expenseCode.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true },
+    }),
+    getSiteConfig(),
   ]);
-
-  const defaultVatType = vatTypeSetting?.value ?? "NO_VAT";
-  const defaultVatRate = Number(vatRateSetting?.value ?? 7);
 
   return (
     <div>
@@ -28,7 +30,11 @@ const NewExpensePage = async () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <NewExpenseForm defaultVatType={defaultVatType} defaultVatRate={defaultVatRate} />
+        <NewExpenseForm
+          expenseCodes={expenseCodes}
+          defaultVatType={config.vatType}
+          defaultVatRate={config.vatRate}
+        />
       </div>
     </div>
   );

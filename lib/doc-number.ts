@@ -32,6 +32,21 @@ export async function generateReceiptNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate expense number using Expense table
+ * Format: OE{YYMM}{4-digit}
+ */
+export async function generateExpenseNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy   = String(d.getFullYear()).slice(-2);
+  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `OE${yy}${mm}`;
+  const count = await db.expense.count({
+    where: { expenseNo: { startsWith: pattern } },
+  });
+  return `${pattern}${String(count + 1).padStart(4, "0")}`;
+}
+
+/**
  * Document prefix reference:
  * BF   — ยอดยกมา (Beginning Balance)
  * RR   — ซื้อสินค้าเข้า (Purchase Order)

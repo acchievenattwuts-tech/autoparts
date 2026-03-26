@@ -64,7 +64,8 @@
       "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/receipts/actions.ts\")",
       "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/receipts/actions.ts\")",
       "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")",
-      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")"
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")",
+      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/expenses/\")"
     ]
   }
 }

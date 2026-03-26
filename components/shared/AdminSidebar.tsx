@@ -23,6 +23,7 @@ import {
   ClipboardList,
   Users,
   FileCheck,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ const navItems = [
       { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award },
       { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck },
+      { label: "รหัสค่าใช้จ่าย", href: "/admin/master/expense-codes", icon: Wallet },
     ],
   },
   {
