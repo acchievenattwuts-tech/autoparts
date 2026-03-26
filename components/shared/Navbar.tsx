@@ -21,12 +21,14 @@ interface NavbarProps {
   shopSlogan?: string;
   lineUrl?: string;
   shopPhone?: string;
+  searchQuery?: string;
 }
 
 const Navbar = ({
   shopName = "ศรีวรรณ อะไหล่แอร์",
   lineUrl = "https://lin.ee/18P0SqG",
   shopPhone,
+  searchQuery,
 }: NavbarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const nameParts = shopName.split(" ");
@@ -64,15 +66,22 @@ const Navbar = ({
           </nav>
 
           {/* Desktop Search */}
-          <form action="/products" method="GET" className="hidden md:flex items-center flex-1 max-w-xs">
+          <form action="/products" method="GET" className="hidden md:flex items-center flex-1 max-w-sm">
             <div className="relative w-full">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 type="text"
                 name="q"
-                placeholder="ค้นหาสินค้า..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 focus:border-[#1e3a5f] bg-gray-50"
+                defaultValue={searchQuery ?? ""}
+                placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
+                className="w-full pl-8 pr-10 py-2 text-sm border-2 border-gray-200 hover:border-[#1e3a5f]/40 focus:border-[#1e3a5f] rounded-full focus:outline-none bg-white shadow-sm transition-colors"
               />
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-[#f97316] hover:bg-[#ea6c0a] text-white p-1.5 rounded-full transition-colors"
+              >
+                <Search size={11} />
+              </button>
             </div>
           </form>
 
@@ -119,9 +128,16 @@ const Navbar = ({
               <input
                 type="text"
                 name="q"
-                placeholder="ค้นหาสินค้า..."
-                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+                defaultValue={searchQuery ?? ""}
+                placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
+                className="w-full pl-8 pr-10 py-2 text-sm border-2 border-gray-200 rounded-full focus:outline-none focus:border-[#1e3a5f] bg-white"
               />
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-[#f97316] hover:bg-[#ea6c0a] text-white p-1.5 rounded-full transition-colors"
+              >
+                <Search size={11} />
+              </button>
             </div>
           </form>
           <nav className="flex flex-col gap-1">

@@ -7,7 +7,6 @@ import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
 import FloatingLine from "@/components/shared/FloatingLine";
 import Link from "next/link";
-import { Search } from "lucide-react";
 
 interface Props {
   searchParams: Promise<{ q?: string; category?: string }>;
@@ -64,31 +63,18 @@ const ProductsPage = async ({ searchParams }: Props) => {
         shopSlogan={config.shopSlogan}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
+        searchQuery={q}
       />
       <main className="min-h-screen bg-gray-50 pt-16">
         {/* Hero bar */}
-        <div className="bg-[#1e3a5f] py-10">
+        <div className="bg-[#1e3a5f] py-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 className="font-kanit text-3xl font-bold text-white mb-5">สินค้าทั้งหมด</h1>
-            <form method="GET" action="/products" className="flex gap-2 max-w-xl">
-              <div className="relative flex-1">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  type="text"
-                  name="q"
-                  defaultValue={q ?? ""}
-                  placeholder="ค้นหาสินค้า ชื่อ รหัส ยี่ห้อรถ รุ่นรถ..."
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
-                />
-                {category && <input type="hidden" name="category" value={category} />}
-              </div>
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-[#f97316] hover:bg-[#ea6c0a] text-white font-medium text-sm rounded-xl transition-colors"
-              >
-                ค้นหา
-              </button>
-            </form>
+            <h1 className="font-kanit text-3xl font-bold text-white">สินค้าทั้งหมด</h1>
+            {q && (
+              <p className="text-white/70 text-sm mt-1">
+                ผลการค้นหา: &ldquo;{q}&rdquo;
+              </p>
+            )}
           </div>
         </div>
 
