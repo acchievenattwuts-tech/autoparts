@@ -3,12 +3,17 @@
 import { useState, useTransition } from "react";
 import { createAdjustment } from "./actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
+import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 
 interface ProductOption {
   id: string;
   code: string;
   name: string;
+  description?: string | null;
   stock: number;
+  categoryName: string;
+  brandName?: string | null;
+  aliases?: string[];
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
@@ -109,14 +114,11 @@ const AdjustmentForm = ({ products }: { products: ProductOption[] }) => {
                 <div key={i} className="grid grid-cols-12 gap-2 items-end p-3 bg-gray-50 rounded-lg">
                   <div className="col-span-3">
                     {i === 0 && <p className="text-xs text-gray-500 mb-1">สินค้า</p>}
-                    <select value={item.productId}
-                      onChange={(e) => updateItem(i, "productId", e.target.value)}
-                      className={`${inputCls} bg-white`}>
-                      <option value="">-- เลือกสินค้า --</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                      ))}
-                    </select>
+                    <ProductSearchSelect
+                      products={products}
+                      value={item.productId}
+                      onChange={(id) => updateItem(i, "productId", id)}
+                    />
                   </div>
                   <div className="col-span-2">
                     {i === 0 && <p className="text-xs text-gray-500 mb-1">หน่วย</p>}

@@ -123,37 +123,34 @@
 - [x] พิมพ์ใบเสร็จรับเงิน (browser print)
 - [x] แสดงยอดค้างชำระในหน้า Customer profile
 
-#### 🔲 3.9 Search ทุก Transaction + ประวัติเอกสาร (บางส่วนเสร็จแล้ว)
-- [x] Sales: SearchBar + filter paymentType ✅
-- [x] Purchases: SearchBar ✅
-- [x] Purchase Returns: SearchBar ✅
-- [x] Credit Notes: SearchBar ✅
-- [ ] Receipts: เพิ่ม SearchBar (ค้นหา receiptNo, customerName, note)
-- [ ] BF (ยอดยกมา): เพิ่มแสดงประวัติเอกสาร (query StockCard source=BF)
-- [ ] Adjustment: เพิ่มแสดงประวัติเอกสาร (query Adjustment model)
+#### ✅ 3.9 Search ทุก Transaction + ประวัติเอกสาร (เสร็จแล้ว)
+- [x] Sales: SearchBar + filter paymentType
+- [x] Purchases: SearchBar
+- [x] Purchase Returns: SearchBar
+- [x] Credit Notes: SearchBar
+- [x] Receipts: SearchBar
+- [x] BF: แสดงประวัติเอกสาร (BalanceForward model)
+- [x] Adjustment: แสดงประวัติเอกสาร + CancelDocButton
 
-#### 🔲 3.10 ระบบยกเลิกเอกสาร (Document Cancellation) — **ต้องแก้ Schema**
-> กฎสำคัญ: การยกเลิกต้องทำ 3 อย่างพร้อมกันใน 1 transaction:
-> 1. Re-calculate StockCard MAVG ทุกสินค้าที่ได้รับผลกระทบ
-> 2. Reverse AR/AP ถ้าเกี่ยวข้อง
-> 3. ตรวจ Reference Chain ก่อนอนุญาต
+#### ✅ 3.10 ระบบยกเลิกเอกสาร (Document Cancellation) (เสร็จแล้ว)
+- [x] Schema: `enum DocStatus { ACTIVE CANCELLED }` + status/cancelledAt/cancelNote ใน Adjustment, Purchase, Sale, CreditNote, PurchaseReturn, Receipt
+- [x] Schema: model `BalanceForward` (BF header tracking)
+- [x] `lib/stock-card.ts`: `recalculateStockCard(tx, productId)` + fix backdating bug ใน `writeStockCard`
+- [x] `cancelBF` — ลบ StockCard + recalculate + mark CANCELLED
+- [x] `cancelAdjustment` — ลบ StockCard + recalculate + mark CANCELLED
+- [x] `cancelPurchase` — ตรวจ PurchaseReturn reference + ลบ StockCard + recalculate
+- [x] `cancelPurchaseReturn` — ลบ StockCard + recalculate
+- [x] `cancelSale` — ตรวจ CN + Receipt reference + ลบ StockCard + reverse AR
+- [x] `cancelCreditNote` — ลบ StockCard (ถ้า RETURN) + mark CANCELLED
+- [x] `cancelReceipt` — reverse AR + mark CANCELLED
+- [x] `CancelDocButton` shared component + status badge (ใช้งาน/ยกเลิกแล้ว) ทุก list page
+- [x] Stock Card: เพิ่ม column มูลค่าคงเหลือ + ปุ่ม Re-calculate All
 
-**Schema ที่ต้องเพิ่ม (ต้องรัน `prisma db push` หลังแก้):**
-- เพิ่ม `enum DocStatus { ACTIVE CANCELLED }`
-- เพิ่ม `status DocStatus @default(ACTIVE)` + `cancelledAt DateTime?` + `cancelNote String?` ใน: Adjustment, Purchase, Sale, CreditNote, PurchaseReturn, Receipt
-- เพิ่ม model `BalanceForward` (BF header tracking — แยกจาก StockCard)
-
-**Lib ที่ต้องเพิ่มใน `lib/stock-card.ts`:**
-- `recalculateStockCard(productId, tx)` — re-run MAVG ทั้งหมดตั้งแต่ row แรก อัปเดต qtyBalance + priceBalance + Product.stock + Product.avgCost
-
-**Cancellation Actions ที่ต้องสร้าง:**
-- [ ] `cancelBF(docNo)` — ลบ StockCard rows ที่ docNo=BF + recalculate + update BalanceForward.status
-- [ ] `cancelAdjustment(adjustmentId)` — ลบ StockCard rows + recalculate + update Adjustment.status
-- [ ] `cancelPurchase(purchaseId)` — ตรวจ PurchaseReturn reference → ลบ StockCard + recalculate + update Purchase.status
-- [ ] `cancelSale(saleId)` — ตรวจ CN + Receipt reference → ลบ StockCard + reverse AR + update Sale.status
-- [ ] `cancelCreditNote(cnId)` — ลบ StockCard (ถ้า type=RETURN) + reverse AR (ถ้า CREDIT_DEBT) + update CreditNote.status
-- [ ] `cancelPurchaseReturn(returnId)` — ลบ StockCard + recalculate + update PurchaseReturn.status
-- [ ] `cancelReceipt(receiptId)` — reverse AR balance + update Receipt.status
+#### ✅ 3.11 Tab Navigation + Loading UX (เสร็จแล้ว)
+- [x] `components/shared/TabsBar.tsx` — Zustand-based tab bar, เปิด tab ต่อเมนู, scroll, X-to-close
+- [x] Tabs persist ใน sessionStorage, ล้างตอน logout
+- [x] Sub-routes normalize เป็น parent tab (/sales/new → /sales)
+- [x] `loading.tsx` ครบทุก route segment ใน `/admin/(protected)/` (20+ ไฟล์)
 
 ### 🔲 Phase 4 — ประกัน + ค่าใช้จ่าย (ยังไม่ได้ทำ)
 - [ ] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน

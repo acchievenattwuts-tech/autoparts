@@ -12,10 +12,14 @@ const NewPurchaseReturnPage = async () => {
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: {
-        id:      true,
-        code:    true,
-        name:    true,
-        avgCost: true,
+        id:          true,
+        code:        true,
+        name:        true,
+        description: true,
+        avgCost:     true,
+        category: { select: { name: true } },
+        brand:    { select: { name: true } },
+        aliases:  { select: { alias: true } },
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -35,11 +39,15 @@ const NewPurchaseReturnPage = async () => {
   ]);
 
   const productOptions = products.map((p) => ({
-    id:      p.id,
-    code:    p.code,
-    name:    p.name,
-    avgCost: Number(p.avgCost),
-    units:   p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    id:          p.id,
+    code:        p.code,
+    name:        p.name,
+    description: p.description,
+    avgCost:     Number(p.avgCost),
+    categoryName: p.category.name,
+    brandName:   p.brand?.name ?? null,
+    aliases:     p.aliases.map((a) => a.alias),
+    units:       p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 
   return (

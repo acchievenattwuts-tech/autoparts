@@ -48,7 +48,23 @@
       "Bash(ls d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchase-returns/)",
       "Bash(sed -i 's|<option value=\"\"\"\">หน่วย</option>|<option value=\"\"\"\">-- โปรดระบุ --</option>|g' \"d:/autoparts/app/admin/\\(protected\\)/purchases/new/PurchaseForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/new/SaleForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/new/CreditNoteForm.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/purchase-returns/new/PurchaseReturnForm.tsx\")",
       "Bash(__NEW_LINE_19c0dffcf79ffa83__ sed:*)",
-      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/receipts/new/ReceiptForm.tsx)"
+      "Bash(cat -n d:/autoparts/app/admin/\\\\\\(protected\\\\\\)/receipts/new/ReceiptForm.tsx)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Read(//d/autoparts/app/admin/\\(protected\\)/$f/**)",
+      "Bash(done)",
+      "Bash(ls /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/ /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchase-returns/ /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/ /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/credit-notes/ /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/receipts/)",
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/purchases/actions.ts\")",
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/purchase-returns/actions.ts\")",
+      "Bash(wc -l \"d:/autoparts/app/admin/\\(protected\\)/purchases/actions.ts\")",
+      "Bash(tail -6 \"d:/autoparts/app/admin/\\(protected\\)/purchase-returns/actions.ts\")",
+      "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/sales/actions.ts\")",
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/sales/actions.ts\")",
+      "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/receipts/actions.ts\")",
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/receipts/actions.ts\")",
+      "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")",
+      "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")"
     ]
   }
 }

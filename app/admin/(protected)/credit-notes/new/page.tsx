@@ -15,8 +15,12 @@ const NewCreditNotePage = async () => {
         id:           true,
         code:         true,
         name:         true,
+        description:  true,
         salePrice:    true,
         saleUnitName: true,
+        category: { select: { name: true } },
+        brand:    { select: { name: true } },
+        aliases:  { select: { alias: true } },
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -40,8 +44,12 @@ const NewCreditNotePage = async () => {
     id:           p.id,
     code:         p.code,
     name:         p.name,
+    description:  p.description,
     salePrice:    Number(p.salePrice),
     saleUnitName: p.saleUnitName,
+    categoryName: p.category.name,
+    brandName:    p.brand?.name ?? null,
+    aliases:      p.aliases.map((a) => a.alias),
     units:        p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 

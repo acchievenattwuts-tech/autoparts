@@ -15,8 +15,12 @@ const NewPurchasePage = async () => {
         id: true,
         code: true,
         name: true,
+        description: true,
         purchaseUnitName: true,
         costPrice: true,
+        category: { select: { name: true } },
+        brand:    { select: { name: true } },
+        aliases:  { select: { alias: true } },
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -31,8 +35,12 @@ const NewPurchasePage = async () => {
     id: p.id,
     code: p.code,
     name: p.name,
+    description: p.description,
     purchaseUnitName: p.purchaseUnitName,
     costPrice: Number(p.costPrice),
+    categoryName: p.category.name,
+    brandName: p.brand?.name ?? null,
+    aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 

@@ -4,12 +4,17 @@ import { useState, useTransition } from "react";
 import { createPurchaseReturn } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 
 interface ProductOption {
   id: string;
   code: string;
   name: string;
+  description?: string | null;
   avgCost: number;
+  categoryName: string;
+  brandName?: string | null;
+  aliases?: string[];
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
@@ -242,18 +247,11 @@ const PurchaseReturnForm = ({
                 return (
                   <tr key={i} className="border-b border-gray-50">
                     <td className="py-2 px-2">
-                      <select
+                      <ProductSearchSelect
+                        products={products}
                         value={item.productId}
-                        onChange={(e) => updateItem(i, "productId", e.target.value)}
-                        className={`${inputCls} bg-white`}
-                      >
-                        <option value="">-- เลือกสินค้า --</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            [{p.code}] {p.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(id) => updateItem(i, "productId", id)}
+                      />
                     </td>
                     <td className="py-2 px-2">
                       <select
