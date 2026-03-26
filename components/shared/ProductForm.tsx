@@ -216,11 +216,14 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
           ข้อมูลพื้นฐาน
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label className={labelCls}>รหัสสินค้า <span className="text-red-500">*</span></label>
-            <input type="text" name="code" defaultValue={product?.code ?? ""} required
-              placeholder="เช่น DEN-001" className={inputCls} />
-          </div>
+          {product && (
+            <div>
+              <label className={labelCls}>รหัสสินค้า</label>
+              <div className="inline-flex items-center px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-[#1e3a5f] font-medium">
+                {product.code}
+              </div>
+            </div>
+          )}
           <div>
             <label className={labelCls}>ชื่อสินค้า <span className="text-red-500">*</span></label>
             <input type="text" name="name" defaultValue={product?.name ?? ""} required

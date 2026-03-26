@@ -133,7 +133,7 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
   if (isEditing) {
     return (
       <tr className="border-b border-gray-100 bg-blue-50">
-        <td colSpan={5} className="py-4 px-4">
+        <td colSpan={6} className="py-4 px-4">
           {error && (
             <p className="text-red-500 text-xs mb-2">{error}</p>
           )}
@@ -156,6 +156,15 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
 
   return (
     <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+      <td className="py-3 px-4">
+        {supplier.code ? (
+          <span className="font-mono text-xs font-medium text-[#1e3a5f] bg-blue-50 px-2 py-0.5 rounded">
+            {supplier.code}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
+      </td>
       <td className="py-3 px-4 text-gray-800 font-medium">{supplier.name}</td>
       <td className="py-3 px-4 text-gray-600">{supplier.contactName ?? "-"}</td>
       <td className="py-3 px-4 text-gray-600">{supplier.phone ?? "-"}</td>
@@ -276,6 +285,7 @@ const SuppliersClient = ({ suppliers }: SuppliersClientProps) => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
+                  <th className="text-left py-3 px-4 font-medium text-gray-600 w-24">รหัส</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อผู้จำหน่าย</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อผู้ติดต่อ</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">เบอร์โทรศัพท์</th>

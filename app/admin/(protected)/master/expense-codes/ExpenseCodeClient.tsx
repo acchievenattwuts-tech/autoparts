@@ -28,7 +28,7 @@ export const ExpenseCodeForm = () => {
     startTransition(async () => {
       const res = await createExpenseCode(fd);
       if (res.error) { setError(res.error); return; }
-      setSuccess("บันทึกสำเร็จ");
+      setSuccess(`บันทึกสำเร็จ (รหัส: ${res.code})`);
       form.reset();
     });
   };
@@ -36,14 +36,7 @@ export const ExpenseCodeForm = () => {
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
       <h2 className="font-kanit text-base font-semibold text-[#1e3a5f] mb-4">เพิ่มรหัสค่าใช้จ่ายใหม่</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            รหัส <span className="text-red-500">*</span>
-          </label>
-          <input name="code" required maxLength={20} placeholder="เช่น ELEC, RENT" className={inputCls} />
-          <p className="text-xs text-gray-400 mt-0.5">A-Z, 0-9, -, _ เท่านั้น</p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">
             ชื่อ <span className="text-red-500">*</span>

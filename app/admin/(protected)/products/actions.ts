@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/require-auth";
+import { generateProductCode } from "@/lib/entity-code";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,6 @@ const productUnitSchema = z.object({
 });
 
 const productSchema = z.object({
-  code: z.string().min(1, "กรุณากรอกรหัสสินค้า").max(50),
   name: z.string().min(1, "กรุณากรอกชื่อสินค้า").max(200),
   categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่").max(50),
   brandId: z.string().max(50).optional(),
@@ -100,7 +100,6 @@ const parseProductFormData = (
     return { success: false, error: "หน่วยรายงานไม่พบในรายการหน่วยนับ" };
 
   const parsed = productSchema.safeParse({
-    code: formData.get("code"),
     name: formData.get("name"),
     categoryId: formData.get("categoryId"),
     brandId: formData.get("brandId") || undefined,
@@ -141,12 +140,13 @@ export const createProduct = async (
   if (!result.success) return { error: result.error };
 
   const { aliases, carModelIds, units, ...productData } = result.data;
+  const code = await generateProductCode();
 
   try {
     await db.$transaction(async (tx) => {
       const product = await tx.product.create({
         data: {
-          code: productData.code,
+          code,
           name: productData.name,
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,
@@ -225,7 +225,6 @@ export const updateProduct = async (
       await tx.product.update({
         where: { id },
         data: {
-          code: productData.code,
           name: productData.name,
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAuth } from "@/lib/require-auth";
+import { generateSupplierCode } from "@/lib/entity-code";
 
 const supplierSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อผู้จำหน่าย").max(200),
@@ -27,9 +28,12 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
+  const code = await generateSupplierCode();
+
   try {
     await db.supplier.create({
       data: {
+        code,
         name: parsed.data.name,
         contactName: parsed.data.contactName ?? null,
         phone: parsed.data.phone ?? null,

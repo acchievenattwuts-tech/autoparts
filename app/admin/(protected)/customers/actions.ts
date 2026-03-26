@@ -4,9 +4,9 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { generateCustomerCode } from "@/lib/entity-code";
 
 const customerSchema = z.object({
-  code:            z.string().max(20).optional(),
   name:            z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
   phone:           z.string().max(20).optional(),
   address:         z.string().max(300).optional(),
@@ -22,7 +22,6 @@ export async function createCustomer(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
-    code:            formData.get("code")            || undefined,
     name:            formData.get("name"),
     phone:           formData.get("phone")           || undefined,
     address:         formData.get("address")         || undefined,
@@ -32,12 +31,13 @@ export async function createCustomer(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { code, name, phone, address, shippingAddress, taxId, note } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note } = parsed.data;
+  const code = await generateCustomerCode();
 
   try {
     const customer = await db.customer.create({
       data: {
-        code:            code            ?? null,
+        code,
         name,
         phone:           phone           ?? null,
         address:         address         ?? null,
@@ -62,7 +62,6 @@ export async function updateCustomer(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
-    code:            formData.get("code")            || undefined,
     name:            formData.get("name"),
     phone:           formData.get("phone")           || undefined,
     address:         formData.get("address")         || undefined,
@@ -72,13 +71,12 @@ export async function updateCustomer(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { code, name, phone, address, shippingAddress, taxId, note } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note } = parsed.data;
 
   try {
     await db.customer.update({
       where: { id },
       data: {
-        code:            code            ?? null,
         name,
         phone:           phone           ?? null,
         address:         address         ?? null,

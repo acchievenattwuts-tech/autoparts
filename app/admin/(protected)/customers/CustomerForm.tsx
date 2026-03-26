@@ -60,17 +60,14 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* รหัสลูกค้า */}
-          <div>
-            <label className={labelCls}>รหัสลูกค้า</label>
-            <input
-              type="text"
-              name="code"
-              maxLength={20}
-              defaultValue={customer?.code ?? ""}
-              className={inputCls}
-              placeholder="เช่น C0001"
-            />
-          </div>
+          {customer?.code && (
+            <div>
+              <label className={labelCls}>รหัสลูกค้า</label>
+              <div className="inline-flex items-center px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-[#1e3a5f] font-medium">
+                {customer.code}
+              </div>
+            </div>
+          )}
 
           {/* ชื่อลูกค้า */}
           <div>

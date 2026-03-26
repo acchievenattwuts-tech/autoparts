@@ -4,34 +4,32 @@ import { db } from "@/lib/db";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { generateExpenseCodeCode } from "@/lib/entity-code";
 
 const expenseCodeSchema = z.object({
-  code:        z.string().min(1, "กรุณาระบุรหัส").max(20).regex(/^[A-Za-z0-9\-_]+$/, "รหัสใช้ได้เฉพาะ A-Z, 0-9, - และ _"),
   name:        z.string().min(1, "กรุณาระบุชื่อ").max(100),
   description: z.string().max(200).optional(),
 });
 
 export async function createExpenseCode(
   formData: FormData
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; code?: string; error?: string }> {
   const session = await auth();
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = expenseCodeSchema.safeParse({
-    code:        formData.get("code"),
     name:        formData.get("name"),
     description: formData.get("description") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
+  const code = await generateExpenseCodeCode();
+
   try {
-    await db.expenseCode.create({ data: parsed.data });
+    await db.expenseCode.create({ data: { code, ...parsed.data } });
     revalidatePath("/admin/master/expense-codes");
-    return { success: true };
+    return { success: true, code };
   } catch (err: unknown) {
-    if (err instanceof Error && err.message.includes("Unique")) {
-      return { error: "รหัสนี้มีในระบบแล้ว" };
-    }
     console.error("[createExpenseCode]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
