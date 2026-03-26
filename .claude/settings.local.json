@@ -80,7 +80,10 @@
       "Bash(cp \"$SRC\" \"d:/autoparts/app/admin/\\(protected\\)/$dir/[id]/loading.tsx\")",
       "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/receipts/[id]/\")",
       "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/[id]/edit/loading.tsx\")",
-      "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/[id]/edit/loading.tsx\")"
+      "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/[id]/edit/loading.tsx\")",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git config:*)"
     ]
   }
 }
