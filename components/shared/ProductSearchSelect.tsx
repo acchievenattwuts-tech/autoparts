@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, X, Search } from "lucide-react";
 
 export interface SearchableProduct {
@@ -32,6 +33,7 @@ const ProductSearchSelect = ({
 }: Props) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -53,8 +55,16 @@ const ProductSearchSelect = ({
         .slice(0, MAX_RESULTS)
     : products.slice(0, MAX_RESULTS);
 
+  const updateCoords = () => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setCoords({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 256) });
+    }
+  };
+
   const handleOpen = () => {
     if (!disabled) {
+      updateCoords();
       setOpen(true);
       setTimeout(() => inputRef.current?.focus(), 0);
     }
@@ -73,6 +83,7 @@ const ProductSearchSelect = ({
     setOpen(false);
   };
 
+  // Close on outside click
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
@@ -83,6 +94,52 @@ const ProductSearchSelect = ({
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
+
+  // Close on scroll or resize (dropdown is fixed, would drift otherwise)
+  useEffect(() => {
+    if (!open) return;
+    const close = () => { setOpen(false); setQuery(""); };
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const dropdown = open ? (
+    <div
+      style={{ top: coords.top, left: coords.left, width: coords.width }}
+      className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
+    >
+      <div className="max-h-56 overflow-y-auto overscroll-contain">
+        {filtered.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
+        ) : (
+          filtered.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => handleSelect(p.id)}
+              className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-blue-50 ${
+                p.id === value ? "bg-blue-50 text-[#1e3a5f]" : "text-gray-800"
+              }`}
+            >
+              <span className="font-mono text-xs text-gray-400">[{p.code}]</span>{" "}
+              <span className="font-medium">{p.name}</span>
+              {(p.categoryName || p.brandName) && (
+                <span className="block text-xs text-gray-400 mt-0.5 ml-0.5">
+                  {p.categoryName}
+                  {p.brandName ? ` · ${p.brandName}` : ""}
+                </span>
+              )}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div ref={containerRef} className="relative">
@@ -138,36 +195,7 @@ const ProductSearchSelect = ({
         </div>
       </div>
 
-      {open && (
-        <div className="absolute z-50 top-full mt-1 w-full min-w-64 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
-          <div className="max-h-56 overflow-y-auto overscroll-contain">
-            {filtered.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
-            ) : (
-              filtered.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleSelect(p.id)}
-                  className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-blue-50 ${
-                    p.id === value ? "bg-blue-50 text-[#1e3a5f]" : "text-gray-800"
-                  }`}
-                >
-                  <span className="font-mono text-xs text-gray-400">[{p.code}]</span>{" "}
-                  <span className="font-medium">{p.name}</span>
-                  {(p.categoryName || p.brandName) && (
-                    <span className="block text-xs text-gray-400 mt-0.5 ml-0.5">
-                      {p.categoryName}
-                      {p.brandName ? ` · ${p.brandName}` : ""}
-                    </span>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {typeof window !== "undefined" && dropdown && createPortal(dropdown, document.body)}
     </div>
   );
 };
