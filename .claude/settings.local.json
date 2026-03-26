@@ -65,7 +65,22 @@
       "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/receipts/actions.ts\")",
       "Bash(head -10 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")",
       "Bash(tail -5 \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/actions.ts\")",
-      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/expenses/\")"
+      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/expenses/\")",
+      "Bash(ls -la /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/)",
+      "Bash(ls -R /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchases/)",
+      "Bash(ls -R /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/credit-notes/)",
+      "Bash(ls -R /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/purchase-returns/)",
+      "Bash(ls -R /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/expenses/)",
+      "Bash(cp \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\purchases\\\\[id]\\\\loading.tsx\" \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\purchase-returns\\\\[id]\\\\loading.tsx\")",
+      "Bash(cp \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\purchases\\\\[id]\\\\loading.tsx\" \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\credit-notes\\\\[id]\\\\loading.tsx\")",
+      "Bash(cp \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\purchases\\\\[id]\\\\loading.tsx\" \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\receipts\\\\[id]\\\\loading.tsx\")",
+      "Bash(cp \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\purchases\\\\[id]\\\\loading.tsx\" \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\expenses\\\\[id]\\\\loading.tsx\")",
+      "Bash(SRC=\"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\")",
+      "Bash(for dir:*)",
+      "Bash(cp \"$SRC\" \"d:/autoparts/app/admin/\\(protected\\)/$dir/[id]/loading.tsx\")",
+      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/receipts/[id]/\")",
+      "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/credit-notes/[id]/edit/loading.tsx\")",
+      "Bash(cp \"d:/autoparts/app/admin/\\(protected\\)/purchases/[id]/loading.tsx\" \"d:/autoparts/app/admin/\\(protected\\)/sales/[id]/edit/loading.tsx\")"
     ]
   }
 }
