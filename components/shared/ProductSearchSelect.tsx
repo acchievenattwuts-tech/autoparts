@@ -35,6 +35,7 @@ const ProductSearchSelect = ({
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = products.find((p) => p.id === value);
@@ -83,10 +84,13 @@ const ProductSearchSelect = ({
     setOpen(false);
   };
 
-  // Close on outside click
+  // Close on outside click (must check both trigger and portal dropdown)
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      if (
+        !containerRef.current?.contains(e.target as Node) &&
+        !dropdownRef.current?.contains(e.target as Node)
+      ) {
         setOpen(false);
         setQuery("");
       }
@@ -109,6 +113,7 @@ const ProductSearchSelect = ({
 
   const dropdown = open ? (
     <div
+      ref={dropdownRef}
       style={{ top: coords.top, left: coords.left, width: coords.width }}
       className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
     >
