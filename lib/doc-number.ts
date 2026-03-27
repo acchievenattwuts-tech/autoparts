@@ -10,10 +10,13 @@ export async function generateDocNo(prefix: string, date?: Date): Promise<string
   const yy   = String(d.getFullYear()).slice(-2);   // last 2 digits of year
   const mm   = String(d.getMonth() + 1).padStart(2, "0");
   const pattern = `${prefix}${yy}${mm}`;
-  const count = await db.stockCard.count({
+  const last = await db.stockCard.findFirst({
     where: { docNo: { startsWith: pattern } },
+    orderBy: { docNo: "desc" },
+    select: { docNo: true },
   });
-  return `${pattern}${String(count + 1).padStart(4, "0")}`;
+  const seq = last ? parseInt(last.docNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
 /**
@@ -25,10 +28,13 @@ export async function generateReceiptNo(date?: Date): Promise<string> {
   const yy   = String(d.getFullYear()).slice(-2);
   const mm   = String(d.getMonth() + 1).padStart(2, "0");
   const pattern = `REC${yy}${mm}`;
-  const count = await db.receipt.count({
+  const last = await db.receipt.findFirst({
     where: { receiptNo: { startsWith: pattern } },
+    orderBy: { receiptNo: "desc" },
+    select: { receiptNo: true },
   });
-  return `${pattern}${String(count + 1).padStart(4, "0")}`;
+  const seq = last ? parseInt(last.receiptNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
 /**
@@ -40,10 +46,13 @@ export async function generateExpenseNo(date?: Date): Promise<string> {
   const yy   = String(d.getFullYear()).slice(-2);
   const mm   = String(d.getMonth() + 1).padStart(2, "0");
   const pattern = `OE${yy}${mm}`;
-  const count = await db.expense.count({
+  const last = await db.expense.findFirst({
     where: { expenseNo: { startsWith: pattern } },
+    orderBy: { expenseNo: "desc" },
+    select: { expenseNo: true },
   });
-  return `${pattern}${String(count + 1).padStart(4, "0")}`;
+  const seq = last ? parseInt(last.expenseNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
 /**
