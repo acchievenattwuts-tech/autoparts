@@ -31,6 +31,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       },
     }),
     db.customer.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, code: true },
     }),

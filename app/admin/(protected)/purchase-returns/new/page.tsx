@@ -27,6 +27,7 @@ const NewPurchaseReturnPage = async () => {
       },
     }),
     db.supplier.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),

@@ -77,6 +77,7 @@ export const updateSupplier = async (
         contactName: parsed.data.contactName ?? null,
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
+        isActive: true,
       },
     });
     revalidatePath("/admin/master/suppliers");
@@ -86,7 +87,7 @@ export const updateSupplier = async (
   }
 };
 
-export const deleteSupplier = async (id: string): Promise<{ error?: string }> => {
+export const toggleSupplier = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
     await requireAuth();
   } catch {
@@ -98,10 +99,10 @@ export const deleteSupplier = async (id: string): Promise<{ error?: string }> =>
   }
 
   try {
-    await db.supplier.delete({ where: { id } });
+    await db.supplier.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/suppliers");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบผู้จำหน่ายนี้ได้ อาจมีใบสั่งซื้อที่เกี่ยวข้องอยู่" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };

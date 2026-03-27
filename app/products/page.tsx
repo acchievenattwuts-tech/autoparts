@@ -76,11 +76,12 @@ const ProductsPage = async ({ searchParams }: Props) => {
       orderBy: { createdAt: "desc" },
       take: 200,
     }),
-    db.category.findMany({ orderBy: { name: "asc" } }),
+    db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       include: {
-        carModels: { select: { id: true, name: true }, orderBy: { name: "asc" } },
+        carModels: { where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
       },
     }),
   ]);

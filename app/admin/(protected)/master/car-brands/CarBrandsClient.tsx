@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
-import { createCarBrand, deleteCarBrand, createCarModel, deleteCarModel } from "./actions";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { createCarBrand, toggleCarBrand, createCarModel, toggleCarModel } from "./actions";
 import { CarBrand, CarModel } from "@/lib/generated/prisma";
 
 type CarBrandWithModels = CarBrand & { carModels: CarModel[] };
@@ -56,30 +56,31 @@ const AddModelForm = ({ brandId }: { brandId: string }) => {
 const BrandAccordion = ({ brand }: { brand: CarBrandWithModels }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
-  const [deletingBrand, setDeletingBrand] = useState(false);
+  const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
+  const [togglingBrand, setTogglingBrand] = useState(false);
 
-  const handleDeleteBrand = () => {
-    if (!confirm(`ต้องการลบยี่ห้อ "${brand.name}" และรุ่นรถทั้งหมดใช่หรือไม่?`)) return;
-    setDeletingBrand(true);
+  const handleToggleBrand = () => {
+    const action = brand.isActive ? "ยกเลิก" : "เปิดใช้งาน";
+    if (!confirm(`ต้องการ${action}ยี่ห้อ "${brand.name}" ใช่หรือไม่?`)) return;
+    setTogglingBrand(true);
     startTransition(async () => {
-      await deleteCarBrand(brand.id);
-      setDeletingBrand(false);
+      await toggleCarBrand(brand.id, !brand.isActive);
+      setTogglingBrand(false);
     });
   };
 
-  const handleDeleteModel = (modelId: string) => {
-    setDeletingModelId(modelId);
+  const handleToggleModel = (modelId: string, currentActive: boolean) => {
+    setTogglingModelId(modelId);
     startTransition(async () => {
-      await deleteCarModel(modelId);
-      setDeletingModelId(null);
+      await toggleCarModel(modelId, !currentActive);
+      setTogglingModelId(null);
     });
   };
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
+    <div className={`border rounded-xl overflow-hidden ${brand.isActive ? "border-gray-200" : "border-gray-200 opacity-60"}`}>
       {/* Brand Header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+      <div className={`flex items-center justify-between px-5 py-4 transition-colors ${brand.isActive ? "bg-gray-50 hover:bg-gray-100" : "bg-gray-100"}`}>
         <button
           type="button"
           className="flex items-center gap-3 flex-1 text-left"
@@ -94,14 +95,18 @@ const BrandAccordion = ({ brand }: { brand: CarBrandWithModels }) => {
           <span className="text-xs text-gray-500 bg-white border border-gray-200 px-2 py-0.5 rounded-full">
             {brand.carModels.length} รุ่น
           </span>
+          {!brand.isActive && (
+            <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">ยกเลิก</span>
+          )}
         </button>
         <button
-          onClick={handleDeleteBrand}
-          disabled={deletingBrand || isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60"
+          onClick={handleToggleBrand}
+          disabled={togglingBrand || isPending}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+            brand.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+          }`}
         >
-          <Trash2 size={13} />
-          {deletingBrand ? "กำลังลบ..." : "ลบยี่ห้อ"}
+          {togglingBrand ? "..." : brand.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
         </button>
       </div>
 
@@ -115,16 +120,23 @@ const BrandAccordion = ({ brand }: { brand: CarBrandWithModels }) => {
               {brand.carModels.map((model) => (
                 <div
                   key={model.id}
-                  className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-3 py-1.5"
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${model.isActive ? "bg-gray-100" : "bg-gray-50 opacity-60"}`}
                 >
                   <span className="text-sm text-gray-700">{model.name}</span>
+                  {!model.isActive && (
+                    <span className="text-xs text-gray-400">(ยกเลิก)</span>
+                  )}
                   <button
-                    onClick={() => handleDeleteModel(model.id)}
-                    disabled={deletingModelId === model.id || isPending}
-                    className="text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
-                    title="ลบรุ่นรถ"
+                    onClick={() => handleToggleModel(model.id, model.isActive)}
+                    disabled={togglingModelId === model.id || isPending}
+                    className={`text-xs px-1.5 py-0.5 rounded transition-colors disabled:opacity-50 ${
+                      model.isActive
+                        ? "text-red-400 hover:text-red-600"
+                        : "text-green-500 hover:text-green-700"
+                    }`}
+                    title={model.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
                   >
-                    <Trash2 size={13} />
+                    {togglingModelId === model.id ? "..." : model.isActive ? "✕" : "✓"}
                   </button>
                 </div>
               ))}

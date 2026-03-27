@@ -7,14 +7,15 @@ import ProductForm from "@/components/shared/ProductForm";
 
 const NewProductPage = async () => {
   const [categories, carBrands, partsBrands] = await Promise.all([
-    db.category.findMany({ orderBy: { name: "asc" } }),
+    db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       include: {
-        carModels: { orderBy: { name: "asc" } },
+        carModels: { where: { isActive: true }, orderBy: { name: "asc" } },
       },
     }),
-    db.partsBrand.findMany({ orderBy: { name: "asc" } }),
+    db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
   ]);
 
   return (

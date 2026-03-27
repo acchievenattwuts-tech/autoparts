@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import { ExpenseCodeForm, ExpenseCodeDeleteButton } from "./ExpenseCodeClient";
+import { ExpenseCodeForm, ExpenseCodeToggleButton } from "./ExpenseCodeClient";
 
 const ExpenseCodesPage = async () => {
   const codes = await db.expenseCode.findMany({
@@ -43,7 +43,7 @@ const ExpenseCodesPage = async () => {
               </thead>
               <tbody>
                 {codes.map((c) => (
-                  <tr key={c.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={c.id} className={`border-t border-gray-50 transition-colors ${c.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}>
                     <td className="py-3 px-4 font-mono font-medium text-[#1e3a5f]">{c.code}</td>
                     <td className="py-3 px-4 text-gray-800 font-medium">{c.name}</td>
                     <td className="py-3 px-4 text-gray-500">{c.description ?? <span className="text-gray-300">—</span>}</td>
@@ -51,15 +51,15 @@ const ExpenseCodesPage = async () => {
                       {c.isActive ? (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">ปิด</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center text-gray-500">{c._count.items}</td>
                     <td className="py-3 px-4 text-right">
-                      <ExpenseCodeDeleteButton
+                      <ExpenseCodeToggleButton
                         id={c.id}
                         name={c.name}
-                        disabled={c._count.items > 0}
+                        isActive={c.isActive}
                       />
                     </td>
                   </tr>

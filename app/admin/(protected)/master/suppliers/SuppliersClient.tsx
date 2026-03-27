@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, Pencil, Trash2, X, Check } from "lucide-react";
-import { createSupplier, updateSupplier, deleteSupplier } from "./actions";
+import { Plus, Pencil, X, Check } from "lucide-react";
+import { createSupplier, updateSupplier, toggleSupplier } from "./actions";
 import { Supplier } from "@/lib/generated/prisma";
 
 interface SuppliersClientProps {
@@ -123,10 +123,11 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
     });
   };
 
-  const handleDelete = () => {
-    if (!confirm(`ต้องการลบผู้จำหน่าย "${supplier.name}" ใช่หรือไม่?`)) return;
+  const handleToggle = () => {
+    const action = supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน";
+    if (!confirm(`ต้องการ${action}ผู้จำหน่าย "${supplier.name}" ใช่หรือไม่?`)) return;
     startTransition(async () => {
-      await deleteSupplier(supplier.id);
+      await toggleSupplier(supplier.id, !supplier.isActive);
     });
   };
 
@@ -155,7 +156,7 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
   }
 
   return (
-    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+    <tr className={`border-b border-gray-50 transition-colors ${supplier.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}>
       <td className="py-3 px-4">
         {supplier.code ? (
           <span className="font-mono text-xs font-medium text-[#1e3a5f] bg-blue-50 px-2 py-0.5 rounded">
@@ -169,6 +170,13 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
       <td className="py-3 px-4 text-gray-600">{supplier.contactName ?? "-"}</td>
       <td className="py-3 px-4 text-gray-600">{supplier.phone ?? "-"}</td>
       <td className="py-3 px-4 text-gray-600 max-w-xs truncate">{supplier.address ?? "-"}</td>
+      <td className="py-3 px-4">
+        {supplier.isActive ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
+        )}
+      </td>
       <td className="py-3 px-4 text-right">
         <div className="flex items-center justify-end gap-2">
           <button
@@ -180,12 +188,13 @@ const EditableRow = ({ supplier }: { supplier: Supplier }) => {
             แก้ไข
           </button>
           <button
-            onClick={handleDelete}
+            onClick={handleToggle}
             disabled={isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+              supplier.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+            }`}
           >
-            <Trash2 size={12} />
-            ลบ
+            {supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
           </button>
         </div>
       </td>
@@ -290,6 +299,7 @@ const SuppliersClient = ({ suppliers }: SuppliersClientProps) => {
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อผู้ติดต่อ</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">เบอร์โทรศัพท์</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ที่อยู่</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
                   <th className="text-right py-3 px-4 font-medium text-gray-600">จัดการ</th>
                 </tr>
               </thead>

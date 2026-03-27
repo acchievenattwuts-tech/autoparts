@@ -37,7 +37,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
-    db.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true } }),
+    db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true } }),
     getSiteConfig(),
   ]);
 

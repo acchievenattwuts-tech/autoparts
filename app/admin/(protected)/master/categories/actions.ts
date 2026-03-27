@@ -28,7 +28,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
   }
 };
 
-export const deleteCategory = async (id: string): Promise<{ error?: string }> => {
+export const toggleCategory = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
     await requireAuth();
   } catch {
@@ -40,10 +40,10 @@ export const deleteCategory = async (id: string): Promise<{ error?: string }> =>
   }
 
   try {
-    await db.category.delete({ where: { id } });
+    await db.category.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/categories");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบหมวดหมู่นี้ได้ อาจมีสินค้าอยู่ในหมวดหมู่นี้" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };

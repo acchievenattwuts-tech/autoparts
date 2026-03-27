@@ -43,6 +43,7 @@ enum Role {
 model CarBrand {
   id        String     @id @default(cuid())
   name      String     @unique
+  isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   carModels CarModel[]
 }
@@ -52,6 +53,7 @@ model CarModel {
   name       String
   carBrandId String
   carBrand   CarBrand  @relation(fields: [carBrandId], references: [id])
+  isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
   products   ProductCarModel[]
 
@@ -61,6 +63,7 @@ model CarModel {
 model Category {
   id        String    @id @default(cuid())
   name      String    @unique
+  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   products  Product[]
 }
@@ -72,6 +75,7 @@ model Supplier {
   contactName  String?
   phone        String?
   address      String?
+  isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   purchases       Purchase[]
   purchaseItems   PurchaseItem[]
@@ -85,6 +89,7 @@ model Supplier {
 model PartsBrand {
   id        String    @id @default(cuid())
   name      String    @unique
+  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   products  Product[]
 }
@@ -297,6 +302,7 @@ model Customer {
   shippingAddress String?
   taxId           String?  // เลขผู้เสียภาษี
   note            String?
+  isActive        Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   sales       Sale[]

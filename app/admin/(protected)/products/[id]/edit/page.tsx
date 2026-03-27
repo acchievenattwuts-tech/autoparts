@@ -22,14 +22,15 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         units: { orderBy: { isBase: "desc" } },
       },
     }),
-    db.category.findMany({ orderBy: { name: "asc" } }),
+    db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({
+      where: { isActive: true },
       orderBy: { name: "asc" },
       include: {
-        carModels: { orderBy: { name: "asc" } },
+        carModels: { where: { isActive: true }, orderBy: { name: "asc" } },
       },
     }),
-    db.partsBrand.findMany({ orderBy: { name: "asc" } }),
+    db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
   ]);
 
   if (!product) {

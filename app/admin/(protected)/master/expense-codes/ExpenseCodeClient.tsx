@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createExpenseCode, deleteExpenseCode } from "./actions";
-import { Trash2, Plus, CheckCircle } from "lucide-react";
+import { createExpenseCode, toggleExpenseCode } from "./actions";
+import { Plus, CheckCircle } from "lucide-react";
 
 interface ExpenseCode {
   id: string;
@@ -65,15 +65,16 @@ export const ExpenseCodeForm = () => {
   );
 };
 
-export const ExpenseCodeDeleteButton = ({ id, name, disabled }: { id: string; name: string; disabled?: boolean }) => {
+export const ExpenseCodeToggleButton = ({ id, name, isActive }: { id: string; name: string; isActive: boolean }) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
-  const handleDelete = () => {
-    if (!confirm(`ลบรหัส "${name}" ออกจากระบบ?`)) return;
+  const handleToggle = () => {
+    const action = isActive ? "ยกเลิก" : "เปิดใช้งาน";
+    if (!confirm(`${action}รหัส "${name}" ใช่หรือไม่?`)) return;
     setError("");
     startTransition(async () => {
-      const res = await deleteExpenseCode(id);
+      const res = await toggleExpenseCode(id, !isActive);
       if (res.error) setError(res.error);
     });
   };
@@ -81,12 +82,15 @@ export const ExpenseCodeDeleteButton = ({ id, name, disabled }: { id: string; na
   return (
     <div>
       <button
-        onClick={handleDelete}
-        disabled={isPending || disabled}
-        title={disabled ? "มีรายการค่าใช้จ่ายอ้างอิงอยู่" : "ลบ"}
-        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        onClick={handleToggle}
+        disabled={isPending}
+        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 ${
+          isActive
+            ? "text-red-500 hover:bg-red-50"
+            : "text-green-600 hover:bg-green-50"
+        }`}
       >
-        <Trash2 size={13} /> {isPending ? "..." : "ลบ"}
+        {isPending ? "..." : isActive ? "ยกเลิก" : "เปิดใช้งาน"}
       </button>
       {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>

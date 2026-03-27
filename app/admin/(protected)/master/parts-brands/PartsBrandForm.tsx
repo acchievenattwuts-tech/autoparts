@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { createPartsBrand, deletePartsBrand } from "./actions";
+import { createPartsBrand, togglePartsBrand } from "./actions";
 import type { PartsBrand } from "@/lib/generated/prisma";
 
 const PartsBrandForm = ({ brands }: { brands: PartsBrand[] }) => {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError("");
@@ -19,11 +19,11 @@ const PartsBrandForm = ({ brands }: { brands: PartsBrand[] }) => {
     });
   };
 
-  const handleDelete = (id: string) => {
-    setDeletingId(id);
+  const handleToggle = (id: string, currentActive: boolean) => {
+    setTogglingId(id);
     startTransition(async () => {
-      await deletePartsBrand(id);
-      setDeletingId(null);
+      await togglePartsBrand(id, !currentActive);
+      setTogglingId(null);
     });
   };
 
@@ -68,24 +68,39 @@ const PartsBrandForm = ({ brands }: { brands: PartsBrand[] }) => {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อแบรนด์</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่เพิ่ม</th>
                   <th className="text-right py-3 px-4 font-medium text-gray-600">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
                 {brands.map((brand) => (
-                  <tr key={brand.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={brand.id}
+                    className={`border-b border-gray-50 transition-colors ${brand.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}
+                  >
                     <td className="py-3 px-4 text-gray-800 font-medium">{brand.name}</td>
+                    <td className="py-3 px-4">
+                      {brand.isActive ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-gray-500">
                       {new Date(brand.createdAt).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button
-                        onClick={() => handleDelete(brand.id)}
-                        disabled={deletingId === brand.id || isPending}
-                        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60"
+                        onClick={() => handleToggle(brand.id, brand.isActive)}
+                        disabled={togglingId === brand.id || isPending}
+                        className={`px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+                          brand.isActive
+                            ? "bg-red-500 hover:bg-red-600"
+                            : "bg-green-600 hover:bg-green-700"
+                        }`}
                       >
-                        {deletingId === brand.id ? "กำลังลบ..." : "ลบ"}
+                        {togglingId === brand.id ? "..." : brand.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
                       </button>
                     </td>
                   </tr>

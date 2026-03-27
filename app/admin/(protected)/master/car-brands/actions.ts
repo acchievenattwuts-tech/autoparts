@@ -33,7 +33,7 @@ export const createCarBrand = async (formData: FormData): Promise<{ error?: stri
   }
 };
 
-export const deleteCarBrand = async (id: string): Promise<{ error?: string }> => {
+export const toggleCarBrand = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
     await requireAuth();
   } catch {
@@ -45,11 +45,11 @@ export const deleteCarBrand = async (id: string): Promise<{ error?: string }> =>
   }
 
   try {
-    await db.carBrand.delete({ where: { id } });
+    await db.carBrand.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/car-brands");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบยี่ห้อรถนี้ได้ อาจมีข้อมูลที่เกี่ยวข้องอยู่" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };
 
@@ -77,7 +77,7 @@ export const createCarModel = async (formData: FormData): Promise<{ error?: stri
   }
 };
 
-export const deleteCarModel = async (id: string): Promise<{ error?: string }> => {
+export const toggleCarModel = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
     await requireAuth();
   } catch {
@@ -89,10 +89,10 @@ export const deleteCarModel = async (id: string): Promise<{ error?: string }> =>
   }
 
   try {
-    await db.carModel.delete({ where: { id } });
+    await db.carModel.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/car-brands");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบรุ่นรถนี้ได้ อาจมีข้อมูลสินค้าที่เกี่ยวข้องอยู่" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };

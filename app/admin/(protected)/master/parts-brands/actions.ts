@@ -28,7 +28,7 @@ export const createPartsBrand = async (formData: FormData): Promise<{ error?: st
   }
 };
 
-export const deletePartsBrand = async (id: string): Promise<{ error?: string }> => {
+export const togglePartsBrand = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
     await requireAuth();
   } catch {
@@ -40,10 +40,10 @@ export const deletePartsBrand = async (id: string): Promise<{ error?: string }> 
   }
 
   try {
-    await db.partsBrand.delete({ where: { id } });
+    await db.partsBrand.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/parts-brands");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบแบรนด์นี้ได้ อาจมีสินค้าที่ใช้แบรนด์นี้อยู่" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };

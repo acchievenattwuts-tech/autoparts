@@ -52,20 +52,3 @@ export async function toggleExpenseCode(
   }
 }
 
-export async function deleteExpenseCode(
-  id: string
-): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
-
-  try {
-    const inUse = await db.expenseItem.count({ where: { expenseCodeId: id } });
-    if (inUse > 0) return { error: "ไม่สามารถลบได้ เนื่องจากมีรายการค่าใช้จ่ายอ้างอิงอยู่" };
-    await db.expenseCode.delete({ where: { id } });
-    revalidatePath("/admin/master/expense-codes");
-    return { success: true };
-  } catch (err) {
-    console.error("[deleteExpenseCode]", err);
-    return { error: "เกิดข้อผิดพลาด" };
-  }
-}

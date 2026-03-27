@@ -27,7 +27,7 @@ const NewPurchasePage = async () => {
         },
       },
     }),
-    db.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getSiteConfig(),
   ]);
 

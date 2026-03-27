@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { createCategory, deleteCategory } from "./actions";
+import { createCategory, toggleCategory } from "./actions";
 import { Category } from "@/lib/generated/prisma";
 
 interface CategoryFormProps {
@@ -12,7 +12,7 @@ const CategoryForm = ({ categories }: CategoryFormProps) => {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError("");
@@ -26,11 +26,11 @@ const CategoryForm = ({ categories }: CategoryFormProps) => {
     });
   };
 
-  const handleDelete = (id: string) => {
-    setDeletingId(id);
+  const handleToggle = (id: string, currentActive: boolean) => {
+    setTogglingId(id);
     startTransition(async () => {
-      await deleteCategory(id);
-      setDeletingId(null);
+      await toggleCategory(id, !currentActive);
+      setTogglingId(null);
     });
   };
 
@@ -75,24 +75,39 @@ const CategoryForm = ({ categories }: CategoryFormProps) => {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อหมวดหมู่</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่เพิ่ม</th>
                   <th className="text-right py-3 px-4 font-medium text-gray-600">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
                 {categories.map((cat) => (
-                  <tr key={cat.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={cat.id}
+                    className={`border-b border-gray-50 transition-colors ${cat.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}
+                  >
                     <td className="py-3 px-4 text-gray-800">{cat.name}</td>
+                    <td className="py-3 px-4">
+                      {cat.isActive ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4 text-gray-500">
                       {new Date(cat.createdAt).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <button
-                        onClick={() => handleDelete(cat.id)}
-                        disabled={deletingId === cat.id || isPending}
-                        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60"
+                        onClick={() => handleToggle(cat.id, cat.isActive)}
+                        disabled={togglingId === cat.id || isPending}
+                        className={`px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+                          cat.isActive
+                            ? "bg-red-500 hover:bg-red-600"
+                            : "bg-green-600 hover:bg-green-700"
+                        }`}
                       >
-                        {deletingId === cat.id ? "กำลังลบ..." : "ลบ"}
+                        {togglingId === cat.id ? "..." : cat.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
                       </button>
                     </td>
                   </tr>
