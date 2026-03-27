@@ -5,16 +5,16 @@ import {
 } from "recharts";
 
 const mockData = [
-  { name: "คาปาซิเตอร์ 35+5µF",      qty: 48, revenue: 14400 },
+  { name: "บอร์ดคอนโทรล Mitsubishi",   qty: 28, revenue: 196000 },
   { name: "น้ำยาแอร์ R32 (1kg)",       qty: 41, revenue: 61500 },
   { name: "มอเตอร์พัดลม 15W",          qty: 35, revenue: 52500 },
-  { name: "บอร์ดคอนโทรล Mitsubishi",   qty: 28, revenue: 196000 },
   { name: "วาล์ว膨胀 R410A",            qty: 24, revenue: 36000 },
-  { name: "คาปาซิเตอร์ 25+5µF",        qty: 22, revenue: 5500 },
+  { name: "คาปาซิเตอร์ 35+5µF",        qty: 48, revenue: 14400 },
   { name: "น้ำยาล้างแอร์ 600ml",        qty: 19, revenue: 9500 },
   { name: "เทอร์โมสตัท 2P",            qty: 17, revenue: 8500 },
-  { name: "รีเลย์ 5Pin 12V",           qty: 15, revenue: 4500 },
   { name: "ฟิลเตอร์แอร์ Toyota",        qty: 13, revenue: 7800 },
+  { name: "คาปาซิเตอร์ 25+5µF",        qty: 22, revenue: 5500 },
+  { name: "รีเลย์ 5Pin 12V",           qty: 15, revenue: 4500 },
 ];
 
 const fmtRevenue = (v: unknown) => {
@@ -33,8 +33,8 @@ const CustomTooltip = ({ active, payload, label }: {
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
       <p className="font-medium text-gray-800 mb-1">{label}</p>
-      <p className="text-[#f97316]">จำนวนขาย: <span className="font-semibold">{qty} ชิ้น</span></p>
-      <p className="text-[#1e3a5f]">ยอดขาย: <span className="font-semibold">฿{Number(rev).toLocaleString("th-TH")}</span></p>
+      <p className="text-[#0ea5e9]">จำนวนขาย: <span className="font-semibold">{qty} ชิ้น</span></p>
+      <p className="text-[#10b981]">ยอดขาย: <span className="font-semibold">฿{Number(rev).toLocaleString("th-TH")}</span></p>
     </div>
   );
 };
@@ -67,12 +67,12 @@ const TopProductsChart = () => (
           width={160}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f3f4f6" }} />
-        <Bar dataKey="qty" fill="#f97316" radius={[0, 3, 3, 0]} maxBarSize={14}>
-          {mockData.map((entry, i) => (
-            <Cell key={i} fill="#f97316" />
+        <Bar dataKey="qty" fill="#0ea5e9" radius={[0, 3, 3, 0]} maxBarSize={14}>
+          {mockData.map((_, i) => (
+            <Cell key={i} fill="#0ea5e9" />
           ))}
         </Bar>
-        <Bar dataKey="revenue" fill="#1e3a5f" radius={[0, 3, 3, 0]} maxBarSize={14}
+        <Bar dataKey="revenue" fill="#10b981" radius={[0, 3, 3, 0]} maxBarSize={14}
           label={{ position: "right", formatter: fmtRevenue, fontSize: 9, fill: "#6b7280" }}
         />
       </BarChart>
