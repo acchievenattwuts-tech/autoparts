@@ -83,6 +83,7 @@ export async function updateCustomer(
         shippingAddress: shippingAddress ?? null,
         taxId:           taxId           ?? null,
         note:            note            ?? null,
+        isActive:        true,
       },
     });
     revalidatePath("/admin/customers");
@@ -94,23 +95,19 @@ export async function updateCustomer(
   }
 }
 
-export async function deleteCustomer(
-  id: string
+export async function toggleCustomer(
+  id: string,
+  isActive: boolean
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await auth();
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   try {
-    const saleCount = await db.sale.count({ where: { customerId: id } });
-    if (saleCount > 0) {
-      return { error: "มีประวัติการขายที่เชื่อมอยู่ ไม่สามารถลบได้" };
-    }
-
-    await db.customer.delete({ where: { id } });
+    await db.customer.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/customers");
     return { success: true };
   } catch (err) {
-    console.error("[deleteCustomer]", err);
+    console.error("[toggleCustomer]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

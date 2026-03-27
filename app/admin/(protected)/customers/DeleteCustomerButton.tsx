@@ -1,50 +1,37 @@
 "use client";
 
 import { useTransition } from "react";
-import { Trash2 } from "lucide-react";
-import { deleteCustomer } from "./actions";
+import { toggleCustomer } from "./actions";
 
-interface DeleteCustomerButtonProps {
-  id:   string;
+interface Props {
+  id: string;
   name: string;
+  isActive: boolean;
 }
 
-const DeleteCustomerButton = ({ id, name }: DeleteCustomerButtonProps) => {
+const ToggleCustomerButton = ({ id, name, isActive }: Props) => {
   const [isPending, startTransition] = useTransition();
 
-  const handleDelete = () => {
-    if (!confirm(`ยืนยันการลบลูกค้า "${name}" ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return;
-
+  const handleToggle = () => {
+    const action = isActive ? "ยกเลิก" : "เปิดใช้งาน";
+    if (!confirm(`ยืนยันการ${action}ลูกค้า "${name}" ?`)) return;
     startTransition(async () => {
-      const result = await deleteCustomer(id);
-      if (result.error) {
-        alert(result.error);
-      }
+      const result = await toggleCustomer(id, !isActive);
+      if (result.error) alert(result.error);
     });
   };
 
   return (
     <button
-      onClick={handleDelete}
+      onClick={handleToggle}
       disabled={isPending}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+        isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+      }`}
     >
-      {isPending ? (
-        <>
-          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-          </svg>
-          กำลังลบ...
-        </>
-      ) : (
-        <>
-          <Trash2 size={12} />
-          ลบ
-        </>
-      )}
+      {isPending ? "..." : isActive ? "ยกเลิก" : "เปิดใช้งาน"}
     </button>
   );
 };
 
-export default DeleteCustomerButton;
+export default ToggleCustomerButton;

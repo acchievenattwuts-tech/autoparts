@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Pencil, Eye } from "lucide-react";
-import DeleteCustomerButton from "./DeleteCustomerButton";
+import ToggleCustomerButton from "./DeleteCustomerButton";
 
 const CustomersPage = async ({
   searchParams,
@@ -76,24 +76,32 @@ const CustomersPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เบอร์โทร</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ที่อยู่</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดซื้อ</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
                 <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="text-center py-12 text-gray-400">
                     {search ? "ไม่พบลูกค้าที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
                   </td>
                 </tr>
               ) : (
                 customers.map((c) => (
-                  <tr key={c.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={c.id} className={`border-t border-gray-50 transition-colors ${c.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}>
                     <td className="py-3 px-4 text-gray-500 font-mono text-xs">{c.code ?? "-"}</td>
                     <td className="py-3 px-4 font-medium text-gray-900">{c.name}</td>
                     <td className="py-3 px-4 text-gray-600">{c.phone ?? "-"}</td>
                     <td className="py-3 px-4 text-gray-500 max-w-xs truncate">{c.address ?? "-"}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{c._count.sales} ครั้ง</td>
+                    <td className="py-3 px-4 text-center">
+                      {c.isActive ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
+                      )}
+                    </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end gap-2">
                         <Link
@@ -108,7 +116,7 @@ const CustomersPage = async ({
                         >
                           <Pencil size={12} /> แก้ไข
                         </Link>
-                        <DeleteCustomerButton id={c.id} name={c.name} />
+                        <ToggleCustomerButton id={c.id} name={c.name} isActive={c.isActive} />
                       </div>
                     </td>
                   </tr>

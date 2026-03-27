@@ -1,38 +1,37 @@
 "use client";
 
 import { useTransition } from "react";
-import { Trash2 } from "lucide-react";
-import { deleteProduct } from "./actions";
+import { toggleProduct } from "./actions";
 
-interface DeleteProductButtonProps {
+interface Props {
   id: string;
   name: string;
+  isActive: boolean;
 }
 
-const DeleteProductButton = ({ id, name }: DeleteProductButtonProps) => {
+const ToggleProductButton = ({ id, name, isActive }: Props) => {
   const [isPending, startTransition] = useTransition();
 
-  const handleDelete = () => {
-    if (!confirm(`ยืนยันการลบสินค้า "${name}" ?\nการลบนี้ไม่สามารถย้อนกลับได้`)) return;
-
+  const handleToggle = () => {
+    const action = isActive ? "ยกเลิก" : "เปิดใช้งาน";
+    if (!confirm(`ยืนยันการ${action}สินค้า "${name}" ?`)) return;
     startTransition(async () => {
-      const result = await deleteProduct(id);
-      if (result.error) {
-        alert(result.error);
-      }
+      const result = await toggleProduct(id, !isActive);
+      if (result.error) alert(result.error);
     });
   };
 
   return (
     <button
-      onClick={handleDelete}
+      onClick={handleToggle}
       disabled={isPending}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60"
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
+        isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+      }`}
     >
-      <Trash2 size={12} />
-      {isPending ? "กำลังลบ..." : "ลบ"}
+      {isPending ? "..." : isActive ? "ยกเลิก" : "เปิดใช้งาน"}
     </button>
   );
 };
 
-export default DeleteProductButton;
+export default ToggleProductButton;

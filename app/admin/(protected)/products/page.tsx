@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Search, Pencil } from "lucide-react";
-import DeleteProductButton from "./DeleteProductButton";
+import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
 
@@ -139,7 +139,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 products.map((product) => (
                   <tr
                     key={product.id}
-                    className="border-t border-gray-50 hover:bg-gray-50 transition-colors"
+                    className={`border-t border-gray-50 transition-colors ${product.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}
                   >
                     {/* รูป */}
                     <td className="py-3 px-4">
@@ -230,7 +230,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                           <Pencil size={12} />
                           แก้ไข
                         </Link>
-                        <DeleteProductButton id={product.id} name={product.name} />
+                        <ToggleProductButton id={product.id} name={product.name} isActive={product.isActive} />
                       </div>
                     </td>
                   </tr>

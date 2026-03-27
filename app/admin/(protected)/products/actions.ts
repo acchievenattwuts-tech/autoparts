@@ -238,6 +238,7 @@ export const updateProduct = async (
           reportUnitName: productData.reportUnitName,
           description: productData.description,
           imageUrl: productData.imageUrl || null,
+          isActive: true,
         },
       });
 
@@ -285,8 +286,9 @@ export const updateProduct = async (
   }
 };
 
-export const deleteProduct = async (
-  id: string
+export const toggleProduct = async (
+  id: string,
+  isActive: boolean
 ): Promise<{ error?: string }> => {
   try {
     await requireAuth();
@@ -299,11 +301,11 @@ export const deleteProduct = async (
   }
 
   try {
-    await db.product.delete({ where: { id } });
+    await db.product.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/products");
     return {};
   } catch {
-    return { error: "ไม่สามารถลบสินค้านี้ได้ อาจมีรายการที่เกี่ยวข้อง" };
+    return { error: "เกิดข้อผิดพลาด" };
   }
 };
 
