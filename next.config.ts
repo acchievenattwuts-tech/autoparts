@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const securityHeaders = [
   // Prevent MIME type sniffing
   { key: "X-Content-Type-Options", value: "nosniff" },
-  // Prevent clickjacking
-  { key: "X-Frame-Options", value: "DENY" },
+  // Prevent clickjacking from external sites (SAMEORIGIN allows our own iframe print)
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   // Legacy XSS filter (IE/old browsers)
   { key: "X-XSS-Protection", value: "1; mode=block" },
   // Control referrer info
@@ -33,8 +33,8 @@ const securityHeaders = [
       "font-src 'self' data:",
       // Allow API calls to Supabase
       "connect-src 'self' https://*.supabase.co https://*.supabase.in",
-      // Block embedding this site in iframes anywhere
-      "frame-ancestors 'none'",
+      // Allow embedding only from same origin (for iframe print from admin)
+      "frame-ancestors 'self'",
       // Restrict base tag hijacking
       "base-uri 'self'",
       // Restrict form submissions to same origin
