@@ -59,6 +59,13 @@ const AdminDashboard = async () => {
   const fmt = (v: unknown) =>
     Number(v ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "short", year: "numeric" });
+
+  const todayLabel    = fmtDate(now);
+  const monthLabel    = `${fmtDate(startOfMonth)} – ${todayLabel}`;
+  const next30Label   = `${todayLabel} – ${fmtDate(in30Days)}`;
+
   const cards = [
     {
       label: "สินค้าทั้งหมด",
@@ -70,35 +77,35 @@ const AdminDashboard = async () => {
     {
       label: "บิลขายวันนี้",
       value: (salesTodayAgg._count.id).toLocaleString(),
-      unit: `บิล · ฿${fmt(salesTodayAgg._sum.netAmount)}`,
+      unit: `บิล · ฿${fmt(salesTodayAgg._sum.netAmount)} | ${todayLabel}`,
       icon: TrendingUp,
       color: "bg-green-50 text-green-600",
     },
     {
       label: "ยอดขายเดือนนี้",
       value: `฿${fmt(salesMonthAgg._sum.netAmount)}`,
-      unit: "บาท",
+      unit: monthLabel,
       icon: Banknote,
       color: "bg-emerald-50 text-emerald-600",
     },
     {
       label: "ยอดซื้อเดือนนี้",
       value: `฿${fmt(purchasesMonthAgg._sum.netAmount)}`,
-      unit: "บาท",
+      unit: monthLabel,
       icon: ShoppingCart,
       color: "bg-indigo-50 text-indigo-600",
     },
     {
       label: "ลูกหนี้ค้างชำระ",
       value: `฿${fmt(totalAR._sum.amountRemain)}`,
-      unit: "บาท",
+      unit: `ณ ${todayLabel}`,
       icon: Users,
       color: "bg-yellow-50 text-yellow-600",
     },
     {
       label: "ค่าใช้จ่ายเดือนนี้",
       value: `฿${fmt(expensesMonthAgg._sum.netAmount)}`,
-      unit: "บาท",
+      unit: monthLabel,
       icon: Receipt,
       color: "bg-purple-50 text-purple-600",
     },
@@ -112,7 +119,7 @@ const AdminDashboard = async () => {
     {
       label: "ประกันกำลังหมด",
       value: expiringWarranties.toLocaleString(),
-      unit: "รายการ (30 วัน)",
+      unit: next30Label,
       icon: ShieldAlert,
       color: "bg-red-50 text-red-600",
     },
