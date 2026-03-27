@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye, Pencil, Printer } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
+import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
@@ -134,10 +135,7 @@ const ReceiptsPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
-                        <Link href={`/admin/receipts/${r.id}?print=1`} target="_blank"
-                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                          <Printer size={14} /> พิมพ์
-                        </Link>
+                        <PrintFromListButton href={`/admin/receipts/${r.id}`} />
                         <Link href={`/admin/receipts/${r.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
                           <Eye size={14} /> ดู

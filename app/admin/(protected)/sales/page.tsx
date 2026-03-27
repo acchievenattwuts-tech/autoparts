@@ -2,13 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye, Pencil, Printer } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SearchBar from "@/components/shared/SearchBar";
 import SaleCancelButton from "./SaleCancelButton";
 import Pagination from "@/components/shared/Pagination";
+import PrintFromListButton from "@/components/shared/PrintFromListButton";
 
 const PAGE_SIZE = 30;
 
@@ -187,10 +188,7 @@ const SalesPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
-                        <Link href={`/admin/sales/${s.id}?print=1`} target="_blank"
-                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                          <Printer size={14} /> พิมพ์
-                        </Link>
+                        <PrintFromListButton href={`/admin/sales/${s.id}`} />
                         <Link href={`/admin/sales/${s.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
                           <Eye size={14} /> ดู
