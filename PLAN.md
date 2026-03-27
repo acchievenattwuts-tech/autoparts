@@ -169,6 +169,141 @@
 - [ ] ค้นหาจากหน้าร้าน (ลูกค้าใช้)
 - [ ] ค้นหาจากหลังบ้าน (admin ใช้)
 
+### 🔲 Phase 5.5 — ระบบ Lot Control (ยังไม่ได้ทำ)
+
+> **ที่มา:** ออกแบบจากไฟล์ `lot_flow_aircon_spare_parts.docx` + sessions การตัดสินใจ 2026-03-27
+> **หลักการ:** "ครอบระบบเดิม" — สินค้าที่ไม่ใช้ Lot ต้องทำงานเหมือนเดิม 100%
+
+#### ข้อตกลงที่ผ่านการตัดสินใจแล้ว (ห้ามเปลี่ยนโดยไม่ปรึกษา)
+
+| ประเด็น | ข้อตกลง |
+|---|---|
+| ต้นทุน | **ใช้ Lot unitCost แยกต่างหาก** — ไม่ใช้ MAVG รวม ตอนขายออกให้ใช้ต้นทุนของ Lot นั้นๆ |
+| recalculate | ยกเลิกเอกสารต้อง reverse ทั้ง StockCard + LotBalance พร้อมกันใน `$transaction` เดียว |
+| Manual Allocation | ใช้ **Auto Allocate เป็น default** ตาม `lotIssueMethod` / user แก้ไขได้แต่ต้องกรอกเหตุผล / แสดง warning ถ้าไม่ตรง FIFO-FEFO / บันทึก log ว่าใครเปลี่ยน |
+| สต็อกเก่า | ไม่มีปัญหา — จะ restore DB ใหม่ก่อนเปิดใช้จริง |
+| Lot validation | ต้องมีทั้ง stock รวม และ LotBalance เพียงพอจึงจะขายได้ |
+| PurchaseReturn | ต้องอ้างอิง Lot เดิมตามใบซื้อเสมอ — reverse LotBalance ตาม Lot ที่รับเข้ามา |
+| CreditNote (รับคืน) | **Default = Merge กลับ LotBalance เดิม** / มี option "คืนแยก Lot" สำหรับของที่ไม่แน่ใจสภาพ (prefix `RET-{lotNo}`) |
+
+#### โมดูลที่ข้ามเลย (ไม่มีในระบบ)
+- Purchase Order, Transfer Warehouse, Sales Order / Reserve Lot, Barcode/QR Scan
+
+---
+
+#### Phase 5.5-A — Product Master + Schema ใหม่
+
+**เพิ่ม field ใน `Product`:**
+```prisma
+isLotControl       Boolean  @default(false)
+requireExpiryDate  Boolean  @default(false)
+lotIssueMethod     LotIssueMethod @default(FIFO)
+allowExpiredIssue  Boolean  @default(false)
+```
+
+**ตาราง enum ใหม่:**
+```prisma
+enum LotIssueMethod { FIFO FEFO MANUAL }
+```
+
+**ตารางใหม่:**
+```prisma
+model ProductLot          // ข้อมูล Lot: lotNo, productId, mfgDate, expDate, unitCost, purchaseItemId
+model LotBalance           // คงเหลือราย Lot: productId + lotNo (unique), qtyOnHand
+model StockMovementLot     // movement ราย Lot ผูกกับ StockCard: stockCardId, lotNo, qtyIn, qtyOut
+model PurchaseItemLot      // sub-rows ของบรรทัดใบซื้อ: purchaseItemId, lotNo, qty, unitCost
+model SaleItemLot          // sub-rows ของบรรทัดใบขาย: saleItemId, lotNo, qty, unitCost (snapshot)
+model PurchaseReturnItemLot // sub-rows ใบคืนซัพพลายเออร์ อ้างอิง Lot เดิม
+model CreditNoteItemLot    // sub-rows CN รับคืนจากลูกค้า: isReturnLot (flag สร้าง RET- lot ใหม่)
+```
+
+**Index บังคับ:**
+- `@@unique([productId, lotNo])` ใน `LotBalance`
+- `@@index([productId, expDate])` ใน `ProductLot` (สำหรับ FEFO + expiry report)
+- `@@index([stockCardId])` ใน `StockMovementLot`
+
+- [ ] เพิ่ม field ใน Product schema
+- [ ] สร้างตารางใหม่ทั้งหมด
+- [ ] `prisma db push`
+- [ ] เพิ่ม UI ตั้งค่า Lot ในหน้าแก้ไขสินค้า
+
+---
+
+#### Phase 5.5-B — ใบซื้อ รองรับแตก Lot
+
+**Logic:**
+1. เลือกสินค้าที่ `isLotControl = true` → แสดง sub-table ด้านล่างบรรทัด
+2. กรอก: Lot No, Qty, MFG Date (optional), EXP Date (required ถ้า `requireExpiryDate = true`), Unit Cost
+3. **Validate:** `sum(lot.qty) === item.qty` — ห้ามบันทึกถ้าไม่ตรง
+4. บันทึก: สร้าง `PurchaseItemLot` + upsert `LotBalance` + สร้าง `ProductLot` (ถ้า lot ใหม่) + `StockMovementLot`
+5. ต้นทุน StockCard ใช้ weighted average ของ Lot ทั้งหมดในบรรทัด (เพื่อความ compatible กับ MAVG เดิม)
+
+**UX:**
+- Sub-table แบบ inline expandable (ไม่ popup)
+- ปุ่ม "+ เพิ่ม Lot" ใต้บรรทัดสินค้า
+- แสดง progress bar "Lot รวม X / Y ชิ้น" แบบ realtime
+- สีแดงถ้า Lot qty ไม่ตรงกับบรรทัด
+
+- [ ] UI ฟอร์มใบซื้อ + sub-table Lot
+- [ ] Validation logic
+- [ ] Server Action: บันทึก + LotBalance upsert
+
+---
+
+#### Phase 5.5-C — ใบขาย เลือก / Auto-allocate Lot
+
+**Logic:**
+1. บรรทัดสินค้า `isLotControl = true` → แสดงปุ่ม "เลือก Lot"
+2. **Auto Allocate** ทำตาม `lotIssueMethod`:
+   - `FIFO` = เรียง `mfgDate ASC` (เก่าก่อน)
+   - `FEFO` = เรียง `expDate ASC` (ใกล้หมดอายุก่อน)
+   - `MANUAL` = ผู้ใช้เลือกเองทั้งหมด
+3. แสดง Lot ที่มีคงเหลือ + วันหมดอายุ + สีเตือน:
+   - 🟡 เหลือ ≤ 30 วัน
+   - 🔴 หมดอายุแล้ว (block ถ้า `allowExpiredIssue = false`)
+4. รองรับ 1 บรรทัดตัดจากหลาย Lot
+5. Manual override: กรอกเหตุผล + บันทึก log
+6. **Validate:** LotBalance เพียงพอทุก Lot ที่เลือก
+7. บันทึก: สร้าง `SaleItemLot` (snapshot unitCost ณ วันขาย) + ลด `LotBalance` + `StockMovementLot`
+
+**UX:**
+- Popup / expandable panel เลือก Lot ใต้บรรทัด
+- ปุ่ม "Auto จัดสรร" กด 1 ครั้งเสร็จ
+- แสดงสรุปว่า allocate Lot ไหนเท่าไหร่
+
+- [ ] UI ฟอร์มใบขาย + Lot panel
+- [ ] Auto allocate engine (FIFO/FEFO/MANUAL)
+- [ ] Server Action: บันทึก + LotBalance deduct
+
+---
+
+#### Phase 5.5-D — ยกเลิกเอกสาร Reverse Lot
+
+**กฎเหล็ก:** ยกเลิกต้อง reverse ทั้ง StockCard + LotBalance ใน `$transaction` เดียวเสมอ
+
+| เอกสาร | Reverse Logic |
+|---|---|
+| ยกเลิกใบซื้อ | อ่าน `PurchaseItemLot` → ลด `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate |
+| ยกเลิกใบขาย | อ่าน `SaleItemLot` → คืน `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate |
+| ยกเลิกใบคืนซัพพลายเออร์ | อ่าน `PurchaseReturnItemLot` → คืน `LotBalance` ตาม Lot เดิม |
+| ยกเลิก CN (รับคืนจากลูกค้า) | ถ้า merge → ลด `LotBalance` กลับ / ถ้า RET-lot → ลบ LotBalance ของ RET-lot ทิ้ง |
+
+- [ ] แก้ `cancelPurchase` รองรับ Lot
+- [ ] แก้ `cancelSale` รองรับ Lot
+- [ ] แก้ `cancelPurchaseReturn` รองรับ Lot
+- [ ] แก้ `cancelCreditNote` รองรับ Lot
+
+---
+
+#### Phase 5.5-E — รายงาน Lot
+
+- [ ] **Lot Balance** — คงเหลือราย Lot ทุกสินค้า (filter by product / expiry status)
+- [ ] **Lot Trace** — เลือก Lot No → ดูว่ารับจากใบซื้อใด + ขายให้ใครบ้าง
+- [ ] **Expiry Report** — Lot ที่หมดอายุแล้ว / เหลือ ≤ 30 วัน / ≤ 90 วัน
+- [ ] **Slow Moving Lot** — Lot ที่ไม่มี movement เกิน X วัน
+
+---
+
 ### 🔲 Phase 6 — Report (ยังไม่ได้ทำ)
 - [ ] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน)
 - [ ] Report กำไร-ขาดทุน (รวม VAT breakdown)
