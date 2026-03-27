@@ -45,7 +45,7 @@ const SalesChart = () => (
       <h2 className="font-kanit font-semibold text-gray-800">ยอดขายรายวัน (30 วันย้อนหลัง)</h2>
       <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">ข้อมูลตัวอย่าง</span>
     </div>
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={320}>
       <BarChart data={mockData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
         <XAxis
