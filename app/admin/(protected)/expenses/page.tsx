@@ -145,6 +145,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">รายการ</th>
@@ -156,13 +157,14 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((exp) => {
+                {expenses.map((exp, idx) => {
                   const isCancelled = exp.status === "CANCELLED";
                   return (
                     <tr
                       key={exp.id}
                       className={`border-t border-gray-50 transition-colors ${isCancelled ? "opacity-50" : "hover:bg-gray-50"}`}
                     >
+                      <td className="py-2.5 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="py-2.5 px-4 font-mono text-xs text-[#1e3a5f] font-medium">
                         {exp.expenseNo}
                       </td>
@@ -236,7 +238,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                 <tr>
-                  <td colSpan={5} className="py-3 px-4 text-right text-sm font-semibold text-gray-700">
+                  <td colSpan={6} className="py-3 px-4 text-right text-sm font-semibold text-gray-700">
                     รวมยอดสุทธิ (ACTIVE)
                   </td>
                   <td className="py-3 px-4 text-right font-bold text-gray-900">

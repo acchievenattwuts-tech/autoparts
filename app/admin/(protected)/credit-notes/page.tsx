@@ -98,6 +98,7 @@ const CreditNotesPage = async ({
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ CN</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
@@ -112,16 +113,17 @@ const CreditNotesPage = async ({
             <tbody>
               {creditNotes.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400">
                     {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการ Credit Note"}
                   </td>
                 </tr>
               ) : (
-                creditNotes.map((cn) => (
+                creditNotes.map((cn, idx) => (
                   <tr key={cn.id}
                     className={`border-t border-gray-50 transition-colors ${
                       cn.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
                     }`}>
+                    <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{cn.cnNo}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {new Date(cn.cnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}

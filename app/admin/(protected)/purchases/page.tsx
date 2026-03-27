@@ -71,6 +71,7 @@ const PurchasesPage = async ({
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
@@ -83,16 +84,17 @@ const PurchasesPage = async ({
             <tbody>
               {purchases.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-gray-400">
+                  <td colSpan={8} className="text-center py-12 text-gray-400">
                     {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบซื้อ"}
                   </td>
                 </tr>
               ) : (
-                purchases.map((p) => (
+                purchases.map((p, idx) => (
                   <tr key={p.id}
                     className={`border-t border-gray-50 transition-colors ${
                       p.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
                     }`}>
+                    <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{p.purchaseNo}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}

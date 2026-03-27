@@ -80,6 +80,7 @@ const ReceiptsPage = async ({
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบเสร็จ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ลูกค้า</th>
@@ -93,16 +94,17 @@ const ReceiptsPage = async ({
             <tbody>
               {receipts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400">
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
                     {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบเสร็จรับเงิน"}
                   </td>
                 </tr>
               ) : (
-                receipts.map((r) => (
+                receipts.map((r, idx) => (
                   <tr key={r.id}
                     className={`border-t border-gray-50 transition-colors ${
                       r.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
                     }`}>
+                    <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {new Date(r.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
