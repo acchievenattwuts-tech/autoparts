@@ -47,7 +47,7 @@ const AdminDashboard = async () => {
       where: { status: "ACTIVE", purchaseDate: { gte: startOfMonth } },
     }),
     db.$queryRaw<[{ total: string | null }]>`
-      SELECT SUM("amountRemain")::text AS total FROM "Customer" WHERE "amountRemain" > 0
+      SELECT SUM("amount_remain")::text AS total FROM "Customer" WHERE "amount_remain" > 0
     `,
     db.expense.aggregate({
       _sum: { netAmount: true },
