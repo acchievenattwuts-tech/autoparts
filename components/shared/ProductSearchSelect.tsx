@@ -23,6 +23,7 @@ interface Props {
 }
 
 const MAX_RESULTS = 50;
+const MIN_QUERY_LENGTH = 3;
 
 const ProductSearchSelect = ({
   products,
@@ -40,10 +41,12 @@ const ProductSearchSelect = ({
 
   const selected = products.find((p) => p.id === value);
 
-  const filtered = query.trim()
+  const trimmedQuery = query.trim();
+  const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
+  const filtered = isQueryReady
     ? products
         .filter((p) => {
-          const q = query.toLowerCase();
+          const q = trimmedQuery.toLowerCase();
           return (
             p.code.toLowerCase().includes(q) ||
             p.name.toLowerCase().includes(q) ||
@@ -54,7 +57,7 @@ const ProductSearchSelect = ({
           );
         })
         .slice(0, MAX_RESULTS)
-    : products.slice(0, MAX_RESULTS);
+    : [];
 
   const updateCoords = () => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -118,7 +121,11 @@ const ProductSearchSelect = ({
       className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
     >
       <div className="max-h-56 overflow-y-auto overscroll-contain">
-        {filtered.length === 0 ? (
+        {!isQueryReady ? (
+          <p className="px-4 py-3 text-sm text-gray-400 text-center">
+            พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
+          </p>
+        ) : filtered.length === 0 ? (
           <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
         ) : (
           filtered.map((p) => (
