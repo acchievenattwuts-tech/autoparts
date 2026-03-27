@@ -46,9 +46,10 @@ const AdminDashboard = async () => {
       _sum: { netAmount: true },
       where: { status: "ACTIVE", purchaseDate: { gte: startOfMonth } },
     }),
-    db.$queryRaw<[{ total: string | null }]>`
-      SELECT SUM("amount_remain")::text AS total FROM "Customer" WHERE "amount_remain" > 0
-    `,
+    db.sale.aggregate({
+      _sum: { amountRemain: true },
+      where: { status: "ACTIVE", paymentType: "CREDIT_SALE" },
+    }),
     db.expense.aggregate({
       _sum: { netAmount: true },
       where: { status: "ACTIVE", expenseDate: { gte: startOfMonth } },
@@ -89,7 +90,7 @@ const AdminDashboard = async () => {
     },
     {
       label: "ลูกหนี้ค้างชำระ",
-      value: `฿${fmt(totalAR[0]?.total)}`,
+      value: `฿${fmt(totalAR._sum.amountRemain)}`,
       unit: "บาท",
       icon: Users,
       color: "bg-yellow-50 text-yellow-600",
