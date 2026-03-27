@@ -187,7 +187,7 @@ const SalesPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2 justify-end">
-                        <Link href={`/admin/sales/${s.id}`} target="_blank"
+                        <Link href={`/admin/sales/${s.id}?print=1`} target="_blank"
                           className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
                           <Printer size={14} /> พิมพ์
                         </Link>

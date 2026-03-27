@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import PrintButton from "./PrintButton";
+import AutoPrint from "@/components/shared/AutoPrint";
 import { PaymentMethod } from "@/lib/generated/prisma";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -85,6 +87,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               <PrintButton />
             </div>
           </div>
+          <Suspense fallback={null}><AutoPrint /></Suspense>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
               <p className="text-gray-500 mb-1">เลขที่ใบเสร็จ</p>
