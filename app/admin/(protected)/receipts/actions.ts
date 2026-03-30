@@ -27,35 +27,32 @@ export async function getCreditSalesForCustomer(customerId: string): Promise<Cre
 
   if (!customerId) return [];
 
+  // Use amountRemain as source of truth — already accounts for receipts + CN(CREDIT_DEBT)
   const sales = await db.sale.findMany({
-    where: { customerId, paymentType: "CREDIT_SALE", status: "ACTIVE" },
+    where: {
+      customerId,
+      paymentType:  "CREDIT_SALE",
+      status:       "ACTIVE",
+      amountRemain: { gt: 0 },
+    },
     orderBy: { saleDate: "asc" },
     select: {
-      id:        true,
-      saleNo:    true,
-      saleDate:  true,
-      netAmount: true,
-      receipts:  {
-        where:  { receipt: { status: "ACTIVE" } },
-        select: { paidAmount: true },
-      },
+      id:           true,
+      saleNo:       true,
+      saleDate:     true,
+      netAmount:    true,
+      amountRemain: true,
     },
   });
 
-  return sales
-    .map((s) => {
-      const paid        = s.receipts.reduce((sum, r) => sum + Number(r.paidAmount), 0);
-      const outstanding = Math.max(0, Number(s.netAmount) - paid);
-      return {
-        id:          s.id,
-        saleNo:      s.saleNo,
-        saleDate:    s.saleDate.toISOString(),
-        netAmount:   Number(s.netAmount),
-        paidAmount:  paid,
-        outstanding,
-      };
-    })
-    .filter((s) => s.outstanding > 0);
+  return sales.map((s) => ({
+    id:          s.id,
+    saleNo:      s.saleNo,
+    saleDate:    s.saleDate.toISOString(),
+    netAmount:   Number(s.netAmount),
+    paidAmount:  Number(s.netAmount) - Number(s.amountRemain),
+    outstanding: Number(s.amountRemain),
+  }));
 }
 
 // ─────────────────────────────────────────
