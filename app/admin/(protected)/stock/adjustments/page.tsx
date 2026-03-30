@@ -4,12 +4,19 @@ import { db } from "@/lib/db";
 import AdjustmentForm from "./AdjustmentForm";
 import AdjustmentHistoryList from "./AdjustmentHistoryList";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const AdjustmentsPage = async ({
   searchParams,
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) => {
+  await requirePermission("stock.adjustments.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "stock.adjustments.create");
+  const canCancel = hasPermissionAccess(role, permissions, "stock.adjustments.cancel");
+
   const { from: fromParam, to: toParam } = await searchParams;
   const from = fromParam ?? "";
   const to   = toParam   ?? "";
@@ -89,14 +96,14 @@ const AdjustmentsPage = async ({
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-2">ปรับสต็อก</h1>
       <p className="text-sm text-gray-500 mb-6">ปรับเพิ่ม/ลดจำนวนสินค้าพร้อมระบุเหตุผล</p>
 
-      <AdjustmentForm products={productOptions} />
+      <AdjustmentForm products={productOptions} canCreate={canCreate} />
 
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-kanit text-lg font-semibold text-gray-800">ประวัติการปรับสต็อก</h2>
           <DateRangeFilter from={from} to={to} />
         </div>
-        <AdjustmentHistoryList adjustments={serialized} />
+        <AdjustmentHistoryList adjustments={serialized} canCancel={canCancel} />
       </div>
     </div>
   );

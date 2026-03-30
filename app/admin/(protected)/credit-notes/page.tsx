@@ -9,6 +9,8 @@ import SearchBar from "@/components/shared/SearchBar";
 import CreditNoteCancelButton from "./CreditNoteCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -33,6 +35,12 @@ const CreditNotesPage = async ({
 }: {
   searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
+  await requirePermission("credit_notes.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "credit_notes.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "credit_notes.update");
+  const canCancel = hasPermissionAccess(role, permissions, "credit_notes.cancel");
+
   const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
@@ -89,12 +97,14 @@ const CreditNotesPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบลดหนี้ (Credit Note)</h1>
-        <Link
-          href="/admin/credit-notes/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> สร้าง CN ใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/credit-notes/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} /> สร้าง CN ใหม่
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
@@ -186,11 +196,13 @@ const CreditNotesPage = async ({
                         </Link>
                         {cn.status === "ACTIVE" && (
                           <>
-                            <Link href={`/admin/credit-notes/${cn.id}/edit`}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Pencil size={14} /> แก้ไข
-                            </Link>
-                            <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} />
+                            {canUpdate ? (
+                              <Link href={`/admin/credit-notes/${cn.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
+                            {canCancel ? <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} /> : null}
                           </>
                         )}
                       </div>

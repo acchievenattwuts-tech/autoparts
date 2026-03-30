@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { requireAdmin } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { VatType } from "@/lib/generated/prisma";
@@ -25,7 +25,7 @@ const expenseSchema = z.object({
 export async function createExpense(
   formData: FormData
 ): Promise<{ success?: boolean; expenseNo?: string; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("expenses.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   let items: z.infer<typeof expenseItemSchema>[] = [];
@@ -90,7 +90,7 @@ const cancelExpenseSchema = z.object({
 export async function cancelExpense(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("expenses.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelExpenseSchema.safeParse({
@@ -126,7 +126,7 @@ export async function updateExpense(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("expenses.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {

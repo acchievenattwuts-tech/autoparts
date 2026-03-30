@@ -12,14 +12,18 @@ datasource db {
 // ─────────────────────────────────────────
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(STAFF)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  name               String
+  username           String?   @unique
+  email              String    @unique
+  password           String
+  role               Role      @default(STAFF)
+  appRoleId          String?
+  appRole            AppRole?  @relation(fields: [appRoleId], references: [id])
+  mustChangePassword Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   sales            Sale[]
   purchases        Purchase[]
@@ -29,6 +33,9 @@ model User {
   purchaseReturns  PurchaseReturn[]
   receipts         Receipt[]
   balanceForwards  BalanceForward[]
+
+  @@index([username])
+  @@index([appRoleId])
 }
 
 enum Role {
@@ -43,6 +50,39 @@ model LoginThrottle {
   lockedUntil    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+model AppRole {
+  id          String              @id @default(cuid())
+  name        String              @unique
+  description String?
+  isSystem    Boolean             @default(false)
+  users       User[]
+  permissions AppRolePermission[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model Permission {
+  id          String              @id @default(cuid())
+  key         String              @unique
+  group       String
+  label       String
+  description String?
+  roles       AppRolePermission[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+}
+
+model AppRolePermission {
+  appRoleId     String
+  permissionId  String
+  appRole       AppRole     @relation(fields: [appRoleId], references: [id], onDelete: Cascade)
+  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@id([appRoleId, permissionId])
+  @@index([permissionId])
 }
 
 // ─────────────────────────────────────────

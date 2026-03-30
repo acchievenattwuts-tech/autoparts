@@ -1,12 +1,15 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Receipt, ChevronRight } from "lucide-react";
 import NewExpenseForm from "./NewExpenseForm";
 import { getSiteConfig } from "@/lib/site-config";
 
 const NewExpensePage = async () => {
+  await requirePermission("expenses.create");
+
   const [expenseCodes, config] = await Promise.all([
     db.expenseCode.findMany({
       where: { isActive: true },

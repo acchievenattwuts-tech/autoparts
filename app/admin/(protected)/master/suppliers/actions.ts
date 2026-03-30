@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAuth } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierCode } from "@/lib/entity-code";
 
 const supplierSchema = z.object({
@@ -15,7 +15,7 @@ const supplierSchema = z.object({
 
 export const createSupplier = async (formData: FormData): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -52,7 +52,7 @@ export const updateSupplier = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -89,7 +89,7 @@ export const updateSupplier = async (
 
 export const toggleSupplier = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }

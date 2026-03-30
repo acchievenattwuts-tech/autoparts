@@ -5,6 +5,8 @@ import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
@@ -23,6 +25,9 @@ const refundMethodLabel: Record<CNRefundMethod, string> = {
 };
 
 const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("credit_notes.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "credit_notes.update");
   const { id } = await params;
 
   const cn = await db.creditNote.findUnique({
@@ -61,7 +66,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
               <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
             )}
           </div>
-          {cn.status === "ACTIVE" && (
+          {cn.status === "ACTIVE" && canUpdate && (
             <Link href={`/admin/credit-notes/${id}/edit`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
               <Pencil size={14} /> แก้ไข

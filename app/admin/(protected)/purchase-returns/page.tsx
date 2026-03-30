@@ -8,6 +8,8 @@ import SearchBar from "@/components/shared/SearchBar";
 import PurchaseReturnCancelButton from "./PurchaseReturnCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -16,6 +18,12 @@ const PurchaseReturnsPage = async ({
 }: {
   searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
+  await requirePermission("purchase_returns.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "purchase_returns.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "purchase_returns.update");
+  const canCancel = hasPermissionAccess(role, permissions, "purchase_returns.cancel");
+
   const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
@@ -63,12 +71,14 @@ const PurchaseReturnsPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">คืนสินค้าให้ซัพพลายเออร์</h1>
-        <Link
-          href="/admin/purchase-returns/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> บันทึกคืนสินค้าใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/purchase-returns/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} /> บันทึกคืนสินค้าใหม่
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
@@ -137,11 +147,13 @@ const PurchaseReturnsPage = async ({
                         </Link>
                         {r.status === "ACTIVE" && (
                           <>
-                            <Link href={`/admin/purchase-returns/${r.id}/edit`}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Pencil size={14} /> แก้ไข
-                            </Link>
-                            <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} />
+                            {canUpdate ? (
+                              <Link href={`/admin/purchase-returns/${r.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
+                            {canCancel ? <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} /> : null}
                           </>
                         )}
                       </div>

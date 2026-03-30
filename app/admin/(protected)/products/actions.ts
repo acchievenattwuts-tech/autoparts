@@ -4,7 +4,7 @@ import { db, dbTx } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
-import { requireAuth } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -131,7 +131,7 @@ export const createProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("products.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -206,7 +206,7 @@ export const updateProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("products.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -291,7 +291,7 @@ export const toggleProduct = async (
   isActive: boolean
 ): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("products.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -313,7 +313,7 @@ export const uploadProductImage = async (
   formData: FormData
 ): Promise<{ url?: string; error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("products.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -9,6 +10,8 @@ import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("credit_notes.update");
+
   const { id } = await params;
 
   const [cn, rawProducts, customers, config] = await Promise.all([

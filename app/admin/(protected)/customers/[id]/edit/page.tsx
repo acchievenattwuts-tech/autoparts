@@ -3,10 +3,13 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { requirePermission } from "@/lib/require-auth";
 import { notFound } from "next/navigation";
 import CustomerForm from "../../CustomerForm";
 
 const EditCustomerPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("customers.update");
+
   const { id } = await params;
 
   const customer = await db.customer.findUnique({ where: { id } });

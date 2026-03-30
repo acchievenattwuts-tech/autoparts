@@ -2,9 +2,12 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { requirePermission } from "@/lib/require-auth";
 import CustomerForm from "../CustomerForm";
 
 const NewCustomerPage = async () => {
+  await requirePermission("customers.create");
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">

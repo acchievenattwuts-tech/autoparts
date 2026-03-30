@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateCustomerCode } from "@/lib/entity-code";
@@ -18,7 +18,7 @@ const customerSchema = z.object({
 export async function createCustomer(
   formData: FormData
 ): Promise<{ success?: boolean; id?: string; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("customers.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
@@ -58,7 +58,7 @@ export async function updateCustomer(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("customers.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
@@ -99,7 +99,7 @@ export async function toggleCustomer(
   id: string,
   isActive: boolean
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("customers.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   try {

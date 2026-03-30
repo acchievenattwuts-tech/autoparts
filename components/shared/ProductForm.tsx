@@ -4,7 +4,6 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2 } from "lucide-react";
-import type { Product, ProductAlias, ProductUnit } from "@/lib/generated/prisma";
 import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
@@ -21,15 +20,33 @@ interface UnitRow {
   isBase: boolean;
 }
 
+/** Serializable product data — all Decimal fields converted to number */
+export interface ProductFormData {
+  id:              string;
+  code:            string;
+  name:            string;
+  description:     string | null;
+  costPrice:       number;
+  salePrice:       number;
+  minStock:        number;
+  warrantyDays:    number;
+  shelfLocation:   string | null;
+  saleUnitName:    string | null;
+  purchaseUnitName: string | null;
+  reportUnitName:  string | null;
+  imageUrl:        string | null;
+  categoryId:      string;
+  brandId:         string | null;
+  aliases:         { alias: string }[];
+  carModels:       { carModelId: string }[];
+  units:           UnitRow[];
+}
+
 interface ProductFormProps {
-  categories: CategoryOption[];
-  carBrands: CarBrandOption[];
+  categories:  CategoryOption[];
+  carBrands:   CarBrandOption[];
   partsBrands: PartsBrandOption[];
-  product?: Product & {
-    aliases: ProductAlias[];
-    carModels: { carModelId: string }[];
-    units: ProductUnit[];
-  };
+  product?:    ProductFormData;
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -297,7 +314,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
           <div>
             <label className={labelCls}>ระยะเวลาประกัน (วัน)</label>
             <input type="number" name="warrantyDays"
-              defaultValue={(product as { warrantyDays?: number })?.warrantyDays ?? 0}
+              defaultValue={product?.warrantyDays ?? 0}
               min={0} step={1} className={inputCls}
               placeholder="0 = ไม่มีประกัน" />
           </div>

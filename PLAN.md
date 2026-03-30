@@ -243,6 +243,81 @@
 
 ---
 
+### 🔲 Phase 4.3 — Users + Roles + Permissions (ยังไม่ได้ทำ)
+
+> **หลักการ:** เพิ่มระบบสิทธิ์ใหม่แบบคู่ขนานกับ `User.role` เดิมก่อน เพื่อไม่ให้ flow ปัจจุบันหยุดทำงาน
+> **รูปแบบสิทธิ์รอบแรก:** ระดับเมนู + action หลัก (`view`, `create`, `update`, `cancel`, `manage`)
+
+#### Phase 4.3-A — Schema และ Permission Catalog
+
+- [ ] เพิ่ม model `AppRole`
+- [ ] เพิ่ม model `Permission`
+- [ ] เพิ่ม model `AppRolePermission`
+- [ ] เพิ่ม field ใน `User`
+  - `appRoleId`
+  - `mustChangePassword`
+- [ ] คง `User.role` เดิมไว้ชั่วคราวเพื่อ compatibility
+- [ ] นิยาม permission keys หลักตามเมนูงาน
+- [ ] `prisma db push`
+- [ ] `prisma generate`
+
+#### Phase 4.3-B — Backend Foundations
+
+- [ ] helper `requirePermission()` แบบ fallback ให้ `ADMIN` เดิมผ่านได้
+- [ ] utility sync default permissions + default roles
+- [ ] server actions สำหรับจัดการผู้ใช้
+- [ ] server actions สำหรับจัดการ roles / permissions
+- [ ] server action เปลี่ยนรหัสผ่านด้วยตัวเอง
+
+#### Phase 4.3-C — User Management UI
+
+- [ ] หน้า `/admin/users`
+- [ ] หน้าเพิ่มผู้ใช้
+- [ ] หน้าแก้ไขผู้ใช้
+- [ ] เปิด/ปิดการใช้งานผู้ใช้
+- [ ] ผูกผู้ใช้กับ role ใหม่
+
+#### Phase 4.3-D — Roles / Permissions UI
+
+- [ ] หน้า `/admin/roles`
+- [ ] หน้าแก้ role
+- [ ] ตารางสิทธิ์แบบ matrix
+- [ ] แยกตามเมนูหลักของระบบ
+- [ ] มีตัวช่วยตั้งค่า
+  - คัดลอกจาก role อื่น
+  - ใช้ preset มาตรฐาน
+  - เปิด `view` อัตโนมัติเมื่อเลือก action อื่น
+  - ค้นหาเมนู
+
+#### Phase 4.3-E — Change Password
+
+- [ ] หน้า `/admin/profile/change-password`
+- [ ] ตรวจรหัสผ่านเดิมก่อนเปลี่ยน
+- [ ] บังคับ password policy ขั้นต่ำ
+- [ ] รองรับ `mustChangePassword` สำหรับการใช้งานรอบถัดไป
+
+#### Phase 4.3-F — Permission Matrix รอบแรก
+
+- [ ] Dashboard: `view`
+- [ ] สินค้า: `view`, `create`, `update`, `manage`
+- [ ] ลูกค้า: `view`, `create`, `update`, `manage`
+- [ ] ข้อมูลหลัก: `view`, `create`, `update`, `manage`
+- [ ] BF: `view`, `create`, `cancel`
+- [ ] ปรับสต็อก: `view`, `create`, `cancel`
+- [ ] Stock Card: `view`, `manage`
+- [ ] ซื้อสินค้า: `view`, `create`, `update`, `cancel`
+- [ ] CN ซื้อ: `view`, `create`, `update`, `cancel`
+- [ ] ขายสินค้า: `view`, `create`, `update`, `cancel`
+- [ ] CN ขาย: `view`, `create`, `update`, `cancel`
+- [ ] รับชำระ: `view`, `create`, `update`, `cancel`
+- [ ] ประกัน: `view`, `create`, `update`, `manage`
+- [ ] ค่าใช้จ่าย: `view`, `create`, `update`, `cancel`
+- [ ] รายงาน: `view`
+- [ ] ตั้งค่าระบบ: `view`, `manage`
+- [ ] ผู้ใช้และสิทธิ์: `view`, `create`, `update`, `manage`
+
+---
+
 ### 🔲 Phase 5 — ระบบค้นหา (ยังไม่ได้ทำ)
 - [ ] Full-text search สินค้า (ค้นได้จากชื่อ, โค้ด, alias, ยี่ห้อรถ, รุ่นรถ)
 - [ ] ค้นหาจากหน้าร้าน (ลูกค้าใช้)

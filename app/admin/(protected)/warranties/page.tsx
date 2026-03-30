@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import Pagination from "@/components/shared/Pagination";
-import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -13,6 +14,10 @@ interface WarrantyPageProps {
 }
 
 const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
+  await requirePermission("warranties.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "warranties.create");
+
   const { status, q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const now = new Date();
@@ -82,13 +87,15 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
           <ShieldCheck size={22} className="text-[#1e3a5f]" />
           <h1 className="font-kanit text-2xl font-bold text-gray-900">ประกันสินค้า</h1>
         </div>
-        <Link
-          href="/admin/warranties/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          บันทึกประกันใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/warranties/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} />
+            บันทึกประกันใหม่
+          </Link>
+        ) : null}
       </div>
 
       {/* Status summary cards */}

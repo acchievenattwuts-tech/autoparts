@@ -2,11 +2,14 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 
 const NewPurchaseReturnPage = async () => {
+  await requirePermission("purchase_returns.create");
+
   const [products, suppliers, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -8,6 +9,8 @@ import { getSiteConfig } from "@/lib/site-config";
 import NewExpenseForm from "../../new/NewExpenseForm";
 
 const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("expenses.update");
+
   const { id } = await params;
 
   const [expense, expenseCodes, config] = await Promise.all([

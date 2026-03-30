@@ -17,7 +17,13 @@ interface ProductOption {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const BfForm = ({ products }: { products: ProductOption[] }) => {
+const BfForm = ({
+  products,
+  canCreate,
+}: {
+  products: ProductOption[];
+  canCreate: boolean;
+}) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
@@ -43,6 +49,10 @@ const BfForm = ({ products }: { products: ProductOption[] }) => {
       }
     });
   };
+
+  if (!canCreate) {
+    return null;
+  }
 
   return (
     <div className="space-y-6">

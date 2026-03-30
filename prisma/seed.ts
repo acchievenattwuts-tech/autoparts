@@ -16,20 +16,22 @@ async function ensureSeedAdminUser() {
     return;
   }
 
-  if (seedAdminPassword.length < 12) {
-    throw new Error("SEED_ADMIN_PASSWORD must be at least 12 characters long");
-  }
+if (seedAdminPassword.length < 8) {
+  throw new Error("SEED_ADMIN_PASSWORD must be at least 8 characters long");
+}
 
   const hashedPassword = await bcrypt.hash(seedAdminPassword, 12);
   const admin = await db.user.upsert({
     where: { email: seedAdminUsername },
     update: {
       name: seedAdminName,
+      username: seedAdminUsername,
       role: "ADMIN",
       isActive: true,
     },
     create: {
       name: seedAdminName,
+      username: seedAdminUsername,
       email: seedAdminUsername,
       password: hashedPassword,
       role: "ADMIN",

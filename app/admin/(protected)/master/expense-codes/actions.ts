@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateExpenseCodeCode } from "@/lib/entity-code";
@@ -14,7 +14,7 @@ const expenseCodeSchema = z.object({
 export async function createExpenseCode(
   formData: FormData
 ): Promise<{ success?: boolean; code?: string; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("master.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = expenseCodeSchema.safeParse({
@@ -39,7 +39,7 @@ export async function toggleExpenseCode(
   id: string,
   isActive: boolean
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("master.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   try {
@@ -51,4 +51,3 @@ export async function toggleExpenseCode(
     return { error: "เกิดข้อผิดพลาด" };
   }
 }
-

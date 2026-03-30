@@ -1,6 +1,12 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import {
+  getAllPermissionKeys,
+  hasPermissionAccess,
+} from "@/lib/access-control";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Plus, Pencil, Eye } from "lucide-react";
 import ToggleCustomerButton from "./DeleteCustomerButton";
@@ -10,15 +16,26 @@ const CustomersPage = async ({
 }: {
   searchParams: Promise<{ search?: string }>;
 }) => {
+  await requirePermission("customers.view");
+
+  const session = await auth();
+  const role = session?.user?.role;
+  const permissions =
+    role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
+
+  const canCreate = hasPermissionAccess(role, permissions, "customers.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "customers.update");
+  const canCancel = hasPermissionAccess(role, permissions, "customers.cancel");
+
   const { search } = await searchParams;
 
   const customers = await db.customer.findMany({
     where: search
       ? {
           OR: [
-            { name:  { contains: search, mode: "insensitive" } },
+            { name: { contains: search, mode: "insensitive" } },
             { phone: { contains: search } },
-            { code:  { contains: search, mode: "insensitive" } },
+            { code: { contains: search, mode: "insensitive" } },
           ],
         }
       : undefined,
@@ -29,36 +46,37 @@ const CustomersPage = async ({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">รายการลูกค้า</h1>
-        <Link
-          href="/admin/customers/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> เพิ่มลูกค้า
-        </Link>
+        {canCreate && (
+          <Link
+            href="/admin/customers/new"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
+          >
+            <Plus size={16} /> เพิ่มลูกค้า
+          </Link>
+        )}
       </div>
 
-      {/* Search bar */}
       <form method="GET" className="mb-4">
-        <div className="flex gap-2 max-w-md">
+        <div className="flex max-w-md gap-2">
           <input
             type="text"
             name="search"
             defaultValue={search ?? ""}
-            placeholder="ค้นหาชื่อ, รหัส, เบอร์โทร..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
+            placeholder="ค้นหาชื่อ รหัส หรือเบอร์โทร"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-medium rounded-lg transition-colors"
+            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162d4a]"
           >
             ค้นหา
           </button>
           {search && (
             <Link
               href="/admin/customers"
-              className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-600 text-sm rounded-lg transition-colors"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50"
             >
               ล้าง
             </Link>
@@ -66,57 +84,70 @@ const CustomersPage = async ({
         </div>
       </form>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">รหัส</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อลูกค้า</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">เบอร์โทร</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ที่อยู่</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดซื้อ</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                <th className="py-3 px-4" />
+                <th className="px-4 py-3 text-left font-medium text-gray-600">รหัส</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อลูกค้า</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">เบอร์โทร</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600">ที่อยู่</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดซื้อ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600">สถานะ</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-gray-400">
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
                     {search ? "ไม่พบลูกค้าที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
                   </td>
                 </tr>
               ) : (
-                customers.map((c) => (
-                  <tr key={c.id} className={`border-t border-gray-50 transition-colors ${c.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"}`}>
-                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{c.code ?? "-"}</td>
-                    <td className="py-3 px-4 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3 px-4 text-gray-600">{c.phone ?? "-"}</td>
-                    <td className="py-3 px-4 text-gray-500 max-w-xs truncate">{c.address ?? "-"}</td>
-                    <td className="py-3 px-4 text-right text-gray-600">{c._count.sales} ครั้ง</td>
-                    <td className="py-3 px-4 text-center">
-                      {c.isActive ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+                customers.map((customer) => (
+                  <tr
+                    key={customer.id}
+                    className={`border-t border-gray-50 transition-colors ${
+                      customer.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+                    }`}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{customer.code ?? "-"}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{customer.name}</td>
+                    <td className="px-4 py-3 text-gray-600">{customer.phone ?? "-"}</td>
+                    <td className="max-w-xs truncate px-4 py-3 text-gray-500">{customer.address ?? "-"}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{customer._count.sales} ครั้ง</td>
+                    <td className="px-4 py-3 text-center">
+                      {customer.isActive ? (
+                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-500">ยกเลิก</span>
+                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">ยกเลิก</span>
                       )}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <Link
-                          href={`/admin/customers/${c.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors"
+                          href={`/admin/customers/${customer.id}`}
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] transition-colors hover:text-blue-700"
                         >
                           <Eye size={13} /> ดู
                         </Link>
-                        <Link
-                          href={`/admin/customers/${c.id}/edit`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-medium rounded-lg transition-colors"
-                        >
-                          <Pencil size={12} /> แก้ไข
-                        </Link>
-                        <ToggleCustomerButton id={c.id} name={c.name} isActive={c.isActive} />
+                        {canUpdate && (
+                          <Link
+                            href={`/admin/customers/${customer.id}/edit`}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#162d4a]"
+                          >
+                            <Pencil size={12} /> แก้ไข
+                          </Link>
+                        )}
+                        {canCancel && (
+                          <ToggleCustomerButton
+                            id={customer.id}
+                            name={customer.name}
+                            isActive={customer.isActive}
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -1,11 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ReceiptForm from "./ReceiptForm";
 
 const NewReceiptPage = async () => {
+  await requirePermission("receipts.create");
+
   const customers = await db.customer.findMany({
     where: { isActive: true },
     orderBy: { name: "asc" },

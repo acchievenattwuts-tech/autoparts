@@ -8,6 +8,8 @@ import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -16,6 +18,12 @@ const PurchasesPage = async ({
 }: {
   searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
+  await requirePermission("purchases.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "purchases.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "purchases.update");
+  const canCancel = hasPermissionAccess(role, permissions, "purchases.cancel");
+
   const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
@@ -65,10 +73,12 @@ const PurchasesPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบซื้อสินค้า</h1>
-        <Link href="/admin/purchases/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors">
-          <Plus size={16} /> สร้างใบซื้อใหม่
-        </Link>
+        {canCreate ? (
+          <Link href="/admin/purchases/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors">
+            <Plus size={16} /> สร้างใบซื้อใหม่
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
@@ -137,11 +147,13 @@ const PurchasesPage = async ({
                         </Link>
                         {p.status === "ACTIVE" && (
                           <>
-                            <Link href={`/admin/purchases/${p.id}/edit`}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Pencil size={14} /> แก้ไข
-                            </Link>
-                            <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} />
+                            {canUpdate ? (
+                              <Link href={`/admin/purchases/${p.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
+                            {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
                           </>
                         )}
                       </div>

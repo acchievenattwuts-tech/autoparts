@@ -23,7 +23,13 @@ interface AdjDoc {
   items:       AdjItem[];
 }
 
-const AdjustmentHistoryList = ({ adjustments }: { adjustments: AdjDoc[] }) => {
+const AdjustmentHistoryList = ({
+  adjustments,
+  canCancel,
+}: {
+  adjustments: AdjDoc[];
+  canCancel: boolean;
+}) => {
   const router = useRouter();
 
   if (adjustments.length === 0) {
@@ -63,7 +69,7 @@ const AdjustmentHistoryList = ({ adjustments }: { adjustments: AdjDoc[] }) => {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-xs text-gray-400">โดย {adj.user.name}</span>
-              {adj.status === "ACTIVE" && (
+              {adj.status === "ACTIVE" && canCancel && (
                 <CancelDocButton
                   docId={adj.id}
                   docNo={adj.adjustNo}

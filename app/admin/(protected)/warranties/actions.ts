@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -15,7 +15,7 @@ const warrantySchema = z.object({
 export async function createWarranty(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("warranties.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = warrantySchema.safeParse({
@@ -64,6 +64,9 @@ export async function createWarranty(
 }
 
 export async function getSaleItems(saleId: string) {
+  const session = await requirePermission("warranties.view").catch(() => null);
+  if (!session?.user?.id) return null;
+
   const sale = await db.sale.findUnique({
     where: { id: saleId },
     select: {

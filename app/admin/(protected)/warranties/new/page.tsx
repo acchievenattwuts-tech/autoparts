@@ -1,11 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ShieldCheck, ChevronRight } from "lucide-react";
 import NewWarrantyForm from "./NewWarrantyForm";
 
 const NewWarrantyPage = async () => {
+  await requirePermission("warranties.create");
+
   const since = new Date();
   since.setDate(since.getDate() - 60);
 

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -8,6 +9,8 @@ import ReceiptForm from "../../new/ReceiptForm";
 import type { CreditSaleItem } from "../../actions";
 
 const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("receipts.update");
+
   const { id } = await params;
 
   const [receipt, customers] = await Promise.all([

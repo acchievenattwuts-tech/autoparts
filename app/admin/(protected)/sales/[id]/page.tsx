@@ -8,6 +8,8 @@ import { Suspense } from "react";
 import PrintButton from "./PrintButton";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -45,6 +47,9 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 };
 
 const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("sales.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
   const [sale, contents] = await Promise.all([
     db.sale.findUnique({
@@ -106,7 +111,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               )}
             </div>
             <div className="flex items-center gap-2">
-              {sale.status === "ACTIVE" && (
+              {sale.status === "ACTIVE" && canUpdate && (
                 <Link href={`/admin/sales/${id}/edit`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
                   <Pencil size={14} /> แก้ไข

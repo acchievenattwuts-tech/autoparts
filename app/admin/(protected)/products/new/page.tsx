@@ -1,11 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ProductForm from "@/components/shared/ProductForm";
 
 const NewProductPage = async () => {
+  await requirePermission("products.create");
+
   const [categories, carBrands, partsBrands] = await Promise.all([
     db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({

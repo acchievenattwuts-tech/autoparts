@@ -8,6 +8,8 @@ import { Suspense } from "react";
 import PrintButton from "./PrintButton";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { PaymentMethod } from "@/lib/generated/prisma";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH:     "เงินสด",
@@ -16,6 +18,9 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
 };
 
 const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("receipts.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "receipts.update");
   const { id } = await params;
 
   const [receipt, contents] = await Promise.all([
@@ -78,7 +83,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               )}
             </div>
             <div className="flex items-center gap-2">
-              {receipt.status === "ACTIVE" && (
+              {receipt.status === "ACTIVE" && canUpdate && (
                 <Link href={`/admin/receipts/${id}/edit`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
                   <Pencil size={14} /> แก้ไข

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -8,6 +9,8 @@ import { getSiteConfig } from "@/lib/site-config";
 import PurchaseForm from "../../new/PurchaseForm";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("purchases.update");
+
   const { id } = await params;
 
   const [purchase, rawProducts, suppliers, config] = await Promise.all([

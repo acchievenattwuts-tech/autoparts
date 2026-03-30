@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAuth } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อยี่ห้อรถ").max(100),
@@ -16,7 +16,7 @@ const modelSchema = z.object({
 
 export const createCarBrand = async (formData: FormData): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -35,7 +35,7 @@ export const createCarBrand = async (formData: FormData): Promise<{ error?: stri
 
 export const toggleCarBrand = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -55,7 +55,7 @@ export const toggleCarBrand = async (id: string, isActive: boolean): Promise<{ e
 
 export const createCarModel = async (formData: FormData): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -79,7 +79,7 @@ export const createCarModel = async (formData: FormData): Promise<{ error?: stri
 
 export const toggleCarModel = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }

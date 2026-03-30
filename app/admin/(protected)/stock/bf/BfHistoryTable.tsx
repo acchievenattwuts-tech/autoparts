@@ -18,7 +18,13 @@ interface BfDoc {
   product:         { code: string; name: string };
 }
 
-const BfHistoryTable = ({ docs }: { docs: BfDoc[] }) => {
+const BfHistoryTable = ({
+  docs,
+  canCancel,
+}: {
+  docs: BfDoc[];
+  canCancel: boolean;
+}) => {
   const router = useRouter();
 
   return (
@@ -83,7 +89,7 @@ const BfHistoryTable = ({ docs }: { docs: BfDoc[] }) => {
                       : (d.note ?? "-")}
                   </td>
                   <td className="py-3 px-4 text-right">
-                    {d.status === "ACTIVE" && (
+                    {d.status === "ACTIVE" && canCancel && (
                       <CancelDocButton
                         docId={d.id}
                         docNo={d.docNo}

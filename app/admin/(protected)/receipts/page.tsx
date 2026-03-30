@@ -10,6 +10,8 @@ import SearchBar from "@/components/shared/SearchBar";
 import ReceiptCancelButton from "./ReceiptCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -24,6 +26,12 @@ const ReceiptsPage = async ({
 }: {
   searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
+  await requirePermission("receipts.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "receipts.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "receipts.update");
+  const canCancel = hasPermissionAccess(role, permissions, "receipts.cancel");
+
   const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
@@ -72,12 +80,14 @@ const ReceiptsPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบเสร็จรับเงิน</h1>
-        <Link
-          href="/admin/receipts/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> สร้างใบเสร็จใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/receipts/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} /> สร้างใบเสร็จใหม่
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
@@ -155,11 +165,13 @@ const ReceiptsPage = async ({
                         </Link>
                         {r.status === "ACTIVE" && (
                           <>
-                            <Link href={`/admin/receipts/${r.id}/edit`}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Pencil size={14} /> แก้ไข
-                            </Link>
-                            <ReceiptCancelButton receiptId={r.id} docNo={r.receiptNo} />
+                            {canUpdate ? (
+                              <Link href={`/admin/receipts/${r.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
+                            {canCancel ? <ReceiptCancelButton receiptId={r.id} docNo={r.receiptNo} /> : null}
                           </>
                         )}
                       </div>

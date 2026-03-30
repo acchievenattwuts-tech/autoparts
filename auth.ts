@@ -9,6 +9,7 @@ import {
   isLoginBlocked,
   recordFailedLogin,
 } from "@/lib/login-rate-limit";
+import { getAllPermissionKeys } from "@/lib/access-control";
 import { authConfig } from "./auth.config";
 
 const loginSchema = z.object({
@@ -30,7 +31,24 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
         if (await isLoginBlocked(throttleKeys)) return null;
 
-        const user = await db.user.findUnique({ where: { email: username } });
+        const user = await db.user.findFirst({
+          where: {
+            OR: [{ username }, { email: username }],
+          },
+          include: {
+            appRole: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: {
+                      select: { key: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
         if (!user || !user.isActive) {
           await recordFailedLogin(throttleKeys);
           return null;
@@ -42,6 +60,11 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           return null;
         }
 
+        const permissions =
+          user.role === "ADMIN"
+            ? getAllPermissionKeys()
+            : user.appRole?.permissions.map((item) => item.permission.key) ?? [];
+
         await clearFailedLogins(throttleKeys);
 
         return {
@@ -49,6 +72,9 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
+          appRoleId: user.appRoleId,
+          permissions,
+          mustChangePassword: user.mustChangePassword,
         };
       },
     }),

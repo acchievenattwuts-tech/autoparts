@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import RecalculateButton from "./RecalculateButton";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 interface StockCardPageProps {
   searchParams: Promise<{ productId?: string; unitName?: string; q?: string }>;
@@ -36,6 +38,10 @@ const fmtPrice = (n: number) =>
   n === 0 ? "-" : n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 
 const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
+  await requirePermission("stock.card.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
+
   const { productId, unitName, q } = await searchParams;
 
   // Fetch product list for selector
@@ -91,7 +97,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
           <ClipboardList size={22} className="text-[#1e3a5f]" />
           <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
         </div>
-        <RecalculateButton />
+        {canManage ? <RecalculateButton /> : null}
       </div>
 
       {/* Product selector */}

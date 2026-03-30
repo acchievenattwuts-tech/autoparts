@@ -4,8 +4,13 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("purchases.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "purchases.update");
   const { id } = await params;
 
   const purchase = await db.purchase.findUnique({
@@ -52,7 +57,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
             )}
           </div>
-          {purchase.status === "ACTIVE" && (
+          {purchase.status === "ACTIVE" && canUpdate && (
             <Link href={`/admin/purchases/${id}/edit`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
               <Pencil size={14} /> แก้ไข

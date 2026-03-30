@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 
+const isDevelopment = process.env.NODE_ENV === "development";
+const isDeploymentBuild = process.env.VERCEL === "1" || process.env.CI === "true";
+const distDir = isDevelopment
+  ? ".next-dev"
+  : isDeploymentBuild
+    ? ".next-build"
+    : ".next-local-build";
+
 const securityHeaders = [
   // Prevent MIME type sniffing
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -44,6 +52,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  distDir,
   // Remove X-Powered-By header (hides tech stack from attackers)
   poweredByHeader: false,
 

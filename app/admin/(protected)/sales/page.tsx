@@ -11,6 +11,8 @@ import SaleCancelButton from "./SaleCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -54,6 +56,12 @@ const SalesPage = async ({
 }: {
   searchParams: Promise<{ paymentType?: string; q?: string; page?: string; from?: string; to?: string }>;
 }) => {
+  await requirePermission("sales.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "sales.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
+  const canCancel = hasPermissionAccess(role, permissions, "sales.cancel");
+
   const params = await searchParams;
   const paymentTypeFilter = params.paymentType;
   const q = params.q;
@@ -107,12 +115,14 @@ const SalesPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">บันทึกการขาย</h1>
-        <Link
-          href="/admin/sales/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> บันทึกการขายใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/sales/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} /> บันทึกการขายใหม่
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
@@ -209,11 +219,13 @@ const SalesPage = async ({
                         </Link>
                         {s.status === "ACTIVE" && (
                           <>
-                            <Link href={`/admin/sales/${s.id}/edit`}
-                              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                              <Pencil size={14} /> แก้ไข
-                            </Link>
-                            <SaleCancelButton saleId={s.id} docNo={s.saleNo} />
+                            {canUpdate ? (
+                              <Link href={`/admin/sales/${s.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
+                            {canCancel ? <SaleCancelButton saleId={s.id} docNo={s.saleNo} /> : null}
                           </>
                         )}
                       </div>

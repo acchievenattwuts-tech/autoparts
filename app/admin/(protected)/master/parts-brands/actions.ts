@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireAuth } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อแบรนด์").max(100),
@@ -11,7 +11,7 @@ const brandSchema = z.object({
 
 export const createPartsBrand = async (formData: FormData): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -30,7 +30,7 @@ export const createPartsBrand = async (formData: FormData): Promise<{ error?: st
 
 export const togglePartsBrand = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
   try {
-    await requireAuth();
+    await requirePermission("master.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }

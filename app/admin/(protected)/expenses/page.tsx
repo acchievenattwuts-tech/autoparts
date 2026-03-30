@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Receipt, Plus, Eye, Pencil } from "lucide-react";
 import CancelExpenseButton from "./CancelExpenseButton";
 import Pagination from "@/components/shared/Pagination";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
 
@@ -13,6 +15,12 @@ interface ExpensePageProps {
 }
 
 const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
+  await requirePermission("expenses.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canCreate = hasPermissionAccess(role, permissions, "expenses.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "expenses.update");
+  const canCancel = hasPermissionAccess(role, permissions, "expenses.cancel");
+
   const { q, status, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
@@ -92,12 +100,14 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
           <Receipt size={22} className="text-[#1e3a5f]" />
           <h1 className="font-kanit text-2xl font-bold text-gray-900">ค่าใช้จ่าย</h1>
         </div>
-        <Link
-          href="/admin/expenses/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <Plus size={16} /> บันทึกรายการใหม่
-        </Link>
+        {canCreate ? (
+          <Link
+            href="/admin/expenses/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Plus size={16} /> บันทึกรายการใหม่
+          </Link>
+        ) : null}
       </div>
 
       {/* Search + Filter */}
@@ -251,11 +261,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                           </Link>
                           {!isCancelled && (
                             <>
-                              <Link href={`/admin/expenses/${exp.id}/edit`}
-                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                                <Pencil size={14} /> แก้ไข
-                              </Link>
-                              <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} />
+                              {canUpdate ? (
+                                <Link href={`/admin/expenses/${exp.id}/edit`}
+                                  className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                                  <Pencil size={14} /> แก้ไข
+                                </Link>
+                              ) : null}
+                              {canCancel ? <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} /> : null}
                             </>
                           )}
                         </div>
