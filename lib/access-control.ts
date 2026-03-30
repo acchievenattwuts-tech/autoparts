@@ -190,65 +190,56 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
 ];
 
 export async function ensureAccessControlSetup(): Promise<void> {
-  await db.$transaction(async (tx) => {
-    for (const permission of PERMISSION_CATALOG) {
-      await tx.permission.upsert({
-        where: { key: permission.key },
-        update: {
-          group: permission.group,
-          label: permission.label,
-          description: permission.description ?? null,
-        },
-        create: {
-          key: permission.key,
-          group: permission.group,
-          label: permission.label,
-          description: permission.description ?? null,
-        },
-      });
-    }
+  // Fast path: if all permissions already exist, skip everything (1 query)
+  const existingCount = await db.permission.count();
+  if (existingCount >= PERMISSION_CATALOG.length) return;
 
-    const permissionMap = new Map(
-      (
-        await tx.permission.findMany({
-          where: { key: { in: ALL_PERMISSION_KEYS } },
-          select: { id: true, key: true },
-        })
-      ).map((permission) => [permission.key, permission.id])
-    );
-
-    for (const roleTemplate of DEFAULT_ROLE_TEMPLATES) {
-      const existingRole = await tx.appRole.findUnique({
-        where: { name: roleTemplate.name },
-        select: { id: true },
-      });
-
-      if (existingRole) continue;
-
-      const permissionIds = roleTemplate.permissions
-        .map((permissionKey) => permissionMap.get(permissionKey))
-        .filter((permissionId): permissionId is string => typeof permissionId === "string");
-
-      if (permissionIds.length === 0) continue;
-
-      const createdRole = await tx.appRole.create({
-        data: {
-          name: roleTemplate.name,
-          description: roleTemplate.description,
-          isSystem: roleTemplate.isSystem,
-        },
-        select: { id: true },
-      });
-
-      await tx.appRolePermission.createMany({
-        data: permissionIds.map((permissionId) => ({
-          appRoleId: createdRole.id,
-          permissionId,
-        })),
-        skipDuplicates: true,
-      });
-    }
+  // Bulk-insert missing permissions (1 query instead of 89 upserts)
+  await db.permission.createMany({
+    data: PERMISSION_CATALOG.map((p) => ({
+      key:         p.key,
+      group:       p.group,
+      label:       p.label,
+      description: p.description ?? null,
+    })),
+    skipDuplicates: true,
   });
+
+  // Fetch all permission ids in one query
+  const permissionMap = new Map(
+    (await db.permission.findMany({
+      where:  { key: { in: ALL_PERMISSION_KEYS } },
+      select: { id: true, key: true },
+    })).map((p) => [p.key, p.id])
+  );
+
+  // Create default roles if they don't exist yet
+  for (const roleTemplate of DEFAULT_ROLE_TEMPLATES) {
+    const role = await db.appRole.upsert({
+      where:  { name: roleTemplate.name },
+      update: {},
+      create: {
+        name:        roleTemplate.name,
+        description: roleTemplate.description,
+        isSystem:    roleTemplate.isSystem,
+      },
+      select: { id: true },
+    });
+
+    const permissionIds = roleTemplate.permissions
+      .map((key) => permissionMap.get(key))
+      .filter((id): id is string => typeof id === "string");
+
+    if (permissionIds.length === 0) continue;
+
+    await db.appRolePermission.createMany({
+      data: permissionIds.map((permissionId) => ({
+        appRoleId: role.id,
+        permissionId,
+      })),
+      skipDuplicates: true,
+    });
+  }
 }
 
 export function ensureAccessControlSetupOnce(): Promise<void> {

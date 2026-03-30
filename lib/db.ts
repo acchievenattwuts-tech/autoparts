@@ -21,7 +21,9 @@ function createPrismaClient() {
 
 export const db = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// Cache in all environments — serverless instances reuse the same module context
+// when warm, avoiding connection churn. Each cold start gets a fresh instance anyway.
+globalForPrisma.prisma = db;
 
 const TX_TIMEOUT = 30_000; // 30s — Supabase serverless needs more time for multi-step transactions
 

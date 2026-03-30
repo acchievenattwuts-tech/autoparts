@@ -8,7 +8,7 @@ import { requirePermission } from "@/lib/require-auth";
 import ToggleUserButton from "./ToggleUserButton";
 
 const UsersPage = async () => {
-  await ensureAccessControlSetupOnce();
+  await ensureAccessControlSetupOnce().catch(() => { /* non-fatal: setup runs on next request */ });
   await requirePermission("admin.users.view");
 
   const users = await db.user.findMany({

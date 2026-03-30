@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 
 const RolesPage = async () => {
-  await ensureAccessControlSetupOnce();
+  await ensureAccessControlSetupOnce().catch(() => { /* non-fatal: setup runs on next request */ });
   await requirePermission("admin.roles.view");
 
   const roles = await db.appRole.findMany({
