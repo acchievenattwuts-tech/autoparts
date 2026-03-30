@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface CustomerOption {
   id:   string;
@@ -175,18 +176,16 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               ลูกค้า <span className="text-red-500">*</span>
             </label>
-            <select
+            <SearchableSelect
+              options={customers.map((c): SelectOption => ({
+                id: c.id,
+                label: c.name,
+                sublabel: c.code ?? undefined,
+              }))}
               value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
-            >
-              <option value="">-- เลือกลูกค้า --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code ? `[${c.code}] ` : ""}{c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setCustomerId}
+              placeholder="โปรดระบุลูกค้า"
+            />
           </div>
 
           {/* Date */}

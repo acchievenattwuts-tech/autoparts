@@ -19,7 +19,7 @@ const purchaseItemSchema = z.object({
 });
 
 const purchaseSchema = z.object({
-  supplierId:   z.string().max(50).optional(),
+  supplierId:   z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
   purchaseDate: z.string().min(1),
   discount:     z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),

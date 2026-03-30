@@ -20,7 +20,7 @@ const saleItemSchema = z.object({
 
 const saleSchema = z.object({
   saleDate:        z.string().min(1, "กรุณาระบุวันที่"),
-  customerId:      z.string().max(50).optional(),
+  customerId:      z.string().min(1, "กรุณาเลือกลูกค้า").max(50),
   saleType:        z.nativeEnum(SaleType).default(SaleType.RETAIL),
   paymentType:     z.nativeEnum(SalePaymentType).default(SalePaymentType.CASH_SALE),
   fulfillmentType: z.nativeEnum(FulfillmentType).default(FulfillmentType.PICKUP),

@@ -6,6 +6,7 @@ import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
   id: string;
@@ -140,6 +141,8 @@ const SaleForm = ({
     setError("");
     setSuccess("");
 
+    if (!selectedCustomerId) { setError("กรุณาเลือกลูกค้า"); return; }
+
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
@@ -199,19 +202,17 @@ const SaleForm = ({
           </div>
           <div>
             <label className={labelCls}>ลูกค้า</label>
-            <select
-              name="customerId"
+            <SearchableSelect
+              options={customers.map((c): SelectOption => ({
+                id: c.id,
+                label: c.name,
+                sublabel: c.code ?? undefined,
+              }))}
               value={selectedCustomerId}
-              onChange={(e) => handleCustomerChange(e.target.value)}
-              className={`${inputCls} bg-white`}
-            >
-              <option value="">-- ลูกค้าทั่วไป --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code ? `[${c.code}] ` : ""}{c.name}
-                </option>
-              ))}
-            </select>
+              onChange={handleCustomerChange}
+              placeholder="โปรดระบุลูกค้า"
+            />
+            <input type="hidden" name="customerId" value={selectedCustomerId} />
           </div>
           <div>
             <label className={labelCls}>ประเภทการขาย</label>

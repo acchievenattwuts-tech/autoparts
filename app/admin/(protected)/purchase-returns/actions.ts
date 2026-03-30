@@ -18,7 +18,7 @@ const returnItemSchema = z.object({
 const returnSchema = z.object({
   returnDate: z.string().min(1, "กรุณาระบุวันที่"),
   purchaseId: z.string().max(50).optional(),
-  supplierId: z.string().max(50).optional(),
+  supplierId: z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
   note:       z.string().max(500).optional(),
   vatType:    z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:    z.coerce.number().min(0).max(100).default(0),

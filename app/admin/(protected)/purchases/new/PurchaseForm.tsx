@@ -6,6 +6,7 @@ import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
   id: string;
@@ -61,8 +62,9 @@ const PurchaseForm = ({
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
+  const [error, setError]       = useState("");
+  const [success, setSuccess]   = useState("");
+  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]
@@ -101,13 +103,16 @@ const PurchaseForm = ({
     e.preventDefault();
     setError(""); setSuccess("");
 
+    const formData = new FormData(e.currentTarget);
+
+    if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
+    formData.set("supplierId", supplierId);
+
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
     }
-
-    const formData = new FormData(e.currentTarget);
     formData.set("items", JSON.stringify(items));
     formData.set("discount", String(discount));
     formData.set("vatType", vatType);
@@ -145,12 +150,12 @@ const PurchaseForm = ({
           </div>
           <div>
             <label className={labelCls}>ซัพพลายเออร์</label>
-            <select name="supplierId" defaultValue={initialData?.supplierId ?? ""} className={`${inputCls} bg-white`}>
-              <option value="">-- ไม่ระบุ --</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
+              value={supplierId}
+              onChange={setSupplierId}
+              placeholder="โปรดระบุผู้จำหน่าย"
+            />
           </div>
           <div>
             <label className={labelCls}>เลขที่เอกสารอ้างอิง</label>

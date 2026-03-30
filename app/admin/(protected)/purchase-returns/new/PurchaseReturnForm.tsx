@@ -6,6 +6,7 @@ import { createPurchaseReturn, updatePurchaseReturn } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
   id: string;
@@ -69,9 +70,10 @@ const PurchaseReturnForm = ({
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
-  const [error, setError]     = useState("");
-  const [success, setSuccess] = useState("");
-  const [items, setItems]     = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [error, setError]       = useState("");
+  const [success, setSuccess]   = useState("");
+  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [items, setItems]       = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
@@ -116,14 +118,17 @@ const PurchaseReturnForm = ({
     setError("");
     setSuccess("");
 
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+
+    if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
+    formData.set("supplierId", supplierId);
+
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
     }
-
-    const form = e.currentTarget;
-    const formData = new FormData(form);
     formData.set("items", JSON.stringify(items));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
@@ -178,14 +183,12 @@ const PurchaseReturnForm = ({
           </div>
           <div>
             <label className={labelCls}>ซัพพลายเออร์</label>
-            <select name="supplierId" defaultValue={initialData?.supplierId ?? ""} className={`${inputCls} bg-white`}>
-              <option value="">-- ไม่ระบุ --</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
+              value={supplierId}
+              onChange={setSupplierId}
+              placeholder="โปรดระบุผู้จำหน่าย"
+            />
           </div>
           <div className="md:col-span-3">
             <label className={labelCls}>หมายเหตุ</label>
