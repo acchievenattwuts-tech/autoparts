@@ -18,7 +18,11 @@ const getLockout = (): LockoutData => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { until: 0, attempts: 0 };
-    return JSON.parse(raw) as LockoutData;
+    const data = JSON.parse(raw) as LockoutData;
+    if (data.until <= Date.now()) {
+      return { until: 0, attempts: data.attempts ?? 0 };
+    }
+    return data;
   } catch {
     return { until: 0, attempts: 0 };
   }
@@ -47,26 +51,22 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [lockedUntil, setLockedUntil] = useState(0);
-  const [countdown, setCountdown] = useState(0);
-
-  // Check lockout on mount and update countdown
-  useEffect(() => {
+  const [lockedUntil, setLockedUntil] = useState(() => {
+    if (typeof window === "undefined") return 0;
     const { until } = getLockout();
-    if (until > Date.now()) {
-      setLockedUntil(until);
-    }
-  }, []);
+    return until > Date.now() ? until : 0;
+  });
+  const [countdown, setCountdown] = useState(0);
 
   useEffect(() => {
     if (lockedUntil <= Date.now()) {
-      setCountdown(0);
       return;
     }
     const tick = () => {
       const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
       if (remaining <= 0) {
         setCountdown(0);
+        setLockedUntil(0);
         clearLockout();
       } else {
         setCountdown(remaining);
@@ -79,13 +79,14 @@ const LoginPage = () => {
 
   const recordFailedAttempt = useCallback(() => {
     const data = getLockout();
-    const newAttempts = (data.until > Date.now() ? data.attempts : 0) + 1;
+    const newAttempts = (data.until > Date.now() ? data.attempts : data.attempts || 0) + 1;
     if (newAttempts >= MAX_ATTEMPTS) {
       const until = Date.now() + LOCKOUT_MS;
       setLockout({ until, attempts: newAttempts });
       setLockedUntil(until);
     } else {
-      setLockout({ until: Date.now() + LOCKOUT_MS, attempts: newAttempts });
+      setLockout({ until: 0, attempts: newAttempts });
+      setLockedUntil(0);
     }
     return newAttempts;
   }, []);
