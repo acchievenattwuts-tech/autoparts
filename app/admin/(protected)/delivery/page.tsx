@@ -4,8 +4,9 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 import Link from "next/link";
-import { Eye, Printer } from "lucide-react";
+import { Eye } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
+import PrintFromListButton from "@/components/shared/PrintFromListButton";
 
 const DeliveryPage = async ({
   searchParams,
@@ -163,14 +164,7 @@ const DeliveryPage = async ({
                         >
                           <Eye size={14} /> ดู
                         </Link>
-                        <a
-                          href={`/admin/sales/${s.id}?print=1`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          <Printer size={14} /> พิมพ์
-                        </a>
+                        <PrintFromListButton href={`/admin/sales/${s.id}`} />
                       </div>
                     </td>
                   </tr>
