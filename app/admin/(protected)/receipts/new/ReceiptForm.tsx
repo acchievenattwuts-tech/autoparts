@@ -6,9 +6,10 @@ import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface CustomerOption {
-  id:   string;
-  name: string;
-  code: string | null;
+  id:           string;
+  name:         string;
+  code:         string | null;
+  amountRemain: number;
 }
 
 interface SelectedItem {
@@ -178,9 +179,9 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
             </label>
             <SearchableSelect
               options={customers.map((c): SelectOption => ({
-                id: c.id,
-                label: c.name,
-                sublabel: c.code ?? undefined,
+                id:       c.id,
+                label:    c.name,
+                sublabel: `ค้างชำระ ฿${c.amountRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}${c.code ? ` · ${c.code}` : ""}`,
               }))}
               value={customerId}
               onChange={setCustomerId}

@@ -9,11 +9,34 @@ import ReceiptForm from "./ReceiptForm";
 const NewReceiptPage = async () => {
   await requirePermission("receipts.create");
 
-  const customers = await db.customer.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    select:  { id: true, name: true, code: true },
+  // Only show customers with outstanding AR balance
+  const arBalances = await db.sale.groupBy({
+    by:    ["customerId"],
+    where: {
+      customerId:  { not: null },
+      status:      "ACTIVE",
+      paymentType: "CREDIT_SALE",
+      amountRemain: { gt: 0 },
+    },
+    _sum: { amountRemain: true },
   });
+
+  const customerIds = arBalances
+    .map((b) => b.customerId)
+    .filter((id): id is string => id !== null);
+
+  const customerRows = await db.customer.findMany({
+    where:   { id: { in: customerIds }, isActive: true },
+    select:  { id: true, name: true, code: true },
+    orderBy: { name: "asc" },
+  });
+
+  const customers = customerRows.map((c) => ({
+    ...c,
+    amountRemain: Number(
+      arBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0
+    ),
+  }));
 
   return (
     <div>

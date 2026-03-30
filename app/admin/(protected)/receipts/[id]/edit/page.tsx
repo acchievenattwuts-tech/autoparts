@@ -37,7 +37,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, code: true },
-    }),
+    }).then((rows) => rows.map((c) => ({ ...c, amountRemain: 0 }))),
   ]);
 
   if (!receipt) notFound();
