@@ -79,6 +79,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     fulfillmentType: sale.fulfillmentType as "PICKUP" | "DELIVERY",
     shippingAddress: sale.shippingAddress ?? "",
     shippingFee:     Number(sale.shippingFee ?? 0),
+    shippingMethod:  sale.shippingMethod ?? "NONE",
     discount:        Number(sale.discount ?? 0),
     note:            sale.note ?? "",
     vatType:         sale.vatType,

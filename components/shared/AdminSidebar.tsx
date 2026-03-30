@@ -26,6 +26,7 @@ import {
   FileCheck,
   Wallet,
   KeyRound,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +77,7 @@ const navItems: SidebarEntry[] = [
       { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart, permission: "purchases.view" },
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view" },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view" },
+      { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view" },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view" },
       { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view" },
       { label: "ประกันสินค้า", href: "/admin/warranties", icon: ShieldCheck, permission: "warranties.view" },

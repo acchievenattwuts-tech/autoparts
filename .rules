@@ -116,6 +116,18 @@
   - ใบขาย → ต้องยกเลิก CN + ใบเสร็จรับเงินที่อ้างถึงก่อน
   - ใบเสร็จรับเงิน → ยกเลิกได้โดยตรง (แต่ต้อง reverse AR)
 
+### การตัดสินใจเรื่องสิทธิ์ (Permissions) — เมนูใหม่ทุกอันต้องทำครบ
+
+**เมื่อเพิ่มเมนูใหม่ใน Admin ทุกครั้ง ต้องทำครบ 5 ขั้นตอน:**
+
+1. **เพิ่ม permission key ใน `lib/access-control.ts`** — `PERMISSION_CATALOG` (group + label เป็นภาษาไทย), ใส่ใน `STAFF_OPERATIONS_PERMISSIONS` และ `STAFF_VIEWER_PERMISSIONS` ตามความเหมาะสม
+2. **เพิ่ม route rule** ใน `ADMIN_ROUTE_RULES` — `{ prefix: "/admin/<route>", permission: "<key>.view" }`
+3. **เรียก `requirePermission("<key>.view")`** ต้นฟังก์ชันใน `page.tsx` ของเมนูนั้น
+4. **เรียก `requirePermission("<key>.<action>")`** ใน Server Actions ที่เกี่ยวข้องทุกตัว (แทนที่ `auth()` โดยตรง)
+5. **อัปเดต `AdminSidebar.tsx`** — ตั้ง `permission: "<key>.view"` ใน navItems ให้ตรงกับ permission ที่เพิ่ม
+
+ใช้ หน้าการขาย view add update cancel เป็นตัวอย่างโครงสร้าง
+
 ### การตัดสินใจเรื่อง UI/UX
 - **การแสดงวันที่ทุกจุดในระบบต้องใช้ ค.ศ. (Gregorian) เสมอ** — ใช้ locale `"th-TH-u-ca-gregory"` แทน `"th-TH"` ในทุก `toLocaleDateString()` call ห้ามใช้ `"th-TH"` เพราะจะแสดงปีเป็น พ.ศ. ซึ่งทำให้สับสน
 - ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม

@@ -164,7 +164,7 @@
 - [x] หลังบันทึก/แก้ไข redirect กลับหน้า list อัตโนมัติ
 - [x] Product search dropdown fix: portal + fixed positioning (ไม่ถูก clip โดย overflow-x-auto)
 
-### 🔲 Phase 4.2 — ระบบจัดส่ง / Delivery Queue (ยังไม่ได้ทำ)
+### ✅ Phase 4.2 — ระบบจัดส่ง / Delivery Queue (เสร็จแล้ว — ยกเว้น 4.2-F)
 
 > **ที่มา:** ออกแบบจาก session 2026-03-30
 > **หลักการ:** reuse `fulfillmentType = DELIVERY` + `paymentType = CREDIT_SALE` ที่มีอยู่แล้ว
@@ -183,55 +183,63 @@
 
 #### Phase 4.2-A — Schema
 
-- [ ] เพิ่ม enum `ShippingStatus { PENDING OUT_FOR_DELIVERY DELIVERED }` ใน `schema.prisma`
-- [ ] เพิ่ม enum `ShippingMethod { NONE SELF KERRY FLASH JT OTHER }` ใน `schema.prisma`
-- [ ] เพิ่ม field ใน `Sale`:
+- [x] เพิ่ม enum `ShippingStatus { PENDING OUT_FOR_DELIVERY DELIVERED }` ใน `schema.prisma`
+- [x] เพิ่ม enum `ShippingMethod { NONE SELF KERRY FLASH JT OTHER }` ใน `schema.prisma`
+- [x] เพิ่ม field ใน `Sale`:
   ```prisma
   shippingStatus  ShippingStatus  @default(PENDING)
   shippingMethod  ShippingMethod  @default(NONE)
   trackingNo      String?
   ```
-- [ ] `prisma db push`
+- [x] `prisma db push`
 
 ---
 
 #### Phase 4.2-B — ใบขาย (SaleForm) ปรับ UI
 
-- [ ] เมื่อเลือก `fulfillmentType = DELIVERY` → แสดง field เพิ่ม:
+- [x] เมื่อเลือก `fulfillmentType = DELIVERY` → แสดง field เพิ่ม:
   - ที่อยู่จัดส่ง (auto-fill จาก `Customer.shippingAddress`)
   - ค่าส่ง (`shippingFee` — มีอยู่แล้ว)
   - ประเภทขนส่ง (`shippingMethod` dropdown)
   - **ไม่มีเลข Tracking ตรงนี้** — กรอกได้ที่หน้า Delivery Queue เมื่อส่งของแล้ว
-- [ ] เมื่อเลือก `CREDIT_SALE + DELIVERY` → แสดง note เตือน: "ยอดค้างชำระจะเปิด AR — บันทึก Receipt เมื่อได้รับเงิน"
-- [ ] ใบขาย detail page: แสดงสถานะจัดส่ง + tracking no
+- [x] เมื่อเลือก `CREDIT_SALE + DELIVERY` → แสดง note เตือน: "ยอดค้างชำระจะเปิด AR — บันทึก Receipt เมื่อได้รับเงิน"
+- [x] ใบขาย detail page: แสดงสถานะจัดส่ง + tracking no
 
 ---
 
 #### Phase 4.2-C — หน้า list ใบขาย ปรับ
 
-- [ ] เพิ่ม filter tab: **"รอจัดส่ง"** (`fulfillmentType = DELIVERY AND shippingStatus = PENDING`)
-- [ ] เพิ่ม column: สถานะจัดส่ง (badge รอส่ง / กำลังส่ง / ส่งแล้ว) แสดงเฉพาะแถว DELIVERY
-- [ ] เพิ่ม column: ยอด COD (แสดงเฉพาะ CREDIT_SALE + DELIVERY)
+- [x] เพิ่ม filter tab: **"รอจัดส่ง"** (`fulfillmentType = DELIVERY AND shippingStatus = PENDING`)
+- [x] เพิ่ม column: สถานะจัดส่ง (badge รอส่ง / กำลังส่ง / ส่งแล้ว) แสดงเฉพาะแถว DELIVERY
+- [x] เพิ่ม column: ยอด COD (แสดงเฉพาะ CREDIT_SALE + DELIVERY)
 
 ---
 
 #### Phase 4.2-D — หน้า Delivery Queue (ใหม่)
 
-- [ ] Route: `/admin/delivery`
-- [ ] แสดงรายการใบขาย `fulfillmentType = DELIVERY + shippingStatus IN [PENDING, OUT_FOR_DELIVERY]`
-- [ ] เรียงตามวันที่ / กลุ่มตามสถานะ
-- [ ] ข้อมูลต่อแถว: ลูกค้า, ที่อยู่จัดส่ง, ยอดเงิน, สถานะชำระ (จ่ายแล้ว / เก็บปลายทาง + ยอด), tracking no
-- [ ] ปุ่มอัปเดตสถานะ: "ออกส่ง" → `OUT_FOR_DELIVERY` / "ส่งแล้ว" → `DELIVERED`
-- [ ] กรอก **เลข Tracking** และ **ประเภทขนส่ง** ได้ที่นี่ (inline edit) — เพราะตอนสร้างใบขายยังไม่รู้เลข Tracking
-- [ ] ปุ่ม Print ใบวางบิล / ใบเสร็จต่อรายการ
+- [x] Route: `/admin/delivery`
+- [x] แสดงรายการใบขาย `fulfillmentType = DELIVERY + shippingStatus IN [PENDING, OUT_FOR_DELIVERY]`
+- [x] เรียงตามวันที่ / กลุ่มตามสถานะ
+- [x] ข้อมูลต่อแถว: ลูกค้า, ที่อยู่จัดส่ง, ยอดเงิน, สถานะชำระ (จ่ายแล้ว / เก็บปลายทาง + ยอด), tracking no
+- [x] ปุ่มอัปเดตสถานะ: "ออกส่ง" → `OUT_FOR_DELIVERY` / "ส่งแล้ว" → `DELIVERED`
+- [x] กรอก **เลข Tracking** และ **ประเภทขนส่ง** ได้ที่นี่ (inline edit) — เพราะตอนสร้างใบขายยังไม่รู้เลข Tracking
+- [x] ปุ่ม Print ใบวางบิล / ใบเสร็จต่อรายการ
 
 ---
 
 #### Phase 4.2-E — Print Slip สำหรับจัดส่ง
 
-- [ ] ใบแต่ละใบแสดง: ชื่อ/ที่อยู่ลูกค้า, รายการสินค้า, ยอดรวม + ค่าส่ง
-- [ ] Footer: **"ชำระแล้ว"** (Pre-paid) หรือ **"กรุณาชำระ ฿X,XXX"** (COD)
-- [ ] Print รวมหลายใบในครั้งเดียว (สำหรับออกรถ)
+- [x] ใบแต่ละใบแสดง: ชื่อ/ที่อยู่ลูกค้า, รายการสินค้า, ยอดรวม + ค่าส่ง
+- [x] Footer: **"ชำระแล้ว"** (Pre-paid) หรือ **"กรุณาชำระ ฿X,XXX"** (COD)
+- [ ] Print รวมหลายใบในครั้งเดียว (สำหรับออกรถ) — ยังไม่ได้ทำ
+- [x] **ใบแจ้งหนี้/ใบส่งของ (CREDIT_SALE)** — เมื่อกดพิมพ์เอกสารบนใบขายประเภท CREDIT_SALE:
+  - หัวเอกสาร: **"ใบแจ้งหนี้/ใบส่งของ"** (แทน "ใบเสร็จรับเงิน")
+  - แสดง: ชื่อลูกค้า + ที่อยู่จัดส่ง (`shippingAddress`) ด้านบน
+  - รายการสินค้า, ยอดรวม, ค่าส่ง, ส่วนลด, ยอดสุทธิ — เหมือนฟอร์มขายสด
+  - Footer เพิ่มช่องลงชื่อ 2 ช่อง:
+    - **ผู้ส่งของ** ........................... วันที่ ...........
+    - **ผู้รับของ** ........................... วันที่ ...........
+  - ใช้ CSS `@media print` — ไม่ต้องสร้าง route ใหม่ แค่ toggle layout ตาม `paymentType`
 
 ---
 

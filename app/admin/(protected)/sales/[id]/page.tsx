@@ -10,6 +10,7 @@ import AutoPrint from "@/components/shared/AutoPrint";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 
 const paymentMethodLabel: Record<string, string> = {
   CASH:     "เงินสด",
@@ -36,6 +37,7 @@ const fulfillmentBadge: Record<FulfillmentType, string> = {
   PICKUP:   "bg-gray-100 text-gray-600",
   DELIVERY: "bg-purple-100 text-purple-700",
 };
+
 
 const paymentTypeLabel: Record<SalePaymentType, string> = {
   CASH_SALE:   "ขายสด",
@@ -117,7 +119,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   <Pencil size={14} /> แก้ไข
                 </Link>
               )}
-              <PrintButton />
+              <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "พิมพ์ใบแจ้งหนี้" : "พิมพ์ใบเสร็จ"} />
             </div>
           </div>
           <Suspense fallback={null}><AutoPrint /></Suspense>
@@ -179,6 +181,26 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 {fulfillmentLabel[sale.fulfillmentType]}
               </span>
             </div>
+            {sale.fulfillmentType === "DELIVERY" && (
+              <>
+                <div>
+                  <p className="text-gray-500 mb-1">สถานะจัดส่ง</p>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SHIPPING_STATUS_BADGE[sale.shippingStatus]}`}>
+                    {SHIPPING_STATUS_LABEL[sale.shippingStatus]}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-gray-500 mb-1">ขนส่ง</p>
+                  <p className="font-medium text-gray-900">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</p>
+                </div>
+                {sale.trackingNo && (
+                  <div>
+                    <p className="text-gray-500 mb-1">เลข Tracking</p>
+                    <p className="font-medium text-gray-900 font-mono">{sale.trackingNo}</p>
+                  </div>
+                )}
+              </>
+            )}
             <div>
               <p className="text-gray-500 mb-1">ผู้บันทึก</p>
               <p className="font-medium text-gray-900">{sale.user?.name ?? "-"}</p>
@@ -227,7 +249,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
         <div className="text-center mb-6">
           <h3 className="text-lg font-bold border-t border-b border-gray-300 py-2 inline-block px-8">
-            ใบเสร็จรับเงิน
+            {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้/ใบส่งของ" : "ใบเสร็จรับเงิน"}
           </h3>
         </div>
 
@@ -254,6 +276,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             </div>
           )}
         </div>
+
+        {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
+          <div className="mb-4 text-sm border border-gray-200 rounded p-2 bg-gray-50">
+            <span className="text-gray-600">ที่อยู่จัดส่ง: </span>
+            <span>{sale.shippingAddress}</span>
+          </div>
+        )}
 
         {/* Items table */}
         <table className="w-full text-sm mb-4 border-collapse">
@@ -324,9 +353,22 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         </div>
 
-        <div className="text-center text-sm text-gray-500 border-t border-gray-200 pt-4">
-          ขอบคุณที่ใช้บริการ
-        </div>
+        {sale.paymentType === "CREDIT_SALE" ? (
+          <div className="mt-8 grid grid-cols-2 gap-8 text-sm text-center">
+            <div>
+              <div className="border-t border-gray-400 pt-2 mt-8">ผู้ส่งของ</div>
+              <div className="text-gray-500 mt-1">วันที่ ...............</div>
+            </div>
+            <div>
+              <div className="border-t border-gray-400 pt-2 mt-8">ผู้รับของ</div>
+              <div className="text-gray-500 mt-1">วันที่ ...............</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-sm text-gray-500 border-t border-gray-200 pt-4">
+            ขอบคุณที่ใช้บริการ
+          </div>
+        )}
       </div>
     </>
   );

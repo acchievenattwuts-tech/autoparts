@@ -55,6 +55,7 @@ interface InitialData {
   fulfillmentType: "PICKUP" | "DELIVERY";
   shippingAddress: string;
   shippingFee:     number;
+  shippingMethod:  string;
   discount:        number;
   note:            string;
   vatType:         string;
@@ -90,6 +91,7 @@ const SaleForm = ({
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? "PICKUP");
   const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? "");
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
+  const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? "NONE");
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
@@ -160,6 +162,7 @@ const SaleForm = ({
     formData.set("fulfillmentType", fulfillmentType);
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
+    formData.set("shippingMethod", fulfillmentType === "DELIVERY" ? shippingMethod : "NONE");
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -377,6 +380,12 @@ const SaleForm = ({
             </div>
           </div>
 
+          {paymentType === "CREDIT_SALE" && fulfillmentType === "DELIVERY" && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              ⚠️ ขายเชื่อ+จัดส่ง: ยอดค้างชำระจะเปิด AR — บันทึกใบเสร็จรับเงินเมื่อได้รับเงิน
+            </p>
+          )}
+
           {fulfillmentType === "DELIVERY" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               <div className="md:col-span-2">
@@ -402,6 +411,17 @@ const SaleForm = ({
                   onChange={(e) => setShippingFee(Number(e.target.value))}
                   className={inputCls}
                 />
+              </div>
+              <div>
+                <label className={labelCls}>ประเภทขนส่ง</label>
+                <select value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} className={`${inputCls} bg-white`}>
+                  <option value="NONE">-- ไม่ระบุ --</option>
+                  <option value="SELF">ส่งเอง</option>
+                  <option value="KERRY">Kerry</option>
+                  <option value="FLASH">Flash</option>
+                  <option value="JT">J&T</option>
+                  <option value="OTHER">อื่นๆ</option>
+                </select>
               </div>
             </div>
           )}

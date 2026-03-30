@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateSaleNo } from "@/lib/doc-number";
-import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, VatType } from "@/lib/generated/prisma";
+import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, ShippingMethod, ShippingStatus, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 
@@ -33,6 +33,7 @@ const saleSchema = z.object({
   note:            z.string().max(500).optional(),
   vatType:         z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:         z.coerce.number().min(0).max(100).default(0),
+  shippingMethod:  z.nativeEnum(ShippingMethod).default(ShippingMethod.NONE),
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -65,6 +66,7 @@ export async function createSale(
     note:            formData.get("note")            || undefined,
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
+    shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -84,6 +86,7 @@ export async function createSale(
     note,
     vatType,
     vatRate,
+    shippingMethod,
     items: validItems,
   } = parsed.data;
 
@@ -122,6 +125,8 @@ export async function createSale(
           note:            note            ?? null,
           saleDate:        docDate,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
+          shippingMethod,
+          shippingStatus:  ShippingStatus.PENDING,
         },
       });
 
@@ -326,11 +331,12 @@ export async function updateSale(
     note:            formData.get("note")            || undefined,
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
+    shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, paymentMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, paymentMethod, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -372,6 +378,7 @@ export async function updateSale(
           vatAmount,
           netAmount,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
+          shippingMethod,
         },
       });
 
@@ -426,6 +433,44 @@ export async function updateSale(
     return { success: true };
   } catch (err) {
     console.error("[updateSale]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+// ─────────────────────────────────────────
+// updateShippingStatus
+// ─────────────────────────────────────────
+
+const shippingUpdateSchema = z.object({
+  shippingStatus: z.nativeEnum(ShippingStatus),
+  trackingNo:     z.string().max(100).optional(),
+  shippingMethod: z.nativeEnum(ShippingMethod).optional(),
+});
+
+export async function updateShippingStatus(
+  saleId: string,
+  data: { shippingStatus: string; trackingNo?: string; shippingMethod?: string }
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await requirePermission("delivery.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = shippingUpdateSchema.safeParse(data);
+  if (!parsed.success) return { error: "ข้อมูลไม่ถูกต้อง" };
+
+  try {
+    await db.sale.update({
+      where: { id: saleId },
+      data: {
+        shippingStatus: parsed.data.shippingStatus,
+        ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
+        ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+      },
+    });
+    revalidatePath("/admin/delivery");
+    revalidatePath(`/admin/sales/${saleId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[updateShippingStatus]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

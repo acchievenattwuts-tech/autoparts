@@ -76,6 +76,9 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "expenses.update", group: "ระบบงาน", label: "แก้ไขค่าใช้จ่าย" },
   { key: "expenses.cancel", group: "ระบบงาน", label: "ยกเลิกค่าใช้จ่าย" },
 
+  { key: "delivery.view",   group: "ระบบงาน", label: "ดูคิวจัดส่ง" },
+  { key: "delivery.update", group: "ระบบงาน", label: "อัปเดตสถานะจัดส่ง" },
+
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
 
   { key: "settings.company.view", group: "ระบบ", label: "ดูตั้งค่าร้าน" },
@@ -124,6 +127,8 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "expenses.view",
   "expenses.create",
   "expenses.update",
+  "delivery.view",
+  "delivery.update",
 ];
 
 const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
@@ -142,6 +147,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "warranties.view",
   "expenses.view",
   "reports.view",
+  "delivery.view",
 ];
 
 const DEFAULT_ROLE_TEMPLATES: RoleTemplate[] = [
@@ -179,6 +185,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/stock/card", permission: "stock.card.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
+  { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },

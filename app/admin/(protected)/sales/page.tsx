@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye, Pencil } from "lucide-react";
-import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import { FulfillmentType, SalePaymentType, SaleType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SearchBar from "@/components/shared/SearchBar";
@@ -13,6 +13,7 @@ import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE } from "@/lib/shipping";
 
 const PAGE_SIZE = 30;
 
@@ -51,10 +52,11 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
   CREDIT_SALE: "bg-orange-100 text-orange-700",
 };
 
+
 const SalesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ paymentType?: string; q?: string; page?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ paymentType?: string; q?: string; page?: string; from?: string; to?: string; shippingStatus?: string; fulfillmentType?: string }>;
 }) => {
   await requirePermission("sales.view");
   const { role, permissions } = await getSessionPermissionContext();
@@ -63,7 +65,9 @@ const SalesPage = async ({
   const canCancel = hasPermissionAccess(role, permissions, "sales.cancel");
 
   const params = await searchParams;
-  const paymentTypeFilter = params.paymentType;
+  const paymentTypeFilter  = params.paymentType;
+  const shippingStatusFilter = params.shippingStatus;
+  const fulfillmentTypeFilter = params.fulfillmentType;
   const q = params.q;
   const pageNum = Math.max(1, parseInt(params.page ?? "1", 10));
   const from = params.from ?? "";
@@ -78,6 +82,10 @@ const SalesPage = async ({
   }
   if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
     where.paymentType = paymentTypeFilter as SalePaymentType;
+  }
+  if (shippingStatusFilter && fulfillmentTypeFilter === "DELIVERY") {
+    where.fulfillmentType = "DELIVERY";
+    where.shippingStatus  = shippingStatusFilter as ShippingStatus;
   }
   if (q) {
     where.OR = [
@@ -106,10 +114,12 @@ const SalesPage = async ({
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const paginationParams: Record<string, string> = {};
-  if (q)                 paginationParams.q           = q;
-  if (paymentTypeFilter) paginationParams.paymentType = paymentTypeFilter;
-  if (from)              paginationParams.from        = from;
-  if (to)                paginationParams.to          = to;
+  if (q)                    paginationParams.q              = q;
+  if (paymentTypeFilter)    paginationParams.paymentType    = paymentTypeFilter;
+  if (from)                 paginationParams.from           = from;
+  if (to)                   paginationParams.to             = to;
+  if (shippingStatusFilter) paginationParams.shippingStatus = shippingStatusFilter;
+  if (fulfillmentTypeFilter) paginationParams.fulfillmentType = fulfillmentTypeFilter;
 
   return (
     <div>
@@ -149,6 +159,7 @@ const SalesPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ขายสด/เชื่อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">การจัดส่ง</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะส่ง</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทางชำระ</th>
@@ -159,7 +170,7 @@ const SalesPage = async ({
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-12 text-gray-400">
+                  <td colSpan={13} className="text-center py-12 text-gray-400">
                     {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการขาย"}
                   </td>
                 </tr>
@@ -191,6 +202,13 @@ const SalesPage = async ({
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fulfillmentBadge[s.fulfillmentType]}`}>
                         {fulfillmentLabel[s.fulfillmentType]}
                       </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      {s.fulfillmentType === "DELIVERY" && s.status === "ACTIVE" && (
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SHIPPING_STATUS_BADGE[s.shippingStatus]}`}>
+                          {SHIPPING_STATUS_LABEL[s.shippingStatus]}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{s._count.items} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">

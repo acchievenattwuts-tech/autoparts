@@ -377,6 +377,9 @@ model Sale {
   fulfillmentType FulfillmentType @default(PICKUP)
   shippingAddress String?
   shippingFee     Decimal?        @db.Decimal(10, 2)
+  shippingStatus  ShippingStatus  @default(PENDING)
+  shippingMethod  ShippingMethod  @default(NONE)
+  trackingNo      String?
   userId          String
   user          User        @relation(fields: [userId], references: [id])
   totalAmount   Decimal     @db.Decimal(10, 2)
@@ -409,6 +412,21 @@ enum SaleType {
 enum FulfillmentType {
   PICKUP
   DELIVERY
+}
+
+enum ShippingStatus {
+  PENDING          // รอจัดส่ง
+  OUT_FOR_DELIVERY // กำลังส่ง
+  DELIVERED        // ส่งแล้ว
+}
+
+enum ShippingMethod {
+  NONE  // ไม่ระบุ
+  SELF  // ส่งเอง
+  KERRY // Kerry
+  FLASH // Flash
+  JT    // J&T
+  OTHER // อื่นๆ
 }
 
 model SaleItem {
