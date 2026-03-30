@@ -21,6 +21,7 @@ const getIcon = (name: string) => {
 
 const ProductCategories = async () => {
   const categories = await db.category.findMany({
+    where: { isActive: true },
     orderBy: { name: "asc" },
     include: { _count: { select: { products: { where: { isActive: true } } } } },
   });
