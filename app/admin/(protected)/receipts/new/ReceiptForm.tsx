@@ -13,10 +13,12 @@ interface CustomerOption {
 }
 
 interface SelectedItem {
-  saleId:      string;
+  saleId?:     string;
+  cnId?:       string;
   saleNo:      string;
   outstanding: number;
   paidAmount:  number;
+  isCN:        boolean;
 }
 
 interface InitialData {
@@ -69,14 +71,17 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
     getCreditSalesForCustomer(customerId)
       .then((sales) => {
         setCreditSales(sales);
-        // Default: select all with full outstanding
+        // Default: select all with full outstanding (Sale items only)
         setSelectedItems(
-          sales.map((s) => ({
-            saleId:      s.id,
-            saleNo:      s.saleNo,
-            outstanding: s.outstanding,
-            paidAmount:  s.outstanding,
-          })),
+          sales
+            .filter((s) => s.type === "SALE")
+            .map((s) => ({
+              saleId:      s.id,
+              saleNo:      s.saleNo,
+              outstanding: s.outstanding,
+              paidAmount:  s.outstanding,
+              isCN:        false,
+            })),
         );
       })
       .catch(() => {
@@ -86,36 +91,46 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
       .finally(() => setIsLoadingSales(false));
   }, [customerId]);
 
-  const isChecked = (saleId: string) =>
-    selectedItems.some((i) => i.saleId === saleId);
+  const isChecked = (itemId: string) =>
+    selectedItems.some((i) => (i.saleId ?? i.cnId) === itemId);
 
   const toggleItem = (sale: CreditSaleItem) => {
-    if (isChecked(sale.id)) {
-      setSelectedItems((prev) => prev.filter((i) => i.saleId !== sale.id));
+    const key = sale.id;
+    if (isChecked(key)) {
+      setSelectedItems((prev) =>
+        prev.filter((i) => (i.saleId ?? i.cnId) !== key),
+      );
     } else {
       setSelectedItems((prev) => [
         ...prev,
         {
-          saleId:      sale.id,
+          saleId:      sale.type === "SALE" ? sale.id : undefined,
+          cnId:        sale.type === "CN"   ? sale.id : undefined,
           saleNo:      sale.saleNo,
           outstanding: sale.outstanding,
           paidAmount:  sale.outstanding,
+          isCN:        sale.type === "CN",
         },
       ]);
     }
   };
 
-  const updatePaidAmount = (saleId: string, value: number) => {
+  const updatePaidAmount = (itemId: string, value: number) => {
     setSelectedItems((prev) =>
       prev.map((i) =>
-        i.saleId === saleId
+        (i.saleId ?? i.cnId) === itemId
           ? { ...i, paidAmount: Math.max(0, Math.min(value, i.outstanding)) }
           : i,
       ),
     );
   };
 
-  const totalToPay = selectedItems.reduce((sum, i) => sum + i.paidAmount, 0);
+  const saleItems = creditSales.filter((s) => s.type === "SALE");
+  const cnItems   = creditSales.filter((s) => s.type === "CN");
+
+  const saleTotal = selectedItems.filter((i) => !i.isCN).reduce((sum, i) => sum + i.paidAmount, 0);
+  const cnTotal   = selectedItems.filter((i) => i.isCN).reduce((sum, i) => sum + i.paidAmount, 0);
+  const netTotal  = saleTotal - cnTotal;
 
   const selectedCustomer = customers.find((c) => c.id === customerId);
 
@@ -128,11 +143,11 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
       return;
     }
     if (selectedItems.length === 0) {
-      setError("กรุณาเลือกรายการขายที่ต้องการชำระ");
+      setError("กรุณาเลือกรายการที่ต้องการชำระหรือนำเครดิตมาหัก");
       return;
     }
     if (selectedItems.some((i) => i.paidAmount <= 0)) {
-      setError("ยอดชำระงวดนี้ต้องมากกว่า 0 ทุกรายการ");
+      setError("ยอดแต่ละรายการต้องมากกว่า 0");
       return;
     }
 
@@ -142,9 +157,16 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
     formData.set("receiptDate",   receiptDate);
     formData.set("paymentMethod", paymentMethod);
     formData.set("note",          note);
-    formData.set("items",         JSON.stringify(
-      selectedItems.map((i) => ({ saleId: i.saleId, paidAmount: i.paidAmount })),
-    ));
+    formData.set(
+      "items",
+      JSON.stringify(
+        selectedItems.map((i) => ({
+          saleId:     i.saleId,
+          cnId:       i.cnId,
+          paidAmount: i.paidAmount,
+        })),
+      ),
+    );
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -166,6 +188,108 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
     });
   };
 
+  const dateLocale = { day: "2-digit" as const, month: "2-digit" as const, year: "numeric" as const };
+
+  const renderSaleRow = (sale: CreditSaleItem) => {
+    const checked = isChecked(sale.id);
+    const item    = selectedItems.find((i) => (i.saleId ?? i.cnId) === sale.id);
+    return (
+      <tr
+        key={sale.id}
+        className={`border-t border-gray-50 transition-colors ${
+          checked ? "bg-blue-50/40" : "hover:bg-gray-50"
+        }`}
+      >
+        <td className="py-2 px-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleItem(sale)}
+            className="w-4 h-4 accent-[#1e3a5f]"
+          />
+        </td>
+        <td className="py-2 px-3 font-mono text-[#1e3a5f] font-medium">{sale.saleNo}</td>
+        <td className="py-2 px-3 text-gray-600">
+          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
+        </td>
+        <td className="py-2 px-3 text-right text-gray-800">
+          {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right text-gray-600">
+          {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right font-medium text-orange-600">
+          {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right">
+          {checked ? (
+            <input
+              type="number"
+              min={0}
+              max={sale.outstanding}
+              step={0.01}
+              value={item?.paidAmount ?? sale.outstanding}
+              onChange={(e) => updatePaidAmount(sale.id, Number(e.target.value))}
+              className="w-28 border border-gray-200 rounded px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+            />
+          ) : (
+            <span className="text-gray-400 text-sm">-</span>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  const renderCNRow = (sale: CreditSaleItem) => {
+    const checked = isChecked(sale.id);
+    const item    = selectedItems.find((i) => (i.saleId ?? i.cnId) === sale.id);
+    return (
+      <tr
+        key={sale.id}
+        className={`border-t border-gray-50 transition-colors ${
+          checked ? "bg-emerald-50/40" : "hover:bg-gray-50"
+        }`}
+      >
+        <td className="py-2 px-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => toggleItem(sale)}
+            className="w-4 h-4 accent-emerald-600"
+          />
+        </td>
+        <td className="py-2 px-3 font-mono text-emerald-700 font-medium">{sale.saleNo}</td>
+        <td className="py-2 px-3 text-gray-600">
+          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
+        </td>
+        <td className="py-2 px-3 text-right text-gray-800">
+          {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right text-gray-600">
+          {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right font-medium text-emerald-600">
+          {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+        </td>
+        <td className="py-2 px-3 text-right">
+          {checked ? (
+            <input
+              type="number"
+              min={0}
+              max={sale.outstanding}
+              step={0.01}
+              value={item?.paidAmount ?? sale.outstanding}
+              onChange={(e) => updatePaidAmount(sale.id, Number(e.target.value))}
+              className="w-28 border border-emerald-200 rounded px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            />
+          ) : (
+            <span className="text-gray-400 text-sm">-</span>
+          )}
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header form */}
@@ -181,7 +305,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
               options={customers.map((c): SelectOption => ({
                 id:       c.id,
                 label:    c.name,
-                sublabel: `ค้างชำระ ฿${c.amountRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}${c.code ? ` · ${c.code}` : ""}`,
+                sublabel: `ค้างชำระสุทธิ ฿${c.amountRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}${c.code ? ` · ${c.code}` : ""}`,
               }))}
               value={customerId}
               onChange={setCustomerId}
@@ -239,7 +363,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
         </div>
       </div>
 
-      {/* Credit sales */}
+      {/* Credit sales — Sale items */}
       {customerId && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-4">
@@ -248,7 +372,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
 
           {isLoadingSales ? (
             <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด...</p>
-          ) : creditSales.length === 0 ? (
+          ) : saleItems.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">
               ลูกค้ารายนี้ไม่มียอดค้างชำระ
             </p>
@@ -266,64 +390,38 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
                     <th className="text-right py-3 px-3 font-medium text-gray-600">ชำระงวดนี้</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {creditSales.map((sale) => {
-                    const checked = isChecked(sale.id);
-                    const item    = selectedItems.find((i) => i.saleId === sale.id);
-                    return (
-                      <tr
-                        key={sale.id}
-                        className={`border-t border-gray-50 transition-colors ${
-                          checked ? "bg-blue-50/40" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <td className="py-2 px-3">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleItem(sale)}
-                            className="w-4 h-4 accent-[#1e3a5f]"
-                          />
-                        </td>
-                        <td className="py-2 px-3 font-mono text-[#1e3a5f] font-medium">
-                          {sale.saleNo}
-                        </td>
-                        <td className="py-2 px-3 text-gray-600">
-                          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-800">
-                          {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-600">
-                          {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2 px-3 text-right font-medium text-orange-600">
-                          {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2 px-3 text-right">
-                          {checked ? (
-                            <input
-                              type="number"
-                              min={0}
-                              max={sale.outstanding}
-                              step={0.01}
-                              value={item?.paidAmount ?? sale.outstanding}
-                              onChange={(e) =>
-                                updatePaidAmount(sale.id, Number(e.target.value))
-                              }
-                              className="w-28 border border-gray-200 rounded px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
-                            />
-                          ) : (
-                            <span className="text-gray-400 text-sm">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                <tbody>{saleItems.map(renderSaleRow)}</tbody>
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* CN credits section */}
+      {customerId && !isLoadingSales && cnItems.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-emerald-100 p-6">
+          <h2 className="font-kanit text-lg font-semibold text-emerald-800 mb-1">
+            เครดิตใบลดหนี้ที่ยังไม่ได้ใช้
+          </h2>
+          <p className="text-xs text-gray-500 mb-4">
+            เลือกรายการเครดิตที่ต้องการนำมาหักลบกับยอดค้างชำระ
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-emerald-50">
+                <tr>
+                  <th className="w-10 py-3 px-3" />
+                  <th className="text-left py-3 px-3 font-medium text-emerald-700">เลขที่ใบลดหนี้</th>
+                  <th className="text-left py-3 px-3 font-medium text-emerald-700">วันที่</th>
+                  <th className="text-right py-3 px-3 font-medium text-emerald-700">เครดิตทั้งหมด</th>
+                  <th className="text-right py-3 px-3 font-medium text-emerald-700">ใช้แล้ว</th>
+                  <th className="text-right py-3 px-3 font-medium text-emerald-700">คงเหลือ</th>
+                  <th className="text-right py-3 px-3 font-medium text-emerald-700">นำมาหักงวดนี้</th>
+                </tr>
+              </thead>
+              <tbody>{cnItems.map(renderCNRow)}</tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -341,11 +439,28 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-500">ยอดรวมที่จะรับชำระ</p>
+        <div className="flex items-end justify-between">
+          <div className="space-y-1">
+            {cnTotal > 0 && (
+              <>
+                <div className="flex items-center gap-8 text-sm text-gray-600">
+                  <span>ยอดค้างชำระที่เลือก</span>
+                  <span className="font-medium text-gray-900">
+                    ฿{saleTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-8 text-sm text-emerald-700">
+                  <span>หักเครดิต CN</span>
+                  <span className="font-medium">
+                    −฿{cnTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="h-px bg-gray-200 my-1" />
+              </>
+            )}
+            <p className="text-sm text-gray-500">ยอดสุทธิที่รับชำระ</p>
             <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
-              {totalToPay.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              {netTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               <span className="text-sm font-normal text-gray-500 ml-1">บาท</span>
             </p>
           </div>

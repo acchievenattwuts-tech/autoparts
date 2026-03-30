@@ -9,34 +9,52 @@ import ReceiptForm from "./ReceiptForm";
 const NewReceiptPage = async () => {
   await requirePermission("receipts.create");
 
-  // Only show customers with outstanding AR balance
-  const arBalances = await db.sale.groupBy({
+  // Get customers with outstanding Sale AR balance
+  const saleBalances = await db.sale.groupBy({
     by:    ["customerId"],
     where: {
-      customerId:  { not: null },
-      status:      "ACTIVE",
-      paymentType: "CREDIT_SALE",
+      customerId:   { not: null },
+      status:       "ACTIVE",
+      paymentType:  "CREDIT_SALE",
       amountRemain: { gt: 0 },
     },
     _sum: { amountRemain: true },
   });
 
-  const customerIds = arBalances
-    .map((b) => b.customerId)
-    .filter((id): id is string => id !== null);
+  // Get customers with unused CREDIT_DEBT credit notes
+  const cnBalances = await db.creditNote.groupBy({
+    by:    ["customerId"],
+    where: {
+      customerId:     { not: null },
+      status:         "ACTIVE",
+      settlementType: "CREDIT_DEBT",
+      amountRemain:   { gt: 0 },
+    },
+    _sum: { amountRemain: true },
+  });
+
+  // Merge all customer IDs that have any outstanding balance or CN credit
+  const allCustomerIds = [
+    ...new Set([
+      ...saleBalances.map((b) => b.customerId).filter((id): id is string => id !== null),
+      ...cnBalances.map((b) => b.customerId).filter((id): id is string => id !== null),
+    ]),
+  ];
 
   const customerRows = await db.customer.findMany({
-    where:   { id: { in: customerIds }, isActive: true },
+    where:   { id: { in: allCustomerIds }, isActive: true },
     select:  { id: true, name: true, code: true },
     orderBy: { name: "asc" },
   });
 
-  const customers = customerRows.map((c) => ({
-    ...c,
-    amountRemain: Number(
-      arBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0
-    ),
-  }));
+  const customers = customerRows.map((c) => {
+    const saleSum = Number(saleBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0);
+    const cnSum   = Number(cnBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0);
+    return {
+      ...c,
+      amountRemain: saleSum - cnSum, // net outstanding (sale AR minus CN credits)
+    };
+  });
 
   return (
     <div>

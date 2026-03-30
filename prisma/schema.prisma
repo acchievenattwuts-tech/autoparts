@@ -572,12 +572,14 @@ model CreditNote {
   vatRate       Decimal @default(0) @db.Decimal(5, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   vatAmount     Decimal @default(0) @db.Decimal(10, 2)
+  amountRemain  Decimal          @default(0) @db.Decimal(10, 2) // ยอดคงค้าง = totalAmount - รับชำระแล้ว (ใช้เมื่อ settlementType=CREDIT_DEBT)
   status        DocStatus @default(ACTIVE)
   cancelledAt   DateTime?
   cancelNote    String?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   items         CreditNoteItem[]
+  receiptItems  ReceiptItem[]
 }
 
 model CreditNoteItem {
@@ -697,10 +699,15 @@ model Receipt {
 }
 
 model ReceiptItem {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   receiptId   String
-  receipt     Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  saleId      String
-  sale        Sale     @relation(fields: [saleId], references: [id])
-  paidAmount  Decimal  @db.Decimal(10, 2)
+  receipt     Receipt     @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  saleId      String?
+  sale        Sale?       @relation(fields: [saleId], references: [id])
+  cnId        String?
+  creditNote  CreditNote? @relation(fields: [cnId], references: [id])
+  paidAmount  Decimal     @db.Decimal(10, 2)
+
+  @@index([saleId])
+  @@index([cnId])
 }

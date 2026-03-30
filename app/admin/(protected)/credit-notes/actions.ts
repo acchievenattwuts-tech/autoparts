@@ -8,7 +8,7 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateCNNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
-import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
+import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -133,12 +133,8 @@ export async function createCreditNote(
       }
     });
 
-    // Recalculate sale amountRemain if linked sale exists (DISCOUNT reduces outstanding)
-    if (saleId) {
-      await dbTx(async (tx) => {
-        await recalculateSaleAmountRemain(tx, saleId);
-      });
-    }
+    // CN starts with amountRemain = 0 (schema default); no receipts applied yet.
+    // recalculateCNAmountRemain not needed on create.
 
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
@@ -191,11 +187,8 @@ export async function cancelCreditNote(
 
       await tx.creditNote.update({
         where: { id: cnId },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: 0 },
       });
-      if (cn.saleId) {
-        await recalculateSaleAmountRemain(tx, cn.saleId);
-      }
     });
     revalidatePath("/admin/credit-notes");
     return { success: true };
@@ -328,15 +321,10 @@ export async function updateCreditNote(
           });
         }
       }
-    });
 
-    // Recalculate sale amountRemain if linked sale exists
-    const effectiveSaleId = saleId || existing.saleId;
-    if (effectiveSaleId) {
-      await dbTx(async (tx) => {
-        await recalculateSaleAmountRemain(tx, effectiveSaleId);
-      });
-    }
+      // 5. Recalculate CN amountRemain (totalAmount may have changed)
+      await recalculateCNAmountRemain(tx, id);
+    });
 
     revalidatePath("/admin/credit-notes");
     revalidatePath(`/admin/credit-notes/${id}`);

@@ -31,7 +31,8 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         user:     { select: { name: true } },
         items: {
           include: {
-            sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
+            sale:       { select: { saleNo: true, saleDate: true, netAmount: true } },
+            creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },
           },
         },
       },
@@ -156,24 +157,32 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                 </tr>
               </thead>
               <tbody>
-                {receipt.items.map((item) => (
-                  <tr key={item.id} className="border-t border-gray-50">
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">
-                      <Link href={`/admin/sales/${item.saleId}`} className="hover:underline">
-                        {item.sale.saleNo}
-                      </Link>
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {new Date(item.sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-800">
-                      {Number(item.sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
-                      {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
+                {receipt.items.map((item) => {
+                  const isCN   = !!item.cnId;
+                  const docNo  = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
+                  const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate;
+                  const docAmt  = item.sale?.netAmount ?? item.creditNote?.totalAmount;
+                  return (
+                    <tr key={item.id} className={`border-t border-gray-50 ${isCN ? "bg-emerald-50/30" : ""}`}>
+                      <td className={`py-3 px-4 font-mono font-medium ${isCN ? "text-emerald-700" : "text-[#1e3a5f]"}`}>
+                        {item.saleId ? (
+                          <Link href={`/admin/sales/${item.saleId}`} className="hover:underline">{docNo}</Link>
+                        ) : (
+                          <span>{docNo} <span className="text-xs font-normal text-emerald-600">(เครดิต CN)</span></span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-gray-600">
+                        {docDate ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }) : "-"}
+                      </td>
+                      <td className="py-3 px-4 text-right text-gray-800">
+                        {docAmt != null ? Number(docAmt).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : "-"}
+                      </td>
+                      <td className={`py-3 px-4 text-right font-medium ${isCN ? "text-emerald-700" : "text-gray-900"}`}>
+                        {isCN ? "−" : ""}{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -237,20 +246,28 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             </tr>
           </thead>
           <tbody>
-            {receipt.items.map((item) => (
-              <tr key={item.id} className="border-b border-gray-100">
-                <td className="py-1.5 font-mono text-gray-800">{item.sale.saleNo}</td>
-                <td className="py-1.5 text-gray-700">
-                  {new Date(item.sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                </td>
-                <td className="py-1.5 text-right text-gray-800">
-                  {Number(item.sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                </td>
-                <td className="py-1.5 text-right font-medium text-gray-900">
-                  {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
-            ))}
+            {receipt.items.map((item) => {
+              const isCN   = !!item.cnId;
+              const docNo  = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
+              const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate;
+              const docAmt  = item.sale?.netAmount ?? item.creditNote?.totalAmount;
+              return (
+                <tr key={item.id} className="border-b border-gray-100">
+                  <td className="py-1.5 font-mono text-gray-800">
+                    {docNo}{isCN ? " (เครดิต)" : ""}
+                  </td>
+                  <td className="py-1.5 text-gray-700">
+                    {docDate ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }) : "-"}
+                  </td>
+                  <td className="py-1.5 text-right text-gray-800">
+                    {docAmt != null ? Number(docAmt).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : "-"}
+                  </td>
+                  <td className="py-1.5 text-right font-medium text-gray-900">
+                    {isCN ? "−" : ""}{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
