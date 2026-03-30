@@ -243,78 +243,209 @@
 
 ---
 
-### 🔲 Phase 4.3 — Users + Roles + Permissions (ยังไม่ได้ทำ)
+### ✅ Phase 4.3 — Users + Roles + Permissions (เสร็จแล้ว — commit `307f9f4`)
 
 > **หลักการ:** เพิ่มระบบสิทธิ์ใหม่แบบคู่ขนานกับ `User.role` เดิมก่อน เพื่อไม่ให้ flow ปัจจุบันหยุดทำงาน
 > **รูปแบบสิทธิ์รอบแรก:** ระดับเมนู + action หลัก (`view`, `create`, `update`, `cancel`, `manage`)
 
 #### Phase 4.3-A — Schema และ Permission Catalog
 
-- [ ] เพิ่ม model `AppRole`
-- [ ] เพิ่ม model `Permission`
-- [ ] เพิ่ม model `AppRolePermission`
-- [ ] เพิ่ม field ใน `User`
-  - `appRoleId`
-  - `mustChangePassword`
-- [ ] คง `User.role` เดิมไว้ชั่วคราวเพื่อ compatibility
-- [ ] นิยาม permission keys หลักตามเมนูงาน
-- [ ] `prisma db push`
-- [ ] `prisma generate`
+- [x] เพิ่ม model `AppRole`
+- [x] เพิ่ม model `Permission`
+- [x] เพิ่ม model `AppRolePermission`
+- [x] เพิ่ม field ใน `User` — `appRoleId`, `mustChangePassword`
+- [x] คง `User.role` เดิมไว้ชั่วคราวเพื่อ compatibility
+- [x] นิยาม permission keys หลักตามเมนูงาน
+- [x] `prisma db push` + `prisma generate`
 
 #### Phase 4.3-B — Backend Foundations
 
-- [ ] helper `requirePermission()` แบบ fallback ให้ `ADMIN` เดิมผ่านได้
-- [ ] utility sync default permissions + default roles
-- [ ] server actions สำหรับจัดการผู้ใช้
-- [ ] server actions สำหรับจัดการ roles / permissions
-- [ ] server action เปลี่ยนรหัสผ่านด้วยตัวเอง
+- [x] helper `requirePermission()` แบบ fallback ให้ `ADMIN` เดิมผ่านได้
+- [x] utility `ensureAccessControlSetup` — fast-path count check + `createMany` (ไม่ใช้ 89 upserts)
+- [x] server actions สำหรับจัดการผู้ใช้
+- [x] server actions สำหรับจัดการ roles / permissions
+- [x] server action เปลี่ยนรหัสผ่านด้วยตัวเอง
 
 #### Phase 4.3-C — User Management UI
 
-- [ ] หน้า `/admin/users`
-- [ ] หน้าเพิ่มผู้ใช้
-- [ ] หน้าแก้ไขผู้ใช้
-- [ ] เปิด/ปิดการใช้งานผู้ใช้
-- [ ] ผูกผู้ใช้กับ role ใหม่
+- [x] หน้า `/admin/users`
+- [x] หน้าเพิ่มผู้ใช้
+- [x] หน้าแก้ไขผู้ใช้
+- [x] เปิด/ปิดการใช้งานผู้ใช้
+- [x] ผูกผู้ใช้กับ role ใหม่
 
 #### Phase 4.3-D — Roles / Permissions UI
 
-- [ ] หน้า `/admin/roles`
-- [ ] หน้าแก้ role
-- [ ] ตารางสิทธิ์แบบ matrix
-- [ ] แยกตามเมนูหลักของระบบ
-- [ ] มีตัวช่วยตั้งค่า
-  - คัดลอกจาก role อื่น
-  - ใช้ preset มาตรฐาน
-  - เปิด `view` อัตโนมัติเมื่อเลือก action อื่น
-  - ค้นหาเมนู
+- [x] หน้า `/admin/roles`
+- [x] หน้าแก้ role
+- [x] ตารางสิทธิ์แบบ matrix
+- [x] แยกตามเมนูหลักของระบบ
+- [x] คัดลอกจาก role อื่น / preset มาตรฐาน / เปิด `view` อัตโนมัติ / ค้นหาเมนู
 
 #### Phase 4.3-E — Change Password
 
-- [ ] หน้า `/admin/profile/change-password`
-- [ ] ตรวจรหัสผ่านเดิมก่อนเปลี่ยน
-- [ ] บังคับ password policy ขั้นต่ำ
-- [ ] รองรับ `mustChangePassword` สำหรับการใช้งานรอบถัดไป
+- [x] หน้า `/admin/profile/change-password`
+- [x] ตรวจรหัสผ่านเดิมก่อนเปลี่ยน + password policy
+- [x] รองรับ `mustChangePassword`
 
 #### Phase 4.3-F — Permission Matrix รอบแรก
 
-- [ ] Dashboard: `view`
-- [ ] สินค้า: `view`, `create`, `update`, `manage`
-- [ ] ลูกค้า: `view`, `create`, `update`, `manage`
-- [ ] ข้อมูลหลัก: `view`, `create`, `update`, `manage`
-- [ ] BF: `view`, `create`, `cancel`
-- [ ] ปรับสต็อก: `view`, `create`, `cancel`
-- [ ] Stock Card: `view`, `manage`
-- [ ] ซื้อสินค้า: `view`, `create`, `update`, `cancel`
-- [ ] CN ซื้อ: `view`, `create`, `update`, `cancel`
-- [ ] ขายสินค้า: `view`, `create`, `update`, `cancel`
-- [ ] CN ขาย: `view`, `create`, `update`, `cancel`
-- [ ] รับชำระ: `view`, `create`, `update`, `cancel`
-- [ ] ประกัน: `view`, `create`, `update`, `manage`
-- [ ] ค่าใช้จ่าย: `view`, `create`, `update`, `cancel`
-- [ ] รายงาน: `view`
-- [ ] ตั้งค่าระบบ: `view`, `manage`
-- [ ] ผู้ใช้และสิทธิ์: `view`, `create`, `update`, `manage`
+- [x] ครอบคลุมทุกเมนูหลัก: Dashboard, สินค้า, ลูกค้า, ข้อมูลหลัก, BF, ปรับสต็อก, Stock Card, ซื้อ, CN ซื้อ, ขาย, CN ขาย, รับชำระ, ประกัน, ค่าใช้จ่าย, รายงาน, ตั้งค่าระบบ, ผู้ใช้และสิทธิ์
+
+---
+
+### 🔲 Phase 4.4 — ระบบเคลมสินค้า (Warranty Claim) (ยังไม่ได้ทำ)
+
+> **ที่มา:** ออกแบบจาก session 2026-03-30
+> **หลักการ:** ติดตาม supplier ต้นทางต่อ SaleItem → สร้างใบเคลมส่งให้ supplier → จัดการ stock movement ตามผลลัพธ์
+> **ทำ Phase A + B พร้อมกัน**
+
+#### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
+
+| ประเด็น | ข้อตกลง |
+|---|---|
+| ระบุ Supplier | เพิ่ม `preferredSupplierId?` ใน `Product` (optional) / auto-fill ใน SaleItem ตอนสร้างใบขาย |
+| Serial Number | ไม่ใช้ — ใช้ `unitSeq` (ลำดับที่ 1, 2, 3…) แทน แสดงใน Warranty card |
+| ใบเคลม format | รายละเอียดมาตรฐานสากล (ชื่อสินค้า, เลขที่ warranty, อาการ, supplier, วันที่) |
+| Phase A+B | ทำพร้อมกัน |
+
+#### Phase 4.4-A — Schema
+
+**เพิ่ม field ใน `Product`:**
+```prisma
+preferredSupplierId  String?
+preferredSupplier    Supplier? @relation(fields: [preferredSupplierId], references: [id])
+```
+
+**เพิ่ม field ใน `SaleItem`:**
+```prisma
+supplierId   String?
+supplierName String?   // snapshot ณ วันขาย
+```
+
+**เพิ่ม field ใน `Warranty`:**
+```prisma
+unitSeq  Int @default(1)   // ลำดับที่ของหน่วยภายใน SaleItem (1, 2, 3…)
+```
+> การสร้าง Warranty จาก SaleItem ที่มี qty=3 → สร้าง 3 rows (unitSeq 1, 2, 3)
+
+**ตารางใหม่:**
+```prisma
+model WarrantyClaim {
+  id            String              @id @default(cuid())
+  claimNo       String              @unique   // format: WC{YYYYMMDD}{4-digit}
+  warrantyId    String
+  warranty      Warranty            @relation(...)
+  claimDate     DateTime
+  status        WarrantyClaimStatus @default(DRAFT)
+  resolution    ClaimResolution?
+  // Supplier ที่รับเคลม (snapshot ณ วันส่ง)
+  supplierId    String?
+  supplierName  String?
+  supplierPhone String?
+  supplierAddress String?
+  note          String?
+  resolvedAt    DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  @@index([warrantyId])
+  @@index([claimDate])
+}
+
+enum WarrantyClaimStatus {
+  DRAFT              // บันทึกใบเคลม + รับของเสียจากลูกค้าแล้ว
+  SENT_TO_SUPPLIER   // ส่งของเสียให้ supplier แล้ว
+  CLOSED             // ปิดเคลม (รับกลับแล้ว หรือ supplier ปฏิเสธ)
+}
+
+// option ที่เลือกตอนสร้างใบเคลม
+enum ClaimType {
+  REPLACE_NOW   // เปลี่ยนของใหม่ให้ลูกค้าทันที
+  CUSTOMER_WAIT // ลูกค้ารอ — ส่งให้เมื่อได้รับจาก supplier
+}
+
+enum ClaimOutcome {
+  RECEIVED      // supplier ส่งของกลับมาแล้ว
+  NO_RESOLUTION // supplier ปฏิเสธเคลม
+}
+```
+
+**Stock movement types ใหม่ (เพิ่มใน enum `StockMovementType`):**
+```prisma
+CLAIM_RETURN_IN    // ลูกค้าเอาของเสียกลับมาที่ร้าน (qtyIn)
+CLAIM_SEND_OUT     // ส่งของเสียไปให้ supplier (qtyOut)
+CLAIM_RECV_IN      // รับสินค้ากลับจาก supplier (qtyIn)
+CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค้า (qtyOut)
+```
+
+**Stock flow ตาม ClaimType:**
+
+| Stage | Movement | REPLACE_NOW (เปลี่ยนทันที) | CUSTOMER_WAIT (ลูกค้ารอ) |
+|---|---|---|---|
+| สร้างใบเคลม | `CLAIM_RETURN_IN` | +1 | +1 |
+| สร้างใบเคลม | `CLAIM_REPLACE_OUT` | -1 (ให้ของใหม่ทันที) | — |
+| ส่ง supplier | `CLAIM_SEND_OUT` | -1 | -1 |
+| รับกลับ (RECEIVED) | `CLAIM_RECV_IN` | +1 (ขายใหม่ได้) | +1 |
+| รับกลับ (RECEIVED) | `CLAIM_REPLACE_OUT` | — | -1 (ส่งลูกค้าที่รอ) |
+| **Net** | | **0** | **0** |
+
+> `NO_RESOLUTION`: supplier ปฏิเสธ — ไม่มี `CLAIM_RECV_IN` / ร้านรับผลขาดทุน stock ของเสียยังติด +1 ให้ปรับออกทีหลังด้วยใบปรับสต็อก
+
+- [ ] เพิ่ม `preferredSupplierId` ใน `Product`
+- [ ] เพิ่ม `supplierId`, `supplierName` ใน `SaleItem`
+- [ ] เพิ่ม `unitSeq` ใน `Warranty`
+- [ ] สร้าง model `WarrantyClaim` พร้อม `claimType ClaimType`
+- [ ] เพิ่ม enum `ClaimType`, `ClaimOutcome` และ 4 movement types ใน `StockMovementType`
+- [ ] `prisma db push` + `prisma generate`
+
+---
+
+#### Phase 4.4-B — ปรับหน้าสินค้า
+
+- [ ] เพิ่ม field `ผู้จำหน่ายหลัก (Preferred Supplier)` ใน `ProductForm` — SearchableSelect / ไม่บังคับ
+- [ ] บันทึก `preferredSupplierId` ผ่าน server action สินค้า
+
+---
+
+#### Phase 4.4-C — ปรับหน้าขายสินค้า
+
+- [ ] เพิ่ม column `supplierId` ต่อบรรทัดสินค้า — auto-fill จาก `product.preferredSupplierId` เมื่อเลือกสินค้า
+- [ ] ผู้ใช้แก้ไขได้ (override) — SearchableSelect supplier ใน line item
+- [ ] บันทึก `supplierId` + `supplierName` snapshot ลง `SaleItem`
+
+---
+
+#### Phase 4.4-D — ปรับระบบ Warranty (สร้างต่อหน่วย)
+
+- [ ] แก้ logic สร้าง Warranty หลังบันทึกใบขาย: ถ้า `warrantyDays > 0` และ `qty = N` → สร้าง N rows (`unitSeq` 1…N)
+- [ ] หน้า `/admin/warranties` แสดง unitSeq ต่อแถว
+- [ ] Search/filter ตาม warranty card ทำได้
+
+---
+
+#### Phase 4.4-E — ใบเคลมสินค้า (Claim Form)
+
+- [ ] หน้า `/admin/warranties/[id]/claim/new` — สร้างใบเคลมจาก warranty card
+- [ ] ข้อมูลที่กรอก:
+  - วันที่เคลม, อาการ/หมายเหตุ
+  - supplier (auto-fill จาก SaleItem / แก้ได้), เบอร์โทร, ที่อยู่ supplier
+  - **ClaimType**: เลือก "เปลี่ยนของใหม่ให้ลูกค้าทันที" หรือ "ลูกค้ารอเคลม"
+- [ ] บันทึก → status = `DRAFT` + สร้าง StockCard:
+  - ทั้ง 2 option: `CLAIM_RETURN_IN` +1
+  - `REPLACE_NOW` เพิ่ม: `CLAIM_REPLACE_OUT` -1 (ส่งของใหม่ทันที)
+- [ ] ปุ่ม "ส่งเคลม supplier" → status = `SENT_TO_SUPPLIER` + `CLAIM_SEND_OUT` -1
+- [ ] หน้า list ใบเคลม `/admin/warranty-claims` — filter ตาม status / ClaimType / วันที่
+- [ ] หน้าอัปเดตผลเคลม — เลือก outcome เมื่อ supplier ตอบกลับ:
+  - `RECEIVED` → `CLAIM_RECV_IN` +1 + (ถ้า `CUSTOMER_WAIT`) `CLAIM_REPLACE_OUT` -1 ส่งให้ลูกค้าที่รอ → status = `CLOSED`
+  - `NO_RESOLUTION` → ปิดเคลมโดยไม่มี stock movement → status = `CLOSED` (ของเสียยังติด stock ให้ปรับออกทีหลัง)
+- [ ] เปลี่ยน status เป็น `CLOSED` เมื่อเสร็จสิ้น
+
+---
+
+#### Phase 4.4-F — ใบเคลม Print
+
+- [ ] Print template: เลขที่ใบเคลม, วันที่, ข้อมูลร้าน, ข้อมูล supplier, รายละเอียดสินค้า, เลข warranty, unitSeq, อาการ, ลายเซ็น
+- [ ] Print ได้จากหน้าดูรายละเอียดใบเคลม
 
 ---
 
@@ -529,3 +660,11 @@ npm run db:restore backup-{timestamp}.json
 - ใช้ **Prisma db push** (ไม่ใช่ migrate dev) เพราะ Supabase Transaction pooler ไม่รองรับ shadow database
 - `lib/generated/prisma` อยู่ใน `.gitignore` → ต้องรัน `prisma generate` หลัง clone repo ใหม่
 - Admin user แรกต้องสร้างผ่าน seed script (Phase 2)
+
+---
+
+## Roadmap Update (2026-03-30)
+- Phase 5 Search: done
+- Public search at /products is live.
+- Admin product search at /admin/products is live.
+- Product search now covers name, code, description, aliases, car brand, car model, category, and parts brand.

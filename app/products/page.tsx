@@ -10,34 +10,17 @@ import FloatingLine from "@/components/shared/FloatingLine";
 import ProductFilterBar from "./ProductFilterBar";
 import Image from "next/image";
 import Link from "next/link";
+import { buildProductSearchWhere } from "@/lib/product-search";
 
 interface Props {
   searchParams: Promise<{ q?: string; category?: string; brand?: string; model?: string }>;
 }
 
-const buildSearchWhere = (q: string) => {
-  const words = q.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return {};
-  const wordCondition = (word: string) => ({
-    OR: [
-      { name: { contains: word, mode: "insensitive" as const } },
-      { code: { contains: word, mode: "insensitive" as const } },
-      { description: { contains: word, mode: "insensitive" as const } },
-      { aliases: { some: { alias: { contains: word, mode: "insensitive" as const } } } },
-      { carModels: { some: { carModel: { name: { contains: word, mode: "insensitive" as const } } } } },
-      { carModels: { some: { carModel: { carBrand: { name: { contains: word, mode: "insensitive" as const } } } } } },
-      { category: { name: { contains: word, mode: "insensitive" as const } } },
-      { brand: { name: { contains: word, mode: "insensitive" as const } } },
-    ],
-  });
-  return words.length === 1 ? wordCondition(words[0]) : { AND: words.map(wordCondition) };
-};
-
 const ProductsPage = async ({ searchParams }: Props) => {
   const { q, category, brand, model } = await searchParams;
   const config = await getSiteConfig();
 
-  const searchWhere = q?.trim() ? buildSearchWhere(q) : {};
+  const searchWhere = buildProductSearchWhere(q);
 
   const categoryWhere = category ? { category: { name: category } } : {};
 

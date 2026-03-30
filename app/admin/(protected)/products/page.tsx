@@ -12,6 +12,7 @@ import { Plus, Search, Pencil } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
+import { buildProductSearchWhere } from "@/lib/product-search";
 
 const PAGE_SIZE = 30;
 
@@ -34,19 +35,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const { search, page } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const where = search
-    ? {
-        OR: [
-          { name: { contains: search, mode: "insensitive" as const } },
-          { code: { contains: search, mode: "insensitive" as const } },
-          { aliases: { some: { alias: { contains: search, mode: "insensitive" as const } } } },
-          { carModels: { some: { carModel: { name: { contains: search, mode: "insensitive" as const } } } } },
-          { carModels: { some: { carModel: { carBrand: { name: { contains: search, mode: "insensitive" as const } } } } } },
-          { category: { name: { contains: search, mode: "insensitive" as const } } },
-          { brand: { name: { contains: search, mode: "insensitive" as const } } },
-        ],
-      }
-    : undefined;
+  const where = buildProductSearchWhere(search);
 
   const [products, total] = await Promise.all([
     db.product.findMany({
