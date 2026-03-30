@@ -131,10 +131,12 @@ export async function createCreditNote(
           });
         }
       }
-    });
 
-    // CN starts with amountRemain = 0 (schema default); no receipts applied yet.
-    // recalculateCNAmountRemain not needed on create.
+      // Initialize amountRemain = totalAmount (no receipts applied yet)
+      if (settlementType === CNSettlementType.CREDIT_DEBT) {
+        await recalculateCNAmountRemain(tx, cn.id);
+      }
+    });
 
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
