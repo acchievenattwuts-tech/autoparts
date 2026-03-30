@@ -302,7 +302,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 <td className="py-1.5 text-gray-600">{idx + 1}</td>
                 <td className="py-1.5">
                   <div className="font-medium text-gray-900">{item.product.name}</div>
-                  <div className="text-xs text-gray-400">{item.product.code}</div>
                 </td>
                 <td className="py-1.5 text-right text-gray-800">{item.quantity}</td>
                 <td className="py-1.5 pl-2 text-gray-600">{item.product.reportUnitName}</td>
@@ -338,16 +337,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <span>ยอดสุทธิ</span>
               <span className="text-[#1e3a5f] text-base">
                 {Number(sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-            <div className="flex justify-between text-gray-600 pt-1">
-              <span>การชำระเงิน</span>
-              <span>
-                {sale.paymentType === "CREDIT_SALE"
-                  ? "ขายเชื่อ"
-                  : sale.paymentMethod
-                    ? (paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod)
-                    : "-"}
               </span>
             </div>
           </div>

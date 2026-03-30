@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Menu, LogOut, AlertTriangle } from "lucide-react";
+import { Menu, LogOut, AlertTriangle, UserCircle } from "lucide-react";
 import { signOut } from "next-auth/react";
 import AdminSidebar from "@/components/shared/AdminSidebar";
 import TabsBar from "@/components/shared/TabsBar";
@@ -12,9 +12,10 @@ type AdminShellProps = {
   children: ReactNode;
   permissions: string[];
   mustChangePassword: boolean;
+  username?: string;
 };
 
-const AdminShell = ({ children, permissions, mustChangePassword }: AdminShellProps) => {
+const AdminShell = ({ children, permissions, mustChangePassword, username }: AdminShellProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const clearAll = useTabStore((state) => state.clearAll);
 
@@ -47,13 +48,21 @@ const AdminShell = ({ children, permissions, mustChangePassword }: AdminShellPro
             <Menu size={20} />
           </button>
           <div className="flex-1 lg:flex-none" />
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
-          >
-            <LogOut size={16} />
-            <span className="hidden sm:inline">ออกจากระบบ</span>
-          </button>
+          <div className="flex items-center gap-3">
+            {username && (
+              <div className="hidden sm:flex items-center gap-1.5 text-sm text-gray-600">
+                <UserCircle size={16} className="text-gray-400" />
+                <span>{username}</span>
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">ออกจากระบบ</span>
+            </button>
+          </div>
         </header>
 
         <TabsBar />

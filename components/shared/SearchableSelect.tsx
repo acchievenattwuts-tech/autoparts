@@ -88,7 +88,12 @@ const SearchableSelect = ({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => { setOpen(false); setQuery(""); };
+    const close = (e: Event) => {
+      // Don't close when scrolling inside the dropdown list
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+      setQuery("");
+    };
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {

@@ -87,7 +87,14 @@
       "Bash(ls d:/autoparts/public/hero-banner*)",
       "Bash(xargs grep:*)",
       "Bash(xargs sed:*)",
-      "Bash(grep -rn \"dbTx\\\\|db\\\\.$transaction\" d:/autoparts/lib/stock-card.ts d:/autoparts/lib/amount-remain.ts)"
+      "Bash(grep -rn \"dbTx\\\\|db\\\\.$transaction\" d:/autoparts/lib/stock-card.ts d:/autoparts/lib/amount-remain.ts)",
+      "Bash(npx dotenv:*)",
+      "Bash(ls d:/autoparts/.env*)",
+      "Bash(DOTENV_CONFIG_PATH=.env.local npx prisma db push)",
+      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/\")",
+      "Bash(ls \"app/admin/\\(protected\\)/delivery/\")",
+      "Bash(xargs ls:*)",
+      "Bash(grep -A 6 \"const shippingStatusLabel\\\\|const shippingStatusBadge\\\\|const shippingMethodLabel\" /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)"
     ]
   }
 }

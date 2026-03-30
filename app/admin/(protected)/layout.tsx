@@ -10,9 +10,10 @@ const AdminLayout = async ({ children }: { children: ReactNode }) => {
       ? getAllPermissionKeys()
       : (session?.user?.permissions ?? []);
   const mustChangePassword = session?.user?.mustChangePassword ?? false;
+  const username = session?.user?.name ?? session?.user?.email ?? "";
 
   return (
-    <AdminShell permissions={permissions} mustChangePassword={mustChangePassword}>
+    <AdminShell permissions={permissions} mustChangePassword={mustChangePassword} username={username}>
       {children}
     </AdminShell>
   );

@@ -164,7 +164,7 @@ const DeliveryPage = async ({
                           <Eye size={14} /> ดู
                         </Link>
                         <a
-                          href={`/admin/sales/${s.id}`}
+                          href={`/admin/sales/${s.id}?print=1`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
