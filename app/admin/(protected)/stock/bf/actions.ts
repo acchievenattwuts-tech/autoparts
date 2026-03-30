@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -19,7 +19,7 @@ const bfSchema = z.object({
 export async function createBF(
   formData: FormData
 ): Promise<{ success?: boolean; docNo?: string; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = bfSchema.safeParse({
@@ -85,7 +85,7 @@ const cancelBFSchema = z.object({
 export async function cancelBF(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelBFSchema.safeParse({

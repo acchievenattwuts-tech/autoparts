@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
@@ -22,7 +22,7 @@ export interface CreditSaleItem {
 }
 
 export async function getCreditSalesForCustomer(customerId: string): Promise<CreditSaleItem[]> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return [];
 
   if (!customerId) return [];
@@ -79,7 +79,7 @@ const receiptSchema = z.object({
 export async function createReceipt(
   formData: FormData,
 ): Promise<{ success: boolean; receiptNo?: string; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) {
     return { success: false, error: "กรุณาเข้าสู่ระบบก่อน" };
   }
@@ -153,7 +153,7 @@ const cancelReceiptSchema = z.object({
 export async function cancelReceipt(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelReceiptSchema.safeParse({
@@ -199,7 +199,7 @@ export async function updateReceipt(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {

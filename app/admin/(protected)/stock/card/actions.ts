@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { recalculateStockCard } from "@/lib/stock-card";
 
@@ -10,7 +10,7 @@ export async function recalculateAllStockCards(): Promise<{
   count?: number;
   error?: string;
 }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   // Get all products that have at least 1 stock card

@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -39,7 +39,7 @@ const saleSchema = z.object({
 export async function createSale(
   formData: FormData
 ): Promise<{ success?: boolean; saleNo?: string; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   let items: z.infer<typeof saleItemSchema>[] = [];
@@ -210,7 +210,7 @@ const cancelSaleSchema = z.object({
 export async function cancelSale(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelSaleSchema.safeParse({
@@ -278,7 +278,7 @@ export async function updateSale(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {

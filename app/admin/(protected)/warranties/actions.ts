@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -15,7 +15,7 @@ const warrantySchema = z.object({
 export async function createWarranty(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = warrantySchema.safeParse({

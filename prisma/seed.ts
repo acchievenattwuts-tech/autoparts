@@ -2,24 +2,46 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db } from "../lib/db";
 
-async function main() {
-  // Admin user — email field ใช้เป็น username (ค่า: "admin")
-  const hashedPassword = await bcrypt.hash("admin1234", 12);
-  // ลบ user เดิม (ถ้ามี) เพื่อให้ใช้ username ใหม่
+async function ensureSeedAdminUser() {
+  const seedAdminUsername = process.env.SEED_ADMIN_USERNAME?.trim().toLowerCase();
+  const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const seedAdminName = process.env.SEED_ADMIN_NAME?.trim() || "ผู้ดูแลระบบ";
+
   await db.user.deleteMany({ where: { email: "admin@sriwanairparts.com" } });
+
+  if (!seedAdminUsername || !seedAdminPassword) {
+    console.log(
+      "Skipping admin user seed. Set SEED_ADMIN_USERNAME and SEED_ADMIN_PASSWORD to create one."
+    );
+    return;
+  }
+
+  if (seedAdminPassword.length < 12) {
+    throw new Error("SEED_ADMIN_PASSWORD must be at least 12 characters long");
+  }
+
+  const hashedPassword = await bcrypt.hash(seedAdminPassword, 12);
   const admin = await db.user.upsert({
-    where: { email: "admin" },
-    update: {},
+    where: { email: seedAdminUsername },
+    update: {
+      name: seedAdminName,
+      role: "ADMIN",
+      isActive: true,
+    },
     create: {
-      name: "ผู้ดูแลระบบ",
-      email: "admin",
+      name: seedAdminName,
+      email: seedAdminUsername,
       password: hashedPassword,
       role: "ADMIN",
     },
   });
-  console.log("✅ Admin user:", admin.email);
 
-  // Categories
+  console.log("Admin user ensured:", admin.email);
+}
+
+async function main() {
+  await ensureSeedAdminUser();
+
   const categories = [
     "คอมเพรสเซอร์แอร์",
     "หม้อน้ำรถยนต์",
@@ -41,9 +63,11 @@ async function main() {
   }
   console.log("✅ Categories:", categories.length, "รายการ");
 
-  // Car brands
   const carBrandsData = [
-    { name: "Toyota", models: ["Camry", "Corolla", "Vios", "Yaris", "Fortuner", "Hilux Revo", "CHR", "RAV4"] },
+    {
+      name: "Toyota",
+      models: ["Camry", "Corolla", "Vios", "Yaris", "Fortuner", "Hilux Revo", "CHR", "RAV4"],
+    },
     { name: "Honda", models: ["Civic", "Accord", "City", "Jazz", "HRV", "CRV", "BRV"] },
     { name: "Isuzu", models: ["D-Max", "MU-X"] },
     { name: "Mitsubishi", models: ["Triton", "Pajero Sport", "Xpander", "Attrage"] },
@@ -72,9 +96,6 @@ async function main() {
   console.log("✅ Car brands + models:", carBrandsData.length, "ยี่ห้อ");
 
   console.log("\n🎉 Seed เสร็จสมบูรณ์");
-  console.log("📧 Email: admin@sriwanairparts.com");
-  console.log("🔑 Password: admin1234");
-  console.log("⚠️  กรุณาเปลี่ยนรหัสผ่านหลัง login ครั้งแรก");
 }
 
 main()

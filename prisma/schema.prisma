@@ -36,6 +36,15 @@ enum Role {
   STAFF
 }
 
+model LoginThrottle {
+  key            String    @id
+  failures       Int       @default(0)
+  firstFailureAt DateTime?
+  lockedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
 // ─────────────────────────────────────────
 // Car / Category Master Data
 // ─────────────────────────────────────────

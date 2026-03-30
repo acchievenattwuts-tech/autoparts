@@ -7,15 +7,16 @@ export const authConfig: NextAuthConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
+      const isAdmin = auth?.user?.role === "ADMIN";
       const isAdminRoute = nextUrl.pathname.startsWith("/admin");
       const isLoginPage = nextUrl.pathname === "/admin/login";
 
       if (isLoginPage) {
-        if (isLoggedIn) return Response.redirect(new URL("/admin", nextUrl));
+        if (isAdmin) return Response.redirect(new URL("/admin", nextUrl));
         return true;
       }
 
-      if (isAdminRoute) return isLoggedIn;
+      if (isAdminRoute) return isLoggedIn && isAdmin;
       return true;
     },
     jwt({ token, user }) {
