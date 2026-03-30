@@ -29,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="th"
+      lang="en-GB"
       className={`${kanit.variable} ${sarabun.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sarabun">{children}</body>

@@ -164,6 +164,85 @@
 - [x] หลังบันทึก/แก้ไข redirect กลับหน้า list อัตโนมัติ
 - [x] Product search dropdown fix: portal + fixed positioning (ไม่ถูก clip โดย overflow-x-auto)
 
+### 🔲 Phase 4.2 — ระบบจัดส่ง / Delivery Queue (ยังไม่ได้ทำ)
+
+> **ที่มา:** ออกแบบจาก session 2026-03-30
+> **หลักการ:** reuse `fulfillmentType = DELIVERY` + `paymentType = CREDIT_SALE` ที่มีอยู่แล้ว
+> ไม่มี COD Amount field แยก — ใช้ AR flow เดิมในการติดตามยอดค้างชำระ
+
+#### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
+
+| ประเด็น | ข้อตกลง |
+|---|---|
+| COD tracking | ใช้ `paymentType = CREDIT_SALE + fulfillmentType = DELIVERY` — ไม่เพิ่ม codAmount |
+| AR ปนกัน | แก้ด้วย filter แยก: CREDIT_SALE+PICKUP = หนี้จริง / CREDIT_SALE+DELIVERY = COD รอส่ง |
+| สถานะจัดส่ง | enum `ShippingStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED }` |
+| ขนส่ง | field `shippingMethod` (SELF/KERRY/FLASH/JT/OTHER) + `trackingNo` (สำหรับขนส่งเอกชน) |
+
+---
+
+#### Phase 4.2-A — Schema
+
+- [ ] เพิ่ม enum `ShippingStatus { PENDING OUT_FOR_DELIVERY DELIVERED }` ใน `schema.prisma`
+- [ ] เพิ่ม enum `ShippingMethod { NONE SELF KERRY FLASH JT OTHER }` ใน `schema.prisma`
+- [ ] เพิ่ม field ใน `Sale`:
+  ```prisma
+  shippingStatus  ShippingStatus  @default(PENDING)
+  shippingMethod  ShippingMethod  @default(NONE)
+  trackingNo      String?
+  ```
+- [ ] `prisma db push`
+
+---
+
+#### Phase 4.2-B — ใบขาย (SaleForm) ปรับ UI
+
+- [ ] เมื่อเลือก `fulfillmentType = DELIVERY` → แสดง field เพิ่ม:
+  - ที่อยู่จัดส่ง (auto-fill จาก `Customer.shippingAddress`)
+  - ค่าส่ง (`shippingFee` — มีอยู่แล้ว)
+  - ประเภทขนส่ง (`shippingMethod` dropdown)
+  - **ไม่มีเลข Tracking ตรงนี้** — กรอกได้ที่หน้า Delivery Queue เมื่อส่งของแล้ว
+- [ ] เมื่อเลือก `CREDIT_SALE + DELIVERY` → แสดง note เตือน: "ยอดค้างชำระจะเปิด AR — บันทึก Receipt เมื่อได้รับเงิน"
+- [ ] ใบขาย detail page: แสดงสถานะจัดส่ง + tracking no
+
+---
+
+#### Phase 4.2-C — หน้า list ใบขาย ปรับ
+
+- [ ] เพิ่ม filter tab: **"รอจัดส่ง"** (`fulfillmentType = DELIVERY AND shippingStatus = PENDING`)
+- [ ] เพิ่ม column: สถานะจัดส่ง (badge รอส่ง / กำลังส่ง / ส่งแล้ว) แสดงเฉพาะแถว DELIVERY
+- [ ] เพิ่ม column: ยอด COD (แสดงเฉพาะ CREDIT_SALE + DELIVERY)
+
+---
+
+#### Phase 4.2-D — หน้า Delivery Queue (ใหม่)
+
+- [ ] Route: `/admin/delivery`
+- [ ] แสดงรายการใบขาย `fulfillmentType = DELIVERY + shippingStatus IN [PENDING, OUT_FOR_DELIVERY]`
+- [ ] เรียงตามวันที่ / กลุ่มตามสถานะ
+- [ ] ข้อมูลต่อแถว: ลูกค้า, ที่อยู่จัดส่ง, ยอดเงิน, สถานะชำระ (จ่ายแล้ว / เก็บปลายทาง + ยอด), tracking no
+- [ ] ปุ่มอัปเดตสถานะ: "ออกส่ง" → `OUT_FOR_DELIVERY` / "ส่งแล้ว" → `DELIVERED`
+- [ ] กรอก **เลข Tracking** และ **ประเภทขนส่ง** ได้ที่นี่ (inline edit) — เพราะตอนสร้างใบขายยังไม่รู้เลข Tracking
+- [ ] ปุ่ม Print ใบวางบิล / ใบเสร็จต่อรายการ
+
+---
+
+#### Phase 4.2-E — Print Slip สำหรับจัดส่ง
+
+- [ ] ใบแต่ละใบแสดง: ชื่อ/ที่อยู่ลูกค้า, รายการสินค้า, ยอดรวม + ค่าส่ง
+- [ ] Footer: **"ชำระแล้ว"** (Pre-paid) หรือ **"กรุณาชำระ ฿X,XXX"** (COD)
+- [ ] Print รวมหลายใบในครั้งเดียว (สำหรับออกรถ)
+
+---
+
+#### Phase 4.2-F — AR Dashboard แยก COD
+
+- [ ] แก้ card "ลูกหนี้ค้างชำระ" แยกเป็น 2 ส่วน:
+  - ลูกหนี้ทั่วไป: `CREDIT_SALE + PICKUP`
+  - COD รอรับเงิน: `CREDIT_SALE + DELIVERY + shippingStatus != DELIVERED`
+
+---
+
 ### 🔲 Phase 5 — ระบบค้นหา (ยังไม่ได้ทำ)
 - [ ] Full-text search สินค้า (ค้นได้จากชื่อ, โค้ด, alias, ยี่ห้อรถ, รุ่นรถ)
 - [ ] ค้นหาจากหน้าร้าน (ลูกค้าใช้)

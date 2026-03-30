@@ -129,6 +129,24 @@
 - หน้า list ที่มีข้อมูลเยอะให้ใส่ `take: 100` หรือ pagination
 - ใช้ `Promise.all()` เมื่อต้อง fetch หลาย query พร้อมกันและไม่มี dependency กัน
 
+### มาตรฐาน Filter ช่วงวันที่ (Date Range Filter) — บังคับทุก Transaction List
+
+**ทุกหน้า list ของ transaction ต้องมี date range filter เสมอ** ได้แก่:
+`purchases`, `purchase-returns`, `sales`, `credit-notes`, `receipts`, `expenses`, `adjustments`, `warranties`, `delivery`
+
+- **ค่า default**: ช่องว่าง (ไม่มี default) — แสดงทุก record เมื่อยังไม่ได้กรอก
+- **รับ-ส่งค่าผ่าน searchParams**: `?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- **UI**: Date range picker 2 ช่อง (from / to) — เมื่อกรอก from หรือ to แล้วจะกรองทันที
+- **Query**: เพิ่ม `where: { [dateField]: { gte: fromDate, lte: endOfDay(toDate) } }` เฉพาะเมื่อ from หรือ to มีค่า — ถ้าทั้งคู่ว่างให้ไม่กรองวันที่เลย
+- **dateField** ต่อประเภทเอกสาร:
+  - purchases / purchase-returns → `purchaseDate`
+  - sales / credit-notes → `saleDate` / `cnDate`
+  - receipts → `receiptDate`
+  - expenses → `expenseDate`
+  - adjustments → `adjustDate`
+  - warranties → `startDate`
+  - delivery (Delivery Queue) → `saleDate`
+
 ### สิ่งที่ห้ามทำโดยเด็ดขาด
 - ห้ามแก้ไข `lib/generated/prisma/` — เป็น auto-generated file
 - ห้าม import `pg.Pool` โดยตรง — ใช้ `PrismaPg({ connectionString, ... })` แทน (หลีกเลี่ยง type conflict)

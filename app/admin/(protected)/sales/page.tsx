@@ -10,6 +10,7 @@ import SearchBar from "@/components/shared/SearchBar";
 import SaleCancelButton from "./SaleCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import DateRangeFilter from "@/components/shared/DateRangeFilter";
 
 const PAGE_SIZE = 30;
 
@@ -51,14 +52,22 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 const SalesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ paymentType?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ paymentType?: string; q?: string; page?: string; from?: string; to?: string }>;
 }) => {
   const params = await searchParams;
   const paymentTypeFilter = params.paymentType;
   const q = params.q;
   const pageNum = Math.max(1, parseInt(params.page ?? "1", 10));
+  const from = params.from ?? "";
+  const to   = params.to   ?? "";
 
   const where: Prisma.SaleWhereInput = {};
+  if (from || to) {
+    where.saleDate = {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    };
+  }
   if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
     where.paymentType = paymentTypeFilter as SalePaymentType;
   }
@@ -89,8 +98,10 @@ const SalesPage = async ({
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const paginationParams: Record<string, string> = {};
-  if (q) paginationParams.q = q;
+  if (q)                 paginationParams.q           = q;
   if (paymentTypeFilter) paginationParams.paymentType = paymentTypeFilter;
+  if (from)              paginationParams.from        = from;
+  if (to)                paginationParams.to          = to;
 
   return (
     <div>
@@ -105,7 +116,10 @@ const SalesPage = async ({
       </div>
 
       <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-        <SalesFilterBar />
+        <div className="flex items-center gap-4 flex-wrap">
+          <SalesFilterBar />
+          <DateRangeFilter from={from} to={to} />
+        </div>
         <SearchBar placeholder="ค้นหาเลขที่ใบขาย, ชื่อลูกค้า..." />
       </div>
 

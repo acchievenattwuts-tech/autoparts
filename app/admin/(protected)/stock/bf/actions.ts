@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generateBFNo } from "@/lib/doc-number";
 
 const bfSchema = z.object({
   productId:        z.string().min(1).max(50),
@@ -40,7 +40,7 @@ export async function createBF(
   if (!unit) return { error: "ไม่พบหน่วยนับที่เลือก" };
 
   const qtyInBase = qty * Number(unit.scale);
-  const docNo     = await generateDocNo("BF", new Date(docDate));
+  const docNo     = await generateBFNo(new Date(docDate));
 
   try {
     await dbTx(async (tx) => {

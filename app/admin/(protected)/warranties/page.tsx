@@ -4,22 +4,32 @@ import { db } from "@/lib/db";
 import Link from "next/link";
 import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import Pagination from "@/components/shared/Pagination";
+import DateRangeFilter from "@/components/shared/DateRangeFilter";
 
 const PAGE_SIZE = 30;
 
 interface WarrantyPageProps {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string; from?: string; to?: string }>;
 }
 
 const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
-  const { status, q, page } = await searchParams;
+  const { status, q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const now = new Date();
   const soonDate = new Date();
   soonDate.setDate(now.getDate() + 30);
+  const from = fromParam ?? "";
+  const to   = toParam   ?? "";
 
-  // Fetch all for status counts and client-side filtering by status/q
+  const dateWhere = (from || to) ? {
+    startDate: {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    },
+  } : {};
+
   const allWarranties = await db.warranty.findMany({
+    where: dateWhere,
     orderBy: [{ startDate: "desc" }],
     select: {
       id: true,
@@ -60,8 +70,10 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   const paginated = filtered.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE);
 
   const paginationParams: Record<string, string> = {};
-  if (q) paginationParams.q = q;
+  if (q)      paginationParams.q      = q;
   if (status) paginationParams.status = status;
+  if (from)   paginationParams.from   = from;
+  if (to)     paginationParams.to     = to;
 
   return (
     <div>
@@ -102,10 +114,26 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         ))}
       </div>
 
-      {/* Search */}
+      {/* Search + Date filter */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
         <form method="GET" className="flex gap-3 flex-wrap">
           {status && <input type="hidden" name="status" value={status} />}
+          <div lang="en-GB" className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
+            <input
+              type="date"
+              name="from"
+              defaultValue={from}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              name="to"
+              defaultValue={to}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </div>
           <input
             type="text"
             name="q"
@@ -119,7 +147,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
           >
             ค้นหา
           </button>
-          {q && (
+          {(q || from || to) && (
             <Link
               href={status ? `/admin/warranties?status=${status}` : "/admin/warranties"}
               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"

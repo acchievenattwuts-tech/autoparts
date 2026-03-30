@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generateSaleNo } from "@/lib/doc-number";
 import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
@@ -94,7 +94,7 @@ export async function createSale(
 
   const docDate = new Date(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
-  const saleNo  = await generateDocNo(salePrefix, docDate);
+  const saleNo  = await generateSaleNo(salePrefix, docDate);
 
   try {
     await dbTx(async (tx) => {

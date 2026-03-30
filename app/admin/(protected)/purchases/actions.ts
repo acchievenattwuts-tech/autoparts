@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generatePurchaseNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
@@ -60,7 +60,7 @@ export async function createPurchase(
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
 
-  const purchaseNo = await generateDocNo("RR", new Date(purchaseDate));
+  const purchaseNo = await generatePurchaseNo(new Date(purchaseDate));
 
   try {
     await dbTx(async (tx) => {

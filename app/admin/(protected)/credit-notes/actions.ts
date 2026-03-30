@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generateCNNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
@@ -62,7 +62,7 @@ export async function createCreditNote(
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
 
   const docDate = new Date(cnDate);
-  const cnNo    = await generateDocNo("CN", docDate);
+  const cnNo    = await generateCNNo(docDate);
 
   try {
     await dbTx(async (tx) => {

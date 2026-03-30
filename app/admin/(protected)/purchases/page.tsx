@@ -7,25 +7,36 @@ import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
 import Pagination from "@/components/shared/Pagination";
+import DateRangeFilter from "@/components/shared/DateRangeFilter";
 
 const PAGE_SIZE = 30;
 
 const PurchasesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
-  const { q, page } = await searchParams;
+  const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const where: Prisma.PurchaseWhereInput = q ? {
-    OR: [
+  const from = fromParam ?? "";
+  const to   = toParam   ?? "";
+
+  const where: Prisma.PurchaseWhereInput = {};
+  if (from || to) {
+    where.purchaseDate = {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    };
+  }
+  if (q) {
+    where.OR = [
       { purchaseNo:  { contains: q, mode: "insensitive" } },
       { referenceNo: { contains: q, mode: "insensitive" } },
       { supplier:    { name: { contains: q, mode: "insensitive" } } },
       { note:        { contains: q, mode: "insensitive" } },
-    ],
-  } : {};
+    ];
+  }
 
   const whereClause = Object.keys(where).length > 0 ? where : undefined;
 
@@ -46,7 +57,9 @@ const PurchasesPage = async ({
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const paginationParams: Record<string, string> = {};
-  if (q) paginationParams.q = q;
+  if (q)    paginationParams.q    = q;
+  if (from) paginationParams.from = from;
+  if (to)   paginationParams.to   = to;
 
   return (
     <div>
@@ -58,7 +71,8 @@ const PurchasesPage = async ({
         </Link>
       </div>
 
-      <div className="flex items-center justify-between mb-4 gap-4">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+        <DateRangeFilter from={from} to={to} />
         <SearchBar placeholder="ค้นหาเลขที่ใบซื้อ, ซัพพลายเออร์, เอกสารอ้างอิง..." />
       </div>
 

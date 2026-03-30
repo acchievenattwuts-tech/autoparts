@@ -9,6 +9,7 @@ import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import ReceiptCancelButton from "./ReceiptCancelButton";
 import Pagination from "@/components/shared/Pagination";
+import DateRangeFilter from "@/components/shared/DateRangeFilter";
 
 const PAGE_SIZE = 30;
 
@@ -21,19 +22,28 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
 const ReceiptsPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
 }) => {
-  const { q, page } = await searchParams;
+  const { q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
+  const from = fromParam ?? "";
+  const to   = toParam   ?? "";
 
-  const where: Prisma.ReceiptWhereInput = q ? {
-    OR: [
+  const where: Prisma.ReceiptWhereInput = {};
+  if (from || to) {
+    where.receiptDate = {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    };
+  }
+  if (q) {
+    where.OR = [
       { receiptNo:    { contains: q, mode: "insensitive" } },
       { customerName: { contains: q, mode: "insensitive" } },
       { customer:     { name: { contains: q, mode: "insensitive" } } },
       { note:         { contains: q, mode: "insensitive" } },
-    ],
-  } : {};
+    ];
+  }
 
   const whereClause = Object.keys(where).length > 0 ? where : undefined;
 
@@ -54,7 +64,9 @@ const ReceiptsPage = async ({
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const paginationParams: Record<string, string> = {};
-  if (q) paginationParams.q = q;
+  if (q)    paginationParams.q    = q;
+  if (from) paginationParams.from = from;
+  if (to)   paginationParams.to   = to;
 
   return (
     <div>
@@ -68,7 +80,8 @@ const ReceiptsPage = async ({
         </Link>
       </div>
 
-      <div className="flex items-center justify-between mb-4 gap-4">
+      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+        <DateRangeFilter from={from} to={to} />
         <SearchBar placeholder="ค้นหาเลขที่ใบเสร็จ, ชื่อลูกค้า..." />
       </div>
 

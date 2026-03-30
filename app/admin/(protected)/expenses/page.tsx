@@ -9,15 +9,25 @@ import Pagination from "@/components/shared/Pagination";
 const PAGE_SIZE = 30;
 
 interface ExpensePageProps {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string; from?: string; to?: string }>;
 }
 
 const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
-  const { q, status, page } = await searchParams;
+  const { q, status, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
+  const from = fromParam ?? "";
+  const to   = toParam   ?? "";
+
+  const dateFilter = (from || to) ? {
+    expenseDate: {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    },
+  } : {};
 
   const whereCondition = {
     AND: [
+      dateFilter,
       status ? { status: status as "ACTIVE" | "CANCELLED" } : {},
       q
         ? {
@@ -70,8 +80,10 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   const totalNet = activeExpenses.reduce((s, e) => s + Number(e.netAmount), 0);
 
   const paginationParams: Record<string, string> = {};
-  if (q) paginationParams.q = q;
+  if (q)      paginationParams.q      = q;
   if (status) paginationParams.status = status;
+  if (from)   paginationParams.from   = from;
+  if (to)     paginationParams.to     = to;
 
   return (
     <div>
@@ -91,6 +103,22 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
       {/* Search + Filter */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
         <form method="GET" className="flex gap-3 flex-wrap">
+          <div lang="en-GB" className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
+            <input
+              type="date"
+              name="from"
+              defaultValue={from}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+            <span className="text-gray-400">–</span>
+            <input
+              type="date"
+              name="to"
+              defaultValue={to}
+              className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </div>
           <input
             type="text"
             name="q"
@@ -113,7 +141,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
           >
             ค้นหา
           </button>
-          {(q || (status && status !== "ACTIVE")) && (
+          {(q || from || to || (status && status !== "ACTIVE")) && (
             <Link
               href="/admin/expenses"
               className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"

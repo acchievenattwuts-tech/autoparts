@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 
@@ -53,7 +53,7 @@ export async function createPurchaseReturn(
   const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const docDate  = new Date(returnDate);
-  const returnNo = await generateDocNo("CNRR", docDate);
+  const returnNo = await generatePurchaseReturnNo(docDate);
 
   try {
     await dbTx(async (tx) => {

@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateDocNo } from "@/lib/doc-number";
+import { generateAdjNo } from "@/lib/doc-number";
 
 const adjustItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -41,7 +41,7 @@ export async function createAdjustment(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const { adjustDate, note, items: validItems } = parsed.data;
-  const adjustNo = await generateDocNo("ADJ", new Date(adjustDate));
+  const adjustNo = await generateAdjNo(new Date(adjustDate));
 
   try {
     await dbTx(async (tx) => {

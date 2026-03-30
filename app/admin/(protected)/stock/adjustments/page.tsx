@@ -3,8 +3,24 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import AdjustmentForm from "./AdjustmentForm";
 import AdjustmentHistoryList from "./AdjustmentHistoryList";
+import DateRangeFilter from "@/components/shared/DateRangeFilter";
 
-const AdjustmentsPage = async () => {
+const AdjustmentsPage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) => {
+  const { from: fromParam, to: toParam } = await searchParams;
+  const from = fromParam ?? "";
+  const to   = toParam   ?? "";
+
+  const adjustmentWhere = (from || to) ? {
+    adjustDate: {
+      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+    },
+  } : {};
+
   const [products, adjustments] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
@@ -25,6 +41,7 @@ const AdjustmentsPage = async () => {
       },
     }),
     db.adjustment.findMany({
+      where: adjustmentWhere,
       orderBy: { adjustDate: "desc" },
       take: 100,
       select: {
@@ -75,7 +92,10 @@ const AdjustmentsPage = async () => {
       <AdjustmentForm products={productOptions} />
 
       <div className="mt-8">
-        <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-4">ประวัติการปรับสต็อก</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-kanit text-lg font-semibold text-gray-800">ประวัติการปรับสต็อก</h2>
+          <DateRangeFilter from={from} to={to} />
+        </div>
         <AdjustmentHistoryList adjustments={serialized} />
       </div>
     </div>
