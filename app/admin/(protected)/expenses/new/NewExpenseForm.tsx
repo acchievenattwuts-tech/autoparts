@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createExpense, updateExpense } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ExpenseCodeOption {
   id: string;
@@ -197,19 +198,12 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialD
               {items.map((item, i) => (
                 <tr key={i} className="border-b border-gray-50">
                   <td className="py-2 px-2 w-56">
-                    <select
+                    <SearchableSelect
+                      options={expenseCodes.map((c): SelectOption => ({ id: c.id, label: c.name, sublabel: c.code }))}
                       value={item.expenseCodeId}
-                      onChange={(e) => updateItem(i, "expenseCodeId", e.target.value)}
-                      className={`${inputCls} bg-white`}
-                      required
-                    >
-                      <option value="">-- เลือกรหัส --</option>
-                      {expenseCodes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          [{c.code}] {c.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(id) => updateItem(i, "expenseCodeId", id)}
+                      placeholder="โปรดระบุรหัส"
+                    />
                   </td>
                   <td className="py-2 px-2">
                     <input

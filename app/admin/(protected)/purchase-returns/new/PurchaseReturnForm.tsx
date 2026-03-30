@@ -73,6 +73,7 @@ const PurchaseReturnForm = ({
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [purchaseId, setPurchaseId] = useState(initialData?.purchaseId ?? "");
   const [items, setItems]       = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
@@ -172,14 +173,16 @@ const PurchaseReturnForm = ({
           </div>
           <div>
             <label className={labelCls}>อ้างอิงใบซื้อ</label>
-            <select name="purchaseId" defaultValue={initialData?.purchaseId ?? ""} className={`${inputCls} bg-white`}>
-              <option value="">-- ไม่อ้างอิง --</option>
-              {purchases.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.purchaseNo}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={[
+                { id: "", label: "-- ไม่อ้างอิง --" },
+                ...purchases.map((p): SelectOption => ({ id: p.id, label: p.purchaseNo })),
+              ]}
+              value={purchaseId}
+              onChange={setPurchaseId}
+              placeholder="-- ไม่อ้างอิง --"
+            />
+            <input type="hidden" name="purchaseId" value={purchaseId} />
           </div>
           <div>
             <label className={labelCls}>ซัพพลายเออร์</label>

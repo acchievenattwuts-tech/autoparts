@@ -6,6 +6,7 @@ import { createCreditNote, updateCreditNote } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
   id: string;
@@ -70,6 +71,7 @@ const CreditNoteForm = ({
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
+  const [saleId, setSaleId]       = useState(initialData?.saleId ?? "");
   const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
@@ -157,14 +159,20 @@ const CreditNoteForm = ({
           </div>
           <div>
             <label className={labelCls}>อ้างอิงใบขาย</label>
-            <select name="saleId" defaultValue={initialData?.saleId ?? ""} className={`${inputCls} bg-white`}>
-              <option value="">-- ไม่อ้างอิง --</option>
-              {sales.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.saleNo}{s.customerName ? ` - ${s.customerName}` : ""}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={[
+                { id: "", label: "-- ไม่อ้างอิง --" },
+                ...sales.map((s): SelectOption => ({
+                  id: s.id,
+                  label: s.saleNo,
+                  sublabel: s.customerName ?? undefined,
+                })),
+              ]}
+              value={saleId}
+              onChange={setSaleId}
+              placeholder="-- ไม่อ้างอิง --"
+            />
+            <input type="hidden" name="saleId" value={saleId} />
           </div>
           <div>
             <label className={labelCls}>การชำระ CN</label>

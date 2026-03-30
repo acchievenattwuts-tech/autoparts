@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2 } from "lucide-react";
 import type { Product, ProductAlias, ProductUnit } from "@/lib/generated/prisma";
 import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,9 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
 
   const [units, setUnits] = useState<UnitRow[]>(initUnits);
   const baseUnit = units.find((u) => u.isBase) ?? units[0];
+
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  const [brandId, setBrandId]       = useState(product?.brandId ?? "");
 
   const [saleUnitName, setSaleUnitName] = useState(
     product?.saleUnitName ?? baseUnit.name
@@ -187,6 +191,8 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
 
     const formEl = e.currentTarget;
     const formData = new FormData(formEl);
+    formData.set("categoryId", categoryId);
+    formData.set("brandId", brandId);
     formData.set("imageUrl", imageUrl);
     formData.set("aliases", JSON.stringify(aliases));
     formData.set("carModelIds", JSON.stringify(Array.from(selectedCarModelIds)));
@@ -231,22 +237,24 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
           </div>
           <div>
             <label className={labelCls}>หมวดหมู่ <span className="text-red-500">*</span></label>
-            <select name="categoryId" defaultValue={product?.categoryId ?? ""} required
-              className={`${inputCls} bg-white`}>
-              <option value="">-- เลือกหมวดหมู่ --</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={categories.map((c): SelectOption => ({ id: c.id, label: c.name }))}
+              value={categoryId}
+              onChange={setCategoryId}
+              placeholder="โปรดระบุหมวดหมู่"
+            />
           </div>
           <div>
             <label className={labelCls}>แบรนด์อะไหล่</label>
-            <select name="brandId" defaultValue={product?.brandId ?? ""} className={`${inputCls} bg-white`}>
-              <option value="">-- ไม่ระบุแบรนด์ --</option>
-              {partsBrands.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              options={[
+                { id: "", label: "-- ไม่ระบุแบรนด์ --" },
+                ...partsBrands.map((b): SelectOption => ({ id: b.id, label: b.name })),
+              ]}
+              value={brandId}
+              onChange={setBrandId}
+              placeholder="-- ไม่ระบุแบรนด์ --"
+            />
           </div>
           <div>
             <label className={labelCls}>ตำแหน่ง Shelf</label>

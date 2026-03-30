@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createBF } from "./actions";
 import { CheckCircle } from "lucide-react";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
   id: string;
@@ -20,9 +21,11 @@ const BfForm = ({ products }: { products: ProductOption[] }) => {
   const [isPending, startTransition] = useTransition();
   const [error, setError]     = useState("");
   const [success, setSuccess] = useState("");
+  const [productId, setProductId]       = useState("");
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
 
   const handleProductChange = (id: string) => {
+    setProductId(id);
     setSelectedProduct(products.find((p) => p.id === id) ?? null);
   };
 
@@ -55,14 +58,13 @@ const BfForm = ({ products }: { products: ProductOption[] }) => {
             </div>
             <div>
               <label className={labelCls}>สินค้า <span className="text-red-500">*</span></label>
-              <select name="productId" required
-                onChange={(e) => handleProductChange(e.target.value)}
-                className={`${inputCls} bg-white`}>
-                <option value="">-- เลือกสินค้า --</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>[{p.code}] {p.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={products.map((p): SelectOption => ({ id: p.id, label: p.name, sublabel: p.code }))}
+                value={productId}
+                onChange={handleProductChange}
+                placeholder="โปรดระบุสินค้า"
+              />
+              <input type="hidden" name="productId" value={productId} />
             </div>
             <div>
               <label className={labelCls}>หน่วยนับ <span className="text-red-500">*</span></label>

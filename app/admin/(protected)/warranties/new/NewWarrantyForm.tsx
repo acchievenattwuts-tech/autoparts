@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createWarranty, getSaleItems } from "../actions";
 import { Search } from "lucide-react";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface SaleOption {
   id: string;
@@ -22,6 +23,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedSaleId, setSelectedSaleId] = useState("");
+  const [selectedSaleItemId, setSelectedSaleItemId] = useState("");
   const [saleItems, setSaleItems] = useState<{
     id: string;
     product: { code: string; name: string };
@@ -32,6 +34,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
 
   const handleSaleSelect = async (saleId: string) => {
     setSelectedSaleId(saleId);
+    setSelectedSaleItemId("");
     setSaleItems(null);
     if (!saleId) return;
     setLoadingItems(true);
@@ -67,21 +70,20 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
           <Search size={14} className="inline mr-1" />
           เลือกใบขาย <span className="text-red-500">*</span>
         </label>
-        <select
-          name="saleId"
+        <SearchableSelect
+          options={recentSales.map((s): SelectOption => ({
+            id: s.id,
+            label: s.saleNo,
+            sublabel: [
+              new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }),
+              s.customerName ?? "",
+            ].filter(Boolean).join(" — "),
+          }))}
           value={selectedSaleId}
-          onChange={(e) => handleSaleSelect(e.target.value)}
-          required
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm bg-white"
-        >
-          <option value="">-- เลือกใบขาย --</option>
-          {recentSales.map((s) => (
-            <option key={s.id} value={s.id}>
-              [{s.saleNo}] {new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}{" "}
-              {s.customerName ? `— ${s.customerName}` : ""}
-            </option>
-          ))}
-        </select>
+          onChange={handleSaleSelect}
+          placeholder="โปรดระบุใบขาย"
+        />
+        <input type="hidden" name="saleId" value={selectedSaleId} />
         <p className="text-xs text-gray-400 mt-1">แสดงรายการขาย 60 วันล่าสุด</p>
       </div>
 
@@ -102,18 +104,17 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   เลือกรายการสินค้า <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="saleItemId"
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm bg-white"
-                >
-                  <option value="">-- เลือกสินค้า --</option>
-                  {availableItems.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      [{item.product.code}] {item.product.name} × {item.quantity}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={availableItems.map((item): SelectOption => ({
+                    id: item.id,
+                    label: item.product.name,
+                    sublabel: `${item.product.code} × ${item.quantity}`,
+                  }))}
+                  value={selectedSaleItemId}
+                  onChange={setSelectedSaleItemId}
+                  placeholder="โปรดระบุสินค้า"
+                />
+                <input type="hidden" name="saleItemId" value={selectedSaleItemId} />
                 {saleItems.some((i) => i.warranty) && (
                   <p className="text-xs text-gray-400 mt-1">
                     * แสดงเฉพาะรายการที่ยังไม่มีการบันทึกประกัน
@@ -159,7 +160,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
-          disabled={isPending || !selectedSaleId || availableItems.length === 0}
+          disabled={isPending || !selectedSaleId || availableItems.length === 0 || !selectedSaleItemId}
           className="px-6 py-2 bg-[#1e3a5f] hover:bg-[#163055] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
         >
           {isPending ? "กำลังบันทึก..." : "บันทึกประกัน"}

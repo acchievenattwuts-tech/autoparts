@@ -124,6 +124,30 @@
 - แสดง error แบบ user-friendly เป็นภาษาไทย — ห้าม expose stack trace หรือ DB error
 - Success message ต้องแสดงเลขที่เอกสาร (docNo) ทุกครั้งที่สร้างเอกสารสำเร็จ
 
+### มาตรฐาน Dropdown / Select — SearchableSelect บังคับ
+
+**ใช้ `<SearchableSelect>` (จาก `@/components/shared/SearchableSelect`) แทน native `<select>` เสมอ เมื่อ:**
+- dropdown ดึงข้อมูลจาก master table ใดก็ตาม (สินค้า, ลูกค้า, ซัพพลายเออร์, หมวดหมู่, แบรนด์, รหัสค่าใช้จ่าย, เลขที่เอกสาร ฯลฯ)
+- จำนวน option มากกว่า 10 รายการ (ไม่ว่าจะ static หรือ dynamic)
+
+**ยกเว้น — ใช้ native `<select>` ได้เมื่อ:**
+- option เป็น enum คงที่และมี ≤ 10 รายการ เช่น ประเภทการขาย (2), ประเภท VAT (3), ประเภท CN (3), ประเภทปรับสต็อก (2)
+- unit select ภายใน line item ของ form (สินค้าแต่ละตัวมีหน่วยนับไม่กี่ตัว — contextual เล็ก)
+
+**วิธีใช้:**
+```tsx
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+
+<SearchableSelect
+  options={items.map((i): SelectOption => ({ id: i.id, label: i.name, sublabel: i.code ?? undefined }))}
+  value={selectedId}
+  onChange={setSelectedId}
+  placeholder="โปรดระบุ..."
+/>
+// ถ้า form ใช้ native FormData ให้เพิ่ม hidden input คู่กัน:
+<input type="hidden" name="fieldName" value={selectedId} />
+```
+
 ### การตัดสินใจเรื่อง Performance
 - ใช้ `select` ระบุ field ที่ต้องการเสมอ — ห้าม fetch ทุก field ถ้าไม่จำเป็น
 - หน้า list ที่มีข้อมูลเยอะให้ใส่ `take: 100` หรือ pagination
