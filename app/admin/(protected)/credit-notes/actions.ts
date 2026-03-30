@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { auth } from "@/auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -19,6 +19,8 @@ const cnItemSchema = z.object({
 
 const cnSchema = z.object({
   cnDate:         z.string().min(1, "กรุณาระบุวันที่"),
+  customerId:     z.string().min(1, "กรุณาเลือกลูกค้า").max(50),
+  customerName:   z.string().max(100).optional(),
   saleId:         z.string().max(50).optional(),
   type:           z.nativeEnum(CreditNoteType),
   settlementType: z.nativeEnum(CNSettlementType).default(CNSettlementType.CASH_REFUND),
@@ -32,7 +34,7 @@ const cnSchema = z.object({
 export async function createCreditNote(
   formData: FormData
 ): Promise<{ success?: boolean; cnNo?: string; error?: string }> {
-  const session = await auth();
+  const session = await requirePermission("credit_notes.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   let items: z.infer<typeof cnItemSchema>[] = [];
@@ -45,6 +47,8 @@ export async function createCreditNote(
 
   const parsed = cnSchema.safeParse({
     cnDate:         formData.get("cnDate"),
+    customerId:     formData.get("customerId") || undefined,
+    customerName:   formData.get("customerName") || undefined,
     saleId:         formData.get("saleId") || undefined,
     type:           formData.get("type"),
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
@@ -56,7 +60,7 @@ export async function createCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
@@ -71,6 +75,8 @@ export async function createCreditNote(
         data: {
           cnNo,
           saleId:         saleId || null,
+          customerId:     customerId || null,
+          customerName:   customerName ?? null,
           userId:         session.user!.id!,
           type,
           settlementType,
@@ -151,7 +157,7 @@ const cancelCNSchema = z.object({
 export async function cancelCreditNote(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requirePermission("credit_notes.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelCNSchema.safeParse({
@@ -207,7 +213,7 @@ export async function updateCreditNote(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await auth();
+  const session = await requirePermission("credit_notes.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
@@ -229,6 +235,8 @@ export async function updateCreditNote(
 
   const parsed = cnSchema.safeParse({
     cnDate:         formData.get("cnDate"),
+    customerId:     formData.get("customerId") || undefined,
+    customerName:   formData.get("customerName") || undefined,
     saleId:         formData.get("saleId") || undefined,
     type:           formData.get("type"),
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
@@ -240,7 +248,7 @@ export async function updateCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
@@ -269,6 +277,8 @@ export async function updateCreditNote(
         data: {
           cnDate:         docDate,
           saleId:         saleId || null,
+          customerId:     customerId || null,
+          customerName:   customerName ?? null,
           type,
           settlementType,
           refundMethod:   refundMethod ?? null,
@@ -336,4 +346,74 @@ export async function updateCreditNote(
     console.error("[updateCreditNote]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
+}
+
+// ─────────────────────────────────────────
+// getSalesForCustomer — ดึงใบขายของลูกค้า
+// ─────────────────────────────────────────
+export async function getSalesForCustomer(
+  customerId: string
+): Promise<{ id: string; saleNo: string; saleDate: Date; customerName: string | null }[]> {
+  if (!customerId) return [];
+  return db.sale.findMany({
+    where: { customerId, status: "ACTIVE" },
+    orderBy: { saleDate: "desc" },
+    take: 200,
+    select: { id: true, saleNo: true, saleDate: true, customerName: true },
+  });
+}
+
+// ─────────────────────────────────────────
+// getSaleDetail — ดึง items จากใบขาย
+// ─────────────────────────────────────────
+export type SaleDetailResult = {
+  customerName: string | null;
+  vatType: string;
+  vatRate: number;
+  items: { productId: string; unitName: string; qty: number; salePrice: number }[];
+} | null;
+
+export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
+  if (!saleId) return null;
+  const sale = await db.sale.findUnique({
+    where: { id: saleId },
+    select: {
+      customerName: true,
+      vatType: true,
+      vatRate: true,
+      items: {
+        select: {
+          productId: true,
+          quantity:  true,
+          salePrice: true,
+          product: {
+            select: {
+              saleUnitName: true,
+              units: { select: { name: true, scale: true, isBase: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!sale) return null;
+
+  const items = sale.items.map((item) => {
+    const unitName = item.product.saleUnitName ?? "";
+    const unit     = item.product.units.find((u) => u.name === unitName);
+    const scale    = unit?.scale ?? 1;
+    return {
+      productId: item.productId,
+      unitName,
+      qty:       Number(item.quantity) / scale,
+      salePrice: Number(item.salePrice),
+    };
+  });
+
+  return {
+    customerName: sale.customerName,
+    vatType:      sale.vatType,
+    vatRate:      Number(sale.vatRate),
+    items,
+  };
 }

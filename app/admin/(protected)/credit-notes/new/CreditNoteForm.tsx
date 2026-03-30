@@ -2,30 +2,35 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createCreditNote, updateCreditNote } from "../actions";
+import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
-interface ProductOption {
-  id: string;
-  code: string;
+interface CustomerOption {
+  id:   string;
   name: string;
+}
+
+interface ProductOption {
+  id:           string;
+  code:         string;
+  name:         string;
   description?: string | null;
-  salePrice: number;
+  salePrice:    number;
   saleUnitName: string;
   categoryName: string;
-  brandName?: string | null;
-  aliases?: string[];
+  brandName?:   string | null;
+  aliases?:     string[];
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
 interface SaleOption {
-  id: string;
-  saleNo: string;
+  id:           string;
+  saleNo:       string;
   customerName: string | null;
-  saleDate: Date;
+  saleDate:     Date;
 }
 
 interface LineItem {
@@ -38,6 +43,8 @@ interface LineItem {
 interface InitialData {
   id:             string;
   cnDate:         string;
+  customerId:     string;
+  customerName:   string;
   saleId:         string;
   type:           "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "CREDIT_DEBT";
@@ -55,31 +62,62 @@ const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePr
 
 const CreditNoteForm = ({
   products,
-  sales,
+  customers,
+  initialSales,
   defaultVatType,
   defaultVatRate,
   initialData,
 }: {
-  products: ProductOption[];
-  sales: SaleOption[];
+  products:       ProductOption[];
+  customers:      CustomerOption[];
+  initialSales?:  SaleOption[];
   defaultVatType: string;
   defaultVatRate: number;
-  initialData?: InitialData;
+  initialData?:   InitialData;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
-  const [isPending, startTransition] = useTransition();
-  const [error, setError]         = useState("");
-  const [success, setSuccess]     = useState("");
-  const [saleId, setSaleId]       = useState(initialData?.saleId ?? "");
-  const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
-  const [cnType, setCnType]       = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
+  const [isPending, startTransition]    = useTransition();
+  const [error, setError]               = useState("");
+  const [success, setSuccess]           = useState("");
+
+  const [customerId, setCustomerId]     = useState(initialData?.customerId ?? "");
+  const [customerName, setCustomerName] = useState(initialData?.customerName ?? "");
+  const [filteredSales, setFilteredSales] = useState<SaleOption[]>(initialSales ?? []);
+  const [loadingSales, setLoadingSales] = useState(false);
+
+  const [saleId, setSaleId]             = useState(initialData?.saleId ?? "");
+  const [items, setItems]               = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [cnType, setCnType]             = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
   const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
-  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [vatType, setVatType]           = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate]           = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
-  const addItem = () => setItems((prev) => [...prev, emptyItem()]);
+  const handleCustomerChange = async (id: string) => {
+    setCustomerId(id);
+    const customer = customers.find((c) => c.id === id);
+    setCustomerName(customer?.name ?? "");
+    setSaleId("");
+    setItems([emptyItem()]);
+    if (!id) { setFilteredSales([]); return; }
+    setLoadingSales(true);
+    const sales = await getSalesForCustomer(id);
+    setFilteredSales(sales);
+    setLoadingSales(false);
+  };
+
+  const handleSaleChange = async (id: string) => {
+    setSaleId(id);
+    if (!id) return;
+    const detail = await getSaleDetail(id);
+    if (!detail) return;
+    setVatType(detail.vatType);
+    setVatRate(detail.vatRate);
+    setItems(detail.items.map((item) => ({ ...item })));
+  };
+
+  const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
   const updateItem = (i: number, field: keyof LineItem, value: string | number) => {
@@ -108,6 +146,7 @@ const CreditNoteForm = ({
     setError("");
     setSuccess("");
 
+    if (!customerId) { setError("กรุณาเลือกลูกค้า"); return; }
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
@@ -116,6 +155,8 @@ const CreditNoteForm = ({
 
     const form = e.currentTarget;
     const formData = new FormData(form);
+    formData.set("customerId", customerId);
+    formData.set("customerName", customerName);
     formData.set("items", JSON.stringify(items));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
@@ -157,23 +198,42 @@ const CreditNoteForm = ({
               className={inputCls}
             />
           </div>
+
+          {/* Customer — must select first */}
+          <div>
+            <label className={labelCls}>
+              ลูกค้า <span className="text-red-500">*</span>
+            </label>
+            <SearchableSelect
+              options={customers.map((c): SelectOption => ({ id: c.id, label: c.name }))}
+              value={customerId}
+              onChange={handleCustomerChange}
+              placeholder="โปรดระบุลูกค้า"
+            />
+          </div>
+
+          {/* Sale reference — filtered by selected customer */}
           <div>
             <label className={labelCls}>อ้างอิงใบขาย</label>
             <SearchableSelect
               options={[
                 { id: "", label: "-- ไม่อ้างอิง --" },
-                ...sales.map((s): SelectOption => ({
+                ...filteredSales.map((s): SelectOption => ({
                   id: s.id,
                   label: s.saleNo,
-                  sublabel: s.customerName ?? undefined,
+                  sublabel: new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                    day: "2-digit", month: "2-digit", year: "numeric",
+                  }),
                 })),
               ]}
               value={saleId}
-              onChange={setSaleId}
-              placeholder="-- ไม่อ้างอิง --"
+              onChange={handleSaleChange}
+              placeholder={loadingSales ? "กำลังโหลด..." : customerId ? "-- ไม่อ้างอิง --" : "เลือกลูกค้าก่อน"}
+              disabled={!customerId || loadingSales}
             />
             <input type="hidden" name="saleId" value={saleId} />
           </div>
+
           <div>
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />

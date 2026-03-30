@@ -11,7 +11,7 @@ import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generate
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
 
-  const [cn, rawProducts, sales, config] = await Promise.all([
+  const [cn, rawProducts, customers, config] = await Promise.all([
     db.creditNote.findUnique({
       where: { id },
       include: {
@@ -38,16 +38,25 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
-    db.sale.findMany({
-      orderBy: { saleDate: "desc" },
-      take: 50,
-      select: { id: true, saleNo: true, customerName: true, saleDate: true },
+    db.customer.findMany({
+      where:   { isActive: true },
+      orderBy: { name: "asc" },
+      select:  { id: true, name: true },
     }),
     getSiteConfig(),
   ]);
 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
+
+  const initialSales = cn.customerId
+    ? await db.sale.findMany({
+        where:   { customerId: cn.customerId, status: "ACTIVE" },
+        orderBy: { saleDate: "desc" },
+        take:    200,
+        select:  { id: true, saleNo: true, customerName: true, saleDate: true },
+      })
+    : [];
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
@@ -72,6 +81,8 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   const initialData = {
     id,
     cnDate:         cn.cnDate.toISOString().slice(0, 10),
+    customerId:     cn.customerId ?? "",
+    customerName:   cn.customerName ?? "",
     saleId:         cn.saleId ?? "",
     type:           cn.type as CreditNoteType,
     settlementType: cn.settlementType as CNSettlementType,
@@ -95,7 +106,8 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบลดหนี้</h1>
       <CreditNoteForm
         products={products}
-        sales={sales}
+        customers={customers}
+        initialSales={initialSales}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}

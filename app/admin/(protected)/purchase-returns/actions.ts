@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { requireAdmin } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -28,7 +28,7 @@ const returnSchema = z.object({
 export async function createPurchaseReturn(
   formData: FormData
 ): Promise<{ success?: boolean; returnNo?: string; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("purchase_returns.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   let items: z.infer<typeof returnItemSchema>[] = [];
@@ -163,7 +163,7 @@ const cancelReturnSchema = z.object({
 export async function cancelPurchaseReturn(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("purchase_returns.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelReturnSchema.safeParse({
@@ -210,7 +210,7 @@ export async function updatePurchaseReturn(
   id: string,
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requireAdmin().catch(() => null);
+  const session = await requirePermission("purchase_returns.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
@@ -320,4 +320,61 @@ export async function updatePurchaseReturn(
     console.error("[updatePurchaseReturn]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
+}
+
+// ─────────────────────────────────────────
+// getPurchasesForSupplier — ดึงใบซื้อของซัพพลายเออร์
+// ─────────────────────────────────────────
+export async function getPurchasesForSupplier(
+  supplierId: string
+): Promise<{ id: string; purchaseNo: string; purchaseDate: Date }[]> {
+  if (!supplierId) return [];
+  return db.purchase.findMany({
+    where: { supplierId },
+    orderBy: { purchaseDate: "desc" },
+    take: 200,
+    select: { id: true, purchaseNo: true, purchaseDate: true },
+  });
+}
+
+// ─────────────────────────────────────────
+// getPurchaseDetail — ดึง items จากใบซื้อ
+// ─────────────────────────────────────────
+export type PurchaseDetailResult = {
+  items: { productId: string; unitName: string; qty: number }[];
+} | null;
+
+export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
+  if (!purchaseId) return null;
+  const purchase = await db.purchase.findUnique({
+    where: { id: purchaseId },
+    select: {
+      items: {
+        select: {
+          productId: true,
+          quantity:  true,
+          product: {
+            select: {
+              purchaseUnitName: true,
+              units: { select: { name: true, scale: true, isBase: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!purchase) return null;
+
+  const items = purchase.items.map((item) => {
+    const unitName = item.product.purchaseUnitName ?? "";
+    const unit     = item.product.units.find((u) => u.name === unitName);
+    const scale    = unit ? Number(unit.scale) : 1;
+    return {
+      productId: item.productId,
+      unitName,
+      qty: Number(item.quantity) / scale,
+    };
+  });
+
+  return { items };
 }

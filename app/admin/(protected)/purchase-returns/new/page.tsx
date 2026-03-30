@@ -7,7 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 
 const NewPurchaseReturnPage = async () => {
-  const [products, suppliers, purchases, config] = await Promise.all([
+  const [products, suppliers, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -30,11 +30,6 @@ const NewPurchaseReturnPage = async () => {
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
-    }),
-    db.purchase.findMany({
-      orderBy: { purchaseDate: "desc" },
-      take:    30,
-      select: { id: true, purchaseNo: true },
     }),
     getSiteConfig(),
   ]);
@@ -67,7 +62,6 @@ const NewPurchaseReturnPage = async () => {
       <PurchaseReturnForm
         products={productOptions}
         suppliers={suppliers}
-        purchases={purchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
       />

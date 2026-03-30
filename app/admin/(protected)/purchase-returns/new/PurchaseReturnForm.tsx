@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchaseReturn, updatePurchaseReturn } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -26,8 +26,9 @@ interface SupplierOption {
 }
 
 interface PurchaseOption {
-  id: string;
-  purchaseNo: string;
+  id:          string;
+  purchaseNo:  string;
+  purchaseDate?: Date;
 }
 
 interface LineItem {
@@ -55,28 +56,49 @@ const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1 });
 const PurchaseReturnForm = ({
   products,
   suppliers,
-  purchases,
+  initialPurchases,
   defaultVatType,
   defaultVatRate,
   initialData,
 }: {
-  products:  ProductOption[];
-  suppliers: SupplierOption[];
-  purchases: PurchaseOption[];
-  defaultVatType: string;
-  defaultVatRate: number;
-  initialData?: InitialData;
+  products:         ProductOption[];
+  suppliers:        SupplierOption[];
+  initialPurchases?: PurchaseOption[];
+  defaultVatType:   string;
+  defaultVatRate:   number;
+  initialData?:     InitialData;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
-  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
-  const [purchaseId, setPurchaseId] = useState(initialData?.purchaseId ?? "");
+  const [supplierId, setSupplierId]             = useState(initialData?.supplierId ?? "");
+  const [purchaseId, setPurchaseId]             = useState(initialData?.purchaseId ?? "");
+  const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [items, setItems]       = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+
+  const handleSupplierChange = async (id: string) => {
+    setSupplierId(id);
+    setPurchaseId("");
+    setItems([emptyItem()]);
+    if (!id) { setFilteredPurchases([]); return; }
+    setLoadingPurchases(true);
+    const purchases = await getPurchasesForSupplier(id);
+    setFilteredPurchases(purchases);
+    setLoadingPurchases(false);
+  };
+
+  const handlePurchaseChange = async (id: string) => {
+    setPurchaseId(id);
+    if (!id) return;
+    const detail = await getPurchaseDetail(id);
+    if (!detail) return;
+    setItems(detail.items.map((item) => ({ ...item })));
+  };
 
   const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -123,7 +145,8 @@ const PurchaseReturnForm = ({
     const formData = new FormData(form);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
-    formData.set("supplierId", supplierId);
+    formData.set("supplierId",  supplierId);
+    formData.set("purchaseId", purchaseId);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -172,26 +195,37 @@ const PurchaseReturnForm = ({
             />
           </div>
           <div>
+            <label className={labelCls}>
+              ซัพพลายเออร์ <span className="text-red-500">*</span>
+            </label>
+            <SearchableSelect
+              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
+              value={supplierId}
+              onChange={handleSupplierChange}
+              placeholder="โปรดระบุผู้จำหน่าย"
+            />
+          </div>
+          <div>
             <label className={labelCls}>อ้างอิงใบซื้อ</label>
             <SearchableSelect
               options={[
                 { id: "", label: "-- ไม่อ้างอิง --" },
-                ...purchases.map((p): SelectOption => ({ id: p.id, label: p.purchaseNo })),
+                ...filteredPurchases.map((p): SelectOption => ({
+                  id: p.id,
+                  label: p.purchaseNo,
+                  sublabel: p.purchaseDate
+                    ? new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                        day: "2-digit", month: "2-digit", year: "numeric",
+                      })
+                    : undefined,
+                })),
               ]}
               value={purchaseId}
-              onChange={setPurchaseId}
-              placeholder="-- ไม่อ้างอิง --"
+              onChange={handlePurchaseChange}
+              placeholder={loadingPurchases ? "กำลังโหลด..." : supplierId ? "-- ไม่อ้างอิง --" : "เลือกซัพพลายเออร์ก่อน"}
+              disabled={!supplierId || loadingPurchases}
             />
             <input type="hidden" name="purchaseId" value={purchaseId} />
-          </div>
-          <div>
-            <label className={labelCls}>ซัพพลายเออร์</label>
-            <SearchableSelect
-              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
-              value={supplierId}
-              onChange={setSupplierId}
-              placeholder="โปรดระบุผู้จำหน่าย"
-            />
           </div>
           <div className="md:col-span-3">
             <label className={labelCls}>หมายเหตุ</label>

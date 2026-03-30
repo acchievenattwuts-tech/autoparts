@@ -10,7 +10,7 @@ import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
 
-  const [ret, rawProducts, suppliers, purchases, config] = await Promise.all([
+  const [ret, rawProducts, suppliers, config] = await Promise.all([
     db.purchaseReturn.findUnique({
       where: { id },
       include: {
@@ -34,12 +34,20 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       },
     }),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    db.purchase.findMany({ orderBy: { purchaseDate: "desc" }, take: 30, select: { id: true, purchaseNo: true } }),
     getSiteConfig(),
   ]);
 
   if (!ret) notFound();
   if (ret.status === "CANCELLED") redirect(`/admin/purchase-returns/${id}`);
+
+  const initialPurchases = ret.supplierId
+    ? await db.purchase.findMany({
+        where:   { supplierId: ret.supplierId },
+        orderBy: { purchaseDate: "desc" },
+        take:    200,
+        select:  { id: true, purchaseNo: true, purchaseDate: true },
+      })
+    : [];
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description, avgCost: Number(p.avgCost),
@@ -82,7 +90,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       <PurchaseReturnForm
         products={products}
         suppliers={suppliers}
-        purchases={purchases}
+        initialPurchases={initialPurchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}

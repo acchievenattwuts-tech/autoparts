@@ -7,7 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
 
 const NewCreditNotePage = async () => {
-  const [products, sales, config] = await Promise.all([
+  const [products, customers, config] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -27,15 +27,10 @@ const NewCreditNotePage = async () => {
         },
       },
     }),
-    db.sale.findMany({
-      orderBy: { saleDate: "desc" },
-      take:    50,
-      select: {
-        id:           true,
-        saleNo:       true,
-        customerName: true,
-        saleDate:     true,
-      },
+    db.customer.findMany({
+      where:   { isActive: true },
+      orderBy: { name: "asc" },
+      select:  { id: true, name: true },
     }),
     getSiteConfig(),
   ]);
@@ -53,13 +48,6 @@ const NewCreditNotePage = async () => {
     units:        p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 
-  const saleOptions = sales.map((s) => ({
-    id:           s.id,
-    saleNo:       s.saleNo,
-    customerName: s.customerName,
-    saleDate:     s.saleDate,
-  }));
-
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">
@@ -73,7 +61,7 @@ const NewCreditNotePage = async () => {
         <span className="text-sm font-medium text-gray-700">สร้าง CN ใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
-      <CreditNoteForm products={productOptions} sales={saleOptions} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <CreditNoteForm products={productOptions} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };
