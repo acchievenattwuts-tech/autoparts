@@ -24,6 +24,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
                 units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
               },
             },
+            lotItems: { select: { lotNo: true, qty: true, unitCost: true } },
           },
         },
       },
@@ -74,7 +75,13 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       warrantyDays: item.warrantyDays ?? 0,
       supplierId:   item.supplierId ?? "",
       supplierName: item.supplierName ?? "",
-      lotItems:     [],
+      lotItems:     item.lotItems.map((lot) => ({
+        lotNo:    lot.lotNo,
+        qty:      Number(lot.qty),
+        unitCost: Number(lot.unitCost),
+        mfgDate:  "",
+        expDate:  "",
+      })),
     };
   });
 

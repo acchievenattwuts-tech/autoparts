@@ -59,9 +59,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       include: {
         items: {
           include: {
-            product: {
-              select: { code: true, name: true, reportUnitName: true },
-            },
+            product:  { select: { code: true, name: true, reportUnitName: true, isLotControl: true } },
+            lotItems: { select: { lotNo: true, qty: true } },
           },
         },
         user:     { select: { name: true } },
@@ -298,20 +297,37 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </thead>
           <tbody>
             {sale.items.map((item, idx) => (
-              <tr key={item.id} className="border-b border-gray-100">
-                <td className="py-1.5 text-gray-600">{idx + 1}</td>
-                <td className="py-1.5">
-                  <div className="font-medium text-gray-900">{item.product.name}</div>
-                </td>
-                <td className="py-1.5 text-right text-gray-800">{item.quantity}</td>
-                <td className="py-1.5 pl-2 text-gray-600">{item.product.reportUnitName}</td>
-                <td className="py-1.5 text-right text-gray-800">
-                  {Number(item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                </td>
-                <td className="py-1.5 text-right font-medium text-gray-900">
-                  {Number(item.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                </td>
-              </tr>
+              <>
+                <tr key={item.id} className="border-b border-gray-100">
+                  <td className="py-1.5 text-gray-600">{idx + 1}</td>
+                  <td className="py-1.5">
+                    <div className="font-medium text-gray-900">{item.product.name}</div>
+                  </td>
+                  <td className="py-1.5 text-right text-gray-800">{item.quantity}</td>
+                  <td className="py-1.5 pl-2 text-gray-600">{item.product.reportUnitName}</td>
+                  <td className="py-1.5 text-right text-gray-800">
+                    {Number(item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-1.5 text-right font-medium text-gray-900">
+                    {Number(item.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+                {item.lotItems.length > 0 && (
+                  <tr key={`lot-${item.id}`} className="bg-amber-50/40 border-b border-gray-100">
+                    <td />
+                    <td colSpan={5} className="py-1 pb-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.lotItems.map((lot) => (
+                          <span key={lot.lotNo} className="inline-flex items-center gap-1 text-xs bg-white border border-amber-200 rounded px-1.5 py-0.5">
+                            <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
+                            <span className="text-gray-500">×{Number(lot.qty)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
             ))}
           </tbody>
         </table>
