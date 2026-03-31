@@ -107,7 +107,7 @@ export async function updateCompanySettings(formData: FormData) {
   }
 
   const entries = Object.entries(parsed.data) as [string, string][];
-  await Promise.all(
+  await db.$transaction(
     entries.map(([key, value]) =>
       db.siteContent.upsert({
         where: { key },
