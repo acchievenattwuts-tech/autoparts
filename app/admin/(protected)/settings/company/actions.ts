@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
 import { createClient } from "@supabase/supabase-js";
 
@@ -106,17 +106,21 @@ export async function updateCompanySettings(formData: FormData) {
     return { error: parsed.error.issues[0].message };
   }
 
-  const entries = Object.entries(parsed.data) as [string, string][];
-  await db.$transaction(
-    entries.map(([key, value]) =>
-      db.siteContent.upsert({
+  try {
+    const entries = Object.entries(parsed.data) as [string, string][];
+    for (const [key, value] of entries) {
+      await db.siteContent.upsert({
         where: { key },
         update: { value },
         create: { key, value },
-      })
-    )
-  );
+      });
+    }
+  } catch (error) {
+    console.error("Failed to update company settings", error);
+    return { error: "บันทึกการตั้งค่าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
 
+  revalidateTag("site-config", "max");
   revalidatePath("/", "layout");
   revalidatePath("/admin/settings/company");
   return { success: true };

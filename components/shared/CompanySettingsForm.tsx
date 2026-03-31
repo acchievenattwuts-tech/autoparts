@@ -95,6 +95,7 @@ const LazadaIcon = () => (
 const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canManage: boolean }) => {
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const logoFileRef = useRef<HTMLInputElement>(null);
   const [logoUrl, setLogoUrl] = useState(config.shopLogoUrl ?? "");
@@ -126,12 +127,18 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
     if (!canManage || !formRef.current) return;
 
     const formData = new FormData(formRef.current);
+    setSaveError("");
     startTransition(async () => {
       const result = await updateCompanySettings(formData);
       if (result.success) {
         setSaved(true);
+        setSaveError("");
         setTimeout(() => setSaved(false), 3000);
+        return;
       }
+
+      setSaved(false);
+      setSaveError(result.error ?? "บันทึกการตั้งค่าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     });
   };
 
@@ -290,6 +297,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
             บันทึกสำเร็จ หน้าเว็บอัปเดตแล้ว
           </span>
         )}
+        {saveError && <span className="text-sm text-red-600">{saveError}</span>}
       </div>
     </form>
   );
