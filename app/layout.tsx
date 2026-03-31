@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Kanit, Sarabun } from "next/font/google";
 import "./globals.css";
 
@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: "ศรีวรรณ อะไหล่แอร์ | อะไหล่แอร์และหม้อน้ำรถยนต์ครบวงจร",
   description:
     "ร้านอะไหล่แอร์และหม้อน้ำรถยนต์ทุกยี่ห้อ คอมเพรสเซอร์ หม้อน้ำ แผงคอนเดนเซอร์ ท่อแอร์ ราคายุติธรรม ส่งทั่วประเทศ สั่งซื้อผ่าน LINE OA ได้เลย",
+  icons: {
+    icon: "/icon",
+    shortcut: "/icon",
+    apple: "/icon",
+  },
 };
 
 export default function RootLayout({

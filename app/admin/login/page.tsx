@@ -1,9 +1,10 @@
-"use client";
+﻿"use client";
 
+import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, LogIn, Wrench } from "lucide-react";
+import { Eye, EyeOff, LogIn } from "lucide-react";
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -32,7 +33,7 @@ const setLockout = (data: LockoutData) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {
-    // localStorage unavailable — degrade gracefully
+    // localStorage unavailable - degrade gracefully
   }
 };
 
@@ -94,7 +95,6 @@ const LoginPage = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check lockout
     const { until } = getLockout();
     if (until > Date.now()) return;
 
@@ -113,13 +113,9 @@ const LoginPage = () => {
       const attempts = recordFailedAttempt();
       const remaining = MAX_ATTEMPTS - attempts;
       if (remaining <= 0) {
-        setError(
-          `ล็อกชั่วคราว 5 นาที เนื่องจากพยายาม login ผิดหลายครั้ง`
-        );
+        setError("ล็อกชั่วคราว 5 นาที เนื่องจากพยายาม login ผิดหลายครั้ง");
       } else {
-        setError(
-          `ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง (เหลืออีก ${remaining} ครั้ง)`
-        );
+        setError(`ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง (เหลืออีก ${remaining} ครั้ง)`);
       }
     } else {
       clearLockout();
@@ -132,19 +128,21 @@ const LoginPage = () => {
   const seconds = countdown % 60;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1e3a5f] to-[#0f2240] flex items-center justify-center p-4 font-sarabun">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#1e3a5f] rounded-2xl mb-4">
-            <Wrench className="text-[#f97316]" size={32} />
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#1e3a5f] to-[#0f2240] p-4 font-sarabun">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+        <div className="mb-8 text-center">
+          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1e3a5f]">
+            <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-white/95">
+              <Image src="/icon" alt="Shop logo" fill sizes="40px" className="object-contain p-1.5" />
+            </div>
           </div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">ศรีวรรณ อะไหล่แอร์</h1>
-          <p className="text-gray-500 text-sm mt-1">ระบบจัดการหลังบ้าน</p>
+          <p className="mt-1 text-sm text-gray-500">ระบบจัดการหลังบ้าน</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">ชื่อผู้ใช้</label>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">ชื่อผู้ใช้</label>
             <input
               type="text"
               value={username}
@@ -153,12 +151,12 @@ const LoginPage = () => {
               required
               disabled={isLocked}
               autoComplete="username"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent text-sm disabled:bg-gray-50 disabled:text-gray-400"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] disabled:bg-gray-50 disabled:text-gray-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">รหัสผ่าน</label>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">รหัสผ่าน</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -168,7 +166,7 @@ const LoginPage = () => {
                 required
                 disabled={isLocked}
                 autoComplete="current-password"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:border-transparent text-sm pr-10 disabled:bg-gray-50 disabled:text-gray-400"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 pr-10 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] disabled:bg-gray-50 disabled:text-gray-400"
               />
               <button
                 type="button"
@@ -182,19 +180,16 @@ const LoginPage = () => {
           </div>
 
           {isLocked && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg text-center">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
               <p className="font-medium">ระงับการเข้าสู่ระบบชั่วคราว</p>
-              <p className="text-xs mt-1">
-                กรุณารอ{" "}
-                <span className="font-bold tabular-nums">
-                  {minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")} นาที` : `${seconds} วินาที`}
-                </span>
+              <p className="mt-1 text-xs">
+                กรุณารอ <span className="font-bold tabular-nums">{minutes > 0 ? `${minutes}:${String(seconds).padStart(2, "0")} นาที` : `${seconds} วินาที`}</span>
               </p>
             </div>
           )}
 
           {!isLocked && error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-2.5 rounded-lg">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
               {error}
             </div>
           )}
@@ -202,10 +197,10 @@ const LoginPage = () => {
           <button
             type="submit"
             disabled={loading || isLocked}
-            className="w-full bg-[#1e3a5f] hover:bg-[#163055] text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 font-medium text-white transition-colors hover:bg-[#163055] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? (
-              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
             ) : (
               <LogIn size={18} />
             )}
