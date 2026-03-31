@@ -9,6 +9,15 @@ import { generatePurchaseNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
+import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+
+const lotSubRowSchema = z.object({
+  lotNo:    z.string().min(1).max(100),
+  qty:      z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  mfgDate:  z.string().default(""),
+  expDate:  z.string().default(""),
+});
 
 const purchaseItemSchema = z.object({
   productId:   z.string().min(1).max(50),
@@ -16,6 +25,7 @@ const purchaseItemSchema = z.object({
   qty:         z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   costPrice:   z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),   // per selected unit
   landedCost:  z.coerce.number().min(0).default(0),             // per selected unit
+  lotItems:    z.array(lotSubRowSchema).default([]),
 });
 
 const purchaseSchema = z.object({
@@ -127,6 +137,37 @@ export async function createPurchase(
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         });
+
+        // 4. Lot Control — only if product has isLotControl=true
+        if (item.lotItems.length > 0) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { isLotControl: true, requireExpiryDate: true },
+          });
+          if (product?.isLotControl) {
+            // Validate lot rows (server-side)
+            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
+            if (lotErr) throw new Error(lotErr);
+
+            // Convert lot rows to base unit
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: lot.unitCost / scale,
+              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+            }));
+
+            await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
+
+            // Get the StockCard row just created (referenceId = purchaseItem.id)
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: purchaseItem.id, source: "PURCHASE" },
+              select: { id: true },
+            });
+            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
+          }
+        }
       }
     });
 
@@ -161,7 +202,7 @@ export async function cancelPurchase(
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
     include: {
-      items:          { select: { productId: true } },
+      items:          { select: { id: true, productId: true } },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
     },
   });
@@ -178,6 +219,10 @@ export async function cancelPurchase(
 
   try {
     await dbTx(async (tx) => {
+      // Reverse Lot balances before deleting StockCard rows
+      for (const item of purchase.items) {
+        await reversePurchaseLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: purchase.purchaseNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);

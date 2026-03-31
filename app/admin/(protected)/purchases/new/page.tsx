@@ -21,6 +21,8 @@ const NewPurchasePage = async () => {
         description: true,
         purchaseUnitName: true,
         costPrice: true,
+        isLotControl: true,
+        requireExpiryDate: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
         aliases:  { select: { alias: true } },
@@ -45,6 +47,8 @@ const NewPurchasePage = async () => {
     brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isLotControl: p.isLotControl,
+    requireExpiryDate: p.requireExpiryDate,
   }));
 
   return (

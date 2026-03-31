@@ -7,6 +7,7 @@ import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { validateLotRows, type LotSubRow } from "@/lib/lot-control";
 
 interface ProductOption {
   id: string;
@@ -19,6 +20,8 @@ interface ProductOption {
   brandName?: string | null;
   aliases?: string[];
   units: { name: string; scale: number; isBase: boolean }[];
+  isLotControl: boolean;
+  requireExpiryDate: boolean;
 }
 
 interface SupplierOption { id: string; name: string }
@@ -29,6 +32,7 @@ interface LineItem {
   qty:        number;
   costPrice:  number;
   landedCost: number;
+  lotItems:   LotSubRow[];
 }
 
 interface InitialData {
@@ -67,17 +71,17 @@ const PurchaseForm = ({
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
-    initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]
+    initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
   );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const addItem = () =>
-    setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0 }]);
+    setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]);
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateItem = (i: number, field: keyof LineItem, value: string | number) => {
+  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
@@ -86,10 +90,47 @@ const PurchaseForm = ({
           const prod = products.find((p) => p.id === String(value));
           updated.unitName  = prod?.purchaseUnitName ?? "";
           updated.costPrice = prod?.costPrice ?? 0;
+          // Initialize lot sub-rows for lot-controlled products
+          updated.lotItems = prod?.isLotControl
+            ? [{ lotNo: "", qty: updated.qty, unitCost: prod.costPrice, mfgDate: "", expDate: "" }]
+            : [];
+        }
+        if (field === "qty" && item.productId) {
+          const prod = products.find((p) => p.id === item.productId);
+          if (prod?.isLotControl && updated.lotItems.length === 1) {
+            // Auto-sync single lot qty when item qty changes
+            updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+          }
         }
         return updated;
       })
     );
+  };
+
+  const addLotRow = (itemIdx: number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return { ...item, lotItems: [...item.lotItems, { lotNo: "", qty: 0, unitCost: item.costPrice, mfgDate: "", expDate: "" }] };
+    }));
+  };
+
+  const removeLotRow = (itemIdx: number, lotIdx: number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return { ...item, lotItems: item.lotItems.filter((_, li) => li !== lotIdx) };
+    }));
+  };
+
+  const updateLotRow = (itemIdx: number, lotIdx: number, field: keyof LotSubRow, value: string | number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return {
+        ...item,
+        lotItems: item.lotItems.map((lot, li) =>
+          li === lotIdx ? { ...lot, [field]: value } : lot
+        ),
+      };
+    }));
   };
 
   const getUnits = (productId: string) =>
@@ -112,6 +153,12 @@ const PurchaseForm = ({
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+
+      const prod = products.find((p) => p.id === item.productId);
+      if (prod?.isLotControl) {
+        const lotErr = validateLotRows(item.lotItems, item.qty, prod.requireExpiryDate);
+        if (lotErr) { setError(lotErr); return; }
+      }
     }
     formData.set("items", JSON.stringify(items));
     formData.set("discount", String(discount));
@@ -246,48 +293,155 @@ const PurchaseForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
+                const prod  = products.find((p) => p.id === item.productId);
+                const isLot = prod?.isLotControl ?? false;
+                const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
+                const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="py-2 px-2">
-                      <ProductSearchSelect
-                        products={products}
-                        value={item.productId}
-                        onChange={(id) => updateItem(i, "productId", id)}
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <select value={item.unitName}
-                        onChange={(e) => updateItem(i, "unitName", e.target.value)}
-                        disabled={!item.productId}
-                        className={`${inputCls} bg-white`}>
-                        <option value="">-- โปรดระบุ --</option>
-                        {units.map((u) => (
-                          <option key={u.name} value={u.name}>{u.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="py-2 px-2">
-                      <input type="number" value={item.qty} min={0.0001} step={0.0001}
-                        onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
-                        className={inputCls} />
-                    </td>
-                    <td className="py-2 px-2">
-                      <input type="number" value={item.costPrice} min={0} step={0.0001}
-                        onChange={(e) => updateItem(i, "costPrice", Number(e.target.value))}
-                        className={inputCls} placeholder="0.00" />
-                    </td>
-                    <td className="py-2 px-2 text-right font-medium text-gray-700">
-                      {(item.qty * item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-2 px-2">
-                      {items.length > 1 && (
-                        <button type="button" onClick={() => removeItem(i)}
-                          className="text-red-400 hover:text-red-600 transition-colors">
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="py-2 px-2">
+                        <ProductSearchSelect
+                          products={products}
+                          value={item.productId}
+                          onChange={(id) => updateItem(i, "productId", id)}
+                        />
+                        {isLot && (
+                          <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                            Lot Control
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2">
+                        <select value={item.unitName}
+                          onChange={(e) => updateItem(i, "unitName", e.target.value)}
+                          disabled={!item.productId}
+                          className={`${inputCls} bg-white`}>
+                          <option value="">-- โปรดระบุ --</option>
+                          {units.map((u) => (
+                            <option key={u.name} value={u.name}>{u.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input type="number" value={item.qty} min={0.0001} step={0.0001}
+                          onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                          className={inputCls} />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input type="number" value={item.costPrice} min={0} step={0.0001}
+                          onChange={(e) => updateItem(i, "costPrice", Number(e.target.value))}
+                          className={inputCls} placeholder="0.00" />
+                      </td>
+                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                        {(item.qty * item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2 px-2">
+                        {items.length > 1 && (
+                          <button type="button" onClick={() => removeItem(i)}
+                            className="text-red-400 hover:text-red-600 transition-colors">
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isLot && (
+                      <tr key={`lot-${i}`} className="bg-amber-50/60">
+                        <td colSpan={6} className="px-4 pb-3 pt-1">
+                          {/* Progress */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs text-gray-500">Lot รวม</span>
+                            <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                              {totalLotQty}
+                            </span>
+                            <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
+                            {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
+                          </div>
+                          {/* Lot sub-table */}
+                          <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
+                            <thead>
+                              <tr className="bg-amber-100 text-amber-800">
+                                <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
+                                <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
+                                <th className="text-left py-1.5 px-2 font-medium w-28">ต้นทุน/หน่วย</th>
+                                <th className="text-left py-1.5 px-2 font-medium w-32">วันผลิต (MFG)</th>
+                                <th className="text-left py-1.5 px-2 font-medium w-32">
+                                  วันหมดอายุ (EXP)
+                                  {prod?.requireExpiryDate && <span className="text-red-500 ml-0.5">*</span>}
+                                </th>
+                                <th className="w-6" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {item.lotItems.map((lot, li) => (
+                                <tr key={li} className="border-t border-amber-100">
+                                  <td className="py-1 px-2">
+                                    <input
+                                      type="text"
+                                      value={lot.lotNo}
+                                      onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
+                                      placeholder="เช่น LOT-001"
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input
+                                      type="number"
+                                      value={lot.qty}
+                                      min={0.0001} step={0.0001}
+                                      onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input
+                                      type="number"
+                                      value={lot.unitCost}
+                                      min={0} step={0.0001}
+                                      onChange={(e) => updateLotRow(i, li, "unitCost", Number(e.target.value))}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input
+                                      type="date"
+                                      value={lot.mfgDate}
+                                      onChange={(e) => updateLotRow(i, li, "mfgDate", e.target.value)}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input
+                                      type="date"
+                                      value={lot.expDate}
+                                      onChange={(e) => updateLotRow(i, li, "expDate", e.target.value)}
+                                      required={prod?.requireExpiryDate}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    {item.lotItems.length > 1 && (
+                                      <button type="button" onClick={() => removeLotRow(i, li)}
+                                        className="text-red-400 hover:text-red-600">
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <button
+                            type="button"
+                            onClick={() => addLotRow(i)}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                          >
+                            <Plus size={11} /> เพิ่ม Lot
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>

@@ -34,6 +34,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       select: {
         id: true, code: true, name: true, description: true,
         purchaseUnitName: true, costPrice: true,
+        isLotControl: true, requireExpiryDate: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
         aliases:  { select: { alias: true } },
@@ -50,6 +51,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     purchaseUnitName: p.purchaseUnitName, costPrice: Number(p.costPrice),
+    isLotControl: p.isLotControl, requireExpiryDate: p.requireExpiryDate,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
@@ -64,6 +66,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       qty:        item.quantity,               // already in base units
       costPrice:  Number(item.costPrice),      // per base unit
       landedCost: Number(item.landedCost) * item.quantity, // total landed back to per unit approximation
+      lotItems:   [], // edit mode: lot items not editable (readonly historical data)
     };
   });
 
