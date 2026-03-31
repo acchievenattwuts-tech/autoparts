@@ -7,7 +7,7 @@ import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
-import { validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 
 interface ProductOption {
   id: string;
@@ -348,96 +348,119 @@ const PurchaseForm = ({
                     {isLot && (
                       <tr key={`lot-${i}`} className="bg-amber-50/60">
                         <td colSpan={6} className="px-4 pb-3 pt-1">
-                          {/* Progress */}
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs text-gray-500">Lot รวม</span>
-                            <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
-                              {totalLotQty}
-                            </span>
-                            <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                            {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
-                          </div>
-                          {/* Lot sub-table */}
-                          <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
-                            <thead>
-                              <tr className="bg-amber-100 text-amber-800">
-                                <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
-                                <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
-                                <th className="text-left py-1.5 px-2 font-medium w-28">ต้นทุน/หน่วย</th>
-                                <th className="text-left py-1.5 px-2 font-medium w-32">วันผลิต (MFG)</th>
-                                <th className="text-left py-1.5 px-2 font-medium w-32">
-                                  วันหมดอายุ (EXP)
-                                  {prod?.requireExpiryDate && <span className="text-red-500 ml-0.5">*</span>}
-                                </th>
-                                <th className="w-6" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {item.lotItems.map((lot, li) => (
-                                <tr key={li} className="border-t border-amber-100">
-                                  <td className="py-1 px-2">
-                                    <input
-                                      type="text"
-                                      value={lot.lotNo}
-                                      onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
-                                      placeholder="เช่น LOT-001"
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                    />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input
-                                      type="number"
-                                      value={lot.qty}
-                                      min={0.0001} step={0.0001}
-                                      onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                    />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input
-                                      type="number"
-                                      value={lot.unitCost}
-                                      min={0} step={0.0001}
-                                      onChange={(e) => updateLotRow(i, li, "unitCost", Number(e.target.value))}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                    />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input
-                                      type="date"
-                                      value={lot.mfgDate}
-                                      onChange={(e) => updateLotRow(i, li, "mfgDate", e.target.value)}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                    />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input
-                                      type="date"
-                                      value={lot.expDate}
-                                      onChange={(e) => updateLotRow(i, li, "expDate", e.target.value)}
-                                      required={prod?.requireExpiryDate}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                    />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    {item.lotItems.length > 1 && (
-                                      <button type="button" onClick={() => removeLotRow(i, li)}
-                                        className="text-red-400 hover:text-red-600">
-                                        <Trash2 size={13} />
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
+                          {isEdit ? (
+                            /* Read-only lot display in edit mode */
+                            <div className="flex flex-wrap gap-2">
+                              {item.lotItems.length === 0 ? (
+                                <span className="text-xs text-gray-400 italic">ไม่มีข้อมูล Lot</span>
+                              ) : item.lotItems.map((lot, li) => (
+                                <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1">
+                                  <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
+                                  <span className="text-gray-500">จำนวน</span>
+                                  <span className="font-medium text-gray-700">{lot.qty}</span>
+                                  {lot.expDate && (
+                                    <>
+                                      <span className="text-gray-400">|</span>
+                                      <span className="text-gray-500">EXP {lot.expDate}</span>
+                                    </>
+                                  )}
+                                </div>
                               ))}
-                            </tbody>
-                          </table>
-                          <button
-                            type="button"
-                            onClick={() => addLotRow(i)}
-                            className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
-                          >
-                            <Plus size={11} /> เพิ่ม Lot
-                          </button>
+                            </div>
+                          ) : (
+                            <>
+                              {/* Progress */}
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs text-gray-500">Lot รวม</span>
+                                <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                                  {totalLotQty}
+                                </span>
+                                <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
+                                {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
+                              </div>
+                              {/* Lot sub-table */}
+                              <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
+                                <thead>
+                                  <tr className="bg-amber-100 text-amber-800">
+                                    <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
+                                    <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
+                                    <th className="text-left py-1.5 px-2 font-medium w-28">ต้นทุน/หน่วย</th>
+                                    <th className="text-left py-1.5 px-2 font-medium w-32">วันผลิต (MFG)</th>
+                                    <th className="text-left py-1.5 px-2 font-medium w-32">
+                                      วันหมดอายุ (EXP)
+                                      {prod?.requireExpiryDate && <span className="text-red-500 ml-0.5">*</span>}
+                                    </th>
+                                    <th className="w-6" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {item.lotItems.map((lot, li) => (
+                                    <tr key={li} className="border-t border-amber-100">
+                                      <td className="py-1 px-2">
+                                        <input
+                                          type="text"
+                                          value={lot.lotNo}
+                                          onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
+                                          placeholder="เช่น LOT-001"
+                                          className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        <input
+                                          type="number"
+                                          value={lot.qty}
+                                          min={0.0001} step={0.0001}
+                                          onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                          className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        <input
+                                          type="number"
+                                          value={lot.unitCost}
+                                          min={0} step={0.0001}
+                                          onChange={(e) => updateLotRow(i, li, "unitCost", Number(e.target.value))}
+                                          className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        <input
+                                          type="date"
+                                          value={lot.mfgDate}
+                                          onChange={(e) => updateLotRow(i, li, "mfgDate", e.target.value)}
+                                          className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        <input
+                                          type="date"
+                                          value={lot.expDate}
+                                          onChange={(e) => updateLotRow(i, li, "expDate", e.target.value)}
+                                          required={prod?.requireExpiryDate}
+                                          className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                        />
+                                      </td>
+                                      <td className="py-1 px-2">
+                                        {item.lotItems.length > 1 && (
+                                          <button type="button" onClick={() => removeLotRow(i, li)}
+                                            className="text-red-400 hover:text-red-600">
+                                            <Trash2 size={13} />
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <button
+                                type="button"
+                                onClick={() => addLotRow(i)}
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                              >
+                                <Plus size={11} /> เพิ่ม Lot
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )}

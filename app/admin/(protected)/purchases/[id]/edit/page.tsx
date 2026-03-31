@@ -24,6 +24,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
                 units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
               },
             },
+            lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
           },
         },
       },
@@ -66,7 +67,13 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       qty:        item.quantity,               // already in base units
       costPrice:  Number(item.costPrice),      // per base unit
       landedCost: Number(item.landedCost) * item.quantity, // total landed back to per unit approximation
-      lotItems:   [], // edit mode: lot items not editable (readonly historical data)
+      lotItems:   item.lotItems.map((lot) => ({
+        lotNo:    lot.lotNo,
+        qty:      Number(lot.qty),
+        unitCost: Number(lot.unitCost),
+        mfgDate:  lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
+        expDate:  lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+      })),
     };
   });
 

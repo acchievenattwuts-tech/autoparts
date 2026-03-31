@@ -20,7 +20,8 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
       user:     { select: { name: true } },
       items: {
         include: {
-          product: { select: { code: true, name: true } },
+          product:  { select: { code: true, name: true, isLotControl: true } },
+          lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
         },
       },
     },
@@ -127,17 +128,48 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
             </thead>
             <tbody>
               {purchase.items.map((item) => (
-                <tr key={item.id} className="border-t border-gray-50">
-                  <td className="py-2 px-3 font-mono text-xs text-gray-500">{item.product.code}</td>
-                  <td className="py-2 px-3 text-gray-800">{item.product.name}</td>
-                  <td className="py-2 px-3 text-right text-gray-700">{item.quantity}</td>
-                  <td className="py-2 px-3 text-right text-gray-700">
-                    {Number(item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-2 px-3 text-right font-medium text-gray-900">
-                    {Number(item.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
+                <>
+                  <tr key={item.id} className="border-t border-gray-50">
+                    <td className="py-2 px-3 font-mono text-xs text-gray-500">{item.product.code}</td>
+                    <td className="py-2 px-3 text-gray-800">
+                      {item.product.name}
+                      {item.product.isLotControl && (
+                        <span className="ml-2 inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Lot</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-700">{item.quantity}</td>
+                    <td className="py-2 px-3 text-right text-gray-700">
+                      {Number(item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-2 px-3 text-right font-medium text-gray-900">
+                      {Number(item.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                  </tr>
+                  {item.lotItems.length > 0 && (
+                    <tr key={`lot-${item.id}`} className="bg-amber-50/50">
+                      <td colSpan={5} className="px-6 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {item.lotItems.map((lot) => (
+                            <div key={lot.lotNo} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1">
+                              <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
+                              <span className="text-gray-500">จำนวน</span>
+                              <span className="font-medium text-gray-700">{Number(lot.qty)}</span>
+                              {lot.expDate && (
+                                <>
+                                  <span className="text-gray-400">|</span>
+                                  <span className="text-gray-500">EXP</span>
+                                  <span className="text-gray-700">
+                                    {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
             <tfoot className="border-t-2 border-gray-200 bg-gray-50">

@@ -23,6 +23,9 @@ const NewSalePage = async () => {
         saleUnitName:        true,
         warrantyDays:        true,
         preferredSupplierId: true,
+        isLotControl:        true,
+        lotIssueMethod:      true,
+        allowExpiredIssue:   true,
         category:            { select: { name: true } },
         brand:               { select: { name: true } },
         aliases:             { select: { alias: true } },
@@ -61,6 +64,9 @@ const NewSalePage = async () => {
     units:                 p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
     preferredSupplierId:   p.preferredSupplierId ?? null,
     preferredSupplierName: p.preferredSupplier?.name ?? null,
+    isLotControl:          p.isLotControl,
+    lotIssueMethod:        p.lotIssueMethod as string,
+    allowExpiredIssue:     p.allowExpiredIssue,
   }));
 
   return (

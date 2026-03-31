@@ -9,6 +9,15 @@ import { generateSaleNo } from "@/lib/doc-number";
 import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, ShippingMethod, ShippingStatus, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
+import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow, type LotAvailable } from "@/lib/lot-control";
+
+const lotSubRowSchema = z.object({
+  lotNo:    z.string().min(1).max(100),
+  qty:      z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  mfgDate:  z.string().default(""),
+  expDate:  z.string().default(""),
+});
 
 const saleItemSchema = z.object({
   productId:    z.string().min(1).max(50),
@@ -18,6 +27,7 @@ const saleItemSchema = z.object({
   warrantyDays: z.coerce.number().int().min(0).default(0),
   supplierId:   z.string().max(50).optional(),
   supplierName: z.string().max(200).optional(),
+  lotItems:     z.array(lotSubRowSchema).default([]),
 });
 
 const saleSchema = z.object({
@@ -203,6 +213,34 @@ export async function createSale(
           detail:      `ขาย ${item.qty} ${item.unitName}`,
           referenceId: saleItem.id,
         });
+
+        // Lot Control — only if product has isLotControl=true
+        if (item.lotItems.length > 0) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { isLotControl: true },
+          });
+          if (product?.isLotControl) {
+            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
+            if (lotErr) throw new Error(lotErr);
+
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: costPerBase,
+              mfgDate:      null as Date | null,
+              expDate:      null as Date | null,
+            }));
+
+            await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
+
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: saleItem.id, source: "SALE" },
+              select: { id: true },
+            });
+            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+          }
+        }
       }
     });
 
@@ -237,7 +275,7 @@ export async function cancelSale(
   const sale = await db.sale.findUnique({
     where: { id: saleId },
     include: {
-      items:       { select: { productId: true } },
+      items:       { select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
     },
@@ -264,6 +302,10 @@ export async function cancelSale(
 
   try {
     await dbTx(async (tx) => {
+      // Reverse Lot balances before deleting StockCard rows
+      for (const item of sale.items) {
+        await reverseSaleLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: sale.saleNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);
@@ -483,5 +525,53 @@ export async function updateShippingStatus(
   } catch (err) {
     console.error("[updateShippingStatus]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+// ─────────────────────────────────────────
+// fetchProductLots — for SaleForm auto-allocate
+// ─────────────────────────────────────────
+
+export async function fetchProductLots(
+  productId: string,
+  lotIssueMethod: string
+): Promise<LotAvailable[] | { error: string }> {
+  if (!productId) return { error: "ไม่ระบุสินค้า" };
+  try {
+    const balances = await db.lotBalance.findMany({
+      where: { productId, qtyOnHand: { gt: 0 } },
+      select: { lotNo: true, qtyOnHand: true },
+    });
+    const lots: LotAvailable[] = await Promise.all(
+      balances.map(async (b) => {
+        const master = await db.productLot.findUnique({
+          where: { productId_lotNo: { productId, lotNo: b.lotNo } },
+          select: { unitCost: true, expDate: true, mfgDate: true },
+        });
+        return {
+          lotNo:     b.lotNo,
+          qtyOnHand: Number(b.qtyOnHand),
+          unitCost:  Number(master?.unitCost ?? 0),
+          expDate:   master?.expDate ?? null,
+          mfgDate:   master?.mfgDate ?? null,
+        };
+      })
+    );
+    if (lotIssueMethod === "FEFO") {
+      lots.sort((a, b) => {
+        if (!a.expDate) return 1;
+        if (!b.expDate) return -1;
+        return a.expDate.getTime() - b.expDate.getTime();
+      });
+    } else {
+      lots.sort((a, b) => {
+        if (!a.mfgDate) return 1;
+        if (!b.mfgDate) return -1;
+        return a.mfgDate.getTime() - b.mfgDate.getTime();
+      });
+    }
+    return lots;
+  } catch {
+    return { error: "ไม่สามารถโหลดข้อมูล Lot ได้" };
   }
 }

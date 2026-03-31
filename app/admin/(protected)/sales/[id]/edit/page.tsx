@@ -34,7 +34,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       select: {
         id: true, code: true, name: true, description: true,
         salePrice: true, saleUnitName: true, warrantyDays: true,
-        preferredSupplierId: true,
+        preferredSupplierId: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
         category:          { select: { name: true } },
         brand:             { select: { name: true } },
         aliases:           { select: { alias: true } },
@@ -59,6 +59,9 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
     preferredSupplierId:   p.preferredSupplierId ?? null,
     preferredSupplierName: p.preferredSupplier?.name ?? null,
+    isLotControl:          p.isLotControl,
+    lotIssueMethod:        p.lotIssueMethod as string,
+    allowExpiredIssue:     p.allowExpiredIssue,
   }));
 
   const initialItems = sale.items.map((item) => {
@@ -71,6 +74,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       warrantyDays: item.warrantyDays ?? 0,
       supplierId:   item.supplierId ?? "",
       supplierName: item.supplierName ?? "",
+      lotItems:     [],
     };
   });
 

@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSale, updateSale } from "../actions";
-import { Plus, Trash2, CheckCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailable } from "@/lib/lot-control-client";
+import { fetchProductLots } from "../actions";
 
 interface ProductOption {
   id: string;
@@ -22,6 +24,9 @@ interface ProductOption {
   units: { name: string; scale: number; isBase: boolean }[];
   preferredSupplierId:   string | null;
   preferredSupplierName: string | null;
+  isLotControl:      boolean;
+  lotIssueMethod:    string;
+  allowExpiredIssue: boolean;
 }
 
 interface SupplierOption {
@@ -45,12 +50,13 @@ interface LineItem {
   warrantyDays: number;
   supplierId:   string;
   supplierName: string;
+  lotItems:     LotSubRow[];
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0, supplierId: "", supplierName: "" });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0, supplierId: "", supplierName: "", lotItems: [] });
 
 interface InitialData {
   id:              string;
@@ -69,7 +75,7 @@ interface InitialData {
   note:            string;
   vatType:         string;
   vatRate:         number;
-  items:           LineItem[];
+  items:           (LineItem & { lotItems: LotSubRow[] })[];
 }
 
 const SaleForm = ({
@@ -111,7 +117,7 @@ const SaleForm = ({
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateItem = (i: number, field: keyof LineItem, value: string | number) => {
+  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
@@ -123,6 +129,15 @@ const SaleForm = ({
           updated.warrantyDays  = prod?.warrantyDays ?? 0;
           updated.supplierId    = prod?.preferredSupplierId ?? "";
           updated.supplierName  = prod?.preferredSupplierName ?? "";
+          updated.lotItems      = prod?.isLotControl
+            ? [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }]
+            : [];
+        }
+        if (field === "qty" && item.productId) {
+          const prod = products.find((p) => p.id === item.productId);
+          if (prod?.isLotControl && updated.lotItems.length === 1) {
+            updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+          }
         }
         return updated;
       })
@@ -136,6 +151,44 @@ const SaleForm = ({
         idx !== i ? item : { ...item, supplierId, supplierName: supplier?.name ?? "" }
       )
     );
+  };
+
+  const addLotRow = (itemIdx: number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return { ...item, lotItems: [...item.lotItems, { lotNo: "", qty: 0, unitCost: 0, mfgDate: "", expDate: "" }] };
+    }));
+  };
+
+  const removeLotRow = (itemIdx: number, lotIdx: number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return { ...item, lotItems: item.lotItems.filter((_, li) => li !== lotIdx) };
+    }));
+  };
+
+  const updateLotRow = (itemIdx: number, lotIdx: number, field: keyof LotSubRow, value: string | number) => {
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== itemIdx) return item;
+      return {
+        ...item,
+        lotItems: item.lotItems.map((lot, li) =>
+          li === lotIdx ? { ...lot, [field]: value } : lot
+        ),
+      };
+    }));
+  };
+
+  const handleAutoAllocate = async (itemIdx: number) => {
+    const item = items[itemIdx];
+    const prod = products.find((p) => p.id === item.productId);
+    if (!prod?.isLotControl) return;
+    const unit = prod.units.find((u) => u.name === item.unitName);
+    const scale = unit?.scale ?? 1;
+    const available = await fetchProductLots(item.productId, prod.lotIssueMethod);
+    if ("error" in available) return;
+    const allocated = autoAllocateLots(available, item.qty, scale);
+    setItems((prev) => prev.map((it, idx) => idx !== itemIdx ? it : { ...it, lotItems: allocated }));
   };
 
   const getUnits = (productId: string) =>
@@ -171,6 +224,11 @@ const SaleForm = ({
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+      const prod = products.find((p) => p.id === item.productId);
+      if (prod?.isLotControl) {
+        const lotErr = validateLotRows(item.lotItems, item.qty, false);
+        if (lotErr) { setError(lotErr); return; }
+      }
     }
 
     if (fulfillmentType === "DELIVERY" && !shippingAddress.trim()) {
@@ -482,7 +540,12 @@ const SaleForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
+                const prod  = products.find((p) => p.id === item.productId);
+                const isLot = prod?.isLotControl ?? false;
+                const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
+                const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
+                  <>
                   <tr key={i} className="border-b border-gray-50">
                     <td className="py-2 px-2">
                       <ProductSearchSelect
@@ -490,6 +553,11 @@ const SaleForm = ({
                         value={item.productId}
                         onChange={(id) => updateItem(i, "productId", id)}
                       />
+                      {isLot && (
+                        <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          Lot Control
+                        </span>
+                      )}
                       {item.productId && (
                         <div className="mt-1">
                           <SearchableSelect
@@ -568,6 +636,82 @@ const SaleForm = ({
                       )}
                     </td>
                   </tr>
+                  {isLot && (
+                    <tr key={`lot-${i}`} className="bg-amber-50/60">
+                      <td colSpan={7} className="px-4 pb-3 pt-1">
+                        {/* Lot header with progress + auto-allocate */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-gray-500">Lot รวม</span>
+                          <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                            {totalLotQty}
+                          </span>
+                          <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
+                          {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
+                          <button
+                            type="button"
+                            onClick={() => handleAutoAllocate(i)}
+                            className="ml-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                          >
+                            <Zap size={11} /> Auto จัดสรร
+                          </button>
+                        </div>
+                        {/* Lot sub-table */}
+                        <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
+                          <thead>
+                            <tr className="bg-amber-100 text-amber-800">
+                              <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
+                              <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
+                              <th className="text-left py-1.5 px-2 font-medium w-32">วันหมดอายุ (EXP)</th>
+                              <th className="w-6" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {item.lotItems.map((lot, li) => (
+                              <tr key={li} className="border-t border-amber-100">
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={lot.lotNo}
+                                    onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
+                                    placeholder="เช่น LOT-001"
+                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="number"
+                                    value={lot.qty}
+                                    min={0.0001} step={0.0001}
+                                    onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  />
+                                </td>
+                                <td className="py-1 px-2 text-gray-500 text-xs">
+                                  {lot.expDate || "-"}
+                                </td>
+                                <td className="py-1 px-2">
+                                  {item.lotItems.length > 1 && (
+                                    <button type="button" onClick={() => removeLotRow(i, li)}
+                                      className="text-red-400 hover:text-red-600">
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <button
+                          type="button"
+                          onClick={() => addLotRow(i)}
+                          className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                        >
+                          <Plus size={11} /> เพิ่ม Lot
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 );
               })}
             </tbody>
