@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { requireAuth } from "@/lib/require-auth";
+import { requirePermission } from "@/lib/require-auth";
 import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -14,7 +14,7 @@ export async function uploadLogoImage(
   formData: FormData
 ): Promise<{ url?: string; error?: string }> {
   try {
-    await requireAuth();
+    await requirePermission("settings.company.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -69,10 +69,16 @@ const companySchema = z.object({
   shop_slogan: z.string().max(200),
   shop_address: z.string().max(500),
   shop_phone: z.string().max(20),
+  shop_phone_secondary: z.string().max(20),
   shop_email: z.string().max(100),
   shop_line_id: z.string().max(50),
   shop_line_url: urlOrEmpty,
   shop_logo_url: urlOrEmpty,
+  shop_google_map_url: urlOrEmpty,
+  shop_google_map_embed_url: urlOrEmpty,
+  shop_business_hours: z.string().max(200),
+  shop_holiday_note: z.string().max(300),
+  shop_contact_note: z.string().max(500),
   hero_title: z.string().max(100),
   hero_subtitle: z.string().max(300),
   shop_facebook_url: urlOrEmpty,
@@ -89,7 +95,7 @@ const companySchema = z.object({
 
 export async function updateCompanySettings(formData: FormData) {
   try {
-    await requireAuth();
+    await requirePermission("settings.company.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }

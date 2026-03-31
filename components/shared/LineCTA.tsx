@@ -3,13 +3,20 @@ import Image from "next/image";
 interface LineCTAProps {
   lineUrl?: string;
   lineId?: string;
+  shopPhone?: string;
+  shopName?: string;
 }
 
-const LineCTA = ({ lineUrl = "https://lin.ee/18P0SqG", lineId = "@435adwz" }: LineCTAProps) => {
+const LineCTA = ({
+  lineUrl = "https://lin.ee/18P0SqG",
+  lineId = "@435adwz",
+  shopPhone,
+  shopName = "ศรีวรรณ อะไหล่แอร์",
+}: LineCTAProps) => {
   const LINE_OA_URL = lineUrl;
   const LINE_ID = lineId;
   return (
-    <section id="contact" className="py-20 bg-[#1e3a5f] relative overflow-hidden">
+    <section className="py-20 bg-[#1e3a5f] relative overflow-hidden">
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-[#f97316] rounded-full opacity-10 blur-3xl translate-x-1/2 -translate-y-1/2" />
       <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#06C755] rounded-full opacity-10 blur-3xl -translate-x-1/2 translate-y-1/2" />
@@ -45,7 +52,9 @@ const LineCTA = ({ lineUrl = "https://lin.ee/18P0SqG", lineId = "@435adwz" }: Li
                 เพิ่มเพื่อนทาง LINE
               </a>
               <a
-                href="tel:0800000000"
+                href={shopPhone ? `tel:${shopPhone}` : LINE_OA_URL}
+                target={shopPhone ? undefined : "_blank"}
+                rel={shopPhone ? undefined : "noopener noreferrer"}
                 className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold px-8 py-4 rounded-full text-lg transition-all"
               >
                 โทรสอบถาม
