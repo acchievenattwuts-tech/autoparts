@@ -31,22 +31,20 @@ export default async function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#1e3a5f",
-          borderRadius: "14px",
           overflow: "hidden",
+          background: "transparent",
         }}
       >
         {logoUrl ? (
           <img
             src={logoUrl}
             alt={shopName}
-            width={48}
-            height={48}
+            width={64}
+            height={64}
             style={{
               objectFit: "contain",
-              background: "white",
-              borderRadius: "10px",
-              padding: "6px",
+              width: "100%",
+              height: "100%",
             }}
           />
         ) : (

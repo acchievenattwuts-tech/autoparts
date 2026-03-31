@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -131,10 +130,8 @@ const LoginPage = () => {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#1e3a5f] to-[#0f2240] p-4 font-sarabun">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[#1e3a5f]">
-            <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-white/95">
-              <Image src="/icon" alt="Shop logo" fill sizes="40px" className="object-contain p-1.5" />
-            </div>
+          <div className="mb-4 flex justify-center">
+            <img src="/icon" alt="Shop logo" className="h-16 w-auto object-contain" />
           </div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">ศรีวรรณ อะไหล่แอร์</h1>
           <p className="mt-1 text-sm text-gray-500">ระบบจัดการหลังบ้าน</p>
