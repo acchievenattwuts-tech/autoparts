@@ -51,10 +51,26 @@ export async function recalculateStockCard(
   let baPrice = 0;
   let baTotal = 0;
 
+  // Sources where stock comes IN but carries no independent cost — the entry
+  // is meant to be MAVG-neutral (priceIn was set to avgCost at write time).
+  // After any recalculation the stored snapshot may no longer match the running
+  // avgCost, so we override pIn with baPrice so the average stays stable.
+  //   RETURN_IN      — customer return (CN): stock back at current avgCost
+  //   CLAIM_RETURN_IN — defective item returned by customer
+  //   CLAIM_RECV_IN  — item received back from supplier after warranty claim
+  const NEUTRAL_IN_SOURCES: string[] = [
+    "RETURN_IN",
+    "CLAIM_RETURN_IN",
+    "CLAIM_RECV_IN",
+  ];
+
   for (const row of rows) {
     const qIn  = Number(row.qtyIn);
     const qOut = Number(row.qtyOut);
-    const pIn  = Number(row.priceIn);
+    // For neutral stock-in entries use the running avgCost, not the stored snapshot
+    const pIn  = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(row.source))
+      ? baPrice
+      : Number(row.priceIn);
     const lc   = Number(row.landedCost);
 
     let newBaQty   = baQty + qIn - qOut;

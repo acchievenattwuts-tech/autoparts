@@ -13,7 +13,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const { id } = await params;
 
-  const [sale, rawProducts, customers, config] = await Promise.all([
+  const [sale, rawProducts, customers, config, suppliers] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -34,14 +34,17 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       select: {
         id: true, code: true, name: true, description: true,
         salePrice: true, saleUnitName: true, warrantyDays: true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
+        preferredSupplierId: true,
+        category:          { select: { name: true } },
+        brand:             { select: { name: true } },
+        aliases:           { select: { alias: true } },
+        preferredSupplier: { select: { name: true } },
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
     db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true } }),
     getSiteConfig(),
+    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   if (!sale) notFound();
@@ -54,6 +57,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    preferredSupplierId:   p.preferredSupplierId ?? null,
+    preferredSupplierName: p.preferredSupplier?.name ?? null,
   }));
 
   const initialItems = sale.items.map((item) => {
@@ -61,9 +66,11 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     return {
       productId:    item.productId,
       unitName:     baseUnit?.name ?? "",
-      qty:          Number(item.quantity),   // stored in base units
-      salePrice:    Number(item.salePrice),  // stored per original display unit
+      qty:          Number(item.quantity),
+      salePrice:    Number(item.salePrice),
       warrantyDays: item.warrantyDays ?? 0,
+      supplierId:   item.supplierId ?? "",
+      supplierName: item.supplierName ?? "",
     };
   });
 
@@ -100,6 +107,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบขาย</h1>
       <SaleForm
         products={products}
+        suppliers={suppliers}
         customers={customers}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

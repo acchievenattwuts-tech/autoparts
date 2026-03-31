@@ -16,6 +16,8 @@ const saleItemSchema = z.object({
   qty:          z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   salePrice:    z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
   warrantyDays: z.coerce.number().int().min(0).default(0),
+  supplierId:   z.string().max(50).optional(),
+  supplierName: z.string().max(200).optional(),
 });
 
 const saleSchema = z.object({
@@ -163,24 +165,30 @@ export async function createSale(
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
             warrantyDays:  item.warrantyDays,
+            supplierId:    item.supplierId || null,
+            supplierName:  item.supplierName || null,
           },
         });
 
-        // Auto-create Warranty if warrantyDays > 0
+        // Auto-create Warranty rows — one per display-unit qty (N warranties for N pieces sold)
         if (item.warrantyDays > 0) {
-          const startDate = new Date(docDate);
-          const endDate   = new Date(startDate);
+          const startDate  = new Date(docDate);
+          const endDate    = new Date(startDate);
           endDate.setDate(endDate.getDate() + item.warrantyDays);
-          await tx.warranty.create({
-            data: {
-              saleId:       sale.id,
-              saleItemId:   saleItem.id,
-              productId:    item.productId,
-              warrantyDays: item.warrantyDays,
-              startDate,
-              endDate,
-            },
-          });
+          const unitCount  = Math.min(Math.ceil(item.qty), 999);
+          for (let seq = 1; seq <= unitCount; seq++) {
+            await tx.warranty.create({
+              data: {
+                saleId:       sale.id,
+                saleItemId:   saleItem.id,
+                productId:    item.productId,
+                warrantyDays: item.warrantyDays,
+                startDate,
+                endDate,
+                unitSeq:      seq,
+              },
+            });
+          }
         }
 
         // Write StockCard (outgoing)
@@ -398,16 +406,19 @@ export async function updateSale(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
         const saleItem = await tx.saleItem.create({
-          data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays },
+          data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
         });
 
         if (item.warrantyDays > 0) {
-          const startDate = new Date(docDate);
-          const endDate   = new Date(startDate);
+          const startDate  = new Date(docDate);
+          const endDate    = new Date(startDate);
           endDate.setDate(endDate.getDate() + item.warrantyDays);
-          await tx.warranty.create({
-            data: { saleId: id, saleItemId: saleItem.id, productId: item.productId, warrantyDays: item.warrantyDays, startDate, endDate },
-          });
+          const unitCount  = Math.min(Math.ceil(item.qty), 999);
+          for (let seq = 1; seq <= unitCount; seq++) {
+            await tx.warranty.create({
+              data: { saleId: id, saleItemId: saleItem.id, productId: item.productId, warrantyDays: item.warrantyDays, startDate, endDate, unitSeq: seq },
+            });
+          }
         }
 
         await writeStockCard(tx, {

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus } from "lucide-react";
 import Pagination from "@/components/shared/Pagination";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
@@ -35,15 +35,18 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
 
   const allWarranties = await db.warranty.findMany({
     where: dateWhere,
-    orderBy: [{ startDate: "desc" }],
+    orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
     select: {
       id: true,
       warrantyDays: true,
       startDate: true,
       endDate: true,
       note: true,
-      product: { select: { code: true, name: true } },
-      sale: { select: { saleNo: true, saleDate: true, customerName: true } },
+      unitSeq: true,
+      saleItemId: true,
+      product:  { select: { code: true, name: true } },
+      sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
+      _count:   { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
     },
   });
 
@@ -184,11 +187,13 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                   <th className="text-left py-3 px-4 font-medium text-gray-600 w-8">#</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">สินค้า</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ใบขาย / ลูกค้า</th>
+                  <th className="text-center py-3 px-4 font-medium text-gray-600">ลำดับ</th>
                   <th className="text-center py-3 px-4 font-medium text-gray-600">ระยะประกัน</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">วันเริ่มต้น</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">วันหมดประกัน</th>
                   <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">หมายเหตุ</th>
+                  <th className="w-10" />
                 </tr>
               </thead>
               <tbody>
@@ -205,6 +210,9 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                       <td className="py-2.5 px-4">
                         <p className="font-mono text-xs text-[#1e3a5f]">{w.sale.saleNo}</p>
                         <p className="text-xs text-gray-500">{w.sale.customerName ?? "—"}</p>
+                      </td>
+                      <td className="py-2.5 px-4 text-center text-gray-500 text-xs">
+                        #{w.unitSeq}
                       </td>
                       <td className="py-2.5 px-4 text-center text-gray-700 font-medium">
                         {w.warrantyDays} วัน
@@ -234,6 +242,20 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                       </td>
                       <td className="py-2.5 px-4 text-gray-500 text-xs max-w-32 truncate">
                         {w.note ?? "—"}
+                      </td>
+                      <td className="py-2.5 px-4">
+                        {w.wStatus !== "expired" && w._count.claims === 0 && (
+                          <Link
+                            href={`/admin/warranty-claims/new?warrantyId=${w.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#1e3a5f] border border-[#1e3a5f]/30 rounded-lg hover:bg-[#1e3a5f]/5 transition-colors whitespace-nowrap"
+                            title="เปิดใบเคลม"
+                          >
+                            <FilePlus size={12} /> เคลม
+                          </Link>
+                        )}
+                        {w._count.claims > 0 && (
+                          <span className="text-xs text-orange-500 font-medium">เคลมแล้ว {w._count.claims}</span>
+                        )}
                       </td>
                     </tr>
                   );

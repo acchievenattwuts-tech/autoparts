@@ -53,11 +53,28 @@ const DeliveryPage = async ({
     { label: "ส่งแล้ว",              value: "DELIVERED" },
   ];
 
+  const printAllUrl =
+    sales.length > 0
+      ? `/admin/delivery/print?ids=${sales.map((s) => s.id).join(",")}&print=1`
+      : null;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">คิวจัดส่ง</h1>
-        <span className="text-sm text-gray-500">{sales.length} รายการ</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">{sales.length} รายการ</span>
+          {printAllUrl && (
+            <a
+              href={printAllUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e3a5f] text-white rounded-lg hover:bg-[#162d4a] transition-colors"
+            >
+              Print ทั้งหมด ({sales.length})
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

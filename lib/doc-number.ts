@@ -166,6 +166,24 @@ export async function generateAdjNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate warranty claim number using WarrantyClaim table
+ * Format: WC{YYMM}{4-digit}
+ */
+export async function generateClaimNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `WC${yy}${mm}`;
+  const last = await db.warrantyClaim.findFirst({
+    where: { claimNo: { startsWith: pattern } },
+    orderBy: { claimNo: "desc" },
+    select: { claimNo: true },
+  });
+  const seq = last ? parseInt(last.claimNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Document prefix reference:
  * BF   — ยอดยกมา (Beginning Balance)
  * RR   — ซื้อสินค้าเข้า (Purchase Order)
@@ -176,4 +194,5 @@ export async function generateAdjNo(date?: Date): Promise<string> {
  * ADJ  — ปรับสต็อก (Adjustment)
  * REC  — ใบเสร็จรับเงิน (Receipt)
  * OE   — ค่าใช้จ่าย (Operating Expense)
+ * WC   — ใบเคลมสินค้า (Warranty Claim)
  */

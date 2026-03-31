@@ -20,6 +20,13 @@ interface ProductOption {
   brandName?: string | null;
   aliases?: string[];
   units: { name: string; scale: number; isBase: boolean }[];
+  preferredSupplierId:   string | null;
+  preferredSupplierName: string | null;
+}
+
+interface SupplierOption {
+  id:   string;
+  name: string;
 }
 
 interface CustomerOption {
@@ -36,12 +43,14 @@ interface LineItem {
   qty:          number;
   salePrice:    number;
   warrantyDays: number;
+  supplierId:   string;
+  supplierName: string;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0 });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0, supplierId: "", supplierName: "" });
 
 interface InitialData {
   id:              string;
@@ -65,16 +74,18 @@ interface InitialData {
 
 const SaleForm = ({
   products,
+  suppliers,
   customers,
   defaultVatType,
   defaultVatRate,
   initialData,
 }: {
-  products: ProductOption[];
-  customers: CustomerOption[];
+  products:       ProductOption[];
+  suppliers:      SupplierOption[];
+  customers:      CustomerOption[];
   defaultVatType: string;
   defaultVatRate: number;
-  initialData?: InitialData;
+  initialData?:   InitialData;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -107,12 +118,23 @@ const SaleForm = ({
         const updated = { ...item, [field]: value };
         if (field === "productId") {
           const prod = products.find((p) => p.id === String(value));
-          updated.unitName     = prod?.saleUnitName ?? "";
-          updated.salePrice    = prod?.salePrice ?? 0;
-          updated.warrantyDays = prod?.warrantyDays ?? 0;
+          updated.unitName      = prod?.saleUnitName ?? "";
+          updated.salePrice     = prod?.salePrice ?? 0;
+          updated.warrantyDays  = prod?.warrantyDays ?? 0;
+          updated.supplierId    = prod?.preferredSupplierId ?? "";
+          updated.supplierName  = prod?.preferredSupplierName ?? "";
         }
         return updated;
       })
+    );
+  };
+
+  const updateItemSupplier = (i: number, supplierId: string) => {
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== i ? item : { ...item, supplierId, supplierName: supplier?.name ?? "" }
+      )
     );
   };
 
@@ -468,6 +490,19 @@ const SaleForm = ({
                         value={item.productId}
                         onChange={(id) => updateItem(i, "productId", id)}
                       />
+                      {item.productId && (
+                        <div className="mt-1">
+                          <SearchableSelect
+                            options={[
+                              { id: "", label: "-- ไม่ระบุซัพพลายเออร์ --" },
+                              ...suppliers.map((s): SelectOption => ({ id: s.id, label: s.name })),
+                            ]}
+                            value={item.supplierId}
+                            onChange={(id) => updateItemSupplier(i, id)}
+                            placeholder="ซัพพลายเออร์"
+                          />
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 px-2">
                       <select

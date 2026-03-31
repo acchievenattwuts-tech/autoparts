@@ -9,7 +9,7 @@ import ProductForm from "@/components/shared/ProductForm";
 const NewProductPage = async () => {
   await requirePermission("products.create");
 
-  const [categories, carBrands, partsBrands] = await Promise.all([
+  const [categories, carBrands, partsBrands, suppliers] = await Promise.all([
     db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({
       where: { isActive: true },
@@ -19,6 +19,11 @@ const NewProductPage = async () => {
       },
     }),
     db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    db.supplier.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true },
+    }),
   ]);
 
   return (
@@ -38,7 +43,7 @@ const NewProductPage = async () => {
 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">เพิ่มสินค้าใหม่</h1>
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} />
     </div>
   );
 };

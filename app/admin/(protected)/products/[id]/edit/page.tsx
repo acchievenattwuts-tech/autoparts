@@ -16,7 +16,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
 
   const { id } = await params;
 
-  const [product, categories, carBrands, partsBrands] = await Promise.all([
+  const [product, categories, carBrands, partsBrands, suppliers] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -34,6 +34,11 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
       },
     }),
     db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    db.supplier.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true },
+    }),
   ]);
 
   if (!product) {
@@ -55,8 +60,9 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
     reportUnitName:   product.reportUnitName,
     imageUrl:         product.imageUrl,
     categoryId:       product.categoryId,
-    brandId:          product.brandId,
-    aliases:          product.aliases.map((a) => ({ alias: a.alias })),
+    brandId:              product.brandId,
+    preferredSupplierId:  product.preferredSupplierId,
+    aliases:              product.aliases.map((a) => ({ alias: a.alias })),
     carModels:        product.carModels.map((cm) => ({ carModelId: cm.carModelId })),
     units:            product.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   };
@@ -83,7 +89,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         </div>
       </div>
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} product={productData} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} product={productData} />
     </div>
   );
 };

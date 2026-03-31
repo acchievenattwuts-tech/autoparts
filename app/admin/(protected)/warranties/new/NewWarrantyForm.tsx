@@ -28,7 +28,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
     id: string;
     product: { code: string; name: string };
     quantity: number;
-    warranty: { id: string } | null;
+    warranties: { id: string }[];
   }[] | null>(null);
   const [loadingItems, setLoadingItems] = useState(false);
 
@@ -54,7 +54,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
     });
   };
 
-  const availableItems = saleItems?.filter((i) => !i.warranty) ?? [];
+  const availableItems = saleItems?.filter((i) => i.warranties.length === 0) ?? [];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -115,7 +115,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
                   placeholder="โปรดระบุสินค้า"
                 />
                 <input type="hidden" name="saleItemId" value={selectedSaleItemId} />
-                {saleItems.some((i) => i.warranty) && (
+                {saleItems.some((i) => i.warranties.length > 0) && (
                   <p className="text-xs text-gray-400 mt-1">
                     * แสดงเฉพาะรายการที่ยังไม่มีการบันทึกประกัน
                   </p>

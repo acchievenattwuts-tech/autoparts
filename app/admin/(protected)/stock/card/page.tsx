@@ -12,23 +12,31 @@ interface StockCardPageProps {
 }
 
 const sourceLabel: Record<string, string> = {
-  BF:         "ยอดยกมา",
-  PURCHASE:   "ซื้อเข้า",
-  SALE:       "ขายออก",
-  RETURN_IN:  "รับคืน",
-  RETURN_OUT: "คืนซัพพลายเออร์",
-  ADJUST_IN:  "ปรับเพิ่ม",
-  ADJUST_OUT: "ปรับลด",
+  BF:               "ยอดยกมา",
+  PURCHASE:         "ซื้อเข้า",
+  SALE:             "ขายออก",
+  RETURN_IN:        "รับคืน",
+  RETURN_OUT:       "คืนซัพพลายเออร์",
+  ADJUST_IN:        "ปรับเพิ่ม",
+  ADJUST_OUT:       "ปรับลด",
+  CLAIM_RETURN_IN:  "รับคืนเคลม",
+  CLAIM_REPLACE_OUT:"ส่งทดแทนเคลม",
+  CLAIM_SEND_OUT:   "ส่งเคลมซัพพลายเออร์",
+  CLAIM_RECV_IN:    "รับคืนจากซัพพลายเออร์",
 };
 
 const sourceBadge: Record<string, string> = {
-  BF:         "bg-blue-100 text-blue-700",
-  PURCHASE:   "bg-green-100 text-green-700",
-  SALE:       "bg-orange-100 text-orange-700",
-  RETURN_IN:  "bg-teal-100 text-teal-700",
-  RETURN_OUT: "bg-yellow-100 text-yellow-700",
-  ADJUST_IN:  "bg-purple-100 text-purple-700",
-  ADJUST_OUT: "bg-red-100 text-red-700",
+  BF:               "bg-blue-100 text-blue-700",
+  PURCHASE:         "bg-green-100 text-green-700",
+  SALE:             "bg-orange-100 text-orange-700",
+  RETURN_IN:        "bg-teal-100 text-teal-700",
+  RETURN_OUT:       "bg-yellow-100 text-yellow-700",
+  ADJUST_IN:        "bg-purple-100 text-purple-700",
+  ADJUST_OUT:       "bg-red-100 text-red-700",
+  CLAIM_RETURN_IN:  "bg-rose-100 text-rose-700",
+  CLAIM_REPLACE_OUT:"bg-rose-100 text-rose-700",
+  CLAIM_SEND_OUT:   "bg-pink-100 text-pink-700",
+  CLAIM_RECV_IN:    "bg-pink-100 text-pink-700",
 };
 
 const fmt = (n: number, digits = 4) =>

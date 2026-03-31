@@ -71,6 +71,10 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "warranties.update", group: "ระบบงาน", label: "แก้ไขประกัน" },
   { key: "warranties.manage", group: "ระบบงาน", label: "จัดการประกัน" },
 
+  { key: "warranty_claims.view", group: "ระบบงาน", label: "ดูใบเคลมสินค้า" },
+  { key: "warranty_claims.create", group: "ระบบงาน", label: "เปิดใบเคลมสินค้า" },
+  { key: "warranty_claims.update", group: "ระบบงาน", label: "อัปเดตสถานะเคลม" },
+
   { key: "expenses.view", group: "ระบบงาน", label: "ดูค่าใช้จ่าย" },
   { key: "expenses.create", group: "ระบบงาน", label: "เพิ่มค่าใช้จ่าย" },
   { key: "expenses.update", group: "ระบบงาน", label: "แก้ไขค่าใช้จ่าย" },
@@ -124,6 +128,9 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "receipts.create",
   "receipts.update",
   "warranties.view",
+  "warranty_claims.view",
+  "warranty_claims.create",
+  "warranty_claims.update",
   "expenses.view",
   "expenses.create",
   "expenses.update",
@@ -145,6 +152,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "credit_notes.view",
   "receipts.view",
   "warranties.view",
+  "warranty_claims.view",
   "expenses.view",
   "reports.view",
   "delivery.view",
@@ -190,6 +198,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
   { prefix: "/admin/warranties", permission: "warranties.view" },
+  { prefix: "/admin/warranty-claims", permission: "warranty_claims.view" },
   { prefix: "/admin/expenses", permission: "expenses.view" },
   { prefix: "/admin/reports", permission: "reports.view" },
   { prefix: "/admin/settings/company", permission: "settings.company.view" },
@@ -197,11 +206,13 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
 ];
 
 export async function ensureAccessControlSetup(): Promise<void> {
-  // Fast path: if all permissions already exist, skip everything (1 query)
-  const existingCount = await db.permission.count();
+  // Fast path: check if all catalog keys exist in DB (handles additions gracefully)
+  const existingCount = await db.permission.count({
+    where: { key: { in: ALL_PERMISSION_KEYS } },
+  });
   if (existingCount >= PERMISSION_CATALOG.length) return;
 
-  // Bulk-insert missing permissions (1 query instead of 89 upserts)
+  // Bulk-insert missing permissions (skipDuplicates handles concurrent calls)
   await db.permission.createMany({
     data: PERMISSION_CATALOG.map((p) => ({
       key:         p.key,
@@ -332,6 +343,7 @@ export function getRoutePermission(pathname: string): PermissionKey | null {
   if (pathname === "/admin/expenses/new") return "expenses.create";
   if (/^\/admin\/expenses\/[^/]+\/edit$/.test(pathname)) return "expenses.update";
   if (pathname === "/admin/warranties/new") return "warranties.create";
+  if (pathname === "/admin/warranty-claims/new") return "warranty_claims.create";
   if (pathname === "/admin/users/new") return "admin.users.create";
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return "admin.users.update";
   if (pathname === "/admin/roles/new") return "admin.roles.manage";

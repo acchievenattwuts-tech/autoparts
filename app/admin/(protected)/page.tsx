@@ -23,7 +23,8 @@ const AdminDashboard = async () => {
     expiringWarranties,
     salesMonthAgg,
     purchasesMonthAgg,
-    totalAR,
+    arNormal,
+    arCOD,
     expensesMonthAgg,
   ] = await Promise.all([
     db.product.count({ where: { isActive: true } }),
@@ -48,7 +49,16 @@ const AdminDashboard = async () => {
     }),
     db.sale.aggregate({
       _sum: { amountRemain: true },
-      where: { status: "ACTIVE", paymentType: "CREDIT_SALE" },
+      where: { status: "ACTIVE", paymentType: "CREDIT_SALE", fulfillmentType: "PICKUP" },
+    }),
+    db.sale.aggregate({
+      _sum: { amountRemain: true },
+      where: {
+        status: "ACTIVE",
+        paymentType: "CREDIT_SALE",
+        fulfillmentType: "DELIVERY",
+        shippingStatus: { not: "DELIVERED" },
+      },
     }),
     db.expense.aggregate({
       _sum: { netAmount: true },
@@ -97,10 +107,17 @@ const AdminDashboard = async () => {
     },
     {
       label: "ลูกหนี้ค้างชำระ",
-      value: `฿${fmt(totalAR._sum.amountRemain)}`,
+      value: `฿${fmt(arNormal._sum.amountRemain)}`,
       unit: `ณ ${todayLabel}`,
       icon: Users,
       color: "bg-yellow-50 text-yellow-600",
+    },
+    {
+      label: "COD รอรับเงิน",
+      value: `฿${fmt(arCOD._sum.amountRemain)}`,
+      unit: `ณ ${todayLabel}`,
+      icon: Receipt,
+      color: "bg-orange-50 text-orange-600",
     },
     {
       label: "ค่าใช้จ่ายเดือนนี้",

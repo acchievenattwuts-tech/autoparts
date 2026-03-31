@@ -13,6 +13,7 @@ interface CarModelOption { id: string; name: string }
 interface CarBrandOption { id: string; name: string; carModels: CarModelOption[] }
 interface CategoryOption { id: string; name: string }
 interface PartsBrandOption { id: string; name: string }
+interface SupplierOption { id: string; name: string }
 
 interface UnitRow {
   name: string;
@@ -34,9 +35,10 @@ export interface ProductFormData {
   saleUnitName:    string | null;
   purchaseUnitName: string | null;
   reportUnitName:  string | null;
-  imageUrl:        string | null;
-  categoryId:      string;
-  brandId:         string | null;
+  imageUrl:             string | null;
+  categoryId:           string;
+  brandId:              string | null;
+  preferredSupplierId:  string | null;
   aliases:         { alias: string }[];
   carModels:       { carModelId: string }[];
   units:           UnitRow[];
@@ -46,6 +48,7 @@ interface ProductFormProps {
   categories:  CategoryOption[];
   carBrands:   CarBrandOption[];
   partsBrands: PartsBrandOption[];
+  suppliers:   SupplierOption[];
   product?:    ProductFormData;
 }
 
@@ -57,7 +60,7 @@ const sectionCls = "bg-white rounded-xl shadow-sm border border-gray-100 p-6";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFormProps) => {
+const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }: ProductFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -94,8 +97,9 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
   const [units, setUnits] = useState<UnitRow[]>(initUnits);
   const baseUnit = units.find((u) => u.isBase) ?? units[0];
 
-  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
-  const [brandId, setBrandId]       = useState(product?.brandId ?? "");
+  const [categoryId, setCategoryId]               = useState(product?.categoryId ?? "");
+  const [brandId, setBrandId]                     = useState(product?.brandId ?? "");
+  const [preferredSupplierId, setPreferredSupplierId] = useState(product?.preferredSupplierId ?? "");
 
   const [saleUnitName, setSaleUnitName] = useState(
     product?.saleUnitName ?? baseUnit.name
@@ -210,6 +214,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
     const formData = new FormData(formEl);
     formData.set("categoryId", categoryId);
     formData.set("brandId", brandId);
+    formData.set("preferredSupplierId", preferredSupplierId);
     formData.set("imageUrl", imageUrl);
     formData.set("aliases", JSON.stringify(aliases));
     formData.set("carModelIds", JSON.stringify(Array.from(selectedCarModelIds)));
@@ -271,6 +276,18 @@ const ProductForm = ({ categories, carBrands, partsBrands, product }: ProductFor
               value={brandId}
               onChange={setBrandId}
               placeholder="-- ไม่ระบุแบรนด์ --"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>ผู้จำหน่ายหลัก (สำหรับเคลม)</label>
+            <SearchableSelect
+              options={[
+                { id: "", label: "-- ไม่ระบุ --" },
+                ...suppliers.map((s): SelectOption => ({ id: s.id, label: s.name })),
+              ]}
+              value={preferredSupplierId}
+              onChange={setPreferredSupplierId}
+              placeholder="-- ไม่ระบุผู้จำหน่าย --"
             />
           </div>
           <div>

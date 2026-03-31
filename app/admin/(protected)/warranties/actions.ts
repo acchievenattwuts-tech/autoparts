@@ -29,8 +29,8 @@ export async function createWarranty(
   const d = parsed.data;
 
   try {
-    // Check no duplicate warranty on same saleItemId
-    const existing = await db.warranty.findUnique({ where: { saleItemId: d.saleItemId } });
+    // Check no duplicate warranty on same saleItemId (unitSeq defaults to 1 for legacy single-unit creation)
+    const existing = await db.warranty.findFirst({ where: { saleItemId: d.saleItemId, unitSeq: 1 } });
     if (existing) return { error: "รายการสินค้านี้มีการบันทึกประกันไปแล้ว" };
 
     const saleItem = await db.saleItem.findUnique({
@@ -79,7 +79,7 @@ export async function getSaleItems(saleId: string) {
           id: true,
           product: { select: { code: true, name: true } },
           quantity: true,
-          warranty: { select: { id: true } },
+          warranties: { select: { id: true } },
         },
       },
     },

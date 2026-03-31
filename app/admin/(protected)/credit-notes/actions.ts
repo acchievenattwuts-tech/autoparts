@@ -173,6 +173,19 @@ export async function cancelCreditNote(
   if (!cn)                        return { error: "ไม่พบเอกสาร" };
   if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
+  // ตรวจสอบ receipt ที่อ้างถึง CN นี้ (เฉพาะ CREDIT_DEBT)
+  if (cn.settlementType === "CREDIT_DEBT") {
+    const activeReceipt = await db.receiptItem.findFirst({
+      where: { cnId, receipt: { status: "ACTIVE" } },
+      select: { receipt: { select: { receiptNo: true } } },
+    });
+    if (activeReceipt) {
+      return {
+        error: `ไม่สามารถยกเลิกได้ — มีใบเสร็จรับเงิน ${activeReceipt.receipt.receiptNo} อ้างอิงอยู่ กรุณายกเลิกใบเสร็จก่อน`,
+      };
+    }
+  }
+
   const affectedProductIds = [
     ...new Set(cn.items.map((i) => i.productId).filter((id): id is string => id !== null)),
   ];
@@ -221,6 +234,19 @@ export async function updateCreditNote(
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  // ถ้ามี Receipt อ้างถึง CN นี้อยู่ → ไม่อนุญาตให้แก้ไข
+  if (existing.settlementType === "CREDIT_DEBT") {
+    const activeReceipt = await db.receiptItem.findFirst({
+      where: { cnId: id, receipt: { status: "ACTIVE" } },
+      select: { receipt: { select: { receiptNo: true } } },
+    });
+    if (activeReceipt) {
+      return {
+        error: `ไม่สามารถแก้ไขได้ — มีใบเสร็จรับเงิน ${activeReceipt.receipt.receiptNo} อ้างอิงอยู่ กรุณายกเลิกใบเสร็จก่อน`,
+      };
+    }
+  }
 
   let items: z.infer<typeof cnItemSchema>[] = [];
   try {

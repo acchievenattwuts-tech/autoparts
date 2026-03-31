@@ -126,9 +126,11 @@ model Supplier {
   address      String?
   isActive     Boolean        @default(true)
   createdAt    DateTime       @default(now())
-  purchases       Purchase[]
-  purchaseItems   PurchaseItem[]
-  purchaseReturns PurchaseReturn[]
+  purchases         Purchase[]
+  purchaseItems     PurchaseItem[]
+  purchaseReturns   PurchaseReturn[]
+  preferredProducts Product[]       @relation("ProductPreferredSupplier")
+  warrantyClaims    WarrantyClaim[]
 }
 
 // ─────────────────────────────────────────
@@ -168,6 +170,8 @@ model Product {
   reportUnitName   String   @default("ชิ้น")
   warrantyDays     Int      @default(0)   // จำนวนวันประกันเริ่มต้น (0 = ไม่มีประกัน)
   imageUrl         String?
+  preferredSupplierId  String?
+  preferredSupplier    Supplier? @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -253,13 +257,17 @@ model StockCard {
 }
 
 enum StockCardSource {
-  BF         // ยอดยกมา (Beginning Forward)
-  PURCHASE   // ซื้อเข้า
-  SALE       // ขายออก
-  RETURN_IN  // รับคืนจากลูกค้า (CreditNote type=RETURN)
-  RETURN_OUT // คืนสินค้าให้ซัพพลายเออร์ (PurchaseReturn)
-  ADJUST_IN  // ปรับเพิ่ม (Adjustment)
-  ADJUST_OUT // ปรับลด (Adjustment)
+  BF               // ยอดยกมา (Beginning Forward)
+  PURCHASE         // ซื้อเข้า
+  SALE             // ขายออก
+  RETURN_IN        // รับคืนจากลูกค้า (CreditNote type=RETURN)
+  RETURN_OUT       // คืนสินค้าให้ซัพพลายเออร์ (PurchaseReturn)
+  ADJUST_IN        // ปรับเพิ่ม (Adjustment)
+  ADJUST_OUT       // ปรับลด (Adjustment)
+  CLAIM_RETURN_IN  // ลูกค้าเอาของเสียกลับมาที่ร้าน (WarrantyClaim)
+  CLAIM_SEND_OUT   // ส่งของเสียไปให้ supplier (WarrantyClaim)
+  CLAIM_RECV_IN    // รับสินค้ากลับจาก supplier (WarrantyClaim)
+  CLAIM_REPLACE_OUT // ส่งสินค้าออกให้ลูกค้า (WarrantyClaim)
 }
 
 enum DocStatus {
@@ -441,7 +449,9 @@ model SaleItem {
   totalAmount Decimal  @db.Decimal(10, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   warrantyDays   Int     @default(0)   // จำนวนวันประกันที่บันทึกตอนขาย (0 = ไม่มีประกัน)
-  warranty    Warranty?
+  supplierId     String?
+  supplierName   String?              // snapshot ณ วันขาย
+  warranties     Warranty[]
 }
 
 enum PaymentMethod {
@@ -458,15 +468,68 @@ model Warranty {
   id            String    @id @default(cuid())
   saleId        String
   sale          Sale      @relation(fields: [saleId], references: [id])
-  saleItemId    String    @unique
+  saleItemId    String
   saleItem      SaleItem  @relation(fields: [saleItemId], references: [id])
   productId     String
   product       Product   @relation(fields: [productId], references: [id])
+  unitSeq       Int       @default(1)  // ลำดับที่ของหน่วยใน SaleItem (qty=3 → unitSeq 1,2,3)
   warrantyDays  Int
   startDate     DateTime
   endDate       DateTime
   note          String?
   createdAt     DateTime  @default(now())
+  claims        WarrantyClaim[]
+  @@unique([saleItemId, unitSeq])
+  @@index([productId])
+  @@index([endDate])
+}
+
+// ─────────────────────────────────────────
+// WarrantyClaim (ใบเคลมสินค้า)
+// ─────────────────────────────────────────
+
+model WarrantyClaim {
+  id              String              @id @default(cuid())
+  claimNo         String              @unique  // WC{YYMM}{4-digit}
+  warrantyId      String
+  warranty        Warranty            @relation(fields: [warrantyId], references: [id])
+  claimDate       DateTime
+  claimType       ClaimType           // REPLACE_NOW | CUSTOMER_WAIT
+  status          WarrantyClaimStatus @default(DRAFT)
+  outcome         ClaimOutcome?       // set เมื่อ CLOSED
+  symptom         String?             // อาการที่ลูกค้าแจ้ง
+  note            String?
+  // Supplier snapshot ณ วันส่งเคลม
+  supplierId      String?
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id])
+  supplierName    String?
+  supplierPhone   String?
+  supplierAddress String?
+  sentAt          DateTime?           // วันที่ส่ง supplier
+  resolvedAt      DateTime?           // วันที่ปิดเคลม
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([warrantyId])
+  @@index([claimDate])
+  @@index([status])
+}
+
+enum WarrantyClaimStatus {
+  DRAFT            // รับของเสียจากลูกค้า + ให้ของใหม่แล้ว (REPLACE_NOW) หรือรอ (CUSTOMER_WAIT)
+  SENT_TO_SUPPLIER // ส่งของเสียไป supplier แล้ว
+  CLOSED           // ปิดเคลม
+  CANCELLED        // ยกเลิก
+}
+
+enum ClaimType {
+  REPLACE_NOW   // เปลี่ยนของใหม่ให้ลูกค้าทันที (วันที่มาเคลม)
+  CUSTOMER_WAIT // ลูกค้ารอ — ส่งให้เมื่อได้รับจาก supplier
+}
+
+enum ClaimOutcome {
+  RECEIVED      // supplier ส่งของกลับมาแล้ว
+  NO_RESOLUTION // supplier ปฏิเสธเคลม — ของเสียยังอยู่ที่ร้าน
 }
 
 // ─────────────────────────────────────────

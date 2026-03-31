@@ -24,6 +24,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/credit-notes": "Credit Note (CN)",
   "/admin/receipts": "ใบเสร็จรับเงิน",
   "/admin/warranties": "ประกันสินค้า",
+  "/admin/warranty-claims": "ใบเคลมสินค้า",
   "/admin/expenses": "ค่าใช้จ่าย",
   "/admin/reports": "รายงาน",
   "/admin/settings/company": "ตั้งค่าร้านค้า",
