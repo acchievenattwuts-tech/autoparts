@@ -8,12 +8,22 @@ export interface LotSubRow {
   expDate:    string;  // ISO date string หรือ ""
 }
 
+// Used server-side (Date objects)
 export interface LotAvailable {
   lotNo:     string;
   qtyOnHand: number;
   unitCost:  number;
   expDate:   Date | null;
   mfgDate:   Date | null;
+}
+
+// Used client-side (JSON-serializable — Date becomes string via server action)
+export interface LotAvailableJSON {
+  lotNo:     string;
+  qtyOnHand: number;
+  unitCost:  number;
+  expDate:   string | null;
+  mfgDate:   string | null;
 }
 
 /**
@@ -49,10 +59,10 @@ export function validateLotRows(
 
 /**
  * Auto-allocate Lot ตาม FIFO/FEFO
- * คืน LotSubRow[] พร้อม qty ที่จัดสรรแล้ว (ใน selected unit)
+ * รับ LotAvailableJSON (string dates จาก server action) คืน LotSubRow[]
  */
 export function autoAllocateLots(
-  available: LotAvailable[],
+  available: LotAvailableJSON[],
   qtyNeeded: number,
   scale: number  // base unit scale ของ selected unit
 ): LotSubRow[] {
@@ -67,8 +77,8 @@ export function autoAllocateLots(
       lotNo:    lot.lotNo,
       qty:      Math.round(allocated * 10000) / 10000,
       unitCost: lot.unitCost * scale,
-      mfgDate:  lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
-      expDate:  lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+      mfgDate:  lot.mfgDate ? lot.mfgDate.slice(0, 10) : "",
+      expDate:  lot.expDate ? lot.expDate.slice(0, 10) : "",
     });
     remaining -= allocated;
   }

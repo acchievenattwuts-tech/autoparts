@@ -7,7 +7,7 @@ import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
-import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailable } from "@/lib/lot-control-client";
+import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
 
 interface ProductOption {
@@ -112,6 +112,15 @@ const SaleForm = ({
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>({});
+  const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
+
+  const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
+    setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
+    const result = await fetchProductLots(productId, lotIssueMethod);
+    if (!("error" in result)) setAvailableLots((prev) => ({ ...prev, [itemIdx]: result }));
+    setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
+  };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
@@ -132,6 +141,9 @@ const SaleForm = ({
           updated.lotItems      = prod?.isLotControl
             ? [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }]
             : [];
+          // Clear cached lots when product changes
+          setAvailableLots((prev) => { const n = { ...prev }; delete n[i]; return n; });
+          if (prod?.isLotControl) loadLots(i, prod.id, prod.lotIssueMethod);
         }
         if (field === "qty" && item.productId) {
           const prod = products.find((p) => p.id === item.productId);
@@ -142,6 +154,32 @@ const SaleForm = ({
         return updated;
       })
     );
+  };
+
+  const handleLotSelect = (itemIdx: number, lotIdx: number, lotNo: string) => {
+    const item = items[itemIdx];
+    const prod = products.find((p) => p.id === item.productId);
+    const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+    const av = (availableLots[itemIdx] ?? []).find((l) => l.lotNo === lotNo);
+    // qty already used by other lot rows
+    const usedQty = item.lotItems.reduce((s, l, li) => li !== lotIdx ? s + l.qty : s, 0);
+    const remaining = Math.max(0, item.qty - usedQty);
+    const availInUnit = av ? Math.round((av.qtyOnHand / scale) * 10000) / 10000 : 0;
+    setItems((prev) => prev.map((it, idx) => {
+      if (idx !== itemIdx) return it;
+      return {
+        ...it,
+        lotItems: it.lotItems.map((l, li) =>
+          li !== lotIdx ? l : {
+            lotNo:    lotNo,
+            qty:      av ? Math.min(availInUnit, remaining) : 0,
+            unitCost: av ? av.unitCost * scale : 0,
+            mfgDate:  av?.mfgDate ?? "",
+            expDate:  av?.expDate ?? "",
+          }
+        ),
+      };
+    }));
   };
 
   const updateItemSupplier = (i: number, supplierId: string) => {
@@ -183,10 +221,14 @@ const SaleForm = ({
     const item = items[itemIdx];
     const prod = products.find((p) => p.id === item.productId);
     if (!prod?.isLotControl) return;
-    const unit = prod.units.find((u) => u.name === item.unitName);
-    const scale = unit?.scale ?? 1;
-    const available = await fetchProductLots(item.productId, prod.lotIssueMethod);
-    if ("error" in available) return;
+    const scale = prod.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+    let available = availableLots[itemIdx];
+    if (!available) {
+      const result = await fetchProductLots(item.productId, prod.lotIssueMethod);
+      if ("error" in result) return;
+      available = result;
+      setAvailableLots((prev) => ({ ...prev, [itemIdx]: available }));
+    }
     const allocated = autoAllocateLots(available, item.qty, scale);
     setItems((prev) => prev.map((it, idx) => idx !== itemIdx ? it : { ...it, lotItems: allocated }));
   };
@@ -553,11 +595,6 @@ const SaleForm = ({
                         value={item.productId}
                         onChange={(id) => updateItem(i, "productId", id)}
                       />
-                      {isLot && (
-                        <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                          Lot Control
-                        </span>
-                      )}
                       {item.productId && (
                         <div className="mt-1">
                           <SearchableSelect
@@ -639,68 +676,88 @@ const SaleForm = ({
                   {isLot && (
                     <tr key={`lot-${i}`} className="bg-amber-50/60">
                       <td colSpan={7} className="px-4 pb-3 pt-1">
-                        {/* Lot header with progress + auto-allocate */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs text-gray-500">Lot รวม</span>
+                        {/* Lot header */}
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                            Lot Control
+                          </span>
+                          <span className="text-xs text-gray-500">จัดสรรรวม</span>
                           <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
                             {totalLotQty}
                           </span>
                           <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                          {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
+                          {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ยังไม่ครบ</span>}
                           <button
                             type="button"
                             onClick={() => handleAutoAllocate(i)}
-                            className="ml-2 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                            className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
                           >
                             <Zap size={11} /> Auto จัดสรร
                           </button>
+                          {lotsLoading[i] && <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>}
                         </div>
-                        {/* Lot sub-table */}
-                        <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
-                          <thead>
-                            <tr className="bg-amber-100 text-amber-800">
-                              <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
-                              <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
-                              <th className="text-left py-1.5 px-2 font-medium w-32">วันหมดอายุ (EXP)</th>
-                              <th className="w-6" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {item.lotItems.map((lot, li) => (
-                              <tr key={li} className="border-t border-amber-100">
-                                <td className="py-1 px-2">
-                                  <input
-                                    type="text"
+                        {/* Lot rows */}
+                        <div className="space-y-1.5">
+                          {item.lotItems.map((lot, li) => {
+                            const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+                            const selectedLotNos = item.lotItems.filter((_, lj) => lj !== li).map((l) => l.lotNo);
+                            const lotOptions = (availableLots[i] ?? []).filter(
+                              (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
+                            );
+                            return (
+                              <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
+                                {/* Lot dropdown */}
+                                <div className="flex-1 min-w-0">
+                                  <select
                                     value={lot.lotNo}
-                                    onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
-                                    placeholder="เช่น LOT-001"
-                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                  />
-                                </td>
-                                <td className="py-1 px-2">
+                                    onChange={(e) => handleLotSelect(i, li, e.target.value)}
+                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  >
+                                    <option value="">-- เลือก Lot --</option>
+                                    {lotOptions.length === 0 && lot.lotNo === "" && (
+                                      <option disabled value="">ไม่มี Lot คงเหลือ</option>
+                                    )}
+                                    {lotOptions.map((av) => {
+                                      const qtyInUnit = Math.round((av.qtyOnHand / scale) * 10000) / 10000;
+                                      const expStr = av.expDate
+                                        ? new Date(av.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })
+                                        : "ไม่มี EXP";
+                                      return (
+                                        <option key={av.lotNo} value={av.lotNo}>
+                                          {av.lotNo} | EXP {expStr} | คงเหลือ {qtyInUnit} {item.unitName}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </div>
+                                {/* Qty */}
+                                <div className="w-24 shrink-0">
                                   <input
                                     type="number"
                                     value={lot.qty}
                                     min={0.0001} step={0.0001}
                                     onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
-                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
+                                    placeholder="จำนวน"
                                   />
-                                </td>
-                                <td className="py-1 px-2 text-gray-500 text-xs">
-                                  {lot.expDate || "-"}
-                                </td>
-                                <td className="py-1 px-2">
-                                  {item.lotItems.length > 1 && (
-                                    <button type="button" onClick={() => removeLotRow(i, li)}
-                                      className="text-red-400 hover:text-red-600">
-                                      <Trash2 size={13} />
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                </div>
+                                {/* EXP display */}
+                                {lot.expDate && (
+                                  <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
+                                    EXP {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                  </span>
+                                )}
+                                {/* Delete */}
+                                {item.lotItems.length > 1 && (
+                                  <button type="button" onClick={() => removeLotRow(i, li)}
+                                    className="text-red-400 hover:text-red-600 shrink-0">
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                         <button
                           type="button"
                           onClick={() => addLotRow(i)}

@@ -9,7 +9,8 @@ import { generateSaleNo } from "@/lib/doc-number";
 import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, ShippingMethod, ShippingStatus, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
-import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow, type LotAvailable } from "@/lib/lot-control";
+import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),
@@ -535,14 +536,14 @@ export async function updateShippingStatus(
 export async function fetchProductLots(
   productId: string,
   lotIssueMethod: string
-): Promise<LotAvailable[] | { error: string }> {
+): Promise<LotAvailableJSON[] | { error: string }> {
   if (!productId) return { error: "ไม่ระบุสินค้า" };
   try {
     const balances = await db.lotBalance.findMany({
       where: { productId, qtyOnHand: { gt: 0 } },
       select: { lotNo: true, qtyOnHand: true },
     });
-    const lots: LotAvailable[] = await Promise.all(
+    const lots: LotAvailableJSON[] = await Promise.all(
       balances.map(async (b) => {
         const master = await db.productLot.findUnique({
           where: { productId_lotNo: { productId, lotNo: b.lotNo } },
@@ -552,8 +553,8 @@ export async function fetchProductLots(
           lotNo:     b.lotNo,
           qtyOnHand: Number(b.qtyOnHand),
           unitCost:  Number(master?.unitCost ?? 0),
-          expDate:   master?.expDate ?? null,
-          mfgDate:   master?.mfgDate ?? null,
+          expDate:   master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
+          mfgDate:   master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
         };
       })
     );
@@ -561,13 +562,13 @@ export async function fetchProductLots(
       lots.sort((a, b) => {
         if (!a.expDate) return 1;
         if (!b.expDate) return -1;
-        return a.expDate.getTime() - b.expDate.getTime();
+        return a.expDate.localeCompare(b.expDate);
       });
     } else {
       lots.sort((a, b) => {
         if (!a.mfgDate) return 1;
         if (!b.mfgDate) return -1;
-        return a.mfgDate.getTime() - b.mfgDate.getTime();
+        return a.mfgDate.localeCompare(b.mfgDate);
       });
     }
     return lots;
