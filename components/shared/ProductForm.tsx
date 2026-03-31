@@ -39,6 +39,11 @@ export interface ProductFormData {
   categoryId:           string;
   brandId:              string | null;
   preferredSupplierId:  string | null;
+  // Lot Control
+  isLotControl:       boolean;
+  requireExpiryDate:  boolean;
+  lotIssueMethod:     string;
+  allowExpiredIssue:  boolean;
   aliases:         { alias: string }[];
   carModels:       { carModelId: string }[];
   units:           UnitRow[];
@@ -100,6 +105,12 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const [categoryId, setCategoryId]               = useState(product?.categoryId ?? "");
   const [brandId, setBrandId]                     = useState(product?.brandId ?? "");
   const [preferredSupplierId, setPreferredSupplierId] = useState(product?.preferredSupplierId ?? "");
+
+  // Lot Control
+  const [isLotControl, setIsLotControl]         = useState(product?.isLotControl ?? false);
+  const [requireExpiryDate, setRequireExpiryDate] = useState(product?.requireExpiryDate ?? false);
+  const [allowExpiredIssue, setAllowExpiredIssue] = useState(product?.allowExpiredIssue ?? false);
+  const [lotIssueMethod, setLotIssueMethod]       = useState(product?.lotIssueMethod ?? "FIFO");
 
   const [saleUnitName, setSaleUnitName] = useState(
     product?.saleUnitName ?? baseUnit.name
@@ -216,6 +227,10 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     formData.set("brandId", brandId);
     formData.set("preferredSupplierId", preferredSupplierId);
     formData.set("imageUrl", imageUrl);
+    formData.set("isLotControl", String(isLotControl));
+    formData.set("requireExpiryDate", String(requireExpiryDate));
+    formData.set("allowExpiredIssue", String(allowExpiredIssue));
+    formData.set("lotIssueMethod", lotIssueMethod);
     formData.set("aliases", JSON.stringify(aliases));
     formData.set("carModelIds", JSON.stringify(Array.from(selectedCarModelIds)));
     formData.set("units", JSON.stringify(units));
@@ -339,6 +354,57 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         <p className="mt-3 text-xs text-gray-400">
           * จำนวน Stock เริ่มต้นกำหนดได้ที่ระบบ BF (ยอดยกมา) ใน Phase 3
         </p>
+      </div>
+
+      {/* ── Lot Control ────────────────────────────────────────────────────── */}
+      <div className={sectionCls}>
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+          Lot Control
+        </h2>
+        <label className="flex items-center gap-3 cursor-pointer mb-4">
+          <input
+            type="checkbox"
+            checked={isLotControl}
+            onChange={(e) => setIsLotControl(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
+          />
+          <span className="text-sm font-medium text-gray-700">เปิดใช้ระบบ Lot Control สำหรับสินค้านี้</span>
+        </label>
+
+        {isLotControl && (
+          <div className="pl-7 space-y-4 border-l-2 border-[#1e3a5f]/20 ml-2">
+            <div>
+              <label className={labelCls}>วิธีจ่ายออก (Lot Issue Method)</label>
+              <select
+                value={lotIssueMethod}
+                onChange={(e) => setLotIssueMethod(e.target.value)}
+                className={`${inputCls} bg-white max-w-xs`}
+              >
+                <option value="FIFO">FIFO — เข้าก่อนออกก่อน (เรียงตามวันผลิต)</option>
+                <option value="FEFO">FEFO — หมดอายุก่อนออกก่อน (เรียงตามวันหมดอายุ)</option>
+                <option value="MANUAL">MANUAL — เลือกเองทุกครั้ง</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={requireExpiryDate}
+                onChange={(e) => setRequireExpiryDate(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
+              />
+              <span className="text-sm text-gray-700">บังคับกรอกวันหมดอายุ (EXP) ตอนรับสินค้าเข้า</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allowExpiredIssue}
+                onChange={(e) => setAllowExpiredIssue(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
+              />
+              <span className="text-sm text-gray-700">อนุญาตให้จ่ายสินค้าหมดอายุแล้วออกได้</span>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ── หน่วยนับ ───────────────────────────────────────────────────────── */}
