@@ -172,6 +172,11 @@ model Product {
   imageUrl         String?
   preferredSupplierId  String?
   preferredSupplier    Supplier? @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
+  // Lot Control
+  isLotControl       Boolean        @default(false)
+  requireExpiryDate  Boolean        @default(false)
+  lotIssueMethod     LotIssueMethod @default(FIFO)
+  allowExpiredIssue  Boolean        @default(false)
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -187,6 +192,8 @@ model Product {
   creditNoteItems     CreditNoteItem[]
   purchaseReturnItems PurchaseReturnItem[]
   balanceForwards     BalanceForward[]
+  lots                ProductLot[]
+  lotBalances         LotBalance[]
 }
 
 // หน่วยนับของสินค้า — 1 สินค้า มีได้หลายหน่วย
@@ -251,6 +258,7 @@ model StockCard {
   detail       String?         // รายละเอียด
   referenceId  String?         // อ้างอิง PurchaseItem.id / SaleItem.id / BF id ฯลฯ
   createdAt    DateTime        @default(now())
+  lotMovements StockMovementLot[]
 
   @@index([productId, docDate, sorder])
   @@index([docNo])
@@ -344,6 +352,7 @@ model PurchaseItem {
   totalAmount Decimal  @db.Decimal(10, 2)
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   landedCost  Decimal  @default(0) @db.Decimal(10, 2) // ค่าใช้จ่ายแนบ (ขนส่ง ฯลฯ) ต่อรายการ
+  lotItems    PurchaseItemLot[]
 }
 
 // ─────────────────────────────────────────
@@ -452,6 +461,7 @@ model SaleItem {
   supplierId     String?
   supplierName   String?              // snapshot ณ วันขาย
   warranties     Warranty[]
+  lotItems       SaleItemLot[]
 }
 
 enum PaymentMethod {
@@ -656,6 +666,7 @@ model CreditNoteItem {
   amount       Decimal    @default(0) @db.Decimal(10, 2) // จำนวนเงิน CN รายการนี้
   subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
   detail       String?
+  lotItems     CreditNoteItemLot[]
 }
 
 enum CreditNoteType {
@@ -718,6 +729,7 @@ model PurchaseReturnItem {
   amount           Decimal        @db.Decimal(10, 2)
   subtotalAmount   Decimal        @default(0) @db.Decimal(10, 2)
   detail           String?
+  lotItems         PurchaseReturnItemLot[]
 }
 
 // ─────────────────────────────────────────
@@ -773,4 +785,106 @@ model ReceiptItem {
 
   @@index([saleId])
   @@index([cnId])
+}
+
+// ─────────────────────────────────────────
+// Lot Control (Phase 5.5)
+// ─────────────────────────────────────────
+
+enum LotIssueMethod {
+  FIFO   // First In First Out — เรียงตาม mfgDate ASC (เก่าก่อน)
+  FEFO   // First Expired First Out — เรียงตาม expDate ASC (ใกล้หมดอายุก่อน)
+  MANUAL // ผู้ใช้เลือกเองทั้งหมด
+}
+
+// ข้อมูล Lot ต่อสินค้า (สร้างเมื่อรับเข้าครั้งแรก)
+model ProductLot {
+  id             String    @id @default(cuid())
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id])
+  lotNo          String    // เลขที่ Lot (กำหนดเอง หรือ auto-gen)
+  purchaseItemId String?   // อ้างอิงบรรทัดใบซื้อที่รับเข้า (ถ้ามี)
+  mfgDate        DateTime? // วันที่ผลิต (optional)
+  expDate        DateTime? // วันหมดอายุ (required ถ้า requireExpiryDate=true)
+  unitCost       Decimal   @db.Decimal(10, 4) // ต้นทุน/หน่วยหลัก ของ lot นี้
+  createdAt      DateTime  @default(now())
+
+  @@unique([productId, lotNo])
+  @@index([productId, expDate])
+}
+
+// ยอดคงเหลือราย Lot (source of truth สำหรับ lot qty)
+model LotBalance {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  lotNo      String
+  qtyOnHand  Decimal  @default(0) @db.Decimal(12, 4) // คงเหลือใน base unit
+
+  @@unique([productId, lotNo])
+  @@index([productId])
+}
+
+// Movement ราย Lot — ผูกกับ StockCard row
+model StockMovementLot {
+  id          String    @id @default(cuid())
+  stockCardId String
+  stockCard   StockCard @relation(fields: [stockCardId], references: [id], onDelete: Cascade)
+  lotNo       String
+  qtyIn       Decimal   @default(0) @db.Decimal(12, 4)
+  qtyOut      Decimal   @default(0) @db.Decimal(12, 4)
+  unitCost    Decimal   @default(0) @db.Decimal(10, 4) // snapshot ต้นทุน ณ เวลา movement
+
+  @@index([stockCardId])
+  @@index([lotNo])
+}
+
+// Sub-rows Lot ต่อบรรทัดใบซื้อ
+model PurchaseItemLot {
+  id             String       @id @default(cuid())
+  purchaseItemId String
+  purchaseItem   PurchaseItem @relation(fields: [purchaseItemId], references: [id], onDelete: Cascade)
+  lotNo          String
+  qty            Decimal      @db.Decimal(12, 4) // จำนวนใน base unit
+  unitCost       Decimal      @db.Decimal(10, 4) // ต้นทุน/หน่วยหลักของ lot นี้
+  mfgDate        DateTime?
+  expDate        DateTime?
+
+  @@index([purchaseItemId])
+}
+
+// Sub-rows Lot ต่อบรรทัดใบขาย
+model SaleItemLot {
+  id         String   @id @default(cuid())
+  saleItemId String
+  saleItem   SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  lotNo      String
+  qty        Decimal  @db.Decimal(12, 4) // จำนวนใน base unit
+  unitCost   Decimal  @db.Decimal(10, 4) // snapshot ต้นทุน ณ วันขาย
+
+  @@index([saleItemId])
+}
+
+// Sub-rows Lot ต่อบรรทัดใบคืนซัพพลายเออร์ (ต้องอ้างอิง lot เดิมจากใบซื้อ)
+model PurchaseReturnItemLot {
+  id                   String             @id @default(cuid())
+  purchaseReturnItemId String
+  purchaseReturnItem   PurchaseReturnItem @relation(fields: [purchaseReturnItemId], references: [id], onDelete: Cascade)
+  lotNo                String
+  qty                  Decimal            @db.Decimal(12, 4)
+
+  @@index([purchaseReturnItemId])
+}
+
+// Sub-rows Lot ต่อบรรทัด CN (รับคืนจากลูกค้า)
+// isReturnLot=true → สร้าง RET-{lotNo} แยก (ของที่ไม่แน่ใจสภาพ)
+model CreditNoteItemLot {
+  id               String         @id @default(cuid())
+  creditNoteItemId String
+  creditNoteItem   CreditNoteItem @relation(fields: [creditNoteItemId], references: [id], onDelete: Cascade)
+  lotNo            String
+  qty              Decimal        @db.Decimal(12, 4)
+  isReturnLot      Boolean        @default(false) // true = merge กลับ lot เดิม, false = สร้าง RET-lot ใหม่
+
+  @@index([creditNoteItemId])
 }
