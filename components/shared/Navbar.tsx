@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { Menu, X, Phone, Search } from "lucide-react";
 
@@ -43,13 +44,17 @@ const Navbar = ({
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-4">
           <a href="/" className="flex shrink-0 items-center gap-3">
-            <div className="inline-flex h-10 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e3a5f]/10 bg-white px-3 py-1.5 shadow-sm">
+            <div className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e3a5f]/10 bg-white shadow-sm">
               {shopLogoUrl ? (
-                <img
-                  src={shopLogoUrl}
-                  alt={`${shopName} logo`}
-                  className="block h-7 w-auto object-contain"
-                />
+                <div className="relative h-8 w-8">
+                  <Image
+                    src={shopLogoUrl}
+                    alt={`${shopName} logo`}
+                    fill
+                    sizes="32px"
+                    className="object-contain"
+                  />
+                </div>
               ) : (
                 <span className="text-sm font-bold text-[#1e3a5f]">ศว</span>
               )}

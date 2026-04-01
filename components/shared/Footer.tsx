@@ -1,4 +1,5 @@
-﻿import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
+import Image from "next/image";
+import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 
 interface FooterProps {
@@ -31,9 +32,17 @@ const Footer = ({ config }: FooterProps) => {
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="lg:col-span-2">
             <div className="mb-4 flex items-center gap-3">
-              <div className="inline-flex h-14 items-center justify-center overflow-hidden rounded-[18px] border border-white/10 bg-white px-4 py-2 shadow-sm">
+              <div className="inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-sm">
                 {shopLogoUrl ? (
-                  <img src={shopLogoUrl} alt={`${shopName} logo`} className="block h-9 w-auto object-contain" />
+                  <div className="relative h-10 w-10">
+                    <Image
+                      src={shopLogoUrl}
+                      alt={`${shopName} logo`}
+                      fill
+                      sizes="40px"
+                      className="object-contain"
+                    />
+                  </div>
                 ) : (
                   <span className="text-sm font-bold text-[#1e3a5f]">ศว</span>
                 )}
