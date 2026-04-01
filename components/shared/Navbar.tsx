@@ -15,6 +15,7 @@ const navLinks = [
   { label: "สินค้า", href: "/products" },
   { label: "เกี่ยวกับร้าน", href: "/about" },
   { label: "FAQ", href: "/faq" },
+  { label: "คลังความรู้", href: "/knowledge" },
   { label: "ติดต่อ", href: "/#contact" },
 ];
 

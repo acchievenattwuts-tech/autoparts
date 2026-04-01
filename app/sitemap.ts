@@ -1,15 +1,34 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
+import { knowledgeArticles } from "@/lib/knowledge-content";
+import { getProductPath } from "@/lib/product-slug";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [latestProduct, latestCategory, latestBrand, latestModel, latestSiteContent] =
+  const [
+    latestProduct,
+    latestCategory,
+    latestBrand,
+    latestModel,
+    latestSiteContent,
+    activeProducts,
+  ] =
     await Promise.all([
       db.product.aggregate({ _max: { updatedAt: true } }),
       db.category.aggregate({ _max: { createdAt: true } }),
       db.partsBrand.aggregate({ _max: { createdAt: true } }),
       db.carModel.aggregate({ _max: { createdAt: true } }),
       db.siteContent.aggregate({ _max: { updatedAt: true } }),
+      db.product.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          updatedAt: true,
+          category: { select: { name: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
     ]);
 
   const productsLastModified =
@@ -47,5 +66,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.8,
     },
+    {
+      url: absoluteUrl("/knowledge"),
+      lastModified: homeLastModified,
+      changeFrequency: "weekly",
+      priority: 0.85,
+    },
+    ...knowledgeArticles.map((article) => ({
+      url: absoluteUrl(`/knowledge/${article.slug}`),
+      lastModified: new Date(article.updatedAt),
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    })),
+    ...activeProducts.map((product) => ({
+      url: absoluteUrl(
+        getProductPath({
+          categoryName: product.category.name,
+          productName: product.name,
+          productId: product.id,
+        }),
+      ),
+      lastModified: product.updatedAt,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
   ];
 }

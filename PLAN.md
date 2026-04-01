@@ -1317,3 +1317,24 @@ npm run db:restore backup-{timestamp}.json
   - `FAQPage`
 - Expanded sitemap and robots coverage for `/about` and `/faq`
 - Updated storefront navigation so the new SEO pages are reachable from the main navbar
+
+## Roadmap Update (2026-04-02 Phase 7 Product SEO)
+- Added SEO-friendly product detail routes under `/products/[categorySlug]/[productSlug]`
+- Product slugs are readable for users and search engines while still resolving safely by product id
+- Added canonical enforcement with permanent redirect when a product is opened through a non-canonical slug
+- Added product detail metadata and `Product` JSON-LD
+- Updated product cards so storefront catalog pages now link to product detail pages
+- Expanded sitemap coverage to include active product detail pages
+
+## Roadmap Update (2026-04-02 Phase 7 Knowledge + LLMs)
+- Added `/knowledge` as a storefront knowledge hub for SEO, AEO, and AIO
+- Added article detail routes under `/knowledge/[slug]`
+- Published the first knowledge article set focused on:
+  - choosing the right AC compressor
+  - checking symptoms when car air is not cold
+  - preparing the right information before ordering
+  - common radiator problem signs
+  - how to search the storefront faster
+- Added `Article` JSON-LD for knowledge articles
+- Added `llms.txt` under `/public/llms.txt`
+- Expanded sitemap and storefront navigation to include the knowledge section
