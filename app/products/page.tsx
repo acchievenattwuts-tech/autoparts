@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
@@ -7,10 +8,12 @@ import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
 import FloatingLine from "@/components/shared/FloatingLine";
+import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "./ProductFilterBar";
 import Image from "next/image";
 import Link from "next/link";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { absoluteUrl } from "@/lib/seo";
 
 interface Props {
   searchParams: Promise<{
@@ -19,6 +22,46 @@ interface Props {
     brand?: string;
     model?: string;
   }>;
+}
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { q, category, brand, model } = await searchParams;
+
+  const activeFilters = [category, brand, model].filter(Boolean);
+  const hasSearchState = Boolean(q || activeFilters.length > 0);
+  const titleParts = ["สินค้าทั้งหมด"];
+
+  if (activeFilters.length > 0) {
+    titleParts.push(activeFilters.join(" | "));
+  }
+
+  if (q) {
+    titleParts.push(`ค้นหา "${q}"`);
+  }
+
+  return {
+    title: titleParts.join(" | "),
+    description:
+      "ค้นหาอะไหล่แอร์ คอมเพรสเซอร์ หม้อน้ำ แผงคอนเดนเซอร์ และสินค้าในร้านศรีวรรณ อะไหล่แอร์ พร้อมกรองตามหมวดหมู่ ยี่ห้อรถ และรุ่นรถ",
+    alternates: {
+      canonical: absoluteUrl("/products"),
+    },
+    robots: hasSearchState
+      ? {
+          index: false,
+          follow: true,
+        }
+      : {
+          index: true,
+          follow: true,
+        },
+    openGraph: {
+      url: absoluteUrl("/products"),
+      title: titleParts.join(" | "),
+      description:
+        "รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
+    },
+  };
 }
 
 const ProductsPage = async ({ searchParams }: Props) => {
@@ -132,17 +175,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
                     )}
                     {category && <>{category} </>}
                     — พบ{" "}
-                    <span className="font-semibold text-gray-800">
-                      {searchResult.total}
-                    </span>{" "}
+                    <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
                     รายการ
                   </>
                 ) : (
                   <>
                     สินค้าทั้งหมด{" "}
-                    <span className="font-semibold text-gray-800">
-                      {searchResult.total}
-                    </span>{" "}
+                    <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
                     รายการ
                   </>
                 )}
@@ -172,6 +211,12 @@ const ProductsPage = async ({ searchParams }: Props) => {
       </main>
       <Footer config={config} />
       <FloatingLine lineUrl={config.shopLineUrl} />
+      <BreadcrumbJsonLd
+        items={[
+          { name: "หน้าแรก", item: absoluteUrl("/") },
+          { name: "สินค้าทั้งหมด", item: absoluteUrl("/products") },
+        ]}
+      />
     </>
   );
 };

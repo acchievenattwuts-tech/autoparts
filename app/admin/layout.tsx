@@ -4,6 +4,18 @@
 // the Supabase Session-mode connection pool.
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+    },
+  },
+};
+
 export default function AdminRootLayout({
   children,
 }: {

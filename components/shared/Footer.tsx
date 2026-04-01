@@ -27,7 +27,7 @@ const Footer = ({ config }: FooterProps) => {
   const shopGoogleMapUrl = config?.shopGoogleMapUrl ?? "";
 
   return (
-    <footer className="bg-gray-900 text-white">
+    <footer id="contact" className="bg-gray-900 text-white">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:items-start lg:justify-between">
           <div>

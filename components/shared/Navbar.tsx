@@ -13,7 +13,8 @@ const LINE_ICON = (
 const navLinks = [
   { label: "หน้าแรก", href: "/#home" },
   { label: "สินค้า", href: "/products" },
-  { label: "จุดเด่นของเรา", href: "/#why-us" },
+  { label: "เกี่ยวกับร้าน", href: "/about" },
+  { label: "FAQ", href: "/faq" },
   { label: "ติดต่อ", href: "/#contact" },
 ];
 
@@ -79,7 +80,10 @@ const Navbar = ({
 
           <form action="/products" method="GET" className="hidden max-w-sm flex-1 items-center md:flex">
             <div className="relative w-full">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 type="text"
                 name="q"
@@ -131,7 +135,10 @@ const Navbar = ({
         <div className="border-t border-gray-100 bg-white px-4 pb-4 md:hidden">
           <form action="/products" method="GET" className="pb-2 pt-3">
             <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 type="text"
                 name="q"

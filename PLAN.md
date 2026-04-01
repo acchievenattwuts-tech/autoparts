@@ -1289,3 +1289,31 @@ npm run db:restore backup-{timestamp}.json
   - `public_catalog_products`
   - `public_catalog_product_aliases`
 - This blueprint is intentionally kept as the next security/data-contract phase and is **not required** for the current storefront while Prisma server-side data access remains the primary path.
+
+## Roadmap Update (2026-04-02 Phase 7 Start)
+- Phase 7 implementation has started with the lowest-risk SEO foundation for the live storefront.
+- Completed in this rollout:
+  - canonical-friendly metadata base at the app root using `https://www.sriwanparts.com`
+  - homepage metadata generated from live company settings
+  - `/products` metadata with canonical handling and `noindex` for search/filter result states
+  - `robots.txt` generated via Next.js metadata route
+  - `sitemap.xml` generated via Next.js metadata route for the current core public pages
+  - `/admin/*` marked `noindex, nofollow`
+- This rollout is intentionally scoped to technical SEO groundwork first, before expanding Phase 7 into structured data, content pages, URL architecture, and Core Web Vitals tuning.
+
+## Roadmap Update (2026-04-02 Phase 7 Content + Schema)
+- Added `/about` to explain the shop, service model, contact channels, and storefront purpose in a way that supports trust and SEO.
+- Added `/faq` with customer-first questions and answers focused on:
+  - how to search for parts
+  - how ordering works through LINE OA / phone
+  - stock confirmation expectations
+  - trust and contact verification
+  - shipping and warranty questions
+- Added reusable JSON-LD components for:
+  - `Organization`
+  - `AutoPartsStore` / local business context
+  - `WebSite` search action
+  - `BreadcrumbList`
+  - `FAQPage`
+- Expanded sitemap and robots coverage for `/about` and `/faq`
+- Updated storefront navigation so the new SEO pages are reachable from the main navbar
