@@ -85,6 +85,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       <Navbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
+        shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
         searchQuery={q}

@@ -1233,7 +1233,7 @@ npm run db:restore backup-{timestamp}.json
 ## Roadmap Update (2026-04-01)
 - Hero search UI on the storefront was redesigned to make product search more prominent and easier to use on all screen sizes.
 - Footer was simplified to focus on branding and contact information only.
-- Phase 5 was redefined as a **Search Performance Upgrade** roadmap:
+- Phase 5 was redefined as a **Search Performance Upgrade** roadmap and has now been completed for both storefront and admin product search:
   - Phase 5-A Audit + Benchmark + Safety Baseline
   - Phase 5-B Database Search Architecture (PostgreSQL Full-text + trigram)
   - Phase 5-C Shared Search Service for `/products` and `/admin/products`
@@ -1241,6 +1241,7 @@ npm run db:restore backup-{timestamp}.json
 - Search upgrade must preserve existing search coverage exactly while improving speed, correctness, and safety.
 
 ## Roadmap Update (2026-04-01 Search V2)
+- Phase 5 — Search Performance Upgrade (หน้าบ้าน + หลังบ้าน): เสร็จแล้ว
 - Search V2 target is now **marketplace-inspired**: fast, forgiving, and shared by both storefront and admin product search.
 - Search V2 must preserve the existing search coverage exactly:
   - product name
@@ -1262,3 +1263,6 @@ npm run db:restore backup-{timestamp}.json
   - keep all existing filters working (`isActive`, category, car brand, car model)
   - benchmark before and after rollout on real store queries
   - no schema-breaking change to core transaction tables
+
+## Roadmap Update (2026-04-01 UI Consistency)
+- Fixed storefront `/products` navbar to use `shopLogoUrl` from company settings, keeping logo behavior consistent with the homepage, footer, favicon, and admin login.
