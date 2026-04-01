@@ -25,12 +25,12 @@ export async function generateMetadata(): Promise<Metadata> {
       url: absoluteUrl("/knowledge"),
       title,
       description,
-      images: config.shopLogoUrl ? [{ url: config.shopLogoUrl }] : undefined,
+      images: [{ url: absoluteUrl("/knowledge/opengraph-image") }],
     },
     twitter: {
       title,
       description,
-      images: config.shopLogoUrl ? [config.shopLogoUrl] : undefined,
+      images: [absoluteUrl("/knowledge/opengraph-image")],
     },
   };
 }

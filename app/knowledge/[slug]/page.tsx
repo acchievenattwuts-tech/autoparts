@@ -15,6 +15,12 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
+export function generateStaticParams() {
+  return knowledgeArticles.map((article) => ({
+    slug: article.slug,
+  }));
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const [{ slug }, config] = await Promise.all([params, getSiteConfig()]);
   const article = knowledgeArticleMap.get(slug);
@@ -33,12 +39,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: absoluteUrl(`/knowledge/${article.slug}`),
       title: article.title,
       description: article.description,
-      images: config.shopLogoUrl ? [{ url: config.shopLogoUrl }] : undefined,
+      images: [{ url: absoluteUrl(`/knowledge/${article.slug}/opengraph-image`) }],
     },
     twitter: {
       title: article.title,
       description: article.description,
-      images: config.shopLogoUrl ? [config.shopLogoUrl] : undefined,
+      images: [absoluteUrl(`/knowledge/${article.slug}/opengraph-image`)],
     },
   };
 }

@@ -16,7 +16,6 @@ import Footer from "@/components/shared/Footer";
 import FloatingLine from "@/components/shared/FloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
-import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import {
@@ -24,6 +23,10 @@ import {
   getProductCategorySlug,
   getProductPath,
 } from "@/lib/product-slug";
+import {
+  buildStorefrontProductDescription,
+  getActiveStorefrontProductById,
+} from "@/lib/storefront-product";
 
 interface Props {
   params: Promise<{
@@ -40,41 +43,7 @@ async function getProductFromParams(paramsPromise: Props["params"]) {
     notFound();
   }
 
-  const product = await db.product.findFirst({
-    where: {
-      id: productId,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      imageUrl: true,
-      salePrice: true,
-      stock: true,
-      reportUnitName: true,
-      category: { select: { name: true } },
-      brand: { select: { name: true } },
-      aliases: {
-        select: { alias: true },
-        orderBy: { alias: "asc" },
-        take: 8,
-      },
-      carModels: {
-        select: {
-          carModel: {
-            select: {
-              name: true,
-              carBrand: { select: { name: true } },
-            },
-          },
-        },
-        take: 16,
-      },
-      updatedAt: true,
-    },
-  });
+  const product = await getActiveStorefrontProductById(productId);
 
   if (!product) {
     notFound();
@@ -96,19 +65,7 @@ async function getProductFromParams(paramsPromise: Props["params"]) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const [config, product] = await Promise.all([getSiteConfig(), getProductFromParams(params)]);
-  const compatibleCars = product.carModels
-    .slice(0, 3)
-    .map(({ carModel }) => `${carModel.carBrand.name} ${carModel.name}`);
-  const description =
-    product.description?.trim() ||
-    [
-      product.name,
-      product.brand?.name ? `แบรนด์ ${product.brand.name}` : null,
-      compatibleCars.length > 0 ? `รองรับ ${compatibleCars.join(", ")}` : null,
-      `รหัสสินค้า ${product.code}`,
-    ]
-      .filter(Boolean)
-      .join(" | ");
+  const description = buildStorefrontProductDescription(product);
 
   const canonicalPath = getProductPath({
     categoryName: product.category.name,
@@ -126,20 +83,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: absoluteUrl(canonicalPath),
       title: product.name,
       description,
-      images: product.imageUrl
-        ? [{ url: product.imageUrl, alt: product.name }]
-        : config.shopLogoUrl
-          ? [{ url: config.shopLogoUrl, alt: config.shopName }]
-          : undefined,
+      images: [{ url: absoluteUrl(`${canonicalPath}/opengraph-image`), alt: product.name }],
     },
     twitter: {
       title: product.name,
       description,
-      images: product.imageUrl
-        ? [product.imageUrl]
-        : config.shopLogoUrl
-          ? [config.shopLogoUrl]
-          : undefined,
+      images: [absoluteUrl(`${canonicalPath}/opengraph-image`)],
     },
   };
 }
@@ -153,9 +102,7 @@ const ProductDetailPage = async ({ params }: Props) => {
     productId: product.id,
   });
   const canonicalUrl = absoluteUrl(canonicalPath);
-  const description =
-    product.description?.trim() ||
-    `รายละเอียดสินค้า ${product.name} รหัส ${product.code} ในหมวด ${product.category.name}`;
+  const description = buildStorefrontProductDescription(product);
 
   const carBrandMap = new Map<string, string[]>();
   for (const { carModel } of product.carModels) {

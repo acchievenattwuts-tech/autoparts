@@ -1338,3 +1338,15 @@ npm run db:restore backup-{timestamp}.json
 - Added `Article` JSON-LD for knowledge articles
 - Added `llms.txt` under `/public/llms.txt`
 - Expanded sitemap and storefront navigation to include the knowledge section
+
+## Roadmap Update (2026-04-02 Phase 7 Sharing + Performance)
+- Added generated Open Graph image routes for key public pages:
+  - `/opengraph-image`
+  - `/about/opengraph-image`
+  - `/faq/opengraph-image`
+  - `/knowledge/opengraph-image`
+  - product detail og-image
+  - knowledge article og-image
+- Updated page metadata to use generated OG images instead of a generic logo-only image
+- Reduced unnecessary public runtime rendering by allowing the homepage to be statically generated while still using `site-config` cache invalidation from admin settings
+- Added `generateStaticParams` for `/knowledge/[slug]` and knowledge article OG image routes so the knowledge section can be pre-rendered

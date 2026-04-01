@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 import type { Metadata } from "next";
 import Navbar from "@/components/shared/Navbar";
 import Hero from "@/components/shared/Hero";
@@ -32,12 +30,12 @@ export async function generateMetadata(): Promise<Metadata> {
       url: absoluteUrl("/"),
       title,
       description,
-      images: config.shopLogoUrl ? [{ url: config.shopLogoUrl }] : undefined,
+      images: [{ url: absoluteUrl("/opengraph-image") }],
     },
     twitter: {
       title,
       description,
-      images: config.shopLogoUrl ? [config.shopLogoUrl] : undefined,
+      images: [absoluteUrl("/opengraph-image")],
     },
   };
 }
