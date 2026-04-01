@@ -28,6 +28,7 @@ import {
   Wallet,
   KeyRound,
   MapPin,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +71,7 @@ const navItems: SidebarEntry[] = [
       { label: "ยอดยกมา (BF)", href: "/admin/stock/bf", icon: Archive, permission: "stock.bf.view" },
       { label: "ปรับสต็อก", href: "/admin/stock/adjustments", icon: RefreshCw, permission: "stock.adjustments.view" },
       { label: "Stock Card MAVG", href: "/admin/stock/card", icon: ClipboardList, permission: "stock.card.view" },
+      { label: "Stock Card Lot", href: "/admin/lots/balance", icon: Layers, permission: "lot_reports.view" },
     ],
   },
   {

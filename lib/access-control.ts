@@ -40,6 +40,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "stock.adjustments.cancel", group: "สต็อก", label: "ยกเลิกปรับสต็อก" },
   { key: "stock.card.view", group: "สต็อก", label: "ดู Stock Card" },
   { key: "stock.card.manage", group: "สต็อก", label: "จัดการ Stock Card" },
+  { key: "lot_reports.view", group: "สต็อก", label: "ดูรายงาน Lot" },
 
   { key: "purchases.view", group: "ระบบงาน", label: "ดูซื้อสินค้า" },
   { key: "purchases.create", group: "ระบบงาน", label: "เพิ่มซื้อสินค้า" },
@@ -136,6 +137,7 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "expenses.update",
   "delivery.view",
   "delivery.update",
+  "lot_reports.view",
 ];
 
 const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
@@ -146,6 +148,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "stock.bf.view",
   "stock.adjustments.view",
   "stock.card.view",
+  "lot_reports.view",
   "purchases.view",
   "purchase_returns.view",
   "sales.view",
@@ -191,6 +194,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/stock/bf", permission: "stock.bf.view" },
   { prefix: "/admin/stock/adjustments", permission: "stock.adjustments.view" },
   { prefix: "/admin/stock/card", permission: "stock.card.view" },
+  { prefix: "/admin/lots", permission: "lot_reports.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
   { prefix: "/admin/delivery", permission: "delivery.view" },
