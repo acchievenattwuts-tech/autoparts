@@ -1266,3 +1266,26 @@ npm run db:restore backup-{timestamp}.json
 
 ## Roadmap Update (2026-04-01 UI Consistency)
 - Fixed storefront `/products` navbar to use `shopLogoUrl` from company settings, keeping logo behavior consistent with the homepage, footer, favicon, and admin login.
+
+## Roadmap Update (2026-04-02 Security Baseline)
+- Enabled RLS on every table in the `public` schema on Supabase.
+- Kept rollout in safe mode:
+  - RLS enabled
+  - no `FORCE RLS`
+  - no broad public policies
+  - Prisma / NextAuth / coding tools still retain database access through the current server-first architecture
+- Added repo documentation and scripts for:
+  - live RLS audit
+  - safe RLS enablement for `public`
+  - Prisma verification after rollout
+
+## Roadmap Update (2026-04-02 Public API Blueprint)
+- Prepared a non-live blueprint for future storefront-safe Supabase API exposure through public views instead of raw tables.
+- Planned public views:
+  - `public_site_settings`
+  - `public_catalog_categories`
+  - `public_catalog_car_brands`
+  - `public_catalog_car_models`
+  - `public_catalog_products`
+  - `public_catalog_product_aliases`
+- This blueprint is intentionally kept as the next security/data-contract phase and is **not required** for the current storefront while Prisma server-side data access remains the primary path.
