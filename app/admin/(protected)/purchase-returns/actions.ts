@@ -8,6 +8,7 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
+import { reversePurchaseReturnLotBalance } from "@/lib/lot-control";
 
 const returnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -176,7 +177,7 @@ export async function cancelPurchaseReturn(
 
   const ret = await db.purchaseReturn.findUnique({
     where: { id: returnId },
-    include: { items: { select: { productId: true } } },
+    include: { items: { select: { id: true, productId: true } } },
   });
   if (!ret)                        return { error: "ไม่พบเอกสาร" };
   if (ret.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
@@ -185,6 +186,10 @@ export async function cancelPurchaseReturn(
 
   try {
     await dbTx(async (tx) => {
+      // Reverse Lot balances (คืน stock ที่เคยส่งกลับซัพพลายเออร์)
+      for (const item of ret.items) {
+        await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);

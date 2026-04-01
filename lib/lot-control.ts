@@ -167,6 +167,144 @@ export async function writeSaleLots(
   }
 }
 
+// ─── PurchaseReturn Lot functions ────────────────────────────────────────────
+
+/**
+ * บันทึก PurchaseReturnItemLot + ลด LotBalance เมื่อสร้างใบคืนซัพพลายเออร์
+ */
+export async function writePurchaseReturnLots(
+  tx: TxClient,
+  returnItemId: string,
+  productId: string,
+  lots: LotSubRowBase[]
+): Promise<void> {
+  for (const lot of lots) {
+    // Deduct LotBalance (stock goes out to supplier)
+    await tx.lotBalance.updateMany({
+      where: { productId, lotNo: lot.lotNo },
+      data: { qtyOnHand: { decrement: new Prisma.Decimal(lot.qtyInBase) } },
+    });
+    await tx.$executeRaw`
+      UPDATE "LotBalance"
+      SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+      WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
+    `;
+    // Create PurchaseReturnItemLot
+    await tx.purchaseReturnItemLot.create({
+      data: {
+        purchaseReturnItemId: returnItemId,
+        lotNo: lot.lotNo,
+        qty:   new Prisma.Decimal(lot.qtyInBase),
+      },
+    });
+  }
+}
+
+/**
+ * Reverse PurchaseReturnItemLot — คืน qty กลับ LotBalance เมื่อยกเลิกใบคืนซัพพลายเออร์
+ * (stock ที่เคยส่งคืนซัพพลายเออร์ถูกยกเลิก → เพิ่มกลับเข้า LotBalance)
+ */
+export async function reversePurchaseReturnLotBalance(
+  tx: TxClient,
+  returnItemId: string,
+  productId: string
+): Promise<void> {
+  const lotItems = await tx.purchaseReturnItemLot.findMany({
+    where: { purchaseReturnItemId: returnItemId },
+    select: { lotNo: true, qty: true },
+  });
+  for (const lot of lotItems) {
+    await tx.lotBalance.upsert({
+      where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+      create: { productId, lotNo: lot.lotNo, qtyOnHand: lot.qty },
+      update: { qtyOnHand: { increment: lot.qty } },
+    });
+  }
+}
+
+// ─── CreditNote Lot functions ─────────────────────────────────────────────────
+
+/**
+ * บันทึก CreditNoteItemLot + เพิ่ม LotBalance เมื่อสร้าง CN ประเภท RETURN
+ * - isReturnLot=false → merge กลับ lot เดิม
+ * - isReturnLot=true  → สร้าง lot ใหม่ prefix "RET-{lotNo}"
+ */
+export async function writeCreditNoteLots(
+  tx: TxClient,
+  cnItemId: string,
+  productId: string,
+  lots: (LotSubRowBase & { isReturnLot: boolean })[]
+): Promise<void> {
+  for (const lot of lots) {
+    const effectiveLotNo = lot.isReturnLot ? `RET-${lot.lotNo}` : lot.lotNo;
+
+    if (lot.isReturnLot) {
+      // สร้าง ProductLot ใหม่สำหรับ RET-lot ถ้ายังไม่มี
+      await tx.productLot.upsert({
+        where: { productId_lotNo: { productId, lotNo: effectiveLotNo } },
+        create: {
+          productId,
+          lotNo:    effectiveLotNo,
+          expDate:  lot.expDate,
+          unitCost: new Prisma.Decimal(lot.unitCostBase),
+        },
+        update: {},
+      });
+    }
+
+    // Increment LotBalance (stock comes back in)
+    await tx.lotBalance.upsert({
+      where: { productId_lotNo: { productId, lotNo: effectiveLotNo } },
+      create: { productId, lotNo: effectiveLotNo, qtyOnHand: new Prisma.Decimal(lot.qtyInBase) },
+      update: { qtyOnHand: { increment: new Prisma.Decimal(lot.qtyInBase) } },
+    });
+
+    // Create CreditNoteItemLot
+    await tx.creditNoteItemLot.create({
+      data: {
+        creditNoteItemId: cnItemId,
+        lotNo:        effectiveLotNo,
+        qty:          new Prisma.Decimal(lot.qtyInBase),
+        isReturnLot:  lot.isReturnLot,
+      },
+    });
+  }
+}
+
+/**
+ * Reverse CreditNoteItemLot — ยกเลิก CN RETURN
+ * - isReturnLot=false (merge) → ลด LotBalance กลับ
+ * - isReturnLot=true  (RET-)  → ลบ LotBalance + ProductLot ของ RET-lot ทิ้ง
+ */
+export async function reverseCreditNoteLotBalance(
+  tx: TxClient,
+  cnItemId: string,
+  productId: string
+): Promise<void> {
+  const lotItems = await tx.creditNoteItemLot.findMany({
+    where: { creditNoteItemId: cnItemId },
+    select: { lotNo: true, qty: true, isReturnLot: true },
+  });
+  for (const lot of lotItems) {
+    if (lot.isReturnLot) {
+      // ลบ LotBalance + ProductLot ของ RET-lot
+      await tx.lotBalance.deleteMany({ where: { productId, lotNo: lot.lotNo } });
+      await tx.productLot.deleteMany({ where: { productId, lotNo: lot.lotNo } });
+    } else {
+      // Merge lot → ลด LotBalance กลับ
+      await tx.lotBalance.updateMany({
+        where: { productId, lotNo: lot.lotNo },
+        data: { qtyOnHand: { decrement: lot.qty } },
+      });
+      await tx.$executeRaw`
+        UPDATE "LotBalance"
+        SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+        WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
+      `;
+    }
+  }
+}
+
 /**
  * Reverse SaleItemLot — คืน qty กลับ LotBalance เมื่อยกเลิกใบขาย
  */

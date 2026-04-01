@@ -9,6 +9,7 @@ import { generateCNNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
+import { reverseCreditNoteLotBalance } from "@/lib/lot-control";
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
@@ -168,7 +169,7 @@ export async function cancelCreditNote(
 
   const cn = await db.creditNote.findUnique({
     where: { id: cnId },
-    include: { items: { select: { productId: true } } },
+    include: { items: { select: { id: true, productId: true } } },
   });
   if (!cn)                        return { error: "ไม่พบเอกสาร" };
   if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
@@ -192,11 +193,19 @@ export async function cancelCreditNote(
 
   try {
     await dbTx(async (tx) => {
-      // ถ้าเป็น RETURN ให้ลบ StockCard และ recalculate
-      if (cn.type === "RETURN" && affectedProductIds.length > 0) {
-        await tx.stockCard.deleteMany({ where: { docNo: cn.cnNo } });
-        for (const productId of affectedProductIds) {
-          await recalculateStockCard(tx, productId);
+      // ถ้าเป็น RETURN ให้ reverse Lot + ลบ StockCard และ recalculate
+      if (cn.type === "RETURN") {
+        // Reverse Lot balances (ลบ stock ที่เคยรับคืนจากลูกค้า)
+        for (const item of cn.items) {
+          if (item.productId) {
+            await reverseCreditNoteLotBalance(tx, item.id, item.productId);
+          }
+        }
+        if (affectedProductIds.length > 0) {
+          await tx.stockCard.deleteMany({ where: { docNo: cn.cnNo } });
+          for (const productId of affectedProductIds) {
+            await recalculateStockCard(tx, productId);
+          }
         }
       }
 
