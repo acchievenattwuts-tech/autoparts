@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
-const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB
 
 export async function uploadLogoImage(
   formData: FormData
@@ -27,7 +27,7 @@ export async function uploadLogoImage(
     return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP, GIF)" };
   }
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return { error: "ขนาดไฟล์ต้องไม่เกิน 2MB" };
+    return { error: "ขนาดไฟล์ต้องไม่เกิน 3MB" };
   }
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.includes(ext)) {

@@ -201,7 +201,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
                   {logoUploading ? "กำลังอัปโหลด..." : "เลือกไฟล์"}
                 </label>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">JPG, PNG, WebP ไม่เกิน 2MB</p>
+                  <p className="text-xs text-gray-400">JPG, PNG, WebP ไม่เกิน 3MB</p>
                   <p className="text-xs text-gray-400">แนะนำพื้นหลังโปร่งใส และใช้สัดส่วน 1:1, 3:1 หรือ 4:1 เพื่อให้แสดงผลได้ดีทั้งโลโก้แนวนอนและไอคอนร้าน</p>
                 </div>
                 {logoError && <p className="text-xs text-red-500">{logoError}</p>}
