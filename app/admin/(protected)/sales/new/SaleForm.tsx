@@ -681,90 +681,116 @@ const SaleForm = ({
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
                             Lot Control
                           </span>
-                          <span className="text-xs text-gray-500">จัดสรรรวม</span>
-                          <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
-                            {totalLotQty}
-                          </span>
-                          <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                          {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ยังไม่ครบ</span>}
-                          <button
-                            type="button"
-                            onClick={() => handleAutoAllocate(i)}
-                            className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
-                          >
-                            <Zap size={11} /> Auto จัดสรร
-                          </button>
-                          {lotsLoading[i] && <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>}
+                          {!isEdit && (
+                            <>
+                              <span className="text-xs text-gray-500">จัดสรรรวม</span>
+                              <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                                {totalLotQty}
+                              </span>
+                              <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
+                              {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ยังไม่ครบ</span>}
+                              <button
+                                type="button"
+                                onClick={() => handleAutoAllocate(i)}
+                                className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                              >
+                                <Zap size={11} /> Auto จัดสรร
+                              </button>
+                              {lotsLoading[i] && <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>}
+                            </>
+                          )}
                         </div>
                         {/* Lot rows */}
-                        <div className="space-y-1.5">
-                          {item.lotItems.map((lot, li) => {
-                            const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-                            const selectedLotNos = item.lotItems.filter((_, lj) => lj !== li).map((l) => l.lotNo);
-                            const lotOptions = (availableLots[i] ?? []).filter(
-                              (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
-                            );
-                            return (
-                              <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
-                                {/* Lot dropdown */}
-                                <div className="flex-1 min-w-0">
-                                  <select
-                                    value={lot.lotNo}
-                                    onChange={(e) => handleLotSelect(i, li, e.target.value)}
-                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
-                                  >
-                                    <option value="">-- เลือก Lot --</option>
-                                    {lotOptions.length === 0 && lot.lotNo === "" && (
-                                      <option disabled value="">ไม่มี Lot คงเหลือ</option>
-                                    )}
-                                    {lotOptions.map((av) => {
-                                      const qtyInUnit = Math.round((av.qtyOnHand / scale) * 10000) / 10000;
-                                      const expStr = av.expDate
-                                        ? new Date(av.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })
-                                        : "ไม่มี EXP";
-                                      return (
-                                        <option key={av.lotNo} value={av.lotNo}>
-                                          {av.lotNo} | EXP {expStr} | คงเหลือ {qtyInUnit} {item.unitName}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
-                                </div>
-                                {/* Qty */}
-                                <div className="w-24 shrink-0">
-                                  <input
-                                    type="number"
-                                    value={lot.qty}
-                                    min={0.0001} step={0.0001}
-                                    onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
-                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
-                                    placeholder="จำนวน"
-                                  />
-                                </div>
-                                {/* EXP display */}
+                        {isEdit ? (
+                          /* Read-only display in edit mode */
+                          <div className="flex flex-wrap gap-2">
+                            {item.lotItems.length === 0 ? (
+                              <span className="text-xs text-gray-400 italic">ไม่มีข้อมูล Lot</span>
+                            ) : item.lotItems.map((lot, li) => (
+                              <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1">
+                                <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
+                                <span className="text-gray-500">จำนวน</span>
+                                <span className="font-medium text-gray-700">{lot.qty}</span>
                                 {lot.expDate && (
-                                  <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
-                                    EXP {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-                                  </span>
-                                )}
-                                {/* Delete */}
-                                {item.lotItems.length > 1 && (
-                                  <button type="button" onClick={() => removeLotRow(i, li)}
-                                    className="text-red-400 hover:text-red-600 shrink-0">
-                                    <Trash2 size={13} />
-                                  </button>
+                                  <>
+                                    <span className="text-gray-300">|</span>
+                                    <span className="text-gray-500">EXP</span>
+                                    <span className="text-gray-700">
+                                      {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                    </span>
+                                  </>
                                 )}
                               </div>
-                            );
-                          })}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => addLotRow(i)}
-                          className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
-                        >
-                          <Plus size={11} /> เพิ่ม Lot
-                        </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {item.lotItems.map((lot, li) => {
+                              const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+                              const selectedLotNos = item.lotItems.filter((_, lj) => lj !== li).map((l) => l.lotNo);
+                              const lotOptions = (availableLots[i] ?? []).filter(
+                                (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
+                              );
+                              return (
+                                <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
+                                  <div className="flex-1 min-w-0">
+                                    <select
+                                      value={lot.lotNo}
+                                      onChange={(e) => handleLotSelect(i, li, e.target.value)}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                    >
+                                      <option value="">-- เลือก Lot --</option>
+                                      {lotOptions.length === 0 && lot.lotNo === "" && (
+                                        <option disabled value="">ไม่มี Lot คงเหลือ</option>
+                                      )}
+                                      {lotOptions.map((av) => {
+                                        const qtyInUnit = Math.round((av.qtyOnHand / scale) * 10000) / 10000;
+                                        const expStr = av.expDate
+                                          ? new Date(av.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })
+                                          : "ไม่มี EXP";
+                                        return (
+                                          <option key={av.lotNo} value={av.lotNo}>
+                                            {av.lotNo} | EXP {expStr} | คงเหลือ {qtyInUnit} {item.unitName}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+                                  <div className="w-24 shrink-0">
+                                    <input
+                                      type="number"
+                                      value={lot.qty}
+                                      min={0.0001} step={0.0001}
+                                      onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
+                                      placeholder="จำนวน"
+                                    />
+                                  </div>
+                                  {lot.expDate && (
+                                    <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
+                                      EXP {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                    </span>
+                                  )}
+                                  {item.lotItems.length > 1 && (
+                                    <button type="button" onClick={() => removeLotRow(i, li)}
+                                      className="text-red-400 hover:text-red-600 shrink-0">
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {!isEdit && (
+                          <button
+                            type="button"
+                            onClick={() => addLotRow(i)}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                          >
+                            <Plus size={11} /> เพิ่ม Lot
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )}

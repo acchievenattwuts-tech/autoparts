@@ -51,6 +51,21 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   if (!sale) notFound();
   if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
 
+  // Join ProductLot to get expDate for each SaleItemLot
+  const lotKeys = sale.items.flatMap((item) =>
+    item.lotItems.map((lot) => ({ productId: item.productId, lotNo: lot.lotNo }))
+  );
+  const productLotExpMap: Record<string, string> = {};
+  if (lotKeys.length > 0) {
+    const productLots = await db.productLot.findMany({
+      where: { OR: lotKeys },
+      select: { productId: true, lotNo: true, expDate: true },
+    });
+    for (const pl of productLots) {
+      productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? pl.expDate.toISOString().slice(0, 10) : "";
+    }
+  }
+
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
@@ -80,7 +95,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         qty:      Number(lot.qty),
         unitCost: Number(lot.unitCost),
         mfgDate:  "",
-        expDate:  "",
+        expDate:  productLotExpMap[`${item.productId}:${lot.lotNo}`] ?? "",
       })),
     };
   });
