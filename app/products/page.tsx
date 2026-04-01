@@ -10,30 +10,36 @@ import FloatingLine from "@/components/shared/FloatingLine";
 import ProductFilterBar from "./ProductFilterBar";
 import Image from "next/image";
 import Link from "next/link";
-import { buildProductSearchWhere } from "@/lib/product-search";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 
 interface Props {
-  searchParams: Promise<{ q?: string; category?: string; brand?: string; model?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    category?: string;
+    brand?: string;
+    model?: string;
+  }>;
 }
 
 const ProductsPage = async ({ searchParams }: Props) => {
   const { q, category, brand, model } = await searchParams;
   const config = await getSiteConfig();
 
-  const searchWhere = buildProductSearchWhere(q);
-
-  const categoryWhere = category ? { category: { name: category } } : {};
-
-  const brandModelWhere =
-    brand && model
-      ? { carModels: { some: { carModel: { name: model, carBrand: { name: brand } } } } }
-      : brand
-      ? { carModels: { some: { carModel: { carBrand: { name: brand } } } } }
-      : {};
+  const searchResult = await searchProductIds({
+    query: q,
+    isActive: true,
+    categoryName: category,
+    carBrandName: brand,
+    carModelName: model,
+    take: 200,
+    order: "createdAtDesc",
+  });
 
   const [products, categories, carBrands] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true, ...searchWhere, ...categoryWhere, ...brandModelWhere },
+      where: {
+        id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
+      },
       select: {
         id: true,
         name: true,
@@ -56,19 +62,22 @@ const ProductsPage = async ({ searchParams }: Props) => {
           take: 6,
         },
       },
-      orderBy: { createdAt: "desc" },
-      take: 200,
     }),
     db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     db.carBrand.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
       include: {
-        carModels: { where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } },
+        carModels: {
+          where: { isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        },
       },
     }),
   ]);
 
+  const sortedProducts = sortProductsByIds(products, searchResult.ids);
   const hasFilter = q || category || brand || model;
 
   return (
@@ -81,8 +90,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
         searchQuery={q}
       />
       <main className="min-h-screen bg-gray-50 pt-16">
-        {/* Hero bar */}
-        <div className="relative py-6 overflow-hidden">
+        <div className="relative overflow-hidden py-6">
           <Image
             src="/hero-banner.jpg"
             alt="hero background"
@@ -92,53 +100,68 @@ const ProductsPage = async ({ searchParams }: Props) => {
             priority
           />
           <div className="absolute inset-0 bg-[#0f2140]/55" />
-          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h1 className="font-kanit text-2xl font-bold text-white">สินค้าทั้งหมด</h1>
             {q && (
-              <p className="text-white/70 text-sm mt-0.5">
+              <p className="mt-0.5 text-sm text-white/70">
                 ผลการค้นหา: &ldquo;{q}&rdquo;
               </p>
             )}
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Sidebar filters */}
-            <aside className="w-full lg:w-72 shrink-0">
-              <Suspense fallback={<div className="h-64 bg-white rounded-2xl animate-pulse" />}>
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <aside className="w-full shrink-0 lg:w-72">
+              <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white" />}>
                 <ProductFilterBar brands={carBrands} categories={categories} />
               </Suspense>
             </aside>
 
-            {/* Main content */}
-            <div className="flex-1 min-w-0">
-              {/* Result count */}
-              <p className="text-sm text-gray-500 mb-4">
+            <div className="min-w-0 flex-1">
+              <p className="mb-4 text-sm text-gray-500">
                 {hasFilter ? (
                   <>
-                    {q && <>ค้นหา &ldquo;{q}&rdquo;{" "}</>}
-                    {brand && <>{brand}{model ? ` › ${model}` : ""}{" "}</>}
-                    {category && <>{category}{" "}</>}
-                    — พบ <span className="font-semibold text-gray-800">{products.length}</span> รายการ
+                    {q && <>ค้นหา &ldquo;{q}&rdquo; </>}
+                    {brand && (
+                      <>
+                        {brand}
+                        {model ? ` › ${model}` : ""}{" "}
+                      </>
+                    )}
+                    {category && <>{category} </>}
+                    — พบ{" "}
+                    <span className="font-semibold text-gray-800">
+                      {searchResult.total}
+                    </span>{" "}
+                    รายการ
                   </>
                 ) : (
-                  <>สินค้าทั้งหมด <span className="font-semibold text-gray-800">{products.length}</span> รายการ</>
+                  <>
+                    สินค้าทั้งหมด{" "}
+                    <span className="font-semibold text-gray-800">
+                      {searchResult.total}
+                    </span>{" "}
+                    รายการ
+                  </>
                 )}
               </p>
 
-              {/* Products grid */}
-              {products.length === 0 ? (
-                <div className="text-center py-24 text-gray-400">
-                  <p className="text-lg mb-2">ไม่พบสินค้าที่ค้นหา</p>
-                  <Link href="/products" className="text-[#1e3a5f] text-sm underline">
+              {sortedProducts.length === 0 ? (
+                <div className="py-24 text-center text-gray-400">
+                  <p className="mb-2 text-lg">ไม่พบสินค้าที่ค้นหา</p>
+                  <Link href="/products" className="text-sm text-[#1e3a5f] underline">
                     ดูสินค้าทั้งหมด
                   </Link>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {products.map((product) => (
-                    <ProductCard key={product.id} product={product} lineUrl={config.shopLineUrl} />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {sortedProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      lineUrl={config.shopLineUrl}
+                    />
                   ))}
                 </div>
               )}

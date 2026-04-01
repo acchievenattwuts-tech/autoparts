@@ -1,4 +1,4 @@
-﻿export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
@@ -12,7 +12,7 @@ import { Plus, Search, Pencil } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
-import { buildProductSearchWhere } from "@/lib/product-search";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 
 const PAGE_SIZE = 30;
 
@@ -35,22 +35,27 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const { search, page } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const where = buildProductSearchWhere(search);
+  const searchResult = await searchProductIds({
+    query: search,
+    skip: (pageNum - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+    order: "codeDesc",
+  });
 
-  const [products, total] = await Promise.all([
-    db.product.findMany({
-      where,
+  const products = sortProductsByIds(
+    await db.product.findMany({
+      where: {
+        id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
+      },
       include: {
         category: { select: { name: true } },
         brand: { select: { name: true } },
       },
-      orderBy: { code: "desc" },
-      take: PAGE_SIZE,
-      skip: (pageNum - 1) * PAGE_SIZE,
     }),
-    db.product.count({ where }),
-  ]);
+    searchResult.ids,
+  );
 
+  const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
@@ -105,11 +110,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           <p className="text-sm text-gray-500">
             {search ? (
               <>
-                ผลการค้นหา &quot;{search}&quot;: <span className="font-medium text-gray-700">{total} รายการ</span>
+                ผลการค้นหา &quot;{search}&quot;:{" "}
+                <span className="font-medium text-gray-700">{total} รายการ</span>
               </>
             ) : (
               <>
-                สินค้าทั้งหมด: <span className="font-medium text-gray-700">{total} รายการ</span>
+                สินค้าทั้งหมด:{" "}
+                <span className="font-medium text-gray-700">{total} รายการ</span>
               </>
             )}
           </p>
@@ -155,10 +162,14 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono font-medium text-gray-700">{product.code}</td>
+                    <td className="px-4 py-3 font-mono font-medium text-gray-700">
+                      {product.code}
+                    </td>
                     <td className="px-4 py-3 text-gray-800">
                       <p className="font-medium">{product.name}</p>
-                      {product.brand && <p className="text-xs text-gray-400">{product.brand.name}</p>}
+                      {product.brand && (
+                        <p className="text-xs text-gray-400">{product.brand.name}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{product.category.name}</td>
                     <td className="px-4 py-3 text-gray-600">
@@ -177,7 +188,9 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       >
                         {product.stock}
                       </span>
-                      <span className="ml-1 text-xs text-gray-400">{product.reportUnitName}</span>
+                      <span className="ml-1 text-xs text-gray-400">
+                        {product.reportUnitName}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {product.warrantyDays > 0 ? (
@@ -211,7 +224,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                           </Link>
                         )}
                         {canCancel && (
-                          <ToggleProductButton id={product.id} name={product.name} isActive={product.isActive} />
+                          <ToggleProductButton
+                            id={product.id}
+                            name={product.name}
+                            isActive={product.isActive}
+                          />
                         )}
                       </div>
                     </td>

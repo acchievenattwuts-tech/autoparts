@@ -1239,3 +1239,26 @@ npm run db:restore backup-{timestamp}.json
   - Phase 5-C Shared Search Service for `/products` and `/admin/products`
   - Phase 5-D Verification + Rollout + Regression Protection
 - Search upgrade must preserve existing search coverage exactly while improving speed, correctness, and safety.
+
+## Roadmap Update (2026-04-01 Search V2)
+- Search V2 target is now **marketplace-inspired**: fast, forgiving, and shared by both storefront and admin product search.
+- Search V2 must preserve the existing search coverage exactly:
+  - product name
+  - product code
+  - description
+  - aliases
+  - car brand
+  - car model
+  - category
+  - parts brand
+- Search V2 architecture decision:
+  - dedicated PostgreSQL search document table
+  - `pg_trgm` similarity matching for partial and typo-tolerant queries
+  - PostgreSQL full-text search for broader matching and ranking
+  - weighted ranking with exact code/name matches prioritized above loose matches
+  - one shared server-side search service for `/products` and `/admin/products`
+- Safety and rollout requirements:
+  - fallback to legacy Prisma contains search if Search V2 is unavailable or errors
+  - keep all existing filters working (`isActive`, category, car brand, car model)
+  - benchmark before and after rollout on real store queries
+  - no schema-breaking change to core transaction tables
