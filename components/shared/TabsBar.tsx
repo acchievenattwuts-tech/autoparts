@@ -18,6 +18,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/stock/bf": "ยอดยกมา (BF)",
   "/admin/stock/adjustments": "ปรับสต็อก",
   "/admin/stock/card": "Stock Card MAVG",
+  "/admin/lots": "Stock Card Lot",
   "/admin/purchases": "ซื้อสินค้าเข้า",
   "/admin/purchase-returns": "คืนสินค้าซัพพลายเออร์",
   "/admin/sales": "บันทึกการขาย",

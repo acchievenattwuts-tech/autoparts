@@ -133,9 +133,9 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
       </p>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-100 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium">รหัสสินค้า</th>
               <th className="px-4 py-3 text-left font-medium">ชื่อสินค้า</th>
@@ -156,7 +156,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
               </tr>
             )}
             {filtered.map((row) => (
-              <tr key={`${row.productId}-${row.lotNo}`} className="hover:bg-muted/30">
+              <tr key={`${row.productId}-${row.lotNo}`} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-2.5 font-mono text-xs">{row.product.code}</td>
                 <td className="px-4 py-2.5">{row.product.name}</td>
                 <td className="px-4 py-2.5 font-mono text-xs font-medium">{row.lotNo}</td>

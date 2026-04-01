@@ -3,394 +3,486 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
+import { Activity } from "lucide-react";
 
 interface PageProps {
-  searchParams: Promise<{ lotNo?: string }>;
+  searchParams: Promise<{ productId?: string; q?: string }>;
 }
 
-export default async function LotTracePage({ searchParams }: PageProps) {
+type MovementSource = "PURCHASE" | "SALE" | "PURCHASE_RETURN" | "CREDIT_NOTE";
+
+interface LotMovement {
+  date: Date;
+  docNo: string;
+  docLink: string;
+  source: MovementSource;
+  qty: number;
+  direction: "in" | "out";
+  isCancelled: boolean;
+}
+
+const sourceLabel: Record<MovementSource, string> = {
+  PURCHASE: "ซื้อเข้า",
+  SALE: "ขายออก",
+  PURCHASE_RETURN: "คืนซัพพลายเออร์",
+  CREDIT_NOTE: "รับคืน (CN)",
+};
+
+const sourceBadge: Record<MovementSource, string> = {
+  PURCHASE: "bg-green-100 text-green-700",
+  SALE: "bg-orange-100 text-orange-700",
+  PURCHASE_RETURN: "bg-yellow-100 text-yellow-700",
+  CREDIT_NOTE: "bg-teal-100 text-teal-700",
+};
+
+const fmt = (n: number) =>
+  n === 0
+    ? "-"
+    : n.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+
+export default async function LotMovementPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { lotNo = "" } = await searchParams;
-  const lotNoTrim = lotNo.trim();
+  const { productId, q } = await searchParams;
 
-  if (!lotNoTrim) {
-    return (
-      <div className="space-y-4">
-        <SearchForm lotNo="" />
-        <p className="text-sm text-muted-foreground">กรอก Lot No เพื่อค้นหาความเคลื่อนไหว</p>
-      </div>
-    );
-  }
-
-  // Find matching ProductLots (partial match)
-  const productLots = await db.productLot.findMany({
-    where: { lotNo: { contains: lotNoTrim, mode: "insensitive" } },
-    include: { product: { select: { id: true, name: true, code: true, saleUnitName: true } } },
-    orderBy: [{ productId: "asc" }, { lotNo: "asc" }],
-    take: 20,
+  // Fetch product list for selector
+  const products = await db.product.findMany({
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true, saleUnitName: true, stock: true },
   });
 
-  if (productLots.length === 0) {
-    return (
-      <div className="space-y-4">
-        <SearchForm lotNo={lotNoTrim} />
-        <p className="text-sm text-muted-foreground">ไม่พบ Lot No ที่ตรงกับ &quot;{lotNoTrim}&quot;</p>
-      </div>
+  const filteredProducts = q
+    ? products.filter(
+        (p) =>
+          p.code.toLowerCase().includes(q.toLowerCase()) ||
+          p.name.toLowerCase().includes(q.toLowerCase()),
+      )
+    : [];
+
+  const selectedProduct = productId
+    ? (products.find((p) => p.id === productId) ?? null)
+    : q && filteredProducts.length === 1
+      ? filteredProducts[0]
+      : null;
+
+  // Fetch lot data for selected product
+  type LotEntry = {
+    pl: { productId: string; lotNo: string; expDate: Date | null; mfgDate: Date | null };
+    movements: LotMovement[];
+    balance: number;
+  };
+
+  let lotData: LotEntry[] = [];
+
+  if (selectedProduct) {
+    const productLots = await db.productLot.findMany({
+      where: { productId: selectedProduct.id },
+      select: { productId: true, lotNo: true, expDate: true, mfgDate: true },
+      orderBy: { lotNo: "asc" },
+    });
+
+    lotData = await Promise.all(
+      productLots.map(async (pl): Promise<LotEntry> => {
+        const [purchaseLots, saleLots, returnLots, cnLots, lotBalance] = await Promise.all([
+          db.purchaseItemLot.findMany({
+            where: { lotNo: pl.lotNo, purchaseItem: { productId: pl.productId } },
+            include: {
+              purchaseItem: {
+                select: {
+                  purchase: {
+                    select: { id: true, purchaseNo: true, purchaseDate: true, status: true },
+                  },
+                },
+              },
+            },
+          }),
+          db.saleItemLot.findMany({
+            where: { lotNo: pl.lotNo, saleItem: { productId: pl.productId } },
+            include: {
+              saleItem: {
+                select: {
+                  sale: { select: { id: true, saleNo: true, saleDate: true, status: true } },
+                },
+              },
+            },
+          }),
+          db.purchaseReturnItemLot.findMany({
+            where: { lotNo: pl.lotNo, purchaseReturnItem: { productId: pl.productId } },
+            include: {
+              purchaseReturnItem: {
+                select: {
+                  purchaseReturn: {
+                    select: { id: true, returnNo: true, returnDate: true, status: true },
+                  },
+                },
+              },
+            },
+          }),
+          db.creditNoteItemLot.findMany({
+            where: { lotNo: pl.lotNo, creditNoteItem: { productId: pl.productId } },
+            include: {
+              creditNoteItem: {
+                select: {
+                  creditNote: { select: { id: true, cnNo: true, cnDate: true, status: true } },
+                },
+              },
+            },
+          }),
+          db.lotBalance.findUnique({
+            where: { productId_lotNo: { productId: pl.productId, lotNo: pl.lotNo } },
+            select: { qtyOnHand: true },
+          }),
+        ]);
+
+        const movements: LotMovement[] = [
+          ...purchaseLots.map((row) => ({
+            date: row.purchaseItem.purchase.purchaseDate,
+            docNo: row.purchaseItem.purchase.purchaseNo,
+            docLink: `/admin/purchases/${row.purchaseItem.purchase.id}`,
+            source: "PURCHASE" as MovementSource,
+            qty: Number(row.qty),
+            direction: "in" as const,
+            isCancelled: row.purchaseItem.purchase.status === "CANCELLED",
+          })),
+          ...saleLots.map((row) => ({
+            date: row.saleItem.sale.saleDate,
+            docNo: row.saleItem.sale.saleNo,
+            docLink: `/admin/sales/${row.saleItem.sale.id}`,
+            source: "SALE" as MovementSource,
+            qty: Number(row.qty),
+            direction: "out" as const,
+            isCancelled: row.saleItem.sale.status === "CANCELLED",
+          })),
+          ...returnLots.map((row) => ({
+            date: row.purchaseReturnItem.purchaseReturn.returnDate,
+            docNo: row.purchaseReturnItem.purchaseReturn.returnNo,
+            docLink: `/admin/purchase-returns/${row.purchaseReturnItem.purchaseReturn.id}`,
+            source: "PURCHASE_RETURN" as MovementSource,
+            qty: Number(row.qty),
+            direction: "out" as const,
+            isCancelled: row.purchaseReturnItem.purchaseReturn.status === "CANCELLED",
+          })),
+          ...cnLots.map((row) => ({
+            date: row.creditNoteItem.creditNote.cnDate,
+            docNo: row.creditNoteItem.creditNote.cnNo,
+            docLink: `/admin/credit-notes/${row.creditNoteItem.creditNote.id}`,
+            source: "CREDIT_NOTE" as MovementSource,
+            qty: Number(row.qty),
+            direction: "in" as const,
+            isCancelled: row.creditNoteItem.creditNote.status === "CANCELLED",
+          })),
+        ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+        return {
+          pl,
+          movements,
+          balance: Number(lotBalance?.qtyOnHand ?? 0),
+        };
+      }),
     );
+
+    // Show only lots with any movement or positive balance
+    lotData = lotData.filter((d) => d.movements.length > 0 || d.balance > 0);
   }
 
-  // For each matching lot, fetch movements
-  const traceData = await Promise.all(
-    productLots.map(async (pl) => {
-      const [purchaseLots, saleLots, returnLots, cnLots, balance] = await Promise.all([
-        // Purchase lots
-        db.purchaseItemLot.findMany({
-          where: { lotNo: pl.lotNo, purchaseItem: { productId: pl.productId } },
-          include: {
-            purchaseItem: {
-              select: {
-                purchase: {
-                  select: {
-                    id: true,
-                    purchaseNo: true,
-                    purchaseDate: true,
-                    supplier: { select: { name: true } },
-                  },
-                },
-              },
-            },
-          },
-        }),
-        // Sale lots
-        db.saleItemLot.findMany({
-          where: { lotNo: pl.lotNo, saleItem: { productId: pl.productId } },
-          include: {
-            saleItem: {
-              select: {
-                sale: {
-                  select: {
-                    id: true,
-                    saleNo: true,
-                    saleDate: true,
-                    customer: { select: { name: true } },
-                    status: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-        // Purchase return lots
-        db.purchaseReturnItemLot.findMany({
-          where: { lotNo: pl.lotNo, purchaseReturnItem: { productId: pl.productId } },
-          include: {
-            purchaseReturnItem: {
-              select: {
-                purchaseReturn: {
-                  select: { id: true, returnNo: true, returnDate: true, status: true },
-                },
-              },
-            },
-          },
-        }),
-        // Credit note lots
-        db.creditNoteItemLot.findMany({
-          where: { lotNo: pl.lotNo, creditNoteItem: { productId: pl.productId } },
-          include: {
-            creditNoteItem: {
-              select: {
-                creditNote: {
-                  select: { id: true, cnNo: true, cnDate: true, status: true },
-                },
-              },
-            },
-          },
-        }),
-        // Current balance
-        db.lotBalance.findUnique({
-          where: { productId_lotNo: { productId: pl.productId, lotNo: pl.lotNo } },
-          select: { qtyOnHand: true },
-        }),
-      ]);
-      return { pl, purchaseLots, saleLots, returnLots, cnLots, balance };
-    })
-  );
-
   return (
-    <div className="space-y-6">
-      <SearchForm lotNo={lotNoTrim} />
+    <div>
+      {/* Product selector — same style as Stock Card MAVG */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+        <form method="GET" className="flex gap-3 flex-wrap">
+          {productId && <input type="hidden" name="productId" value={productId} />}
+          <div className="flex-1 min-w-48">
+            <input
+              type="text"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อค้นหา..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            ค้นหา
+          </button>
+          {(q || productId) && (
+            <Link
+              href="/admin/lots/trace"
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"
+            >
+              ล้าง
+            </Link>
+          )}
+        </form>
 
-      {traceData.map(({ pl, purchaseLots, saleLots, returnLots, cnLots, balance }) => (
-        <div key={`${pl.productId}-${pl.lotNo}`} className="rounded-lg border">
-          {/* Lot header */}
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-lg bg-muted/50 px-4 py-3">
-            <div>
-              <p className="font-semibold">
-                Lot: <span className="font-mono">{pl.lotNo}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {pl.product.code} · {pl.product.name}
+        {/* Search results list */}
+        {q && !selectedProduct && filteredProducts.length > 0 && (
+          <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+              <p className="text-xs text-gray-500">
+                พบ{" "}
+                <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span>{" "}
+                — คลิกเพื่อเลือกสินค้า
               </p>
             </div>
-            <div className="flex flex-wrap gap-4 text-sm">
-              {pl.expDate && (
-                <span className="text-muted-foreground">
-                  EXP: {pl.expDate.toLocaleDateString("th-TH-u-ca-gregory")}
-                </span>
-              )}
-              {pl.mfgDate && (
-                <span className="text-muted-foreground">
-                  MFG: {pl.mfgDate.toLocaleDateString("th-TH-u-ca-gregory")}
-                </span>
-              )}
-              <span className="font-medium">
-                คงเหลือ:{" "}
-                {balance
-                  ? Number(balance.qtyOnHand).toLocaleString("th-TH", {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 4,
-                    })
-                  : "0"}{" "}
-                {pl.product.saleUnitName}
-              </span>
-            </div>
+            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+              {filteredProducts.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/admin/lots/trace?productId=${p.id}&q=${encodeURIComponent(q)}`}
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
+                  >
+                    <div>
+                      <span className="font-mono text-xs text-gray-500 mr-2">[{p.code}]</span>
+                      <span className="text-sm text-gray-800">{p.name}</span>
+                    </div>
+                    <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
+                      คงเหลือ {fmt(Number(p.stock))} {p.saleUnitName}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
 
-          <div className="divide-y p-4 space-y-4">
-            {/* Purchase movements */}
-            {purchaseLots.length > 0 && (
-              <section className="pt-0">
-                <p className="mb-2 text-sm font-semibold text-green-700">ใบซื้อต้นทาง</p>
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="pb-1 text-left font-medium">เลขที่ใบซื้อ</th>
-                      <th className="pb-1 text-left font-medium">วันที่</th>
-                      <th className="pb-1 text-left font-medium">ซัพพลายเออร์</th>
-                      <th className="pb-1 text-right font-medium">จำนวน</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchaseLots.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-0.5">
-                          <Link
-                            href={`/admin/purchases/${row.purchaseItem.purchase.id}`}
-                            className="font-mono text-blue-600 hover:underline"
-                          >
-                            {row.purchaseItem.purchase.purchaseNo}
-                          </Link>
-                        </td>
-                        <td className="py-0.5">
-                          {row.purchaseItem.purchase.purchaseDate.toLocaleDateString(
-                            "th-TH-u-ca-gregory"
-                          )}
-                        </td>
-                        <td className="py-0.5">
-                          {row.purchaseItem.purchase.supplier?.name ?? "-"}
-                        </td>
-                        <td className="py-0.5 text-right tabular-nums">
-                          +{Number(row.qty).toLocaleString("th-TH", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 4,
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-
-            {/* Sale movements */}
-            {saleLots.length > 0 && (
-              <section className="pt-4">
-                <p className="mb-2 text-sm font-semibold text-orange-700">ใบขาย</p>
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="pb-1 text-left font-medium">เลขที่ใบขาย</th>
-                      <th className="pb-1 text-left font-medium">วันที่</th>
-                      <th className="pb-1 text-left font-medium">ลูกค้า</th>
-                      <th className="pb-1 text-right font-medium">จำนวน</th>
-                      <th className="pb-1 text-center font-medium">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {saleLots.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-0.5">
-                          <Link
-                            href={`/admin/sales/${row.saleItem.sale.id}`}
-                            className="font-mono text-blue-600 hover:underline"
-                          >
-                            {row.saleItem.sale.saleNo}
-                          </Link>
-                        </td>
-                        <td className="py-0.5">
-                          {row.saleItem.sale.saleDate.toLocaleDateString("th-TH-u-ca-gregory")}
-                        </td>
-                        <td className="py-0.5">
-                          {row.saleItem.sale.customer?.name ?? "-"}
-                        </td>
-                        <td className="py-0.5 text-right tabular-nums text-orange-600">
-                          -{Number(row.qty).toLocaleString("th-TH", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 4,
-                          })}
-                        </td>
-                        <td className="py-0.5 text-center">
-                          {row.saleItem.sale.status === "CANCELLED" ? (
-                            <span className="text-red-500">ยกเลิก</span>
-                          ) : (
-                            <span className="text-green-600">ปกติ</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-
-            {/* Purchase return movements */}
-            {returnLots.length > 0 && (
-              <section className="pt-4">
-                <p className="mb-2 text-sm font-semibold text-yellow-700">คืนซัพพลายเออร์</p>
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="pb-1 text-left font-medium">เลขที่เอกสาร</th>
-                      <th className="pb-1 text-left font-medium">วันที่</th>
-                      <th className="pb-1 text-right font-medium">จำนวน</th>
-                      <th className="pb-1 text-center font-medium">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {returnLots.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-0.5">
-                          <Link
-                            href={`/admin/purchase-returns/${row.purchaseReturnItem.purchaseReturn.id}`}
-                            className="font-mono text-blue-600 hover:underline"
-                          >
-                            {row.purchaseReturnItem.purchaseReturn.returnNo}
-                          </Link>
-                        </td>
-                        <td className="py-0.5">
-                          {row.purchaseReturnItem.purchaseReturn.returnDate.toLocaleDateString(
-                            "th-TH-u-ca-gregory"
-                          )}
-                        </td>
-                        <td className="py-0.5 text-right tabular-nums text-yellow-600">
-                          -{Number(row.qty).toLocaleString("th-TH", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 4,
-                          })}
-                        </td>
-                        <td className="py-0.5 text-center">
-                          {row.purchaseReturnItem.purchaseReturn.status === "CANCELLED" ? (
-                            <span className="text-red-500">ยกเลิก</span>
-                          ) : (
-                            <span className="text-green-600">ปกติ</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-
-            {/* Credit note movements */}
-            {cnLots.length > 0 && (
-              <section className="pt-4">
-                <p className="mb-2 text-sm font-semibold text-teal-700">Credit Note (รับคืน)</p>
-                <table className="w-full text-xs">
-                  <thead className="text-muted-foreground">
-                    <tr>
-                      <th className="pb-1 text-left font-medium">เลขที่ CN</th>
-                      <th className="pb-1 text-left font-medium">วันที่</th>
-                      <th className="pb-1 text-right font-medium">จำนวน</th>
-                      <th className="pb-1 text-center font-medium">ประเภท Lot</th>
-                      <th className="pb-1 text-center font-medium">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cnLots.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-0.5">
-                          <Link
-                            href={`/admin/credit-notes/${row.creditNoteItem.creditNote.id}`}
-                            className="font-mono text-blue-600 hover:underline"
-                          >
-                            {row.creditNoteItem.creditNote.cnNo}
-                          </Link>
-                        </td>
-                        <td className="py-0.5">
-                          {row.creditNoteItem.creditNote.cnDate.toLocaleDateString(
-                            "th-TH-u-ca-gregory"
-                          )}
-                        </td>
-                        <td className="py-0.5 text-right tabular-nums text-teal-600">
-                          +{Number(row.qty).toLocaleString("th-TH", {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 4,
-                          })}
-                        </td>
-                        <td className="py-0.5 text-center">
-                          {row.isReturnLot ? (
-                            <span className="text-purple-600">RET-lot ใหม่</span>
-                          ) : (
-                            <span className="text-muted-foreground">merge กลับ</span>
-                          )}
-                        </td>
-                        <td className="py-0.5 text-center">
-                          {row.creditNoteItem.creditNote.status === "CANCELLED" ? (
-                            <span className="text-red-500">ยกเลิก</span>
-                          ) : (
-                            <span className="text-green-600">ปกติ</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            )}
-
-            {purchaseLots.length === 0 &&
-              saleLots.length === 0 &&
-              returnLots.length === 0 &&
-              cnLots.length === 0 && (
-                <p className="text-sm text-muted-foreground">ไม่พบความเคลื่อนไหว</p>
-              )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SearchForm({ lotNo }: { lotNo: string }) {
-  return (
-    <form method="GET" className="flex gap-3 items-end">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-muted-foreground">ค้นหา Lot No</label>
-        <input
-          name="lotNo"
-          defaultValue={lotNo}
-          placeholder="เช่น LOT-001"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring w-56"
-        />
+        {q && !selectedProduct && filteredProducts.length === 0 && (
+          <p className="mt-3 text-sm text-gray-400">
+            ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;
+          </p>
+        )}
       </div>
-      <button
-        type="submit"
-        className="h-9 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
-      >
-        ค้นหา
-      </button>
-    </form>
+
+      {selectedProduct && (
+        <>
+          {/* Product info */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+            <p className="font-semibold text-gray-900 text-lg">
+              [{selectedProduct.code}] {selectedProduct.name}
+            </p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              พบ <span className="font-medium text-gray-800">{lotData.length} Lot</span>
+              {" | "}สต็อกรวม:{" "}
+              <span className="font-medium text-gray-800">
+                {fmt(Number(selectedProduct.stock))} {selectedProduct.saleUnitName}
+              </span>
+            </p>
+          </div>
+
+          {lotData.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+              <p className="text-gray-400 text-sm">ไม่พบข้อมูล Lot สำหรับสินค้านี้</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {lotData.map(({ pl, movements, balance }) => {
+                // Compute running balance — cancelled rows don't affect balance
+                let running = 0;
+                const rows = movements.map((m) => {
+                  if (!m.isCancelled) {
+                    running += m.direction === "in" ? m.qty : -m.qty;
+                  }
+                  return { ...m, runningBalance: m.isCancelled ? null : running };
+                });
+
+                const totalIn = movements
+                  .filter((m) => !m.isCancelled && m.direction === "in")
+                  .reduce((s, m) => s + m.qty, 0);
+                const totalOut = movements
+                  .filter((m) => !m.isCancelled && m.direction === "out")
+                  .reduce((s, m) => s + m.qty, 0);
+
+                return (
+                  <div
+                    key={`${pl.productId}-${pl.lotNo}`}
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+                  >
+                    {/* Lot header */}
+                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-gray-900">
+                          Lot:{" "}
+                          <span className="font-mono text-[#1e3a5f]">{pl.lotNo}</span>
+                        </p>
+                        <div className="flex flex-wrap gap-4 mt-0.5 text-xs text-gray-500">
+                          {pl.mfgDate && (
+                            <span>
+                              MFG: {pl.mfgDate.toLocaleDateString("th-TH-u-ca-gregory")}
+                            </span>
+                          )}
+                          {pl.expDate && (
+                            <span>
+                              EXP: {pl.expDate.toLocaleDateString("th-TH-u-ca-gregory")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">คงเหลือปัจจุบัน</p>
+                        <p className="font-bold text-gray-900 text-lg">
+                          {fmt(balance)}{" "}
+                          <span className="text-sm font-normal text-gray-500">
+                            {selectedProduct.saleUnitName}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {rows.length === 0 ? (
+                      <div className="px-5 py-6 text-center text-sm text-gray-400">
+                        ไม่พบความเคลื่อนไหว
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="py-2.5 px-3 text-left font-medium text-gray-600 w-8">
+                                #
+                              </th>
+                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
+                                วันที่
+                              </th>
+                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
+                                เลขที่เอกสาร
+                              </th>
+                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
+                                ประเภท
+                              </th>
+                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
+                                จำนวนเข้า
+                                <span className="block text-xs font-normal text-gray-400">
+                                  ({selectedProduct.saleUnitName})
+                                </span>
+                              </th>
+                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
+                                จำนวนออก
+                                <span className="block text-xs font-normal text-gray-400">
+                                  ({selectedProduct.saleUnitName})
+                                </span>
+                              </th>
+                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
+                                คงเหลือ
+                                <span className="block text-xs font-normal text-gray-400">
+                                  ({selectedProduct.saleUnitName})
+                                </span>
+                              </th>
+                              <th className="py-2.5 px-3 text-center font-medium text-gray-600">
+                                สถานะ
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((m, idx) => (
+                              <tr
+                                key={idx}
+                                className={`border-t border-gray-50 transition-colors ${
+                                  m.isCancelled
+                                    ? "opacity-50"
+                                    : "hover:bg-gray-50"
+                                }`}
+                              >
+                                <td className="py-2.5 px-3 text-gray-400 text-xs">{idx + 1}</td>
+                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
+                                  {m.date.toLocaleDateString("th-TH-u-ca-gregory", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                  })}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <Link
+                                    href={m.docLink}
+                                    className={`font-mono text-xs hover:underline ${
+                                      m.isCancelled
+                                        ? "text-gray-400 line-through"
+                                        : "text-[#1e3a5f]"
+                                    }`}
+                                  >
+                                    {m.docNo}
+                                  </Link>
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sourceBadge[m.source]}`}
+                                  >
+                                    {sourceLabel[m.source]}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-green-700 font-medium">
+                                  {m.direction === "in" ? (
+                                    fmt(m.qty)
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-red-600 font-medium">
+                                  {m.direction === "out" ? (
+                                    fmt(m.qty)
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-semibold text-gray-900">
+                                  {m.runningBalance !== null ? (
+                                    fmt(m.runningBalance)
+                                  ) : (
+                                    <span className="text-gray-300">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  {m.isCancelled ? (
+                                    <span className="text-xs text-red-500">ยกเลิก</span>
+                                  ) : (
+                                    <span className="text-xs text-green-600">ปกติ</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                            <tr>
+                              <td
+                                colSpan={4}
+                                className="py-2.5 px-3 text-right text-xs font-semibold text-gray-600"
+                              >
+                                รวมทั้งหมด
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-green-700">
+                                {fmt(totalIn)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-red-600">
+                                {fmt(totalOut)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-bold text-gray-900">
+                                {fmt(balance)}
+                                <span className="ml-1 text-xs font-normal text-gray-500">
+                                  {selectedProduct.saleUnitName}
+                                </span>
+                              </td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {!selectedProduct && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
+          <Activity size={40} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-gray-400 text-sm">
+            ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดูความเคลื่อนไหว Lot
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

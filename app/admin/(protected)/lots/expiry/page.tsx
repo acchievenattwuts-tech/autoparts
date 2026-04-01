@@ -138,9 +138,9 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-100 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium">รหัสสินค้า</th>
               <th className="px-4 py-3 text-left font-medium">ชื่อสินค้า</th>

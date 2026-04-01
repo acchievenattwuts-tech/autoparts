@@ -113,9 +113,9 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
         <span className="font-semibold text-foreground">{rows.length} รายการ</span>
       </p>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-100 bg-white">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50">
+          <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium">รหัสสินค้า</th>
               <th className="px-4 py-3 text-left font-medium">ชื่อสินค้า</th>
@@ -141,7 +141,7 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
               return (
                 <tr
                   key={`${row.productId}-${row.lotNo}`}
-                  className={`hover:bg-muted/30 ${isNeverSold || isLong ? "bg-amber-50" : ""}`}
+                  className={`hover:bg-gray-50 transition-colors ${isNeverSold || isLong ? "bg-amber-50" : ""}`}
                 >
                   <td className="px-4 py-2.5 font-mono text-xs">{row.product.code}</td>
                   <td className="px-4 py-2.5">{row.product.name}</td>

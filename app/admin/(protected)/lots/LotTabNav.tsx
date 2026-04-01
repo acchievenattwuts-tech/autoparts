@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { label: "Lot Balance", href: "/admin/lots/balance" },
   { label: "ใกล้หมดอายุ", href: "/admin/lots/expiry" },
-  { label: "Lot Trace", href: "/admin/lots/trace" },
+  { label: "Lot Movement", href: "/admin/lots/trace" },
   { label: "Slow Moving", href: "/admin/lots/slow-moving" },
 ];
 
