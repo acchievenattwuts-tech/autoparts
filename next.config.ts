@@ -49,6 +49,13 @@ const nextConfig: NextConfig = {
   // Remove X-Powered-By header (hides tech stack from attackers)
   poweredByHeader: false,
 
+  experimental: {
+    serverActions: {
+      // Default is 1MB — raise to 3MB to support logo/product image uploads up to 2MB
+      bodySizeLimit: "3mb",
+    },
+  },
+
   async headers() {
     return [
       {
