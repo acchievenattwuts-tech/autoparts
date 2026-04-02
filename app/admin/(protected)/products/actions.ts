@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requirePermission } from "@/lib/require-auth";
@@ -9,9 +9,9 @@ import { generateProductCode } from "@/lib/entity-code";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp"];
+const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB
 
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
@@ -47,6 +47,17 @@ const productSchema = z.object({
 });
 
 type ProductInput = z.infer<typeof productSchema>;
+
+const revalidateStorefrontProductCaches = (productId?: string) => {
+  revalidatePath("/products");
+  revalidatePath("/sitemap.xml");
+  revalidateTag("storefront-product-filters", "max");
+  revalidateTag("product-search", "max");
+
+  if (productId) {
+    revalidateTag(`storefront-product:${productId}`, "max");
+  }
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -152,6 +163,7 @@ export const createProduct = async (
 
   const { aliases, carModelIds, units, ...productData } = result.data;
   const code = await generateProductCode();
+  let createdProductId = "";
 
   try {
     await dbTx(async (tx) => {
@@ -179,6 +191,8 @@ export const createProduct = async (
           stock: 0, // stock เริ่มต้น = 0 เสมอ (ใช้ระบบ BF ใน Phase 3)
         },
       });
+
+      createdProductId = product.id;
 
       await tx.productUnit.createMany({
         data: units.map((u) => ({
@@ -208,6 +222,7 @@ export const createProduct = async (
     });
 
     revalidatePath("/admin/products");
+    revalidateStorefrontProductCaches(createdProductId);
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
@@ -298,6 +313,7 @@ export const updateProduct = async (
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${id}/edit`);
+    revalidateStorefrontProductCaches(id);
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
@@ -324,6 +340,7 @@ export const toggleProduct = async (
   try {
     await db.product.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/products");
+    revalidateStorefrontProductCaches(id);
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
@@ -345,14 +362,14 @@ export const uploadProductImage = async (
   }
 
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP, GIF)" };
+    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP)" };
   }
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    return { error: "ขนาดไฟล์ต้องไม่เกิน 5MB" };
+    return { error: "ขนาดไฟล์ต้องไม่เกิน 3MB" };
   }
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp, gif" };
+    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp" };
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

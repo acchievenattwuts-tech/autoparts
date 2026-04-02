@@ -1,3 +1,5 @@
+export const revalidate = 300;
+
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";

@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { Suspense } from "react";
@@ -14,6 +14,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { absoluteUrl } from "@/lib/seo";
+import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
 interface Props {
   searchParams: Promise<{
@@ -78,7 +79,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
     order: "createdAtDesc",
   });
 
-  const [products, categories, carBrands] = await Promise.all([
+  const [products, filterData] = await Promise.all([
     db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
@@ -106,18 +107,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
         },
       },
     }),
-    db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
-    db.carBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      include: {
-        carModels: {
-          where: { isActive: true },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        },
-      },
-    }),
+    getStorefrontProductFilters(),
   ]);
 
   const sortedProducts = sortProductsByIds(products, searchResult.ids);
@@ -158,7 +148,10 @@ const ProductsPage = async ({ searchParams }: Props) => {
           <div className="flex flex-col gap-6 lg:flex-row">
             <aside className="w-full shrink-0 lg:w-72">
               <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white" />}>
-                <ProductFilterBar brands={carBrands} categories={categories} />
+                <ProductFilterBar
+                  brands={filterData.carBrands}
+                  categories={filterData.categories}
+                />
               </Suspense>
             </aside>
 

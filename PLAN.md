@@ -1350,3 +1350,23 @@ npm run db:restore backup-{timestamp}.json
 - Updated page metadata to use generated OG images instead of a generic logo-only image
 - Reduced unnecessary public runtime rendering by allowing the homepage to be statically generated while still using `site-config` cache invalidation from admin settings
 - Added `generateStaticParams` for `/knowledge/[slug]` and knowledge article OG image routes so the knowledge section can be pre-rendered
+
+## Roadmap Update (2026-04-02 Phase 7 Storefront Cache Tuning)
+- Added cached storefront filter data for the `/products` page so category and car brand filters do not hit the database on every request
+- Added cache-tag based storefront product detail caching for public product pages
+- Updated admin product mutations to invalidate storefront caches after create/update/toggle so public product pages and sitemap stay fresh
+- Revalidated storefront-related paths during product changes:
+  - `/products`
+  - `/sitemap.xml`
+
+## Roadmap Update (2026-04-02 Phase 7 Performance Pass)
+- Tightened product image upload constraints for storefront performance:
+  - product uploads now allow `jpg`, `png`, `webp`
+  - removed `gif` support for product images
+  - reduced max product upload size to `3 MB`
+- Enabled Next.js image optimization output formats:
+  - `AVIF`
+  - `WebP`
+- Added cache TTL tuning for optimized images in `next.config.ts`
+- Added cached product search results with tag-based invalidation
+- Kept homepage static and added `revalidate` tuning for public product routes

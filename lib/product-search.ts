@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
+import { unstable_cache } from "next/cache";
 
 const SEARCH_V2_CODE_SIMILARITY = 0.2;
 const SEARCH_V2_NAME_SIMILARITY = 0.18;
@@ -331,18 +332,35 @@ async function searchProductIdsV2(
 export async function searchProductIds(
   input: ProductSearchInput,
 ): Promise<ProductSearchResult> {
-  const normalizedQuery = normalizeSearchQuery(input.query);
+  const cacheKey = JSON.stringify({
+    query: normalizeSearchQuery(input.query) ?? "",
+    isActive: input.isActive ?? null,
+    categoryName: input.categoryName ?? "",
+    carBrandName: input.carBrandName ?? "",
+    carModelName: input.carModelName ?? "",
+    skip: input.skip ?? 0,
+    take: input.take ?? 30,
+    order: input.order ?? "createdAtDesc",
+  });
 
-  if (!normalizedQuery) {
-    return searchProductIdsFallback(input);
-  }
+  return unstable_cache(
+    async () => {
+      const normalizedQuery = normalizeSearchQuery(input.query);
 
-  try {
-    return await searchProductIdsV2(input);
-  } catch (error) {
-    console.error("Search V2 failed, falling back to Prisma contains search.", error);
-    return searchProductIdsFallback(input);
-  }
+      if (!normalizedQuery) {
+        return searchProductIdsFallback(input);
+      }
+
+      try {
+        return await searchProductIdsV2(input);
+      } catch (error) {
+        console.error("Search V2 failed, falling back to Prisma contains search.", error);
+        return searchProductIdsFallback(input);
+      }
+    },
+    [`product-search:${cacheKey}`],
+    { tags: ["product-search"], revalidate: 300 },
+  )();
 }
 
 export function sortProductsByIds<T extends Pick<Product, "id">>(

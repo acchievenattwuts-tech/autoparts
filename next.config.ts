@@ -51,7 +51,7 @@ const nextConfig: NextConfig = {
 
   experimental: {
     serverActions: {
-      // Default is 1MB — raise to 3MB to support logo/product image uploads up to 2MB
+      // Keep server action payloads tight to protect upload performance.
       bodySizeLimit: "3mb",
     },
   },
@@ -66,6 +66,8 @@ const nextConfig: NextConfig = {
   },
 
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 2678400,
     remotePatterns: [
       {
         protocol: "https",

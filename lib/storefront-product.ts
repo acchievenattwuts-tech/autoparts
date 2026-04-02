@@ -1,43 +1,48 @@
-import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 
-export const getActiveStorefrontProductById = cache(async (productId: string) => {
-  return db.product.findFirst({
-    where: {
-      id: productId,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      imageUrl: true,
-      salePrice: true,
-      stock: true,
-      reportUnitName: true,
-      category: { select: { name: true } },
-      brand: { select: { name: true } },
-      aliases: {
-        select: { alias: true },
-        orderBy: { alias: "asc" },
-        take: 8,
-      },
-      carModels: {
-        select: {
-          carModel: {
-            select: {
-              name: true,
-              carBrand: { select: { name: true } },
-            },
-          },
+export const getActiveStorefrontProductById = async (productId: string) => {
+  return unstable_cache(
+    async () =>
+      db.product.findFirst({
+        where: {
+          id: productId,
+          isActive: true,
         },
-        take: 16,
-      },
-      updatedAt: true,
-    },
-  });
-});
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          description: true,
+          imageUrl: true,
+          salePrice: true,
+          stock: true,
+          reportUnitName: true,
+          category: { select: { name: true } },
+          brand: { select: { name: true } },
+          aliases: {
+            select: { alias: true },
+            orderBy: { alias: "asc" },
+            take: 8,
+          },
+          carModels: {
+            select: {
+              carModel: {
+                select: {
+                  name: true,
+                  carBrand: { select: { name: true } },
+                },
+              },
+            },
+            take: 16,
+          },
+          updatedAt: true,
+        },
+      }),
+    [`storefront-product:${productId}`],
+    { tags: [`storefront-product:${productId}`] },
+  )();
+};
 
 export const buildStorefrontProductDescription = (product: {
   name: string;
