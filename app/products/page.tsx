@@ -130,8 +130,9 @@ const ProductsPage = async ({ searchParams }: Props) => {
             alt="hero background"
             fill
             sizes="100vw"
+            fetchPriority="high"
+            loading="eager"
             className="object-cover object-center"
-            priority
           />
           <div className="absolute inset-0 bg-[#0f2140]/55" />
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

@@ -1370,3 +1370,25 @@ npm run db:restore backup-{timestamp}.json
 - Added cache TTL tuning for optimized images in `next.config.ts`
 - Added cached product search results with tag-based invalidation
 - Kept homepage static and added `revalidate` tuning for public product routes
+
+## Roadmap Update (2026-04-02 Phase 7 Production Performance Measurement)
+- Started production performance measurement against the live `https://www.sriwanparts.com` storefront
+- Captured a mobile Lighthouse baseline for:
+  - `/`
+  - `/products`
+  - `/faq`
+  - `/knowledge`
+  - one live product detail page
+- Baseline report saved at `docs/performance/production-baseline-2026-04-02.md`
+- Current takeaway:
+  - backend document latency is already strong across the storefront
+  - `/products` is the slowest public page in the current baseline
+  - the largest current bottleneck is front-end LCP resource discovery on `/products`, not server response time
+
+## Roadmap Update (2026-04-02 Phase 7 LCP Priority Pass)
+- Applied explicit `fetchPriority="high"` and `loading="eager"` to the storefront's primary above-the-fold images identified as likely LCP candidates:
+  - homepage hero image
+  - `/products` hero image
+  - product detail lead image
+- Replaced deprecated Next.js `priority` usage on those images with the Next.js 16-friendly loading hints recommended by the local docs
+- This pass is intentionally scoped to low-risk LCP discovery improvements before deeper client-bundle reductions on `/products`

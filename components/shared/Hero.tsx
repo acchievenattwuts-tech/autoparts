@@ -28,8 +28,9 @@ const Hero = ({
         alt="hero background"
         fill
         sizes="100vw"
+        fetchPriority="high"
+        loading="eager"
         className="object-cover object-center"
-        priority
       />
       <div className="absolute inset-0 bg-[#0f2140]/65" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.1),transparent_28%)]" />

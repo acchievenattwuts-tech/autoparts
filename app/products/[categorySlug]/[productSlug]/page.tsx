@@ -149,8 +149,9 @@ const ProductDetailPage = async ({ params }: Props) => {
                     alt={product.name}
                     fill
                     sizes="(max-width: 1024px) 100vw, 50vw"
+                    fetchPriority="high"
+                    loading="eager"
                     className="object-contain p-6 sm:p-10"
-                    priority
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-slate-300">
