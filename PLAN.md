@@ -1441,6 +1441,17 @@ npm run db:restore backup-{timestamp}.json
 - Expanded sitemap coverage to include active category landing pages
 - Added one more local SEO knowledge article focused on customers looking for auto AC parts in Nakhon Sawan
 
+## Roadmap Update (2026-04-03 Phase 7 Knowledge Compatibility Expansion)
+- Expanded the knowledge hub with compatibility-first content that matches real purchase conversations:
+  - how to check OEM / original part numbers before ordering
+  - when one AC part can or cannot fit multiple car models
+  - how to photograph and compare an old part before sending it to the shop
+- This pass is meant to support:
+  - compatibility intent
+  - OEM / part-number intent
+  - faster LINE OA handoff with better customer-prepared information
+- Product-level compatibility data in the catalog still remains a separate future task and is not being faked in content.
+
 ### Phase 7 Checklist Status
 - [x] canonical + metadata base
 - [x] `robots.txt`
@@ -1457,5 +1468,5 @@ npm run db:restore backup-{timestamp}.json
 - [x] initial production performance measurement
 - [x] first rounds of storefront performance tuning
 - [x] category-specific OG image routes
-- [ ] deeper content expansion for knowledge hub
+- [x] deeper content expansion for knowledge hub
 - [ ] continued production measurement + tuning loop
