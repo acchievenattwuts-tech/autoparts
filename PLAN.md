@@ -1392,3 +1392,8 @@ npm run db:restore backup-{timestamp}.json
   - product detail lead image
 - Replaced deprecated Next.js `priority` usage on those images with the Next.js 16-friendly loading hints recommended by the local docs
 - This pass is intentionally scoped to low-risk LCP discovery improvements before deeper client-bundle reductions on `/products`
+
+## Roadmap Update (2026-04-02 Phase 7 Products Render Path Simplification)
+- Removed the decorative hero image from `/products` and replaced it with a CSS-only banner treatment
+- Kept the catalog heading and search-state summary while removing one large above-the-fold image request from the products listing page
+- This pass is intended to reduce the critical render path on the slowest public storefront route before the next measurement cycle

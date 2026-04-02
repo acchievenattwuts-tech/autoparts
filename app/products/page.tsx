@@ -2,6 +2,7 @@ export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import Navbar from "@/components/shared/Navbar";
@@ -10,8 +11,6 @@ import ProductCard from "@/components/shared/ProductCard";
 import FloatingLine from "@/components/shared/FloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "./ProductFilterBar";
-import Image from "next/image";
-import Link from "next/link";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
@@ -124,24 +123,32 @@ const ProductsPage = async ({ searchParams }: Props) => {
         searchQuery={q}
       />
       <main className="min-h-screen bg-gray-50 pt-16">
-        <div className="relative overflow-hidden py-6">
-          <Image
-            src="/hero-banner.jpg"
-            alt="hero background"
-            fill
-            sizes="100vw"
-            fetchPriority="high"
-            loading="eager"
-            className="object-cover object-center"
-          />
-          <div className="absolute inset-0 bg-[#0f2140]/55" />
-          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <h1 className="font-kanit text-2xl font-bold text-white">สินค้าทั้งหมด</h1>
-            {q && (
-              <p className="mt-0.5 text-sm text-white/70">
-                ผลการค้นหา: &ldquo;{q}&rdquo;
-              </p>
-            )}
+        <div className="overflow-hidden bg-[#10213d]">
+          <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h1 className="font-kanit text-2xl font-bold text-white sm:text-3xl">
+                    สินค้าทั้งหมด
+                  </h1>
+                  <p className="mt-1 max-w-2xl text-sm text-white/70 sm:text-base">
+                    ค้นหาสินค้าด้วยชื่อ รหัสอะไหล่ ยี่ห้อรถ รุ่นรถ และหมวดสินค้าได้จากหน้าเดียว
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm">
+                  {q ? (
+                    <p className="text-sm text-white/85">
+                      ผลการค้นหา: <span className="font-semibold text-white">&ldquo;{q}&rdquo;</span>
+                    </p>
+                  ) : (
+                    <p className="text-sm text-white/75">
+                      ใช้กล่องค้นหาด้านบน หรือกรองด้วยยี่ห้อรถและหมวดสินค้าได้เลย
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -168,15 +175,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
                       </>
                     )}
                     {category && <>{category} </>}
-                    — พบ{" "}
-                    <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
+                    — พบ <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
                     รายการ
                   </>
                 ) : (
                   <>
                     สินค้าทั้งหมด{" "}
-                    <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                    รายการ
+                    <span className="font-semibold text-gray-800">{searchResult.total}</span> รายการ
                   </>
                 )}
               </p>
