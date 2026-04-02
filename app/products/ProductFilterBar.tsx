@@ -13,6 +13,9 @@ interface Props {
   categories: Category[];
 }
 
+const MOBILE_BRAND_PREVIEW_COUNT = 6;
+const MOBILE_CATEGORY_PREVIEW_COUNT = 6;
+
 const ProductFilterBar = ({ brands, categories }: Props) => {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -24,26 +27,36 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   const category = searchParams.get("category") ?? "";
   const page = searchParams.get("page") ?? "";
 
-  const hasCarFilter = brand || model;
-  const hasAnyFilter = hasCarFilter || category;
-  const [isExpanded, setIsExpanded] = useState<boolean>(Boolean(hasAnyFilter));
+  const hasCarFilter = Boolean(brand || model);
+  const hasAnyFilter = Boolean(hasCarFilter || category);
+
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [isExpanded, setIsExpanded] = useState<boolean>(hasAnyFilter);
+  const [showBrandOptions, setShowBrandOptions] = useState<boolean>(hasCarFilter);
+  const [showCategoryOptions, setShowCategoryOptions] = useState<boolean>(Boolean(category));
 
   const selectedBrand = brands.find((item) => item.name === brand);
+  const mobileBrandPreview = brands.slice(0, MOBILE_BRAND_PREVIEW_COUNT);
+  const mobileCategoryPreview = categories.slice(0, MOBILE_CATEGORY_PREVIEW_COUNT);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
 
-    const syncExpandedState = () => {
-      setIsExpanded(Boolean(mediaQuery.matches || hasAnyFilter));
+    const syncState = () => {
+      const nextDesktop = mediaQuery.matches;
+      setIsDesktop(nextDesktop);
+      setIsExpanded(Boolean(nextDesktop || hasAnyFilter));
+      setShowBrandOptions(Boolean(nextDesktop || hasCarFilter));
+      setShowCategoryOptions(Boolean(nextDesktop || category));
     };
 
-    syncExpandedState();
-    mediaQuery.addEventListener("change", syncExpandedState);
+    syncState();
+    mediaQuery.addEventListener("change", syncState);
 
     return () => {
-      mediaQuery.removeEventListener("change", syncExpandedState);
+      mediaQuery.removeEventListener("change", syncState);
     };
-  }, [hasAnyFilter]);
+  }, [category, hasAnyFilter, hasCarFilter]);
 
   const navigate = (updates: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -64,9 +77,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   };
 
   return (
-    <div
-      className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}
-    >
+    <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <button
           type="button"
@@ -106,7 +117,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
             <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">🚗</span>
+                  <span className="text-lg">รถ</span>
                   <span className="text-sm font-semibold text-gray-800">เลือกตามยี่ห้อรถ</span>
                   {hasCarFilter && (
                     <span className="rounded-full bg-[#1e3a5f] px-2 py-0.5 text-xs text-white">
@@ -126,32 +137,69 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
               </div>
 
               <div className="px-5 py-4">
-                <div className="flex flex-wrap gap-2">
-                  {brands.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() =>
-                        navigate({
-                          brand: brand === item.name ? "" : item.name,
-                          model: "",
-                        })
-                      }
-                      className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
-                        brand === item.name
-                          ? "border-[#1e3a5f] bg-[#1e3a5f] text-white shadow-sm"
-                          : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
-                      }`}
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                  {brands.length === 0 && (
-                    <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
-                  )}
-                </div>
+                {!isDesktop && !showBrandOptions ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {mobileBrandPreview.map((item) => (
+                        <span
+                          key={item.id}
+                          className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500"
+                        >
+                          {item.name}
+                        </span>
+                      ))}
+                      {brands.length === 0 && (
+                        <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
+                      )}
+                    </div>
+                    {brands.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBrandOptions(true)}
+                        className="inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/15 bg-[#1e3a5f]/5 px-4 py-2 text-sm font-medium text-[#1e3a5f]"
+                      >
+                        เปิดเลือกยี่ห้อรถ
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {(isDesktop ? brands : brands).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          navigate({
+                            brand: brand === item.name ? "" : item.name,
+                            model: "",
+                          })
+                        }
+                        className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
+                          brand === item.name
+                            ? "border-[#1e3a5f] bg-[#1e3a5f] text-white shadow-sm"
+                            : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
+                        }`}
+                      >
+                        {item.name}
+                      </button>
+                    ))}
+                    {!isDesktop && showBrandOptions && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBrandOptions(false)}
+                        className="rounded-full border border-dashed border-gray-300 px-3.5 py-1.5 text-sm text-gray-500"
+                      >
+                        ย่อรายการ
+                      </button>
+                    )}
+                    {brands.length === 0 && (
+                      <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
+                    )}
+                  </div>
+                )}
 
-                {selectedBrand && selectedBrand.carModels.length > 0 && (
+                {showBrandOptions && selectedBrand && selectedBrand.carModels.length > 0 && (
                   <div className="mt-4 border-t border-gray-100 pt-4">
                     <div className="mb-2.5 flex items-center gap-1.5">
                       <ChevronRight size={13} className="text-[#1e3a5f]" />
@@ -181,36 +229,70 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
             </div>
 
             <div className="mt-3 rounded-2xl border border-gray-100 bg-white px-5 py-4 shadow-sm">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                หมวดหมู่สินค้า
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => navigate({ category: "" })}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                    !category
-                      ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
-                      : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
-                  }`}
-                >
-                  ทั้งหมด
-                </button>
-                {categories.map((item) => (
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  หมวดหมู่สินค้า
+                </p>
+                {!isDesktop && !showCategoryOptions && categories.length > 0 && (
                   <button
-                    key={item.id}
                     type="button"
-                    onClick={() => navigate({ category: category === item.name ? "" : item.name })}
+                    onClick={() => setShowCategoryOptions(true)}
+                    className="text-xs font-medium text-[#1e3a5f]"
+                  >
+                    เปิดทั้งหมด
+                  </button>
+                )}
+              </div>
+
+              {!isDesktop && !showCategoryOptions ? (
+                <div className="flex flex-wrap gap-2">
+                  {mobileCategoryPreview.map((item) => (
+                    <span
+                      key={item.id}
+                      className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500"
+                    >
+                      {item.name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate({ category: "" })}
                     className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                      category === item.name
+                      !category
                         ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
                         : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
                     }`}
                   >
-                    {item.name}
+                    ทั้งหมด
                   </button>
-                ))}
-              </div>
+                  {(isDesktop ? categories : categories).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => navigate({ category: category === item.name ? "" : item.name })}
+                      className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                        category === item.name
+                          ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
+                          : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
+                      }`}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                  {!isDesktop && showCategoryOptions && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryOptions(false)}
+                      className="rounded-full border border-dashed border-gray-300 px-4 py-1.5 text-sm text-gray-500"
+                    >
+                      ย่อรายการ
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {hasAnyFilter && (
@@ -218,7 +300,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                 <span className="text-xs text-gray-400">ตัวกรองที่เลือก:</span>
                 {brand && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#1e3a5f]/10 px-3 py-1 text-xs font-medium text-[#1e3a5f]">
-                    🚗 {brand}
+                    รถ {brand}
                     <button
                       type="button"
                       onClick={() => navigate({ brand: "", model: "" })}

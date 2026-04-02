@@ -1462,6 +1462,9 @@ npm run db:restore backup-{timestamp}.json
   - reduced Google font weights to the weights actually used in the UI
   - deferred non-critical analytics reporters until idle time
   - deferred the floating LINE CTA until idle time so it no longer competes with first paint on public pages
+- Applied an additional mobile filter-panel reduction pass:
+  - long brand and category button lists now stay collapsed by default on small screens
+  - mobile users only mount the heavier filter option groups after explicitly opening them
 - The production tuning loop remains open and should be re-measured after deploy.
 
 ### Phase 7 Checklist Status
