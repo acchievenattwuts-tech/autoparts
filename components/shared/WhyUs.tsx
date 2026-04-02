@@ -87,19 +87,6 @@ const WhyUs = () => {
           ))}
         </div>
 
-        <div className="mt-14 grid grid-cols-2 gap-6 rounded-2xl bg-[#1e3a5f] p-8 sm:grid-cols-4">
-          {[
-            { value: "500+", label: "รายการสินค้า" },
-            { value: "1,000+", label: "ลูกค้าทั่วประเทศ" },
-            { value: "10+", label: "ปีประสบการณ์" },
-            { value: "99%", label: "ความพึงพอใจ" },
-          ].map(({ value, label }) => (
-            <div key={label} className="text-center">
-              <p className="text-3xl font-bold text-[#f97316]">{value}</p>
-              <p className="mt-1 text-sm text-white/70">{label}</p>
-            </div>
-          ))}
-        </div>
       </div>
     </section>
   );

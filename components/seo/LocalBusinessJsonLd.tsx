@@ -1,5 +1,5 @@
 import type { SiteConfig } from "@/lib/site-config";
-import { SITE_NAME, SITE_URL } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
 import JsonLd from "./JsonLd";
 
 interface LocalBusinessJsonLdProps {
@@ -27,10 +27,11 @@ const LocalBusinessJsonLd = ({ config }: LocalBusinessJsonLdProps) => {
           : undefined,
         openingHours: config.shopBusinessHours || undefined,
         hasMap: config.shopGoogleMapUrl || undefined,
-        areaServed: "Thailand",
+        areaServed: ["นครสวรรค์", "จังหวัดนครสวรรค์", "Thailand"],
         description:
           config.heroSubtitle ||
-          "ร้านอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมบริการค้นหาสินค้าและติดต่อร้านผ่าน LINE OA หรือโทรศัพท์",
+          "ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ในนครสวรรค์ พร้อมบริการค้นหาสินค้าและติดต่อร้านผ่าน LINE OA หรือโทรศัพท์",
+        keywords: LOCAL_SEO_KEYWORDS.join(", "),
       }}
     />
   );

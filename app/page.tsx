@@ -11,7 +11,7 @@ import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
 import { getSiteConfig } from "@/lib/site-config";
-import { DEFAULT_DESCRIPTION, absoluteUrl } from "@/lib/seo";
+import { DEFAULT_DESCRIPTION, LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getSiteConfig();
@@ -23,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
       canonical: absoluteUrl("/"),
     },

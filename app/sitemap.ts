@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
 import { absoluteUrl } from "@/lib/seo";
 import { knowledgeArticles } from "@/lib/knowledge-content";
-import { getProductPath } from "@/lib/product-slug";
+import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [
@@ -11,6 +11,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     latestBrand,
     latestModel,
     latestSiteContent,
+    activeCategories,
     activeProducts,
   ] =
     await Promise.all([
@@ -19,6 +20,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       db.partsBrand.aggregate({ _max: { createdAt: true } }),
       db.carModel.aggregate({ _max: { createdAt: true } }),
       db.siteContent.aggregate({ _max: { updatedAt: true } }),
+      db.category.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+        },
+        orderBy: { name: "asc" },
+      }),
       db.product.findMany({
         where: { isActive: true },
         select: {
@@ -89,6 +99,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: product.updatedAt,
       changeFrequency: "weekly" as const,
       priority: 0.7,
+    })),
+    ...activeCategories.map((category) => ({
+      url: absoluteUrl(getCategoryPath(category.name)),
+      lastModified: category.createdAt ?? productsLastModified,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
     })),
   ];
 }

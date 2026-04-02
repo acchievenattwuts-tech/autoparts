@@ -6,7 +6,7 @@ import Footer from "@/components/shared/Footer";
 import FloatingLine from "@/components/shared/FloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
-import { absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 
@@ -14,11 +14,12 @@ export async function generateMetadata(): Promise<Metadata> {
   const config = await getSiteConfig();
   const title = `คำถามที่พบบ่อย | ${config.shopName}`;
   const description =
-    "รวมคำถามที่ลูกค้ามักสงสัยเกี่ยวกับการค้นหาสินค้า ความน่าเชื่อถือของร้าน วิธีสั่งซื้อ การเช็กสต็อก การจัดส่ง และการติดต่อร้าน";
+    "รวมคำถามที่ลูกค้ามักสงสัยเกี่ยวกับร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ วิธีสั่งซื้อ การเช็กสต็อก การจัดส่ง ความน่าเชื่อถือของร้าน และการติดต่อร้าน";
 
   return {
     title,
     description,
+    keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
       canonical: absoluteUrl("/faq"),
     },
@@ -87,7 +88,7 @@ const FaqPage = async () => {
               </h1>
               <p className="mt-5 text-base leading-8 text-white/78 sm:text-lg">
                 หน้านี้รวบรวมคำถามที่เกี่ยวกับการค้นหาสินค้า วิธีสั่งซื้อ ความน่าเชื่อถือของร้าน
-                การเช็กสต็อก และการติดต่อร้าน เพื่อช่วยให้ลูกค้าเข้าใจวิธีใช้งานเว็บไซต์นี้ได้เร็วขึ้น
+                การเช็กสต็อก และการติดต่อร้าน เพื่อช่วยให้ลูกค้าที่กำลังหาอะไหล่แอร์รถยนต์ในนครสวรรค์หรือจังหวัดอื่น ๆ เข้าใจวิธีใช้งานเว็บไซต์นี้ได้เร็วขึ้น
               </p>
             </div>
           </div>

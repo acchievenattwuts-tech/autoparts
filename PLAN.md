@@ -1408,3 +1408,57 @@ npm run db:restore backup-{timestamp}.json
 - Simplified `ProductCard` so compatibility information renders as one summary line instead of multiple chips
 - Updated the products filter panel to mount its detailed filter controls only when expanded
 - This pass is aimed at reducing initial DOM and client-side render cost on the `/products` page while keeping the same search and filter behavior
+
+## Roadmap Update (2026-04-02 Phase 7 Local SEO Keyword Layer)
+- Expanded Phase 7 to explicitly include local SEO language for the shop's real market:
+  - `อะไหล่แอร์รถยนต์`
+  - `นครสวรรค์`
+  - `จังหวัดนครสวรรค์`
+- Added these keywords to the storefront SEO foundation in places where they fit naturally:
+  - metadata defaults
+  - homepage messaging
+  - `/about`
+  - `/faq`
+  - FAQ content
+  - structured data
+  - `llms.txt`
+- Recommended supporting keyword cluster for future content and landing-page refinement:
+  - `ร้านอะไหล่แอร์รถยนต์`
+  - `ร้านอะไหล่แอร์ นครสวรรค์`
+  - `ร้านหม้อน้ำรถยนต์ นครสวรรค์`
+  - `คอมแอร์รถยนต์`
+  - `คอมเพรสเซอร์แอร์รถยนต์`
+  - `อะไหล่แอร์รถยนต์ นครสวรรค์`
+- Keyword usage must remain natural and trust-focused rather than repetitive or spammy.
+
+## Roadmap Update (2026-04-02 Phase 7 Category SEO + Checklist)
+- Added SEO category landing pages under `/products/[categorySlug]`
+- Category pages now provide:
+  - category-specific metadata
+  - canonical URLs
+  - `CollectionPage` JSON-LD
+  - breadcrumb coverage
+  - internal links into filtered catalog states
+  - product previews for each category page
+- Updated internal linking so storefront category cards point to category landing pages instead of query-only URLs
+- Expanded sitemap coverage to include active category landing pages
+- Added one more local SEO knowledge article focused on customers looking for auto AC parts in Nakhon Sawan
+
+### Phase 7 Checklist Status
+- [x] canonical + metadata base
+- [x] `robots.txt`
+- [x] `sitemap.xml`
+- [x] `/about`
+- [x] `/faq`
+- [x] `/knowledge`
+- [x] `llms.txt`
+- [x] JSON-LD foundation
+- [x] product SEO pages
+- [x] category SEO pages
+- [x] generated OG images for core public pages
+- [x] local SEO keyword layer
+- [x] initial production performance measurement
+- [x] first rounds of storefront performance tuning
+- [x] category-specific OG image routes
+- [ ] deeper content expansion for knowledge hub
+- [ ] continued production measurement + tuning loop

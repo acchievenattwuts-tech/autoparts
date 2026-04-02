@@ -177,7 +177,6 @@ const ProductsPage = async ({ searchParams }: Props) => {
             <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
-                  <p className="text-sm font-medium text-[#f97316]">Full-Text Search สำหรับอะไหล่แอร์</p>
                   <h1 className="mt-2 font-kanit text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
                     ค้นหาอะไหล่ให้เจอเร็วขึ้น จากชื่อสินค้า รหัสอะไหล่ รุ่นรถ และคำที่ลูกค้าใช้เรียก
                   </h1>

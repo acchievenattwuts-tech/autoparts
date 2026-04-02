@@ -22,6 +22,7 @@ import { absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import {
   extractProductIdFromSlug,
+  getCategoryPath,
   getProductCategorySlug,
   getProductPath,
 } from "@/lib/product-slug";
@@ -339,9 +340,7 @@ const ProductDetailPage = async ({ params }: Props) => {
           { name: "สินค้าทั้งหมด", item: absoluteUrl("/products") },
           {
             name: product.category.name,
-            item: absoluteUrl(
-              `/products?category=${encodeURIComponent(product.category.name)}`,
-            ),
+            item: absoluteUrl(getCategoryPath(product.category.name)),
           },
           { name: product.name, item: canonicalUrl },
         ]}

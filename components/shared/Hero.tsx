@@ -40,7 +40,7 @@ const Hero = ({
           <div className="max-w-3xl">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 backdrop-blur-md">
               <span className="h-2 w-2 rounded-full bg-[#f97316]" />
-              <span className="text-sm font-medium text-white/90">อะไหล่แอร์และหม้อน้ำรถยนต์</span>
+              <span className="text-sm font-medium text-white/90">อะไหล่แอร์รถยนต์ นครสวรรค์</span>
             </div>
 
             <h1 className="font-kanit text-4xl font-bold leading-[0.95] text-white sm:text-5xl lg:text-7xl">
@@ -67,7 +67,7 @@ const Hero = ({
                     ค้นหาอะไหล่แบบเต็มระบบ
                   </p>
                   <p className="mt-1 text-sm leading-relaxed text-white/70 sm:text-base">
-                    ค้นได้จากชื่อสินค้า รหัสอะไหล่ รุ่นรถ ยี่ห้อรถ หมวดสินค้า และคำที่ลูกค้าใช้เรียก
+                    ค้นได้จากชื่อสินค้า รหัสอะไหล่ รุ่นรถ ยี่ห้อรถ หมวดสินค้า และคำที่ลูกค้าใช้เรียก เหมาะกับคนที่กำลังหาอะไหล่แอร์รถยนต์ในนครสวรรค์และสั่งส่งต่างจังหวัด
                   </p>
                 </div>
               </div>

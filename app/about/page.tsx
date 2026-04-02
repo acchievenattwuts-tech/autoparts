@@ -18,18 +18,19 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import { db } from "@/lib/db";
-import { absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getSiteConfig();
   const title = `เกี่ยวกับร้าน ${config.shopName}`;
   const description =
-    "ข้อมูลร้านศรีวรรณ อะไหล่แอร์ ช่องทางติดต่อ วิธีการให้บริการ และแนวทางที่ช่วยให้ลูกค้าค้นหาอะไหล่แอร์และหม้อน้ำรถยนต์ได้รวดเร็วขึ้น";
+    "ข้อมูลร้านศรีวรรณ อะไหล่แอร์ ร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ ช่องทางติดต่อ วิธีสั่งซื้อ และแนวทางที่ช่วยให้ลูกค้าค้นหาอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ได้รวดเร็วขึ้น";
 
   return {
     title,
     description,
+    keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
       canonical: absoluteUrl("/about"),
     },
@@ -113,9 +114,9 @@ const AboutPage = async () => {
                 {config.shopName}
               </h1>
               <p className="mt-5 text-base leading-8 text-white/78 sm:text-lg">
-                ร้านนี้สร้างเว็บไซต์ขึ้นมาเพื่อช่วยให้ลูกค้าค้นหาอะไหล่แอร์และหม้อน้ำรถยนต์ได้เร็วขึ้น
+                ร้านนี้สร้างเว็บไซต์ขึ้นมาเพื่อช่วยให้ลูกค้าค้นหาอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ได้เร็วขึ้น
                 แล้วติดต่อร้านผ่านช่องทางที่ใช้งานสะดวกที่สุดอย่าง LINE OA หรือโทรศัพท์
-                เพื่อคุยรายละเอียดก่อนสั่งซื้อจริง
+                เพื่อคุยรายละเอียดก่อนสั่งซื้อจริง โดยมีหน้าร้านอยู่ในจังหวัดนครสวรรค์และรองรับลูกค้าที่ต้องการให้จัดส่งทั่วประเทศ
               </p>
             </div>
           </div>

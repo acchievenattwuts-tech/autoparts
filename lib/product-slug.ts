@@ -14,6 +14,10 @@ export const getProductCategorySlug = (categoryName: string): string => {
   return slugifySegment(categoryName);
 };
 
+export const getCategoryPath = (categoryName: string): string => {
+  return `/products/${encodeURIComponent(categoryName)}`;
+};
+
 export const getProductSlug = (productName: string, productId: string): string => {
   return `${slugifySegment(productName)}-${productId}`;
 };
