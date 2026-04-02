@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpenText, Clock3, Search } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
-import FloatingLine from "@/components/shared/FloatingLine";
+import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import ArticleJsonLd from "@/components/seo/ArticleJsonLd";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
@@ -215,7 +215,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
         </section>
       </main>
       <Footer config={config} />
-      <FloatingLine lineUrl={config.shopLineUrl} />
+      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
       <BreadcrumbJsonLd
         items={[
           { name: "หน้าแรก", item: absoluteUrl("/") },

@@ -6,7 +6,7 @@ import WhyUs from "@/components/shared/WhyUs";
 import FeaturedProducts from "@/components/shared/FeaturedProducts";
 import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
-import FloatingLine from "@/components/shared/FloatingLine";
+import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
@@ -70,7 +70,7 @@ const Home = async () => {
         />
       </main>
       <Footer config={config} />
-      <FloatingLine lineUrl={config.shopLineUrl} />
+      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
       <OrganizationJsonLd config={config} />
       <LocalBusinessJsonLd config={config} />
       <WebSiteJsonLd />

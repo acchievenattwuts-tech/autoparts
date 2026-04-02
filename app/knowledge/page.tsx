@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight, BookOpenText, Search, Sparkles } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
-import FloatingLine from "@/components/shared/FloatingLine";
+import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
@@ -243,7 +243,7 @@ const KnowledgePage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <FloatingLine lineUrl={config.shopLineUrl} />
+      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
       <BreadcrumbJsonLd
         items={[
           { name: "หน้าแรก", item: absoluteUrl("/") },

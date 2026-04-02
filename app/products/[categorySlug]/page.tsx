@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
-import FloatingLine from "@/components/shared/FloatingLine";
+import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
@@ -175,7 +175,7 @@ const CategoryPage = async ({ params }: Props) => {
         </section>
       </main>
       <Footer config={config} />
-      <FloatingLine lineUrl={config.shopLineUrl} />
+      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
 
       <BreadcrumbJsonLd
         items={[

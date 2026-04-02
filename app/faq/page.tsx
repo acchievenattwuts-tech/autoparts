@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ChevronRight, MessagesSquare, Phone, Search } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
-import FloatingLine from "@/components/shared/FloatingLine";
+import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
@@ -187,7 +187,7 @@ const FaqPage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <FloatingLine lineUrl={config.shopLineUrl} />
+      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
 
       <FaqJsonLd items={storefrontFaqItems} />
       <BreadcrumbJsonLd

@@ -1452,6 +1452,18 @@ npm run db:restore backup-{timestamp}.json
   - faster LINE OA handoff with better customer-prepared information
 - Product-level compatibility data in the catalog still remains a separate future task and is not being faked in content.
 
+## Roadmap Update (2026-04-03 Phase 7 Shared JS + Font Tuning)
+- Measured the live `/products` page again in desktop and mobile mode to isolate the current bottlenecks.
+- Current finding:
+  - backend response is still strong
+  - mobile `/products` remains the main pain point
+  - font requests and non-critical storefront client code still deserve trimming
+- Applied low-risk storefront tuning:
+  - reduced Google font weights to the weights actually used in the UI
+  - deferred non-critical analytics reporters until idle time
+  - deferred the floating LINE CTA until idle time so it no longer competes with first paint on public pages
+- The production tuning loop remains open and should be re-measured after deploy.
+
 ### Phase 7 Checklist Status
 - [x] canonical + metadata base
 - [x] `robots.txt`
