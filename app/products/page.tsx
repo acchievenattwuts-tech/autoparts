@@ -3,6 +3,7 @@ export const revalidate = 300;
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
+import { ArrowRight, Search } from "lucide-react";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import Navbar from "@/components/shared/Navbar";
@@ -173,27 +174,50 @@ const ProductsPage = async ({ searchParams }: Props) => {
       <main className="min-h-screen bg-gray-50 pt-16">
         <div className="overflow-hidden bg-[#10213d]">
           <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
-            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h1 className="font-kanit text-2xl font-bold text-white sm:text-3xl">
-                    สินค้าทั้งหมด
+            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-3xl">
+                  <p className="text-sm font-medium text-[#f97316]">Full-Text Search สำหรับอะไหล่แอร์</p>
+                  <h1 className="mt-2 font-kanit text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
+                    ค้นหาอะไหล่ให้เจอเร็วขึ้น จากชื่อสินค้า รหัสอะไหล่ รุ่นรถ และคำที่ลูกค้าใช้เรียก
                   </h1>
-                  <p className="mt-1 max-w-2xl text-sm text-white/70 sm:text-base">
-                    ค้นหาสินค้าด้วยชื่อ รหัสอะไหล่ ยี่ห้อรถ รุ่นรถ และหมวดสินค้าได้จากหน้าเดียว
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
+                    ค้นหาได้ทั้งอะไหล่แอร์ หม้อน้ำ คอมเพรสเซอร์ แผงคอนเดนเซอร์ และสินค้าเกี่ยวข้องจากหน้าเดียว
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm">
-                  {q ? (
-                    <p className="text-sm text-white/85">
-                      ผลการค้นหา: <span className="font-semibold text-white">&ldquo;{q}&rdquo;</span>
+                <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+                  <form action="/products" method="GET" className="space-y-3">
+                    <input type="hidden" name="category" value={category ?? ""} />
+                    <input type="hidden" name="brand" value={brand ?? ""} />
+                    <input type="hidden" name="model" value={model ?? ""} />
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <label className="sr-only" htmlFor="products-hero-search">
+                        ค้นหาสินค้า
+                      </label>
+                      <div className="relative flex-1">
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          id="products-hero-search"
+                          type="text"
+                          name="q"
+                          defaultValue={q ?? ""}
+                          placeholder="เช่น คอมแอร์ Denso, VIGO, แผงคอนเดนเซอร์..."
+                          className="h-12 w-full rounded-2xl border border-white/20 bg-white px-11 text-sm text-slate-900 outline-none transition focus:border-[#f97316] focus:ring-4 focus:ring-[#f97316]/15"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#f97316] px-5 font-semibold text-white transition hover:bg-[#ea6c0a] sm:min-w-[150px]"
+                      >
+                        ค้นหาสินค้า
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-white/60 sm:text-sm">
+                      ค้นหาแล้วกดเข้าไปดูรายละเอียดหรือสอบถามร้านผ่าน LINE OA ได้ทันที
                     </p>
-                  ) : (
-                    <p className="text-sm text-white/75">
-                      ใช้กล่องค้นหาด้านบน หรือกรองด้วยยี่ห้อรถและหมวดสินค้าได้เลย
-                    </p>
-                  )}
+                  </form>
                 </div>
               </div>
             </div>
@@ -229,8 +253,8 @@ const ProductsPage = async ({ searchParams }: Props) => {
                     </>
                   ) : (
                     <>
-                      สินค้าทั้งหมด{" "}
-                      <span className="font-semibold text-gray-800">{searchResult.total}</span> รายการ
+                      แสดงสินค้า <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
+                      รายการ
                     </>
                   )}
                 </p>
@@ -251,7 +275,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                     {sortedProducts.map((product) => (
                       <ProductCard
                         key={product.id}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 
@@ -29,6 +29,21 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(Boolean(hasAnyFilter));
 
   const selectedBrand = brands.find((item) => item.name === brand);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+
+    const syncExpandedState = () => {
+      setIsExpanded(Boolean(mediaQuery.matches || hasAnyFilter));
+    };
+
+    syncExpandedState();
+    mediaQuery.addEventListener("change", syncExpandedState);
+
+    return () => {
+      mediaQuery.removeEventListener("change", syncExpandedState);
+    };
+  }, [hasAnyFilter]);
 
   const navigate = (updates: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -248,7 +263,9 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
             )}
 
             {page && (
-              <p className="mt-3 text-xs text-gray-400">การเปลี่ยนตัวกรองจะกลับไปเริ่มที่หน้า 1 อัตโนมัติ</p>
+              <p className="mt-3 text-xs text-gray-400">
+                การเปลี่ยนตัวกรองจะกลับไปเริ่มที่หน้า 1 อัตโนมัติ
+              </p>
             )}
           </div>
         )}

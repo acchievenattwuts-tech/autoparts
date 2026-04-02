@@ -59,8 +59,8 @@ const Home = async () => {
           lineUrl={config.shopLineUrl}
         />
         <ProductCategories />
-        <WhyUs />
         <FeaturedProducts lineUrl={config.shopLineUrl} />
+        <WhyUs />
         <LineCTA
           lineId={config.shopLineId}
           lineUrl={config.shopLineUrl}
