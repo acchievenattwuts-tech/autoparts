@@ -1403,3 +1403,8 @@ npm run db:restore backup-{timestamp}.json
 - Search and filter behavior remain the same, but the initial render now ships fewer product cards and images per request
 - Added preserved next/previous pagination links that keep the current search and filter state
 - Marked paginated catalog states as `noindex` through the existing metadata logic by treating `page > 1` as a search-state page
+
+## Roadmap Update (2026-04-02 Phase 7 Products DOM Reduction Pass)
+- Simplified `ProductCard` so compatibility information renders as one summary line instead of multiple chips
+- Updated the products filter panel to mount its detailed filter controls only when expanded
+- This pass is aimed at reducing initial DOM and client-side render cost on the `/products` page while keeping the same search and filter behavior

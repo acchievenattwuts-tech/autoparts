@@ -29,6 +29,20 @@ const ProductCard = ({ product, lineUrl }: Props) => {
     productId: product.id,
   });
 
+  const compatibilitySummary =
+    product.carModels && product.carModels.length > 0
+      ? (() => {
+          const firstBrand = product.carModels[0].carModel.carBrand.name;
+          const modelNames = product.carModels
+            .filter(({ carModel }) => carModel.carBrand.name === firstBrand)
+            .map(({ carModel }) => carModel.name);
+          const uniqueModels = Array.from(new Set(modelNames));
+          const preview = uniqueModels.slice(0, 2).join(", ");
+          const extra = uniqueModels.length > 2 ? ` +${uniqueModels.length - 2}` : "";
+          return `${firstBrand}${preview ? ` • ${preview}${extra}` : ""}`;
+        })()
+      : null;
+
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:border-gray-200 hover:shadow-lg">
       <Link
@@ -66,34 +80,12 @@ const ProductCard = ({ product, lineUrl }: Props) => {
           </h3>
         </Link>
 
-        {product.brand && <p className="mt-0.5 text-xs text-gray-400">{product.brand.name}</p>}
-
-        {product.carModels && product.carModels.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {(() => {
-              const brandMap = new Map<string, string[]>();
-              for (const { carModel } of product.carModels) {
-                const brandName = carModel.carBrand.name;
-                if (!brandMap.has(brandName)) {
-                  brandMap.set(brandName, []);
-                }
-                brandMap.get(brandName)?.push(carModel.name);
-              }
-
-              return Array.from(brandMap.entries()).map(([brandName, models]) => (
-                <span
-                  key={brandName}
-                  className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700"
-                >
-                  🚗 {brandName}
-                  {models.length <= 2
-                    ? ` > ${models.join(", ")}`
-                    : ` > ${models.slice(0, 2).join(", ")} +${models.length - 2}`}
-                </span>
-              ));
-            })()}
-          </div>
-        )}
+        <div className="mt-1 min-h-[2.75rem] space-y-1">
+          {product.brand && <p className="text-xs text-gray-400">{product.brand.name}</p>}
+          {compatibilitySummary && (
+            <p className="line-clamp-1 text-xs text-slate-500">{compatibilitySummary}</p>
+          )}
+        </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
           <div>
