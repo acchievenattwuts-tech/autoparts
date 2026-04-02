@@ -1397,3 +1397,9 @@ npm run db:restore backup-{timestamp}.json
 - Removed the decorative hero image from `/products` and replaced it with a CSS-only banner treatment
 - Kept the catalog heading and search-state summary while removing one large above-the-fold image request from the products listing page
 - This pass is intended to reduce the critical render path on the slowest public storefront route before the next measurement cycle
+
+## Roadmap Update (2026-04-02 Phase 7 Products Pagination Pass)
+- Added storefront pagination to `/products` with a default page size of `24` items
+- Search and filter behavior remain the same, but the initial render now ships fewer product cards and images per request
+- Added preserved next/previous pagination links that keep the current search and filter state
+- Marked paginated catalog states as `noindex` through the existing metadata logic by treating `page > 1` as a search-state page

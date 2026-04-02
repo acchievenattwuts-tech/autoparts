@@ -15,20 +15,58 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
+const PRODUCTS_PER_PAGE = 24;
+
 interface Props {
   searchParams: Promise<{
     q?: string;
     category?: string;
     brand?: string;
     model?: string;
+    page?: string;
   }>;
 }
 
-export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const { q, category, brand, model } = await searchParams;
+const parsePage = (value?: string) => {
+  const parsed = Number.parseInt(value ?? "1", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
 
+  return parsed;
+};
+
+const buildProductsHref = ({
+  q,
+  category,
+  brand,
+  model,
+  page,
+}: {
+  q?: string;
+  category?: string;
+  brand?: string;
+  model?: string;
+  page?: number;
+}) => {
+  const params = new URLSearchParams();
+
+  if (q) params.set("q", q);
+  if (category) params.set("category", category);
+  if (brand) params.set("brand", brand);
+  if (model) params.set("model", model);
+  if (page && page > 1) params.set("page", String(page));
+
+  const query = params.toString();
+  return query ? `/products?${query}` : "/products";
+};
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { q, category, brand, model, page } = await searchParams;
+
+  const currentPage = parsePage(page);
   const activeFilters = [category, brand, model].filter(Boolean);
-  const hasSearchState = Boolean(q || activeFilters.length > 0);
+  const hasSearchState = Boolean(q || activeFilters.length > 0 || currentPage > 1);
   const titleParts = ["สินค้าทั้งหมด"];
 
   if (activeFilters.length > 0) {
@@ -37,6 +75,10 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
   if (q) {
     titleParts.push(`ค้นหา "${q}"`);
+  }
+
+  if (currentPage > 1) {
+    titleParts.push(`หน้า ${currentPage}`);
   }
 
   return {
@@ -65,8 +107,10 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 }
 
 const ProductsPage = async ({ searchParams }: Props) => {
-  const { q, category, brand, model } = await searchParams;
+  const { q, category, brand, model, page } = await searchParams;
   const config = await getSiteConfig();
+  const currentPage = parsePage(page);
+  const skip = (currentPage - 1) * PRODUCTS_PER_PAGE;
 
   const searchResult = await searchProductIds({
     query: q,
@@ -74,7 +118,8 @@ const ProductsPage = async ({ searchParams }: Props) => {
     categoryName: category,
     carBrandName: brand,
     carModelName: model,
-    take: 200,
+    skip,
+    take: PRODUCTS_PER_PAGE,
     order: "createdAtDesc",
   });
 
@@ -111,6 +156,9 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   const sortedProducts = sortProductsByIds(products, searchResult.ids);
   const hasFilter = q || category || brand || model;
+  const totalPages = Math.max(1, Math.ceil(searchResult.total / PRODUCTS_PER_PAGE));
+  const pageStart = searchResult.total === 0 ? 0 : skip + 1;
+  const pageEnd = Math.min(skip + sortedProducts.length, searchResult.total);
 
   return (
     <>
@@ -164,27 +212,35 @@ const ProductsPage = async ({ searchParams }: Props) => {
             </aside>
 
             <div className="min-w-0 flex-1">
-              <p className="mb-4 text-sm text-gray-500">
-                {hasFilter ? (
-                  <>
-                    {q && <>ค้นหา &ldquo;{q}&rdquo; </>}
-                    {brand && (
-                      <>
-                        {brand}
-                        {model ? ` › ${model}` : ""}{" "}
-                      </>
-                    )}
-                    {category && <>{category} </>}
-                    — พบ <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                    รายการ
-                  </>
-                ) : (
-                  <>
-                    สินค้าทั้งหมด{" "}
-                    <span className="font-semibold text-gray-800">{searchResult.total}</span> รายการ
-                  </>
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-500">
+                  {hasFilter ? (
+                    <>
+                      {q && <>ค้นหา &ldquo;{q}&rdquo; </>}
+                      {brand && (
+                        <>
+                          {brand}
+                          {model ? ` › ${model}` : ""}{" "}
+                        </>
+                      )}
+                      {category && <>{category} </>}
+                      — พบ <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
+                      รายการ
+                    </>
+                  ) : (
+                    <>
+                      สินค้าทั้งหมด{" "}
+                      <span className="font-semibold text-gray-800">{searchResult.total}</span> รายการ
+                    </>
+                  )}
+                </p>
+
+                {searchResult.total > 0 && (
+                  <p className="text-xs text-gray-400 sm:text-sm">
+                    แสดง {pageStart}-{pageEnd} จาก {searchResult.total} รายการ
+                  </p>
                 )}
-              </p>
+              </div>
 
               {sortedProducts.length === 0 ? (
                 <div className="py-24 text-center text-gray-400">
@@ -194,15 +250,66 @@ const ProductsPage = async ({ searchParams }: Props) => {
                   </Link>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {sortedProducts.map((product) => (
-                    <ProductCard
-                      key={product.id}
-                      product={product}
-                      lineUrl={config.shopLineUrl}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {sortedProducts.map((product) => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        lineUrl={config.shopLineUrl}
+                      />
+                    ))}
+                  </div>
+
+                  {totalPages > 1 && (
+                    <div className="mt-8 flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                      <p className="text-sm text-gray-500">
+                        หน้า <span className="font-semibold text-gray-800">{currentPage}</span> จาก{" "}
+                        <span className="font-semibold text-gray-800">{totalPages}</span>
+                      </p>
+
+                      <div className="flex items-center gap-3">
+                        {currentPage > 1 ? (
+                          <Link
+                            href={buildProductsHref({
+                              q,
+                              category,
+                              brand,
+                              model,
+                              page: currentPage - 1,
+                            })}
+                            className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f]"
+                          >
+                            หน้าก่อนหน้า
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center justify-center rounded-full border border-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
+                            หน้าก่อนหน้า
+                          </span>
+                        )}
+
+                        {currentPage < totalPages ? (
+                          <Link
+                            href={buildProductsHref({
+                              q,
+                              category,
+                              brand,
+                              model,
+                              page: currentPage + 1,
+                            })}
+                            className="inline-flex items-center justify-center rounded-full bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16304e]"
+                          >
+                            หน้าถัดไป
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
+                            หน้าถัดไป
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
