@@ -78,13 +78,13 @@ const ProductCategories = async () => {
           </Link>
         </div>
 
-        <div className="overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-w-max gap-3 sm:gap-4">
+        <div className="overflow-x-auto pb-2 lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max gap-3 sm:gap-4 lg:grid lg:min-w-0 lg:grid-cols-3 xl:grid-cols-4">
             {items.map((item) => (
               <Link
                 key={item.id}
                 href={item.href}
-                className="group flex w-[220px] shrink-0 snap-start items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#f97316]/35 hover:shadow-md sm:w-[240px]"
+                className="group flex w-[220px] shrink-0 snap-start items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#f97316]/35 hover:shadow-md sm:w-[240px] lg:w-auto lg:shrink lg:snap-none"
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1e3a5f]/10 to-[#f97316]/10 text-2xl">
                   {item.icon}

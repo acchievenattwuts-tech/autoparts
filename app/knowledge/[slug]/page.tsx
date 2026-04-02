@@ -7,7 +7,7 @@ import Footer from "@/components/shared/Footer";
 import FloatingLine from "@/components/shared/FloatingLine";
 import ArticleJsonLd from "@/components/seo/ArticleJsonLd";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
-import { absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { knowledgeArticleMap, knowledgeArticles } from "@/lib/knowledge-content";
 
@@ -32,6 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: article.title,
     description: article.description,
+    keywords: Array.from(new Set([article.title, ...article.relatedSearches, ...LOCAL_SEO_KEYWORDS])),
     alternates: {
       canonical: absoluteUrl(`/knowledge/${article.slug}`),
     },
@@ -59,6 +60,11 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
 
   const relatedArticles = knowledgeArticles
     .filter((entry) => entry.slug !== article.slug)
+    .sort((a, b) => {
+      const scoreA = a.category === article.category ? 1 : 0;
+      const scoreB = b.category === article.category ? 1 : 0;
+      return scoreB - scoreA;
+    })
     .slice(0, 3);
 
   return (

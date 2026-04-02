@@ -1059,127 +1059,92 @@ for (const lot of claimLots) {
 - [ ] Report ประกันที่กำลังจะหมด
 - [ ] Export Excel / PDF
 
-### 🔲 Phase 7 — SEO + AEO + AIO + Core Web Vitals (ยังไม่ได้ทำ)
+### 🟡 Phase 7 — SEO + AEO + AIO + Core Web Vitals (กำลังทำ)
 
-**เป้าหมาย:** ติดอันดับ Google + ขึ้นใน AI search (ChatGPT, Perplexity, Google AI Overview) + Core Web Vitals ผ่าน
+**เป้าหมาย:** ติดอันดับ Google + ขึ้นใน AI search (ChatGPT, Perplexity, Google AI Overview) + ปรับ Core Web Vitals ให้ดีขึ้นอย่างต่อเนื่อง
 
 ---
 
 #### Phase 7-A — URL Structure (อ่านรู้เรื่อง / SEO-Friendly)
 
-- [ ] เปลี่ยน URL สินค้าเป็น `/products/[categorySlug]/[productSlug]` — ใช้ชื่อที่สื่อความหมาย ภาษาไทย-อังกฤษ
-- [ ] เปลี่ยน URL หมวดหมู่เป็น `/products/[categorySlug]` — เช่น `/products/compressor` แทน `/products?category=xxx`
-- [ ] สร้าง `slug` field ใน `Product` และ `Category` (unique, kebab-case, รองรับภาษาไทย transliterate)
-- [ ] 301 redirect จาก URL เดิมไปยัง URL ใหม่ (ไม่ให้ broken link)
-- [ ] ทุก URL ต้องอ่านแล้วรู้ทันทีว่าคืออะไร เช่น `/products/คอมเพรสเซอร์/denso-toyota-camry-2.0`
+- [x] เปลี่ยน URL สินค้าเป็น `/products/[categorySlug]/[productSlug]`
+- [x] เปลี่ยน URL หมวดหมู่เป็น `/products/[categorySlug]`
+- [ ] สร้าง `slug` field ใน `Product` และ `Category` ใน database โดยตรง (สำหรับ stable slug ระยะยาว)
+- [x] canonical redirect สำหรับหน้าสินค้าเมื่อเปิดด้วย path ที่ไม่ตรงรูปแบบหลัก
+- [x] ทุก URL หลักของ storefront อ่านแล้วรู้ได้ว่าเป็นหน้าอะไร
 
 ---
 
-#### Phase 7-B — Core Web Vitals (บังคับผ่าน)
+#### Phase 7-B — Core Web Vitals (กำลังปรับต่อ)
 
 **เป้าหมาย:** LCP < 2.5s | INP < 200ms | CLS < 0.1
 
-- [ ] วัด Core Web Vitals ด้วย Lighthouse / PageSpeed Insights ก่อนทำ — บันทึก baseline
-- [ ] **LCP (Largest Contentful Paint):**
-  - [ ] ใส่ `priority` ใน `<Image>` ที่เป็น hero/above-fold ทุกหน้า
-  - [ ] Preload font Kanit + Sarabun ผ่าน `next/font` (ทำแล้ว — verify)
-  - [ ] ตรวจ TTFB — ถ้าเกิน 800ms ให้เพิ่ม `revalidate` / static generation ในหน้าที่ทำได้
-- [ ] **INP (Interaction to Next Paint):**
-  - [ ] ลด JavaScript bundle — วิเคราะห์ด้วย `@next/bundle-analyzer`
-  - [ ] แยก Client Components ให้เล็กที่สุด — ย้าย logic ที่ทำ server ได้ไป Server Component
-  - [ ] ลบ package ที่ไม่ใช้ออก (ตรวจด้วย `depcheck`)
-  - [ ] ใช้ `dynamic(() => import(...), { ssr: false })` สำหรับ component หนักที่ไม่ต้องการ SSR
-- [ ] **CLS (Cumulative Layout Shift):**
-  - [ ] ทุก `<Image>` ต้องมี `width`+`height` หรือ `fill`+`sizes` — ไม่มีรูปไม่ระบุขนาด
-  - [ ] Font swap: ใช้ `font-display: swap` (next/font ดูแลให้แล้ว — verify)
-  - [ ] Reserved space สำหรับ dynamic content (skeleton / min-height)
-- [ ] วัดซ้ำหลังแก้ — ถ้าไม่ผ่านเกณฑ์ใดให้เสนอแผนแก้ไขเพิ่มเติมพร้อม root cause
+- [x] วัด baseline ด้วย Lighthouse / PageSpeed Insights แล้ว และบันทึกไว้ที่ `docs/performance/production-baseline-2026-04-02.md`
+- [x] ปรับ LCP image loading hints ตามแนวทาง Next.js 16 (`fetchPriority` / `loading="eager"`) ในจุดสำคัญ
+- [x] ตรวจ TTFB และทำ static generation / revalidate ในหน้าที่ทำได้
+- [x] ลด render cost บางส่วนของ `/products` ผ่านการตัด hero image, pagination, และลด DOM complexity
+- [x] ยืนยันว่า `<Image>` สำคัญบน storefront ระบุ `fill` + `sizes` หรือขนาดที่เหมาะสม
+- [ ] วิเคราะห์ JavaScript bundle เพิ่มด้วย `@next/bundle-analyzer`
+- [ ] ตรวจ package ที่ไม่ใช้งานและ clean up เพิ่มเติม
+- [ ] วัด production ซ้ำและ tune ต่อเนื่องจนค่าหลักนิ่งขึ้น
 
 ---
 
 #### Phase 7-C — Metadata + Open Graph
 
-- [ ] Next.js Metadata API ครบทุกหน้า: `title`, `description`, `canonical`
-  - หน้าหลัก: "ศรีวรรณ อะไหล่แอร์ — อะไหล่แอร์รถยนต์ราคาส่ง ชลบุรี"
-  - หน้าสินค้า: `{ชื่อสินค้า} | ศรีวรรณ อะไหล่แอร์`
-  - หน้าหมวดหมู่: `{หมวดหมู่} ราคาส่ง | ศรีวรรณ อะไหล่แอร์`
-- [ ] Open Graph + Twitter Card — รูป og:image ขนาด 1200×630px ต่อสินค้า
-- [ ] `<link rel="canonical">` ทุกหน้า (ป้องกัน duplicate content)
+- [x] Next.js Metadata API ครบหน้าหลักของ storefront: `title`, `description`, `canonical`
+- [x] หน้าหลัก, `/products`, `/about`, `/faq`, `/knowledge`, knowledge articles, product pages, category pages มี metadata ใช้งานจริง
+- [x] Open Graph + Twitter Card ครบหน้าสำคัญของ storefront
+- [x] generated `og:image` สำหรับหน้าหลัก, about, faq, knowledge, knowledge article, product, category
+- [x] `<link rel="canonical">` ครบหน้าหลักของ storefront
 
 ---
 
 #### Phase 7-D — XML Sitemap + robots.txt
 
-- [ ] `app/sitemap.ts` — dynamic sitemap ครอบคลุม:
-  - หน้าหลัก, หน้าสินค้าทุกชิ้น, หน้าหมวดหมู่ทุกหมวด, `/about`, `/faq`
-  - ใส่ `lastModified`, `changeFrequency`, `priority` ให้ถูกต้องตามประเภทหน้า
-  - สินค้าที่ไม่ active (`isActive: false`) ต้องไม่อยู่ใน sitemap
-- [ ] `app/robots.ts` — Next.js Metadata robots:
-  - Allow: `/`, `/products/`, `/about`, `/faq`
-  - Disallow: `/admin/`, `/api/`, `/profile/`
-  - Sitemap: `https://sriwanparts.com/sitemap.xml`
+- [x] `app/sitemap.ts` ครอบคลุมหน้าหลัก, สินค้า, หมวดหมู่, `/about`, `/faq`, `/knowledge`
+- [x] ใส่ `lastModified`, `changeFrequency`, `priority` ตามประเภทหน้าหลักแล้ว
+- [x] สินค้าที่ไม่ active (`isActive: false`) ไม่อยู่ใน sitemap
+- [x] `app/robots.ts` ใช้ Next.js Metadata robots
+- [x] กัน `/admin/` จาก indexing
+- [x] Sitemap ชี้ `https://www.sriwanparts.com/sitemap.xml`
 - [ ] Submit sitemap ใน Google Search Console
 
 ---
 
 #### Phase 7-E — Schema Markup (JSON-LD แยกไฟล์)
 
-> **หลักการ:** JSON-LD ทุกอันเขียนเป็น component แยก ไม่ inline ใน JSX — import เข้าหน้าผ่าน `<script type="application/ld+json">`
+> **หลักการ:** JSON-LD ทุกอันเขียนเป็น component แยก ไม่ inline ใน JSX
 
-- [ ] `components/seo/LocalBusinessJsonLd.tsx` — ข้อมูลร้าน:
-  ```json
-  { "@type": "LocalBusiness", "name": "ศรีวรรณ อะไหล่แอร์",
-    "address": {...}, "telephone": "...", "openingHours": "Mo-Sa 08:00-17:00",
-    "geo": { "latitude": ..., "longitude": ... }, "priceRange": "฿฿" }
-  ```
-- [ ] `components/seo/ProductJsonLd.tsx` — ต่อสินค้า:
-  ```json
-  { "@type": "Product", "name": "...", "image": "...", "description": "...",
-    "brand": { "@type": "Brand", "name": "..." },
-    "offers": { "@type": "Offer", "price": "...", "priceCurrency": "THB", "availability": "..." } }
-  ```
-- [ ] `components/seo/BreadcrumbJsonLd.tsx` — navigation path ทุกหน้า
-- [ ] `components/seo/FaqJsonLd.tsx` — หน้า FAQ
-- [ ] `components/seo/OrganizationJsonLd.tsx` — ข้อมูลองค์กร + social profiles
+- [x] `components/seo/LocalBusinessJsonLd.tsx`
+- [x] `components/seo/ProductJsonLd.tsx`
+- [x] `components/seo/BreadcrumbJsonLd.tsx`
+- [x] `components/seo/FaqJsonLd.tsx`
+- [x] `components/seo/OrganizationJsonLd.tsx`
+- [x] `WebSite` JSON-LD
+- [x] `Article` JSON-LD สำหรับ knowledge articles
+- [x] `CollectionPage` JSON-LD สำหรับหน้าหมวดหมู่
 - [ ] ทดสอบด้วย [Google Rich Results Test](https://search.google.com/test/rich-results)
 
 ---
 
 #### Phase 7-F — AIO Content (ให้ AI อ้างอิงได้ + น่าเชื่อถือ)
 
-> **หลักการ:** เขียนเนื้อหาที่ตอบคำถามตรงๆ ชัดเจน ไม่ต้องตีความ — AI จะนำไปอ้างอิงได้ทันที (Generative Engine Optimization)
+> **หลักการ:** เขียนเนื้อหาที่ตอบคำถามตรงๆ ชัดเจน และอ้างอิงจากบริบทของร้านจริง
 
-- [ ] **หน้า `/about`** — E-E-A-T สูง:
-  - ประวัติร้าน (ก่อตั้งปีไหน, ประสบการณ์กี่ปี)
-  - ความเชี่ยวชาญ: อะไหล่แอร์รถยนต์ทุกยี่ห้อ, คอมเพรสเซอร์, หม้อน้ำ, แผงแอร์
-  - พื้นที่บริการ: ชลบุรี, ระยอง, จันทบุรี, ภาคตะวันออก
-  - ใบรับรอง / ตัวแทนจำหน่ายอย่างเป็นทางการ (ถ้ามี)
-- [ ] **หน้า `/faq`** — ตอบคำถามที่ AI ถามบ่อย:
-  - "คอมเพรสเซอร์แอร์รถยนต์ราคาเท่าไหร่?"
-  - "อะไหล่แอร์ Toyota/Honda/Isuzu มีไหม?"
-  - "ส่งสินค้าต่างจังหวัดได้ไหม?"
-  - "รับประกันสินค้านานเท่าไหร่?"
-  - ใช้ `FAQPage` JSON-LD คู่กัน
-- [ ] **หน้า `/knowledge`** — บทความให้ความรู้ (ทำให้ AI อ้างอิงเป็น source):
-  - "วิธีเลือกคอมเพรสเซอร์แอร์รถยนต์"
-  - "สัญญาณบอกว่าแอร์รถยนต์เสีย"
-  - "ความแตกต่างระหว่างอะไหล่แท้ vs อะไหล่เทียม"
-  - เนื้อหาต้องมี: นิยามชัดเจน, ขั้นตอนที่ทำตามได้, ตัวเลขอ้างอิงได้
-- [ ] **`llms.txt`** — ไฟล์แนะนำร้านสำหรับ AI crawlers (วางไว้ที่ `/public/llms.txt`):
-  ```
-  # ศรีวรรณ อะไหล่แอร์
-  ร้านจำหน่ายอะไหล่แอร์รถยนต์ คอมเพรสเซอร์ หม้อน้ำ แผงแอร์
-  ที่อยู่: [ที่อยู่จริง] จ.ชลบุรี
-  โทร: [เบอร์จริง]
-  เว็บไซต์: https://sriwanparts.com
-  บริการ: จำหน่ายปลีก-ส่ง, จัดส่งทั่วประเทศ
-  ความเชี่ยวชาญ: อะไหล่แอร์รถยนต์ทุกยี่ห้อ ประสบการณ์กว่า X ปี
-  ```
-- [ ] **AIO Signals** — เพิ่มในทุกหน้าสินค้า:
-  - ระบุยี่ห้อรถที่ใช้ได้ชัดเจน (Toyota Camry 2.0, Honda Civic 1.5 Turbo ฯลฯ)
-  - ระบุปีรถที่ compatible
-  - ระบุ OEM part number (ถ้ามี)
-  - รีวิว / rating (ถ้ามี) — ช่วย E-E-A-T
+- [x] **หน้า `/about`** — foundation พร้อมใช้งาน
+  - ความเชี่ยวชาญของร้าน
+  - ช่องทางติดต่อ
+  - รูปแบบการให้บริการ
+  - local SEO layer สำหรับนครสวรรค์
+- [x] **หน้า `/faq`** — มีคำถามหลักที่ลูกค้าสงสัยจริง และใช้ `FAQPage` JSON-LD คู่กัน
+- [x] **หน้า `/knowledge`** — มีแล้วพร้อมบทความก้อนแรกและบทความ local SEO เพิ่มเติม
+- [x] **`llms.txt`** — มีแล้วที่ `/public/llms.txt`
+- [x] **AIO Signals** — มีในหน้าสินค้าในระดับ foundation
+  - ระบุยี่ห้อรถ/รุ่นรถที่ใช้ได้ชัดเจน
+- [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ
+- [x] ขยาย knowledge hub ต่อให้ครอบคลุมคำค้นเชิงธุรกิจและ local intent มากขึ้นในระดับก้อนแรก
+- [ ] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting เพิ่มเติม
 
 ---
 
