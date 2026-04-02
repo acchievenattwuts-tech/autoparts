@@ -1,5 +1,7 @@
 import { Kanit, Sarabun } from "next/font/google";
 import "./globals.css";
+import StorefrontVisitReporter from "@/components/analytics/StorefrontVisitReporter";
+import WebVitalsReporter from "@/components/analytics/WebVitalsReporter";
 import { buildDefaultMetadataBase } from "@/lib/seo";
 
 const kanit = Kanit({
@@ -28,7 +30,11 @@ export default function RootLayout({
       lang="th"
       className={`${kanit.variable} ${sarabun.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col font-sarabun">{children}</body>
+      <body className="flex min-h-full flex-col font-sarabun">
+        <StorefrontVisitReporter />
+        <WebVitalsReporter />
+        {children}
+      </body>
     </html>
   );
 }

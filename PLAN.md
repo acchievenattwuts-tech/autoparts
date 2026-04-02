@@ -1080,12 +1080,15 @@ for (const lot of claimLots) {
 **เป้าหมาย:** LCP < 2.5s | INP < 200ms | CLS < 0.1
 
 - [x] วัด baseline ด้วย Lighthouse / PageSpeed Insights แล้ว และบันทึกไว้ที่ `docs/performance/production-baseline-2026-04-02.md`
+- [x] ฝัง real-user Core Web Vitals reporting ผ่าน `useReportWebVitals` + `/api/web-vitals` เพื่อเก็บ measurement loop จาก production เพิ่มเติม
 - [x] ปรับ LCP image loading hints ตามแนวทาง Next.js 16 (`fetchPriority` / `loading="eager"`) ในจุดสำคัญ
 - [x] ตรวจ TTFB และทำ static generation / revalidate ในหน้าที่ทำได้
 - [x] ลด render cost บางส่วนของ `/products` ผ่านการตัด hero image, pagination, และลด DOM complexity
 - [x] ยืนยันว่า `<Image>` สำคัญบน storefront ระบุ `fill` + `sizes` หรือขนาดที่เหมาะสม
-- [ ] วิเคราะห์ JavaScript bundle เพิ่มด้วย `@next/bundle-analyzer`
-- [ ] ตรวจ package ที่ไม่ใช้งานและ clean up เพิ่มเติม
+- [x] ปรับ static generation concurrency ให้เหมาะกับ Supabase session pool เพื่อให้ build/deploy ของ storefront เสถียรมากขึ้น
+- [x] วิเคราะห์ JavaScript bundle เพิ่มด้วย `@next/bundle-analyzer` และบันทึก snapshot ไว้ที่ `docs/performance/bundle-analysis-2026-04-02.md`
+- [x] ตรวจ dependency audit ระดับ low-risk แล้ว และยืนยัน package ที่ยังต้องคงไว้ตาม source/config ปัจจุบัน
+- [ ] clean up dependency เพิ่มเติมเมื่อพร้อมแยก `shadcn` theme import หรือเจอ package ที่ไม่ถูกใช้งานจริงจาก snapshot ถัดไป
 - [ ] วัด production ซ้ำและ tune ต่อเนื่องจนค่าหลักนิ่งขึ้น
 
 ---
@@ -1144,7 +1147,8 @@ for (const lot of claimLots) {
   - ระบุยี่ห้อรถ/รุ่นรถที่ใช้ได้ชัดเจน
 - [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ
 - [x] ขยาย knowledge hub ต่อให้ครอบคลุมคำค้นเชิงธุรกิจและ local intent มากขึ้นในระดับก้อนแรก
-- [ ] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting เพิ่มเติม
+- [x] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting เพิ่มเติม
+- [ ] ขยาย knowledge hub ต่อจากคำค้นจริงใน production และเติมบทความเชิงรุ่นรถ / compatibility เพิ่มเมื่อมีข้อมูลรองรับ
 
 ---
 
@@ -1298,6 +1302,34 @@ npm run db:restore backup-{timestamp}.json
   - choosing the right AC compressor
   - checking symptoms when car air is not cold
   - preparing the right information before ordering
+
+## Roadmap Update (2026-04-02 Phase 7 Knowledge Expansion)
+- Expanded the knowledge hub with more bottom-of-funnel and comparison content for SEO/AEO:
+  - genuine vs aftermarket vs used auto AC parts
+  - compressor pricing and what to check before buying
+  - condenser vs evaporator symptom differences
+- This rollout is intended to improve:
+  - conversion-oriented search coverage
+  - comparison intent coverage
+  - troubleshooting intent coverage
+  - local SEO support for customers searching auto AC parts in Nakhon Sawan
+
+## Roadmap Update (2026-04-02 Phase 7 Real User Web Vitals)
+- Added a lightweight real-user web vitals loop for the live storefront:
+  - `useReportWebVitals` in a dedicated client component
+  - `POST /api/web-vitals` endpoint for structured metric intake
+  - production-safe logging to support ongoing tuning after deploy
+- This rollout avoids database writes and keeps performance measurement isolated from core business flows.
+
+## Roadmap Update (2026-04-02 Phase 7 Build Stability)
+- Tuned Next.js static generation concurrency to better fit the current Supabase session pool limits during build.
+- This reduces the risk of prerender failures caused by too many concurrent DB reads while keeping public SEO pages prerendered.
+
+## Roadmap Update (2026-04-02 Phase 7 Bundle Audit)
+- Added `@next/bundle-analyzer` and a local `npm run analyze` workflow for Windows.
+- Generated bundle analyzer reports under `.next/analyze/`.
+- Recorded the first bundle snapshot and low-risk dependency audit in `docs/performance/bundle-analysis-2026-04-02.md`.
+- No low-risk dependency removal was applied in this pass because the current source/config still references the packages that were inspected.
   - common radiator problem signs
   - how to search the storefront faster
 - Added `Article` JSON-LD for knowledge articles

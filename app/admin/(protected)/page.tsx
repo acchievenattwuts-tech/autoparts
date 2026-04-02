@@ -1,13 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import { Suspense } from "react";
 import { db } from "@/lib/db";
 import {
   Package, TrendingUp, AlertTriangle, ShieldAlert,
-  Banknote, Users, ShoppingCart, Receipt,
+  Banknote, Users, ShoppingCart, Receipt, Globe,
 } from "lucide-react";
-import SalesChart from "./SalesChart";
-import TopProductsChart from "./TopProductsChart";
+import { getBangkokDayKey } from "@/lib/storefront-visitor";
+import AdminDashboardCharts from "./AdminDashboardCharts";
 import ExpiryAlerts from "./ExpiryAlerts";
 
 const AdminDashboard = async () => {
@@ -15,6 +14,8 @@ const AdminDashboard = async () => {
   const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const bangkokToday = getBangkokDayKey(now);
+  const bangkokMonthStart = `${bangkokToday.slice(0, 8)}01`;
 
   const [
     totalProducts,
@@ -26,6 +27,9 @@ const AdminDashboard = async () => {
     arNormal,
     arCOD,
     expensesMonthAgg,
+    storefrontVisitorsToday,
+    storefrontVisitorsMonth,
+    storefrontVisitorsTotal,
   ] = await Promise.all([
     db.product.count({ where: { isActive: true } }),
     db.sale.aggregate({
@@ -64,6 +68,16 @@ const AdminDashboard = async () => {
       _sum: { netAmount: true },
       where: { status: "ACTIVE", expenseDate: { gte: startOfMonth } },
     }),
+    db.storefrontVisitDaily.count({
+      where: { visitDay: bangkokToday },
+    }),
+    db.storefrontVisitDaily.groupBy({
+      by: ["visitorKey"],
+      where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
+    }).then((rows) => rows.length),
+    db.storefrontVisitDaily.groupBy({
+      by: ["visitorKey"],
+    }).then((rows) => rows.length),
   ]);
 
   const fmt = (v: unknown) =>
@@ -77,6 +91,13 @@ const AdminDashboard = async () => {
   const next30Label   = `${todayLabel} – ${fmtDate(in30Days)}`;
 
   const cards = [
+    {
+      label: "ผู้เข้าชมหน้าบ้านวันนี้",
+      value: storefrontVisitorsToday.toLocaleString(),
+      unit: `เดือนนี้ ${storefrontVisitorsMonth.toLocaleString()} | สะสม ${storefrontVisitorsTotal.toLocaleString()}`,
+      icon: Globe,
+      color: "bg-cyan-50 text-cyan-600",
+    },
     {
       label: "สินค้าทั้งหมด",
       value: totalProducts.toLocaleString(),
@@ -163,18 +184,7 @@ const AdminDashboard = async () => {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2">
-          <Suspense fallback={<div className="h-72 bg-white rounded-xl animate-pulse" />}>
-            <SalesChart />
-          </Suspense>
-        </div>
-        <div>
-          <Suspense fallback={<div className="h-72 bg-white rounded-xl animate-pulse" />}>
-            <TopProductsChart />
-          </Suspense>
-        </div>
-      </div>
+      <AdminDashboardCharts />
 
       {/* Alerts */}
       <ExpiryAlerts />

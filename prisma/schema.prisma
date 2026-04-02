@@ -743,6 +743,20 @@ model SiteContent {
   updatedAt DateTime @updatedAt
 }
 
+model StorefrontVisitDaily {
+  id         String   @id @default(cuid())
+  visitorKey String
+  visitDay   String
+  entryPath  String
+  lastPath   String
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @updatedAt
+
+  @@unique([visitorKey, visitDay])
+  @@index([visitDay])
+  @@index([lastSeenAt])
+}
+
 enum VatType {
   NO_VAT        // ไม่มีภาษี
   EXCLUDING_VAT // ราคาไม่รวม VAT (VAT แยก)

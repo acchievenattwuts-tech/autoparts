@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 
 const securityHeaders = [
   // Prevent MIME type sniffing
@@ -45,6 +46,11 @@ const securityHeaders = [
   },
 ];
 
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+  openAnalyzer: false,
+});
+
 const nextConfig: NextConfig = {
   // Remove X-Powered-By header (hides tech stack from attackers)
   poweredByHeader: false,
@@ -54,6 +60,10 @@ const nextConfig: NextConfig = {
       // Keep server action payloads tight to protect upload performance.
       bodySizeLimit: "3mb",
     },
+    // Keep prerender fan-out low enough for the current Supabase session pool during build.
+    staticGenerationRetryCount: 1,
+    staticGenerationMaxConcurrency: 2,
+    staticGenerationMinPagesPerWorker: 40,
   },
 
   async headers() {
@@ -81,4 +91,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "analyze": "set ANALYZE=true&& set NODE_OPTIONS=--max-old-space-size=4096&& next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
@@ -36,6 +37,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^16.2.2",
     "@prisma/client": "^7.5.0",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
