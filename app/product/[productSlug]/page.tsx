@@ -146,7 +146,7 @@ const ProductDetailPage = async ({ params }: Props) => {
               className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#10213d]"
             >
               <ArrowLeft className="h-4 w-4" />
-              เธเธฅเธฑเธเนเธเธซเธเนเธฒเธชเธดเธเธเนเธฒเธ—เธฑเนเธเธซเธกเธ”
+              กลับไปหน้าสินค้าทั้งหมด
             </Link>
           </div>
         </section>
@@ -193,16 +193,16 @@ const ProductDetailPage = async ({ params }: Props) => {
                 <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ
+                      รหัสสินค้า
                     </p>
                     <p className="mt-1 font-medium text-slate-800">{product.code}</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      เธฃเธฒเธเธฒ
+                      ราคา
                     </p>
                     <p className="mt-1 text-xl font-bold text-[#f97316]">
-                      เธฟ{Number(product.salePrice).toLocaleString("th-TH")}
+                      ฿{Number(product.salePrice).toLocaleString("th-TH")}
                     </p>
                   </div>
                 </div>
@@ -219,7 +219,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     className="inline-flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
                   >
                     <MessageCircle className="h-4 w-4" />
-                    เธชเธญเธเธ–เธฒเธกเธเนเธฒเธ LINE OA
+                    สอบถามผ่าน LINE OA
                   </a>
                   {config.shopPhone && (
                     <a
@@ -227,7 +227,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                       className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 font-semibold text-[#10213d] transition hover:border-[#10213d]"
                     >
                       <Phone className="h-4 w-4" />
-                      เนเธ—เธฃเธซเธฒเธฃเนเธฒเธ
+                      โทรหาร้าน
                     </a>
                   )}
                 </div>
@@ -239,11 +239,11 @@ const ProductDetailPage = async ({ params }: Props) => {
                     <BadgeCheck className="h-5 w-5" />
                   </div>
                   <h2 className="mt-4 font-kanit text-2xl font-semibold text-[#10213d]">
-                    เธเธฒเธฃเธขเธทเธเธขเธฑเธเธชเธดเธเธเนเธฒ
+                    การยืนยันสินค้า
                   </h2>
                   <p className="mt-3 text-sm leading-7 text-slate-600">
-                    เธซเธเนเธฒเน€เธงเนเธเธเนเธงเธขเนเธซเนเธเนเธเธซเธฒเธชเธดเธเธเนเธฒเนเธ”เนเน€เธฃเนเธงเธเธถเนเธ เนเธ•เนเธเนเธญเธเธชเธฑเนเธเธเธทเนเธญเธเธฃเธดเธเธเธงเธฃเธ—เธฑเธ LINE OA เธซเธฃเธทเธญเนเธ—เธฃเน€เธเนเธฒเธฃเนเธฒเธเน€เธเธทเนเธญเธขเธทเธเธขเธฑเธเธชเธ•เนเธญเธ
-                    เธเธงเธฒเธกเน€เธเนเธฒเธเธฑเธเนเธ”เนเธเธญเธเธญเธฐเนเธซเธฅเน เนเธฅเธฐเธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธฅเนเธฒเธชเธธเธ”เธญเธตเธเธเธฃเธฑเนเธ
+                    หน้าเว็บช่วยให้ค้นหาสินค้าได้เร็วขึ้น แต่ก่อนสั่งซื้อจริงควรทัก LINE OA หรือโทรเข้าร้านเพื่อยืนยันสต็อก
+                    ความเข้ากันได้ของอะไหล่ และรายละเอียดล่าสุดอีกครั้ง
                   </p>
                 </div>
 
@@ -252,10 +252,10 @@ const ProductDetailPage = async ({ params }: Props) => {
                     <ShieldCheck className="h-5 w-5" />
                   </div>
                   <h2 className="mt-4 font-kanit text-2xl font-semibold text-[#10213d]">
-                    เธเนเธญเธกเธนเธฅเธญเนเธฒเธเธญเธดเธ
+                    ข้อมูลอ้างอิง
                   </h2>
                   <p className="mt-3 text-sm leading-7 text-slate-600">
-                    เนเธเนเธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ เธเธทเนเธญเธชเธดเธเธเนเธฒ เธฃเธธเนเธเธฃเธ– เธซเธฃเธทเธญเธฃเธนเธเธญเธฐเนเธซเธฅเนเน€เธ”เธดเธกเธชเนเธเนเธซเนเธฃเนเธฒเธเนเธ”เน เน€เธเธทเนเธญเธเนเธงเธขเนเธซเนเธฃเนเธฒเธเธ•เธฃเธงเธเธชเธญเธเนเธฅเธฐเธ•เธญเธเธเธฅเธฑเธเนเธ”เนเน€เธฃเนเธงเธเธถเนเธ
+                    ใช้รหัสสินค้า ชื่อสินค้า รุ่นรถ หรือรูปอะไหล่เดิมส่งให้ร้านได้ เพื่อช่วยให้ร้านตรวจสอบและตอบกลับได้เร็วขึ้น
                   </p>
                 </div>
               </div>
@@ -266,43 +266,39 @@ const ProductDetailPage = async ({ params }: Props) => {
         <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
             <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”เธชเธดเธเธเนเธฒ</h2>
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">รายละเอียดสินค้า</h2>
               <dl className="mt-6 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">
                   <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    เธซเธกเธงเธ”เธชเธดเธเธเนเธฒ
+                    หมวดสินค้า
                   </dt>
                   <dd className="mt-1 text-sm font-medium text-slate-700">{product.category.name}</dd>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">
                   <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    เธซเธเนเธงเธขเนเธชเธ”เธเธเธฅ
+                    หน่วยแสดงผล
+                  </dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-700">{product.reportUnitName}</dd>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    สถานะสินค้า
                   </dt>
                   <dd className="mt-1 text-sm font-medium text-slate-700">
-                    {product.reportUnitName}
+                    {product.stock > 0 ? "มีสินค้าในระบบ" : "กรุณายืนยันกับร้าน"}
                   </dd>
                 </div>
                 <div className="rounded-2xl bg-slate-50 px-4 py-3">
                   <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    เธชเธ–เธฒเธเธฐเธชเธดเธเธเนเธฒ
+                    รหัสอ้างอิง
                   </dt>
-                  <dd className="mt-1 text-sm font-medium text-slate-700">
-                    {product.stock > 0 ? "เธกเธตเธชเธดเธเธเนเธฒเนเธเธฃเธฐเธเธ" : "เธเธฃเธธเธ“เธฒเธขเธทเธเธขเธฑเธเธเธฑเธเธฃเนเธฒเธ"}
-                  </dd>
-                </div>
-                <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    เธฃเธซเธฑเธชเธญเนเธฒเธเธญเธดเธ
-                  </dt>
-                  <dd className="mt-1 break-all text-sm font-medium text-slate-700">
-                    {product.code}
-                  </dd>
+                  <dd className="mt-1 break-all text-sm font-medium text-slate-700">{product.code}</dd>
                 </div>
               </dl>
 
               {product.aliases.length > 0 && (
                 <div className="mt-6">
-                  <h3 className="font-kanit text-xl font-semibold text-[#10213d]">เธเธณเธเนเธเธ—เธตเนเน€เธเธตเนเธขเธงเธเนเธญเธ</h3>
+                  <h3 className="font-kanit text-xl font-semibold text-[#10213d]">คำค้นที่เกี่ยวข้อง</h3>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {product.aliases.map(({ alias }) => (
                       <span
@@ -322,7 +318,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                 <CarFront className="h-5 w-5" />
               </div>
               <h2 className="mt-4 font-kanit text-2xl font-semibold text-[#10213d]">
-                เธฃเธธเนเธเธฃเธ–เธ—เธตเนเน€เธเธตเนเธขเธงเธเนเธญเธ
+                รุ่นรถที่เกี่ยวข้อง
               </h2>
               {groupedCars.length > 0 ? (
                 <div className="mt-5 space-y-4">
@@ -335,7 +331,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                 </div>
               ) : (
                 <p className="mt-5 text-sm leading-7 text-slate-600">
-                  เธซเธฒเธเธขเธฑเธเนเธกเนเนเธเนเนเธเธงเนเธฒเธชเธดเธเธเนเธฒเธเธตเนเธ•เธฃเธเธเธฑเธเธฃเธ–เธฃเธธเนเธเนเธ” เธชเธฒเธกเธฒเธฃเธ–เธชเนเธเธฃเธธเนเธเธฃเธ–เธซเธฃเธทเธญเธฃเธนเธเธญเธฐเนเธซเธฅเนเน€เธ”เธดเธกเนเธซเนเธฃเนเธฒเธเธเนเธงเธขเธ•เธฃเธงเธเธชเธญเธเนเธ”เน
+                  หากยังไม่แน่ใจว่าสินค้านี้ตรงกับรถรุ่นใด สามารถส่งรุ่นรถหรือรูปอะไหล่เดิมให้ร้านช่วยตรวจสอบได้
                 </p>
               )}
             </div>
@@ -345,10 +341,10 @@ const ProductDetailPage = async ({ params }: Props) => {
         <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
           <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
-              เธเธ—เธเธงเธฒเธกเธ—เธตเนเธเนเธงเธขเน€เธเนเธเธเธงเธฒเธกเน€เธเนเธฒเธเธฑเธเนเธ”เนเธเนเธญเธเธชเธฑเนเธ
+              บทความที่ช่วยเช็กความเข้ากันได้ก่อนสั่ง
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
-              เธ–เนเธฒเธขเธฑเธเนเธกเนเธกเธฑเนเธเนเธเน€เธฃเธทเนเธญเธเธฃเธซเธฑเธชเน€เธ”เธดเธก OEM เธฃเธธเนเธเธฃเธ– เธซเธฃเธทเธญเธงเธดเธเธตเธ–ನೆเธฒเธขเธฃเธนเธเธเธดเนเธเธเธฒเธเน€เธ”เธดเธก เธชเธฒเธกเธฒเธฃเธ–เธญเนเธฒเธเธเธนเนเธกเธทเธญเน€เธซเธฅเนเธฒเธเธตเนเธเนเธญเธเนเธฅเนเธงเธเนเธญเธขเธชเนเธเธเนเธญเธกเธนเธฅเนเธซเนเธฃเนเธฒเธเธขเธทเธเธขเธฑเธเธ•เนเธญเนเธ”เน
+              ถ้ายังไม่มั่นใจเรื่องรหัสเดิม OEM รุ่นรถ หรือวิธีถ่ายรูปชิ้นงานเดิม สามารถอ่านคู่มือเหล่านี้ก่อนแล้วค่อยส่งข้อมูลให้ร้านยืนยันต่อได้
             </p>
             <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
               {prepArticles.map((article) => (
@@ -375,8 +371,8 @@ const ProductDetailPage = async ({ params }: Props) => {
 
       <BreadcrumbJsonLd
         items={[
-          { name: "เธซเธเนเธฒเนเธฃเธ", item: absoluteUrl("/") },
-          { name: "เธชเธดเธเธเนเธฒเธ—เธฑเนเธเธซเธกเธ”", item: absoluteUrl("/products") },
+          { name: "หน้าแรก", item: absoluteUrl("/") },
+          { name: "สินค้าทั้งหมด", item: absoluteUrl("/products") },
           {
             name: product.category.name,
             item: absoluteUrl(getCategoryPath(product.category)),
