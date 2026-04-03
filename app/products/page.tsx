@@ -1,4 +1,4 @@
-export const revalidate = 300;
+﻿export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { Suspense } from "react";
@@ -12,123 +12,36 @@ import ProductCard from "@/components/shared/ProductCard";
 import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "./ProductFilterBar";
-import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
 const PRODUCTS_PER_PAGE = 24;
 
-interface Props {
-  searchParams: Promise<{
-    q?: string;
-    category?: string;
-    brand?: string;
-    model?: string;
-    page?: string;
-  }>;
-}
-
-const parsePage = (value?: string) => {
-  const parsed = Number.parseInt(value ?? "1", 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1;
-  }
-
-  return parsed;
-};
-
-const buildProductsHref = ({
-  q,
-  category,
-  brand,
-  model,
-  page,
-}: {
-  q?: string;
-  category?: string;
-  brand?: string;
-  model?: string;
-  page?: number;
-}) => {
-  const params = new URLSearchParams();
-
-  if (q) params.set("q", q);
-  if (category) params.set("category", category);
-  if (brand) params.set("brand", brand);
-  if (model) params.set("model", model);
-  if (page && page > 1) params.set("page", String(page));
-
-  const query = params.toString();
-  return query ? `/products?${query}` : "/products";
-};
-
-export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const { q, category, brand, model, page } = await searchParams;
-
-  const currentPage = parsePage(page);
-  const activeFilters = [category, brand, model].filter(Boolean);
-  const hasSearchState = Boolean(q || activeFilters.length > 0 || currentPage > 1);
-  const titleParts = ["สินค้าทั้งหมด"];
-
-  if (activeFilters.length > 0) {
-    titleParts.push(activeFilters.join(" | "));
-  }
-
-  if (q) {
-    titleParts.push(`ค้นหา "${q}"`);
-  }
-
-  if (currentPage > 1) {
-    titleParts.push(`หน้า ${currentPage}`);
-  }
-
-  return {
-    title: titleParts.join(" | "),
+export const metadata: Metadata = {
+  title: "สินค้าทั้งหมด | ศรีวรรณ อะไหล่แอร์",
+  description:
+    "รวมสินค้าอะไหล่แอร์ คอมเพรสเซอร์ หม้อน้ำ แผงคอนเดนเซอร์ และสินค้าในร้านศรีวรรณ อะไหล่แอร์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
+  alternates: {
+    canonical: absoluteUrl("/products"),
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  openGraph: {
+    url: absoluteUrl("/products"),
+    title: "สินค้าทั้งหมด | ศรีวรรณ อะไหล่แอร์",
     description:
-      "ค้นหาอะไหล่แอร์ คอมเพรสเซอร์ หม้อน้ำ แผงคอนเดนเซอร์ และสินค้าในร้านศรีวรรณ อะไหล่แอร์ พร้อมกรองตามหมวดหมู่ ยี่ห้อรถ และรุ่นรถ",
-    alternates: {
-      canonical: absoluteUrl("/products"),
-    },
-    robots: hasSearchState
-      ? {
-          index: false,
-          follow: true,
-        }
-      : {
-          index: true,
-          follow: true,
-        },
-    openGraph: {
-      url: absoluteUrl("/products"),
-      title: titleParts.join(" | "),
-      description:
-        "รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
-    },
-  };
-}
+      "รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
+  },
+};
 
-const ProductsPage = async ({ searchParams }: Props) => {
-  const { q, category, brand, model, page } = await searchParams;
-  const config = await getSiteConfig();
-  const currentPage = parsePage(page);
-  const skip = (currentPage - 1) * PRODUCTS_PER_PAGE;
-
-  const searchResult = await searchProductIds({
-    query: q,
-    isActive: true,
-    categoryName: category,
-    carBrandName: brand,
-    carModelName: model,
-    skip,
-    take: PRODUCTS_PER_PAGE,
-    order: "createdAtDesc",
-  });
-
-  const [products, filterData] = await Promise.all([
+const ProductsPage = async () => {
+  const [config, filterData, products, totalProducts] = await Promise.all([
+    getSiteConfig(),
+    getStorefrontProductFilters(),
     db.product.findMany({
-      where: {
-        id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
-      },
+      where: { isActive: true },
       select: {
         id: true,
         slug: true,
@@ -152,15 +65,14 @@ const ProductsPage = async ({ searchParams }: Props) => {
           take: 6,
         },
       },
+      orderBy: { createdAt: "desc" },
+      take: PRODUCTS_PER_PAGE,
     }),
-    getStorefrontProductFilters(),
+    db.product.count({ where: { isActive: true } }),
   ]);
 
-  const sortedProducts = sortProductsByIds(products, searchResult.ids);
-  const hasFilter = q || category || brand || model;
-  const totalPages = Math.max(1, Math.ceil(searchResult.total / PRODUCTS_PER_PAGE));
-  const pageStart = searchResult.total === 0 ? 0 : skip + 1;
-  const pageEnd = Math.min(skip + sortedProducts.length, searchResult.total);
+  const pageEnd = Math.min(products.length, totalProducts);
+  const totalPages = Math.max(1, Math.ceil(totalProducts / PRODUCTS_PER_PAGE));
 
   return (
     <>
@@ -170,7 +82,6 @@ const ProductsPage = async ({ searchParams }: Props) => {
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
-        searchQuery={q}
       />
       <main className="min-h-screen bg-gray-50 pt-16">
         <div className="overflow-hidden bg-[#10213d]">
@@ -179,18 +90,15 @@ const ProductsPage = async ({ searchParams }: Props) => {
               <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
                   <h1 className="mt-2 font-kanit text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
-                    ค้นหาอะไหล่ให้เจอเร็วขึ้น จากชื่อสินค้า รหัสอะไหล่ รุ่นรถ และคำที่ลูกค้าใช้เรียก
+                    รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมเข้าไปค้นหาต่อได้ทันที
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
-                    ค้นหาได้ทั้งอะไหล่แอร์ หม้อน้ำ คอมเพรสเซอร์ แผงคอนเดนเซอร์ และสินค้าเกี่ยวข้องจากหน้าเดียว
+                    หน้าเมนูสินค้านี้โหลดแบบคงที่เพื่อให้เข้าได้เร็วที่สุด ส่วนการค้นหาด้วยชื่อสินค้า รหัส รุ่นรถ หรือการกรองละเอียดจะพาไปหน้าค้นหาโดยตรง
                   </p>
                 </div>
 
                 <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
-                  <form action="/products" method="GET" className="space-y-3">
-                    <input type="hidden" name="category" value={category ?? ""} />
-                    <input type="hidden" name="brand" value={brand ?? ""} />
-                    <input type="hidden" name="model" value={model ?? ""} />
+                  <form action="/products/search" method="GET" className="space-y-3">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <label className="sr-only" htmlFor="products-hero-search">
                         ค้นหาสินค้า
@@ -201,7 +109,6 @@ const ProductsPage = async ({ searchParams }: Props) => {
                           id="products-hero-search"
                           type="text"
                           name="q"
-                          defaultValue={q ?? ""}
                           placeholder="เช่น คอมแอร์ Denso, VIGO, แผงคอนเดนเซอร์..."
                           className="h-12 w-full rounded-2xl border border-white/20 bg-white px-11 text-sm text-slate-900 outline-none transition focus:border-[#f97316] focus:ring-4 focus:ring-[#f97316]/15"
                         />
@@ -215,7 +122,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
                       </button>
                     </div>
                     <p className="text-xs text-white/60 sm:text-sm">
-                      ค้นหาแล้วกดเข้าไปดูรายละเอียดหรือสอบถามร้านผ่าน LINE OA ได้ทันที
+                      ถ้าต้องการกรองตามยี่ห้อรถ รุ่นรถ หรือหมวดสินค้า ระบบจะพาไปหน้าค้นหาและตัวกรองแบบเต็มให้ทันที
                     </p>
                   </form>
                 </div>
@@ -238,45 +145,27 @@ const ProductsPage = async ({ searchParams }: Props) => {
             <div className="min-w-0 flex-1">
               <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-gray-500">
-                  {hasFilter ? (
-                    <>
-                      {q && <>ค้นหา &ldquo;{q}&rdquo; </>}
-                      {brand && (
-                        <>
-                          {brand}
-                          {model ? ` › ${model}` : ""}{" "}
-                        </>
-                      )}
-                      {category && <>{category} </>}
-                      — พบ <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                      รายการ
-                    </>
-                  ) : (
-                    <>
-                      แสดงสินค้า <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                      รายการ
-                    </>
-                  )}
+                  แสดงสินค้าล่าสุด <span className="font-semibold text-gray-800">{totalProducts}</span> รายการ
                 </p>
 
-                {searchResult.total > 0 && (
+                {totalProducts > 0 && (
                   <p className="text-xs text-gray-400 sm:text-sm">
-                    แสดง {pageStart}-{pageEnd} จาก {searchResult.total} รายการ
+                    แสดง 1-{pageEnd} จาก {totalProducts} รายการ
                   </p>
                 )}
               </div>
 
-              {sortedProducts.length === 0 ? (
+              {products.length === 0 ? (
                 <div className="py-24 text-center text-gray-400">
-                  <p className="mb-2 text-lg">ไม่พบสินค้าที่ค้นหา</p>
-                  <Link href="/products" className="text-sm text-[#1e3a5f] underline">
-                    ดูสินค้าทั้งหมด
+                  <p className="mb-2 text-lg">ยังไม่มีสินค้าที่เปิดใช้งานในขณะนี้</p>
+                  <Link href="/products/search" className="text-sm text-[#1e3a5f] underline">
+                    ไปหน้าค้นหาสินค้า
                   </Link>
                 </div>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-                    {sortedProducts.map((product) => (
+                    {products.map((product) => (
                       <ProductCard
                         key={product.id}
                         product={product}
@@ -285,54 +174,30 @@ const ProductsPage = async ({ searchParams }: Props) => {
                     ))}
                   </div>
 
-                  {totalPages > 1 && (
-                    <div className="mt-8 flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                      <p className="text-sm text-gray-500">
-                        หน้า <span className="font-semibold text-gray-800">{currentPage}</span> จาก{" "}
-                        <span className="font-semibold text-gray-800">{totalPages}</span>
-                      </p>
+                  <div className="mt-8 flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <p className="text-sm text-gray-500">
+                      หน้า <span className="font-semibold text-gray-800">1</span> จาก{" "}
+                      <span className="font-semibold text-gray-800">{totalPages}</span>
+                    </p>
 
-                      <div className="flex items-center gap-3">
-                        {currentPage > 1 ? (
-                          <Link
-                            href={buildProductsHref({
-                              q,
-                              category,
-                              brand,
-                              model,
-                              page: currentPage - 1,
-                            })}
-                            className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f]"
-                          >
-                            หน้าก่อนหน้า
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center justify-center rounded-full border border-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
-                            หน้าก่อนหน้า
-                          </span>
-                        )}
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href="/products/search"
+                        className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f]"
+                      >
+                        เปิดหน้าค้นหาและตัวกรอง
+                      </Link>
 
-                        {currentPage < totalPages ? (
-                          <Link
-                            href={buildProductsHref({
-                              q,
-                              category,
-                              brand,
-                              model,
-                              page: currentPage + 1,
-                            })}
-                            className="inline-flex items-center justify-center rounded-full bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16304e]"
-                          >
-                            หน้าถัดไป
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
-                            หน้าถัดไป
-                          </span>
-                        )}
-                      </div>
+                      {totalPages > 1 && (
+                        <Link
+                          href="/products/search?page=2"
+                          className="inline-flex items-center justify-center rounded-full bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16304e]"
+                        >
+                          หน้าถัดไป
+                        </Link>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </>
               )}
             </div>

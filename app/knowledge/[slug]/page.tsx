@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpenText, Clock3, Search } from "lucide-react";
@@ -152,7 +152,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
                 {article.relatedSearches.map((term) => (
                   <Link
                     key={term}
-                    href={`/products?q=${encodeURIComponent(term)}`}
+                    href={`/products/search?q=${encodeURIComponent(term)}`}
                     className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:border-[#10213d] hover:text-[#10213d]"
                   >
                     {term}

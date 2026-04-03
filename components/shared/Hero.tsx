@@ -1,4 +1,4 @@
-import Image from "next/image";
+﻿import Image from "next/image";
 import { ArrowRight, Clock, Search, Truck } from "lucide-react";
 
 const badges = [
@@ -72,7 +72,7 @@ const Hero = ({
                 </div>
               </div>
 
-              <form action="/products" method="GET" className="space-y-3">
+              <form action="/products/search" method="GET" className="space-y-3">
                 <div className="flex flex-col gap-3 sm:flex-row">
                   <label className="sr-only" htmlFor="hero-search">
                     ค้นหาสินค้า

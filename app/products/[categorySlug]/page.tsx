@@ -1,4 +1,4 @@
-export const revalidate = 300;
+﻿export const revalidate = 300;
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -118,7 +118,7 @@ const CategoryPage = async ({ params }: Props) => {
                   </p>
                   <div className="mt-6 flex flex-wrap gap-3">
                     <Link
-                      href={`/products?category=${encodeURIComponent(category.name)}`}
+                      href={`/products/search?category=${encodeURIComponent(category.name)}`}
                       className="inline-flex items-center gap-2 rounded-full bg-[#f97316] px-5 py-3 font-semibold text-white transition hover:bg-[#ea6c0a]"
                     >
                       ดูสินค้าในหมวดนี้
@@ -160,7 +160,7 @@ const CategoryPage = async ({ params }: Props) => {
               </p>
             </div>
             <Link
-              href={`/products?category=${encodeURIComponent(category.name)}`}
+              href={`/products/search?category=${encodeURIComponent(category.name)}`}
               className="inline-flex items-center gap-2 self-start rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-[#10213d] transition hover:border-[#10213d]"
             >
               เปิดดูผลค้นหาแบบกรองหมวด

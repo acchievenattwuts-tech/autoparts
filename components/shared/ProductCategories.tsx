@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { getCategoryPath } from "@/lib/product-slug";
@@ -54,7 +54,7 @@ const ProductCategories = async () => {
           name: category.label,
           count: null,
           icon: category.icon,
-          href: `/products?q=${encodeURIComponent(category.label)}`,
+          href: `/products/search?q=${encodeURIComponent(category.label)}`,
           desc: category.desc,
         }));
 

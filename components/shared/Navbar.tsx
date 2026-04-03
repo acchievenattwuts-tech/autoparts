@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import { useState } from "react";
@@ -79,7 +79,7 @@ const Navbar = ({
             ))}
           </nav>
 
-          <form action="/products" method="GET" className="hidden max-w-sm flex-1 items-center md:flex">
+          <form action="/products/search" method="GET" className="hidden max-w-sm flex-1 items-center md:flex">
             <div className="relative w-full">
               <Search
                 size={14}
@@ -134,7 +134,7 @@ const Navbar = ({
 
       {isOpen && (
         <div className="border-t border-gray-100 bg-white px-4 pb-4 md:hidden">
-          <form action="/products" method="GET" className="pb-2 pt-3">
+          <form action="/products/search" method="GET" className="pb-2 pt-3">
             <div className="relative">
               <Search
                 size={14}

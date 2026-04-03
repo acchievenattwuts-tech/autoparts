@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -67,13 +67,15 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
     }
 
     params.delete("page");
-    startTransition(() => router.push(`/products?${params.toString()}`));
+    const query = params.toString();
+    startTransition(() => router.push(query ? `/products/search?${query}` : "/products"));
   };
 
   const clearAll = () => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
-    startTransition(() => router.push(`/products?${params.toString()}`));
+    const query = params.toString();
+    startTransition(() => router.push(query ? `/products/search?${query}` : "/products"));
   };
 
   return (
