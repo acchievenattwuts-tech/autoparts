@@ -66,7 +66,7 @@ const Hero = ({
               เริ่มจากส่งรุ่นรถ ปีรถ หรือรูปอะไหล่มาให้ร้านเช็กก่อน แล้วร้านจะแจ้งรุ่นที่ตรง ราคา และขั้นตอนจัดส่งให้ทันที
             </p>
 
-            <p className="mt-3 text-sm font-medium text-white/82 sm:text-base">
+            <p className="mt-3 text-sm font-medium text-white/82 sm:text-base lg:hidden">
               ร้าน {shopName}
             </p>
 
@@ -141,26 +141,40 @@ const Hero = ({
           </div>
 
           <div className="hidden lg:block">
-            <div className="ml-auto max-w-md rounded-[32px] border border-white/15 bg-white/10 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-              <p className="font-kanit text-2xl font-semibold text-white">วิธีสั่งซื้อ</p>
-              <p className="mt-3 text-sm leading-7 text-white/70">
-                ถ้าไม่แน่ใจว่าต้องใช้รุ่นไหน ไม่จำเป็นต้องเดาเอง ส่งข้อมูลมาให้ร้านเช็กก่อนแล้วค่อยสั่งซื้อ
-              </p>
-              <div className="mt-6 space-y-3">
-                {orderSteps.map((step, index) => (
-                  <div
-                    key={step.title}
-                    className={`rounded-2xl border border-white/10 px-4 py-3 ${
-                      index === 0 ? "bg-[#1b3357]/55" : "bg-white/8"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f97316]">
-                      Step {index + 1}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-white">{step.title}</p>
-                    <p className="mt-1 text-sm text-white/60">{step.detail}</p>
-                  </div>
-                ))}
+            <div className="ml-auto max-w-md">
+              <div className="mb-5 rounded-[28px] border border-white/12 bg-[#13284a]/52 px-6 py-5 shadow-xl shadow-black/15 backdrop-blur-md">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f7a35e]">
+                  ร้านพร้อมให้คำแนะนำ
+                </p>
+                <p className="mt-2 font-kanit text-3xl font-bold leading-tight text-white xl:text-[2.35rem]">
+                  {shopName}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-white/72">
+                  เช็กความตรงรุ่น แจ้งราคา และช่วยยืนยันก่อนสั่งทุกครั้ง
+                </p>
+              </div>
+
+              <div className="rounded-[32px] border border-white/15 bg-white/10 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+                <p className="font-kanit text-2xl font-semibold text-white">วิธีสั่งซื้อ</p>
+                <p className="mt-3 text-sm leading-7 text-white/70">
+                  ถ้าไม่แน่ใจว่าต้องใช้รุ่นไหน ไม่จำเป็นต้องเดาเอง ส่งข้อมูลมาให้ร้านเช็กก่อนแล้วค่อยสั่งซื้อ
+                </p>
+                <div className="mt-6 space-y-3">
+                  {orderSteps.map((step, index) => (
+                    <div
+                      key={step.title}
+                      className={`rounded-2xl border border-white/10 px-4 py-3 ${
+                        index === 0 ? "bg-[#1b3357]/55" : "bg-white/8"
+                      }`}
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f97316]">
+                        Step {index + 1}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-white">{step.title}</p>
+                      <p className="mt-1 text-sm text-white/60">{step.detail}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
