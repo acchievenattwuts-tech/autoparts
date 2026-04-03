@@ -66,9 +66,17 @@ const Hero = ({
               เริ่มจากส่งรุ่นรถ ปีรถ หรือรูปอะไหล่มาให้ร้านเช็กก่อน แล้วร้านจะแจ้งรุ่นที่ตรง ราคา และขั้นตอนจัดส่งให้ทันที
             </p>
 
-            <p className="mt-3 text-sm font-medium text-white/82 sm:text-base lg:hidden">
-              ร้าน {shopName}
-            </p>
+            <div className="mt-4 rounded-2xl border border-white/12 bg-[#13284a]/45 px-4 py-3 shadow-lg shadow-black/10 backdrop-blur-sm lg:hidden">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f7a35e] sm:text-xs">
+                ร้านพร้อมให้คำแนะนำ
+              </p>
+              <p className="mt-1 font-kanit text-xl font-bold leading-tight text-[#ffe1bf] sm:text-2xl">
+                {shopName}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-white/72 sm:text-sm">
+                เช็กความตรงรุ่น แจ้งราคา และช่วยยืนยันก่อนสั่งทุกครั้ง
+              </p>
+            </div>
 
             <div className="mt-5 rounded-3xl border border-white/12 bg-white/8 p-4 backdrop-blur-sm lg:hidden">
               <p className="text-sm font-semibold text-white">วิธีสั่งซื้อ</p>
@@ -146,7 +154,7 @@ const Hero = ({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f7a35e]">
                   ร้านพร้อมให้คำแนะนำ
                 </p>
-                <p className="mt-2 font-kanit text-3xl font-bold leading-tight text-white xl:text-[2.35rem]">
+                <p className="mt-2 font-kanit text-3xl font-bold leading-tight text-[#ffe1bf] xl:text-[2.35rem]">
                   {shopName}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-white/72">
