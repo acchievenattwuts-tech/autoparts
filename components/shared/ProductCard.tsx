@@ -5,13 +5,14 @@ import { getProductPath } from "@/lib/product-slug";
 
 type ProductForCard = {
   id: string;
+  slug?: string | null;
   name: string;
   code: string;
   imageUrl: string | null;
   salePrice: { toString(): string } | number;
   stock: number;
   reportUnitName: string;
-  category: { name: string };
+  category: { name: string; slug?: string | null };
   brand: { name: string } | null;
   carModels?: { carModel: { name: string; carBrand: { name: string } } }[];
 };
@@ -24,9 +25,8 @@ interface Props {
 const ProductCard = ({ product, lineUrl }: Props) => {
   const inStock = product.stock > 0;
   const productPath = getProductPath({
-    categoryName: product.category.name,
-    productName: product.name,
-    productId: product.id,
+    category: product.category,
+    product,
   });
 
   const compatibilitySummary =

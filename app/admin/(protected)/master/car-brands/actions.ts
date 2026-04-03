@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 
@@ -13,6 +13,42 @@ const modelSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อรุ่นรถ").max(100),
   carBrandId: z.string().min(1, "ไม่พบยี่ห้อรถ").max(50),
 });
+
+const refreshCarSearchCaches = async (filters?: {
+  carBrandId?: string;
+  carModelId?: string;
+}) => {
+  revalidatePath("/products");
+  revalidatePath("/sitemap.xml");
+  updateTag("storefront-product-filters");
+  updateTag("product-search");
+
+  if (!filters?.carBrandId && !filters?.carModelId) {
+    return;
+  }
+
+  const productIds = await db.product.findMany({
+    where: {
+      carModels: {
+        some: {
+          ...(filters.carModelId ? { carModelId: filters.carModelId } : {}),
+          ...(filters.carBrandId
+            ? {
+                carModel: {
+                  carBrandId: filters.carBrandId,
+                },
+              }
+            : {}),
+        },
+      },
+    },
+    select: { id: true },
+  });
+
+  productIds.forEach(({ id }) => {
+    updateTag(`storefront-product:${id}`);
+  });
+};
 
 export const createCarBrand = async (formData: FormData): Promise<{ error?: string }> => {
   try {
@@ -27,6 +63,7 @@ export const createCarBrand = async (formData: FormData): Promise<{ error?: stri
   try {
     await db.carBrand.create({ data: { name: parsed.data.name } });
     revalidatePath("/admin/master/car-brands");
+    await refreshCarSearchCaches();
     return {};
   } catch {
     return { error: "ชื่อยี่ห้อรถนี้มีอยู่แล้ว" };
@@ -47,6 +84,7 @@ export const toggleCarBrand = async (id: string, isActive: boolean): Promise<{ e
   try {
     await db.carBrand.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/car-brands");
+    await refreshCarSearchCaches({ carBrandId: id });
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
@@ -71,6 +109,7 @@ export const createCarModel = async (formData: FormData): Promise<{ error?: stri
       data: { name: parsed.data.name, carBrandId: parsed.data.carBrandId },
     });
     revalidatePath("/admin/master/car-brands");
+    await refreshCarSearchCaches({ carBrandId: parsed.data.carBrandId });
     return {};
   } catch {
     return { error: "ชื่อรุ่นรถนี้มีอยู่แล้วในยี่ห้อนี้" };
@@ -89,8 +128,17 @@ export const toggleCarModel = async (id: string, isActive: boolean): Promise<{ e
   }
 
   try {
+    const existingModel = await db.carModel.findUnique({
+      where: { id },
+      select: { carBrandId: true },
+    });
+
     await db.carModel.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/car-brands");
+    await refreshCarSearchCaches({
+      carBrandId: existingModel?.carBrandId,
+      carModelId: id,
+    });
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

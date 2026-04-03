@@ -1,11 +1,12 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
+import { buildUniqueSlug } from "@/lib/slug-helpers";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -51,11 +52,11 @@ type ProductInput = z.infer<typeof productSchema>;
 const revalidateStorefrontProductCaches = (productId?: string) => {
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
-  revalidateTag("storefront-product-filters", "max");
-  revalidateTag("product-search", "max");
+  updateTag("storefront-product-filters");
+  updateTag("product-search");
 
   if (productId) {
-    revalidateTag(`storefront-product:${productId}`, "max");
+    updateTag(`storefront-product:${productId}`);
   }
 };
 
@@ -167,9 +168,19 @@ export const createProduct = async (
 
   try {
     await dbTx(async (tx) => {
+      const existingSlugs = await tx.product.findMany({
+        select: { slug: true },
+      });
+
       const product = await tx.product.create({
         data: {
           code,
+          slug: buildUniqueSlug({
+            value: productData.name,
+            taken: existingSlugs.flatMap(({ slug }) => (slug ? [slug] : [])),
+            fallback: "product",
+            extraCandidates: [code],
+          }),
           name: productData.name,
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,
@@ -253,9 +264,29 @@ export const updateProduct = async (
 
   try {
     await dbTx(async (tx) => {
+      const currentProduct = await tx.product.findUnique({
+        where: { id },
+        select: { slug: true, code: true },
+      });
+
+      const slug =
+        currentProduct?.slug ??
+        buildUniqueSlug({
+          value: productData.name,
+          taken: (
+            await tx.product.findMany({
+              where: { NOT: { id } },
+              select: { slug: true },
+            })
+          ).flatMap(({ slug: existingSlug }) => (existingSlug ? [existingSlug] : [])),
+          fallback: "product",
+          extraCandidates: [currentProduct?.code ?? ""],
+        });
+
       await tx.product.update({
         where: { id },
         data: {
+          slug,
           name: productData.name,
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,

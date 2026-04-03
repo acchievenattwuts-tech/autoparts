@@ -131,13 +131,14 @@ const ProductsPage = async ({ searchParams }: Props) => {
       },
       select: {
         id: true,
+        slug: true,
         name: true,
         code: true,
         imageUrl: true,
         salePrice: true,
         stock: true,
         reportUnitName: true,
-        category: { select: { name: true } },
+        category: { select: { name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
           select: {

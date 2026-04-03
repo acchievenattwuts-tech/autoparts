@@ -25,6 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         select: {
           id: true,
           name: true,
+          slug: true,
           createdAt: true,
         },
         orderBy: { name: "asc" },
@@ -33,9 +34,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         where: { isActive: true },
         select: {
           id: true,
+          slug: true,
           name: true,
           updatedAt: true,
-          category: { select: { name: true } },
+          category: { select: { name: true, slug: true } },
         },
         orderBy: { updatedAt: "desc" },
       }),
@@ -91,9 +93,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...activeProducts.map((product) => ({
       url: absoluteUrl(
         getProductPath({
-          categoryName: product.category.name,
-          productName: product.name,
-          productId: product.id,
+          category: product.category,
+          product,
         }),
       ),
       lastModified: product.updatedAt,
@@ -101,7 +102,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.7,
     })),
     ...activeCategories.map((category) => ({
-      url: absoluteUrl(getCategoryPath(category.name)),
+      url: absoluteUrl(getCategoryPath(category)),
       lastModified: category.createdAt ?? productsLastModified,
       changeFrequency: "weekly" as const,
       priority: 0.8,

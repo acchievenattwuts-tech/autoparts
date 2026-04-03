@@ -1,14 +1,14 @@
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { getProductCategorySlug } from "./product-slug";
+import { buildLegacyCategorySlugMap, getProductCategorySlug } from "./product-slug";
 
 export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) => {
   const categories = await unstable_cache(
     async () =>
       db.category.findMany({
         where: { isActive: true },
-        select: { id: true, name: true, createdAt: true },
+        select: { id: true, name: true, slug: true, createdAt: true },
         orderBy: { name: "asc" },
       }),
     ["storefront-categories"],
@@ -16,9 +16,13 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
   )();
 
   const decodedSlug = decodeURIComponent(categorySlug);
+  const legacyCategorySlugMap = buildLegacyCategorySlugMap(categories);
+  const legacyCategoryId = legacyCategorySlugMap.get(categorySlug);
   const category =
+    categories.find((item) => item.slug === categorySlug) ??
     categories.find((item) => item.name === decodedSlug) ??
-    categories.find((item) => getProductCategorySlug(item.name) === categorySlug);
+    categories.find((item) => item.id === legacyCategoryId) ??
+    categories.find((item) => getProductCategorySlug(item) === categorySlug);
   if (!category) {
     notFound();
   }
@@ -51,12 +55,13 @@ export async function getStorefrontCategoryPageData(categorySlug: string) {
           select: {
             id: true,
             name: true,
+            slug: true,
             code: true,
             imageUrl: true,
             salePrice: true,
             stock: true,
             reportUnitName: true,
-            category: { select: { name: true } },
+            category: { select: { name: true, slug: true } },
             brand: { select: { name: true } },
             carModels: {
               select: {

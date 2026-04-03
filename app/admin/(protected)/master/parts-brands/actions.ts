@@ -1,13 +1,32 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อแบรนด์").max(100),
 });
+
+const refreshPartsBrandSearchCaches = async (brandId?: string) => {
+  revalidatePath("/products");
+  revalidatePath("/sitemap.xml");
+  updateTag("product-search");
+
+  if (!brandId) {
+    return;
+  }
+
+  const productIds = await db.product.findMany({
+    where: { brandId },
+    select: { id: true },
+  });
+
+  productIds.forEach(({ id }) => {
+    updateTag(`storefront-product:${id}`);
+  });
+};
 
 export const createPartsBrand = async (formData: FormData): Promise<{ error?: string }> => {
   try {
@@ -22,6 +41,7 @@ export const createPartsBrand = async (formData: FormData): Promise<{ error?: st
   try {
     await db.partsBrand.create({ data: { name: parsed.data.name } });
     revalidatePath("/admin/master/parts-brands");
+    await refreshPartsBrandSearchCaches();
     return {};
   } catch {
     return { error: "ชื่อแบรนด์นี้มีอยู่แล้ว" };
@@ -42,6 +62,7 @@ export const togglePartsBrand = async (id: string, isActive: boolean): Promise<{
   try {
     await db.partsBrand.update({ where: { id }, data: { isActive } });
     revalidatePath("/admin/master/parts-brands");
+    await refreshPartsBrandSearchCaches(id);
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

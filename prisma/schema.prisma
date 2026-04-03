@@ -7,40 +7,30 @@ datasource db {
   provider = "postgresql"
 }
 
-// ─────────────────────────────────────────
-// Auth
-// ─────────────────────────────────────────
-
 model User {
-  id                 String    @id @default(cuid())
+  id                 String           @id @default(cuid())
   name               String
-  username           String?   @unique
-  email              String    @unique
+  email              String           @unique
   password           String
-  role               Role      @default(STAFF)
+  role               Role             @default(STAFF)
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
   appRoleId          String?
-  appRole            AppRole?  @relation(fields: [appRoleId], references: [id])
-  mustChangePassword Boolean   @default(false)
-  isActive           Boolean   @default(true)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  sales            Sale[]
-  purchases        Purchase[]
-  expenses         Expense[]
-  adjustments      Adjustment[]
-  creditNotes      CreditNote[]
-  purchaseReturns  PurchaseReturn[]
-  receipts         Receipt[]
-  balanceForwards  BalanceForward[]
+  mustChangePassword Boolean          @default(false)
+  username           String?          @unique
+  adjustments        Adjustment[]
+  balanceForwards    BalanceForward[]
+  creditNotes        CreditNote[]
+  expenses           Expense[]
+  purchases          Purchase[]
+  purchaseReturns    PurchaseReturn[]
+  receipts           Receipt[]
+  sales              Sale[]
+  appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
   @@index([appRoleId])
-}
-
-enum Role {
-  ADMIN
-  STAFF
 }
 
 model LoginThrottle {
@@ -57,10 +47,10 @@ model AppRole {
   name        String              @unique
   description String?
   isSystem    Boolean             @default(false)
-  users       User[]
-  permissions AppRolePermission[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  permissions AppRolePermission[]
+  users       User[]
 }
 
 model Permission {
@@ -69,41 +59,37 @@ model Permission {
   group       String
   label       String
   description String?
-  roles       AppRolePermission[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
+  roles       AppRolePermission[]
 }
 
 model AppRolePermission {
-  appRoleId     String
-  permissionId  String
-  appRole       AppRole     @relation(fields: [appRoleId], references: [id], onDelete: Cascade)
-  permission    Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  createdAt     DateTime    @default(now())
+  appRoleId    String
+  permissionId String
+  createdAt    DateTime   @default(now())
+  appRole      AppRole    @relation(fields: [appRoleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([appRoleId, permissionId])
   @@index([permissionId])
 }
 
-// ─────────────────────────────────────────
-// Car / Category Master Data
-// ─────────────────────────────────────────
-
 model CarBrand {
   id        String     @id @default(cuid())
   name      String     @unique
-  isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
+  isActive  Boolean    @default(true)
   carModels CarModel[]
 }
 
 model CarModel {
-  id         String    @id @default(cuid())
+  id         String            @id @default(cuid())
   name       String
   carBrandId String
-  carBrand   CarBrand  @relation(fields: [carBrandId], references: [id])
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime          @default(now())
+  isActive   Boolean           @default(true)
+  carBrand   CarBrand          @relation(fields: [carBrandId], references: [id])
   products   ProductCarModel[]
 
   @@unique([name, carBrandId])
@@ -112,102 +98,88 @@ model CarModel {
 model Category {
   id        String    @id @default(cuid())
   name      String    @unique
-  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
+  isActive  Boolean   @default(true)
+  slug      String?   @unique
   products  Product[]
 }
 
 model Supplier {
-  id           String         @id @default(cuid())
-  code         String?        @unique
-  name         String         @unique
-  contactName  String?
-  phone        String?
-  address      String?
-  isActive     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
+  id                String           @id @default(cuid())
+  name              String           @unique
+  contactName       String?
+  phone             String?
+  address           String?
+  createdAt         DateTime         @default(now())
+  code              String?          @unique
+  isActive          Boolean          @default(true)
+  preferredProducts Product[]        @relation("ProductPreferredSupplier")
   purchases         Purchase[]
   purchaseItems     PurchaseItem[]
   purchaseReturns   PurchaseReturn[]
-  preferredProducts Product[]       @relation("ProductPreferredSupplier")
   warrantyClaims    WarrantyClaim[]
 }
-
-// ─────────────────────────────────────────
-// Parts Brand Master
-// ─────────────────────────────────────────
 
 model PartsBrand {
   id        String    @id @default(cuid())
   name      String    @unique
-  isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
+  isActive  Boolean   @default(true)
   products  Product[]
 }
 
-// ─────────────────────────────────────────
-// Product
-// ─────────────────────────────────────────
-
 model Product {
-  id               String      @id @default(cuid())
-  code             String      @unique
-  name             String
-  description      String?
-  categoryId       String
-  category         Category    @relation(fields: [categoryId], references: [id])
-  brandId          String?
-  brand            PartsBrand? @relation(fields: [brandId], references: [id])
-  shelfLocation    String?
-  costPrice        Decimal  @default(0) @db.Decimal(10, 2)
-  salePrice        Decimal  @default(0) @db.Decimal(10, 2)
-  stock            Int      @default(0)   // ระบบจัดการเท่านั้น ไม่ให้ user ระบุ
-  avgCost          Decimal  @default(0) @db.Decimal(10, 2) // ต้นทุนถั่วเฉลี่ยปัจจุบัน — อัปเดตทุกครั้งที่ PURCHASE_IN
-  minStock         Int      @default(1)
-  // หน่วยนับ — ระบุชื่อหน่วยที่ใช้ในแต่ละบริบท (ต้องตรงกับ ProductUnit.name ของสินค้านี้)
-  saleUnitName     String   @default("ชิ้น")
-  purchaseUnitName String   @default("ชิ้น")
-  reportUnitName   String   @default("ชิ้น")
-  warrantyDays     Int      @default(0)   // จำนวนวันประกันเริ่มต้น (0 = ไม่มีประกัน)
-  imageUrl         String?
-  preferredSupplierId  String?
-  preferredSupplier    Supplier? @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
-  // Lot Control
-  isLotControl       Boolean        @default(false)
-  requireExpiryDate  Boolean        @default(false)
-  lotIssueMethod     LotIssueMethod @default(FIFO)
-  allowExpiredIssue  Boolean        @default(false)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
+  id                  String               @id @default(cuid())
+  code                String               @unique
+  name                String
+  description         String?
+  categoryId          String
+  shelfLocation       String?
+  costPrice           Decimal              @default(0) @db.Decimal(10, 2)
+  salePrice           Decimal              @default(0) @db.Decimal(10, 2)
+  stock               Int                  @default(0)
+  minStock            Int                  @default(1)
+  imageUrl            String?
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  purchaseUnitName    String               @default("ชิ้น")
+  reportUnitName      String               @default("ชิ้น")
+  saleUnitName        String               @default("ชิ้น")
+  brandId             String?
+  avgCost             Decimal              @default(0) @db.Decimal(10, 2)
+  warrantyDays        Int                  @default(0)
+  preferredSupplierId String?
+  allowExpiredIssue   Boolean              @default(false)
+  isLotControl        Boolean              @default(false)
+  lotIssueMethod      LotIssueMethod       @default(FIFO)
+  requireExpiryDate   Boolean              @default(false)
+  slug                String?              @unique
+  adjustmentItems     AdjustmentItem[]
+  balanceForwards     BalanceForward[]
+  creditNoteItems     CreditNoteItem[]
+  lotBalances         LotBalance[]
+  brand               PartsBrand?          @relation(fields: [brandId], references: [id])
+  category            Category             @relation(fields: [categoryId], references: [id])
+  preferredSupplier   Supplier?            @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   aliases             ProductAlias[]
   carModels           ProductCarModel[]
+  lots                ProductLot[]
   units               ProductUnit[]
   purchaseItems       PurchaseItem[]
+  purchaseReturnItems PurchaseReturnItem[]
   saleItems           SaleItem[]
   stockCards          StockCard[]
   warranties          Warranty[]
-  adjustmentItems     AdjustmentItem[]
-  creditNoteItems     CreditNoteItem[]
-  purchaseReturnItems PurchaseReturnItem[]
-  balanceForwards     BalanceForward[]
-  lots                ProductLot[]
-  lotBalances         LotBalance[]
 }
 
-// หน่วยนับของสินค้า — 1 สินค้า มีได้หลายหน่วย
-// หน่วยหลัก (isBase = true) ต้องมี scale = 1 เสมอ
-// หน่วยอื่นๆ scale คือจำนวนหน่วยย่อย (base units) ต่อ 1 หน่วยนั้น
-// เช่น: ชิ้น (isBase, scale=1), โหล (scale=12), กล่อง (scale=6)
 model ProductUnit {
   id        String   @id @default(cuid())
   productId String
   name      String
-  scale     Float    // base unit scale = 1, โหล = 12, กล่อง = 6 ฯลฯ
+  scale     Float
   isBase    Boolean  @default(false)
   createdAt DateTime @default(now())
-
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, name])
@@ -216,9 +188,9 @@ model ProductUnit {
 model ProductAlias {
   id        String   @id @default(cuid())
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   alias     String
   createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, alias])
   @@index([alias])
@@ -226,325 +198,223 @@ model ProductAlias {
 
 model ProductCarModel {
   productId  String
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   carModelId String
   carModel   CarModel @relation(fields: [carModelId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, carModelId])
 }
 
-// ─────────────────────────────────────────
-// Stock Card (บัตรสต็อกสินค้า)
-// ─────────────────────────────────────────
-// เป็น source of truth ของการเคลื่อนไหวสินค้า
-// qty และ price ทั้งหมดอยู่ใน "หน่วยหลัก" (base unit, scale=1) ของสินค้านั้น
-// ─────────────────────────────────────────
-
 model StockCard {
-  id           String          @id @default(cuid())
+  id           String             @id @default(cuid())
   productId    String
-  product      Product         @relation(fields: [productId], references: [id])
-  docNo        String          // เลขที่เอกสาร
-  docDate      DateTime        // วันที่เอกสาร
-  source       StockCardSource // แหล่งที่มา
-  sorder       Int             // ลำดับ สำหรับเรียงภายในวันเดียวกันของสินค้าเดียวกัน
-  qtyIn        Decimal         @default(0) @db.Decimal(12, 4) // จำนวนเข้า (base unit)
-  qtyOut       Decimal         @default(0) @db.Decimal(12, 4) // จำนวนออก (base unit)
-  qtyBalance   Decimal         @default(0) @db.Decimal(12, 4) // คงเหลือสะสม (base unit)
-  landedCost   Decimal         @default(0) @db.Decimal(10, 2) // ค่าขนส่ง/ค่าแนบที่รวมใน avgCost
-  priceIn      Decimal         @default(0) @db.Decimal(10, 4) // ราคาทุน/หน่วย ที่ซื้อเข้า (base unit)
-  priceOut     Decimal         @default(0) @db.Decimal(10, 4) // avgCost ณ เวลาขายออก (base unit)
-  priceBalance Decimal         @default(0) @db.Decimal(10, 4) // avgCost หลัง transaction นี้ (base unit)
-  detail       String?         // รายละเอียด
-  referenceId  String?         // อ้างอิง PurchaseItem.id / SaleItem.id / BF id ฯลฯ
-  createdAt    DateTime        @default(now())
+  docNo        String
+  docDate      DateTime
+  source       StockCardSource
+  sorder       Int
+  qtyIn        Decimal            @default(0) @db.Decimal(12, 4)
+  qtyOut       Decimal            @default(0) @db.Decimal(12, 4)
+  qtyBalance   Decimal            @default(0) @db.Decimal(12, 4)
+  priceIn      Decimal            @default(0) @db.Decimal(10, 4)
+  priceOut     Decimal            @default(0) @db.Decimal(10, 4)
+  priceBalance Decimal            @default(0) @db.Decimal(10, 4)
+  detail       String?
+  referenceId  String?
+  createdAt    DateTime           @default(now())
+  landedCost   Decimal            @default(0) @db.Decimal(10, 2)
+  product      Product            @relation(fields: [productId], references: [id])
   lotMovements StockMovementLot[]
 
   @@index([productId, docDate, sorder])
   @@index([docNo])
 }
 
-enum StockCardSource {
-  BF               // ยอดยกมา (Beginning Forward)
-  PURCHASE         // ซื้อเข้า
-  SALE             // ขายออก
-  RETURN_IN        // รับคืนจากลูกค้า (CreditNote type=RETURN)
-  RETURN_OUT       // คืนสินค้าให้ซัพพลายเออร์ (PurchaseReturn)
-  ADJUST_IN        // ปรับเพิ่ม (Adjustment)
-  ADJUST_OUT       // ปรับลด (Adjustment)
-  CLAIM_RETURN_IN  // ลูกค้าเอาของเสียกลับมาที่ร้าน (WarrantyClaim)
-  CLAIM_SEND_OUT   // ส่งของเสียไปให้ supplier (WarrantyClaim)
-  CLAIM_RECV_IN    // รับสินค้ากลับจาก supplier (WarrantyClaim)
-  CLAIM_REPLACE_OUT // ส่งสินค้าออกให้ลูกค้า (WarrantyClaim)
-}
-
-enum DocStatus {
-  ACTIVE
-  CANCELLED
-}
-
-// ─────────────────────────────────────────
-// Balance Forward (ยอดยกมา — header document)
-// ─────────────────────────────────────────
-
 model BalanceForward {
   id              String    @id @default(cuid())
   docNo           String    @unique
   docDate         DateTime
   productId       String
-  product         Product   @relation(fields: [productId], references: [id])
-  unitName        String    // หน่วยที่ระบุตอนบันทึก
-  qtyInBase       Decimal   @db.Decimal(12, 4) // จำนวนในหน่วยหลัก
-  costPerBaseUnit Decimal   @db.Decimal(10, 4) // ต้นทุน/หน่วยหลัก
+  unitName        String
+  qtyInBase       Decimal   @db.Decimal(12, 4)
+  costPerBaseUnit Decimal   @db.Decimal(10, 4)
   note            String?
   status          DocStatus @default(ACTIVE)
   cancelledAt     DateTime?
   cancelNote      String?
   userId          String
-  user            User      @relation(fields: [userId], references: [id])
   createdAt       DateTime  @default(now())
+  product         Product   @relation(fields: [productId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
 
   @@index([productId])
   @@index([docDate])
 }
 
-// ─────────────────────────────────────────
-// Purchase (ซื้อสินค้าเข้า)
-// ─────────────────────────────────────────
-
 model Purchase {
-  id          String         @id @default(cuid())
-  purchaseNo  String         @unique
-  supplierId  String?
-  supplier    Supplier?      @relation(fields: [supplierId], references: [id])
-  userId      String
-  user        User           @relation(fields: [userId], references: [id])
-  totalAmount Decimal        @db.Decimal(10, 2)
-  discount    Decimal        @default(0) @db.Decimal(10, 2)
-  netAmount   Decimal        @db.Decimal(10, 2)
-  note        String?
-  vatType       VatType @default(NO_VAT)
-  vatRate       Decimal @default(0) @db.Decimal(5, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  referenceNo  String?  // เลขที่เอกสารอ้างอิง (ใบกำกับซัพพลายเออร์)
-  amountRemain Decimal  @default(0) @db.Decimal(10, 2) // ยอดคงค้าง AP (สำหรับใช้ในอนาคต)
-  status      DocStatus @default(ACTIVE)
-  cancelledAt DateTime?
-  cancelNote  String?
-  purchaseDate DateTime      @default(now())
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id              String           @id @default(cuid())
+  purchaseNo      String           @unique
+  supplierId      String?
+  userId          String
+  totalAmount     Decimal          @db.Decimal(10, 2)
+  discount        Decimal          @default(0) @db.Decimal(10, 2)
+  netAmount       Decimal          @db.Decimal(10, 2)
+  note            String?
+  purchaseDate    DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  referenceNo     String?
+  subtotalAmount  Decimal          @default(0) @db.Decimal(10, 2)
+  vatAmount       Decimal          @default(0) @db.Decimal(10, 2)
+  vatRate         Decimal          @default(0) @db.Decimal(5, 2)
+  vatType         VatType          @default(NO_VAT)
+  cancelNote      String?
+  cancelledAt     DateTime?
+  status          DocStatus        @default(ACTIVE)
+  amountRemain    Decimal          @default(0) @db.Decimal(10, 2)
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
   items           PurchaseItem[]
   purchaseReturns PurchaseReturn[]
 }
 
 model PurchaseItem {
-  id          String   @id @default(cuid())
-  purchaseId  String
-  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  supplierId  String?
-  supplier    Supplier? @relation(fields: [supplierId], references: [id])
-  quantity    Int
-  costPrice   Decimal  @db.Decimal(10, 2)
-  totalAmount Decimal  @db.Decimal(10, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  landedCost  Decimal  @default(0) @db.Decimal(10, 2) // ค่าใช้จ่ายแนบ (ขนส่ง ฯลฯ) ต่อรายการ
-  lotItems    PurchaseItemLot[]
+  id             String            @id @default(cuid())
+  purchaseId     String
+  productId      String
+  supplierId     String?
+  quantity       Int
+  costPrice      Decimal           @db.Decimal(10, 2)
+  totalAmount    Decimal           @db.Decimal(10, 2)
+  landedCost     Decimal           @default(0) @db.Decimal(10, 2)
+  subtotalAmount Decimal           @default(0) @db.Decimal(10, 2)
+  product        Product           @relation(fields: [productId], references: [id])
+  purchase       Purchase          @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  supplier       Supplier?         @relation(fields: [supplierId], references: [id])
+  lotItems       PurchaseItemLot[]
 }
 
-// ─────────────────────────────────────────
-// Customer (ลูกค้า)
-// ─────────────────────────────────────────
-
 model Customer {
-  id              String   @id @default(cuid())
-  code            String?  @unique  // รหัสลูกค้า เช่น C0001
+  id              String       @id @default(cuid())
+  code            String?      @unique
   name            String
   phone           String?
   address         String?
-  shippingAddress String?
-  taxId           String?  // เลขผู้เสียภาษี
+  taxId           String?
   note            String?
-  isActive        Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  sales       Sale[]
-  receipts    Receipt[]
-  creditNotes CreditNote[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  shippingAddress String?
+  isActive        Boolean      @default(true)
+  creditNotes     CreditNote[]
+  receipts        Receipt[]
+  sales           Sale[]
 
   @@index([name])
 }
 
-// ─────────────────────────────────────────
-// Sale (ขายสินค้า)
-// ─────────────────────────────────────────
-
 model Sale {
-  id            String      @id @default(cuid())
-  saleNo        String      @unique
-  customerId    String?
-  customer      Customer?   @relation(fields: [customerId], references: [id])
-  customerName  String?     // fallback ถ้าไม่เลือกจาก Customer
-  customerPhone String?
+  id              String          @id @default(cuid())
+  saleNo          String          @unique
+  customerName    String?
+  customerPhone   String?
+  userId          String
+  totalAmount     Decimal         @db.Decimal(10, 2)
+  discount        Decimal         @default(0) @db.Decimal(10, 2)
+  netAmount       Decimal         @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod?  @default(CASH)
+  note            String?
+  saleDate        DateTime        @default(now())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  customerId      String?
   saleType        SaleType        @default(RETAIL)
-  paymentType     SalePaymentType @default(CASH_SALE)
   fulfillmentType FulfillmentType @default(PICKUP)
   shippingAddress String?
   shippingFee     Decimal?        @db.Decimal(10, 2)
-  shippingStatus  ShippingStatus  @default(PENDING)
+  paymentType     SalePaymentType @default(CASH_SALE)
+  subtotalAmount  Decimal         @default(0) @db.Decimal(10, 2)
+  vatAmount       Decimal         @default(0) @db.Decimal(10, 2)
+  vatRate         Decimal         @default(0) @db.Decimal(5, 2)
+  vatType         VatType         @default(NO_VAT)
+  cancelNote      String?
+  cancelledAt     DateTime?
+  status          DocStatus       @default(ACTIVE)
+  amountRemain    Decimal         @default(0) @db.Decimal(10, 2)
   shippingMethod  ShippingMethod  @default(NONE)
+  shippingStatus  ShippingStatus  @default(PENDING)
   trackingNo      String?
-  userId          String
-  user          User        @relation(fields: [userId], references: [id])
-  totalAmount   Decimal     @db.Decimal(10, 2)
-  discount      Decimal     @default(0) @db.Decimal(10, 2)
-  netAmount     Decimal     @db.Decimal(10, 2)
-  paymentMethod PaymentMethod? @default(CASH)
-  note          String?
-  vatType       VatType @default(NO_VAT)
-  vatRate       Decimal @default(0) @db.Decimal(5, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  amountRemain  Decimal @default(0) @db.Decimal(10, 2) // ยอดคงค้าง AR = netAmount - รับชำระแล้ว
-  status        DocStatus @default(ACTIVE)
-  cancelledAt   DateTime?
-  cancelNote    String?
-  saleDate      DateTime    @default(now())
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  items         SaleItem[]
-  warranties    Warranty[]
-  creditNotes   CreditNote[]
-  receipts      ReceiptItem[]
-}
-
-enum SaleType {
-  RETAIL    // ปลีก
-  WHOLESALE // ส่ง
-}
-
-enum FulfillmentType {
-  PICKUP
-  DELIVERY
-}
-
-enum ShippingStatus {
-  PENDING          // รอจัดส่ง
-  OUT_FOR_DELIVERY // กำลังส่ง
-  DELIVERED        // ส่งแล้ว
-}
-
-enum ShippingMethod {
-  NONE  // ไม่ระบุ
-  SELF  // ส่งเอง
-  KERRY // Kerry
-  FLASH // Flash
-  JT    // J&T
-  OTHER // อื่นๆ
+  creditNotes     CreditNote[]
+  receipts        ReceiptItem[]
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+  items           SaleItem[]
+  warranties      Warranty[]
 }
 
 model SaleItem {
-  id          String   @id @default(cuid())
-  saleId      String
-  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product  @relation(fields: [productId], references: [id])
-  quantity    Int
-  salePrice   Decimal  @db.Decimal(10, 2)
-  costPrice   Decimal  @db.Decimal(10, 2)
-  totalAmount Decimal  @db.Decimal(10, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  warrantyDays   Int     @default(0)   // จำนวนวันประกันที่บันทึกตอนขาย (0 = ไม่มีประกัน)
+  id             String        @id @default(cuid())
+  saleId         String
+  productId      String
+  quantity       Int
+  salePrice      Decimal       @db.Decimal(10, 2)
+  costPrice      Decimal       @db.Decimal(10, 2)
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  subtotalAmount Decimal       @default(0) @db.Decimal(10, 2)
+  warrantyDays   Int           @default(0)
   supplierId     String?
-  supplierName   String?              // snapshot ณ วันขาย
-  warranties     Warranty[]
+  supplierName   String?
+  product        Product       @relation(fields: [productId], references: [id])
+  sale           Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
   lotItems       SaleItemLot[]
+  warranties     Warranty[]
 }
-
-enum PaymentMethod {
-  CASH
-  TRANSFER
-  CREDIT
-}
-
-// ─────────────────────────────────────────
-// Warranty (ประกันสินค้า)
-// ─────────────────────────────────────────
 
 model Warranty {
-  id            String    @id @default(cuid())
-  saleId        String
-  sale          Sale      @relation(fields: [saleId], references: [id])
-  saleItemId    String
-  saleItem      SaleItem  @relation(fields: [saleItemId], references: [id])
-  productId     String
-  product       Product   @relation(fields: [productId], references: [id])
-  unitSeq       Int       @default(1)  // ลำดับที่ของหน่วยใน SaleItem (qty=3 → unitSeq 1,2,3)
-  warrantyDays  Int
-  startDate     DateTime
-  endDate       DateTime
-  note          String?
-  createdAt     DateTime  @default(now())
-  claims        WarrantyClaim[]
+  id           String          @id @default(cuid())
+  saleId       String
+  saleItemId   String
+  productId    String
+  startDate    DateTime
+  endDate      DateTime
+  note         String?
+  createdAt    DateTime        @default(now())
+  warrantyDays Int
+  unitSeq      Int             @default(1)
+  product      Product         @relation(fields: [productId], references: [id])
+  sale         Sale            @relation(fields: [saleId], references: [id])
+  saleItem     SaleItem        @relation(fields: [saleItemId], references: [id])
+  claims       WarrantyClaim[]
+
   @@unique([saleItemId, unitSeq])
   @@index([productId])
   @@index([endDate])
 }
 
-// ─────────────────────────────────────────
-// WarrantyClaim (ใบเคลมสินค้า)
-// ─────────────────────────────────────────
-
 model WarrantyClaim {
   id              String              @id @default(cuid())
-  claimNo         String              @unique  // WC{YYMM}{4-digit}
+  claimNo         String              @unique
   warrantyId      String
-  warranty        Warranty            @relation(fields: [warrantyId], references: [id])
   claimDate       DateTime
-  claimType       ClaimType           // REPLACE_NOW | CUSTOMER_WAIT
+  claimType       ClaimType
   status          WarrantyClaimStatus @default(DRAFT)
-  outcome         ClaimOutcome?       // set เมื่อ CLOSED
-  symptom         String?             // อาการที่ลูกค้าแจ้ง
+  outcome         ClaimOutcome?
+  symptom         String?
   note            String?
-  // Supplier snapshot ณ วันส่งเคลม
   supplierId      String?
-  supplier        Supplier?           @relation(fields: [supplierId], references: [id])
   supplierName    String?
   supplierPhone   String?
   supplierAddress String?
-  sentAt          DateTime?           // วันที่ส่ง supplier
-  resolvedAt      DateTime?           // วันที่ปิดเคลม
+  sentAt          DateTime?
+  resolvedAt      DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
+  supplier        Supplier?           @relation(fields: [supplierId], references: [id])
+  warranty        Warranty            @relation(fields: [warrantyId], references: [id])
 
   @@index([warrantyId])
   @@index([claimDate])
   @@index([status])
 }
-
-enum WarrantyClaimStatus {
-  DRAFT            // รับของเสียจากลูกค้า + ให้ของใหม่แล้ว (REPLACE_NOW) หรือรอ (CUSTOMER_WAIT)
-  SENT_TO_SUPPLIER // ส่งของเสียไป supplier แล้ว
-  CLOSED           // ปิดเคลม
-  CANCELLED        // ยกเลิก
-}
-
-enum ClaimType {
-  REPLACE_NOW   // เปลี่ยนของใหม่ให้ลูกค้าทันที (วันที่มาเคลม)
-  CUSTOMER_WAIT // ลูกค้ารอ — ส่งให้เมื่อได้รับจาก supplier
-}
-
-enum ClaimOutcome {
-  RECEIVED      // supplier ส่งของกลับมาแล้ว
-  NO_RESOLUTION // supplier ปฏิเสธเคลม — ของเสียยังอยู่ที่ร้าน
-}
-
-// ─────────────────────────────────────────
-// Expense Code (รหัสค่าใช้จ่าย — master)
-// ─────────────────────────────────────────
 
 model ExpenseCode {
   id          String        @id @default(cuid())
@@ -556,185 +426,144 @@ model ExpenseCode {
   items       ExpenseItem[]
 }
 
-// ─────────────────────────────────────────
-// Expense (ค่าใช้จ่ายอื่นๆ)
-// ─────────────────────────────────────────
-
 model Expense {
   id             String        @id @default(cuid())
-  expenseNo      String        @unique
-  expenseDate    DateTime
   userId         String
-  user           User          @relation(fields: [userId], references: [id])
-  totalAmount    Decimal       @db.Decimal(10, 2)
-  vatType        VatType       @default(NO_VAT)
-  vatRate        Decimal       @default(0) @db.Decimal(5, 2)
+  expenseDate    DateTime
+  note           String?
+  createdAt      DateTime      @default(now())
   subtotalAmount Decimal       @default(0) @db.Decimal(10, 2)
   vatAmount      Decimal       @default(0) @db.Decimal(10, 2)
-  netAmount      Decimal       @db.Decimal(10, 2)
-  note           String?
-  status         DocStatus     @default(ACTIVE)
-  cancelledAt    DateTime?
+  vatRate        Decimal       @default(0) @db.Decimal(5, 2)
+  vatType        VatType       @default(NO_VAT)
   cancelNote     String?
-  createdAt      DateTime      @default(now())
+  cancelledAt    DateTime?
+  expenseNo      String        @unique
+  netAmount      Decimal       @db.Decimal(10, 2)
+  status         DocStatus     @default(ACTIVE)
+  totalAmount    Decimal       @db.Decimal(10, 2)
   updatedAt      DateTime      @updatedAt
+  user           User          @relation(fields: [userId], references: [id])
   items          ExpenseItem[]
 }
 
 model ExpenseItem {
   id            String      @id @default(cuid())
   expenseId     String
-  expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   expenseCodeId String
-  expenseCode   ExpenseCode @relation(fields: [expenseCodeId], references: [id])
   description   String?
   amount        Decimal     @db.Decimal(10, 2)
+  expenseCode   ExpenseCode @relation(fields: [expenseCodeId], references: [id])
+  expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 }
-
-// ─────────────────────────────────────────
-// Adjustment (ปรับสต็อก + / -)
-// ─────────────────────────────────────────
 
 model Adjustment {
   id          String           @id @default(cuid())
   adjustNo    String           @unique
   adjustDate  DateTime         @default(now())
   userId      String
-  user        User             @relation(fields: [userId], references: [id])
   note        String?
-  status      DocStatus @default(ACTIVE)
-  cancelledAt DateTime?
-  cancelNote  String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  cancelNote  String?
+  cancelledAt DateTime?
+  status      DocStatus        @default(ACTIVE)
+  user        User             @relation(fields: [userId], references: [id])
   items       AdjustmentItem[]
 }
 
 model AdjustmentItem {
   id           String     @id @default(cuid())
   adjustmentId String
-  adjustment   Adjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
   productId    String
+  qtyAdjust    Decimal    @db.Decimal(12, 4)
+  reason       String?
+  adjustment   Adjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
   product      Product    @relation(fields: [productId], references: [id])
-  qtyAdjust    Decimal    @db.Decimal(12, 4) // + = เพิ่ม (ADJUST_IN), - = ลด (ADJUST_OUT) ใน base unit
-  reason       String?    // เหตุผลการปรับ เช่น สินค้าเสียหาย, นับสต็อก
 }
 
-// ─────────────────────────────────────────
-// Credit Note (CN ฝั่งขาย — เราออกให้ลูกค้า)
-// ─────────────────────────────────────────
-
 model CreditNote {
-  id            String          @id @default(cuid())
-  cnNo          String          @unique
-  cnDate        DateTime        @default(now())
-  saleId        String?         // อ้างอิงใบขายเดิม
-  sale          Sale?           @relation(fields: [saleId], references: [id])
-  customerId    String?
-  customer      Customer?       @relation(fields: [customerId], references: [id])
-  customerName  String?
-  customerPhone String?
-  userId        String
-  user          User            @relation(fields: [userId], references: [id])
-  type          CreditNoteType  // RETURN = คืนสินค้า (กระทบ stock), DISCOUNT = ลดราคา
+  id             String           @id @default(cuid())
+  cnNo           String           @unique
+  cnDate         DateTime         @default(now())
+  saleId         String?
+  customerName   String?
+  customerPhone  String?
+  userId         String
+  type           CreditNoteType
+  totalAmount    Decimal          @db.Decimal(10, 2)
+  note           String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   settlementType CNSettlementType @default(CASH_REFUND)
-  refundMethod  CNRefundMethod? // ใช้เมื่อ settlementType=CASH_REFUND
-  totalAmount   Decimal         @db.Decimal(10, 2)
-  note          String?
-  vatType       VatType @default(NO_VAT)
-  vatRate       Decimal @default(0) @db.Decimal(5, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  amountRemain  Decimal          @default(0) @db.Decimal(10, 2) // ยอดคงค้าง = totalAmount - รับชำระแล้ว (ใช้เมื่อ settlementType=CREDIT_DEBT)
-  status        DocStatus @default(ACTIVE)
-  cancelledAt   DateTime?
-  cancelNote    String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  items         CreditNoteItem[]
-  receiptItems  ReceiptItem[]
+  refundMethod   CNRefundMethod?
+  subtotalAmount Decimal          @default(0) @db.Decimal(10, 2)
+  vatAmount      Decimal          @default(0) @db.Decimal(10, 2)
+  vatRate        Decimal          @default(0) @db.Decimal(5, 2)
+  vatType        VatType          @default(NO_VAT)
+  customerId     String?
+  cancelNote     String?
+  cancelledAt    DateTime?
+  status         DocStatus        @default(ACTIVE)
+  amountRemain   Decimal          @default(0) @db.Decimal(10, 2)
+  customer       Customer?        @relation(fields: [customerId], references: [id])
+  sale           Sale?            @relation(fields: [saleId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+  items          CreditNoteItem[]
+  receiptItems   ReceiptItem[]
 }
 
 model CreditNoteItem {
-  id           String     @id @default(cuid())
-  creditNoteId String
-  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
-  productId    String?
-  product      Product?   @relation(fields: [productId], references: [id])
-  qty          Decimal    @default(0) @db.Decimal(12, 4) // base unit (ใช้เมื่อ type=RETURN)
-  unitPrice    Decimal    @default(0) @db.Decimal(10, 2) // ราคาขาย/หน่วย
-  amount       Decimal    @default(0) @db.Decimal(10, 2) // จำนวนเงิน CN รายการนี้
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  detail       String?
-  lotItems     CreditNoteItemLot[]
+  id             String              @id @default(cuid())
+  creditNoteId   String
+  productId      String?
+  qty            Decimal             @default(0) @db.Decimal(12, 4)
+  unitPrice      Decimal             @default(0) @db.Decimal(10, 2)
+  amount         Decimal             @default(0) @db.Decimal(10, 2)
+  detail         String?
+  subtotalAmount Decimal             @default(0) @db.Decimal(10, 2)
+  creditNote     CreditNote          @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  product        Product?            @relation(fields: [productId], references: [id])
+  lotItems       CreditNoteItemLot[]
 }
-
-enum CreditNoteType {
-  RETURN    // คืนสินค้า — กระทบ stock (RETURN_IN) + avgCost ไม่เปลี่ยน
-  DISCOUNT  // ลดราคา — ไม่กระทบ stock
-  OTHER     // อื่นๆ — ไม่กระทบ stock
-}
-
-enum SalePaymentType {
-  CASH_SALE   // ขายสด
-  CREDIT_SALE // ขายเชื่อ
-}
-
-enum CNSettlementType {
-  CASH_REFUND  // คืนเป็นเงินสด
-  CREDIT_DEBT  // ตั้งหนี้
-}
-
-enum CNRefundMethod {
-  CASH     // เงินสด
-  TRANSFER // โอนเงิน
-}
-
-// ─────────────────────────────────────────
-// Purchase Return (คืนสินค้าให้ซัพพลายเออร์)
-// ─────────────────────────────────────────
 
 model PurchaseReturn {
-  id          String               @id @default(cuid())
-  returnNo    String               @unique
-  returnDate  DateTime             @default(now())
-  purchaseId  String?              // อ้างอิงใบซื้อเดิม
-  purchase    Purchase?            @relation(fields: [purchaseId], references: [id])
-  supplierId  String?
-  supplier    Supplier?            @relation(fields: [supplierId], references: [id])
-  userId      String
-  user        User                 @relation(fields: [userId], references: [id])
-  totalAmount Decimal              @db.Decimal(10, 2)
-  note        String?
-  vatType       VatType @default(NO_VAT)
-  vatRate       Decimal @default(0) @db.Decimal(5, 2)
-  subtotalAmount Decimal @default(0) @db.Decimal(10, 2)
-  vatAmount     Decimal @default(0) @db.Decimal(10, 2)
-  status        DocStatus @default(ACTIVE)
-  cancelledAt   DateTime?
-  cancelNote    String?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  items       PurchaseReturnItem[]
+  id             String               @id @default(cuid())
+  returnNo       String               @unique
+  returnDate     DateTime             @default(now())
+  purchaseId     String?
+  supplierId     String?
+  userId         String
+  totalAmount    Decimal              @db.Decimal(10, 2)
+  note           String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  subtotalAmount Decimal              @default(0) @db.Decimal(10, 2)
+  vatAmount      Decimal              @default(0) @db.Decimal(10, 2)
+  vatRate        Decimal              @default(0) @db.Decimal(5, 2)
+  vatType        VatType              @default(NO_VAT)
+  cancelNote     String?
+  cancelledAt    DateTime?
+  status         DocStatus            @default(ACTIVE)
+  purchase       Purchase?            @relation(fields: [purchaseId], references: [id])
+  supplier       Supplier?            @relation(fields: [supplierId], references: [id])
+  user           User                 @relation(fields: [userId], references: [id])
+  items          PurchaseReturnItem[]
 }
 
 model PurchaseReturnItem {
-  id               String         @id @default(cuid())
+  id               String                  @id @default(cuid())
   purchaseReturnId String
-  purchaseReturn   PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   productId        String
-  product          Product        @relation(fields: [productId], references: [id])
-  qty              Decimal        @db.Decimal(12, 4) // base unit — กระทบ stock (RETURN_OUT)
-  costPrice        Decimal        @db.Decimal(10, 2) // ราคาทุน/หน่วย ที่คืน
-  amount           Decimal        @db.Decimal(10, 2)
-  subtotalAmount   Decimal        @default(0) @db.Decimal(10, 2)
+  qty              Decimal                 @db.Decimal(12, 4)
+  costPrice        Decimal                 @db.Decimal(10, 2)
+  amount           Decimal                 @db.Decimal(10, 2)
   detail           String?
+  subtotalAmount   Decimal                 @default(0) @db.Decimal(10, 2)
+  product          Product                 @relation(fields: [productId], references: [id])
+  purchaseReturn   PurchaseReturn          @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   lotItems         PurchaseReturnItemLot[]
 }
-
-// ─────────────────────────────────────────
-// Site Content (สำหรับ Admin แก้ไขหน้าเว็บ)
-// ─────────────────────────────────────────
 
 model SiteContent {
   id        String   @id @default(cuid())
@@ -757,148 +586,250 @@ model StorefrontVisitDaily {
   @@index([lastSeenAt])
 }
 
-enum VatType {
-  NO_VAT        // ไม่มีภาษี
-  EXCLUDING_VAT // ราคาไม่รวม VAT (VAT แยก)
-  INCLUDING_VAT // ราคารวม VAT แล้ว
-}
-
-// ─────────────────────────────────────────
-// Receipt (ใบเสร็จรับเงิน — รับชำระหนี้ขายเชื่อ)
-// ─────────────────────────────────────────
-
 model Receipt {
   id            String        @id @default(cuid())
   receiptNo     String        @unique
   receiptDate   DateTime      @default(now())
   customerId    String?
-  customer      Customer?     @relation(fields: [customerId], references: [id])
-  customerName  String?       // fallback
+  customerName  String?
   userId        String
-  user          User          @relation(fields: [userId], references: [id])
   totalAmount   Decimal       @db.Decimal(10, 2)
   paymentMethod PaymentMethod
   note          String?
-  status        DocStatus @default(ACTIVE)
-  cancelledAt   DateTime?
-  cancelNote    String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  cancelNote    String?
+  cancelledAt   DateTime?
+  status        DocStatus     @default(ACTIVE)
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
   items         ReceiptItem[]
 }
 
 model ReceiptItem {
-  id          String      @id @default(cuid())
-  receiptId   String
-  receipt     Receipt     @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  saleId      String?
-  sale        Sale?       @relation(fields: [saleId], references: [id])
-  cnId        String?
-  creditNote  CreditNote? @relation(fields: [cnId], references: [id])
-  paidAmount  Decimal     @db.Decimal(10, 2)
+  id         String      @id @default(cuid())
+  receiptId  String
+  saleId     String?
+  paidAmount Decimal     @db.Decimal(10, 2)
+  cnId       String?
+  creditNote CreditNote? @relation(fields: [cnId], references: [id])
+  receipt    Receipt     @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  sale       Sale?       @relation(fields: [saleId], references: [id])
 
   @@index([saleId])
   @@index([cnId])
 }
 
-// ─────────────────────────────────────────
-// Lot Control (Phase 5.5)
-// ─────────────────────────────────────────
-
-enum LotIssueMethod {
-  FIFO   // First In First Out — เรียงตาม mfgDate ASC (เก่าก่อน)
-  FEFO   // First Expired First Out — เรียงตาม expDate ASC (ใกล้หมดอายุก่อน)
-  MANUAL // ผู้ใช้เลือกเองทั้งหมด
-}
-
-// ข้อมูล Lot ต่อสินค้า (สร้างเมื่อรับเข้าครั้งแรก)
 model ProductLot {
   id             String    @id @default(cuid())
   productId      String
-  product        Product   @relation(fields: [productId], references: [id])
-  lotNo          String    // เลขที่ Lot (กำหนดเอง หรือ auto-gen)
-  purchaseItemId String?   // อ้างอิงบรรทัดใบซื้อที่รับเข้า (ถ้ามี)
-  mfgDate        DateTime? // วันที่ผลิต (optional)
-  expDate        DateTime? // วันหมดอายุ (required ถ้า requireExpiryDate=true)
-  unitCost       Decimal   @db.Decimal(10, 4) // ต้นทุน/หน่วยหลัก ของ lot นี้
+  lotNo          String
+  purchaseItemId String?
+  mfgDate        DateTime?
+  expDate        DateTime?
+  unitCost       Decimal   @db.Decimal(10, 4)
   createdAt      DateTime  @default(now())
+  product        Product   @relation(fields: [productId], references: [id])
 
   @@unique([productId, lotNo])
   @@index([productId, expDate])
 }
 
-// ยอดคงเหลือราย Lot (source of truth สำหรับ lot qty)
 model LotBalance {
-  id         String   @id @default(cuid())
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id])
-  lotNo      String
-  qtyOnHand  Decimal  @default(0) @db.Decimal(12, 4) // คงเหลือใน base unit
+  id        String  @id @default(cuid())
+  productId String
+  lotNo     String
+  qtyOnHand Decimal @default(0) @db.Decimal(12, 4)
+  product   Product @relation(fields: [productId], references: [id])
 
   @@unique([productId, lotNo])
   @@index([productId])
 }
 
-// Movement ราย Lot — ผูกกับ StockCard row
 model StockMovementLot {
   id          String    @id @default(cuid())
   stockCardId String
-  stockCard   StockCard @relation(fields: [stockCardId], references: [id], onDelete: Cascade)
   lotNo       String
   qtyIn       Decimal   @default(0) @db.Decimal(12, 4)
   qtyOut      Decimal   @default(0) @db.Decimal(12, 4)
-  unitCost    Decimal   @default(0) @db.Decimal(10, 4) // snapshot ต้นทุน ณ เวลา movement
+  unitCost    Decimal   @default(0) @db.Decimal(10, 4)
+  stockCard   StockCard @relation(fields: [stockCardId], references: [id], onDelete: Cascade)
 
   @@index([stockCardId])
   @@index([lotNo])
 }
 
-// Sub-rows Lot ต่อบรรทัดใบซื้อ
 model PurchaseItemLot {
   id             String       @id @default(cuid())
   purchaseItemId String
-  purchaseItem   PurchaseItem @relation(fields: [purchaseItemId], references: [id], onDelete: Cascade)
   lotNo          String
-  qty            Decimal      @db.Decimal(12, 4) // จำนวนใน base unit
-  unitCost       Decimal      @db.Decimal(10, 4) // ต้นทุน/หน่วยหลักของ lot นี้
+  qty            Decimal      @db.Decimal(12, 4)
+  unitCost       Decimal      @db.Decimal(10, 4)
   mfgDate        DateTime?
   expDate        DateTime?
+  purchaseItem   PurchaseItem @relation(fields: [purchaseItemId], references: [id], onDelete: Cascade)
 
   @@index([purchaseItemId])
 }
 
-// Sub-rows Lot ต่อบรรทัดใบขาย
 model SaleItemLot {
   id         String   @id @default(cuid())
   saleItemId String
-  saleItem   SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
   lotNo      String
-  qty        Decimal  @db.Decimal(12, 4) // จำนวนใน base unit
-  unitCost   Decimal  @db.Decimal(10, 4) // snapshot ต้นทุน ณ วันขาย
+  qty        Decimal  @db.Decimal(12, 4)
+  unitCost   Decimal  @db.Decimal(10, 4)
+  saleItem   SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
 
   @@index([saleItemId])
 }
 
-// Sub-rows Lot ต่อบรรทัดใบคืนซัพพลายเออร์ (ต้องอ้างอิง lot เดิมจากใบซื้อ)
 model PurchaseReturnItemLot {
   id                   String             @id @default(cuid())
   purchaseReturnItemId String
-  purchaseReturnItem   PurchaseReturnItem @relation(fields: [purchaseReturnItemId], references: [id], onDelete: Cascade)
   lotNo                String
   qty                  Decimal            @db.Decimal(12, 4)
+  purchaseReturnItem   PurchaseReturnItem @relation(fields: [purchaseReturnItemId], references: [id], onDelete: Cascade)
 
   @@index([purchaseReturnItemId])
 }
 
-// Sub-rows Lot ต่อบรรทัด CN (รับคืนจากลูกค้า)
-// isReturnLot=true → สร้าง RET-{lotNo} แยก (ของที่ไม่แน่ใจสภาพ)
 model CreditNoteItemLot {
   id               String         @id @default(cuid())
   creditNoteItemId String
-  creditNoteItem   CreditNoteItem @relation(fields: [creditNoteItemId], references: [id], onDelete: Cascade)
   lotNo            String
   qty              Decimal        @db.Decimal(12, 4)
-  isReturnLot      Boolean        @default(false) // true = merge กลับ lot เดิม, false = สร้าง RET-lot ใหม่
+  isReturnLot      Boolean        @default(false)
+  creditNoteItem   CreditNoteItem @relation(fields: [creditNoteItemId], references: [id], onDelete: Cascade)
 
   @@index([creditNoteItemId])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model product_search_documents {
+  product_id          String                  @id
+  is_active           Boolean
+  product_code        String
+  product_name        String
+  product_description String                  @default("")
+  category_name       String                  @default("")
+  brand_name          String                  @default("")
+  alias_text          String                  @default("")
+  car_brand_text      String                  @default("")
+  car_model_text      String                  @default("")
+  fitment_text        String                  @default("")
+  search_text         String                  @default("")
+  search_document     Unsupported("tsvector")
+  product_created_at  DateTime                @db.Timestamptz(6)
+  updated_at          DateTime                @default(now()) @db.Timestamptz(6)
+
+  @@index([product_created_at(sort: Desc)], map: "idx_product_search_documents_created_at")
+  @@index([search_document], map: "idx_product_search_documents_document", type: Gin)
+  @@index([is_active], map: "idx_product_search_documents_is_active")
+  @@index([search_text(ops: raw("gin_trgm_ops"))], map: "idx_product_search_documents_text_trgm", type: Gin)
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum StockCardSource {
+  BF
+  PURCHASE
+  SALE
+  RETURN_IN
+  ADJUST_IN
+  ADJUST_OUT
+  RETURN_OUT
+  CLAIM_RETURN_IN
+  CLAIM_SEND_OUT
+  CLAIM_RECV_IN
+  CLAIM_REPLACE_OUT
+}
+
+enum DocStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum SaleType {
+  RETAIL
+  WHOLESALE
+}
+
+enum FulfillmentType {
+  PICKUP
+  DELIVERY
+}
+
+enum ShippingStatus {
+  PENDING
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+enum ShippingMethod {
+  NONE
+  SELF
+  KERRY
+  FLASH
+  JT
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CREDIT
+}
+
+enum WarrantyClaimStatus {
+  DRAFT
+  SENT_TO_SUPPLIER
+  CLOSED
+  CANCELLED
+}
+
+enum ClaimType {
+  REPLACE_NOW
+  CUSTOMER_WAIT
+}
+
+enum ClaimOutcome {
+  RECEIVED
+  NO_RESOLUTION
+}
+
+enum CreditNoteType {
+  RETURN
+  DISCOUNT
+  OTHER
+}
+
+enum SalePaymentType {
+  CASH_SALE
+  CREDIT_SALE
+}
+
+enum CNSettlementType {
+  CASH_REFUND
+  CREDIT_DEBT
+}
+
+enum CNRefundMethod {
+  CASH
+  TRANSFER
+}
+
+enum VatType {
+  NO_VAT
+  EXCLUDING_VAT
+  INCLUDING_VAT
+}
+
+enum LotIssueMethod {
+  FIFO
+  FEFO
+  MANUAL
 }

@@ -42,7 +42,7 @@ const ProductCategories = async () => {
           name: category.name,
           count: category._count.products,
           icon: getIcon(category.name),
-          href: getCategoryPath(category.name),
+          href: getCategoryPath(category),
         }))
       : fallbackCategories.map((category) => ({
           id: category.label,

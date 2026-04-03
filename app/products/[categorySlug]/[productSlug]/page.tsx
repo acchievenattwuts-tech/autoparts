@@ -20,6 +20,7 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
+import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   extractProductIdFromSlug,
   getCategoryPath,
@@ -53,9 +54,8 @@ async function getProductFromParams(paramsPromise: Props["params"]) {
   }
 
   const canonicalPath = getProductPath({
-    categoryName: product.category.name,
-    productName: product.name,
-    productId: product.id,
+    category: product.category,
+    product,
   });
 
   const requestedPath = `/products/${categorySlug}/${productSlug}`;
@@ -71,9 +71,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description = buildStorefrontProductDescription(product);
 
   const canonicalPath = getProductPath({
-    categoryName: product.category.name,
-    productName: product.name,
-    productId: product.id,
+    category: product.category,
+    product,
   });
 
   return {
@@ -100,9 +99,8 @@ const ProductDetailPage = async ({ params }: Props) => {
   const [config, product] = await Promise.all([getSiteConfig(), getProductFromParams(params)]);
 
   const canonicalPath = getProductPath({
-    categoryName: product.category.name,
-    productName: product.name,
-    productId: product.id,
+    category: product.category,
+    product,
   });
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
@@ -117,6 +115,14 @@ const ProductDetailPage = async ({ params }: Props) => {
   }
 
   const groupedCars = Array.from(carBrandMap.entries());
+  const prepArticles = knowledgeArticles.filter((article) =>
+    [
+      "how-to-check-oem-part-number-before-ordering",
+      "can-one-ac-part-fit-multiple-car-models",
+      "how-to-compare-old-part-before-chatting-with-the-shop",
+      "how-to-check-compressor-plug-pulley-and-mounting-points",
+    ].includes(article.slug),
+  );
 
   return (
     <>
@@ -330,6 +336,34 @@ const ProductDetailPage = async ({ params }: Props) => {
             </div>
           </div>
         </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+          <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+              บทความที่ช่วยเช็กความเข้ากันได้ก่อนสั่ง
+            </h2>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
+              ถ้ายังไม่มั่นใจเรื่องรหัสเดิม OEM รุ่นรถ หรือวิธีถ่ายรูปชิ้นงานเดิม สามารถอ่านคู่มือเหล่านี้ก่อนแล้วค่อยส่งข้อมูลให้ร้านยืนยันต่อได้
+            </p>
+            <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+              {prepArticles.map((article) => (
+                <Link
+                  key={article.slug}
+                  href={`/knowledge/${article.slug}`}
+                  className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 transition hover:border-slate-300 hover:bg-white"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f97316]">
+                    {article.category}
+                  </p>
+                  <h2 className="mt-3 font-kanit text-xl font-semibold leading-tight text-[#10213d]">
+                    {article.title}
+                  </h2>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{article.description}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
       </main>
       <Footer config={config} />
       <DeferredFloatingLine lineUrl={config.shopLineUrl} />
@@ -340,7 +374,7 @@ const ProductDetailPage = async ({ params }: Props) => {
           { name: "สินค้าทั้งหมด", item: absoluteUrl("/products") },
           {
             name: product.category.name,
-            item: absoluteUrl(getCategoryPath(product.category.name)),
+            item: absoluteUrl(getCategoryPath(product.category)),
           },
           { name: product.name, item: canonicalUrl },
         ]}

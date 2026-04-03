@@ -11,6 +11,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
         },
         select: {
           id: true,
+          slug: true,
           code: true,
           name: true,
           description: true,
@@ -18,7 +19,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           salePrice: true,
           stock: true,
           reportUnitName: true,
-          category: { select: { name: true } },
+          category: { select: { name: true, slug: true } },
           brand: { select: { name: true } },
           aliases: {
             select: { alias: true },

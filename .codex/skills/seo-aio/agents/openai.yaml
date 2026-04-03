@@ -1,0 +1,4 @@
+interface:
+  display_name: "SEO AIO"
+  short_description: "SEO, AEO, AIO roadmap operator"
+  default_prompt: "Use $seo-aio to audit and improve this repo's storefront SEO, AEO, AIO, and Core Web Vitals using .rules and PLAN.md Phase 7 as the source of truth."
