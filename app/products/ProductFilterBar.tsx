@@ -79,17 +79,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   };
 
   return (
-    <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>
-      {!isDesktop && (
-        <div className="rounded-2xl border border-[#1e3a5f]/10 bg-[#1e3a5f]/5 px-4 py-3">
-          <p className="text-sm font-semibold text-[#1e3a5f]">เริ่มกรองจากตรงนี้</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            เลือกยี่ห้อรถ รุ่นรถ หรือหมวดสินค้า แล้วรายการด้านล่างจะพาไปหน้าค้นหาให้ทันที
-          </p>
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+    <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>`r`n      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <button
           type="button"
           onClick={() => setIsExpanded((value) => !value)}
@@ -353,15 +343,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                   ล้างทั้งหมด
                 </button>
               </div>
-            )}
-
-            {!isDesktop && !hasAnyFilter && (
-              <p className="mt-3 text-xs leading-5 text-gray-400">
-                ถ้ายังไม่แน่ใจ เริ่มจากหมวดสินค้า แล้วค่อยเลือกยี่ห้อรถและรุ่นรถเพิ่มภายหลังได้
-              </p>
-            )}
-
-            {page && (
+            )}`r`n            {page && (
               <p className="mt-3 text-xs text-gray-400">
                 การเปลี่ยนตัวกรองจะกลับไปเริ่มที่หน้า 1 อัตโนมัติ
               </p>
@@ -374,3 +356,4 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
 };
 
 export default ProductFilterBar;
+

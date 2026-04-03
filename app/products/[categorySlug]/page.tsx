@@ -124,13 +124,6 @@ const CategoryPage = async ({ params }: Props) => {
                   </span>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href={`/products/search?category=${encodeURIComponent(category.name)}`}
-                    className="inline-flex items-center gap-2 rounded-full bg-[#f97316] px-5 py-3 font-semibold text-white transition hover:bg-[#ea6c0a]"
-                  >
-                    ดูสินค้าในหมวดนี้
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
                   <a
                     href={config.shopLineUrl}
                     target="_blank"
@@ -197,3 +190,4 @@ const CategoryPage = async ({ params }: Props) => {
 };
 
 export default CategoryPage;
+

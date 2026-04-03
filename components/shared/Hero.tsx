@@ -1,15 +1,9 @@
 ﻿import Image from "next/image";
-import { ArrowRight, Clock, Search, Truck } from "lucide-react";
+import { ArrowRight, Clock, Truck } from "lucide-react";
 
 const badges = [
   { icon: Truck, label: "ส่งทั่วประเทศ" },
   { icon: Clock, label: "เช็กราคาเร็ว" },
-];
-
-const orderSteps = [
-  "แจ้งรุ่นรถ ปีรถ หรือชื่อสินค้า",
-  "ร้านเช็กราคาและความตรงรุ่นให้ทันที",
-  "ชำระเงินและจัดส่งสินค้า",
 ];
 
 interface HeroProps {
@@ -42,7 +36,7 @@ const Hero = ({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.1),transparent_28%)]" />
 
       <div className="relative mx-auto flex min-h-screen max-w-7xl items-center px-4 pb-16 pt-24 sm:px-6 lg:px-8">
-        <div className="w-full max-w-4xl">
+        <div className="grid w-full items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)] lg:gap-12">
           <div className="max-w-3xl">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 backdrop-blur-md">
               <span className="h-2 w-2 rounded-full bg-[#f97316]" />
@@ -62,42 +56,6 @@ const Hero = ({
             <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg lg:text-xl">
               {heroSubtitle}
             </p>
-
-            <form action="/products/search" method="GET" className="mt-8 max-w-3xl">
-              <label className="sr-only" htmlFor="hero-search">
-                ค้นหาสินค้า
-              </label>
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    id="hero-search"
-                    type="text"
-                    name="q"
-                    placeholder="เช่น คอมแอร์ Denso, Toyota Camry, แผงคอนเดนเซอร์..."
-                    className="h-14 w-full rounded-2xl border border-white/15 bg-white px-12 text-[15px] text-slate-900 shadow-sm outline-none transition focus:border-[#f97316] focus:ring-4 focus:ring-[#f97316]/15"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#f97316] px-6 font-semibold text-white transition hover:bg-[#ea6c0a] sm:min-w-[164px]"
-                >
-                  ค้นหาสินค้า
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </form>
-
-            <div className="mt-6 grid gap-2 sm:grid-cols-3">
-              {orderSteps.map((step, index) => (
-                <div key={step} className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f97316]">
-                    Step {index + 1}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-white/82">{step}</p>
-                </div>
-              ))}
-            </div>
 
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <a
@@ -133,6 +91,30 @@ const Hero = ({
             </div>
           </div>
 
+          <div className="hidden lg:block">
+            <div className="ml-auto max-w-md rounded-[32px] border border-white/15 bg-white/10 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+              <p className="font-kanit text-2xl font-semibold text-white">
+                สั่งซื้อง่ายใน 3 ขั้นตอน
+              </p>
+              <p className="mt-3 text-sm leading-7 text-white/70">
+                แจ้งข้อมูลรถหรือชื่อสินค้าให้ร้าน จากนั้นร้านเช็กราคาและความตรงรุ่นให้ทันที ก่อนสรุปการชำระเงินและจัดส่งสินค้า
+              </p>
+              <div className="mt-6 space-y-3">
+                <div className="rounded-2xl border border-white/10 bg-[#1b3357]/55 px-4 py-3">
+                  <p className="text-sm font-medium text-white">1. แจ้งรุ่นรถ ปีรถ หรือชื่อสินค้า</p>
+                  <p className="mt-1 text-sm text-white/60">ส่งรูปอะไหล่หรือรหัสสินค้ามาได้เพื่อให้เช็กได้เร็วขึ้น</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                  <p className="text-sm font-medium text-white">2. ร้านเช็กราคาและความตรงรุ่น</p>
+                  <p className="mt-1 text-sm text-white/60">ยืนยันข้อมูลให้ก่อนสรุปรายการและแจ้งกลับทันที</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3">
+                  <p className="text-sm font-medium text-white">3. ชำระเงินและจัดส่งสินค้า</p>
+                  <p className="mt-1 text-sm text-white/60">เมื่อยืนยันรายการแล้ว ร้านจัดส่งสินค้าให้ตามขั้นตอน</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
