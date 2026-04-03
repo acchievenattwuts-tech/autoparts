@@ -1493,3 +1493,16 @@ npm run db:restore backup-{timestamp}.json
 - Legacy product URLs under `/products/[categorySlug]/[productSlug]` now redirect to the direct product URL.
 - Category URLs remain under `/products/[categorySlug]` with Thai-readable slug support and legacy redirect handling.
 - Sitemap and internal linking were updated to use the current canonical URL shapes.
+
+## Roadmap Update (2026-04-03 Phase 7 External Verification Complete)
+- Google Search Console ownership verification is complete.
+- `https://www.sriwanparts.com/sitemap.xml` was submitted successfully in Google Search Console.
+- URL inspection was run on the key public storefront pages.
+- Google Rich Results Test was run on the key page types:
+  - home
+  - faq
+  - category
+  - product
+  - knowledge article
+- Phase 7 implementation and external verification are complete.
+- The remaining open item is the ongoing production measurement + tuning loop.

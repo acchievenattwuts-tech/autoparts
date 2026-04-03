@@ -42,10 +42,14 @@ This note summarizes the remaining Phase 7 storefront SEO, AEO, AIO, and perform
 
 ### 1. External verification
 
-These items cannot be completed from repo changes alone:
+Status: completed on 2026-04-03.
 
-- Submit `https://www.sriwanparts.com/sitemap.xml` in Google Search Console
-- Run Google Rich Results Test on:
+Completed items:
+
+- submitted `https://www.sriwanparts.com/sitemap.xml` in Google Search Console
+- verified site ownership
+- ran URL inspection on key public pages
+- ran Google Rich Results Test on:
   - home
   - faq
   - one category page
@@ -85,18 +89,18 @@ Recommended next content cluster:
 
 ## Suggested Order
 
-1. Complete external verification
-2. Re-measure production and record deltas
-3. Expand content from production query evidence
+1. Re-measure production and record deltas
+2. Expand content from production query evidence
 
 ## Current Status
 
 - `npm run build` passes
 - stable slug backfill is complete
 - search cache invalidation is stronger than the previous pass
+- external verification is complete
 
 ## Notes
 
-- Do not treat unresolved external verification as a code problem
+- Do not treat ongoing indexing lag as a code problem unless GSC shows a concrete technical issue
 - Do not fake compatibility or OEM claims to close content gaps
 - Keep Phase 7 focused on measurable discoverability and performance gains, not just checklist completion
