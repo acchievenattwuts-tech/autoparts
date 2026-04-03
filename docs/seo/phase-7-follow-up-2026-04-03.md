@@ -4,7 +4,7 @@ Date: 2026-04-03
 
 ## Scope
 
-This note summarizes the remaining Phase 7 storefront SEO, AEO, AIO, and performance work after the latest slug, search-cache, content, and Thai-slug cleanup pass.
+This note summarizes the remaining Phase 7 storefront SEO, AEO, AIO, and performance work after the latest slug, direct-product-URL, search-cache, content, and Thai-slug cleanup pass.
 
 ## What Was Confirmed
 
@@ -21,8 +21,10 @@ This note summarizes the remaining Phase 7 storefront SEO, AEO, AIO, and perform
   - categories updated: `10`
   - products updated: `4`
 - Storefront path helpers now prefer DB-backed slugs over runtime-derived name slugs.
+- Product detail pages now use direct canonical URLs under `/product/[productSlug]`.
 - Category slug generation now preserves Thai-readable slugs instead of collapsing them into generic `item` patterns.
 - Legacy category URLs produced by the older slug normalizer are still resolved and permanently redirected to the canonical DB-backed slug.
+- Legacy product URLs under `/products/[categorySlug]/[productSlug]` are redirected to the direct product URL shape.
 - Product and category sitemap entries now use DB-backed slugs.
 - Admin create flows now assign slugs on new category and product records.
 

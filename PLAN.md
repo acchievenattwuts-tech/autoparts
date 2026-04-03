@@ -1485,3 +1485,11 @@ npm run db:restore backup-{timestamp}.json
 - [x] category-specific OG image routes
 - [x] deeper content expansion for knowledge hub
 - [ ] continued production measurement + tuning loop
+
+## Roadmap Update (2026-04-03 Phase 7 URL Consolidation)
+- Added stable `slug` fields to `Product` and `Category` in the database and backfilled existing rows.
+- Storefront paths now prefer DB-backed slugs instead of runtime-derived names.
+- Product detail canonical URLs were simplified to direct paths under `/product/[productSlug]`.
+- Legacy product URLs under `/products/[categorySlug]/[productSlug]` now redirect to the direct product URL.
+- Category URLs remain under `/products/[categorySlug]` with Thai-readable slug support and legacy redirect handling.
+- Sitemap and internal linking were updated to use the current canonical URL shapes.

@@ -11,7 +11,7 @@ Close the remaining Phase 7 external verification work that cannot be completed 
 1. `https://www.sriwanparts.com/`
 2. `https://www.sriwanparts.com/faq`
 3. One live category page under `/products/[categorySlug]`
-4. One live product page under `/products/[categorySlug]/[productSlug]`
+4. One live product page under `/product/[productSlug]`
 5. One live knowledge article under `/knowledge/[slug]`
 
 ## Google Search Console
