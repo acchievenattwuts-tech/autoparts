@@ -1,5 +1,14 @@
 # Next.js 15 & TypeScript Project Rules
 
+## 0. Prime Directive — Read Before Every Task (Mandatory for All AI)
+
+> **If confidence in the next action is below 95% — stop immediately and ask the human first.**
+
+- Never guess, assume, or trial-and-error on production code.
+- If unsure about schema changes, business logic, or the impact of a modification → ask first.
+- If requirements feel incomplete or ambiguous → ask first.
+- A mistake that could be prevented by asking one question costs far more than the time saved by acting fast.
+
 ## 1. Technical Stack
 - Framework: Next.js 15 (App Router)
 - Language: TypeScript (Strict mode)
@@ -87,66 +96,67 @@
 
 ## 8. AI Decision-Making Rules
 
-### เมื่อไหร่ต้องถามก่อน (Ask Before Acting)
-- **Schema เปลี่ยน**: ถ้างานต้องแก้ `prisma/schema.prisma` ให้สรุป field ที่จะเพิ่ม/แก้/ลบ และขอ confirm ก่อนเสมอ — การเปลี่ยน schema กระทบ DB จริง
-- **ลบข้อมูล**: ห้ามเขียน delete/drop/truncate โดยไม่ได้รับคำสั่งชัดเจน
-- **งานใหม่ที่ไม่อยู่ใน roadmap**: ถ้า feature ที่ขอไม่มีใน PLAN.md ให้ถามว่าจะเพิ่มใน phase ไหนก่อน
-- **เปลี่ยน logic ทางธุรกิจ**: เช่น สูตร MAVG, การคำนวณราคา, การตัด stock — ต้องอธิบายก่อนทำ
+### When to Ask Before Acting
+- **Schema changes**: If the task requires editing `prisma/schema.prisma`, summarize every field being added/changed/removed and get confirmation first — schema changes affect the real database.
+- **Deleting data**: Never write delete/drop/truncate statements without an explicit instruction to do so.
+- **New features not in the roadmap**: If a requested feature is not in `PLAN.md`, ask which phase it belongs to before starting.
+- **Business logic changes**: e.g. MAVG formula, price calculation, stock deduction — always explain the change before making it.
 
-### การตัดสินใจเรื่อง Schema
-- ใช้ `prisma db push` เท่านั้น (ไม่ใช่ `migrate dev`) เพราะ Supabase Transaction pooler ไม่รองรับ shadow DB
-- Decimal fields ที่เป็นราคา/ต้นทุน: ใช้ `@db.Decimal(10,2)` เสมอ
-- Decimal fields ที่เป็นจำนวน (qty): ใช้ `@db.Decimal(12,4)` เพื่อรองรับทศนิยมหน่วยนับ
-- ทุก quantity ใน StockCard ต้องเป็น **base unit** (scale=1) เสมอ — แปลงหน่วยเฉพาะตอนแสดงผล
+### Schema Decisions
+- Use `prisma db push` only (not `migrate dev`) — Supabase Transaction pooler does not support shadow databases.
+- Price/cost Decimal fields: always use `@db.Decimal(10,2)`.
+- Quantity Decimal fields (qty): use `@db.Decimal(12,4)` to support fractional unit counts.
+- All quantities in StockCard must be in **base unit** (scale=1) — convert to display units only in the UI layer.
 
-### การตัดสินใจเรื่อง Stock / MAVG
-- ทุก transaction ที่กระทบ stock ต้องเรียก `writeStockCard()` ภายใน `db.$transaction()` เสมอ
-- ห้ามอัปเดต `Product.stock` หรือ `Product.avgCost` โดยตรง — ต้องผ่าน `writeStockCard()` เท่านั้น
-- avgCost เปลี่ยนได้เฉพาะเมื่อมีสินค้าเข้า (qtyIn > 0) — การขายออกไม่เปลี่ยน avgCost
-- Document number format: `{PREFIX}{YYYYMMDD}{4-digit}` — ใช้ `generateDocNo()` เสมอ อย่า hardcode
+### Stock / MAVG Decisions
+- Every stock-affecting transaction must call `writeStockCard()` inside `db.$transaction()`.
+- Never update `Product.stock` or `Product.avgCost` directly — always go through `writeStockCard()`.
+- avgCost changes only when stock comes in (qtyIn > 0) — outgoing transactions never change avgCost.
+- Document number format: `{PREFIX}{YYYYMMDD}{4-digit}` — always use `generateDocNo()`, never hardcode.
+- Neutral stock-in sources (RETURN_IN, CLAIM_RETURN_IN, CLAIM_RECV_IN) must use the current running avgCost as `priceIn` so they never distort the moving average.
 
-### การยกเลิกเอกสาร (Document Cancellation) — กฎสำคัญ
+### Document Cancellation — Critical Rules
 
-- **Stock Re-calculate บังคับ**: ทุก transaction ที่กระทบ stock เมื่อถูกยกเลิก ต้องลบ StockCard rows ของเอกสารนั้นออก แล้วเรียก `recalculateStockCard(productId, tx)` สำหรับทุกสินค้าที่ได้รับผลกระทบ — ฟังก์ชันนี้จะ re-run MAVG ทั้งหมดตั้งแต่ต้นและอัปเดต qtyBalance + priceBalance ทุก row รวมถึง Product.stock + Product.avgCost — **ห้าม** ยกเลิกเอกสารโดยไม่ทำ recalculation
+- **Stock Recalculation is mandatory**: When any stock-affecting document is cancelled, delete its StockCard rows then call `recalculateStockCard(productId, tx)` for every affected product. This function re-runs MAVG from scratch and updates qtyBalance + priceBalance on every row, plus Product.stock + Product.avgCost. **Never cancel a document without running recalculation.**
 
-- **AR/AP Clearing บังคับ**: ทุก transaction ที่เกี่ยวกับยอดค้างชำระ (ขายเชื่อ, ใบเสร็จรับเงิน, CN ประเภทตั้งหนี้) เมื่อถูกยกเลิก ยอดค้างชำระที่เกี่ยวข้องต้อง reverse ทันที — ห้ามทิ้ง AR/AP ค้างอยู่หลังยกเลิกเอกสาร
+- **AR/AP Clearing is mandatory**: When any document involving an outstanding balance (credit sale, receipt, CN of type credit-debt) is cancelled, immediately reverse the related balance. Never leave AR/AP entries dangling after cancellation.
 
-- **Reference Chain Check บังคับ**: ก่อนอนุญาตยกเลิก/แก้ไขเอกสารต้นทาง ระบบต้องตรวจสอบว่ามีเอกสารปลายทางที่ยัง ACTIVE อ้างอิงอยู่หรือไม่ ถ้ามีให้ reject พร้อม error message ระบุเลขที่เอกสารปลายทาง — ลำดับการยกเลิกย้อนกลับ:
-  - ใบซื้อ → ต้องยกเลิกใบคืนซัพพลายเออร์ที่อ้างถึงก่อน
-  - ใบขาย → ต้องยกเลิก CN + ใบเสร็จรับเงินที่อ้างถึงก่อน
-  - ใบเสร็จรับเงิน → ยกเลิกได้โดยตรง (แต่ต้อง reverse AR)
+- **Reference Chain Check is mandatory**: Before allowing cancellation or editing of a source document, verify that no downstream documents in ACTIVE status still reference it. If any exist, reject with an error message listing the downstream document numbers. Cancellation order (reverse):
+  - Purchase → cancel purchase returns referencing it first.
+  - Sale → cancel CN + receipts referencing it first.
+  - Receipt → can be cancelled directly (but must reverse AR).
 
-### การตัดสินใจเรื่องสิทธิ์ (Permissions) — เมนูใหม่ทุกอันต้องทำครบ
+### Permissions — Every New Menu Must Complete All 5 Steps
 
-**เมื่อเพิ่มเมนูใหม่ใน Admin ทุกครั้ง ต้องทำครบ 5 ขั้นตอน:**
+**Whenever a new admin menu is added, all 5 steps are required:**
 
-1. **เพิ่ม permission key ใน `lib/access-control.ts`** — `PERMISSION_CATALOG` (group + label เป็นภาษาไทย), ใส่ใน `STAFF_OPERATIONS_PERMISSIONS` และ `STAFF_VIEWER_PERMISSIONS` ตามความเหมาะสม
-2. **เพิ่ม route rule** ใน `ADMIN_ROUTE_RULES` — `{ prefix: "/admin/<route>", permission: "<key>.view" }`
-3. **เรียก `requirePermission("<key>.view")`** ต้นฟังก์ชันใน `page.tsx` ของเมนูนั้น
-4. **เรียก `requirePermission("<key>.<action>")`** ใน Server Actions ที่เกี่ยวข้องทุกตัว (แทนที่ `auth()` โดยตรง)
-5. **อัปเดต `AdminSidebar.tsx`** — ตั้ง `permission: "<key>.view"` ใน navItems ให้ตรงกับ permission ที่เพิ่ม
+1. **Add permission key in `lib/access-control.ts`** — add to `PERMISSION_CATALOG` (group + Thai label), include in `STAFF_OPERATIONS_PERMISSIONS` and `STAFF_VIEWER_PERMISSIONS` as appropriate.
+2. **Add route rule** in `ADMIN_ROUTE_RULES` — `{ prefix: "/admin/<route>", permission: "<key>.view" }`.
+3. **Call `requirePermission("<key>.view")`** at the top of the menu's `page.tsx`.
+4. **Call `requirePermission("<key>.<action>")`** in every related Server Action (replacing direct `auth()` calls).
+5. **Update `AdminSidebar.tsx`** — set `permission: "<key>.view"` in navItems to match the registered permission.
 
-ใช้ หน้าการขาย view add update cancel เป็นตัวอย่างโครงสร้าง
+Use the Sales page (view / add / update / cancel) as the reference structure.
 
-### การตัดสินใจเรื่อง UI/UX
-- **การแสดงวันที่ทุกจุดในระบบต้องใช้ ค.ศ. (Gregorian) เสมอ** — ใช้ locale `"th-TH-u-ca-gregory"` แทน `"th-TH"` ในทุก `toLocaleDateString()` call ห้ามใช้ `"th-TH"` เพราะจะแสดงปีเป็น พ.ศ. ซึ่งทำให้สับสน
-- ทุกหน้า admin ที่ query DB ต้องมี `export const dynamic = "force-dynamic"` — ห้ามลืม
-- **ทุก route segment ใน `/app/admin/(protected)/` ต้องมีไฟล์ `loading.tsx`** — ทั้ง list page, detail page, new page และ edit page ห้ามลืม เพราะ Next.js ใช้ Suspense-based loading ต่อ segment; ถ้าขาด loading.tsx หน้านั้นจะไม่แสดง loading indicator เมื่อ navigate
-- Form ที่มีหลาย line items ให้ส่งเป็น JSON ผ่าน `formData.set("items", JSON.stringify(items))`
-- แสดง error แบบ user-friendly เป็นภาษาไทย — ห้าม expose stack trace หรือ DB error
-- Success message ต้องแสดงเลขที่เอกสาร (docNo) ทุกครั้งที่สร้างเอกสารสำเร็จ
+### UI/UX Decisions
+- **All dates everywhere must use Gregorian calendar (C.E.)** — use locale `"th-TH-u-ca-gregory"` instead of `"th-TH"` in every `toLocaleDateString()` call. Never use `"th-TH"` as it renders years in Buddhist Era (B.E.) which causes confusion.
+- Every admin page that queries the DB must export `export const dynamic = "force-dynamic"` — never omit this.
+- **Every route segment under `/app/admin/(protected)/` must have a `loading.tsx` file** — this applies to list, detail, new, and edit pages. Next.js uses Suspense-based per-segment loading; without `loading.tsx` the page shows no loading indicator during navigation.
+- Forms with multiple line items should submit items as JSON via `formData.set("items", JSON.stringify(items))`.
+- Display errors in user-friendly Thai — never expose stack traces or raw DB errors.
+- Success messages must always include the document number (docNo) when a document is created successfully.
 
-### มาตรฐาน Dropdown / Select — SearchableSelect บังคับ
+### Dropdown / Select Standards — SearchableSelect is Mandatory
 
-**ใช้ `<SearchableSelect>` (จาก `@/components/shared/SearchableSelect`) แทน native `<select>` เสมอ เมื่อ:**
-- dropdown ดึงข้อมูลจาก master table ใดก็ตาม (สินค้า, ลูกค้า, ซัพพลายเออร์, หมวดหมู่, แบรนด์, รหัสค่าใช้จ่าย, เลขที่เอกสาร ฯลฯ)
-- จำนวน option มากกว่า 10 รายการ (ไม่ว่าจะ static หรือ dynamic)
+**Use `<SearchableSelect>` (from `@/components/shared/SearchableSelect`) instead of a native `<select>` whenever:**
+- The dropdown pulls data from any master table (products, customers, suppliers, categories, brands, expense codes, document numbers, etc.)
+- The option count exceeds 10 items (whether static or dynamic)
 
-**ยกเว้น — ใช้ native `<select>` ได้เมื่อ:**
-- option เป็น enum คงที่และมี ≤ 10 รายการ เช่น ประเภทการขาย (2), ประเภท VAT (3), ประเภท CN (3), ประเภทปรับสต็อก (2)
-- unit select ภายใน line item ของ form (สินค้าแต่ละตัวมีหน่วยนับไม่กี่ตัว — contextual เล็ก)
+**Exceptions — native `<select>` is acceptable when:**
+- Options are fixed enums with ≤ 10 items (e.g., sale type (2), VAT type (3), CN type (3), adjustment type (2))
+- Unit selector inside a line-item form (each product has only a few units — small contextual select)
 
-**วิธีใช้:**
+**Usage:**
 ```tsx
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
@@ -154,27 +164,27 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
   options={items.map((i): SelectOption => ({ id: i.id, label: i.name, sublabel: i.code ?? undefined }))}
   value={selectedId}
   onChange={setSelectedId}
-  placeholder="โปรดระบุ..."
+  placeholder="Please select..."
 />
-// ถ้า form ใช้ native FormData ให้เพิ่ม hidden input คู่กัน:
+// If the form uses native FormData, add a paired hidden input:
 <input type="hidden" name="fieldName" value={selectedId} />
 ```
 
-### การตัดสินใจเรื่อง Performance
-- ใช้ `select` ระบุ field ที่ต้องการเสมอ — ห้าม fetch ทุก field ถ้าไม่จำเป็น
-- หน้า list ที่มีข้อมูลเยอะให้ใส่ `take: 100` หรือ pagination
-- ใช้ `Promise.all()` เมื่อต้อง fetch หลาย query พร้อมกันและไม่มี dependency กัน
+### Performance Decisions
+- Always use `select` to specify only the fields needed — never fetch all fields unnecessarily.
+- List pages with large datasets must include `take: 100` or pagination.
+- Use `Promise.all()` when fetching multiple independent queries in parallel.
 
-### มาตรฐาน Filter ช่วงวันที่ (Date Range Filter) — บังคับทุก Transaction List
+### Date Range Filter Standard — Required on Every Transaction List
 
-**ทุกหน้า list ของ transaction ต้องมี date range filter เสมอ** ได้แก่:
+**Every transaction list page must include a date range filter:**
 `purchases`, `purchase-returns`, `sales`, `credit-notes`, `receipts`, `expenses`, `adjustments`, `warranties`, `delivery`
 
-- **ค่า default**: ช่องว่าง (ไม่มี default) — แสดงทุก record เมื่อยังไม่ได้กรอก
-- **รับ-ส่งค่าผ่าน searchParams**: `?from=YYYY-MM-DD&to=YYYY-MM-DD`
-- **UI**: Date range picker 2 ช่อง (from / to) — เมื่อกรอก from หรือ to แล้วจะกรองทันที
-- **Query**: เพิ่ม `where: { [dateField]: { gte: fromDate, lte: endOfDay(toDate) } }` เฉพาะเมื่อ from หรือ to มีค่า — ถ้าทั้งคู่ว่างให้ไม่กรองวันที่เลย
-- **dateField** ต่อประเภทเอกสาร:
+- **Default value**: empty (no default) — show all records until a date is entered.
+- **Pass via searchParams**: `?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- **UI**: Two date pickers (from / to) — filtering applies as soon as either value is set.
+- **Query**: Add `where: { [dateField]: { gte: fromDate, lte: endOfDay(toDate) } }` only when from or to has a value — if both are empty, do not filter by date at all.
+- **dateField by document type**:
   - purchases / purchase-returns → `purchaseDate`
   - sales / credit-notes → `saleDate` / `cnDate`
   - receipts → `receiptDate`
@@ -183,54 +193,54 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
   - warranties → `startDate`
   - delivery (Delivery Queue) → `saleDate`
 
-### สิ่งที่ห้ามทำโดยเด็ดขาด
-- ห้ามแก้ไข `lib/generated/prisma/` — เป็น auto-generated file
-- ห้าม import `pg.Pool` โดยตรง — ใช้ `PrismaPg({ connectionString, ... })` แทน (หลีกเลี่ยง type conflict)
-- ห้ามใช้ `any` type ทุกกรณี
-- ห้าม commit ไฟล์ `.env`, `.env.local` หรือ file ที่มี secret
+### Absolute Prohibitions
+- Never edit files under `lib/generated/prisma/` — these are auto-generated.
+- Never import `pg.Pool` directly — use `PrismaPg({ connectionString, ... })` instead (avoids type conflicts).
+- Never use the `any` type under any circumstance.
+- Never commit `.env`, `.env.local`, or any file containing secrets.
 
 ## 9. Performance Standards (Nasdaq-Grade)
 
-### เป้าหมาย
-- **Page load ต้องไม่เกิน 3 วินาที** (TTFB + render) ทุกหน้า ทั้ง admin และหน้าร้าน
-- ตั้งเป้า Core Web Vitals ระดับ "Good":
+### Goals
+- **Page load must not exceed 3 seconds** (TTFB + render) on every page, both admin and storefront.
+- Target Core Web Vitals at "Good" level:
   - LCP (Largest Contentful Paint) < 2.5s
   - FID / INP < 200ms
   - CLS (Cumulative Layout Shift) < 0.1
-- มาตรฐานความเร็วและคุณภาพ code เทียบเท่าระบบ trading platform ระดับ Nasdaq — **ความเร็วมาก่อน แต่ข้อมูลและความถูกต้องต้องไม่เสียหาย**
+- Code quality and speed benchmarks match those of a Nasdaq-grade trading platform — **speed comes first, but data integrity must never be compromised.**
 
-### Database Query
-- **ห้าม N+1 query** — ใช้ `include` / `select` nested แทนการ query ใน loop
-- ใช้ `select` ระบุเฉพาะ field ที่ใช้งานจริงทุกครั้ง — ห้าม fetch ทุก column โดยไม่จำเป็น
-- หน้า list ต้องมี `take` จำกัดจำนวน (สูงสุด 100-200 rows ต่อหน้า) หรือใช้ pagination
-- Index ที่จำเป็น: field ที่ใช้ใน `where`, `orderBy`, หรือ foreign key ที่ query บ่อย ต้องมี `@@index`
-- ใช้ `Promise.all()` เมื่อต้อง fetch หลาย query แบบ parallel ที่ไม่มี dependency กัน
-- Query ภายใน `$transaction` ให้เรียงตาม dependency — ห้ามเปิด transaction ทิ้งไว้นานโดยไม่จำเป็น
+### Database Queries
+- **No N+1 queries** — use nested `include` / `select` instead of querying inside a loop.
+- Always use `select` to specify only the columns actually used — never fetch all columns unnecessarily.
+- List pages must cap results with `take` (max 100–200 rows per page) or implement pagination.
+- Required indexes: any field used in `where`, `orderBy`, or frequently joined foreign keys must have `@@index`.
+- Use `Promise.all()` for parallel independent queries.
+- Order queries inside `$transaction` by dependency — never hold a transaction open longer than necessary.
 
 ### Server Components & Caching
-- ใช้ Next.js Server Components ให้มากที่สุด — ลด JavaScript ที่ส่งไป client
-- หน้าที่ข้อมูลเปลี่ยนบ่อย: ใช้ `export const dynamic = "force-dynamic"`
-- หน้าที่ข้อมูลไม่เปลี่ยน: ใช้ static generation หรือ `revalidate` เพื่อ cache
-- ใช้ `revalidatePath()` หลัง mutation เพื่อ invalidate cache เฉพาะหน้าที่เกี่ยวข้อง — ไม่ revalidate ทั้งหมด
+- Maximise use of Next.js Server Components — minimise JavaScript sent to the client.
+- Pages with frequently changing data: use `export const dynamic = "force-dynamic"`.
+- Pages with stable data: use static generation or `revalidate` for caching.
+- Use `revalidatePath()` after mutations to invalidate only the affected pages — not the entire cache.
 
 ### Images & Assets
-- ใช้ `next/image` ทุกครั้งสำหรับรูปภาพ — ได้ WebP + lazy load + size optimization อัตโนมัติ
-- ระบุ `sizes` prop ให้ตรงกับ layout จริง เพื่อให้ browser โหลด srcset ที่เหมาะสม
-- Font: ใช้ `next/font` (Kanit, Sarabun) เพื่อ preload และหลีกเลี่ยง FOUT (Flash of Unstyled Text)
+- Always use `next/image` for images — automatic WebP conversion, lazy loading, and size optimisation.
+- Specify the `sizes` prop to match the actual layout so the browser loads the appropriate srcset.
+- Fonts: use `next/font` (Kanit, Sarabun) for preloading and to prevent FOUT (Flash of Unstyled Text).
 
 ### Frontend Bundle
-- ห้าม import library ทั้ง package ถ้าใช้แค่บางส่วน — ใช้ named import เสมอ (e.g., `import { format } from "date-fns"`)
-- Client Components (`"use client"`) ต้องเล็กและ focused — ห้ามใส่ logic ที่ทำ server ได้ไว้ใน client
-- ใช้ `useTransition` สำหรับ Server Action calls เพื่อไม่ block UI
+- Never import an entire library when only part of it is needed — always use named imports (e.g., `import { format } from "date-fns"`).
+- Client Components (`"use client"`) must be small and focused — never put server-executable logic inside a Client Component.
+- Use `useTransition` for Server Action calls to avoid blocking the UI.
 
 ### Code Quality (Nasdaq-Grade Standards)
-- **ทุก function ต้องมี single responsibility** — ถ้า function ยาวกว่า 60 บรรทัด ให้แยกออก
-- **ห้าม magic number** — ค่าคงที่ต้องตั้งชื่อ const ให้อ่านเข้าใจ (e.g., `MAX_ITEMS = 100`)
-- **Error ต้องจัดการครบ** — ทุก async function ต้องมี try-catch และ return type ชัดเจน
-- **Type safety 100%** — ไม่มี `any`, ไม่มี type assertion (`as`) โดยไม่จำเป็น
-- ก่อน deploy ทุกครั้ง: ผ่าน `npm run build` โดยไม่มี error และไม่มี TypeScript warning
+- **Every function must have a single responsibility** — if a function exceeds 60 lines, split it.
+- **No magic numbers** — name all constants with a readable `const` (e.g., `MAX_ITEMS = 100`).
+- **Errors must be fully handled** — every async function needs a try-catch and an explicit return type.
+- **100% type safety** — no `any`, no unnecessary type assertions (`as`).
+- Before every deploy: pass `npm run build` with zero errors and zero TypeScript warnings.
 
-### การตรวจสอบ Performance ก่อน Commit
-- ถ้าเพิ่ม query ใหม่ในหน้าที่มีข้อมูลเยอะ ให้ประเมินว่า query นั้นจะช้าเมื่อ data โต (เช่น StockCard 10,000+ rows)
-- StockCard query ต้องใช้ index `[productId, docDate, sorder]` เสมอ — ห้าม full scan
-- ถ้า page load ของหน้าใดมีแนวโน้มเกิน 3 วินาที ให้แจ้ง user และเสนอ solution (pagination, index, caching) ก่อน implement
+### Performance Review Before Committing
+- If a new query is added on a page with large datasets, assess whether it will become slow as data grows (e.g., StockCard with 10,000+ rows).
+- StockCard queries must always use the index `[productId, docDate, sorder]` — no full scans.
+- If a page's load time is likely to exceed 3 seconds, notify the user and propose a solution (pagination, index, caching) before implementing.
