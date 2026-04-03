@@ -8,7 +8,7 @@ const LINE_OA_URL = "https://lin.ee/18P0SqG";
 const CATEGORY_ICON: Record<string, string> = {
   คอมเพรสเซอร์: "❄️",
   หม้อน้ำ: "🌡️",
-  คอนเดนเซอร์: "🔲",
+  คอนเดนเซอร์: "🪟",
   ท่อแอร์: "🔧",
   ท่อ: "🔧",
 };
@@ -23,7 +23,7 @@ const getIcon = (name: string) => {
 const fallbackCategories = [
   { label: "คอมเพรสเซอร์แอร์", desc: "ทุกยี่ห้อ ทุกรุ่น", icon: "❄️" },
   { label: "หม้อน้ำรถยนต์", desc: "ครบทุกขนาด", icon: "🌡️" },
-  { label: "แผงคอนเดนเซอร์", desc: "พร้อมส่ง", icon: "🔲" },
+  { label: "แผงคอนเดนเซอร์", desc: "พร้อมส่ง", icon: "🪟" },
   { label: "ท่อและสายแอร์", desc: "ใช้งานได้หลายรุ่น", icon: "🔧" },
   { label: "วาล์วและอุปกรณ์", desc: "อะไหล่เสริม", icon: "⚙️" },
 ];
@@ -32,7 +32,12 @@ const ProductCategories = async () => {
   const categories = await db.category.findMany({
     where: { isActive: true },
     orderBy: { name: "asc" },
-    include: { _count: { select: { products: { where: { isActive: true } } } } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      _count: { select: { products: { where: { isActive: true } } } },
+    },
   });
 
   const items =
@@ -84,6 +89,7 @@ const ProductCategories = async () => {
               <Link
                 key={item.id}
                 href={item.href}
+                prefetch
                 className="group flex w-[220px] shrink-0 snap-start items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#f97316]/35 hover:shadow-md sm:w-[240px] lg:w-auto lg:shrink lg:snap-none"
               >
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1e3a5f]/10 to-[#f97316]/10 text-2xl">
