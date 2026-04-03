@@ -39,8 +39,8 @@ interface Props {
   }>;
 }
 
-async function getProductFromParams(paramsPromise: Props["params"]) {
-  const { categorySlug, productSlug } = await paramsPromise;
+async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
+  const { productSlug } = await paramsPromise;
   const productId = extractProductIdFromSlug(productSlug);
 
   if (!productId) {
@@ -53,21 +53,11 @@ async function getProductFromParams(paramsPromise: Props["params"]) {
     notFound();
   }
 
-  const canonicalPath = getProductPath({
-    category: product.category,
-    product,
-  });
-
-  const requestedPath = `/products/${categorySlug}/${productSlug}`;
-  if (requestedPath !== canonicalPath) {
-    permanentRedirect(canonicalPath);
-  }
-
   return product;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const [config, product] = await Promise.all([getSiteConfig(), getProductFromParams(params)]);
+  const [config, product] = await Promise.all([getSiteConfig(), getResolvedProductFromParams(params)]);
   const description = buildStorefrontProductDescription(product);
 
   const canonicalPath = getProductPath({
@@ -96,12 +86,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 const ProductDetailPage = async ({ params }: Props) => {
-  const [config, product] = await Promise.all([getSiteConfig(), getProductFromParams(params)]);
+  const [resolvedParams, config, product] = await Promise.all([
+    params,
+    getSiteConfig(),
+    getResolvedProductFromParams(params),
+  ]);
+
+  const requestedPath = `/products/${resolvedParams.categorySlug}/${resolvedParams.productSlug}`;
 
   const canonicalPath = getProductPath({
     category: product.category,
     product,
   });
+
+  if (requestedPath !== canonicalPath) {
+    permanentRedirect(canonicalPath);
+  }
+
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
 
