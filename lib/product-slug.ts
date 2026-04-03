@@ -134,13 +134,13 @@ export const getProductSlug = (product: ProductSlugInput): string => {
 };
 
 export const getProductPath = ({
-  category,
+  category: _category,
   product,
 }: {
   category: CategorySlugInput;
   product: ProductSlugInput;
 }): string => {
-  return `/products/${getProductCategorySlug(category)}/${getProductSlug(product)}`;
+  return `/product/${getProductSlug(product)}`;
 };
 
 export const extractProductIdFromSlug = (slug: string): string | null => {
