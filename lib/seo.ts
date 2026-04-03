@@ -57,6 +57,9 @@ export function buildDefaultMetadataBase(): Metadata {
       title: DEFAULT_TITLE,
       description: DEFAULT_DESCRIPTION,
     },
+    verification: {
+      google: "qHx1Nuwk_fvdAKZ3ulesjza07_2-lYSgzlKabJLOTyg",
+    },
     icons: {
       icon: "/icon",
       shortcut: "/icon",
