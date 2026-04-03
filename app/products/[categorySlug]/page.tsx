@@ -73,8 +73,9 @@ const CategoryPage = async ({ params }: Props) => {
 
   const { category, productCount, products } = categoryData;
   const canonicalPath = getCategoryPath(category);
+  const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
 
-  if (`/products/${categorySlug}` !== canonicalPath) {
+  if (requestedPath !== canonicalPath) {
     permanentRedirect(canonicalPath);
   }
 

@@ -12,13 +12,14 @@ const FeaturedProducts = async ({ lineUrl }: Props) => {
     where: { isActive: true, stock: { gt: 0 } },
     select: {
       id: true,
+      slug: true,
       name: true,
       code: true,
       imageUrl: true,
       salePrice: true,
       stock: true,
       reportUnitName: true,
-      category: { select: { name: true } },
+      category: { select: { name: true, slug: true } },
       brand: { select: { name: true } },
       carModels: {
         select: {
