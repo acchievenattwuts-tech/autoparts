@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
-import { ArrowLeft, ArrowRight, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
 import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
@@ -106,43 +106,39 @@ const CategoryPage = async ({ params }: Props) => {
 
         <section className="overflow-hidden bg-[#10213d]">
           <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
-            <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-12">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_320px] lg:items-end">
-                <div className="max-w-3xl">
-                  <p className="text-sm font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
-                  <h1 className="mt-2 font-kanit text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
-                    {category.name}
-                  </h1>
-                  <p className="mt-4 max-w-2xl text-sm leading-7 text-white/75 sm:text-base">
-                    {description}
-                  </p>
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <Link
-                      href={`/products/search?category=${encodeURIComponent(category.name)}`}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#f97316] px-5 py-3 font-semibold text-white transition hover:bg-[#ea6c0a]"
-                    >
-                      ดูสินค้าในหมวดนี้
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                    <a
-                      href={config.shopLineUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-5 py-3 font-semibold text-white transition hover:bg-white/15"
-                    >
-                      สอบถามร้านทาง LINE
-                    </a>
-                  </div>
+            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+              <div className="max-w-4xl">
+                <p className="text-sm font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
+                <h1 className="mt-2 font-kanit text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
+                  {category.name}
+                </h1>
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75 sm:text-base">
+                  {description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/68 sm:text-sm">
+                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
+                    {productCount.toLocaleString()} รายการในหมวดนี้
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
+                    กรองผลลัพธ์ให้แคบลงก่อนสั่งซื้อ
+                  </span>
                 </div>
-
-                <div className="rounded-[28px] border border-white/10 bg-white/10 p-5 text-white backdrop-blur-sm">
-                  <div className="inline-flex rounded-2xl bg-[#f97316]/15 p-3 text-[#f97316]">
-                    <Search className="h-5 w-5" />
-                  </div>
-                  <p className="mt-4 text-3xl font-bold">{productCount.toLocaleString()}</p>
-                  <p className="mt-2 text-sm leading-7 text-white/70">
-                    รายการสินค้าในหมวดนี้ เหมาะสำหรับลูกค้าที่ต้องการคัดผลลัพธ์ให้แคบลงก่อนส่งให้ร้านช่วยเช็กต่อ
-                  </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    href={`/products/search?category=${encodeURIComponent(category.name)}`}
+                    className="inline-flex items-center gap-2 rounded-full bg-[#f97316] px-5 py-3 font-semibold text-white transition hover:bg-[#ea6c0a]"
+                  >
+                    ดูสินค้าในหมวดนี้
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <a
+                    href={config.shopLineUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/10"
+                  >
+                    สอบถามร้านทาง LINE
+                  </a>
                 </div>
               </div>
             </div>

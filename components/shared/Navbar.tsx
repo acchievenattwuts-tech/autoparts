@@ -67,6 +67,28 @@ const Navbar = ({
             </div>
           </a>
 
+          <form action="/products/search" method="GET" className="flex min-w-0 flex-1 items-center md:hidden">
+            <div className="relative w-full">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="text"
+                name="q"
+                defaultValue={searchQuery ?? ""}
+                placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
+                className="w-full rounded-xl border-2 border-gray-200 bg-white py-2 pl-8 pr-10 text-sm shadow-sm transition-colors focus:border-[#1e3a5f] focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-[#f97316] p-1.5 text-white transition-colors hover:bg-[#ea6c0a]"
+              >
+                <Search size={11} />
+              </button>
+            </div>
+          </form>
+
           <nav className="hidden items-center gap-5 md:flex">
             {navLinks.map((link) => (
               <a
@@ -124,7 +146,7 @@ const Navbar = ({
 
           <button
             onClick={() => setIsOpen((prev) => !prev)}
-            className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 md:hidden"
+            className="shrink-0 rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 md:hidden"
             aria-label="เปิด/ปิดเมนู"
           >
             {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -134,28 +156,6 @@ const Navbar = ({
 
       {isOpen && (
         <div className="border-t border-gray-100 bg-white px-4 pb-4 md:hidden">
-          <form action="/products/search" method="GET" className="pb-2 pt-3">
-            <div className="relative">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-              <input
-                type="text"
-                name="q"
-                defaultValue={searchQuery ?? ""}
-                placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
-                className="w-full rounded-full border-2 border-gray-200 bg-white py-2 pl-8 pr-10 text-sm focus:border-[#1e3a5f] focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-[#f97316] p-1.5 text-white transition-colors hover:bg-[#ea6c0a]"
-              >
-                <Search size={11} />
-              </button>
-            </div>
-          </form>
-
           <nav className="flex flex-col gap-1">
             {navLinks.map((link) => (
               <a
