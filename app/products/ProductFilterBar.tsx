@@ -80,6 +80,15 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
 
   return (
     <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>
+      {!isDesktop && (
+        <div className="rounded-2xl border border-[#1e3a5f]/10 bg-[#1e3a5f]/5 px-4 py-3">
+          <p className="text-sm font-semibold text-[#1e3a5f]">เริ่มกรองจากตรงนี้</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            เลือกยี่ห้อรถ รุ่นรถ หรือหมวดสินค้า แล้วรายการด้านล่างจะพาไปหน้าค้นหาให้ทันที
+          </p>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <button
           type="button"
@@ -102,7 +111,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
 
           <div className="flex items-center gap-2">
             {hasAnyFilter && (
-              <span className="rounded-full bg-[#1e3a5f] px-2 py-0.5 text-xs text-white">
+              <span className="max-w-[132px] truncate rounded-full bg-[#1e3a5f] px-2 py-0.5 text-xs text-white">
                 {model || brand || category}
               </span>
             )}
@@ -117,12 +126,12 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
         {isExpanded && (
           <div className="border-t border-gray-100 px-5 py-4">
             <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-gray-50 px-5 py-3.5">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-3 border-b border-gray-50 px-5 py-3.5">
+                <div className="flex min-w-0 items-center gap-2">
                   <span className="text-lg">รถ</span>
-                  <span className="text-sm font-semibold text-gray-800">เลือกตามยี่ห้อรถ</span>
+                  <span className="truncate text-sm font-semibold text-gray-800">เลือกตามยี่ห้อรถ</span>
                   {hasCarFilter && (
-                    <span className="rounded-full bg-[#1e3a5f] px-2 py-0.5 text-xs text-white">
+                    <span className="max-w-[116px] truncate rounded-full bg-[#1e3a5f] px-2 py-0.5 text-xs text-white">
                       {model || brand}
                     </span>
                   )}
@@ -344,6 +353,12 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                   ล้างทั้งหมด
                 </button>
               </div>
+            )}
+
+            {!isDesktop && !hasAnyFilter && (
+              <p className="mt-3 text-xs leading-5 text-gray-400">
+                ถ้ายังไม่แน่ใจ เริ่มจากหมวดสินค้า แล้วค่อยเลือกยี่ห้อรถและรุ่นรถเพิ่มภายหลังได้
+              </p>
             )}
 
             {page && (

@@ -86,10 +86,10 @@ const ProductsPage = async () => {
       <main className="min-h-screen bg-gray-50 pt-16">
         <div className="overflow-hidden bg-[#10213d]">
           <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
-            <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-3xl">
-                  <h1 className="mt-2 font-kanit text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
+                  <h1 className="mt-1 font-kanit text-2xl font-bold leading-tight text-white sm:text-3xl lg:mt-2 lg:text-4xl">
                     รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมเข้าไปค้นหาต่อได้ทันที
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
@@ -97,34 +97,50 @@ const ProductsPage = async () => {
                   </p>
                 </div>
 
-                <div className="w-full max-w-xl rounded-[28px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
-                  <form action="/products/search" method="GET" className="space-y-3">
-                    <div className="flex flex-col gap-3 sm:flex-row">
-                      <label className="sr-only" htmlFor="products-hero-search">
-                        ค้นหาสินค้า
-                      </label>
-                      <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                        <input
-                          id="products-hero-search"
-                          type="text"
-                          name="q"
-                          placeholder="เช่น คอมแอร์ Denso, VIGO, แผงคอนเดนเซอร์..."
-                          className="h-12 w-full rounded-2xl border border-white/20 bg-white px-11 text-sm text-slate-900 outline-none transition focus:border-[#f97316] focus:ring-4 focus:ring-[#f97316]/15"
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#f97316] px-5 font-semibold text-white transition hover:bg-[#ea6c0a] sm:min-w-[150px]"
-                      >
-                        ค้นหาสินค้า
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
+                <div className="w-full max-w-xl rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur-sm sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-2xl bg-white/12 p-3 text-white">
+                      <Search className="h-5 w-5" />
                     </div>
-                    <p className="text-xs text-white/60 sm:text-sm">
-                      ถ้าต้องการกรองตามยี่ห้อรถ รุ่นรถ หรือหมวดสินค้า ระบบจะพาไปหน้าค้นหาและตัวกรองแบบเต็มให้ทันที
-                    </p>
-                  </form>
+                    <div className="min-w-0">
+                      <p className="text-base font-semibold text-white sm:text-lg">
+                        ค้นหาจากแถบด้านบน หรือใช้ตัวกรองด้านซ้าย
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-white/70">
+                        บนมือถือให้เริ่มจากปุ่มค้นหาด้านล่าง หรือเลื่อนลงไปเปิดตัวกรองสินค้าได้ทันที
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 sm:gap-3">
+                    <Link
+                      href="/products/search"
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#f97316] px-5 text-sm font-semibold text-white transition hover:bg-[#ea6c0a] sm:text-base"
+                    >
+                      เปิดหน้าค้นหาและตัวกรอง
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <a
+                      href={config.shopLineUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-12 items-center justify-center rounded-2xl border border-white/15 bg-white/8 px-5 text-sm font-semibold text-white transition hover:bg-white/14"
+                    >
+                      ส่งรุ่นรถหรือรหัสให้ร้านช่วยเช็ก
+                    </a>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/65">
+                    <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
+                      ค้นจากชื่อสินค้า
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
+                      ค้นจากรหัสสินค้า
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
+                      กรองตามยี่ห้อและรุ่นรถ
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
