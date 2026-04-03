@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
 import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
@@ -71,7 +71,7 @@ const CategoryPage = async ({ params }: Props) => {
     getStorefrontCategoryPageData(categorySlug),
   ]);
 
-  const { category, productCount, products } = categoryData;
+  const { category, products } = categoryData;
   const canonicalPath = getCategoryPath(category);
   const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
 
@@ -115,14 +115,6 @@ const CategoryPage = async ({ params }: Props) => {
                 <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75 sm:text-base">
                   {description}
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs text-white/68 sm:text-sm">
-                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
-                    {productCount.toLocaleString()} รายการในหมวดนี้
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">
-                    กรองผลลัพธ์ให้แคบลงก่อนสั่งซื้อ
-                  </span>
-                </div>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <a
                     href={config.shopLineUrl}
@@ -139,24 +131,6 @@ const CategoryPage = async ({ params }: Props) => {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-          <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
-                สินค้าแนะนำในหมวด {category.name}
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                ถ้ายังไม่แน่ใจรุ่นที่ใช้ได้ ให้เปิดดูรายละเอียดสินค้าแล้วส่งลิงก์ต่อให้ร้านผ่าน LINE OA
-              </p>
-            </div>
-            <Link
-              href={`/products/search?category=${encodeURIComponent(category.name)}`}
-              className="inline-flex items-center gap-2 self-start rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-[#10213d] transition hover:border-[#10213d]"
-            >
-              เปิดดูผลค้นหาแบบกรองหมวด
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
           {products.length === 0 ? (
             <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-16 text-center text-slate-500 shadow-sm">
               ยังไม่มีสินค้าที่เปิดใช้งานในหมวดนี้ตอนนี้

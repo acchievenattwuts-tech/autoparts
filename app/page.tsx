@@ -54,11 +54,7 @@ const Home = async () => {
         shopPhone={config.shopPhone}
       />
       <main>
-        <Hero
-          heroTitle={config.heroTitle}
-          heroSubtitle={config.heroSubtitle}
-          lineUrl={config.shopLineUrl}
-        />
+        <Hero lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
         <ProductCategories />
         <FeaturedProducts lineUrl={config.shopLineUrl} />
         <WhyUs />

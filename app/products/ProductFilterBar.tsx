@@ -79,7 +79,8 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   };
 
   return (
-    <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>`r`n      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+    <div className={`space-y-3 transition-opacity ${isPending ? "pointer-events-none opacity-60" : ""}`}>
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <button
           type="button"
           onClick={() => setIsExpanded((value) => !value)}
@@ -343,7 +344,8 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                   ล้างทั้งหมด
                 </button>
               </div>
-            )}`r`n            {page && (
+            )}
+            {page && (
               <p className="mt-3 text-xs text-gray-400">
                 การเปลี่ยนตัวกรองจะกลับไปเริ่มที่หน้า 1 อัตโนมัติ
               </p>
