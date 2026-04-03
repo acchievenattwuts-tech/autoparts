@@ -92,7 +92,9 @@ const ProductDetailPage = async ({ params }: Props) => {
     getResolvedProductFromParams(params),
   ]);
 
-  const requestedPath = `/products/${resolvedParams.categorySlug}/${resolvedParams.productSlug}`;
+  const requestedPath = `/products/${decodeURIComponent(
+    resolvedParams.categorySlug,
+  )}/${decodeURIComponent(resolvedParams.productSlug)}`;
 
   const canonicalPath = getProductPath({
     category: product.category,
