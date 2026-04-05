@@ -25,6 +25,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
                 units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
               },
             },
+            lotItems: { select: { lotNo: true, qty: true, isReturnLot: true } },
           },
         },
       },
@@ -35,6 +36,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       select: {
         id: true, code: true, name: true, description: true,
         salePrice: true, saleUnitName: true,
+        isLotControl: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
         aliases:  { select: { alias: true } },
@@ -64,6 +66,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
+    isLotControl: p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
@@ -78,6 +81,14 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         unitName:  baseUnit?.name ?? "",
         qty:       Number(item.qty),       // stored in base units
         salePrice: Number(item.unitPrice), // stored per original display unit
+        lotItems: item.lotItems.map((lot) => ({
+          lotNo: lot.isReturnLot ? lot.lotNo.replace(/^RET-/, "") : lot.lotNo,
+          qty: Number(lot.qty),
+          unitCost: Number(item.unitPrice),
+          mfgDate: "",
+          expDate: "",
+          isReturnLot: lot.isReturnLot,
+        })),
       };
     });
 

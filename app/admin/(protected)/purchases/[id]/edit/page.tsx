@@ -106,6 +106,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}
+        editableLotOnEdit
       />
     </div>
   );

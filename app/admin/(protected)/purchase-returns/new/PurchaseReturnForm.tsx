@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 
 interface ProductOption {
   id: string;
@@ -14,6 +15,7 @@ interface ProductOption {
   name: string;
   description?: string | null;
   avgCost: number;
+  isLotControl: boolean;
   categoryName: string;
   brandName?: string | null;
   aliases?: string[];
@@ -26,32 +28,34 @@ interface SupplierOption {
 }
 
 interface PurchaseOption {
-  id:          string;
-  purchaseNo:  string;
+  id: string;
+  purchaseNo: string;
   purchaseDate?: Date;
 }
 
 interface LineItem {
   productId: string;
-  unitName:  string;
-  qty:       number;
+  unitName: string;
+  qty: number;
+  lotItems: LotSubRow[];
 }
 
 interface InitialData {
-  id:         string;
+  id: string;
   returnDate: string;
   purchaseId: string;
   supplierId: string;
-  note:       string;
-  vatType:    string;
-  vatRate:    number;
-  items:      LineItem[];
+  note: string;
+  vatType: string;
+  vatRate: number;
+  items: LineItem[];
+  initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1 });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, lotItems: [] });
 
 const PurchaseReturnForm = ({
   products,
@@ -61,31 +65,46 @@ const PurchaseReturnForm = ({
   defaultVatRate,
   initialData,
 }: {
-  products:         ProductOption[];
-  suppliers:        SupplierOption[];
+  products: ProductOption[];
+  suppliers: SupplierOption[];
   initialPurchases?: PurchaseOption[];
-  defaultVatType:   string;
-  defaultVatRate:   number;
-  initialData?:     InitialData;
+  defaultVatType: string;
+  defaultVatRate: number;
+  initialData?: InitialData;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
-  const [error, setError]       = useState("");
-  const [success, setSuccess]   = useState("");
-  const [supplierId, setSupplierId]             = useState(initialData?.supplierId ?? "");
-  const [purchaseId, setPurchaseId]             = useState(initialData?.purchaseId ?? "");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [purchaseId, setPurchaseId] = useState(initialData?.purchaseId ?? "");
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
-  const [items, setItems]       = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialData?.initialAvailableLots ?? {});
+  const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
+
+  const loadLots = async (itemIdx: number, productId: string) => {
+    setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
+    const result = await fetchProductLots(productId);
+    if (!("error" in result)) {
+      setAvailableLots((prev) => ({ ...prev, [itemIdx]: result }));
+    }
+    setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
+  };
 
   const handleSupplierChange = async (id: string) => {
     setSupplierId(id);
     setPurchaseId("");
     setItems([emptyItem()]);
-    if (!id) { setFilteredPurchases([]); return; }
+    setAvailableLots({});
+    if (!id) {
+      setFilteredPurchases([]);
+      return;
+    }
     setLoadingPurchases(true);
     const purchases = await getPurchasesForSupplier(id);
     setFilteredPurchases(purchases);
@@ -94,33 +113,112 @@ const PurchaseReturnForm = ({
 
   const handlePurchaseChange = async (id: string) => {
     setPurchaseId(id);
+    setAvailableLots({});
     if (!id) return;
     const detail = await getPurchaseDetail(id);
     if (!detail) return;
     setItems(detail.items.map((item) => ({ ...item })));
+    detail.items.forEach((item, index) => {
+      if (item.lotItems.length > 0) void loadLots(index, item.productId);
+    });
   };
 
-  const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
+  const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateItem = (i: number, field: keyof LineItem, value: string | number) => {
+  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
         if (field === "productId") {
           const prod = products.find((p) => p.id === String(value));
-          // Default to base unit
-          const baseUnit = prod?.units.find((u) => u.isBase);
-          updated.unitName = baseUnit?.name ?? prod?.units[0]?.name ?? "";
+          const baseUnit = prod?.units.find((u) => u.isBase) ?? prod?.units[0];
+          updated.unitName = baseUnit?.name ?? "";
+          updated.lotItems = prod?.isLotControl
+            ? [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }]
+            : [];
+          setAvailableLots((current) => {
+            const next = { ...current };
+            delete next[i];
+            return next;
+          });
+          if (prod?.isLotControl) void loadLots(i, prod.id);
+        }
+        if (field === "qty" && item.productId) {
+          const prod = products.find((p) => p.id === item.productId);
+          if (prod?.isLotControl && updated.lotItems.length === 1) {
+            updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+          }
         }
         return updated;
       })
     );
   };
 
-  const getUnits = (productId: string) =>
-    products.find((p) => p.id === productId)?.units ?? [];
+  const addLotRow = (itemIdx: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIdx
+          ? item
+          : {
+              ...item,
+              lotItems: [...item.lotItems, { lotNo: "", qty: 0, unitCost: 0, mfgDate: "", expDate: "" }],
+            }
+      )
+    );
+  };
+
+  const removeLotRow = (itemIdx: number, lotIdx: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIdx
+          ? item
+          : { ...item, lotItems: item.lotItems.filter((_, index) => index !== lotIdx) }
+      )
+    );
+  };
+
+  const updateLotRow = (itemIdx: number, lotIdx: number, field: keyof LotSubRow, value: string | number) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        return {
+          ...item,
+          lotItems: item.lotItems.map((lot, index) => (index === lotIdx ? { ...lot, [field]: value } : lot)),
+        };
+      })
+    );
+  };
+
+  const handleLotSelect = (itemIdx: number, lotIdx: number, lotNo: string) => {
+    const item = items[itemIdx];
+    const product = products.find((p) => p.id === item.productId);
+    const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+    const lot = (availableLots[itemIdx] ?? []).find((entry) => entry.lotNo === lotNo);
+
+    setItems((prev) =>
+      prev.map((entry, idx) => {
+        if (idx !== itemIdx) return entry;
+        return {
+          ...entry,
+          lotItems: entry.lotItems.map((subRow, index) =>
+            index !== lotIdx
+              ? subRow
+              : {
+                  lotNo,
+                  qty: subRow.qty || (entry.lotItems.length === 1 ? entry.qty : 0),
+                  unitCost: lot ? lot.unitCost * scale : subRow.unitCost,
+                  mfgDate: lot?.mfgDate ?? "",
+                  expDate: lot?.expDate ?? "",
+                }
+          ),
+        };
+      })
+    );
+  };
+
+  const getUnits = (productId: string) => products.find((p) => p.id === productId)?.units ?? [];
 
   const getDisplayCost = (productId: string, unitName: string): number => {
     const prod = products.find((p) => p.id === productId);
@@ -144,15 +242,36 @@ const PurchaseReturnForm = ({
     const form = e.currentTarget;
     const formData = new FormData(form);
 
-    if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
-    formData.set("supplierId",  supplierId);
+    if (!supplierId) {
+      setError("กรุณาเลือกผู้จำหน่าย");
+      return;
+    }
+    formData.set("supplierId", supplierId);
     formData.set("purchaseId", purchaseId);
 
     for (const item of items) {
-      if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
-      if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
-      if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+      if (!item.productId) {
+        setError("กรุณาเลือกสินค้าทุกรายการ");
+        return;
+      }
+      if (!item.unitName) {
+        setError("กรุณาเลือกหน่วยนับทุกรายการ");
+        return;
+      }
+      if (item.qty <= 0) {
+        setError("จำนวนต้องมากกว่า 0");
+        return;
+      }
+      const product = products.find((p) => p.id === item.productId);
+      if (product?.isLotControl) {
+        const lotErr = validateLotRows(item.lotItems, item.qty, false);
+        if (lotErr) {
+          setError(lotErr);
+          return;
+        }
+      }
     }
+
     formData.set("items", JSON.stringify(items));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
@@ -176,16 +295,13 @@ const PurchaseReturnForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Header card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
           ข้อมูลการคืนสินค้า
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className={labelCls}>
-              วันที่คืน <span className="text-red-500">*</span>
-            </label>
+            <label className={labelCls}>วันที่คืน <span className="text-red-500">*</span></label>
             <input
               type="date"
               name="returnDate"
@@ -195,11 +311,9 @@ const PurchaseReturnForm = ({
             />
           </div>
           <div>
-            <label className={labelCls}>
-              ซัพพลายเออร์ <span className="text-red-500">*</span>
-            </label>
+            <label className={labelCls}>ซัพพลายเออร์ <span className="text-red-500">*</span></label>
             <SearchableSelect
-              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
+              options={suppliers.map((supplier): SelectOption => ({ id: supplier.id, label: supplier.name }))}
               value={supplierId}
               onChange={handleSupplierChange}
               placeholder="โปรดระบุผู้จำหน่าย"
@@ -210,12 +324,14 @@ const PurchaseReturnForm = ({
             <SearchableSelect
               options={[
                 { id: "", label: "-- ไม่อ้างอิง --" },
-                ...filteredPurchases.map((p): SelectOption => ({
-                  id: p.id,
-                  label: p.purchaseNo,
-                  sublabel: p.purchaseDate
-                    ? new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit", month: "2-digit", year: "numeric",
+                ...filteredPurchases.map((purchase): SelectOption => ({
+                  id: purchase.id,
+                  label: purchase.purchaseNo,
+                  sublabel: purchase.purchaseDate
+                    ? new Date(purchase.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
                       })
                     : undefined,
                 })),
@@ -238,23 +354,21 @@ const PurchaseReturnForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
-
-          {/* VAT Settings */}
           <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
             <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
-              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
+              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
-                  key={t}
+                  key={value}
                   type="button"
-                  onClick={() => setVatType(t)}
+                  onClick={() => setVatType(value)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    vatType === t
+                    vatType === value
                       ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                   }`}
                 >
-                  {VAT_TYPE_LABELS[t]}
+                  {VAT_TYPE_LABELS[value]}
                 </button>
               ))}
               {vatType !== "NO_VAT" && (
@@ -264,7 +378,9 @@ const PurchaseReturnForm = ({
                     type="number"
                     value={vatRate}
                     onChange={(e) => setVatRate(Number(e.target.value))}
-                    min={0} max={100} step={0.01}
+                    min={0}
+                    max={100}
+                    step={0.01}
                     className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
                   />
                   <span className="text-sm text-gray-500">%</span>
@@ -275,7 +391,6 @@ const PurchaseReturnForm = ({
         </div>
       </div>
 
-      {/* Line items */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
           <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้าที่คืน</h2>
@@ -302,62 +417,135 @@ const PurchaseReturnForm = ({
             </thead>
             <tbody>
               {items.map((item, i) => {
-                const units       = getUnits(item.productId);
+                const units = getUnits(item.productId);
                 const displayCost = getDisplayCost(item.productId, item.unitName);
+                const product = products.find((p) => p.id === item.productId);
+                const isLot = !!product?.isLotControl;
+                const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+
                 return (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="py-2 px-2">
-                      <ProductSearchSelect
-                        products={products}
-                        value={item.productId}
-                        onChange={(id) => updateItem(i, "productId", id)}
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <select
-                        value={item.unitName}
-                        onChange={(e) => updateItem(i, "unitName", e.target.value)}
-                        disabled={!item.productId}
-                        className={`${inputCls} bg-white`}
-                      >
-                        <option value="">-- โปรดระบุ --</option>
-                        {units.map((u) => (
-                          <option key={u.name} value={u.name}>
-                            {u.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="number"
-                        value={item.qty}
-                        min={0.0001}
-                        step={0.0001}
-                        onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
-                        className={inputCls}
-                      />
-                    </td>
-                    <td className="py-2 px-2 text-right text-gray-500 bg-gray-50 rounded">
-                      {displayCost.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-2 px-2 text-right font-medium text-gray-700">
-                      {(item.qty * displayCost).toLocaleString("th-TH", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="py-2 px-2">
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeItem(i)}
-                          className="text-red-400 hover:text-red-600 transition-colors"
+                  <>
+                    <tr key={`item-${i}`} className="border-b border-gray-50">
+                      <td className="py-2 px-2">
+                        <ProductSearchSelect
+                          products={products}
+                          value={item.productId}
+                          onChange={(id) => updateItem(i, "productId", id)}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={item.unitName}
+                          onChange={(e) => updateItem(i, "unitName", e.target.value)}
+                          disabled={!item.productId}
+                          className={`${inputCls} bg-white`}
                         >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                          <option value="">-- โปรดระบุ --</option>
+                          {units.map((unit) => (
+                            <option key={unit.name} value={unit.name}>
+                              {unit.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          value={item.qty}
+                          min={0.0001}
+                          step={0.0001}
+                          onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                          className={inputCls}
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right text-gray-500 bg-gray-50 rounded">
+                        {displayCost.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                        {(item.qty * displayCost).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2 px-2">
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(i)}
+                            className="text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isLot && (
+                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50">
+                        <td colSpan={6} className="px-3 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-medium text-amber-800">Lot Control</div>
+                            <button
+                              type="button"
+                              onClick={() => addLotRow(i)}
+                              className="text-xs text-amber-700 hover:text-amber-900"
+                            >
+                              เพิ่ม Lot
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {item.lotItems.map((lot, lotIdx) => (
+                              <div key={`${i}-${lotIdx}`} className="grid grid-cols-1 md:grid-cols-[2fr_120px_120px_140px_140px_32px] gap-2 items-center">
+                                <select
+                                  value={lot.lotNo}
+                                  onChange={(e) => handleLotSelect(i, lotIdx, e.target.value)}
+                                  className={`${inputCls} bg-white`}
+                                >
+                                  <option value="">{lotsLoading[i] ? "กำลังโหลด Lot..." : "-- เลือก Lot --"}</option>
+                                  {(availableLots[i] ?? []).map((option) => (
+                                    <option key={option.lotNo} value={option.lotNo}>
+                                      {option.lotNo} ({(option.qtyOnHand / scale).toLocaleString("th-TH", { maximumFractionDigits: 4 })})
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  value={lot.qty}
+                                  min={0.0001}
+                                  step={0.0001}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "qty", Number(e.target.value))}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="number"
+                                  value={lot.unitCost}
+                                  min={0}
+                                  step={0.01}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "unitCost", Number(e.target.value))}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="date"
+                                  value={lot.mfgDate}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "mfgDate", e.target.value)}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="date"
+                                  value={lot.expDate}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "expDate", e.target.value)}
+                                  className={inputCls}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeLotRow(i, lotIdx)}
+                                  className="text-red-400 hover:text-red-600 transition-colors"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
@@ -372,18 +560,14 @@ const PurchaseReturnForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
-                      ยอดก่อนภาษี
-                    </td>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ยอดก่อนภาษี</td>
                     <td className="py-1 px-2 text-right text-gray-700">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
-                      VAT {vatRate}%
-                    </td>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">VAT {vatRate}%</td>
                     <td className="py-1 px-2 text-right text-gray-700">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>

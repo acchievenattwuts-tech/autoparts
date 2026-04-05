@@ -8,12 +8,22 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
-import { reversePurchaseReturnLotBalance } from "@/lib/lot-control";
+import { reversePurchaseReturnLotBalance, validateLotRows, writePurchaseReturnLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
+import type { LotAvailableJSON } from "@/lib/lot-control-client";
+
+const lotSubRowSchema = z.object({
+  lotNo:    z.string().min(1).max(100),
+  qty:      z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  mfgDate:  z.string().default(""),
+  expDate:  z.string().default(""),
+});
 
 const returnItemSchema = z.object({
   productId: z.string().min(1).max(50),
   unitName:  z.string().min(1).max(20),
   qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
+  lotItems:  z.array(lotSubRowSchema).default([]),
 });
 
 const returnSchema = z.object({
@@ -67,6 +77,7 @@ export async function createPurchaseReturn(
         costPerBase:   number;
         totalAmount:   number;
         subtotalAmount: number;
+        lotItems:      z.infer<typeof lotSubRowSchema>[];
       }[] = [];
 
       for (const item of validItems) {
@@ -96,6 +107,7 @@ export async function createPurchaseReturn(
           costPerBase,
           totalAmount,
           subtotalAmount: itemSubtotal,
+          lotItems: item.lotItems,
         });
       }
 
@@ -121,7 +133,16 @@ export async function createPurchaseReturn(
 
       // Create items and write stock cards
       for (const line of lineData) {
-        await tx.purchaseReturnItem.create({
+        const product = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { isLotControl: true },
+        });
+        if (product?.isLotControl) {
+          const lotErr = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
+          if (lotErr) throw new Error(lotErr);
+        }
+
+        const returnItem = await tx.purchaseReturnItem.create({
           data: {
             purchaseReturnId: pr.id,
             productId:        line.productId,
@@ -142,8 +163,27 @@ export async function createPurchaseReturn(
           qtyOut:      line.qtyInBase,
           priceIn:     0,
           detail:      `คืน ${line.qty} ${line.unitName}`,
-          referenceId: pr.id,
+          referenceId: returnItem.id,
         });
+
+        if (product?.isLotControl && line.lotItems.length > 0) {
+          const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
+          const lotsInBase = line.lotItems.map((lot) => ({
+            lotNo:        lot.lotNo.trim(),
+            qtyInBase:    lot.qty * lineScale,
+            unitCostBase: line.costPerBase,
+            mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+            expDate:      lot.expDate ? new Date(lot.expDate) : null,
+          }));
+
+          await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+
+          const sc = await tx.stockCard.findFirst({
+            where: { referenceId: returnItem.id, source: "RETURN_OUT" },
+            select: { id: true },
+          });
+          if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+        }
       }
     });
 
@@ -224,7 +264,7 @@ export async function updatePurchaseReturn(
 
   const existing = await db.purchaseReturn.findUnique({
     where: { id },
-    include: { items: { select: { productId: true } } },
+    include: { items: { select: { id: true, productId: true } } },
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
@@ -253,6 +293,13 @@ export async function updatePurchaseReturn(
   try {
     await dbTx(async (tx) => {
       // 1. Reverse old stock effects
+      const oldItems = await tx.purchaseReturnItem.findMany({
+        where: { purchaseReturnId: id },
+        select: { id: true, productId: true },
+      });
+      for (const item of oldItems) {
+        await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
       await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
       for (const productId of oldProductIds) {
@@ -268,6 +315,7 @@ export async function updatePurchaseReturn(
         costPerBase:   number;
         totalAmount:   number;
         subtotalAmount: number;
+        lotItems:      z.infer<typeof lotSubRowSchema>[];
       }[] = [];
 
       for (const item of validItems) {
@@ -286,7 +334,7 @@ export async function updatePurchaseReturn(
         const costPerBase  = Number(prod.avgCost);
         const totalAmount  = Math.round(qtyInBase) * costPerBase;
         const itemSubtotal = calcItemSubtotal(totalAmount, vatType, vatRate);
-        lineData.push({ productId: item.productId, unitName: item.unitName, qty: item.qty, qtyInBase, costPerBase, totalAmount, subtotalAmount: itemSubtotal });
+        lineData.push({ productId: item.productId, unitName: item.unitName, qty: item.qty, qtyInBase, costPerBase, totalAmount, subtotalAmount: itemSubtotal, lotItems: item.lotItems });
       }
 
       const rawTotal = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
@@ -300,7 +348,16 @@ export async function updatePurchaseReturn(
 
       // 4. Re-create items + stock cards
       for (const line of lineData) {
-        await tx.purchaseReturnItem.create({
+        const product = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { isLotControl: true },
+        });
+        if (product?.isLotControl) {
+          const lotErr = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
+          if (lotErr) throw new Error(lotErr);
+        }
+
+        const returnItem = await tx.purchaseReturnItem.create({
           data: { purchaseReturnId: id, productId: line.productId, qty: Math.round(line.qtyInBase), costPrice: line.costPerBase, amount: line.totalAmount, subtotalAmount: line.subtotalAmount, detail: `คืน ${line.qty} ${line.unitName}` },
         });
         await writeStockCard(tx, {
@@ -312,7 +369,7 @@ export async function updatePurchaseReturn(
           qtyOut:      line.qtyInBase,
           priceIn:     0,
           detail:      `คืน ${line.qty} ${line.unitName}`,
-          referenceId: id,
+          referenceId: returnItem.id,
         });
       }
     });
@@ -346,7 +403,7 @@ export async function getPurchasesForSupplier(
 // getPurchaseDetail — ดึง items จากใบซื้อ
 // ─────────────────────────────────────────
 export type PurchaseDetailResult = {
-  items: { productId: string; unitName: string; qty: number }[];
+  items: { productId: string; unitName: string; qty: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
 } | null;
 
 export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
@@ -360,10 +417,12 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
           quantity:  true,
           product: {
             select: {
+              isLotControl: true,
               purchaseUnitName: true,
               units: { select: { name: true, scale: true, isBase: true } },
             },
           },
+          lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
         },
       },
     },
@@ -378,8 +437,52 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
       productId: item.productId,
       unitName,
       qty: Number(item.quantity) / scale,
+      lotItems: item.product.isLotControl
+        ? item.lotItems.map((lot) => ({
+            lotNo: lot.lotNo,
+            qty: Number(lot.qty) / scale,
+            unitCost: Number(lot.unitCost) * scale,
+            mfgDate: lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
+            expDate: lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+          }))
+        : [],
     };
   });
 
   return { items };
+}
+
+export async function fetchProductLots(
+  productId: string
+): Promise<LotAvailableJSON[] | { error: string }> {
+  if (!productId) return { error: "ไม่ระบุสินค้า" };
+  try {
+    const balances = await db.lotBalance.findMany({
+      where: { productId, qtyOnHand: { gt: 0 } },
+      select: { lotNo: true, qtyOnHand: true },
+      orderBy: { lotNo: "asc" },
+    });
+
+    const lots: LotAvailableJSON[] = await Promise.all(
+      balances.map(async (balance) => {
+        const master = await db.productLot.findUnique({
+          where: { productId_lotNo: { productId, lotNo: balance.lotNo } },
+          select: { unitCost: true, expDate: true, mfgDate: true },
+        });
+
+        return {
+          lotNo: balance.lotNo,
+          qtyOnHand: Number(balance.qtyOnHand),
+          unitCost: Number(master?.unitCost ?? 0),
+          expDate: master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
+          mfgDate: master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
+        };
+      })
+    );
+
+    return lots;
+  } catch (error) {
+    console.error("[fetchProductLots purchase-returns]", error);
+    return { error: "โหลด Lot ไม่สำเร็จ" };
+  }
 }

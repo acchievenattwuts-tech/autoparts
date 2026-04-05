@@ -22,6 +22,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
             product: {
               select: { units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } } },
             },
+            lotItems: { select: { lotNo: true, qty: true } },
           },
         },
       },
@@ -31,6 +32,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true, avgCost: true,
+        isLotControl: true,
         category: { select: { name: true } }, brand: { select: { name: true } },
         aliases:  { select: { alias: true } },
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
@@ -54,6 +56,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description, avgCost: Number(p.avgCost),
+    isLotControl: p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
@@ -65,6 +68,13 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       productId: item.productId,
       unitName:  baseUnit?.name ?? "",
       qty:       Number(item.qty),
+      lotItems: item.lotItems.map((lot) => ({
+        lotNo: lot.lotNo,
+        qty: Number(lot.qty),
+        unitCost: Number(item.costPrice),
+        mfgDate: "",
+        expDate: "",
+      })),
     };
   });
 

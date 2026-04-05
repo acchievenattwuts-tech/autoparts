@@ -85,6 +85,8 @@ const SaleForm = ({
   defaultVatType,
   defaultVatRate,
   initialData,
+  editableLotOnEdit = false,
+  initialAvailableLots = {},
 }: {
   products:       ProductOption[];
   suppliers:      SupplierOption[];
@@ -92,9 +94,12 @@ const SaleForm = ({
   defaultVatType: string;
   defaultVatRate: number;
   initialData?:   InitialData;
+  editableLotOnEdit?: boolean;
+  initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
+  const showReadonlyLots = isEdit && !editableLotOnEdit;
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
@@ -112,7 +117,7 @@ const SaleForm = ({
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
-  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>({});
+  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
   const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
@@ -681,7 +686,7 @@ const SaleForm = ({
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
                             Lot Control
                           </span>
-                          {!isEdit && (
+                          {!showReadonlyLots && (
                             <>
                               <span className="text-xs text-gray-500">จัดสรรรวม</span>
                               <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
@@ -701,7 +706,7 @@ const SaleForm = ({
                           )}
                         </div>
                         {/* Lot rows */}
-                        {isEdit ? (
+                        {showReadonlyLots ? (
                           /* Read-only display in edit mode */
                           <div className="flex flex-wrap gap-2">
                             {item.lotItems.length === 0 ? (
@@ -782,7 +787,7 @@ const SaleForm = ({
                             })}
                           </div>
                         )}
-                        {!isEdit && (
+                        {!showReadonlyLots && (
                           <button
                             type="button"
                             onClick={() => addLotRow(i)}

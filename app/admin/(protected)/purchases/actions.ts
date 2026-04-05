@@ -259,7 +259,7 @@ export async function updatePurchase(
   const existing = await db.purchase.findUnique({
     where: { id },
     include: {
-      items:          { select: { productId: true } },
+      items:          { select: { id: true, productId: true } },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
     },
   });
@@ -299,7 +299,15 @@ export async function updatePurchase(
 
   try {
     await dbTx(async (tx) => {
+      const oldItems = await tx.purchaseItem.findMany({
+        where: { purchaseId: id },
+        select: { id: true, productId: true },
+      });
+
       // 1. Reverse old stock effects
+      for (const item of oldItems) {
+        await reversePurchaseLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
       await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
       for (const productId of oldProductIds) {
@@ -364,6 +372,33 @@ export async function updatePurchase(
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         });
+
+        if (item.lotItems.length > 0) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { isLotControl: true, requireExpiryDate: true },
+          });
+          if (product?.isLotControl) {
+            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
+            if (lotErr) throw new Error(lotErr);
+
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: lot.unitCost / scale,
+              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+            }));
+
+            await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
+
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: purchaseItem.id, source: "PURCHASE" },
+              select: { id: true },
+            });
+            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
+          }
+        }
       }
     });
 

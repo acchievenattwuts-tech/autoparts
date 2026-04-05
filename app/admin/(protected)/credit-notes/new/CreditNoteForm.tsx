@@ -7,58 +7,65 @@ import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 
 interface CustomerOption {
-  id:   string;
+  id: string;
   name: string;
 }
 
 interface ProductOption {
-  id:           string;
-  code:         string;
-  name:         string;
+  id: string;
+  code: string;
+  name: string;
   description?: string | null;
-  salePrice:    number;
+  salePrice: number;
   saleUnitName: string;
+  isLotControl: boolean;
   categoryName: string;
-  brandName?:   string | null;
-  aliases?:     string[];
+  brandName?: string | null;
+  aliases?: string[];
   units: { name: string; scale: number; isBase: boolean }[];
 }
 
 interface SaleOption {
-  id:           string;
-  saleNo:       string;
+  id: string;
+  saleNo: string;
   customerName: string | null;
-  saleDate:     Date;
+  saleDate: Date;
+}
+
+interface CreditNoteLotRow extends LotSubRow {
+  isReturnLot: boolean;
 }
 
 interface LineItem {
   productId: string;
-  unitName:  string;
-  qty:       number;
+  unitName: string;
+  qty: number;
   salePrice: number;
+  lotItems: CreditNoteLotRow[];
 }
 
 interface InitialData {
-  id:             string;
-  cnDate:         string;
-  customerId:     string;
-  customerName:   string;
-  saleId:         string;
-  type:           "RETURN" | "DISCOUNT" | "OTHER";
+  id: string;
+  cnDate: string;
+  customerId: string;
+  customerName: string;
+  saleId: string;
+  type: "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "CREDIT_DEBT";
-  refundMethod:   "CASH" | "TRANSFER";
-  note:           string;
-  vatType:        string;
-  vatRate:        number;
-  items:          LineItem[];
+  refundMethod: "CASH" | "TRANSFER";
+  note: string;
+  vatType: string;
+  vatRate: number;
+  items: LineItem[];
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0 });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, lotItems: [] });
 
 const CreditNoteForm = ({
   products,
@@ -68,39 +75,40 @@ const CreditNoteForm = ({
   defaultVatRate,
   initialData,
 }: {
-  products:       ProductOption[];
-  customers:      CustomerOption[];
-  initialSales?:  SaleOption[];
+  products: ProductOption[];
+  customers: CustomerOption[];
+  initialSales?: SaleOption[];
   defaultVatType: string;
   defaultVatRate: number;
-  initialData?:   InitialData;
+  initialData?: InitialData;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
-  const [isPending, startTransition]    = useTransition();
-  const [error, setError]               = useState("");
-  const [success, setSuccess]           = useState("");
-
-  const [customerId, setCustomerId]     = useState(initialData?.customerId ?? "");
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
   const [customerName, setCustomerName] = useState(initialData?.customerName ?? "");
   const [filteredSales, setFilteredSales] = useState<SaleOption[]>(initialSales ?? []);
   const [loadingSales, setLoadingSales] = useState(false);
-
-  const [saleId, setSaleId]             = useState(initialData?.saleId ?? "");
-  const [items, setItems]               = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
-  const [cnType, setCnType]             = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
+  const [saleId, setSaleId] = useState(initialData?.saleId ?? "");
+  const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [cnType, setCnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
   const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
-  const [vatType, setVatType]           = useState<string>(initialData?.vatType ?? defaultVatType);
-  const [vatRate, setVatRate]           = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
   const handleCustomerChange = async (id: string) => {
     setCustomerId(id);
-    const customer = customers.find((c) => c.id === id);
+    const customer = customers.find((entry) => entry.id === id);
     setCustomerName(customer?.name ?? "");
     setSaleId("");
     setItems([emptyItem()]);
-    if (!id) { setFilteredSales([]); return; }
+    if (!id) {
+      setFilteredSales([]);
+      return;
+    }
     setLoadingSales(true);
     const sales = await getSalesForCustomer(id);
     setFilteredSales(sales);
@@ -114,31 +122,90 @@ const CreditNoteForm = ({
     if (!detail) return;
     setVatType(detail.vatType);
     setVatRate(detail.vatRate);
-    setItems(detail.items.map((item) => ({ ...item })));
+    setItems(detail.items.map((item) => ({ ...item, lotItems: [] })));
   };
 
-  const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
+  const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateItem = (i: number, field: keyof LineItem, value: string | number) => {
+  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
         if (field === "productId") {
-          const prod = products.find((p) => p.id === String(value));
-          updated.unitName  = prod?.saleUnitName ?? "";
-          updated.salePrice = prod?.salePrice ?? 0;
+          const product = products.find((entry) => entry.id === String(value));
+          updated.unitName = product?.saleUnitName ?? "";
+          updated.salePrice = product?.salePrice ?? 0;
+          updated.lotItems = product?.isLotControl
+            ? [{ lotNo: "", qty: updated.qty, unitCost: updated.salePrice, mfgDate: "", expDate: "", isReturnLot: false }]
+            : [];
+        }
+        if (field === "qty" && item.productId) {
+          const product = products.find((entry) => entry.id === item.productId);
+          if (product?.isLotControl && updated.lotItems.length === 1) {
+            updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+          }
         }
         return updated;
       })
     );
   };
 
-  const getUnits = (productId: string) =>
-    products.find((p) => p.id === productId)?.units ?? [];
+  const addLotRow = (itemIdx: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIdx
+          ? item
+          : {
+              ...item,
+              lotItems: [...item.lotItems, { lotNo: "", qty: 0, unitCost: item.salePrice, mfgDate: "", expDate: "", isReturnLot: false }],
+            }
+      )
+    );
+  };
 
-  const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
+  const removeLotRow = (itemIdx: number, lotIdx: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIdx
+          ? item
+          : { ...item, lotItems: item.lotItems.filter((_, index) => index !== lotIdx) }
+      )
+    );
+  };
+
+  const updateLotRow = (
+    itemIdx: number,
+    lotIdx: number,
+    field: keyof CreditNoteLotRow,
+    value: string | number | boolean
+  ) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        return {
+          ...item,
+          lotItems: item.lotItems.map((lot, index) => (index === lotIdx ? { ...lot, [field]: value } : lot)),
+        };
+      })
+    );
+  };
+
+  const getUnits = (productId: string) => products.find((p) => p.id === productId)?.units ?? [];
+
+  const validateCreditNoteLots = (item: LineItem): string | null => {
+    const rowsForQtyCheck = item.lotItems.map((lot) => ({
+      lotNo: lot.lotNo,
+      qty: lot.qty,
+      unitCost: lot.unitCost,
+      mfgDate: lot.mfgDate,
+      expDate: lot.expDate,
+    }));
+    return validateLotRows(rowsForQtyCheck, item.qty, false);
+  };
+
+  const totalAmount = items.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType as VatType, vatRate);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -146,11 +213,31 @@ const CreditNoteForm = ({
     setError("");
     setSuccess("");
 
-    if (!customerId) { setError("กรุณาเลือกลูกค้า"); return; }
+    if (!customerId) {
+      setError("กรุณาเลือกลูกค้า");
+      return;
+    }
     for (const item of items) {
-      if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
-      if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
-      if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+      if (!item.productId) {
+        setError("กรุณาเลือกสินค้าทุกรายการ");
+        return;
+      }
+      if (!item.unitName) {
+        setError("กรุณาเลือกหน่วยนับทุกรายการ");
+        return;
+      }
+      if (item.qty <= 0) {
+        setError("จำนวนต้องมากกว่า 0");
+        return;
+      }
+      const product = products.find((entry) => entry.id === item.productId);
+      if (cnType === "RETURN" && product?.isLotControl) {
+        const lotErr = validateCreditNoteLots(item);
+        if (lotErr) {
+          setError(lotErr);
+          return;
+        }
+      }
     }
 
     const form = e.currentTarget;
@@ -180,16 +267,13 @@ const CreditNoteForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Header card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
           ข้อมูลใบลดหนี้ (Credit Note)
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className={labelCls}>
-              วันที่ CN <span className="text-red-500">*</span>
-            </label>
+            <label className={labelCls}>วันที่ CN <span className="text-red-500">*</span></label>
             <input
               type="date"
               name="cnDate"
@@ -198,31 +282,27 @@ const CreditNoteForm = ({
               className={inputCls}
             />
           </div>
-
-          {/* Customer — must select first */}
           <div>
-            <label className={labelCls}>
-              ลูกค้า <span className="text-red-500">*</span>
-            </label>
+            <label className={labelCls}>ลูกค้า <span className="text-red-500">*</span></label>
             <SearchableSelect
-              options={customers.map((c): SelectOption => ({ id: c.id, label: c.name }))}
+              options={customers.map((customer): SelectOption => ({ id: customer.id, label: customer.name }))}
               value={customerId}
               onChange={handleCustomerChange}
               placeholder="โปรดระบุลูกค้า"
             />
           </div>
-
-          {/* Sale reference — filtered by selected customer */}
           <div>
             <label className={labelCls}>อ้างอิงใบขาย</label>
             <SearchableSelect
               options={[
                 { id: "", label: "-- ไม่อ้างอิง --" },
-                ...filteredSales.map((s): SelectOption => ({
-                  id: s.id,
-                  label: s.saleNo,
-                  sublabel: new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                    day: "2-digit", month: "2-digit", year: "numeric",
+                ...filteredSales.map((sale): SelectOption => ({
+                  id: sale.id,
+                  label: sale.saleNo,
+                  sublabel: new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
                   }),
                 })),
               ]}
@@ -233,7 +313,6 @@ const CreditNoteForm = ({
             />
             <input type="hidden" name="saleId" value={saleId} />
           </div>
-
           <div>
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />
@@ -243,9 +322,7 @@ const CreditNoteForm = ({
                 type="button"
                 onClick={() => setSettlementType("CASH_REFUND")}
                 className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  settlementType === "CASH_REFUND"
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                  settlementType === "CASH_REFUND" ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 คืนเป็นเงินสด
@@ -254,9 +331,7 @@ const CreditNoteForm = ({
                 type="button"
                 onClick={() => setSettlementType("CREDIT_DEBT")}
                 className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
-                  settlementType === "CREDIT_DEBT"
-                    ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                  settlementType === "CREDIT_DEBT" ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 ตั้งหนี้
@@ -267,27 +342,25 @@ const CreditNoteForm = ({
             <div>
               <label className={labelCls}>ช่องทางการคืนเงิน <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
-                {(["CASH", "TRANSFER"] as const).map((m) => (
+                {(["CASH", "TRANSFER"] as const).map((method) => (
                   <button
-                    key={m}
+                    key={method}
                     type="button"
-                    onClick={() => setRefundMethod(m)}
+                    onClick={() => setRefundMethod(method)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      refundMethod === m
+                      refundMethod === method
                         ? "bg-emerald-600 text-white border-emerald-600"
                         : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                     }`}
                   >
-                    {m === "CASH" ? "เงินสด" : "โอนเงิน"}
+                    {method === "CASH" ? "เงินสด" : "โอนเงิน"}
                   </button>
                 ))}
               </div>
             </div>
           )}
           <div>
-            <label className={labelCls}>
-              ประเภท CN <span className="text-red-500">*</span>
-            </label>
+            <label className={labelCls}>ประเภท CN <span className="text-red-500">*</span></label>
             <select
               name="type"
               value={cnType}
@@ -295,7 +368,7 @@ const CreditNoteForm = ({
               className={`${inputCls} bg-white`}
             >
               <option value="RETURN">รับคืนสินค้า</option>
-              <option value="DISCOUNT">ส่วนราคา / ส่วนลด</option>
+              <option value="DISCOUNT">ส่วนลดราคา</option>
               <option value="OTHER">อื่นๆ</option>
             </select>
           </div>
@@ -310,23 +383,21 @@ const CreditNoteForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
-
-          {/* VAT Settings */}
           <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
             <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
-              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
+              {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
-                  key={t}
+                  key={value}
                   type="button"
-                  onClick={() => setVatType(t)}
+                  onClick={() => setVatType(value)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                    vatType === t
+                    vatType === value
                       ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
                   }`}
                 >
-                  {VAT_TYPE_LABELS[t]}
+                  {VAT_TYPE_LABELS[value]}
                 </button>
               ))}
               {vatType !== "NO_VAT" && (
@@ -336,7 +407,9 @@ const CreditNoteForm = ({
                     type="number"
                     value={vatRate}
                     onChange={(e) => setVatRate(Number(e.target.value))}
-                    min={0} max={100} step={0.01}
+                    min={0}
+                    max={100}
+                    step={0.01}
                     className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
                   />
                   <span className="text-sm text-gray-500">%</span>
@@ -346,21 +419,19 @@ const CreditNoteForm = ({
           </div>
         </div>
 
-        {/* Type info box */}
         {cnType === "RETURN" ? (
           <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>รับคืนสินค้าเข้าสต็อก — ระบบจะบันทึกการรับสินค้าคืนเข้าคลังโดยอัตโนมัติ</span>
+            <span>รับคืนสินค้าเข้าสโต๊ก และถ้าเป็นสินค้า Lot Control ต้องระบุ Lot ของสินค้าที่รับคืนด้วย</span>
           </div>
         ) : (
           <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>ไม่กระทบสต็อก — ใช้สำหรับออกใบลดหนี้ประเภทส่วนลดราคาหรืออื่นๆ เท่านั้น</span>
+            <span>ไม่กระทบสต็อก เหมาะสำหรับส่วนลดราคาและรายการอื่น ๆ ที่ไม่รับสินค้าคืน</span>
           </div>
         )}
       </div>
 
-      {/* Line items */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
           <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้า</h2>
@@ -388,68 +459,146 @@ const CreditNoteForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
+                const product = products.find((entry) => entry.id === item.productId);
+                const showLots = cnType === "RETURN" && !!product?.isLotControl;
+
                 return (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="py-2 px-2">
-                      <ProductSearchSelect
-                        products={products}
-                        value={item.productId}
-                        onChange={(id) => updateItem(i, "productId", id)}
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <select
-                        value={item.unitName}
-                        onChange={(e) => updateItem(i, "unitName", e.target.value)}
-                        disabled={!item.productId}
-                        className={`${inputCls} bg-white`}
-                      >
-                        <option value="">-- โปรดระบุ --</option>
-                        {units.map((u) => (
-                          <option key={u.name} value={u.name}>
-                            {u.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="number"
-                        value={item.qty}
-                        min={0.0001}
-                        step={0.0001}
-                        onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
-                        className={inputCls}
-                      />
-                    </td>
-                    <td className="py-2 px-2">
-                      <input
-                        type="number"
-                        value={item.salePrice}
-                        min={0}
-                        step={0.01}
-                        onChange={(e) => updateItem(i, "salePrice", Number(e.target.value))}
-                        className={inputCls}
-                        placeholder="0.00"
-                      />
-                    </td>
-                    <td className="py-2 px-2 text-right font-medium text-gray-700">
-                      {(item.qty * item.salePrice).toLocaleString("th-TH", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="py-2 px-2">
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeItem(i)}
-                          className="text-red-400 hover:text-red-600 transition-colors"
+                  <>
+                    <tr key={`item-${i}`} className="border-b border-gray-50">
+                      <td className="py-2 px-2">
+                        <ProductSearchSelect
+                          products={products}
+                          value={item.productId}
+                          onChange={(id) => updateItem(i, "productId", id)}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={item.unitName}
+                          onChange={(e) => updateItem(i, "unitName", e.target.value)}
+                          disabled={!item.productId}
+                          className={`${inputCls} bg-white`}
                         >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                          <option value="">-- โปรดระบุ --</option>
+                          {units.map((unit) => (
+                            <option key={unit.name} value={unit.name}>
+                              {unit.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          value={item.qty}
+                          min={0.0001}
+                          step={0.0001}
+                          onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                          className={inputCls}
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          value={item.salePrice}
+                          min={0}
+                          step={0.01}
+                          onChange={(e) => updateItem(i, "salePrice", Number(e.target.value))}
+                          className={inputCls}
+                          placeholder="0.00"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                        {(item.qty * item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2 px-2">
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(i)}
+                            className="text-red-400 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {showLots && (
+                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50">
+                        <td colSpan={6} className="px-3 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-medium text-amber-800">Lot Control</div>
+                            <button
+                              type="button"
+                              onClick={() => addLotRow(i)}
+                              className="text-xs text-amber-700 hover:text-amber-900"
+                            >
+                              เพิ่ม Lot
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {item.lotItems.map((lot, lotIdx) => (
+                              <div key={`${i}-${lotIdx}`} className="grid grid-cols-1 md:grid-cols-[2fr_110px_120px_120px_130px_130px_40px_32px] gap-2 items-center">
+                                <input
+                                  type="text"
+                                  value={lot.lotNo}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "lotNo", e.target.value)}
+                                  className={inputCls}
+                                  placeholder="Lot No"
+                                />
+                                <label className="flex items-center gap-2 text-xs text-gray-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={lot.isReturnLot}
+                                    onChange={(e) => updateLotRow(i, lotIdx, "isReturnLot", e.target.checked)}
+                                  />
+                                  Return Lot
+                                </label>
+                                <input
+                                  type="number"
+                                  value={lot.qty}
+                                  min={0.0001}
+                                  step={0.0001}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "qty", Number(e.target.value))}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="number"
+                                  value={lot.unitCost}
+                                  min={0}
+                                  step={0.01}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "unitCost", Number(e.target.value))}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="date"
+                                  value={lot.mfgDate}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "mfgDate", e.target.value)}
+                                  className={inputCls}
+                                />
+                                <input
+                                  type="date"
+                                  value={lot.expDate}
+                                  onChange={(e) => updateLotRow(i, lotIdx, "expDate", e.target.value)}
+                                  className={inputCls}
+                                />
+                                <div className="text-[11px] text-gray-500">
+                                  {lot.isReturnLot ? "จะบันทึกเป็น RET-lot" : "จะ merge กลับ lot เดิม"}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeLotRow(i, lotIdx)}
+                                  className="text-red-400 hover:text-red-600 transition-colors"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
@@ -464,18 +613,14 @@ const CreditNoteForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
-                      ยอดก่อนภาษี
-                    </td>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ยอดก่อนภาษี</td>
                     <td className="py-1 px-2 text-right text-gray-700">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
-                      VAT {vatRate}%
-                    </td>
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">VAT {vatRate}%</td>
                     <td className="py-1 px-2 text-right text-gray-700">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
@@ -484,9 +629,7 @@ const CreditNoteForm = ({
                 </>
               )}
               <tr className="border-t border-gray-200">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-medium text-gray-600">
-                  ยอดรวม CN
-                </td>
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-medium text-gray-600">ยอดรวม CN</td>
                 <td className="py-3 px-2 text-right font-bold text-gray-900">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
@@ -515,19 +658,7 @@ const CreditNoteForm = ({
           disabled={isPending}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isPending ? (
-            <span className="inline-flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-              กำลังบันทึก...
-            </span>
-          ) : isEdit ? (
-            "บันทึกการแก้ไข"
-          ) : (
-            "บันทึก Credit Note"
-          )}
+          {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึก Credit Note"}
         </button>
       </div>
     </form>

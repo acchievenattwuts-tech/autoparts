@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import SaleForm from "../../new/SaleForm";
+import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
@@ -55,16 +56,35 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   const lotKeys = sale.items.flatMap((item) =>
     item.lotItems.map((lot) => ({ productId: item.productId, lotNo: lot.lotNo }))
   );
+  const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const productLotExpMap: Record<string, string> = {};
+  const productLotMetaMap: Record<string, { expDate: string; mfgDate: string; unitCost: number }> = {};
   if (lotKeys.length > 0) {
     const productLots = await db.productLot.findMany({
       where: { OR: lotKeys },
-      select: { productId: true, lotNo: true, expDate: true },
+      select: { productId: true, lotNo: true, expDate: true, mfgDate: true, unitCost: true },
     });
     for (const pl of productLots) {
       productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? pl.expDate.toISOString().slice(0, 10) : "";
+      productLotMetaMap[`${pl.productId}:${pl.lotNo}`] = {
+        expDate: pl.expDate ? pl.expDate.toISOString().slice(0, 10) : "",
+        mfgDate: pl.mfgDate ? pl.mfgDate.toISOString().slice(0, 10) : "",
+        unitCost: Number(pl.unitCost),
+      };
     }
   }
+
+  const lotBalanceRows = saleProductIds.length
+    ? await db.lotBalance.findMany({
+        where: {
+          OR: [
+            { productId: { in: saleProductIds }, qtyOnHand: { gt: 0 } },
+            ...(lotKeys.length > 0 ? lotKeys : []),
+          ],
+        },
+        select: { productId: true, lotNo: true, qtyOnHand: true },
+      })
+    : [];
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
@@ -98,6 +118,40 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         expDate:  productLotExpMap[`${item.productId}:${lot.lotNo}`] ?? "",
       })),
     };
+  });
+
+  const initialAvailableLots: Record<number, LotAvailableJSON[]> = {};
+  sale.items.forEach((item, itemIndex) => {
+    const optionMap = new Map<string, LotAvailableJSON>();
+
+    lotBalanceRows
+      .filter((balance) => balance.productId === item.productId)
+      .forEach((balance) => {
+        const meta = productLotMetaMap[`${balance.productId}:${balance.lotNo}`];
+        optionMap.set(balance.lotNo, {
+          lotNo: balance.lotNo,
+          qtyOnHand: Number(balance.qtyOnHand),
+          unitCost: meta?.unitCost ?? 0,
+          expDate: meta?.expDate || null,
+          mfgDate: meta?.mfgDate || null,
+        });
+      });
+
+    item.lotItems.forEach((lot) => {
+      const existingOption = optionMap.get(lot.lotNo);
+      const meta = productLotMetaMap[`${item.productId}:${lot.lotNo}`];
+      optionMap.set(lot.lotNo, {
+        lotNo: lot.lotNo,
+        qtyOnHand: (existingOption?.qtyOnHand ?? 0) + Number(lot.qty),
+        unitCost: existingOption?.unitCost ?? meta?.unitCost ?? Number(lot.unitCost),
+        expDate: existingOption?.expDate ?? meta?.expDate ?? null,
+        mfgDate: existingOption?.mfgDate ?? meta?.mfgDate ?? null,
+      });
+    });
+
+    initialAvailableLots[itemIndex] = Array.from(optionMap.values()).sort((left, right) =>
+      left.lotNo.localeCompare(right.lotNo),
+    );
   });
 
   const initialData = {
@@ -138,6 +192,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}
+        editableLotOnEdit
+        initialAvailableLots={initialAvailableLots}
       />
     </div>
   );

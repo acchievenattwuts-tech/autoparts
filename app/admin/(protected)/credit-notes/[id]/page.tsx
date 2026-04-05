@@ -38,6 +38,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
       items: {
         include: {
           product: { select: { code: true, name: true } },
+          lotItems: { select: { lotNo: true, qty: true, isReturnLot: true } },
         },
       },
     },
@@ -147,7 +148,14 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
               {cn.items.map((item) => (
                 <tr key={item.id} className="border-t border-gray-50">
                   <td className="py-2 px-3 font-mono text-xs text-gray-500">{item.product?.code ?? "-"}</td>
-                  <td className="py-2 px-3 text-gray-800">{item.product?.name ?? "-"}</td>
+                  <td className="py-2 px-3 text-gray-800">
+                    <div>{item.product?.name ?? "-"}</div>
+                    {item.lotItems.length > 0 && (
+                      <div className="mt-1 text-xs text-amber-700">
+                        Lot: {item.lotItems.map((lot) => `${lot.lotNo}${lot.isReturnLot ? " [RET]" : ""} (${Number(lot.qty)})`).join(", ")}
+                      </div>
+                    )}
+                  </td>
                   <td className="py-2 px-3 text-right text-gray-700">{Number(item.qty)}</td>
                   <td className="py-2 px-3 text-right text-gray-700">
                     {Number(item.unitPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

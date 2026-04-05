@@ -56,15 +56,18 @@ const PurchaseForm = ({
   defaultVatType,
   defaultVatRate,
   initialData,
+  editableLotOnEdit = false,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
+  editableLotOnEdit?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
+  const showReadonlyLots = isEdit && !editableLotOnEdit;
   const [isPending, startTransition] = useTransition();
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
@@ -348,7 +351,7 @@ const PurchaseForm = ({
                     {isLot && (
                       <tr key={`lot-${i}`} className="bg-amber-50/60">
                         <td colSpan={6} className="px-4 pb-3 pt-1">
-                          {isEdit ? (
+                          {showReadonlyLots ? (
                             /* Read-only lot display in edit mode */
                             <div className="flex flex-wrap gap-2">
                               {item.lotItems.length === 0 ? (

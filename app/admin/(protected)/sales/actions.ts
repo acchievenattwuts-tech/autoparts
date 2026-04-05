@@ -50,6 +50,37 @@ const saleSchema = z.object({
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+async function assertLotBalanceAvailable(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  productId: string,
+  lots: { lotNo: string; qtyInBase: number }[],
+): Promise<void> {
+  const lotNos = [...new Set(lots.map((lot) => lot.lotNo))];
+  if (lotNos.length === 0) return;
+
+  const balances = await tx.lotBalance.findMany({
+    where: {
+      productId,
+      lotNo: { in: lotNos },
+    },
+    select: {
+      lotNo: true,
+      qtyOnHand: true,
+    },
+  });
+
+  const balanceMap = new Map(
+    balances.map((balance) => [balance.lotNo, Number(balance.qtyOnHand)]),
+  );
+
+  for (const lot of lots) {
+    const qtyOnHand = balanceMap.get(lot.lotNo) ?? 0;
+    if (qtyOnHand + 0.0001 < lot.qtyInBase) {
+      throw new Error(`Lot ${lot.lotNo} à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­à¹„à¸¡à¹ˆà¸žà¸­`);
+    }
+  }
+}
+
 export async function createSale(
   formData: FormData
 ): Promise<{ success?: boolean; saleNo?: string; error?: string }> {
@@ -233,6 +264,7 @@ export async function createSale(
               expDate:      null as Date | null,
             }));
 
+            await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
             await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
 
             const sc = await tx.stockCard.findFirst({
@@ -344,7 +376,7 @@ export async function updateSale(
   const existing = await db.sale.findUnique({
     where: { id },
     include: {
-      items:       { select: { productId: true } },
+      items:       { select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
     },
@@ -399,6 +431,13 @@ export async function updateSale(
   try {
     await dbTx(async (tx) => {
       // 1. Reverse old stock + warranties (warranty ต้องลบก่อน saleItem เพราะมี FK)
+      const oldItems = await tx.saleItem.findMany({
+        where: { saleId: id },
+        select: { id: true, productId: true },
+      });
+      for (const item of oldItems) {
+        await reverseSaleLotBalance(tx, item.id, item.productId);
+      }
       await tx.stockCard.deleteMany({ where: { docNo: existing.saleNo } });
       await tx.warranty.deleteMany({ where: { saleId: id } });
       await tx.saleItem.deleteMany({ where: { saleId: id } });
@@ -475,6 +514,34 @@ export async function updateSale(
           detail:      `ขาย ${item.qty} ${item.unitName}`,
           referenceId: saleItem.id,
         });
+
+        if (item.lotItems.length > 0) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { isLotControl: true },
+          });
+          if (product?.isLotControl) {
+            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
+            if (lotErr) throw new Error(lotErr);
+
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: costPerBase,
+              mfgDate:      null as Date | null,
+              expDate:      null as Date | null,
+            }));
+
+            await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
+            await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
+
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: saleItem.id, source: "SALE" },
+              select: { id: true },
+            });
+            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+          }
+        }
       }
 
       // 4. Recalculate amountRemain after updating netAmount

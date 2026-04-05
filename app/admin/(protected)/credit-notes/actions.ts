@@ -9,13 +9,23 @@ import { generateCNNo } from "@/lib/doc-number";
 import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
-import { reverseCreditNoteLotBalance } from "@/lib/lot-control";
+import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
+
+const lotSubRowSchema = z.object({
+  lotNo:       z.string().min(1).max(100),
+  qty:         z.coerce.number().positive(),
+  unitCost:    z.coerce.number().min(0),
+  mfgDate:     z.string().default(""),
+  expDate:     z.string().default(""),
+  isReturnLot: z.coerce.boolean().default(false),
+});
 
 const cnItemSchema = z.object({
   productId: z.string().min(1).max(50),
   unitName:  z.string().min(1).max(20),
   qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   salePrice: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+  lotItems:  z.array(lotSubRowSchema).default([]),
 });
 
 const cnSchema = z.object({
@@ -104,9 +114,17 @@ export async function createCreditNote(
         const qtyInBase = item.qty * scale;
         const itemTotal = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { isLotControl: true },
+        });
+        if (type === CreditNoteType.RETURN && product?.isLotControl) {
+          const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
+          if (lotErr) throw new Error(lotErr);
+        }
 
         // Create CreditNoteItem (real DB field names: creditNoteId, qty, unitPrice, amount)
-        await tx.creditNoteItem.create({
+        const cnItem = await tx.creditNoteItem.create({
           data: {
             creditNoteId:  cn.id,
             productId:     item.productId,
@@ -128,8 +146,34 @@ export async function createCreditNote(
             qtyOut:      0,
             priceIn:     0,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
-            referenceId: cn.id,
+            referenceId: cnItem.id,
           });
+
+          if (product?.isLotControl && item.lotItems.length > 0) {
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: lot.unitCost / scale,
+              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              isReturnLot:  lot.isReturnLot,
+            }));
+
+            await writeCreditNoteLots(tx, cnItem.id, item.productId, lotsInBase);
+
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: cnItem.id, source: "RETURN_IN" },
+              select: { id: true },
+            });
+            if (sc) {
+              await writeStockMovementLots(
+                tx,
+                sc.id,
+                lotsInBase.map(({ isReturnLot, ...lot }) => lot),
+                "in"
+              );
+            }
+          }
         }
       }
 
@@ -239,7 +283,7 @@ export async function updateCreditNote(
 
   const existing = await db.creditNote.findUnique({
     where: { id },
-    include: { items: { select: { productId: true } } },
+    include: { items: { select: { id: true, productId: true } } },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
@@ -292,6 +336,11 @@ export async function updateCreditNote(
     await dbTx(async (tx) => {
       // 1. Reverse old stock effects (only if old type was RETURN)
       if (existing.type === "RETURN" && oldProductIds.length > 0) {
+        for (const item of existing.items) {
+          if (item.productId) {
+            await reverseCreditNoteLotBalance(tx, item.id, item.productId);
+          }
+        }
         await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
         for (const productId of oldProductIds) {
           await recalculateStockCard(tx, productId);
@@ -332,8 +381,16 @@ export async function updateCreditNote(
         const qtyInBase = item.qty * scale;
         const itemTotal = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { isLotControl: true },
+        });
+        if (type === CreditNoteType.RETURN && product?.isLotControl) {
+          const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
+          if (lotErr) throw new Error(lotErr);
+        }
 
-        await tx.creditNoteItem.create({
+        const cnItem = await tx.creditNoteItem.create({
           data: {
             creditNoteId:   id,
             productId:      item.productId,
@@ -354,8 +411,34 @@ export async function updateCreditNote(
             qtyOut:      0,
             priceIn:     0,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
-            referenceId: id,
+            referenceId: cnItem.id,
           });
+
+          if (product?.isLotControl && item.lotItems.length > 0) {
+            const lotsInBase = item.lotItems.map((lot) => ({
+              lotNo:        lot.lotNo.trim(),
+              qtyInBase:    lot.qty * scale,
+              unitCostBase: lot.unitCost / scale,
+              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              isReturnLot:  lot.isReturnLot,
+            }));
+
+            await writeCreditNoteLots(tx, cnItem.id, item.productId, lotsInBase);
+
+            const sc = await tx.stockCard.findFirst({
+              where: { referenceId: cnItem.id, source: "RETURN_IN" },
+              select: { id: true },
+            });
+            if (sc) {
+              await writeStockMovementLots(
+                tx,
+                sc.id,
+                lotsInBase.map(({ isReturnLot, ...lot }) => lot),
+                "in"
+              );
+            }
+          }
         }
       }
 
