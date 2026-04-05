@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generatePurchaseNo } from "@/lib/doc-number";
-import { VatType } from "@/lib/generated/prisma";
+import { PaymentMethod, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -31,6 +31,7 @@ const purchaseItemSchema = z.object({
 const purchaseSchema = z.object({
   supplierId:   z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
   purchaseDate: z.string().min(1),
+  paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.TRANSFER),
   discount:     z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),
   referenceNo:  z.string().max(100).optional(),
@@ -54,6 +55,7 @@ export async function createPurchase(
   const parsed = purchaseSchema.safeParse({
     supplierId:   formData.get("supplierId") || undefined,
     purchaseDate: formData.get("purchaseDate"),
+    paymentMethod: (formData.get("paymentMethod") as PaymentMethod) || PaymentMethod.TRANSFER,
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
@@ -63,7 +65,7 @@ export async function createPurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, paymentMethod, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
@@ -91,6 +93,7 @@ export async function createPurchase(
           vatAmount,
           referenceNo:   referenceNo ?? null,
           purchaseDate:  new Date(purchaseDate),
+          paymentMethod,
         },
       });
 
@@ -280,6 +283,7 @@ export async function updatePurchase(
   const parsed = purchaseSchema.safeParse({
     supplierId:   formData.get("supplierId") || undefined,
     purchaseDate: formData.get("purchaseDate"),
+    paymentMethod: (formData.get("paymentMethod") as PaymentMethod) || PaymentMethod.TRANSFER,
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
@@ -289,7 +293,7 @@ export async function updatePurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, paymentMethod, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
@@ -330,6 +334,7 @@ export async function updatePurchase(
           vatAmount,
           netAmount,
           amountRemain:  new Prisma.Decimal(netAmount),
+          paymentMethod,
         },
       });
 

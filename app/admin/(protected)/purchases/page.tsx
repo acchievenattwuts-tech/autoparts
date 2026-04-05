@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye, Pencil } from "lucide-react";
+import { PaymentMethod } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
@@ -12,6 +13,11 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
+const paymentMethodLabel: Record<PaymentMethod, string> = {
+  CASH: "เงินสด",
+  TRANSFER: "โอนเงิน",
+  CREDIT: "เครดิต",
+};
 
 const PurchasesPage = async ({
   searchParams,
@@ -99,6 +105,7 @@ const PurchasesPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">ชำระเงิน</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">จำนวนรายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
@@ -108,7 +115,7 @@ const PurchasesPage = async ({
             <tbody>
               {purchases.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-gray-400">
+                  <td colSpan={9} className="text-center py-12 text-gray-400">
                     {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบซื้อ"}
                   </td>
                 </tr>
@@ -124,6 +131,7 @@ const PurchasesPage = async ({
                       {new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
+                    <td className="py-3 px-4 text-gray-600">{paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">
                       {Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

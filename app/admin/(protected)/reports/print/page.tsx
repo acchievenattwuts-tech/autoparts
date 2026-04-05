@@ -1,19 +1,30 @@
 export const dynamic = "force-dynamic";
 
 import BrowserPrintButton from "@/components/shared/BrowserPrintButton";
-import { getReportsData, parseReportRange } from "@/lib/reports";
+import { getReportsData, parseReportFilters } from "@/lib/reports";
 import { requirePermission } from "@/lib/require-auth";
 import ReportsContent from "../ReportsContent";
 
 interface ReportsPrintPageProps {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    customerCodeFrom?: string;
+    customerCodeTo?: string;
+    supplierCodeFrom?: string;
+    supplierCodeTo?: string;
+    productCodeFrom?: string;
+    productCodeTo?: string;
+    expenseCodeFrom?: string;
+    expenseCodeTo?: string;
+  }>;
 }
 
 const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
   await requirePermission("reports.view");
-  const { from, to } = await searchParams;
-  const range = parseReportRange({ from, to });
-  const data = await getReportsData(range);
+  const params = await searchParams;
+  const filters = parseReportFilters(params);
+  const data = await getReportsData(filters);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 bg-white p-4 print:p-0">
@@ -21,7 +32,7 @@ const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
         <div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงานสำหรับพิมพ์ / PDF</h1>
           <p className="text-sm text-gray-500">
-            ช่วงวันที่ {range.fromInput} ถึง {range.toInput}
+            ช่วงวันที่ {filters.fromInput} ถึง {filters.toInput}
           </p>
         </div>
         <BrowserPrintButton />
@@ -30,7 +41,7 @@ const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
       <div className="hidden print:block">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงานสรุปกิจการ</h1>
         <p className="text-sm text-gray-600">
-          ช่วงวันที่ {range.fromInput} ถึง {range.toInput}
+          ช่วงวันที่ {filters.fromInput} ถึง {filters.toInput}
         </p>
       </div>
 

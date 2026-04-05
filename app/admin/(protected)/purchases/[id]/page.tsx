@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { PaymentMethod } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -33,6 +34,11 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     NO_VAT:        "ไม่มี VAT",
     EXCLUDING_VAT: "แยก VAT",
     INCLUDING_VAT:  "รวม VAT แล้ว",
+  };
+  const paymentMethodLabel: Record<PaymentMethod, string> = {
+    CASH: "เงินสด",
+    TRANSFER: "โอนเงิน",
+    CREDIT: "เครดิต",
   };
 
   return (
@@ -90,6 +96,10 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <div>
             <p className="text-gray-500 mb-0.5">ภาษี</p>
             <p className="font-medium text-gray-900">{vatLabel[purchase.vatType] ?? purchase.vatType}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 mb-0.5">ช่องทางชำระเงิน</p>
+            <p className="font-medium text-gray-900">{paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod}</p>
           </div>
           <div>
             <p className="text-gray-500 mb-0.5">ผู้บันทึก</p>

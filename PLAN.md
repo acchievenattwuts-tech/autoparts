@@ -1064,13 +1064,21 @@ for (const lot of claimLots) {
 ---
 
 ### ✅ Phase 6 — Report (เสร็จแล้ว)
-- [x] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน)
+- [x] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน) พร้อม Net sale = ขาย - คืนขาย
 - [x] Report กำไร-ขาดทุน (รวม VAT breakdown)
 - [x] Report stock คงเหลือ + สินค้าต่ำกว่า minStock
 - [x] Report ประกันที่กำลังจะหมด
+- [x] Report ลูกหนี้ค้างชำระ (A/R aging + COD pending)
+- [x] Report ซื้อแยกซัพพลายเออร์
+- [x] Report ขายแยกลูกค้า
+- [x] Report ค่าใช้จ่าย (summary by expense code + detail rows)
+- [x] Report รับเงินประจำวัน (ขายสด + ใบเสร็จรับเงิน พร้อมช่องทางชำระ)
+- [x] Report จ่ายเงินประจำวัน (ซื้อสินค้า + ค่าใช้จ่าย)
+- [x] Filter รายงานตามช่วงวันที่ + code range ที่สอดคล้องกับแต่ละโมดูล
+- [x] หน้าใบซื้อสินค้าเพิ่มช่องทางชำระเงิน เงินสด / โอนเงิน โดย default = โอนเงิน
 - [x] Export Excel-compatible CSV / PDF print page
 
-**Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
+**Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, ลูกหนี้ค้างชำระแบบ aging, COD pending, สรุปซื้อแยกซัพพลายเออร์, สรุปขายแยกลูกค้า, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
 
 ### 🟡 Phase 7 — SEO + AEO + AIO + Core Web Vitals (กำลังทำ)
 

@@ -81,6 +81,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     id,
     purchaseDate: purchase.purchaseDate.toISOString().slice(0, 10),
     supplierId:   purchase.supplierId ?? "",
+    paymentMethod: purchase.paymentMethod,
     referenceNo:  purchase.referenceNo ?? "",
     discount:     Number(purchase.discount),
     note:         purchase.note ?? "",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import { PaymentMethod } from "@/lib/generated/prisma";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
@@ -39,6 +40,7 @@ interface InitialData {
   id:           string;
   purchaseDate: string;
   supplierId:   string;
+  paymentMethod: PaymentMethod;
   referenceNo:  string;
   discount:     number;
   note:         string;
@@ -49,6 +51,10 @@ interface InitialData {
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+const paymentMethodOptions: Array<{ value: PaymentMethod; label: string }> = [
+  { value: PaymentMethod.TRANSFER, label: "โอนเงิน" },
+  { value: PaymentMethod.CASH, label: "เงินสด" },
+];
 
 const PurchaseForm = ({
   products,
@@ -72,6 +78,7 @@ const PurchaseForm = ({
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod ?? PaymentMethod.TRANSFER);
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
@@ -151,6 +158,7 @@ const PurchaseForm = ({
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
     formData.set("supplierId", supplierId);
+    formData.set("paymentMethod", paymentMethod);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -217,6 +225,21 @@ const PurchaseForm = ({
               className={inputCls}
               placeholder="เช่น เลขที่ใบกำกับซัพพลายเออร์"
             />
+          </div>
+          <div>
+            <label className={labelCls}>ช่องทางชำระเงิน</label>
+            <select
+              name="paymentMethod"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+              className={`${inputCls} bg-white`}
+            >
+              {paymentMethodOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>

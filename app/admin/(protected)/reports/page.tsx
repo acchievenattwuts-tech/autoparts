@@ -3,23 +3,31 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { BarChart3, Download, FileSpreadsheet } from "lucide-react";
 import BrowserPrintButton from "@/components/shared/BrowserPrintButton";
-import { getReportsData, parseReportRange } from "@/lib/reports";
+import { buildReportQuery, getReportsData, parseReportFilters } from "@/lib/reports";
 import { requirePermission } from "@/lib/require-auth";
 import ReportsContent from "./ReportsContent";
 
 interface ReportsPageProps {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    customerCodeFrom?: string;
+    customerCodeTo?: string;
+    supplierCodeFrom?: string;
+    supplierCodeTo?: string;
+    productCodeFrom?: string;
+    productCodeTo?: string;
+    expenseCodeFrom?: string;
+    expenseCodeTo?: string;
+  }>;
 }
 
 const ReportsPage = async ({ searchParams }: ReportsPageProps) => {
   await requirePermission("reports.view");
-  const { from, to } = await searchParams;
-  const range = parseReportRange({ from, to });
-  const data = await getReportsData(range);
-  const query = new URLSearchParams({
-    from: range.fromInput,
-    to: range.toInput,
-  }).toString();
+  const params = await searchParams;
+  const filters = parseReportFilters(params);
+  const data = await getReportsData(filters);
+  const query = buildReportQuery(filters);
 
   return (
     <div className="space-y-6">
@@ -58,7 +66,7 @@ const ReportsPage = async ({ searchParams }: ReportsPageProps) => {
               <input
                 type="date"
                 name="from"
-                defaultValue={range.fromInput}
+                defaultValue={filters.fromInput}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
               />
             </label>
@@ -67,11 +75,83 @@ const ReportsPage = async ({ searchParams }: ReportsPageProps) => {
               <input
                 type="date"
                 name="to"
-                defaultValue={range.toInput}
+                defaultValue={filters.toInput}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
               />
             </label>
           </div>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">ลูกค้า From</span>
+            <input
+              type="text"
+              name="customerCodeFrom"
+              defaultValue={filters.customerCodeFrom}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">ลูกค้า To</span>
+            <input
+              type="text"
+              name="customerCodeTo"
+              defaultValue={filters.customerCodeTo}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">ซัพพลายเออร์ From</span>
+            <input
+              type="text"
+              name="supplierCodeFrom"
+              defaultValue={filters.supplierCodeFrom}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">ซัพพลายเออร์ To</span>
+            <input
+              type="text"
+              name="supplierCodeTo"
+              defaultValue={filters.supplierCodeTo}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">รหัสสินค้า From</span>
+            <input
+              type="text"
+              name="productCodeFrom"
+              defaultValue={filters.productCodeFrom}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">รหัสสินค้า To</span>
+            <input
+              type="text"
+              name="productCodeTo"
+              defaultValue={filters.productCodeTo}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">รหัสค่าใช้จ่าย From</span>
+            <input
+              type="text"
+              name="expenseCodeFrom"
+              defaultValue={filters.expenseCodeFrom}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
+          <label className="text-sm text-gray-600">
+            <span className="mb-1 block">รหัสค่าใช้จ่าย To</span>
+            <input
+              type="text"
+              name="expenseCodeTo"
+              defaultValue={filters.expenseCodeTo}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+            />
+          </label>
           <button
             type="submit"
             className="inline-flex items-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
