@@ -1063,12 +1063,14 @@ for (const lot of claimLots) {
 
 ---
 
-### 🔲 Phase 6 — Report (ยังไม่ได้ทำ)
-- [ ] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน)
-- [ ] Report กำไร-ขาดทุน (รวม VAT breakdown)
-- [ ] Report stock คงเหลือ + สินค้าต่ำกว่า minStock
-- [ ] Report ประกันที่กำลังจะหมด
-- [ ] Export Excel / PDF
+### ✅ Phase 6 — Report (เสร็จแล้ว)
+- [x] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน)
+- [x] Report กำไร-ขาดทุน (รวม VAT breakdown)
+- [x] Report stock คงเหลือ + สินค้าต่ำกว่า minStock
+- [x] Report ประกันที่กำลังจะหมด
+- [x] Export Excel-compatible CSV / PDF print page
+
+**Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
 
 ### 🟡 Phase 7 — SEO + AEO + AIO + Core Web Vitals (กำลังทำ)
 
