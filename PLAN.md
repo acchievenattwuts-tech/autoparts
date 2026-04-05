@@ -939,13 +939,13 @@ warranties.forEach((w, idx) => { w.lotNo = flatLots[idx] ?? null; });
 - หน้า warranty claim: แสดง lot ต้นทาง (อ่านจาก warranty.lotNo)
 
 **Checklist:**
-- [ ] เพิ่ม `lotNo String?` ใน Warranty schema
-- [ ] `prisma db push`
-- [ ] แก้ logic สร้าง Warranty หลัง createSale: assign lotNo ตาม sequential algorithm
-- [ ] แก้ logic สร้าง Warranty หลัง updateSale: re-assign lotNo ใหม่
-- [ ] UI warranty list: เพิ่มคอลัมน์ Lot No
-- [ ] UI warranty detail: แสดง Lot No
-- [ ] UI claim form: แสดง lot ต้นทาง (read-only, จาก warranty.lotNo)
+- [x] เพิ่ม `lotNo String?` ใน Warranty schema
+- [x] `prisma db push`
+- [x] แก้ logic สร้าง Warranty หลัง createSale: assign lotNo ตาม sequential algorithm
+- [x] แก้ logic สร้าง Warranty หลัง updateSale: re-assign lotNo ใหม่
+- [x] UI warranty list: เพิ่มคอลัมน์ Lot No
+- [x] UI warranty list / claim page: แสดง Lot No ต้นทางตามโครงสร้าง route ปัจจุบัน
+- [x] UI claim form: แสดง lot ต้นทาง (read-only, จาก warranty.lotNo)
 
 ---
 
@@ -974,9 +974,9 @@ model WarrantyClaim {
 ```
 
 **Checklist:**
-- [ ] เพิ่ม `WarrantyClaimLot` model
-- [ ] เพิ่ม relation `claimLots` ใน `WarrantyClaim`
-- [ ] `prisma db push`
+- [x] เพิ่ม `WarrantyClaimLot` model
+- [x] เพิ่ม relation `claimLots` ใน `WarrantyClaim`
+- [x] `prisma db push`
 
 ---
 
@@ -1019,19 +1019,19 @@ for (const lot of claimLots) {
 ```
 
 **Checklist:**
-- [ ] เพิ่ม `writeClaimLot` ใน `lib/lot-control.ts`
-- [ ] เพิ่ม `reverseClaimLotBalance` ใน `lib/lot-control.ts`
-- [ ] แก้ `warranty-claims/actions.ts`:
+- [x] เพิ่ม `writeClaimLot` ใน `lib/lot-control.ts`
+- [x] เพิ่ม `reverseClaimLotBalance` ใน `lib/lot-control.ts`
+- [x] แก้ `warranty-claims/actions.ts`:
   - `CLAIM_RETURN_IN`: เรียก `writeClaimLot` direction="in" ด้วย `warranty.lotNo`
   - `CLAIM_SEND_OUT`: เรียก `writeClaimLot` direction="out"
   - `CLAIM_RECV_IN`: เรียก `writeClaimLot` direction="in" ด้วย lot ที่รับมา
   - `CLAIM_REPLACE_OUT`: เรียก `writeClaimLot` direction="out" ด้วย lot ที่ส่ง
-- [ ] แก้ `cancelWarrantyClaim`: เรียก `reverseClaimLotBalance`
-- [ ] UI Claim Form: 
+- [x] แก้ `cancelWarrantyClaim`: เรียก `reverseClaimLotBalance`
+- [x] UI Claim Form: 
   - CLAIM_RETURN_IN / CLAIM_RECV_IN: input/dropdown lot (pre-fill จาก warranty.lotNo)
   - CLAIM_SEND_OUT: แสดง lot ต้นทาง (auto-fill, editable)
   - CLAIM_REPLACE_OUT: dropdown เลือก lot ที่จะส่งออก (filter LotBalance > 0, auto-select ตาม allocation logic แต่ผู้ใช้ override เองได้)
-- [ ] Test: ทุก ClaimType → LotBalance ถูกต้อง + ยกเลิก → reverse ถูกต้อง
+- [x] Test: ทุก ClaimType → LotBalance ถูกต้อง + ยกเลิก → reverse ถูกต้อง
 
 ---
 
