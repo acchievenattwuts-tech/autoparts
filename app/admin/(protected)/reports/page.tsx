@@ -36,7 +36,7 @@ const ReportsPage = async ({ searchParams }: ReportsPageProps) => {
           <BarChart3 size={22} className="text-[#1e3a5f]" />
           <div>
             <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงาน</h1>
-            <p className="text-sm text-gray-500">สรุปยอดขาย, กำไรขาดทุน, สต็อกคงเหลือ และประกันใกล้หมด</p>
+            <p className="text-sm text-gray-500">รายงานการเงินและรายงานบัญชีเชิงปฏิบัติการ โดยจัดรูปแบบให้ใกล้แนวโปรแกรมบัญชีออนไลน์มากขึ้น</p>
           </div>
         </div>
 

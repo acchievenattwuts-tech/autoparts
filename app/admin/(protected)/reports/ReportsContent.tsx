@@ -6,7 +6,10 @@ type ReportsContentProps = {
 };
 
 function formatCurrency(value: number): string {
-  return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return value.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatDate(value: Date): string {
@@ -17,55 +20,65 @@ function formatDate(value: Date): string {
   });
 }
 
-function SummaryTable({
+function SectionHeader({
+  eyebrow,
   title,
-  rows,
+  subtitle,
 }: {
+  eyebrow: string;
   title: string;
-  rows: ReportsData["salesSummary"]["byDay"];
+  subtitle: string;
 }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-4 py-3">
-        <h3 className="font-kanit text-lg font-semibold text-gray-900">{title}</h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium text-gray-600">ช่วงเวลา</th>
-              <th className="px-4 py-2 text-right font-medium text-gray-600">เอกสาร</th>
-              <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดขาย</th>
-              <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดคืน</th>
-              <th className="px-4 py-2 text-right font-medium text-gray-600">Net sale</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
-                  ไม่มีข้อมูลในช่วงที่เลือก
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.label} className="border-t border-gray-50">
-                  <td className="px-4 py-2 text-gray-700">{row.label}</td>
-                  <td className="px-4 py-2 text-right text-gray-600">{row.documentCount}</td>
-                  <td className="px-4 py-2 text-right text-gray-600">{formatCurrency(row.grossSalesAmount)}</td>
-                  <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.returnAmount)}</td>
-                  <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(row.netSaleAmount)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+    <div className="flex flex-col gap-1">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1e3a5f]/70">{eyebrow}</p>
+      <h2 className="font-kanit text-2xl font-semibold text-gray-900">{title}</h2>
+      <p className="text-sm text-gray-500">{subtitle}</p>
     </div>
   );
 }
 
-const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
+function SummaryCard({
+  label,
+  value,
+  accent = "text-[#1e3a5f]",
+  hint,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <p className="text-sm text-gray-500">{label}</p>
+      <p className={`mt-1 font-kanit text-2xl font-bold ${accent}`}>{value}</p>
+      <p className="mt-2 text-xs text-gray-400">{hint}</p>
+    </div>
+  );
+}
+
+function TableCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
+      <div className="border-b border-gray-100 px-4 py-3">
+        <h3 className="font-kanit text-lg font-semibold text-gray-900">{title}</h3>
+        <p className="text-xs text-gray-500">{subtitle}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function FilterSummary({ data }: { data: ReportsData }) {
   const filterEntries = [
     ["ลูกค้า", data.filters.customerCodeFrom || data.filters.customerCodeTo ? `${data.filters.customerCodeFrom || "-"} ถึง ${data.filters.customerCodeTo || "-"}` : ""],
     ["ซัพพลายเออร์", data.filters.supplierCodeFrom || data.filters.supplierCodeTo ? `${data.filters.supplierCodeFrom || "-"} ถึง ${data.filters.supplierCodeTo || "-"}` : ""],
@@ -73,262 +86,530 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
     ["รหัสค่าใช้จ่าย", data.filters.expenseCodeFrom || data.filters.expenseCodeTo ? `${data.filters.expenseCodeFrom || "-"} ถึง ${data.filters.expenseCodeTo || "-"}` : ""],
   ].filter(([, value]) => value);
 
+  if (filterEntries.length === 0) return null;
+
   return (
-    <div className={compact ? "space-y-4" : "space-y-6"}>
-      {filterEntries.length > 0 && (
-        <section className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
-          <p className="mb-2 text-sm font-medium text-gray-600">ตัวกรองที่ใช้งาน</p>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {filterEntries.map(([label, value]) => (
-              <span key={label} className="rounded-full bg-white px-3 py-1 text-gray-600 shadow-sm">
-                {label}: {value}
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
+    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4">
+      <p className="mb-2 text-sm font-medium text-gray-600">เงื่อนไขรายงาน</p>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {filterEntries.map(([label, value]) => (
+          <span key={label} className="rounded-full bg-white px-3 py-1 text-gray-600 shadow-sm">
+            {label}: {value}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
+  const maxRows = compact ? 12 : 24;
+
+  return (
+    <div className={compact ? "space-y-5" : "space-y-8"}>
+      <FilterSummary data={data} />
 
       <section className="space-y-4">
+        <SectionHeader
+          eyebrow="Overview"
+          title="ภาพรวมกิจการ"
+          subtitle="สรุปยอดสำคัญของรอบรายงานในมุมที่ใกล้รูปแบบโปรแกรมบัญชีออนไลน์"
+        />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <SummaryCard label="ยอดขายรวม" value={`฿${formatCurrency(data.salesSummary.grossSalesAmount)}`} hint="ก่อนหักยอดคืนขาย" />
+          <SummaryCard label="ยอดคืนขาย" value={`฿${formatCurrency(data.salesSummary.returnAmount)}`} accent="text-red-600" hint="อ้างอิง Credit Note ประเภทคืนสินค้า" />
+          <SummaryCard label="Net Sale" value={`฿${formatCurrency(data.salesSummary.netSaleAmount)}`} hint="ยอดขายสุทธิหลังหักคืนขาย" />
+          <SummaryCard label="รับเงินทั้งงวด" value={`฿${formatCurrency(data.dailyReceipts.totalAmount)}`} accent="text-emerald-600" hint="ขายสด + รับชำระผ่านใบเสร็จ" />
+          <SummaryCard label="จ่ายเงินทั้งงวด" value={`฿${formatCurrency(data.dailyPayments.totalAmount)}`} accent="text-rose-600" hint="ซื้อสินค้า + ค่าใช้จ่าย" />
+        </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">ยอดขายรวม</p>
-            <p className="mt-1 font-kanit text-2xl font-bold text-gray-900">฿{formatCurrency(data.salesSummary.grossSalesAmount)}</p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">ยอดคืนขาย</p>
-            <p className="mt-1 font-kanit text-2xl font-bold text-red-600">฿{formatCurrency(data.salesSummary.returnAmount)}</p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">Net sale</p>
-            <p className="mt-1 font-kanit text-2xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.salesSummary.netSaleAmount)}</p>
-          </div>
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <p className="text-sm text-gray-500">กำไรสุทธิ</p>
-            <p className={`mt-1 font-kanit text-2xl font-bold ${data.profitLoss.netProfit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-              ฿{formatCurrency(data.profitLoss.netProfit)}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-3">
-          <SummaryTable title="ขายรายวัน" rows={data.salesSummary.byDay} />
-          <SummaryTable title="ขายรายสัปดาห์" rows={data.salesSummary.byWeek} />
-          <SummaryTable title="ขายรายเดือน" rows={data.salesSummary.byMonth} />
+          <SummaryCard label="กำไรสุทธิ" value={`฿${formatCurrency(data.profitLoss.netProfit)}`} accent={data.profitLoss.netProfit >= 0 ? "text-emerald-600" : "text-red-600"} hint="หลังหักต้นทุนขายและค่าใช้จ่าย" />
+          <SummaryCard label="ลูกหนี้คงค้าง" value={`฿${formatCurrency(data.receivables.totalOutstanding)}`} accent="text-amber-600" hint="ยอดค้างชำระจากใบขาย active" />
+          <SummaryCard label="VAT สุทธิคงชำระ" value={`฿${formatCurrency(data.profitLoss.vatPayable)}`} accent={data.profitLoss.vatPayable >= 0 ? "text-gray-900" : "text-red-600"} hint="VAT ขาย - VAT คืนขาย - VAT ซื้อ - VAT ค่าใช้จ่าย" />
+          <SummaryCard label="มูลค่าสต็อก" value={`฿${formatCurrency(data.stock.totalStockValue)}`} hint="คำนวณจาก stock on hand x avg cost" />
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">กำไรขาดทุน</h3>
-          </div>
-          <div className="space-y-2 p-4 text-sm">
-            {[
-              ["ยอดขายรวม", data.profitLoss.grossSales],
-              ["ยอดคืนขาย", -data.profitLoss.salesReturns],
-              ["รายได้สุทธิ", data.profitLoss.netRevenue],
-              ["ต้นทุนขาย", -data.profitLoss.costOfGoodsSold],
-              ["กำไรขั้นต้น", data.profitLoss.grossProfit],
-              ["ค่าใช้จ่าย", -data.profitLoss.expenseTotal],
-              ["กำไรสุทธิ", data.profitLoss.netProfit],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                <span className="text-gray-600">{label}</span>
-                <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                  {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
-                </span>
+      <section className="space-y-4">
+        <SectionHeader
+          eyebrow="Sales"
+          title="รายงานขายและรับชำระ"
+          subtitle="จัดโครงแบบทะเบียนขาย ทะเบียนรับเงิน และลูกหนี้ เพื่อให้ใช้วิเคราะห์ทางบัญชีได้ง่ายขึ้น"
+        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="ทะเบียนขาย / Net Sale Summary" subtitle="สรุปยอดขาย ยอดคืน และยอดขายสุทธิ แยกตามช่วงเวลา">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ช่วงเวลา</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">เอกสาร</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดขาย</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดคืน</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">Net sale</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.salesSummary.byDay.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีข้อมูลขายในช่วงที่เลือก
+                      </td>
+                    </tr>
+                  ) : (
+                    data.salesSummary.byDay.map((row) => (
+                      <tr key={row.label} className="border-t border-gray-50">
+                        <td className="px-4 py-2 text-gray-700">{row.label}</td>
+                        <td className="px-4 py-2 text-right text-gray-600">{row.documentCount}</td>
+                        <td className="px-4 py-2 text-right text-gray-600">{formatCurrency(row.grossSalesAmount)}</td>
+                        <td className="px-4 py-2 text-right text-red-600">{formatCurrency(row.returnAmount)}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(row.netSaleAmount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
+
+          <TableCard title="ทะเบียนรับเงิน" subtitle="รับเงินจากขายสดและใบเสร็จรับเงิน พร้อมช่องทางชำระ">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">รวมรับเงิน</p>
+                <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">VAT Breakdown</h3>
-          </div>
-          <div className="space-y-2 p-4 text-sm">
-            {[
-              ["VAT ขาย", data.profitLoss.salesVat],
-              ["VAT คืนขาย", -data.profitLoss.creditNoteVat],
-              ["VAT ซื้อ", -data.profitLoss.purchaseVat],
-              ["VAT ค่าใช้จ่าย", -data.profitLoss.expenseVat],
-              ["VAT สุทธิคงชำระ", data.profitLoss.vatPayable],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                <span className="text-gray-600">{label}</span>
-                <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                  {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
-                </span>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ขายสด</p>
+                <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyReceipts.cashSaleAmount)}</p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">รายงานรับเงินประจำวัน</h3>
-          </div>
-          <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">รวมรับเงิน</p><p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ขายสด</p><p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyReceipts.cashSaleAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ใบเสร็จรับเงิน</p><p className="font-kanit text-xl font-bold text-emerald-600">฿{formatCurrency(data.dailyReceipts.receiptAmount)}</p></div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">ชำระ</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.dailyReceipts.items.length === 0 ? <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีข้อมูลรับเงิน</td></tr> : data.dailyReceipts.items.slice(0, compact ? 15 : 30).map((item) => (
-                  <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
-                    <td className="px-4 py-2"><p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p><p className="text-xs text-gray-400">{item.source === "SALE" ? "ขายสด" : "ใบเสร็จ"} | {formatDate(item.docDate)}</p></td>
-                    <td className="px-4 py-2"><p className="text-gray-800">{item.customerName}</p><p className="text-xs text-gray-400">{item.customerCode || "-"}</p></td>
-                    <td className="px-4 py-2 text-gray-600">{item.paymentMethod}</td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">รับชำระผ่านใบเสร็จ</p>
+                <p className="font-kanit text-xl font-bold text-emerald-600">฿{formatCurrency(data.dailyReceipts.receiptAmount)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ช่องทางชำระ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.dailyReceipts.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีรายการรับเงิน
+                      </td>
+                    </tr>
+                  ) : (
+                    data.dailyReceipts.items.slice(0, maxRows).map((item) => (
+                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
+                          <p className="text-xs text-gray-400">{item.source === "SALE" ? "ขายสด" : "ใบเสร็จรับเงิน"} | {formatDate(item.docDate)}</p>
+                        </td>
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.customerName}</p>
+                          <p className="text-xs text-gray-400">{item.customerCode || "-"}</p>
+                        </td>
+                        <td className="px-4 py-2 text-gray-600">{item.paymentMethod}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">รายงานจ่ายเงินประจำวัน</h3>
-          </div>
-          <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">รวมจ่ายเงิน</p><p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyPayments.totalAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ซื้อสินค้า</p><p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyPayments.purchaseAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ค่าใช้จ่าย</p><p className="font-kanit text-xl font-bold text-red-600">฿{formatCurrency(data.dailyPayments.expenseAmount)}</p></div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">คู่ค้า/รายละเอียด</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">ชำระ</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.dailyPayments.items.length === 0 ? <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีข้อมูลจ่ายเงิน</td></tr> : data.dailyPayments.items.slice(0, compact ? 15 : 30).map((item) => (
-                  <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
-                    <td className="px-4 py-2"><p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p><p className="text-xs text-gray-400">{item.source === "PURCHASE" ? "ซื้อสินค้า" : "ค่าใช้จ่าย"} | {formatDate(item.docDate)}</p></td>
-                    <td className="px-4 py-2"><p className="text-gray-800">{item.counterpartName}</p><p className="text-xs text-gray-400">{item.counterpartCode || "-"}</p></td>
-                    <td className="px-4 py-2 text-gray-600">{item.paymentMethod}</td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="ลูกหนี้คงค้าง (A/R)" subtitle="ยอดค้างชำระและอายุหนี้ของใบขาย active">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">รวมลูกหนี้</p>
+                <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.receivables.totalOutstanding)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ลูกหนี้ทั่วไป</p>
+                <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.receivables.regularOutstanding)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">COD ค้างรับ</p>
+                <p className="font-kanit text-xl font-bold text-amber-600">฿{formatCurrency(data.receivables.codPendingOutstanding)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">เลขที่ขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดค้าง</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">อายุหนี้</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {data.receivables.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีลูกหนี้ค้างชำระ
+                      </td>
+                    </tr>
+                  ) : (
+                    data.receivables.items.slice(0, maxRows).map((item) => (
+                      <tr key={item.id} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p>
+                          <p className="text-xs text-gray-400">{formatDate(item.saleDate)}</p>
+                        </td>
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.customerName}</p>
+                          <p className="text-xs text-gray-400">{item.customerCode || item.bucketLabel}</p>
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amountRemain)}</td>
+                        <td className="px-4 py-2 text-right text-gray-600">{item.ageDays} วัน</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">รายงานค่าใช้จ่าย</h3>
-          </div>
-          <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ยอดรวม</p><p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.expenses.totalAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">VAT</p><p className="font-kanit text-xl font-bold text-amber-600">฿{formatCurrency(data.expenses.totalVatAmount)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ยอดสุทธิ</p><p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.expenses.totalNetAmount)}</p></div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">รายการ</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">สุทธิ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.expenses.items.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีข้อมูลค่าใช้จ่าย</td></tr> : data.expenses.items.slice(0, compact ? 15 : 30).map((item) => (
-                  <tr key={item.expenseCode} className="border-t border-gray-50">
-                    <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.expenseCode}</td>
-                    <td className="px-4 py-2 text-gray-800">{item.expenseName}<p className="text-xs text-gray-400">{item.documentCount} รายการ</p></td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netAmount)}</td>
+          <TableCard title="สรุปขายแยกลูกค้า" subtitle="มุมมองลูกค้าแบบ accounting-oriented">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนบิล</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">Net sale</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.customers.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีข้อมูลขาย
+                      </td>
+                    </tr>
+                  ) : (
+                    data.customers.items.slice(0, maxRows).map((item) => (
+                      <tr key={item.customerKey} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.customerName}</p>
+                          <p className="text-xs text-gray-400">{item.customerCode || "-"} | ค้าง {formatCurrency(item.outstandingAmount)}</p>
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-600">{item.invoiceCount}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netSalesAmount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
         </div>
+      </section>
 
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ลูกหนี้ค้างชำระ</h3>
-          </div>
-          <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">รวม</p><p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.receivables.totalOutstanding)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">ลูกหนี้ทั่วไป</p><p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.receivables.regularOutstanding)}</p></div>
-            <div className="rounded-lg bg-gray-50 p-3"><p className="text-xs text-gray-500">COD ค้างรับ</p><p className="font-kanit text-xl font-bold text-amber-600">฿{formatCurrency(data.receivables.codPendingOutstanding)}</p></div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">เลขที่ขาย</th>
-                  <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดค้าง</th>
-                  <th className="px-4 py-2 text-right font-medium text-gray-600">อายุหนี้</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.receivables.items.length === 0 ? <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีลูกหนี้ค้างชำระ</td></tr> : data.receivables.items.slice(0, compact ? 15 : 30).map((item) => (
-                  <tr key={item.id} className="border-t border-gray-50">
-                    <td className="px-4 py-2"><p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p><p className="text-xs text-gray-400">{formatDate(item.saleDate)}</p></td>
-                    <td className="px-4 py-2"><p className="text-gray-800">{item.customerName}</p><p className="text-xs text-gray-400">{item.customerCode || item.bucketLabel}</p></td>
-                    <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amountRemain)}</td>
-                    <td className="px-4 py-2 text-right text-gray-600">{item.ageDays} วัน</td>
+      <section className="space-y-4">
+        <SectionHeader
+          eyebrow="Purchases"
+          title="รายงานซื้อและจ่ายเงิน"
+          subtitle="จัดโครงแบบทะเบียนจ่ายเงิน ค่าใช้จ่าย และมุมมองคู่ค้าเพื่อให้อ่านแบบงานบัญชีได้มากขึ้น"
+        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="ทะเบียนจ่ายเงิน" subtitle="จ่ายซื้อสินค้าและจ่ายค่าใช้จ่ายในมุมมอง cash out">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">รวมจ่ายเงิน</p>
+                <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyPayments.totalAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ซื้อสินค้า</p>
+                <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyPayments.purchaseAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ค่าใช้จ่าย</p>
+                <p className="font-kanit text-xl font-bold text-rose-600">฿{formatCurrency(data.dailyPayments.expenseAmount)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">คู่ค้า/รายละเอียด</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ช่องทางชำระ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.dailyPayments.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีรายการจ่ายเงิน
+                      </td>
+                    </tr>
+                  ) : (
+                    data.dailyPayments.items.slice(0, maxRows).map((item) => (
+                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
+                          <p className="text-xs text-gray-400">{item.source === "PURCHASE" ? "ซื้อสินค้า" : "ค่าใช้จ่าย"} | {formatDate(item.docDate)}</p>
+                        </td>
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.counterpartName}</p>
+                          <p className="text-xs text-gray-400">{item.counterpartCode || "-"}</p>
+                        </td>
+                        <td className="px-4 py-2 text-gray-600">{item.paymentMethod}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.amount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
+
+          <TableCard title="ทะเบียนค่าใช้จ่าย" subtitle="สรุปค่าใช้จ่ายตามรหัสค่าใช้จ่าย">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ยอดรวม</p>
+                <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.expenses.totalAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">VAT ค่าใช้จ่าย</p>
+                <p className="font-kanit text-xl font-bold text-amber-600">฿{formatCurrency(data.expenses.totalVatAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">ยอดสุทธิ</p>
+                <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.expenses.totalNetAmount)}</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">รายการ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนรายการ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดสุทธิ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.expenses.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีข้อมูลค่าใช้จ่าย
+                      </td>
+                    </tr>
+                  ) : (
+                    data.expenses.items.slice(0, maxRows).map((item) => (
+                      <tr key={item.expenseCode} className="border-t border-gray-50">
+                        <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.expenseCode}</td>
+                        <td className="px-4 py-2 text-gray-800">{item.expenseName}</td>
+                        <td className="px-4 py-2 text-right text-gray-600">{item.documentCount}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netAmount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="สรุปซื้อแยกซัพพลายเออร์" subtitle="ภาพรวมคู่ค้าและยอดซื้อสุทธิ">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ซัพพลายเออร์</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">เอกสารซื้อ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">สุทธิ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.suppliers.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีข้อมูลซื้อ
+                      </td>
+                    </tr>
+                  ) : (
+                    data.suppliers.items.slice(0, maxRows).map((item) => (
+                      <tr key={item.supplierKey} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.supplierName}</p>
+                          <p className="text-xs text-gray-400">{item.supplierCode || "-"} | ซื้อ {formatCurrency(item.purchaseAmount)} | คืน {formatCurrency(item.returnAmount)}</p>
+                        </td>
+                        <td className="px-4 py-2 text-right text-gray-600">{item.purchaseCount}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netPurchaseAmount)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
+
+          <TableCard title="กำไรขาดทุน" subtitle="สรุปผลการดำเนินงานของรอบรายงาน">
+            <div className="space-y-2 p-4 text-sm">
+              {[
+                ["ยอดขายรวม", data.profitLoss.grossSales],
+                ["ยอดคืนขาย", -data.profitLoss.salesReturns],
+                ["รายได้สุทธิ", data.profitLoss.netRevenue],
+                ["ต้นทุนขาย", -data.profitLoss.costOfGoodsSold],
+                ["กำไรขั้นต้น", data.profitLoss.grossProfit],
+                ["ค่าใช้จ่าย", -data.profitLoss.expenseTotal],
+                ["กำไรสุทธิ", data.profitLoss.netProfit],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                  <span className="text-gray-600">{label}</span>
+                  <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                    {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </TableCard>
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-kanit text-lg font-semibold text-gray-900">สรุปซื้อแยกซัพพลายเออร์</h3></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left font-medium text-gray-600">ซัพพลายเออร์</th><th className="px-4 py-2 text-right font-medium text-gray-600">ซื้อสุทธิ</th></tr></thead><tbody>{data.suppliers.items.length === 0 ? <tr><td colSpan={2} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีข้อมูลซื้อ</td></tr> : data.suppliers.items.slice(0, compact ? 15 : 30).map((item) => <tr key={item.supplierKey} className="border-t border-gray-50"><td className="px-4 py-2"><p className="text-gray-800">{item.supplierName}</p><p className="text-xs text-gray-400">{item.supplierCode || "-"} | ซื้อ {formatCurrency(item.purchaseAmount)} | คืน {formatCurrency(item.returnAmount)}</p></td><td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netPurchaseAmount)}</td></tr>)}</tbody></table></div>
+      <section className="space-y-4">
+        <SectionHeader
+          eyebrow="Tax & Stock"
+          title="ภาษี สต็อก และรายการติดตาม"
+          subtitle="สรุป VAT มูลค่าสต็อก สินค้าใกล้ขั้นต่ำ และประกันใกล้หมดในหน้าเดียว"
+        />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="VAT Summary" subtitle="ภาพรวมภาษีซื้อ ภาษีขาย และ VAT สุทธิคงชำระ">
+            <div className="space-y-2 p-4 text-sm">
+              {[
+                ["VAT ขาย", data.profitLoss.salesVat],
+                ["VAT คืนขาย", -data.profitLoss.creditNoteVat],
+                ["VAT ซื้อ", -data.profitLoss.purchaseVat],
+                ["VAT ค่าใช้จ่าย", -data.profitLoss.expenseVat],
+                ["VAT สุทธิคงชำระ", data.profitLoss.vatPayable],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                  <span className="text-gray-600">{label}</span>
+                  <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                    {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </TableCard>
+
+          <TableCard title="สินค้าใกล้ขั้นต่ำ" subtitle="รายการที่ควรติดตามและวางแผนสั่งซื้อ">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.stock.lowStockItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีสินค้าใกล้ minStock
+                      </td>
+                    </tr>
+                  ) : (
+                    data.stock.lowStockItems.slice(0, maxRows).map((item) => (
+                      <tr key={item.id} className="border-t border-gray-50">
+                        <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td>
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.name}</p>
+                          <p className="text-xs text-gray-400">{item.categoryName}</p>
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium text-amber-700">{item.stock}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
         </div>
 
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-kanit text-lg font-semibold text-gray-900">สรุปขายแยกลูกค้า</h3></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th><th className="px-4 py-2 text-right font-medium text-gray-600">Net sale</th></tr></thead><tbody>{data.customers.items.length === 0 ? <tr><td colSpan={2} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีข้อมูลขาย</td></tr> : data.customers.items.slice(0, compact ? 15 : 30).map((item) => <tr key={item.customerKey} className="border-t border-gray-50"><td className="px-4 py-2"><p className="text-gray-800">{item.customerName}</p><p className="text-xs text-gray-400">{item.customerCode || "-"} | ค้าง {formatCurrency(item.outstandingAmount)}</p></td><td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netSalesAmount)}</td></tr>)}</tbody></table></div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <TableCard title="มูลค่าสต็อกสูงสุด" subtitle="สินค้าที่ถือมูลค่าในคลังสูงสุด">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">มูลค่า</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.stock.highestValueItems.slice(0, maxRows).map((item) => (
+                    <tr key={item.id} className="border-t border-gray-50">
+                      <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td>
+                      <td className="px-4 py-2">
+                        <p className="text-gray-800">{item.name}</p>
+                        <p className="text-xs text-gray-400">{item.categoryName} | คงเหลือ {item.stock}</p>
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.stockValue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
+
+          <TableCard title="ประกันใกล้หมด" subtitle="รายการที่ควรติดตามต่อในงานบริการหลังการขาย">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ใบขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.warranties.expiringItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีรายการประกันใกล้หมด
+                      </td>
+                    </tr>
+                  ) : (
+                    data.warranties.expiringItems.slice(0, maxRows).map((item) => (
+                      <tr key={item.id} className="border-t border-gray-50">
+                        <td className="px-4 py-2">
+                          <p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p>
+                          <p className="text-xs text-gray-400">{item.customerName}</p>
+                        </td>
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.productName}</p>
+                          <p className="text-xs text-gray-400">{item.productCode}</p>
+                        </td>
+                        <td className={`px-4 py-2 text-right font-medium ${item.daysLeft < 0 ? "text-red-600" : "text-amber-700"}`}>
+                          {item.daysLeft < 0 ? `หมดแล้ว ${Math.abs(item.daysLeft)} วัน` : `${item.daysLeft} วัน`}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableCard>
         </div>
       </section>
-
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-kanit text-lg font-semibold text-gray-900">สต็อกคงเหลือและสินค้าใกล้ minStock</h3></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th><th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th><th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th></tr></thead><tbody>{data.stock.lowStockItems.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีสินค้าใกล้ minStock</td></tr> : data.stock.lowStockItems.slice(0, compact ? 15 : 30).map((item) => <tr key={item.id} className="border-t border-gray-50"><td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td><td className="px-4 py-2 text-gray-800">{item.name}<p className="text-xs text-gray-400">{item.categoryName}</p></td><td className="px-4 py-2 text-right font-medium text-amber-700">{item.stock}</td></tr>)}</tbody></table></div>
-        </div>
-
-        <div className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-kanit text-lg font-semibold text-gray-900">ประกันใกล้หมด</h3></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left font-medium text-gray-600">ใบขาย</th><th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th><th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th></tr></thead><tbody>{data.warranties.expiringItems.length === 0 ? <tr><td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">ไม่มีรายการประกัน</td></tr> : data.warranties.expiringItems.slice(0, compact ? 15 : 30).map((item) => <tr key={item.id} className="border-t border-gray-50"><td className="px-4 py-2"><p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p><p className="text-xs text-gray-400">{item.customerName}</p></td><td className="px-4 py-2 text-gray-800">{item.productName}<p className="text-xs text-gray-400">{item.productCode}</p></td><td className={`px-4 py-2 text-right font-medium ${item.daysLeft < 0 ? "text-red-600" : "text-amber-700"}`}>{item.daysLeft < 0 ? `หมดแล้ว ${Math.abs(item.daysLeft)} วัน` : `${item.daysLeft} วัน`}</td></tr>)}</tbody></table></div>
-        </div>
-      </section>
-
-      {!compact && (
-        <section className="rounded-xl border border-gray-100 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-kanit text-lg font-semibold text-gray-900">สินค้ามูลค่าสต็อกสูงสุด</h3></div>
-          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th><th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th><th className="px-4 py-2 text-right font-medium text-gray-600">มูลค่า</th></tr></thead><tbody>{data.stock.highestValueItems.map((item) => <tr key={item.id} className="border-t border-gray-50"><td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td><td className="px-4 py-2 text-gray-800">{item.name}<p className="text-xs text-gray-400">{item.categoryName} | คงเหลือ {item.stock}</p></td><td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.stockValue)}</td></tr>)}</tbody></table></div>
-        </section>
-      )}
     </div>
   );
 };
