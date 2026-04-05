@@ -2,33 +2,41 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendClaimToSupplier, closeClaim, cancelClaimAction, reopenClaim } from "../actions";
+
 import CancelDocButton from "@/components/shared/CancelDocButton";
+import { cancelClaimAction, closeClaim, reopenClaim, sendClaimToSupplier } from "../actions";
 
 interface Props {
-  claimId:       string;
-  claimNo:       string;
+  claimId: string;
+  claimNo: string;
   currentStatus: string;
+  isLotControl: boolean;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
+const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
-  const [sentDate, setSentDate]       = useState(new Date().toISOString().slice(0, 10));
+  const [sentDate, setSentDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedDate, setResolvedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [outcome, setOutcome]         = useState<"RECEIVED" | "NO_RESOLUTION">("RECEIVED");
-  const [closeNote, setCloseNote]     = useState("");
+  const [outcome, setOutcome] = useState<"RECEIVED" | "NO_RESOLUTION">("RECEIVED");
+  const [closeNote, setCloseNote] = useState("");
+  const [receivedLotNo, setReceivedLotNo] = useState("");
+  const [receivedMfgDate, setReceivedMfgDate] = useState("");
+  const [receivedExpDate, setReceivedExpDate] = useState("");
 
   const handleSend = () => {
     setError("");
     startTransition(async () => {
       const res = await sendClaimToSupplier(claimId, sentDate);
-      if (res.error) { setError(res.error); return; }
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
       router.refresh();
     });
   };
@@ -36,12 +44,22 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
   const handleClose = () => {
     setError("");
     startTransition(async () => {
-      const res = await closeClaim(claimId, outcome, resolvedDate, closeNote);
-      if (res.error) { setError(res.error); return; }
+      const res = await closeClaim(
+        claimId,
+        outcome,
+        resolvedDate,
+        closeNote,
+        receivedLotNo,
+        receivedMfgDate,
+        receivedExpDate
+      );
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
       router.refresh();
     });
   };
-
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-5">
@@ -58,12 +76,7 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
           <h3 className="text-sm font-semibold text-gray-700">ส่งสินค้าไปซัพพลายเออร์</h3>
           <div>
             <label className={labelCls}>วันที่ส่ง</label>
-            <input
-              type="date"
-              value={sentDate}
-              onChange={(e) => setSentDate(e.target.value)}
-              className={inputCls}
-            />
+            <input type="date" value={sentDate} onChange={(e) => setSentDate(e.target.value)} className={inputCls} />
           </div>
           <button
             onClick={handleSend}
@@ -72,7 +85,7 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
           >
             {isPending ? "กำลังบันทึก..." : "ยืนยันส่งซัพพลายเออร์"}
           </button>
-          <p className="text-xs text-gray-400">Stock จะลด 1 ชิ้น (ส่งออกไปซัพพลายเออร์)</p>
+          <p className="text-xs text-gray-400">Stock จะลด 1 ชิ้นเมื่อส่งของเคลมออกไป</p>
         </div>
       )}
 
@@ -81,11 +94,14 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
           <h3 className="text-sm font-semibold text-gray-700">ย้อนกลับสถานะ</h3>
           <button
             onClick={() => {
-              if (!confirm("ย้อนกลับเป็นสถานะ [ส่งซัพพลายเออร์แล้ว]?\nถ้าเคยบันทึกรับสินค้าคืน Stock จะถูกคำนวณใหม่")) return;
+              if (!confirm("ย้อนกลับเป็นสถานะ [ส่งซัพพลายเออร์แล้ว] ? หากเคยรับสินค้ากลับแล้ว ระบบจะย้อน Lot และ Stock ให้")) return;
               setError("");
               startTransition(async () => {
                 const res = await reopenClaim(claimId);
-                if (res.error) { setError(res.error); return; }
+                if (res.error) {
+                  setError(res.error);
+                  return;
+                }
                 router.refresh();
               });
             }}
@@ -143,6 +159,41 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
               className={inputCls}
             />
           </div>
+          {outcome === "RECEIVED" && isLotControl && (
+            <>
+              <div>
+                <label className={labelCls}>Lot ที่รับกลับ</label>
+                <input
+                  type="text"
+                  value={receivedLotNo}
+                  onChange={(e) => setReceivedLotNo(e.target.value)}
+                  maxLength={100}
+                  placeholder="ระบุ Lot No"
+                  className={inputCls}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelCls}>วันที่ผลิต</label>
+                  <input
+                    type="date"
+                    value={receivedMfgDate}
+                    onChange={(e) => setReceivedMfgDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>วันหมดอายุ</label>
+                  <input
+                    type="date"
+                    value={receivedExpDate}
+                    onChange={(e) => setReceivedExpDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            </>
+          )}
           <button
             onClick={handleClose}
             disabled={isPending}
@@ -151,7 +202,7 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus }: Props) => {
             {isPending ? "กำลังบันทึก..." : "ปิดเคลม"}
           </button>
           {outcome === "RECEIVED" && (
-            <p className="text-xs text-gray-400">Stock จะเพิ่ม 1 ชิ้น (ได้รับสินค้าคืน)</p>
+            <p className="text-xs text-gray-400">Stock จะเพิ่ม 1 ชิ้นเมื่อปิดเคลมแบบได้รับสินค้าคืน</p>
           )}
         </div>
       )}

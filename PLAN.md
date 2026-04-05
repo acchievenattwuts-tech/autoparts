@@ -879,48 +879,32 @@ await writeStockMovementLots(tx, sc.id, ..., "in")
 
 ---
 
-### 🔲 Phase 5.5-G — Delivery แสดง Lot
+### ✅ Phase 5.5-G — Delivery แสดง Lot
 
 **ไฟล์ที่กระทบ:**
-- `app/admin/(protected)/delivery/[id]/page.tsx` (detail)
-- `app/admin/(protected)/delivery/print/page.tsx` (print)
+- `app/admin/delivery/print/page.tsx` (print)
 
 > ไม่มี stock/lot transaction ใหม่ — Delivery เป็นแค่ logistics status
 
-#### G-1: Delivery Detail แสดง Lot
+#### G-1: Delivery Detail
 
-**Query เพิ่ม:**
-```typescript
-// ใน sale items include:
-lotItems: { select: { lotNo: true, qty: true } }
-// + batch join ProductLot สำหรับ expDate
-const productLotExpMap = ...  // เหมือน pattern ใน sales/[id]/edit/page.tsx
-```
-
-**UI:**
-- ใต้แต่ละบรรทัดสินค้า แสดง lot chips: `LOT-001 × 5 | EXP 31/12/2026`
-- สีเตือน: orange ถ้า EXP ≤ 30 วัน, red ถ้าหมดอายุแล้ว
-
-**Checklist:**
-- [ ] `delivery/[id]/page.tsx` — query `lotItems` + `productLotExpMap`
-- [ ] แสดง lot chips ใต้แต่ละ item row
+ไม่มี route detail แยกสำหรับ delivery ใน implementation ปัจจุบัน เพราะใช้ sale detail สำหรับการเปิดดูข้อมูลอยู่แล้ว จึงไม่ต้องเพิ่มหน้ารายละเอียดใหม่
 
 #### G-2: ใบส่งของ (Print) แสดง Lot
 
-**ไฟล์:** `app/admin/(protected)/delivery/print/page.tsx` (หรือ component ใบส่งของ)
+**ไฟล์:** `app/admin/delivery/print/page.tsx`
 
 **เพิ่ม:**
 - คอลัมน์ "Lot No" ในตารางสินค้าของใบส่งของ
 - ถ้า item มีหลาย lot → แสดงทุก lot บนบรรทัดใหม่ย่อย
 
 **Checklist:**
-- [ ] query `lotItems` ใน delivery print
-- [ ] เพิ่มคอลัมน์ Lot No ในตารางสินค้า
-- [ ] ทดสอบ print layout ไม่แตก
-
+- [x] query `lotItems` ใน delivery print
+- [x] เพิ่มคอลัมน์ Lot No ในตารางสินค้า
+- [x] ทดสอบ print layout ไม่แตก
 ---
 
-### 🔲 Phase 5.5-H — Warranty + Claim Lot Integration
+### ✅ Phase 5.5-H — Warranty + Claim Lot Integration
 
 ---
 
@@ -1046,10 +1030,27 @@ for (const lot of claimLots) {
 - [ ] UI Claim Form: 
   - CLAIM_RETURN_IN / CLAIM_RECV_IN: input/dropdown lot (pre-fill จาก warranty.lotNo)
   - CLAIM_SEND_OUT: แสดง lot ต้นทาง (auto-fill, editable)
-  - CLAIM_REPLACE_OUT: dropdown เลือก lot ที่จะส่งออก (filter LotBalance > 0)
+  - CLAIM_REPLACE_OUT: dropdown เลือก lot ที่จะส่งออก (filter LotBalance > 0, auto-select ตาม allocation logic แต่ผู้ใช้ override เองได้)
 - [ ] Test: ทุก ClaimType → LotBalance ถูกต้อง + ยกเลิก → reverse ถูกต้อง
 
 ---
+
+### ✅ Phase 5.5-H — Status Update
+
+- [x] `Warranty.lotNo` snapshot ถูกเพิ่มและ assign ตาม lot ที่ขายจริงตอน create/update sale
+- [x] warranty list และหน้าเปิด claim แสดง `Lot No` ต้นทางแบบ read-only
+- [x] เพิ่ม model `WarrantyClaimLot` และ relation `claimLots`
+- [x] เพิ่ม `writeClaimLot` และ `reverseClaimLotBalance` ใน `lib/lot-control.ts`
+- [x] `CLAIM_RETURN_IN` / `CLAIM_SEND_OUT` ใช้ `warranty.lotNo` เป็นต้นทางและไม่เปิดให้แก้ snapshot lot เดิม
+- [x] `CLAIM_RECV_IN` ตอนปิดเคลมรองรับกรอก `Lot No` / วันที่ผลิต / วันหมดอายุ ใหม่สำหรับของที่รับกลับ
+- [x] `CLAIM_REPLACE_OUT` ใช้ dropdown lot สินค้าทดแทน โดย auto-allocate ค่าเริ่มต้นจาก lot คงเหลือปัจจุบันและให้ผู้ใช้ override เองได้
+- [x] `prisma generate`
+- [x] `prisma db push`
+- [x] `npm run build`
+
+> หมายเหตุ implementation:
+> - warranty ไม่มี detail route แยกในโครงสร้างปัจจุบัน จึงแสดง lot ที่หน้า list และหน้า claim แทน
+> - lot snapshot ที่มากับ warranty ถูกถือเป็นข้อมูลอ้างอิงจากตอนขายและไม่เปิดให้แก้ภายหลัง
 
 ### สรุป Schema Changes Phase 5.5-F/G/H
 

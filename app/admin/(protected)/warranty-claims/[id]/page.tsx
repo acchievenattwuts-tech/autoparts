@@ -26,12 +26,21 @@ const ClaimDetailPage = async ({ params }: Props) => {
       include: {
         warranty: {
           select: {
+            lotNo: true,
             unitSeq: true,
             warrantyDays: true,
             startDate: true,
             endDate: true,
-            product: { select: { code: true, name: true } },
+            product: { select: { code: true, name: true, isLotControl: true } },
             sale:    { select: { saleNo: true, customerName: true } },
+          },
+        },
+        claimLots: {
+          select: {
+            id: true,
+            lotNo: true,
+            qty: true,
+            direction: true,
           },
         },
       },
@@ -120,6 +129,10 @@ const ClaimDetailPage = async ({ params }: Props) => {
               <div>
                 <p className="text-gray-400 text-xs mb-0.5">ลำดับชิ้น</p>
                 <p className="font-medium text-gray-700">#{claim.warranty.unitSeq}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 text-xs mb-0.5">Lot ต้นทาง</p>
+                <p className="font-mono text-gray-700">{claim.warranty.lotNo ?? "—"}</p>
               </div>
               <div>
                 <p className="text-gray-400 text-xs mb-0.5">ใบขาย</p>
@@ -215,7 +228,12 @@ const ClaimDetailPage = async ({ params }: Props) => {
         {/* Right: status actions */}
         {canUpdate && canManageStatus && (
           <div>
-            <ClaimStatusActions claimId={id} claimNo={claim.claimNo} currentStatus={claim.status} />
+            <ClaimStatusActions
+              claimId={id}
+              claimNo={claim.claimNo}
+              currentStatus={claim.status}
+              isLotControl={claim.warranty.product.isLotControl}
+            />
           </div>
         )}
       </div>

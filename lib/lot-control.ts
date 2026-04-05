@@ -20,6 +20,10 @@ export interface LotSubRowBase {
   expDate:      Date | null;
 }
 
+export interface ClaimLotWriteInput extends LotSubRowBase {
+  direction: "in" | "out";
+}
+
 // ─── Write lot rows after purchase ───────────────────────────────────────────
 
 /**
@@ -324,5 +328,123 @@ export async function reverseSaleLotBalance(
       create: { productId, lotNo: lot.lotNo, qtyOnHand: lot.qty },
       update: { qtyOnHand: { increment: lot.qty } },
     });
+  }
+}
+
+// ─── Warranty Claim Lot functions ─────────────────────────────────────────────
+
+/**
+ * บันทึก WarrantyClaimLot + ปรับ LotBalance
+ * - direction="in"  -> เพิ่ม LotBalance
+ * - direction="out" -> ลด LotBalance
+ * - ถ้าเป็น direction="in" จะ upsert ProductLot เพื่อเก็บ snapshot lot ที่รับกลับ
+ */
+export async function writeClaimLot(
+  tx: TxClient,
+  claimId: string,
+  productId: string,
+  lot: ClaimLotWriteInput
+): Promise<void> {
+  if (lot.direction === "in") {
+    await tx.productLot.upsert({
+      where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+      create: {
+        productId,
+        lotNo: lot.lotNo,
+        mfgDate: lot.mfgDate,
+        expDate: lot.expDate,
+        unitCost: new Prisma.Decimal(lot.unitCostBase),
+      },
+      update: {
+        mfgDate: lot.mfgDate ?? undefined,
+        expDate: lot.expDate ?? undefined,
+        unitCost: new Prisma.Decimal(lot.unitCostBase),
+      },
+    });
+
+    await tx.lotBalance.upsert({
+      where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+      create: {
+        productId,
+        lotNo: lot.lotNo,
+        qtyOnHand: new Prisma.Decimal(lot.qtyInBase),
+      },
+      update: {
+        qtyOnHand: { increment: new Prisma.Decimal(lot.qtyInBase) },
+      },
+    });
+  } else {
+    await tx.lotBalance.updateMany({
+      where: { productId, lotNo: lot.lotNo },
+      data: { qtyOnHand: { decrement: new Prisma.Decimal(lot.qtyInBase) } },
+    });
+    await tx.$executeRaw`
+      UPDATE "LotBalance"
+      SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+      WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
+    `;
+  }
+
+  await tx.warrantyClaimLot.create({
+    data: {
+      claimId,
+      lotNo: lot.lotNo,
+      qty: new Prisma.Decimal(lot.qtyInBase),
+      direction: lot.direction,
+      unitCost: new Prisma.Decimal(lot.unitCostBase),
+    },
+  });
+}
+
+/**
+ * Reverse LotBalance จาก StockMovementLot ของใบเคลม
+ * ใช้กับ reopen/cancel เพื่อย้อนเฉพาะชุด movement ที่ต้องการได้
+ */
+export async function reverseClaimLotBalance(
+  tx: TxClient,
+  claimId: string,
+  productId: string,
+  options?: { docNos?: string[] }
+): Promise<void> {
+  const stockCards = await tx.stockCard.findMany({
+    where: options?.docNos?.length
+      ? { docNo: { in: options.docNos } }
+      : { referenceId: claimId },
+    select: {
+      id: true,
+      lotMovements: {
+        select: { lotNo: true, qtyIn: true, qtyOut: true },
+      },
+    },
+  });
+
+  for (const stockCard of stockCards) {
+    for (const lot of stockCard.lotMovements) {
+      if (Number(lot.qtyIn) > 0) {
+        await tx.lotBalance.updateMany({
+          where: { productId, lotNo: lot.lotNo },
+          data: { qtyOnHand: { decrement: lot.qtyIn } },
+        });
+        await tx.$executeRaw`
+          UPDATE "LotBalance"
+          SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+          WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
+        `;
+      }
+
+      if (Number(lot.qtyOut) > 0) {
+        await tx.lotBalance.upsert({
+          where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+          create: {
+            productId,
+            lotNo: lot.lotNo,
+            qtyOnHand: lot.qtyOut,
+          },
+          update: {
+            qtyOnHand: { increment: lot.qtyOut },
+          },
+        });
+      }
+    }
   }
 }

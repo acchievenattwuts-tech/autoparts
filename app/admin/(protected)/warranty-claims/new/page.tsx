@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import NewClaimForm from "./NewClaimForm";
+import { autoAllocateLots, type LotAvailableJSON } from "@/lib/lot-control-client";
 
 interface Props {
   searchParams: Promise<{ warrantyId?: string }>;
@@ -22,11 +23,12 @@ const NewClaimPage = async ({ searchParams }: Props) => {
       where: { id: warrantyId },
       select: {
         id: true,
+        lotNo: true,
         unitSeq: true,
         warrantyDays: true,
         startDate: true,
         endDate: true,
-        product: { select: { id: true, code: true, name: true } },
+        product: { select: { id: true, code: true, name: true, isLotControl: true } },
         sale:    { select: { saleNo: true, customerName: true } },
         saleItem: {
           select: {
@@ -62,6 +64,47 @@ const NewClaimPage = async ({ searchParams }: Props) => {
   const defaultSupplierPhone   = defaultSupplier?.phone   ?? "";
   const defaultSupplierAddress = defaultSupplier?.address ?? "";
 
+  const replacementLotOptions: LotAvailableJSON[] = warranty.product.isLotControl
+    ? await db.lotBalance.findMany({
+        where: {
+          productId: warranty.product.id,
+          qtyOnHand: { gt: 0 },
+        },
+        orderBy: [{ lotNo: "asc" }],
+        select: {
+          lotNo: true,
+          qtyOnHand: true,
+          product: {
+            select: {
+              lots: {
+                where: { productId: warranty.product.id },
+                select: {
+                  lotNo: true,
+                  unitCost: true,
+                  mfgDate: true,
+                  expDate: true,
+                },
+              },
+            },
+          },
+        },
+      }).then((rows) =>
+        rows.map((row) => {
+          const lotMaster = row.product.lots.find((lot) => lot.lotNo === row.lotNo);
+          return {
+            lotNo: row.lotNo,
+            qtyOnHand: Number(row.qtyOnHand),
+            unitCost: Number(lotMaster?.unitCost ?? 0),
+            mfgDate: lotMaster?.mfgDate?.toISOString() ?? null,
+            expDate: lotMaster?.expDate?.toISOString() ?? null,
+          };
+        })
+      )
+    : [];
+
+  const defaultReplacementLotNo =
+    warranty.product.isLotControl ? (autoAllocateLots(replacementLotOptions, 1, 1)[0]?.lotNo ?? "") : "";
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">
@@ -82,6 +125,7 @@ const NewClaimPage = async ({ searchParams }: Props) => {
         <p className="font-semibold text-blue-800 mb-2">{warranty.product.name}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-blue-700">
           <span>รหัส: <strong>{warranty.product.code}</strong></span>
+          <span>Lot: <strong>{warranty.lotNo ?? "-"}</strong></span>
           <span>ลำดับ: <strong>#{warranty.unitSeq}</strong></span>
           <span>ใบขาย: <strong>{warranty.sale.saleNo}</strong></span>
           <span>ลูกค้า: <strong>{warranty.sale.customerName ?? "—"}</strong></span>
@@ -97,6 +141,9 @@ const NewClaimPage = async ({ searchParams }: Props) => {
         defaultSupplierName={defaultSupplierName}
         defaultSupplierPhone={defaultSupplierPhone}
         defaultSupplierAddress={defaultSupplierAddress}
+        isLotControl={warranty.product.isLotControl}
+        replacementLotOptions={replacementLotOptions}
+        defaultReplacementLotNo={defaultReplacementLotNo}
       />
     </div>
   );

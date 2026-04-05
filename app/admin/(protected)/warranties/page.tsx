@@ -38,6 +38,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
     select: {
       id: true,
+      lotNo: true,
       warrantyDays: true,
       startDate: true,
       endDate: true,
@@ -185,6 +186,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left py-3 px-4 font-medium text-gray-600 w-8">#</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-600">Lot No</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">สินค้า</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-600">ใบขาย / ลูกค้า</th>
                   <th className="text-center py-3 px-4 font-medium text-gray-600">ลำดับ</th>
@@ -203,6 +205,15 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                   return (
                     <tr key={w.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="py-2.5 px-4 text-gray-400 text-xs">{rowNum}</td>
+                      <td className="py-2.5 px-4">
+                        {w.lotNo ? (
+                          <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-xs text-amber-800">
+                            {w.lotNo}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-4">
                         <p className="font-medium text-gray-800">{w.product.name}</p>
                         <p className="text-xs text-gray-400">[{w.product.code}]</p>

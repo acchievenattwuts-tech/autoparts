@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClaim } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { CheckCircle } from "lucide-react";
+import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
 interface SupplierOption {
   id:       string;
@@ -20,6 +21,9 @@ interface Props {
   defaultSupplierName:    string;
   defaultSupplierPhone:   string;
   defaultSupplierAddress: string;
+  isLotControl:           boolean;
+  replacementLotOptions:  LotAvailableJSON[];
+  defaultReplacementLotNo: string;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
@@ -32,6 +36,9 @@ const NewClaimForm = ({
   defaultSupplierName,
   defaultSupplierPhone,
   defaultSupplierAddress,
+  isLotControl,
+  replacementLotOptions,
+  defaultReplacementLotNo,
 }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -43,6 +50,7 @@ const NewClaimForm = ({
   const [supplierName, setSupplierName]     = useState(defaultSupplierName);
   const [supplierPhone, setSupplierPhone]   = useState(defaultSupplierPhone);
   const [supplierAddress, setSupplierAddress] = useState(defaultSupplierAddress);
+  const [replacementLotNo, setReplacementLotNo] = useState(defaultReplacementLotNo);
 
   const handleSupplierChange = (id: string) => {
     setSupplierId(id);
@@ -68,6 +76,7 @@ const NewClaimForm = ({
     fd.set("supplierPhone",   supplierPhone);
     fd.set("supplierAddress", supplierAddress);
     fd.set("claimType",       claimType);
+    fd.set("replacementLotNo", replacementLotNo);
 
     startTransition(async () => {
       const res = await createClaim(fd);
@@ -138,6 +147,26 @@ const NewClaimForm = ({
                 : "ลูกค้ารอผลจากซัพพลายเออร์ — stock +1 จากการรับของเสียคืน"}
             </p>
           </div>
+
+          {claimType === "REPLACE_NOW" && isLotControl && (
+            <div className="md:col-span-2">
+              <label className={labelCls}>Lot สินค้าทดแทน</label>
+              <input type="hidden" name="replacementLotNo" value={replacementLotNo} />
+              <SearchableSelect
+                options={replacementLotOptions.map(
+                  (lot): SelectOption => ({
+                    id: lot.lotNo,
+                    label: lot.lotNo,
+                    sublabel: `คงเหลือ ${lot.qtyOnHand.toLocaleString("th-TH")} | EXP ${lot.expDate ? lot.expDate.slice(0, 10) : "-"}`,
+                  })
+                )}
+                value={replacementLotNo}
+                onChange={setReplacementLotNo}
+                placeholder="เลือกระบุ Lot สินค้าทดแทน"
+              />
+              <p className="text-xs text-gray-400 mt-1">ระบบเลือก Lot ให้อัตโนมัติก่อน แต่สามารถเปลี่ยนเองได้</p>
+            </div>
+          )}
 
           <div className="md:col-span-2">
             <label className={labelCls}>อาการเสีย / สาเหตุ</label>

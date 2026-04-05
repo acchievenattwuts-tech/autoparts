@@ -374,6 +374,7 @@ model Warranty {
   saleId       String
   saleItemId   String
   productId    String
+  lotNo        String?
   startDate    DateTime
   endDate      DateTime
   note         String?
@@ -410,10 +411,24 @@ model WarrantyClaim {
   updatedAt       DateTime            @updatedAt
   supplier        Supplier?           @relation(fields: [supplierId], references: [id])
   warranty        Warranty            @relation(fields: [warrantyId], references: [id])
+  claimLots       WarrantyClaimLot[]
 
   @@index([warrantyId])
   @@index([claimDate])
   @@index([status])
+}
+
+model WarrantyClaimLot {
+  id        String        @id @default(cuid())
+  claimId   String
+  lotNo     String
+  qty       Decimal       @db.Decimal(12, 4)
+  direction String
+  unitCost  Decimal       @db.Decimal(10, 4)
+  claim     WarrantyClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId])
+  @@index([lotNo])
 }
 
 model ExpenseCode {

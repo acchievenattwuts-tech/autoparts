@@ -81,6 +81,55 @@ async function assertLotBalanceAvailable(
   }
 }
 
+function buildWarrantyLotSequence(lots: LotSubRow[]): string[] {
+  const sequence: string[] = [];
+  for (const lot of lots) {
+    const lotNo = lot.lotNo.trim();
+    const qty = Math.max(0, Math.ceil(lot.qty));
+    for (let index = 0; index < qty; index += 1) {
+      sequence.push(lotNo);
+    }
+  }
+  return sequence;
+}
+
+async function createWarrantySnapshots(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  input: {
+    saleId: string;
+    saleItemId: string;
+    productId: string;
+    warrantyDays: number;
+    docDate: Date;
+    itemQty: number;
+    lotItems: LotSubRow[];
+  }
+): Promise<void> {
+  if (input.warrantyDays <= 0) return;
+
+  const startDate = new Date(input.docDate);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + input.warrantyDays);
+
+  const unitCount = Math.min(Math.ceil(input.itemQty), 999);
+  const lotSequence = buildWarrantyLotSequence(input.lotItems);
+
+  for (let seq = 1; seq <= unitCount; seq += 1) {
+    await tx.warranty.create({
+      data: {
+        saleId: input.saleId,
+        saleItemId: input.saleItemId,
+        productId: input.productId,
+        warrantyDays: input.warrantyDays,
+        startDate,
+        endDate,
+        unitSeq: seq,
+        lotNo: lotSequence[seq - 1] ?? null,
+      },
+    });
+  }
+}
+
 export async function createSale(
   formData: FormData
 ): Promise<{ success?: boolean; saleNo?: string; error?: string }> {
@@ -213,26 +262,6 @@ export async function createSale(
         });
 
         // Auto-create Warranty rows — one per display-unit qty (N warranties for N pieces sold)
-        if (item.warrantyDays > 0) {
-          const startDate  = new Date(docDate);
-          const endDate    = new Date(startDate);
-          endDate.setDate(endDate.getDate() + item.warrantyDays);
-          const unitCount  = Math.min(Math.ceil(item.qty), 999);
-          for (let seq = 1; seq <= unitCount; seq++) {
-            await tx.warranty.create({
-              data: {
-                saleId:       sale.id,
-                saleItemId:   saleItem.id,
-                productId:    item.productId,
-                warrantyDays: item.warrantyDays,
-                startDate,
-                endDate,
-                unitSeq:      seq,
-              },
-            });
-          }
-        }
-
         // Write StockCard (outgoing)
         await writeStockCard(tx, {
           productId:   item.productId,
@@ -274,6 +303,16 @@ export async function createSale(
             if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
           }
         }
+
+        await createWarrantySnapshots(tx, {
+          saleId: sale.id,
+          saleItemId: saleItem.id,
+          productId: item.productId,
+          warrantyDays: item.warrantyDays,
+          docDate,
+          itemQty: item.qty,
+          lotItems: item.lotItems as LotSubRow[],
+        });
       }
     });
 
@@ -491,18 +530,6 @@ export async function updateSale(
           data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
         });
 
-        if (item.warrantyDays > 0) {
-          const startDate  = new Date(docDate);
-          const endDate    = new Date(startDate);
-          endDate.setDate(endDate.getDate() + item.warrantyDays);
-          const unitCount  = Math.min(Math.ceil(item.qty), 999);
-          for (let seq = 1; seq <= unitCount; seq++) {
-            await tx.warranty.create({
-              data: { saleId: id, saleItemId: saleItem.id, productId: item.productId, warrantyDays: item.warrantyDays, startDate, endDate, unitSeq: seq },
-            });
-          }
-        }
-
         await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.saleNo,
@@ -542,6 +569,16 @@ export async function updateSale(
             if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
           }
         }
+
+        await createWarrantySnapshots(tx, {
+          saleId: id,
+          saleItemId: saleItem.id,
+          productId: item.productId,
+          warrantyDays: item.warrantyDays,
+          docDate,
+          itemQty: item.qty,
+          lotItems: item.lotItems as LotSubRow[],
+        });
       }
 
       // 4. Recalculate amountRemain after updating netAmount

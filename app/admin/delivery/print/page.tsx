@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
+import { notFound } from "next/navigation";
+
+import AutoPrint from "@/components/shared/AutoPrint";
+import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL } from "@/lib/shipping";
-import AutoPrint from "@/components/shared/AutoPrint";
-import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import PrintButton from "./PrintButton";
 
 const DeliveryPrintPage = async ({
   searchParams,
@@ -45,6 +46,7 @@ const DeliveryPrintPage = async ({
             quantity:    true,
             salePrice:   true,
             totalAmount: true,
+            lotItems:    { select: { lotNo: true, qty: true } },
             product: {
               select: { name: true, reportUnitName: true },
             },
@@ -74,7 +76,14 @@ const DeliveryPrintPage = async ({
         }
         @media screen {
           body { background: #f3f4f6; }
-          .slip { max-width: 680px; margin: 24px auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+          .slip {
+            max-width: 760px;
+            margin: 24px auto;
+            background: white;
+            padding: 32px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+          }
         }
       `}</style>
 
@@ -83,7 +92,9 @@ const DeliveryPrintPage = async ({
         <PrintButton />
       </div>
 
-      <Suspense fallback={null}><AutoPrint /></Suspense>
+      <Suspense fallback={null}>
+        <AutoPrint />
+      </Suspense>
 
       {sales.map((sale) => {
         const customerName = sale.customer?.name ?? sale.customerName ?? "-";
@@ -92,7 +103,6 @@ const DeliveryPrintPage = async ({
 
         return (
           <div key={sale.id} className="slip">
-            {/* Header */}
             <div className="flex justify-between items-start mb-4">
               <div>
                 <p className="font-bold text-lg">{cfg.shopName ?? "ร้านค้า"}</p>
@@ -104,7 +114,9 @@ const DeliveryPrintPage = async ({
                 <p className="font-mono text-sm text-[#1e3a5f]">{sale.saleNo}</p>
                 <p className="text-sm text-gray-600">
                   {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                    day: "2-digit", month: "2-digit", year: "numeric",
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
                   })}
                 </p>
               </div>
@@ -112,7 +124,6 @@ const DeliveryPrintPage = async ({
 
             <hr className="my-3 border-gray-300" />
 
-            {/* ที่อยู่จัดส่ง */}
             <div className="mb-4">
               <p className="text-xs text-gray-500 mb-1">จัดส่งให้</p>
               <p className="font-semibold">{customerName}</p>
@@ -123,18 +134,17 @@ const DeliveryPrintPage = async ({
               {sale.trackingNo && (
                 <p className="text-sm mt-1">
                   <span className="text-gray-500">ขนส่ง:</span>{" "}
-                  <span className="font-medium">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</span>
-                  {" "}
+                  <span className="font-medium">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</span>{" "}
                   <span className="font-mono font-semibold">{sale.trackingNo}</span>
                 </p>
               )}
             </div>
 
-            {/* รายการสินค้า */}
             <table className="w-full text-sm mb-4">
               <thead>
                 <tr className="border-b border-gray-300">
                   <th className="text-left py-1 font-medium text-gray-600">รายการ</th>
+                  <th className="text-left py-1 font-medium text-gray-600 w-32">Lot No</th>
                   <th className="text-center py-1 font-medium text-gray-600 w-20">จำนวน</th>
                   <th className="text-right py-1 font-medium text-gray-600 w-24">ราคา/หน่วย</th>
                   <th className="text-right py-1 font-medium text-gray-600 w-24">รวม</th>
@@ -142,8 +152,21 @@ const DeliveryPrintPage = async ({
               </thead>
               <tbody>
                 {sale.items.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100">
+                  <tr key={item.id} className="border-b border-gray-100 align-top">
                     <td className="py-1">{item.product.name}</td>
+                    <td className="py-1">
+                      {item.lotItems.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {item.lotItems.map((lot) => (
+                            <div key={`${item.id}-${lot.lotNo}`} className="font-mono text-xs text-gray-700">
+                              {lot.lotNo} x {Number(lot.qty).toLocaleString("th-TH")}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="py-1 text-center">
                       {Number(item.quantity).toLocaleString("th-TH")} {item.product.reportUnitName ?? ""}
                     </td>
@@ -154,7 +177,6 @@ const DeliveryPrintPage = async ({
               </tbody>
             </table>
 
-            {/* ยอดรวม */}
             <div className="flex justify-end">
               <div className="w-48 text-sm space-y-1">
                 {Number(sale.shippingFee ?? 0) > 0 && (
@@ -170,16 +192,16 @@ const DeliveryPrintPage = async ({
               </div>
             </div>
 
-            {/* Footer COD / Pre-paid */}
-            <div className={`mt-4 p-3 rounded text-center font-semibold text-sm ${
-              isCOD ? "bg-orange-50 border border-orange-200 text-orange-700" : "bg-green-50 border border-green-200 text-green-700"
-            }`}>
-              {isCOD
-                ? `กรุณาชำระ ฿${fmt(sale.amountRemain)}`
-                : "ชำระแล้ว"}
+            <div
+              className={`mt-4 p-3 rounded text-center font-semibold text-sm ${
+                isCOD
+                  ? "bg-orange-50 border border-orange-200 text-orange-700"
+                  : "bg-green-50 border border-green-200 text-green-700"
+              }`}
+            >
+              {isCOD ? `กรุณาชำระ ฿${fmt(sale.amountRemain)}` : "ชำระแล้ว"}
             </div>
 
-            {/* ลายเซ็น */}
             <div className="grid grid-cols-2 gap-8 mt-6 text-sm text-gray-500">
               <div>
                 <p>ผู้ส่งของ .......................................</p>
