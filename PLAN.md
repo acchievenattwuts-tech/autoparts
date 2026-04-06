@@ -1193,7 +1193,7 @@ for (const lot of claimLots) {
 
 **Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, ลูกหนี้ค้างชำระแบบ aging, COD pending, สรุปซื้อแยกซัพพลายเออร์, สรุปขายแยกลูกค้า, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
 
-### 🟡 Phase 7 — SEO + AEO + AIO + Core Web Vitals (กำลังทำ)
+### ✅ Phase 7 — SEO + AEO + AIO + Core Web Vitals (เสร็จสมบูรณ์ — เหลือ manual actions + ongoing content)
 
 **เป้าหมาย:** ติดอันดับ Google + ขึ้นใน AI search (ChatGPT, Perplexity, Google AI Overview) + ปรับ Core Web Vitals ให้ดีขึ้นอย่างต่อเนื่อง
 
@@ -1203,7 +1203,7 @@ for (const lot of claimLots) {
 
 - [x] เปลี่ยน URL สินค้าเป็น `/products/[categorySlug]/[productSlug]`
 - [x] เปลี่ยน URL หมวดหมู่เป็น `/products/[categorySlug]`
-- [ ] สร้าง `slug` field ใน `Product` และ `Category` ใน database โดยตรง (สำหรับ stable slug ระยะยาว)
+- [x] สร้าง `slug` field ใน `Product` และ `Category` ใน database โดยตรง (`slug String? @unique` ใน schema.prisma)
 - [x] canonical redirect สำหรับหน้าสินค้าเมื่อเปิดด้วย path ที่ไม่ตรงรูปแบบหลัก
 - [x] ทุก URL หลักของ storefront อ่านแล้วรู้ได้ว่าเป็นหน้าอะไร
 
@@ -1222,8 +1222,8 @@ for (const lot of claimLots) {
 - [x] ปรับ static generation concurrency ให้เหมาะกับ Supabase session pool เพื่อให้ build/deploy ของ storefront เสถียรมากขึ้น
 - [x] วิเคราะห์ JavaScript bundle เพิ่มด้วย `@next/bundle-analyzer` และบันทึก snapshot ไว้ที่ `docs/performance/bundle-analysis-2026-04-02.md`
 - [x] ตรวจ dependency audit ระดับ low-risk แล้ว และยืนยัน package ที่ยังต้องคงไว้ตาม source/config ปัจจุบัน
-- [ ] clean up dependency เพิ่มเติมเมื่อพร้อมแยก `shadcn` theme import หรือเจอ package ที่ไม่ถูกใช้งานจริงจาก snapshot ถัดไป
-- [ ] วัด production ซ้ำและ tune ต่อเนื่องจนค่าหลักนิ่งขึ้น
+- [ ] clean up dependency ที่ไม่ได้ใช้จริง: `shadcn` (^4.1.0) และ `tw-animate-css` (^1.4.0) — ยืนยันแล้วว่า 0 imports ใน codebase
+- [x] วัด production ซ้ำ — บันทึกไว้ที่ `docs/performance/production-remeasurement-2026-04-03.md` และ `docs/performance/real-user-web-vitals.md`
 
 ---
 
@@ -1245,7 +1245,7 @@ for (const lot of claimLots) {
 - [x] `app/robots.ts` ใช้ Next.js Metadata robots
 - [x] กัน `/admin/` จาก indexing
 - [x] Sitemap ชี้ `https://www.sriwanparts.com/sitemap.xml`
-- [ ] Submit sitemap ใน Google Search Console
+- [ ] Submit sitemap ใน Google Search Console *(manual action — ต้องทำใน GSC)*
 
 ---
 
@@ -1258,10 +1258,12 @@ for (const lot of claimLots) {
 - [x] `components/seo/BreadcrumbJsonLd.tsx`
 - [x] `components/seo/FaqJsonLd.tsx`
 - [x] `components/seo/OrganizationJsonLd.tsx`
-- [x] `WebSite` JSON-LD
-- [x] `Article` JSON-LD สำหรับ knowledge articles
-- [x] `CollectionPage` JSON-LD สำหรับหน้าหมวดหมู่
-- [ ] ทดสอบด้วย [Google Rich Results Test](https://search.google.com/test/rich-results)
+- [x] `components/seo/WebSiteJsonLd.tsx`
+- [x] `components/seo/ArticleJsonLd.tsx` — สำหรับ knowledge articles
+- [x] `components/seo/CollectionPageJsonLd.tsx` — สำหรับหน้าหมวดหมู่
+- [x] `components/seo/JsonLd.tsx` — base wrapper
+- [x] `components/seo/OgImageTemplate.tsx` — OG image generation
+- [ ] ทดสอบด้วย [Google Rich Results Test](https://search.google.com/test/rich-results) *(manual action)*
 
 ---
 
@@ -1275,14 +1277,13 @@ for (const lot of claimLots) {
   - รูปแบบการให้บริการ
   - local SEO layer สำหรับนครสวรรค์
 - [x] **หน้า `/faq`** — มีคำถามหลักที่ลูกค้าสงสัยจริง และใช้ `FAQPage` JSON-LD คู่กัน
-- [x] **หน้า `/knowledge`** — มีแล้วพร้อมบทความก้อนแรกและบทความ local SEO เพิ่มเติม
-- [x] **`llms.txt`** — มีแล้วที่ `/public/llms.txt`
-- [x] **AIO Signals** — มีในหน้าสินค้าในระดับ foundation
-  - ระบุยี่ห้อรถ/รุ่นรถที่ใช้ได้ชัดเจน
-- [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ
-- [x] ขยาย knowledge hub ต่อให้ครอบคลุมคำค้นเชิงธุรกิจและ local intent มากขึ้นในระดับก้อนแรก
-- [x] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting เพิ่มเติม
-- [ ] ขยาย knowledge hub ต่อจากคำค้นจริงใน production และเติมบทความเชิงรุ่นรถ / compatibility เพิ่มเมื่อมีข้อมูลรองรับ
+- [x] **หน้า `/knowledge`** — มี **14 บทความ** ครอบคลุมหมวด: การเลือกซื้อ, การวินิจฉัยอาการ, การใช้งานเว็บไซต์, local SEO นครสวรรค์ พร้อม ArticleJsonLd ทุกบทความ
+- [x] **`llms.txt`** — มีแล้วที่ `/public/llms.txt` (ระบุข้อมูลร้าน, หน้าหลัก, keyword, ช่องทางติดต่อ)
+- [x] **AIO Signals** — หน้าสินค้าแสดงยี่ห้อรถ/รุ่นรถที่ใช้ได้ จาก `ProductCarModel` + `buildStorefrontProductDescription()`
+- [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ *(ongoing — ขึ้นกับข้อมูล DB)*
+- [x] ขยาย knowledge hub ต่อให้ครอบคลุมคำค้นเชิงธุรกิจและ local intent
+- [x] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting
+- [ ] ขยาย knowledge hub จากคำค้นจริงใน production + บทความเชิงรุ่นรถ / compatibility *(ongoing content)*
 
 ---
 
