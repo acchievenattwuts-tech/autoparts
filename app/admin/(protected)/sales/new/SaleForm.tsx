@@ -119,6 +119,9 @@ const SaleForm = ({
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
   const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
+  const productMap = new Map(products.map((product) => [product.id, product]));
+  const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+  const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -137,7 +140,7 @@ const SaleForm = ({
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
         if (field === "productId") {
-          const prod = products.find((p) => p.id === String(value));
+          const prod = productMap.get(String(value));
           updated.unitName      = prod?.saleUnitName ?? "";
           updated.salePrice     = prod?.salePrice ?? 0;
           updated.warrantyDays  = prod?.warrantyDays ?? 0;
@@ -151,7 +154,7 @@ const SaleForm = ({
           if (prod?.isLotControl) loadLots(i, prod.id, prod.lotIssueMethod);
         }
         if (field === "qty" && item.productId) {
-          const prod = products.find((p) => p.id === item.productId);
+          const prod = productMap.get(item.productId);
           if (prod?.isLotControl && updated.lotItems.length === 1) {
             updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
           }
@@ -163,7 +166,7 @@ const SaleForm = ({
 
   const handleLotSelect = (itemIdx: number, lotIdx: number, lotNo: string) => {
     const item = items[itemIdx];
-    const prod = products.find((p) => p.id === item.productId);
+    const prod = productMap.get(item.productId);
     const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
     const av = (availableLots[itemIdx] ?? []).find((l) => l.lotNo === lotNo);
     // qty already used by other lot rows
@@ -188,7 +191,7 @@ const SaleForm = ({
   };
 
   const updateItemSupplier = (i: number, supplierId: string) => {
-    const supplier = suppliers.find((s) => s.id === supplierId);
+    const supplier = supplierMap.get(supplierId);
     setItems((prev) =>
       prev.map((item, idx) =>
         idx !== i ? item : { ...item, supplierId, supplierName: supplier?.name ?? "" }
@@ -224,7 +227,7 @@ const SaleForm = ({
 
   const handleAutoAllocate = async (itemIdx: number) => {
     const item = items[itemIdx];
-    const prod = products.find((p) => p.id === item.productId);
+    const prod = productMap.get(item.productId);
     if (!prod?.isLotControl) return;
     const scale = prod.units.find((u) => u.name === item.unitName)?.scale ?? 1;
     let available = availableLots[itemIdx];
@@ -239,7 +242,7 @@ const SaleForm = ({
   };
 
   const getUnits = (productId: string) =>
-    products.find((p) => p.id === productId)?.units ?? [];
+    productMap.get(productId)?.units ?? [];
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
   const effectiveShippingFee = fulfillmentType === "DELIVERY" ? shippingFee : 0;
@@ -249,7 +252,7 @@ const SaleForm = ({
   const handleCustomerChange = (customerId: string) => {
     setSelectedCustomerId(customerId);
     if (customerId) {
-      const found = customers.find((c) => c.id === customerId);
+      const found = customerMap.get(customerId);
       setCustomerNameOverride(found?.name ?? "");
       setCustomerPhoneOverride(found?.phone ?? "");
       setShippingAddress(found?.shippingAddress ?? "");
@@ -271,7 +274,7 @@ const SaleForm = ({
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
-      const prod = products.find((p) => p.id === item.productId);
+      const prod = productMap.get(item.productId);
       if (prod?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) { setError(lotErr); return; }
@@ -587,7 +590,7 @@ const SaleForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
-                const prod  = products.find((p) => p.id === item.productId);
+                const prod  = productMap.get(item.productId);
                 const isLot = prod?.isLotControl ?? false;
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;

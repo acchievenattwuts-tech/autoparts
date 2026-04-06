@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma";
 import Link from "next/link";
 import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus } from "lucide-react";
 import Pagination from "@/components/shared/Pagination";
@@ -12,6 +13,26 @@ const PAGE_SIZE = 30;
 interface WarrantyPageProps {
   searchParams: Promise<{ status?: string; q?: string; page?: string; from?: string; to?: string }>;
 }
+
+const buildWarrantyStatusWhere = (
+  status: string | undefined,
+  now: Date,
+  soonDate: Date,
+): Prisma.WarrantyWhereInput => {
+  if (status === "expired") {
+    return { endDate: { lt: now } };
+  }
+
+  if (status === "soon") {
+    return { endDate: { gte: now, lte: soonDate } };
+  }
+
+  if (status === "active") {
+    return { endDate: { gt: soonDate } };
+  }
+
+  return {};
+};
 
 const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   await requirePermission("warranties.view");
@@ -25,61 +46,74 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   soonDate.setDate(now.getDate() + 30);
   const from = fromParam ?? "";
   const to   = toParam   ?? "";
+  const normalizedQuery = q?.trim() ?? "";
 
-  const dateWhere = (from || to) ? {
+  const dateWhere: Prisma.WarrantyWhereInput = (from || to) ? {
     startDate: {
       ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
       ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
     },
   } : {};
 
-  const allWarranties = await db.warranty.findMany({
-    where: dateWhere,
-    orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
-    select: {
-      id: true,
-      lotNo: true,
-      warrantyDays: true,
-      startDate: true,
-      endDate: true,
-      note: true,
-      unitSeq: true,
-      saleItemId: true,
-      product:  { select: { code: true, name: true } },
-      sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
-      _count:   { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
-    },
-  });
+  const searchWhere: Prisma.WarrantyWhereInput = normalizedQuery
+    ? {
+        OR: [
+          { product: { name: { contains: normalizedQuery, mode: "insensitive" } } },
+          { product: { code: { contains: normalizedQuery, mode: "insensitive" } } },
+          { sale: { customerName: { contains: normalizedQuery, mode: "insensitive" } } },
+          { sale: { saleNo: { contains: normalizedQuery, mode: "insensitive" } } },
+        ],
+      }
+    : {};
 
-  // Classify status
-  const withStatus = allWarranties.map((w) => {
+  const filteredWhere: Prisma.WarrantyWhereInput = {
+    AND: [dateWhere, searchWhere, buildWarrantyStatusWhere(status, now, soonDate)],
+  };
+
+  const [warrantyRows, filteredCount, activeCount, soonCount, expiredCount] = await Promise.all([
+    db.warranty.findMany({
+      where: filteredWhere,
+      orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
+      skip: (pageNum - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      select: {
+        id: true,
+        lotNo: true,
+        warrantyDays: true,
+        startDate: true,
+        endDate: true,
+        note: true,
+        unitSeq: true,
+        saleItemId: true,
+        product:  { select: { code: true, name: true } },
+        sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
+        _count:   { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
+      },
+    }),
+    db.warranty.count({ where: filteredWhere }),
+    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("active", now, soonDate)] } }),
+    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("soon", now, soonDate)] } }),
+    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("expired", now, soonDate)] } }),
+  ]);
+
+  const paginated = warrantyRows.map((w) => {
     const isExpired = w.endDate < now;
     const isSoon    = !isExpired && w.endDate <= soonDate;
     const wStatus   = isExpired ? "expired" : isSoon ? "soon" : "active";
     return { ...w, wStatus };
   });
-
-  // Filter
-  const filtered = withStatus.filter((w) => {
-    const matchStatus = !status || w.wStatus === status;
-    const matchQ = !q || w.product.name.toLowerCase().includes(q.toLowerCase()) ||
-      w.product.code.toLowerCase().includes(q.toLowerCase()) ||
-      (w.sale.customerName?.toLowerCase().includes(q.toLowerCase()) ?? false) ||
-      w.sale.saleNo.toLowerCase().includes(q.toLowerCase());
-    return matchStatus && matchQ;
-  });
+  const filtered = { length: filteredCount };
 
   const counts = {
-    active:  withStatus.filter((w) => w.wStatus === "active").length,
-    soon:    withStatus.filter((w) => w.wStatus === "soon").length,
-    expired: withStatus.filter((w) => w.wStatus === "expired").length,
+    active: activeCount,
+    soon: soonCount,
+    expired: expiredCount,
   };
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice((pageNum - 1) * PAGE_SIZE, pageNum * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
 
   const paginationParams: Record<string, string> = {};
-  if (q)      paginationParams.q      = q;
+  if (normalizedQuery) paginationParams.q = normalizedQuery;
   if (status) paginationParams.status = status;
   if (from)   paginationParams.from   = from;
   if (to)     paginationParams.to     = to;

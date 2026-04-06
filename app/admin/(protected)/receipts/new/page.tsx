@@ -47,9 +47,20 @@ const NewReceiptPage = async () => {
     orderBy: { name: "asc" },
   });
 
+  const saleBalanceMap = new Map(
+    saleBalances
+      .filter((balance): balance is typeof balance & { customerId: string } => balance.customerId !== null)
+      .map((balance) => [balance.customerId, Number(balance._sum.amountRemain ?? 0)]),
+  );
+  const cnBalanceMap = new Map(
+    cnBalances
+      .filter((balance): balance is typeof balance & { customerId: string } => balance.customerId !== null)
+      .map((balance) => [balance.customerId, Number(balance._sum.amountRemain ?? 0)]),
+  );
+
   const customers = customerRows.map((c) => {
-    const saleSum = Number(saleBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0);
-    const cnSum   = Number(cnBalances.find((b) => b.customerId === c.id)?._sum.amountRemain ?? 0);
+    const saleSum = saleBalanceMap.get(c.id) ?? 0;
+    const cnSum   = cnBalanceMap.get(c.id) ?? 0;
     return {
       ...c,
       amountRemain: saleSum - cnSum, // net outstanding (sale AR minus CN credits)

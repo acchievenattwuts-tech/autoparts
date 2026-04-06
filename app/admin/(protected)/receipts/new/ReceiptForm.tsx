@@ -52,6 +52,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
   const [isPending,       startTransition]     = useTransition();
   const [error,           setError]            = useState("");
   const [successMsg,      setSuccessMsg]       = useState("");
+  const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
   // Skip the first effect run if initialData is provided (sales already pre-loaded)
   const skipFirstLoad = useRef(isEdit);
@@ -132,7 +133,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
   const cnTotal   = selectedItems.filter((i) => i.isCN).reduce((sum, i) => sum + i.paidAmount, 0);
   const netTotal  = saleTotal - cnTotal;
 
-  const selectedCustomer = customers.find((c) => c.id === customerId);
+  const selectedCustomer = customerMap.get(customerId);
 
   const handleSubmit = () => {
     setError("");

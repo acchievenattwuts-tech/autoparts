@@ -1,12 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma";
 import Link from "next/link";
 import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { ShieldAlert, Clock, CheckCircle2, Send, XCircle, Eye, Pencil } from "lucide-react";
 import CancelClaimButton from "./CancelClaimButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import Pagination from "@/components/shared/Pagination";
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT:             "รอส่งเคลม",
@@ -27,33 +29,54 @@ const OUTCOME_LABEL: Record<string, string> = {
   NO_RESOLUTION: "ไม่ได้รับการแก้ไข",
 };
 
+const PAGE_SIZE = 50;
+
 const ClaimListPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; from?: string; to?: string; page?: string }>;
 }) => {
   await requirePermission("warranty_claims.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "warranty_claims.update");
 
-  const { status, q, from: fromParam, to: toParam } = await searchParams;
+  const { status, q, from: fromParam, to: toParam, page } = await searchParams;
+  const pageNum = Math.max(1, parseInt(page ?? "1", 10));
+  const normalizedQuery = q?.trim() ?? "";
 
-  const dateWhere = (fromParam || toParam) ? {
+  const dateWhere: Prisma.WarrantyClaimWhereInput = (fromParam || toParam) ? {
     claimDate: {
       ...(fromParam ? { gte: new Date(`${fromParam}T00:00:00`) } : {}),
       ...(toParam   ? { lte: new Date(`${toParam}T23:59:59.999`) } : {}),
     },
   } : {};
 
+  const searchWhere: Prisma.WarrantyClaimWhereInput = normalizedQuery
+    ? {
+        OR: [
+          { claimNo: { contains: normalizedQuery, mode: "insensitive" } },
+          { warranty: { product: { name: { contains: normalizedQuery, mode: "insensitive" } } } },
+          { warranty: { product: { code: { contains: normalizedQuery, mode: "insensitive" } } } },
+          { warranty: { sale: { customerName: { contains: normalizedQuery, mode: "insensitive" } } } },
+        ],
+      }
+    : {};
+
+  const filteredWhere: Prisma.WarrantyClaimWhereInput = {
+    AND: [
+      dateWhere,
+      searchWhere,
+      status ? { status: status as never } : {},
+    ],
+  };
+
   // Fetch counts from ALL claims (ignore status filter) for accurate summary cards
-  const [claims, allCounts] = await Promise.all([
+  const [claims, filteredCount, allCounts] = await Promise.all([
     db.warrantyClaim.findMany({
-      where: {
-        ...dateWhere,
-        ...(status ? { status: status as never } : {}),
-      },
+      where: filteredWhere,
       orderBy: { claimDate: "desc" },
-      take: 200,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       select: {
         id: true,
         claimNo: true,
@@ -72,6 +95,7 @@ const ClaimListPage = async ({
         },
       },
     }),
+    db.warrantyClaim.count({ where: filteredWhere }),
     db.warrantyClaim.groupBy({
       by: ["status"],
       where: dateWhere,
@@ -82,17 +106,17 @@ const ClaimListPage = async ({
   const countMap: Record<string, number> = {};
   for (const row of allCounts) countMap[row.status] = row._count._all;
 
-  const filtered = q
-    ? claims.filter((c) =>
-        c.claimNo.toLowerCase().includes(q.toLowerCase()) ||
-        c.warranty.product.name.toLowerCase().includes(q.toLowerCase()) ||
-        c.warranty.product.code.toLowerCase().includes(q.toLowerCase()) ||
-        (c.warranty.sale.customerName?.toLowerCase().includes(q.toLowerCase()) ?? false)
-      )
-    : claims;
+  const filtered = claims.slice();
+  filtered.length = filteredCount;
 
   const from = fromParam ?? "";
   const to   = toParam   ?? "";
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const paginationParams: Record<string, string> = {};
+  if (normalizedQuery) paginationParams.q = normalizedQuery;
+  if (status) paginationParams.status = status;
+  if (from) paginationParams.from = from;
+  if (to) paginationParams.to = to;
 
   return (
     <div>
@@ -182,7 +206,7 @@ const ClaimListPage = async ({
               <tbody>
                 {filtered.map((c, idx) => (
                   <tr key={c.id} className={`border-t border-gray-50 hover:bg-gray-50 transition-colors ${c.status === "CANCELLED" ? "opacity-50" : ""}`}>
-                    <td className="py-2.5 px-4 text-gray-400 text-xs">{idx + 1}</td>
+                    <td className="py-2.5 px-4 text-gray-400 text-xs">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-2.5 px-4">
                       <Link href={`/admin/warranty-claims/${c.id}`}
                         className="font-mono text-sm text-[#1e3a5f] hover:underline font-medium">
@@ -237,6 +261,13 @@ const ClaimListPage = async ({
           </div>
         )}
       </div>
+
+      <Pagination
+        currentPage={pageNum}
+        totalPages={totalPages}
+        basePath="/admin/warranty-claims"
+        searchParams={paginationParams}
+      />
     </div>
   );
 };

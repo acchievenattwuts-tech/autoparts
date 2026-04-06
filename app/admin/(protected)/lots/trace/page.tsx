@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { buildProductSearchWhere } from "@/lib/product-search";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Activity } from "lucide-react";
@@ -44,24 +45,39 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
   const { productId, q } = await searchParams;
+  const normalizedQuery = q?.trim() ?? "";
+  const productSearchWhere = buildProductSearchWhere(normalizedQuery);
+  const productSelect = {
+    id: true,
+    code: true,
+    name: true,
+    saleUnitName: true,
+    stock: true,
+  } as const;
 
-  // Fetch product list for selector
-  const products = await db.product.findMany({
-    orderBy: { code: "asc" },
-    select: { id: true, code: true, name: true, saleUnitName: true, stock: true },
-  });
-
-  const filteredProducts = q
-    ? products.filter(
-        (p) =>
-          p.code.toLowerCase().includes(q.toLowerCase()) ||
-          p.name.toLowerCase().includes(q.toLowerCase()),
-      )
-    : [];
+  const [selectedProductById, filteredProducts, filteredProductCount] = await Promise.all([
+    productId
+      ? db.product.findUnique({
+          where: { id: productId },
+          select: productSelect,
+        })
+      : Promise.resolve(null),
+    normalizedQuery && productSearchWhere
+      ? db.product.findMany({
+          where: productSearchWhere,
+          orderBy: { code: "asc" },
+          take: 50,
+          select: productSelect,
+        })
+      : Promise.resolve([]),
+    normalizedQuery && productSearchWhere
+      ? db.product.count({ where: productSearchWhere })
+      : Promise.resolve(0),
+  ]);
 
   const selectedProduct = productId
-    ? (products.find((p) => p.id === productId) ?? null)
-    : q && filteredProducts.length === 1
+    ? selectedProductById
+    : normalizedQuery && filteredProductCount === 1
       ? filteredProducts[0]
       : null;
 
@@ -80,106 +96,136 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
       select: { productId: true, lotNo: true, expDate: true, mfgDate: true },
       orderBy: { lotNo: "asc" },
     });
+    const lotNos = productLots.map((lot) => lot.lotNo);
 
-    lotData = await Promise.all(
-      productLots.map(async (pl): Promise<LotEntry> => {
-        const [purchaseLots, saleLots, returnLots, cnLots, lotBalance] = await Promise.all([
-          db.purchaseItemLot.findMany({
-            where: { lotNo: pl.lotNo, purchaseItem: { productId: pl.productId } },
-            include: {
-              purchaseItem: {
-                select: {
-                  purchase: {
-                    select: { id: true, purchaseNo: true, purchaseDate: true, status: true },
-                  },
+    if (lotNos.length > 0) {
+      const [purchaseLots, saleLots, returnLots, cnLots, lotBalances] = await Promise.all([
+        db.purchaseItemLot.findMany({
+          where: { lotNo: { in: lotNos }, purchaseItem: { productId: selectedProduct.id } },
+          select: {
+            lotNo: true,
+            qty: true,
+            purchaseItem: {
+              select: {
+                purchase: {
+                  select: { id: true, purchaseNo: true, purchaseDate: true, status: true },
                 },
               },
             },
-          }),
-          db.saleItemLot.findMany({
-            where: { lotNo: pl.lotNo, saleItem: { productId: pl.productId } },
-            include: {
-              saleItem: {
-                select: {
-                  sale: { select: { id: true, saleNo: true, saleDate: true, status: true } },
+          },
+        }),
+        db.saleItemLot.findMany({
+          where: { lotNo: { in: lotNos }, saleItem: { productId: selectedProduct.id } },
+          select: {
+            lotNo: true,
+            qty: true,
+            saleItem: {
+              select: {
+                sale: { select: { id: true, saleNo: true, saleDate: true, status: true } },
+              },
+            },
+          },
+        }),
+        db.purchaseReturnItemLot.findMany({
+          where: { lotNo: { in: lotNos }, purchaseReturnItem: { productId: selectedProduct.id } },
+          select: {
+            lotNo: true,
+            qty: true,
+            purchaseReturnItem: {
+              select: {
+                purchaseReturn: {
+                  select: { id: true, returnNo: true, returnDate: true, status: true },
                 },
               },
             },
-          }),
-          db.purchaseReturnItemLot.findMany({
-            where: { lotNo: pl.lotNo, purchaseReturnItem: { productId: pl.productId } },
-            include: {
-              purchaseReturnItem: {
-                select: {
-                  purchaseReturn: {
-                    select: { id: true, returnNo: true, returnDate: true, status: true },
-                  },
-                },
+          },
+        }),
+        db.creditNoteItemLot.findMany({
+          where: { lotNo: { in: lotNos }, creditNoteItem: { productId: selectedProduct.id } },
+          select: {
+            lotNo: true,
+            qty: true,
+            creditNoteItem: {
+              select: {
+                creditNote: { select: { id: true, cnNo: true, cnDate: true, status: true } },
               },
             },
-          }),
-          db.creditNoteItemLot.findMany({
-            where: { lotNo: pl.lotNo, creditNoteItem: { productId: pl.productId } },
-            include: {
-              creditNoteItem: {
-                select: {
-                  creditNote: { select: { id: true, cnNo: true, cnDate: true, status: true } },
-                },
-              },
-            },
-          }),
-          db.lotBalance.findUnique({
-            where: { productId_lotNo: { productId: pl.productId, lotNo: pl.lotNo } },
-            select: { qtyOnHand: true },
-          }),
-        ]);
+          },
+        }),
+        db.lotBalance.findMany({
+          where: { productId: selectedProduct.id, lotNo: { in: lotNos } },
+          select: { lotNo: true, qtyOnHand: true },
+        }),
+      ]);
 
-        const movements: LotMovement[] = [
-          ...purchaseLots.map((row) => ({
-            date: row.purchaseItem.purchase.purchaseDate,
-            docNo: row.purchaseItem.purchase.purchaseNo,
-            docLink: `/admin/purchases/${row.purchaseItem.purchase.id}`,
-            source: "PURCHASE" as MovementSource,
-            qty: Number(row.qty),
-            direction: "in" as const,
-            isCancelled: row.purchaseItem.purchase.status === "CANCELLED",
-          })),
-          ...saleLots.map((row) => ({
-            date: row.saleItem.sale.saleDate,
-            docNo: row.saleItem.sale.saleNo,
-            docLink: `/admin/sales/${row.saleItem.sale.id}`,
-            source: "SALE" as MovementSource,
-            qty: Number(row.qty),
-            direction: "out" as const,
-            isCancelled: row.saleItem.sale.status === "CANCELLED",
-          })),
-          ...returnLots.map((row) => ({
-            date: row.purchaseReturnItem.purchaseReturn.returnDate,
-            docNo: row.purchaseReturnItem.purchaseReturn.returnNo,
-            docLink: `/admin/purchase-returns/${row.purchaseReturnItem.purchaseReturn.id}`,
-            source: "PURCHASE_RETURN" as MovementSource,
-            qty: Number(row.qty),
-            direction: "out" as const,
-            isCancelled: row.purchaseReturnItem.purchaseReturn.status === "CANCELLED",
-          })),
-          ...cnLots.map((row) => ({
-            date: row.creditNoteItem.creditNote.cnDate,
-            docNo: row.creditNoteItem.creditNote.cnNo,
-            docLink: `/admin/credit-notes/${row.creditNoteItem.creditNote.id}`,
-            source: "CREDIT_NOTE" as MovementSource,
-            qty: Number(row.qty),
-            direction: "in" as const,
-            isCancelled: row.creditNoteItem.creditNote.status === "CANCELLED",
-          })),
-        ].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const movementMap = new Map<string, LotMovement[]>();
+      const pushMovement = (lotNo: string, movement: LotMovement) => {
+        const existing = movementMap.get(lotNo);
+        if (existing) {
+          existing.push(movement);
+        } else {
+          movementMap.set(lotNo, [movement]);
+        }
+      };
 
-        return {
-          pl,
-          movements,
-          balance: Number(lotBalance?.qtyOnHand ?? 0),
-        };
-      }),
-    );
+      for (const row of purchaseLots) {
+        pushMovement(row.lotNo, {
+          date: row.purchaseItem.purchase.purchaseDate,
+          docNo: row.purchaseItem.purchase.purchaseNo,
+          docLink: `/admin/purchases/${row.purchaseItem.purchase.id}`,
+          source: "PURCHASE",
+          qty: Number(row.qty),
+          direction: "in",
+          isCancelled: row.purchaseItem.purchase.status === "CANCELLED",
+        });
+      }
+
+      for (const row of saleLots) {
+        pushMovement(row.lotNo, {
+          date: row.saleItem.sale.saleDate,
+          docNo: row.saleItem.sale.saleNo,
+          docLink: `/admin/sales/${row.saleItem.sale.id}`,
+          source: "SALE",
+          qty: Number(row.qty),
+          direction: "out",
+          isCancelled: row.saleItem.sale.status === "CANCELLED",
+        });
+      }
+
+      for (const row of returnLots) {
+        pushMovement(row.lotNo, {
+          date: row.purchaseReturnItem.purchaseReturn.returnDate,
+          docNo: row.purchaseReturnItem.purchaseReturn.returnNo,
+          docLink: `/admin/purchase-returns/${row.purchaseReturnItem.purchaseReturn.id}`,
+          source: "PURCHASE_RETURN",
+          qty: Number(row.qty),
+          direction: "out",
+          isCancelled: row.purchaseReturnItem.purchaseReturn.status === "CANCELLED",
+        });
+      }
+
+      for (const row of cnLots) {
+        pushMovement(row.lotNo, {
+          date: row.creditNoteItem.creditNote.cnDate,
+          docNo: row.creditNoteItem.creditNote.cnNo,
+          docLink: `/admin/credit-notes/${row.creditNoteItem.creditNote.id}`,
+          source: "CREDIT_NOTE",
+          qty: Number(row.qty),
+          direction: "in",
+          isCancelled: row.creditNoteItem.creditNote.status === "CANCELLED",
+        });
+      }
+
+      const balanceMap = new Map(
+        lotBalances.map((balance) => [balance.lotNo, Number(balance.qtyOnHand)]),
+      );
+
+      lotData = productLots.map((pl): LotEntry => ({
+        pl,
+        movements: (movementMap.get(pl.lotNo) ?? []).sort((a, b) => a.date.getTime() - b.date.getTime()),
+        balance: balanceMap.get(pl.lotNo) ?? 0,
+      }));
+    }
 
     // Show only lots with any movement or positive balance
     lotData = lotData.filter((d) => d.movements.length > 0 || d.balance > 0);
@@ -217,7 +263,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
         </form>
 
         {/* Search results list */}
-        {q && !selectedProduct && filteredProducts.length > 0 && (
+        {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
           <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
               <p className="text-xs text-gray-500">
@@ -230,7 +276,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
               {filteredProducts.map((p) => (
                 <li key={p.id}>
                   <Link
-                    href={`/admin/lots/trace?productId=${p.id}&q=${encodeURIComponent(q)}`}
+                    href={`/admin/lots/trace?productId=${p.id}&q=${encodeURIComponent(normalizedQuery)}`}
                     className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
                   >
                     <div>
@@ -247,7 +293,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {q && !selectedProduct && filteredProducts.length === 0 && (
+        {normalizedQuery && !selectedProduct && filteredProducts.length === 0 && (
           <p className="mt-3 text-sm text-gray-400">
             ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;
           </p>

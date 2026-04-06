@@ -85,6 +85,7 @@ const PurchaseForm = ({
   );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const productMap = new Map(products.map((product) => [product.id, product]));
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]);
@@ -97,7 +98,7 @@ const PurchaseForm = ({
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
         if (field === "productId") {
-          const prod = products.find((p) => p.id === String(value));
+          const prod = productMap.get(String(value));
           updated.unitName  = prod?.purchaseUnitName ?? "";
           updated.costPrice = prod?.costPrice ?? 0;
           // Initialize lot sub-rows for lot-controlled products
@@ -106,7 +107,7 @@ const PurchaseForm = ({
             : [];
         }
         if (field === "qty" && item.productId) {
-          const prod = products.find((p) => p.id === item.productId);
+          const prod = productMap.get(item.productId);
           if (prod?.isLotControl && updated.lotItems.length === 1) {
             // Auto-sync single lot qty when item qty changes
             updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
@@ -144,7 +145,7 @@ const PurchaseForm = ({
   };
 
   const getUnits = (productId: string) =>
-    products.find((p) => p.id === productId)?.units ?? [];
+    productMap.get(productId)?.units ?? [];
 
   const totalBeforeDiscount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
   const discountedTotal = Math.max(0, totalBeforeDiscount - discount);
@@ -165,7 +166,7 @@ const PurchaseForm = ({
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
 
-      const prod = products.find((p) => p.id === item.productId);
+      const prod = productMap.get(item.productId);
       if (prod?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, prod.requireExpiryDate);
         if (lotErr) { setError(lotErr); return; }
@@ -319,7 +320,7 @@ const PurchaseForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
-                const prod  = products.find((p) => p.id === item.productId);
+                const prod  = productMap.get(item.productId);
                 const isLot = prod?.isLotControl ?? false;
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;

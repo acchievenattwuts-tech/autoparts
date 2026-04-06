@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { buildProductSearchWhere } from "@/lib/product-search";
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
 import RecalculateButton from "./RecalculateButton";
@@ -51,34 +52,42 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
   const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
 
   const { productId, unitName, q } = await searchParams;
+  const normalizedQuery = q?.trim() ?? "";
+  const productSearchWhere = buildProductSearchWhere(normalizedQuery);
+  const productSelect = {
+    id: true,
+    code: true,
+    name: true,
+    stock: true,
+    avgCost: true,
+    reportUnitName: true,
+    units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+  } as const;
 
-  // Fetch product list for selector
-  const products = await db.product.findMany({
-    orderBy: { code: "asc" },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      stock: true,
-      avgCost: true,
-      reportUnitName: true,
-      units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-    },
-  });
-
-  // Filter products by search query
-  const filteredProducts = q
-    ? products.filter(
-        (p) =>
-          p.code.toLowerCase().includes(q.toLowerCase()) ||
-          p.name.toLowerCase().includes(q.toLowerCase()),
-      )
-    : [];
+  const [selectedProductById, filteredProducts, filteredProductCount] = await Promise.all([
+    productId
+      ? db.product.findUnique({
+          where: { id: productId },
+          select: productSelect,
+        })
+      : Promise.resolve(null),
+    normalizedQuery && productSearchWhere
+      ? db.product.findMany({
+          where: productSearchWhere,
+          orderBy: { code: "asc" },
+          take: 50,
+          select: productSelect,
+        })
+      : Promise.resolve([]),
+    normalizedQuery && productSearchWhere
+      ? db.product.count({ where: productSearchWhere })
+      : Promise.resolve(0),
+  ]);
 
   // Determine selected product: from productId param, or first match if only 1 result
   const selectedProduct = productId
-    ? (products.find((p) => p.id === productId) ?? null)
-    : q && filteredProducts.length === 1
+    ? selectedProductById
+    : normalizedQuery && filteredProductCount === 1
       ? filteredProducts[0]
       : null;
 
@@ -95,6 +104,18 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
     ? await db.stockCard.findMany({
         where: { productId: selectedProduct.id },
         orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+        select: {
+          id: true,
+          docDate: true,
+          docNo: true,
+          source: true,
+          detail: true,
+          qtyIn: true,
+          qtyOut: true,
+          qtyBalance: true,
+          priceIn: true,
+          priceBalance: true,
+        },
       })
     : [];
 
@@ -139,7 +160,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
         </form>
 
         {/* Search results list */}
-        {q && !selectedProduct && filteredProducts.length > 0 && (
+        {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
           <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
               <p className="text-xs text-gray-500">
@@ -150,7 +171,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
               {filteredProducts.map((p) => (
                 <li key={p.id}>
                   <Link
-                    href={`/admin/stock/card?productId=${p.id}&q=${encodeURIComponent(q)}`}
+                    href={`/admin/stock/card?productId=${p.id}&q=${encodeURIComponent(normalizedQuery)}`}
                     className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
                   >
                     <div>
@@ -167,7 +188,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
           </div>
         )}
 
-        {q && !selectedProduct && filteredProducts.length === 0 && (
+        {normalizedQuery && !selectedProduct && filteredProducts.length === 0 && (
           <p className="mt-3 text-sm text-gray-400">ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;</p>
         )}
       </div>
@@ -199,7 +220,7 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                   {selectedProduct.units.map((u) => (
                     <Link
                       key={u.name}
-                      href={`/admin/stock/card?productId=${selectedProduct.id}&unitName=${u.name}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+                      href={`/admin/stock/card?productId=${selectedProduct.id}&unitName=${u.name}${normalizedQuery ? `&q=${encodeURIComponent(normalizedQuery)}` : ""}`}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                         (selectedUnit?.name ?? "") === u.name
                           ? "bg-[#1e3a5f] text-white"
