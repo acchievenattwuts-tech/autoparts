@@ -198,6 +198,7 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 - Never import `pg.Pool` directly — use `PrismaPg({ connectionString, ... })` instead (avoids type conflicts).
 - Never use the `any` type under any circumstance.
 - Never commit `.env`, `.env.local`, or any file containing secrets.
+- **All files must be saved in UTF-8 encoding** — never use other encodings (e.g., Windows-1252, TIS-620). Thai text that appears garbled (mojibake) is a sign of incorrect encoding and must be fixed immediately.
 
 ## 9. Performance Standards (Nasdaq-Grade)
 

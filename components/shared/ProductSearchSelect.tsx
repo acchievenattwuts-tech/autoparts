@@ -67,7 +67,9 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         })
         .slice(0, MAX_RESULTS)
     : [];
-  const filtered = searchProducts ? remoteResults : localResults;
+  const filtered = searchProducts
+    ? (isLoading && localResults.length > 0 ? localResults : remoteResults)
+    : localResults;
 
   useEffect(() => {
     if (!open || !searchProducts) {
@@ -171,8 +173,8 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
           <p className="px-4 py-3 text-sm text-gray-400 text-center">
             พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
           </p>
-        ) : isLoading ? (
-          <p className="px-4 py-3 text-sm text-gray-400 text-center">เธเธณเธฅเธฑเธเธเนเธเธซเธฒ...</p>
+        ) : isLoading && filtered.length === 0 ? (
+          <p className="px-4 py-3 text-sm text-gray-400 text-center">กำลังโหลด...</p>
         ) : filtered.length === 0 ? (
           <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
         ) : (

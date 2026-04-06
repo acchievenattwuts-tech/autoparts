@@ -40,17 +40,17 @@ export async function updateExpenseCode(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await requirePermission("master.update").catch(() => null);
-  if (!session?.user?.id) return { error: "เนเธกเนเธกเธตเธชเธดเธ—เธเธดเนเน€เธเนเธฒเธ–เธถเธ" };
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
-    return { error: "เธฃเธซเธฑเธชเนเธกเนเธ–เธนเธเธ•เนเธญเธ" };
+    return { error: "รหัสไม่ถูกต้อง" };
   }
 
   const parsed = expenseCodeSchema.safeParse({
     name: formData.get("name"),
     description: formData.get("description") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "เธเนเธญเธกเธนเธฅเนเธกเนเธ–เธนเธเธ•เนเธญเธ" };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   try {
     await db.expenseCode.update({
@@ -64,7 +64,7 @@ export async function updateExpenseCode(
     return { success: true };
   } catch (err) {
     console.error("[updateExpenseCode]", err);
-    return { error: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เนเธเนเนเธเธฃเธซเธฑเธชเธเนเธฒเนเธเนเธเนเธฒเธขเนเธ”เน" };
+    return { error: "ไม่สามารถแก้ไขรหัสค่าใช้จ่ายได้" };
   }
 }
 
