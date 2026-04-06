@@ -11,6 +11,68 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+
+const saleProductOptionSelect = {
+  id:                  true,
+  code:                true,
+  name:                true,
+  description:         true,
+  salePrice:           true,
+  saleUnitName:        true,
+  warrantyDays:        true,
+  preferredSupplierId: true,
+  isLotControl:        true,
+  lotIssueMethod:      true,
+  allowExpiredIssue:   true,
+  category:            { select: { name: true } },
+  brand:               { select: { name: true } },
+  aliases:             { select: { alias: true } },
+  preferredSupplier:   { select: { name: true } },
+  units: {
+    select: { name: true, scale: true, isBase: true },
+    orderBy: { isBase: "desc" },
+  },
+} as const;
+
+export async function searchSaleProducts(query: string) {
+  const session = await requirePermission("sales.create").catch(() => null);
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 3) return [];
+
+  const searchResult = await searchProductIds({
+    query: normalizedQuery,
+    isActive: true,
+    take: 20,
+  });
+  if (searchResult.ids.length === 0) return [];
+
+  const products = await db.product.findMany({
+    where: { id: { in: searchResult.ids } },
+    select: saleProductOptionSelect,
+  });
+
+  return sortProductsByIds(products, searchResult.ids).map((product) => ({
+    id:                    product.id,
+    code:                  product.code,
+    name:                  product.name,
+    description:           product.description,
+    salePrice:             Number(product.salePrice),
+    saleUnitName:          product.saleUnitName,
+    warrantyDays:          product.warrantyDays,
+    categoryName:          product.category.name,
+    brandName:             product.brand?.name ?? null,
+    aliases:               product.aliases.map((alias) => alias.alias),
+    units:                 product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
+    preferredSupplierId:   product.preferredSupplierId ?? null,
+    preferredSupplierName: product.preferredSupplier?.name ?? null,
+    isLotControl:          product.isLotControl,
+    lotIssueMethod:        product.lotIssueMethod as string,
+    allowExpiredIssue:     product.allowExpiredIssue,
+  }));
+}
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),

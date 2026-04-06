@@ -10,6 +10,60 @@ import { PaymentMethod, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+
+const purchaseProductOptionSelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  purchaseUnitName: true,
+  costPrice: true,
+  isLotControl: true,
+  requireExpiryDate: true,
+  category: { select: { name: true } },
+  brand:    { select: { name: true } },
+  aliases:  { select: { alias: true } },
+  units: {
+    select: { name: true, scale: true, isBase: true },
+    orderBy: { isBase: "desc" },
+  },
+} as const;
+
+export async function searchPurchaseProducts(query: string) {
+  const session = await requirePermission("purchases.create").catch(() => null);
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 3) return [];
+
+  const searchResult = await searchProductIds({
+    query: normalizedQuery,
+    isActive: true,
+    take: 20,
+  });
+  if (searchResult.ids.length === 0) return [];
+
+  const products = await db.product.findMany({
+    where: { id: { in: searchResult.ids } },
+    select: purchaseProductOptionSelect,
+  });
+
+  return sortProductsByIds(products, searchResult.ids).map((product) => ({
+    id: product.id,
+    code: product.code,
+    name: product.name,
+    description: product.description,
+    purchaseUnitName: product.purchaseUnitName,
+    costPrice: Number(product.costPrice),
+    categoryName: product.category.name,
+    brandName: product.brand?.name ?? null,
+    aliases: product.aliases.map((alias) => alias.alias),
+    units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
+    isLotControl: product.isLotControl,
+    requireExpiryDate: product.requireExpiryDate,
+  }));
+}
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),

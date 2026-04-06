@@ -10,32 +10,7 @@ import SaleForm from "./SaleForm";
 const NewSalePage = async () => {
   await requirePermission("sales.create");
 
-  const [products, customers, config, suppliers] = await Promise.all([
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id:                  true,
-        code:                true,
-        name:                true,
-        description:         true,
-        salePrice:           true,
-        saleUnitName:        true,
-        warrantyDays:        true,
-        preferredSupplierId: true,
-        isLotControl:        true,
-        lotIssueMethod:      true,
-        allowExpiredIssue:   true,
-        category:            { select: { name: true } },
-        brand:               { select: { name: true } },
-        aliases:             { select: { alias: true } },
-        preferredSupplier:   { select: { name: true } },
-        units: {
-          select: { name: true, scale: true, isBase: true },
-          orderBy: { isBase: "desc" },
-        },
-      },
-    }),
+  const [customers, config, suppliers] = await Promise.all([
     db.customer.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
@@ -48,26 +23,6 @@ const NewSalePage = async () => {
       select: { id: true, name: true },
     }),
   ]);
-
-  // Convert Decimal to number for client component serialization
-  const productOptions = products.map((p) => ({
-    id:                    p.id,
-    code:                  p.code,
-    name:                  p.name,
-    description:           p.description,
-    salePrice:             Number(p.salePrice),
-    saleUnitName:          p.saleUnitName,
-    warrantyDays:          p.warrantyDays,
-    categoryName:          p.category.name,
-    brandName:             p.brand?.name ?? null,
-    aliases:               p.aliases.map((a) => a.alias),
-    units:                 p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    preferredSupplierId:   p.preferredSupplierId ?? null,
-    preferredSupplierName: p.preferredSupplier?.name ?? null,
-    isLotControl:          p.isLotControl,
-    lotIssueMethod:        p.lotIssueMethod as string,
-    allowExpiredIssue:     p.allowExpiredIssue,
-  }));
 
   return (
     <div>
@@ -82,7 +37,7 @@ const NewSalePage = async () => {
         <span className="text-sm font-medium text-gray-700">บันทึกการขายใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">บันทึกการขายสินค้า</h1>
-      <SaleForm products={productOptions} suppliers={suppliers} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <SaleForm products={[]} suppliers={suppliers} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

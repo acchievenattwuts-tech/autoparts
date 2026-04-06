@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchase, updatePurchase } from "../actions";
+import { createPurchase, searchPurchaseProducts, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PaymentMethod } from "@/lib/generated/prisma";
@@ -85,27 +85,65 @@ const PurchaseForm = ({
   );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
-  const productMap = new Map(products.map((product) => [product.id, product]));
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
+  const productMap = new Map(productOptions.map((product) => [product.id, product]));
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]);
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
+  const rememberProduct = (product: ProductOption) => {
+    setProductOptions((prev) => {
+      const existingIndex = prev.findIndex((candidate) => candidate.id === product.id);
+      if (existingIndex === -1) return [...prev, product];
+      const next = [...prev];
+      next[existingIndex] = product;
+      return next;
+    });
+  };
+
+  const clearItemProduct = (itemIndex: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: "",
+              unitName: "",
+              costPrice: 0,
+              landedCost: 0,
+              lotItems: [],
+            },
+      ),
+    );
+  };
+
+  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+    rememberProduct(product);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: product.id,
+              unitName: product.purchaseUnitName ?? "",
+              costPrice: product.costPrice ?? 0,
+              lotItems: product.isLotControl
+                ? [{ lotNo: "", qty: item.qty, unitCost: product.costPrice, mfgDate: "", expDate: "" }]
+                : [],
+            },
+      ),
+    );
+  };
+
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
-        if (field === "productId") {
-          const prod = productMap.get(String(value));
-          updated.unitName  = prod?.purchaseUnitName ?? "";
-          updated.costPrice = prod?.costPrice ?? 0;
-          // Initialize lot sub-rows for lot-controlled products
-          updated.lotItems = prod?.isLotControl
-            ? [{ lotNo: "", qty: updated.qty, unitCost: prod.costPrice, mfgDate: "", expDate: "" }]
-            : [];
-        }
         if (field === "qty" && item.productId) {
           const prod = productMap.get(item.productId);
           if (prod?.isLotControl && updated.lotItems.length === 1) {
@@ -329,9 +367,14 @@ const PurchaseForm = ({
                     <tr key={i} className="border-b border-gray-50">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
-                          products={products}
+                          products={productOptions}
                           value={item.productId}
-                          onChange={(id) => updateItem(i, "productId", id)}
+                          selectedProduct={prod ?? null}
+                          searchProducts={isEdit ? undefined : searchPurchaseProducts}
+                          onProductSelect={(product) => applySelectedProduct(i, product)}
+                          onChange={(id) => {
+                            if (!id) clearItemProduct(i);
+                          }}
                         />
                         {isLot && (
                           <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">

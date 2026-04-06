@@ -14,36 +14,45 @@ export interface SearchableProduct {
   aliases?: string[];
 }
 
-interface Props {
-  products: SearchableProduct[];
+interface Props<T extends SearchableProduct> {
+  products: T[];
   value: string;
   onChange: (id: string) => void;
+  onProductSelect?: (product: T) => void;
+  searchProducts?: (query: string) => Promise<T[]>;
+  selectedProduct?: T | null;
   placeholder?: string;
   disabled?: boolean;
 }
 
 const MAX_RESULTS = 50;
 const MIN_QUERY_LENGTH = 3;
+const SEARCH_DEBOUNCE_MS = 200;
 
-const ProductSearchSelect = ({
+const ProductSearchSelect = <T extends SearchableProduct,>({
   products,
   value,
   onChange,
+  onProductSelect,
+  searchProducts,
+  selectedProduct,
   placeholder = "-- ค้นหาสินค้า --",
   disabled = false,
-}: Props) => {
+}: Props<T>) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const [remoteResults, setRemoteResults] = useState<T[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selected = products.find((p) => p.id === value);
+  const selected = selectedProduct ?? products.find((p) => p.id === value) ?? null;
 
   const trimmedQuery = query.trim();
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
-  const filtered = isQueryReady
+  const localResults = isQueryReady
     ? products
         .filter((p) => {
           const q = trimmedQuery.toLowerCase();
@@ -58,6 +67,42 @@ const ProductSearchSelect = ({
         })
         .slice(0, MAX_RESULTS)
     : [];
+  const filtered = searchProducts ? remoteResults : localResults;
+
+  useEffect(() => {
+    if (!open || !searchProducts) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isQueryReady) {
+      setRemoteResults([]);
+      setIsLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    setIsLoading(true);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const results = await searchProducts(trimmedQuery);
+        if (!isActive) return;
+        setRemoteResults(results.slice(0, MAX_RESULTS));
+      } catch {
+        if (!isActive) return;
+        setRemoteResults([]);
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [open, isQueryReady, searchProducts, trimmedQuery]);
 
   const updateCoords = () => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -74,8 +119,9 @@ const ProductSearchSelect = ({
     }
   };
 
-  const handleSelect = (id: string) => {
-    onChange(id);
+  const handleSelect = (product: T) => {
+    onChange(product.id);
+    onProductSelect?.(product);
     setQuery("");
     setOpen(false);
   };
@@ -125,6 +171,8 @@ const ProductSearchSelect = ({
           <p className="px-4 py-3 text-sm text-gray-400 text-center">
             พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
           </p>
+        ) : isLoading ? (
+          <p className="px-4 py-3 text-sm text-gray-400 text-center">เธเธณเธฅเธฑเธเธเนเธเธซเธฒ...</p>
         ) : filtered.length === 0 ? (
           <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
         ) : (
@@ -133,7 +181,7 @@ const ProductSearchSelect = ({
               key={p.id}
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => handleSelect(p.id)}
+              onClick={() => handleSelect(p)}
               className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-blue-50 ${
                 p.id === value ? "bg-blue-50 text-[#1e3a5f]" : "text-gray-800"
               }`}

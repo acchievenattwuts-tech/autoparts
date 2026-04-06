@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createSale, updateSale } from "../actions";
+import { createSale, searchSaleProducts, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -119,7 +119,8 @@ const SaleForm = ({
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
   const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
-  const productMap = new Map(products.map((product) => [product.id, product]));
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
+  const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
@@ -134,25 +135,75 @@ const SaleForm = ({
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
+  const clearCachedLots = (itemIndex: number) => {
+    setAvailableLots((prev) => {
+      const next = { ...prev };
+      delete next[itemIndex];
+      return next;
+    });
+  };
+
+  const rememberProduct = (product: ProductOption) => {
+    setProductOptions((prev) => {
+      const existingIndex = prev.findIndex((candidate) => candidate.id === product.id);
+      if (existingIndex === -1) return [...prev, product];
+      const next = [...prev];
+      next[existingIndex] = product;
+      return next;
+    });
+  };
+
+  const clearItemProduct = (itemIndex: number) => {
+    clearCachedLots(itemIndex);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: "",
+              unitName: "",
+              salePrice: 0,
+              warrantyDays: 0,
+              supplierId: "",
+              supplierName: "",
+              lotItems: [],
+            },
+      ),
+    );
+  };
+
+  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+    rememberProduct(product);
+    clearCachedLots(itemIndex);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: product.id,
+              unitName: product.saleUnitName ?? "",
+              salePrice: product.salePrice ?? 0,
+              warrantyDays: product.warrantyDays ?? 0,
+              supplierId: product.preferredSupplierId ?? "",
+              supplierName: product.preferredSupplierName ?? "",
+              lotItems: product.isLotControl
+                ? [{ lotNo: "", qty: item.qty, unitCost: 0, mfgDate: "", expDate: "" }]
+                : [],
+            },
+      ),
+    );
+    if (product.isLotControl) {
+      void loadLots(itemIndex, product.id, product.lotIssueMethod);
+    }
+  };
+
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
-        if (field === "productId") {
-          const prod = productMap.get(String(value));
-          updated.unitName      = prod?.saleUnitName ?? "";
-          updated.salePrice     = prod?.salePrice ?? 0;
-          updated.warrantyDays  = prod?.warrantyDays ?? 0;
-          updated.supplierId    = prod?.preferredSupplierId ?? "";
-          updated.supplierName  = prod?.preferredSupplierName ?? "";
-          updated.lotItems      = prod?.isLotControl
-            ? [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }]
-            : [];
-          // Clear cached lots when product changes
-          setAvailableLots((prev) => { const n = { ...prev }; delete n[i]; return n; });
-          if (prod?.isLotControl) loadLots(i, prod.id, prod.lotIssueMethod);
-        }
         if (field === "qty" && item.productId) {
           const prod = productMap.get(item.productId);
           if (prod?.isLotControl && updated.lotItems.length === 1) {
@@ -599,9 +650,14 @@ const SaleForm = ({
                   <tr key={i} className="border-b border-gray-50">
                     <td className="py-2 px-2">
                       <ProductSearchSelect
-                        products={products}
+                        products={productOptions}
                         value={item.productId}
-                        onChange={(id) => updateItem(i, "productId", id)}
+                        selectedProduct={prod ?? null}
+                        searchProducts={isEdit ? undefined : searchSaleProducts}
+                        onProductSelect={(product) => applySelectedProduct(i, product)}
+                        onChange={(id) => {
+                          if (!id) clearItemProduct(i);
+                        }}
                       />
                       {item.productId && (
                         <div className="mt-1">
