@@ -7,7 +7,7 @@ import {
   hasPermissionAccess,
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
-import { ExpenseCodeForm, ExpenseCodeToggleButton } from "./ExpenseCodeClient";
+import { ExpenseCodeForm, ExpenseCodeRow } from "./ExpenseCodeClient";
 
 const ExpenseCodesPage = async () => {
   await requirePermission("master.view");
@@ -18,6 +18,7 @@ const ExpenseCodesPage = async () => {
     role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
 
   const canCreate = hasPermissionAccess(role, permissions, "master.create");
+  const canUpdate = hasPermissionAccess(role, permissions, "master.update");
   const canCancel = hasPermissionAccess(role, permissions, "master.cancel");
 
   const codes = await db.expenseCode.findMany({
@@ -58,31 +59,12 @@ const ExpenseCodesPage = async () => {
               </thead>
               <tbody>
                 {codes.map((code) => (
-                  <tr
+                  <ExpenseCodeRow
                     key={code.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      code.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
-                    }`}
-                  >
-                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{code.code}</td>
-                    <td className="px-4 py-3 font-medium text-gray-800">{code.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{code.description ?? <span className="text-gray-300">-</span>}</td>
-                    <td className="px-4 py-3 text-center">
-                      {code.isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">ยกเลิก</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center text-gray-500">{code._count.items}</td>
-                    <td className="px-4 py-3 text-right">
-                      {canCancel ? (
-                        <ExpenseCodeToggleButton id={code.id} name={code.name} isActive={code.isActive} />
-                      ) : (
-                        <span className="text-xs text-gray-300">-</span>
-                      )}
-                    </td>
-                  </tr>
+                    expenseCode={code}
+                    canUpdate={canUpdate}
+                    canCancel={canCancel}
+                  />
                 ))}
               </tbody>
             </table>
