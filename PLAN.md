@@ -1134,28 +1134,51 @@ for (const lot of claimLots) {
 
 ---
 
-### 🟨 Phase 6.5 — Accounting Reports Alignment (อิงแนว FlowAccount)
-> เป้าหมาย: ยกระดับจาก operational reports ไปเป็น accounting-oriented reports โดยใช้ข้อมูลที่ repo มีอยู่แล้วก่อน
+### ✅ Phase 6.5 — Accounting Reports Alignment (เสร็จแล้ว — 2026-04-06)
+> เป้าหมาย: ยกระดับรายงานเป็นแบบ Raw Data ระดับ line item พร้อม Export CSV และ Export Excel (.xlsx) แยกปุ่ม
 
-- [ ] แยกเมนู/หน้ารายงานเป็น 2 กลุ่มให้ชัด
-  - [ ] รายงานบริหาร (Management Reports)
-  - [ ] รายงานบัญชี (Accounting Reports)
-- [ ] ปรับโครงรายงานขายให้ใกล้แนวโปรแกรมบัญชี
-  - [ ] Sales Register แยกเอกสารขายตามวันที่/ลูกค้า/วิธีชำระ
-  - [ ] Sales Return Register แยกเอกสารคืนขาย (Credit Note RETURN)
-  - [ ] Net Sales Summary ที่โยงจาก Sales Register - Sales Return Register
-- [ ] ปรับรายงานรับเงิน/จ่ายเงินให้เป็น Cash/Bank movement view
-  - [ ] รายงานรับเงิน แยกประเภท ขายสด / รับชำระหนี้ / อื่น ๆ
-  - [ ] รายงานจ่ายเงิน แยกประเภท ซื้อสินค้า / ค่าใช้จ่าย / อื่น ๆ
-  - [ ] เพิ่มมุมมอง grouped by payment method และ grouped by day
-- [ ] เพิ่มรายงานบัญชีลูกหนี้/เจ้าหนี้จากข้อมูลที่มีอยู่
-  - [ ] AR Register / ลูกหนี้คงค้าง
-  - [ ] AP Register เบื้องต้นจาก purchase ที่ยัง unpaid/partially paid
-- [ ] เพิ่มรายงานภาษีที่ใช้งานแบบบัญชีได้มากขึ้น
-  - [ ] รายงานภาษีขาย
-  - [ ] รายงานภาษีซื้อ
-  - [ ] VAT movement summary รายเดือน
-- [ ] ทบทวนชื่อคอลัมน์/ลำดับรายงานให้ใกล้แนวโปรแกรมบัญชีออนไลน์ เช่น FlowAccount
+#### สิ่งที่ implement แล้ว
+
+**โครงสร้างใหม่:** `lib/report-queries.ts` + tab navigation (`ReportTabNav`) + layout ครอบทุก sub-page
+
+| Tab | Route | ประเภท | Export |
+|---|---|---|---|
+| รายงานขาย | `/reports/sales` | Raw data 1 row/item — filter ประเภทขาย/การชำระ | CSV + Excel |
+| รายงานซื้อ | `/reports/purchases` | Raw data 1 row/item — ทุกรายการซื้อ | CSV + Excel |
+| คืนขาย (CN) | `/reports/credit-notes` | Raw data 1 row/item — filter ประเภท CN | CSV + Excel |
+| รับเงินประจำวัน | `/reports/receipts` | ระดับใบ — ขายสด + รับชำระหนี้ — filter ประเภท | CSV + Excel |
+| จ่ายเงินประจำวัน | `/reports/payments` | ระดับใบ — ซื้อ + ค่าใช้จ่าย + CN คืนเงินสด — filter ประเภท | CSV + Excel |
+| สรุปภาพรวม | `/reports/summary` | Summary cards: กำไร-ขาดทุน, สต็อก, ลูกหนี้, ประกัน | — |
+
+**Export Excel** ใช้ `exceljs` — header สีน้ำเงิน (`#1e3a5f`), numeric format, แถวรวมท้าย, แถวที่ยกเลิกเป็นสีเทาและ italic
+
+**รายงานรับเงินประจำวัน** รวม:
+- ขายสด (`Sale.paymentType = CASH_SALE`) — พร้อมช่องทางชำระ
+- รับชำระหนี้ (`Receipt`) — พร้อมช่องทางชำระ
+- Summary cards แยก 3 ช่อง
+
+**รายงานจ่ายเงินประจำวัน** รวม:
+- ซื้อสินค้า (`Purchase`) — พร้อม paymentMethod
+- ค่าใช้จ่าย (`Expense`)
+- คืนเงินลูกค้า (`CreditNote.settlementType = CASH_REFUND`) — พร้อม refundMethod
+- Summary cards แยก 4 ช่อง
+
+- [x] แยก tab ชัด: ขาย / ซื้อ / CN / รับเงิน / จ่ายเงิน / สรุป
+- [x] Sales Register — raw data per line item
+- [x] Purchase Register — raw data per line item (fix รหัสซัพพลายเออร์ fallback)
+- [x] Credit Note Register — raw data per line item, filter CN type
+- [x] รายงานรับเงินประจำวัน — ระดับใบ, ขายสด + รับชำระหนี้, แสดงช่องทางชำระ
+- [x] รายงานจ่ายเงินประจำวัน — ระดับใบ, ซื้อ + ค่าใช้จ่าย + CN คืนเงินสด, แสดงช่องทางชำระ
+- [x] สรุปภาพรวม — P&L cards + สต็อก + ลูกหนี้ (ใช้ ReportsContent เดิม)
+- [x] Export CSV (BOM สำหรับ Thai ใน Excel) แยกปุ่มสีเทา
+- [x] Export Excel .xlsx (exceljs) แยกปุ่มสีเขียว — route `/reports/export-excel`
+- [x] แถวที่ยกเลิก: opacity + strikethrough ในตาราง, ตัวเอียงสีเทาใน Excel
+- [x] Footer row รวมยอดทุกรายงาน
+- [x] loading.tsx ครบทุก sub-route
+
+**ยังไม่ได้ทำ (ข้ามตามที่ตกลง):**
+- [ ] AR Register / AP Register (ยังไม่ implement)
+- [ ] รายงานภาษีขาย / ภาษีซื้อ (ยังไม่ implement)
 
 ---
 
