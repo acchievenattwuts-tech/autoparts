@@ -1203,8 +1203,11 @@ for (const lot of claimLots) {
   - [ ] Sale แบบขายสด ต้องเลือกบัญชีรับเงิน
   - [ ] Receipt ต้องเลือกบัญชีรับเงิน
   - [ ] Purchase ที่จ่ายทันที ต้องเลือกบัญชีจ่ายเงิน
+  - [ ] Purchase ต้องมี `paymentStatus` (`UNPAID` / `PARTIALLY_PAID` / `PAID`) เพื่อแยกรายการที่ยังไม่กระทบเงินสด/ธนาคารออกจากรายการที่จ่ายเงินจริง
+  - [ ] Purchase ที่ `paymentStatus=UNPAID` ต้องยังไม่สร้าง cash/bank movement จนกว่าจะมีการจ่ายเงินจริง
   - [ ] Expense ต้องเลือกบัญชีจ่ายเงิน
   - [ ] Credit Note ฝั่งขายที่คืนเงินจริง ต้องเลือกบัญชีจ่ายเงิน
+  - [ ] Credit Note ฝั่งขายที่ `SettlementType=คืนเงินสด` ให้ถือเป็น `CN_SALE` ที่กระทบ cash/bank card โดยตรง
   - [ ] Transfer ระหว่างบัญชี ต้องสร้าง movement 2 ฝั่ง (ออกจากบัญชีต้นทาง + เข้าบัญชีปลายทาง)
   - [ ] เพิ่มโมดูล Adjustment สำหรับปรับยอดเงินรายบัญชีโดยตรง พร้อมเหตุผลและการอนุมัติใช้งานตามสิทธิ์
   - [ ] เฟส Lite ยังไม่ทำ Bank Reconcile เต็ม แต่ต้องวางโครงสร้าง source และ card ให้พร้อมต่อยอด
@@ -1214,6 +1217,7 @@ for (const lot of claimLots) {
 - [ ] การ "แก้ไขเอกสาร" ที่กระทบเงินจริง ต้อง reverse movement เดิมก่อน แล้วสร้าง movement ชุดใหม่เสมอ ห้ามแก้ยอดใน card แบบทับค่าเดิม
 - [ ] การ "ยกเลิกเอกสาร" ที่กระทบเงินจริง ต้องยกเลิก movement ที่เกี่ยวข้องและ recalculate cash/bank card ของทุกบัญชีที่ได้รับผลกระทบ
 - [ ] การ "ปรับยอดเงินด้วย Adjustment" ต้องสร้าง movement ใหม่เสมอ และถ้ายกเลิกรายการต้อง reverse + recalculate cash/bank card เหมือนเอกสารประเภทอื่น
+- [ ] Adjustment ต้องผูกกับบทบาทและสิทธิของผู้ใช้ โดยแยกสิทธิ create/edit/cancel ให้ชัดก่อนเปิดใช้งาน
 - [ ] การโอนระหว่างบัญชีต้องเป็น atomic transaction เดียวเสมอ เพื่อไม่ให้ยอดเงินหายระหว่างทาง
 - [ ] ห้ามปล่อยให้เอกสารถูกแก้หรือยกเลิกโดยที่ cash/bank card ไม่อัปเดตตาม
 - [ ] ต้องมี utility กลางสำหรับ recalculate cash/bank card ตามลำดับวันและลำดับเอกสาร คล้ายแนวคิด `recalculateStockCard()` แต่สำหรับ ledger เงิน
@@ -1237,6 +1241,7 @@ for (const lot of claimLots) {
   - [ ] บันทึกปรับยอดเงินเข้า/ออกบัญชีโดยตรง
   - [ ] ใช้สำหรับเงินสดขาด/เกิน, ค่าธรรมเนียมธนาคาร, ดอกเบี้ย, และรายการปรับปรุงเปิดระบบ
   - [ ] ต้องมีเหตุผลประกอบและรองรับการยกเลิกรายการพร้อม reverse movement
+  - [ ] ต้องตรวจ role/permission ก่อนสร้าง แก้ไข หรือยกเลิก Adjustment
 
 #### รายงานที่ต้องมีใน Lite Version
 - [ ] Cash/Bank Ledger Report
@@ -1261,6 +1266,7 @@ for (const lot of claimLots) {
   - [ ] เพิ่มมุมมองบัญชีที่จ่ายเงินจริง
   - [ ] เพิ่ม filter ตามบัญชีจ่ายเงิน
   - [ ] แยก movement จาก `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER OUT`, `ADJUSTMENT` และรายการจ่ายอื่นให้ชัด
+  - [ ] รายงานต้องสะท้อน `Purchase.paymentStatus` ให้ถูกต้อง โดย `UNPAID` ต้องไม่ถูกนับเป็นเงินจ่ายจริงในมุม ledger
 - [ ] preview และทบทวน `/admin/reports/credit-notes`
   - [ ] แยกกรณี `CN_SALE` ที่เป็นเงินออกจริง ออกจาก CN ที่เป็นเพียงเอกสารลดหนี้
   - [ ] เพิ่ม account-aware filters และ export fields สำหรับรายการคืนเงินจริง
@@ -1285,6 +1291,7 @@ for (const lot of claimLots) {
 - [ ] ยังไม่ทำ import bank statement
 - [ ] ยังไม่ทำ payment run / clearing workflow / slip attachment
 - [ ] ย้ายสิ่งเหล่านี้ไปเป็นเฟสต่อยอดหลังธุรกิจเริ่มนิ่งและมี volume มากพอ
+- [ ] ไม่ต้องทำ backfill legacy movement สำหรับข้อมูลเก่า เพราะก่อนเริ่มใช้งานจริงจะ clear data แล้วเริ่มระบบใหม่
 
 > หมายเหตุ: เวอร์ชัน Lite นี้ตั้งใจให้เริ่มใช้งานได้เร็ว, คุมเงินจริงได้จริง, และไม่เพิ่มภาระงานเกินจำเป็นสำหรับธุรกิจเริ่มต้น โดยเน้น "รู้ว่าเงินอยู่บัญชีไหน" ก่อน "กระทบยอด statement อัตโนมัติ"
 
