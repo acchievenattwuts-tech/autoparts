@@ -1159,37 +1159,111 @@ for (const lot of claimLots) {
 
 ---
 
-### 🔲 Phase 6.6 — โมดูลบัญชีธนาคาร/แคช + Bank Reconcile (อิงแนว FlowAccount)
-> เป้าหมาย: เพิ่ม financial ledger ระดับเงินสด/ธนาคาร เพื่อรองรับรับจ่ายเงินจริงและกระทบยอดธนาคารในอนาคต
+### 🔲 Phase 6.6 — โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
+> เป้าหมาย: ทำ "Cash/Bank ledger ระดับใช้งานจริง" แบบเบา ใช้คุมว่าเงินอยู่บัญชีไหน, เงินเข้าออกจากเอกสารอะไร, และดูยอดคงเหลือรายบัญชีได้ทันที โดยยังไม่เปิด scope เป็นระบบบัญชีเต็มหรือ bank reconcile เต็มรูปแบบตั้งแต่รอบแรก
 
-- [ ] ออกแบบ master data สำหรับบัญชีการเงิน
+#### ขอบเขตของ Lite Version
+- [ ] เพิ่ม master บัญชีการเงินแบบจำเป็นก่อน
   - [ ] Cash/Bank Account master
-  - [ ] Opening balance ของแต่ละบัญชี
-  - [ ] Account type: CASH / BANK / E-WALLET / OTHER
-- [ ] เพิ่ม ledger movement ของบัญชีเงินสด/ธนาคาร
-  - [ ] รับเงินจาก Sale / Receipt ต้องลง Cash/Bank movement
-  - [ ] จ่ายเงินจาก Purchase / Expense ต้องลง Cash/Bank movement
-  - [ ] รองรับ transfer ระหว่างบัญชี
-- [ ] เพิ่มหน้าสมุดเงินสด / สมุดธนาคาร
-  - [ ] ดูยอดยกมา, รับ, จ่าย, คงเหลือ
-  - [ ] filter ตามบัญชี, ช่วงวันที่, ref no
-- [ ] เพิ่มฟังก์ชันกระทบยอดธนาคาร (Bank Reconcile)
-  - [ ] statement lines เทียบกับ movement ในระบบ
-  - [ ] auto-match ตามวันที่/จำนวนเงิน/ref
-  - [ ] manual match / unmatch / mark as cleared
-  - [ ] reconciliation summary และ outstanding items
-- [ ] เพิ่มฟังก์ชัน browse/import bank statement
-  - [ ] upload ไฟล์ bank statement จากธนาคาร
-  - [ ] รองรับอย่างน้อย CSV ก่อน แล้วค่อยขยาย format เพิ่ม
-  - [ ] ออกแบบ parser ต่อธนาคารแบบแยก provider เพื่อเพิ่ม format ภายหลังได้
-  - [ ] preview ก่อน import
-  - [ ] import history + duplicate protection
-- [ ] เพิ่ม roadmap สำหรับเอกสารประกอบการเงิน
-  - [ ] ใบเตรียมจ่าย / payment run
-  - [ ] bank transfer reference / slip attachment
-  - [ ] clearing status ระดับเอกสาร
+  - [ ] รองรับประเภทอย่างน้อย `CASH` / `BANK`
+  - [ ] เก็บ Opening balance และ Opening date ของแต่ละบัญชี
+  - [ ] รองรับสถานะ active/inactive
+  - [ ] ใช้จำนวนบัญชีแบบ lean สำหรับธุรกิจเริ่มต้น เช่น เงินสดหน้าร้าน, เงินสดย่อย, ธนาคารหลัก 1-2 บัญชี
+- [ ] เพิ่ม Cash/Bank ledger movement เป็น source of truth ของการเคลื่อนไหวเงิน
+  - [ ] ทุก movement ต้องระบุ `accountId`, `txnDate`, `direction (IN/OUT)`, `amount`, `balanceAfter`, `sourceType`, `sourceId`, `referenceNo`, `note`
+  - [ ] รองรับ source ขั้นต่ำใน Lite อย่างน้อย `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
+  - [ ] `PURCHASE` ใช้สำหรับรายการจ่ายเงินจริงให้ supplier ที่กระทบบัญชีเงินทันที
+  - [ ] `CN_SALE` ใช้สำหรับ Credit Note ฝั่งขายที่มีผลเป็นเงินออก/ปรับเงินลูกค้า
+  - [ ] `ADJUSTMENT` ใช้สำหรับการปรับยอดเงินระดับบัญชี เช่น เงินขาด/เงินเกิน/ค่าใช้จ่ายธนาคาร/ปรับยอดเริ่มต้นหลัง go-live
+  - [ ] ledger movement ต้องใช้เป็น cash/bank card ของแต่ละบัญชี ไม่ใช่คำนวณสดจากรายงานทุกครั้ง
+- [ ] ผูกเอกสารธุรกิจกับบัญชีการเงินเฉพาะจุดที่กระทบเงินจริงก่อน
+  - [ ] Sale แบบขายสด ต้องเลือกบัญชีรับเงิน
+  - [ ] Receipt ต้องเลือกบัญชีรับเงิน
+  - [ ] Purchase ที่จ่ายทันที ต้องเลือกบัญชีจ่ายเงิน
+  - [ ] Expense ต้องเลือกบัญชีจ่ายเงิน
+  - [ ] Credit Note ฝั่งขายที่คืนเงินจริง ต้องเลือกบัญชีจ่ายเงิน
+  - [ ] Transfer ระหว่างบัญชี ต้องสร้าง movement 2 ฝั่ง (ออกจากบัญชีต้นทาง + เข้าบัญชีปลายทาง)
+  - [ ] เพิ่มโมดูล Adjustment สำหรับปรับยอดเงินรายบัญชีโดยตรง พร้อมเหตุผลและการอนุมัติใช้งานตามสิทธิ์
+  - [ ] เฟส Lite ยังไม่ทำ Bank Reconcile เต็ม แต่ต้องวางโครงสร้าง source และ card ให้พร้อมต่อยอด
 
-> หมายเหตุ: เฟสนี้ตั้งใจอิงแนวทางโปรแกรมบัญชีออนไลน์อย่าง FlowAccount โดยเฉพาะเรื่องเมนูการเงิน, cash/bank movement, bank reconciliation และการนำเข้ารายการเดินบัญชีจากไฟล์ statement เพื่อช่วยปิดงานทางการเงินได้เป็นระบบมากขึ้น
+#### กติกาธุรกิจสำคัญของ Cash/Bank Card
+- [ ] การ "เพิ่มเอกสาร" ที่กระทบเงินจริง ต้องสร้าง cash/bank movement และอัปเดตยอดคงเหลือปลายรายการของบัญชีนั้นทันที
+- [ ] การ "แก้ไขเอกสาร" ที่กระทบเงินจริง ต้อง reverse movement เดิมก่อน แล้วสร้าง movement ชุดใหม่เสมอ ห้ามแก้ยอดใน card แบบทับค่าเดิม
+- [ ] การ "ยกเลิกเอกสาร" ที่กระทบเงินจริง ต้องยกเลิก movement ที่เกี่ยวข้องและ recalculate cash/bank card ของทุกบัญชีที่ได้รับผลกระทบ
+- [ ] การ "ปรับยอดเงินด้วย Adjustment" ต้องสร้าง movement ใหม่เสมอ และถ้ายกเลิกรายการต้อง reverse + recalculate cash/bank card เหมือนเอกสารประเภทอื่น
+- [ ] การโอนระหว่างบัญชีต้องเป็น atomic transaction เดียวเสมอ เพื่อไม่ให้ยอดเงินหายระหว่างทาง
+- [ ] ห้ามปล่อยให้เอกสารถูกแก้หรือยกเลิกโดยที่ cash/bank card ไม่อัปเดตตาม
+- [ ] ต้องมี utility กลางสำหรับ recalculate cash/bank card ตามลำดับวันและลำดับเอกสาร คล้ายแนวคิด `recalculateStockCard()` แต่สำหรับ ledger เงิน
+
+#### หน้าจอหลักของ Lite Version
+- [ ] เพิ่มเมนู `/admin/cash-bank/accounts`
+  - [ ] จัดการบัญชีเงินสด/ธนาคาร
+  - [ ] เปิด/ปิดการใช้งาน
+  - [ ] ตั้งยอดยกมา
+- [ ] เพิ่มเมนู `/admin/cash-bank/ledger`
+  - [ ] ดู cash/bank card รายบัญชี
+  - [ ] filter ตามบัญชี / ช่วงวันที่
+  - [ ] แยกประเภท source เช่น `SALE`, `RECEIPT`, `EXPENSE`, `TRANSFER`
+  - [ ] กดเข้าไปดูเอกสารต้นทางได้
+  - [ ] แสดงยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
+  - [ ] แสดง running balance ต่อรายการ
+- [ ] เพิ่มเมนู `/admin/cash-bank/transfers`
+  - [ ] บันทึกโอนเงินระหว่างบัญชีแบบง่าย
+  - [ ] ใช้สำหรับเงินสดฝากธนาคารหรือโอนข้ามบัญชีธนาคาร
+- [ ] เพิ่มเมนู `/admin/cash-bank/adjustments`
+  - [ ] บันทึกปรับยอดเงินเข้า/ออกบัญชีโดยตรง
+  - [ ] ใช้สำหรับเงินสดขาด/เกิน, ค่าธรรมเนียมธนาคาร, ดอกเบี้ย, และรายการปรับปรุงเปิดระบบ
+  - [ ] ต้องมีเหตุผลประกอบและรองรับการยกเลิกรายการพร้อม reverse movement
+
+#### รายงานที่ต้องมีใน Lite Version
+- [ ] Cash/Bank Ledger Report
+  - [ ] filter ตามบัญชี / ช่วงวันที่
+  - [ ] แยกประเภท source เช่น `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
+  - [ ] กดเข้าไปดูเอกสารต้นทางได้
+  - [ ] สรุปยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
+- [ ] Cash/Bank Balance Summary
+  - [ ] สรุปยอดคงเหลือล่าสุดทุกบัญชี
+  - [ ] แยกเงินสด vs ธนาคาร
+  - [ ] drill-down เข้า ledger รายบัญชีได้
+- [ ] Transfer History Report
+  - [ ] ดูประวัติโอนระหว่างบัญชี
+  - [ ] ติดตามจากบัญชีต้นทาง/ปลายทาง/ช่วงวันที่ได้
+
+#### ผลกระทบที่ต้อง preview และแก้ในโมดูลรายงานปัจจุบัน
+- [ ] preview และทบทวน `/admin/reports/receipts`
+  - [ ] เพิ่มมุมมองบัญชีที่รับเงินจริง ไม่ใช่แค่ payment method
+  - [ ] เพิ่ม filter ตามบัญชีรับเงิน
+  - [ ] export ต้องรองรับ account name / account type / source ref
+- [ ] preview และทบทวน `/admin/reports/payments`
+  - [ ] เพิ่มมุมมองบัญชีที่จ่ายเงินจริง
+  - [ ] เพิ่ม filter ตามบัญชีจ่ายเงิน
+  - [ ] แยก movement จาก `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER OUT`, `ADJUSTMENT` และรายการจ่ายอื่นให้ชัด
+- [ ] preview และทบทวน `/admin/reports/credit-notes`
+  - [ ] แยกกรณี `CN_SALE` ที่เป็นเงินออกจริง ออกจาก CN ที่เป็นเพียงเอกสารลดหนี้
+  - [ ] เพิ่ม account-aware filters และ export fields สำหรับรายการคืนเงินจริง
+- [ ] preview และทบทวน `/admin/reports/summary`
+  - [ ] เพิ่ม summary ของยอดคงเหลือเงินสด/ธนาคาร
+  - [ ] ปรับความหมายของรายงานรับเงิน/จ่ายเงินให้สอดคล้องกับ ledger เงินจริง
+  - [ ] แยก "ยอดตามเอกสาร" ออกจาก "ยอดตามบัญชีเงิน"
+- [ ] preview และทบทวนรายงาน adjustment ใหม่ของ cash/bank
+  - [ ] ต้องเห็นประวัติการปรับยอดเงินรายบัญชี
+  - [ ] ต้องแยก adjustment ที่เป็นเงินเข้าและเงินออก
+- [ ] preview และทบทวน `/admin/reports/export` และ `/admin/reports/export-excel`
+  - [ ] เพิ่ม field บัญชีการเงิน, source type, source ref, running balance ตาม report type ที่เกี่ยวข้อง
+  - [ ] ตรวจว่าไฟล์ export เดิมไม่ทำให้ผู้ใช้เข้าใจว่า payment method เท่ากับบัญชีเงิน
+- [ ] preview และทบทวน `/admin/reports/print`
+  - [ ] ถ้าพิมพ์รายงานรับเงิน/จ่ายเงิน ต้องระบุบัญชีและยอดสรุปตาม ledger ได้ถูกต้อง
+- [ ] preview `lib/reports` และ `lib/report-queries`
+  - [ ] ปรับ query model จาก document-centric ไปเป็น account-aware สำหรับ report ที่เกี่ยวกับการเงิน
+  - [ ] ระบุชัดว่ารายงานไหนยังใช้ document totals ได้เหมือนเดิม และรายงานไหนต้องอิง ledger movement แทน
+
+#### เฟสที่ intentionally ยังไม่รวมใน Lite Version
+- [ ] ยังไม่ทำ Bank Reconcile เต็มรูปแบบใน Phase 6.6 Lite
+- [ ] ยังไม่ทำ import bank statement
+- [ ] ยังไม่ทำ payment run / clearing workflow / slip attachment
+- [ ] ย้ายสิ่งเหล่านี้ไปเป็นเฟสต่อยอดหลังธุรกิจเริ่มนิ่งและมี volume มากพอ
+
+> หมายเหตุ: เวอร์ชัน Lite นี้ตั้งใจให้เริ่มใช้งานได้เร็ว, คุมเงินจริงได้จริง, และไม่เพิ่มภาระงานเกินจำเป็นสำหรับธุรกิจเริ่มต้น โดยเน้น "รู้ว่าเงินอยู่บัญชีไหน" ก่อน "กระทบยอด statement อัตโนมัติ"
 
 **Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, ลูกหนี้ค้างชำระแบบ aging, COD pending, สรุปซื้อแยกซัพพลายเออร์, สรุปขายแยกลูกค้า, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
 
