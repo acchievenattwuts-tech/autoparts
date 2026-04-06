@@ -46,7 +46,7 @@ const getCategoryName = (input: CategorySlugInput): string =>
   typeof input === "string" ? input : input.name;
 
 const getCategoryStoredSlug = (input: CategorySlugInput): string | null =>
-  typeof input === "string" ? null : input.slug ?? null;
+  typeof input === "string" ? null : input.slug?.normalize("NFC").trim().toLowerCase() ?? null;
 
 const getProductName = (input: ProductSlugInput): string =>
   "productName" in input ? input.productName : input.name;
@@ -56,9 +56,9 @@ const getProductId = (input: ProductSlugInput): string =>
 
 const getProductStoredSlug = (input: ProductSlugInput): string | null =>
   "productSlug" in input
-    ? input.productSlug ?? null
+    ? input.productSlug?.normalize("NFC").trim().toLowerCase() ?? null
     : "slug" in input
-      ? input.slug ?? null
+      ? input.slug?.normalize("NFC").trim().toLowerCase() ?? null
       : null;
 
 export const getProductCategorySlug = (category: CategorySlugInput): string => {

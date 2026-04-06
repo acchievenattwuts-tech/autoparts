@@ -15,14 +15,17 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
     { tags: ["storefront:categories", "storefront:products"] },
   )();
 
-  const decodedSlug = decodeURIComponent(categorySlug);
+  const normalizedCategorySlug = categorySlug.normalize("NFC").trim().toLowerCase();
+  const decodedSlug = decodeURIComponent(categorySlug).normalize("NFC");
   const legacyCategorySlugMap = buildLegacyCategorySlugMap(categories);
-  const legacyCategoryId = legacyCategorySlugMap.get(categorySlug);
+  const legacyCategoryId =
+    legacyCategorySlugMap.get(categorySlug) ??
+    legacyCategorySlugMap.get(normalizedCategorySlug);
   const category =
-    categories.find((item) => item.slug === categorySlug) ??
+    categories.find((item) => item.slug?.normalize("NFC").trim().toLowerCase() === normalizedCategorySlug) ??
     categories.find((item) => item.name === decodedSlug) ??
     categories.find((item) => item.id === legacyCategoryId) ??
-    categories.find((item) => getProductCategorySlug(item) === categorySlug);
+    categories.find((item) => getProductCategorySlug(item) === normalizedCategorySlug);
   if (!category) {
     notFound();
   }
