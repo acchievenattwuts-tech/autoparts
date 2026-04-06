@@ -4,8 +4,8 @@ import { getSiteConfig } from "@/lib/site-config";
 export const dynamic = "force-dynamic";
 
 export const size = {
-  width: 128,
-  height: 128,
+  width: 64,
+  height: 64,
 };
 
 export const contentType = "image/png";
@@ -32,34 +32,21 @@ export default async function Icon() {
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
-          background: "#ffffff",
-          borderRadius: "24px",
+          background: "transparent",
         }}
       >
         {logoUrl ? (
-          <div
+          <img
+            src={logoUrl}
+            alt={shopName}
+            width={64}
+            height={64}
             style={{
+              objectFit: "contain",
               width: "100%",
               height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "12px",
-              background: "#ffffff",
             }}
-          >
-            <img
-              src={logoUrl}
-              alt={shopName}
-              width={104}
-              height={104}
-              style={{
-                objectFit: "contain",
-                width: "100%",
-                height: "100%",
-              }}
-            />
-          </div>
+          />
         ) : (
           <div
             style={{
@@ -69,7 +56,7 @@ export default async function Icon() {
               alignItems: "center",
               justifyContent: "center",
               color: "white",
-              fontSize: 52,
+              fontSize: 28,
               fontWeight: 700,
               background:
                 "linear-gradient(135deg, #1e3a5f 0%, #345b87 60%, #f97316 100%)",

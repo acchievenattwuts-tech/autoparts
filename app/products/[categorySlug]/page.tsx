@@ -1,5 +1,5 @@
 ﻿export const revalidate = 300;
-
+export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
@@ -10,7 +10,6 @@ import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
-import { db } from "@/lib/db";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { getCategoryPath } from "@/lib/product-slug";
@@ -23,17 +22,6 @@ interface Props {
   params: Promise<{
     categorySlug: string;
   }>;
-}
-
-export async function generateStaticParams() {
-  const categories = await db.category.findMany({
-    where: { isActive: true },
-    select: { name: true, slug: true },
-  });
-
-  return categories.map((category) => ({
-    categorySlug: getCategoryPath(category).replace("/products/", ""),
-  }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
