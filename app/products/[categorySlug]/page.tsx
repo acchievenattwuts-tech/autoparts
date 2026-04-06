@@ -1,5 +1,4 @@
 ﻿export const revalidate = 300;
-export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
