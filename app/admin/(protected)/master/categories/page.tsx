@@ -27,6 +27,7 @@ const CategoriesPage = async () => {
       <CategoryForm
         categories={categories}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
+        canUpdate={hasPermissionAccess(role, permissions, "master.update")}
         canCancel={hasPermissionAccess(role, permissions, "master.cancel")}
       />
     </div>
