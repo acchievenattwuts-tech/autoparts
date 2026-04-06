@@ -1,0 +1,680 @@
+import { db } from "@/lib/db";
+import {
+  DocStatus,
+  VatType,
+  SaleType,
+  SalePaymentType,
+  CreditNoteType,
+  PaymentMethod,
+} from "@/lib/generated/prisma";
+
+// ─── Filter helpers ───────────────────────────────────────────────────────────
+
+function parseDate(s: string | undefined, fallback: Date): Date {
+  if (!s) return fallback;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? fallback : d;
+}
+
+function endOfDay(d: Date): Date {
+  const r = new Date(d);
+  r.setHours(23, 59, 59, 999);
+  return r;
+}
+
+export type ReportFilters = {
+  from: Date;
+  to: Date;
+  fromStr: string;
+  toStr: string;
+  showCancelled: boolean;
+  paymentType?: string;  // for sales
+  saleType?: string;     // for sales
+  cnType?: string;       // for credit-notes
+  paymentMethod?: string; // for receipts
+  docType?: string;      // for payments: ALL | PURCHASE | EXPENSE
+};
+
+export function parseReportQueryFilters(
+  params: Record<string, string | undefined>,
+): ReportFilters {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const from = parseDate(params.from, firstOfMonth);
+  const to = parseDate(params.to, today);
+  return {
+    from,
+    to: endOfDay(to),
+    fromStr: params.from ?? from.toISOString().slice(0, 10),
+    toStr: params.to ?? today.toISOString().slice(0, 10),
+    showCancelled: params.showCancelled === "1",
+    paymentType: params.paymentType,
+    saleType: params.saleType,
+    cnType: params.cnType,
+    paymentMethod: params.paymentMethod,
+    docType: params.docType,
+  };
+}
+
+export function buildExportQuery(filters: ReportFilters): string {
+  const p = new URLSearchParams();
+  p.set("from", filters.fromStr);
+  p.set("to", filters.toStr);
+  if (filters.showCancelled) p.set("showCancelled", "1");
+  if (filters.paymentType) p.set("paymentType", filters.paymentType);
+  if (filters.saleType) p.set("saleType", filters.saleType);
+  if (filters.cnType) p.set("cnType", filters.cnType);
+  if (filters.paymentMethod) p.set("paymentMethod", filters.paymentMethod);
+  if (filters.docType) p.set("docType", filters.docType);
+  return p.toString();
+}
+
+// ─── Label helpers ────────────────────────────────────────────────────────────
+
+export function saleTypeLabel(t: SaleType): string {
+  return t === "RETAIL" ? "ปลีก" : "ส่ง";
+}
+
+export function paymentTypeLabel(t: SalePaymentType): string {
+  return t === "CASH_SALE" ? "เงินสด" : "เชื่อ";
+}
+
+export function vatTypeLabel(t: VatType): string {
+  if (t === "NO_VAT") return "ไม่มี VAT";
+  if (t === "EXCLUDING_VAT") return "แยก VAT";
+  return "รวม VAT";
+}
+
+export function cnTypeLabel(t: CreditNoteType): string {
+  if (t === "RETURN") return "คืนสินค้า";
+  if (t === "DISCOUNT") return "ส่วนลด";
+  return "อื่นๆ";
+}
+
+export function paymentMethodLabel(m: PaymentMethod | null | undefined): string {
+  if (m === "CASH") return "เงินสด";
+  if (m === "TRANSFER") return "โอนเงิน";
+  if (m === "CREDIT") return "เครดิต";
+  return "-";
+}
+
+export function settlementLabel(s: string): string {
+  return s === "CASH_REFUND" ? "คืนเงินสด" : "ตั้งหนี้";
+}
+
+export function statusLabel(s: DocStatus): string {
+  return s === "ACTIVE" ? "ปกติ" : "ยกเลิก";
+}
+
+// ─── Row types ────────────────────────────────────────────────────────────────
+
+export type SaleRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  docType: string;
+  paymentType: string;
+  customerCode: string;
+  customerName: string;
+  note: string;
+  status: DocStatus;
+  productCode: string;
+  productName: string;
+  qty: number;
+  unitName: string;
+  unitPrice: number;
+  subtotalAmount: number;
+  vatType: string;
+  vatAmount: number;
+  totalAmount: number;
+};
+
+export type PurchaseRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  supplierCode: string;
+  supplierName: string;
+  referenceNo: string;
+  status: DocStatus;
+  productCode: string;
+  productName: string;
+  qty: number;
+  unitName: string;
+  unitPrice: number;
+  subtotalAmount: number;
+  vatType: string;
+  vatAmount: number;
+  totalAmount: number;
+};
+
+export type CreditNoteRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  refSaleNo: string;
+  customerCode: string;
+  customerName: string;
+  cnType: string;
+  settlement: string;
+  status: DocStatus;
+  productCode: string;
+  productName: string;
+  qty: number;
+  unitPrice: number;
+  subtotalAmount: number;
+  vatType: string;
+  vatAmount: number;
+  totalAmount: number;
+  detail: string;
+};
+
+export type ReceiptRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  customerCode: string;
+  customerName: string;
+  refDocNo: string;
+  refType: string;
+  paymentMethod: string;
+  status: DocStatus;
+  amount: number;
+};
+
+export type PaymentRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  docType: string;
+  partyName: string;
+  paymentMethod: string;
+  status: DocStatus;
+  subtotalAmount: number;
+  vatType: string;
+  vatAmount: number;
+  netAmount: number;
+};
+
+// ─── Query: Sales Register ────────────────────────────────────────────────────
+
+export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const sales = await db.sale.findMany({
+    where: {
+      saleDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.paymentType && filters.paymentType !== "ALL"
+        ? { paymentType: filters.paymentType as SalePaymentType }
+        : {}),
+      ...(filters.saleType && filters.saleType !== "ALL"
+        ? { saleType: filters.saleType as SaleType }
+        : {}),
+    },
+    select: {
+      saleNo: true,
+      saleDate: true,
+      saleType: true,
+      paymentType: true,
+      vatType: true,
+      vatAmount: true,
+      subtotalAmount: true,
+      status: true,
+      customerName: true,
+      note: true,
+      customer: { select: { code: true } },
+      items: {
+        select: {
+          quantity: true,
+          salePrice: true,
+          subtotalAmount: true,
+          totalAmount: true,
+          product: { select: { code: true, name: true, saleUnitName: true } },
+        },
+      },
+    },
+    orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
+    take: 2000,
+  });
+
+  const rows: SaleRow[] = [];
+  let rowNo = 1;
+  for (const sale of sales) {
+    const saleSubtotal = Number(sale.subtotalAmount);
+    const saleVat = Number(sale.vatAmount);
+    for (const item of sale.items) {
+      const sub = Number(item.subtotalAmount);
+      const vatShare =
+        saleSubtotal > 0
+          ? Math.round((sub / saleSubtotal) * saleVat * 100) / 100
+          : 0;
+      rows.push({
+        rowNo: rowNo++,
+        docNo: sale.saleNo,
+        docDate: sale.saleDate,
+        docType: saleTypeLabel(sale.saleType),
+        paymentType: paymentTypeLabel(sale.paymentType),
+        customerCode: sale.customer?.code ?? "",
+        customerName: sale.customerName ?? "",
+        note: sale.note ?? "",
+        status: sale.status,
+        productCode: item.product.code,
+        productName: item.product.name,
+        qty: item.quantity,
+        unitName: item.product.saleUnitName,
+        unitPrice: Number(item.salePrice),
+        subtotalAmount: sub,
+        vatType: vatTypeLabel(sale.vatType),
+        vatAmount: vatShare,
+        totalAmount: Number(item.totalAmount),
+      });
+    }
+  }
+  return rows;
+}
+
+// ─── Query: Purchase Register ─────────────────────────────────────────────────
+
+export async function queryPurchaseRows(filters: ReportFilters): Promise<PurchaseRow[]> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const purchases = await db.purchase.findMany({
+    where: {
+      purchaseDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+    },
+    select: {
+      purchaseNo: true,
+      purchaseDate: true,
+      referenceNo: true,
+      vatType: true,
+      vatAmount: true,
+      subtotalAmount: true,
+      status: true,
+      supplier: { select: { code: true, name: true } },
+      items: {
+        select: {
+          quantity: true,
+          costPrice: true,
+          subtotalAmount: true,
+          totalAmount: true,
+          product: { select: { code: true, name: true, purchaseUnitName: true } },
+        },
+      },
+    },
+    orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
+    take: 2000,
+  });
+
+  const rows: PurchaseRow[] = [];
+  let rowNo = 1;
+  for (const p of purchases) {
+    const pSubtotal = Number(p.subtotalAmount);
+    const pVat = Number(p.vatAmount);
+    for (const item of p.items) {
+      const sub = Number(item.subtotalAmount);
+      const vatShare =
+        pSubtotal > 0
+          ? Math.round((sub / pSubtotal) * pVat * 100) / 100
+          : 0;
+      rows.push({
+        rowNo: rowNo++,
+        docNo: p.purchaseNo,
+        docDate: p.purchaseDate,
+        supplierCode: p.supplier?.code ?? "",
+        supplierName: p.supplier?.name ?? "(ไม่ระบุ)",
+        referenceNo: p.referenceNo ?? "",
+        status: p.status,
+        productCode: item.product.code,
+        productName: item.product.name,
+        qty: item.quantity,
+        unitName: item.product.purchaseUnitName,
+        unitPrice: Number(item.costPrice),
+        subtotalAmount: sub,
+        vatType: vatTypeLabel(p.vatType),
+        vatAmount: vatShare,
+        totalAmount: Number(item.totalAmount),
+      });
+    }
+  }
+  return rows;
+}
+
+// ─── Query: Credit Note Register ──────────────────────────────────────────────
+
+export async function queryCreditNoteRows(filters: ReportFilters): Promise<CreditNoteRow[]> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const cns = await db.creditNote.findMany({
+    where: {
+      cnDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.cnType && filters.cnType !== "ALL"
+        ? { type: filters.cnType as CreditNoteType }
+        : {}),
+    },
+    select: {
+      cnNo: true,
+      cnDate: true,
+      type: true,
+      settlementType: true,
+      vatType: true,
+      vatAmount: true,
+      subtotalAmount: true,
+      status: true,
+      customerName: true,
+      sale: { select: { saleNo: true } },
+      customer: { select: { code: true } },
+      items: {
+        select: {
+          qty: true,
+          unitPrice: true,
+          subtotalAmount: true,
+          amount: true,
+          detail: true,
+          product: { select: { code: true, name: true } },
+        },
+      },
+    },
+    orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
+    take: 2000,
+  });
+
+  const rows: CreditNoteRow[] = [];
+  let rowNo = 1;
+  for (const cn of cns) {
+    const cnSubtotal = Number(cn.subtotalAmount);
+    const cnVat = Number(cn.vatAmount);
+    for (const item of cn.items) {
+      const sub = Number(item.subtotalAmount);
+      const vatShare =
+        cnSubtotal > 0
+          ? Math.round((sub / cnSubtotal) * cnVat * 100) / 100
+          : 0;
+      rows.push({
+        rowNo: rowNo++,
+        docNo: cn.cnNo,
+        docDate: cn.cnDate,
+        refSaleNo: cn.sale?.saleNo ?? "",
+        customerCode: cn.customer?.code ?? "",
+        customerName: cn.customerName ?? "",
+        cnType: cnTypeLabel(cn.type),
+        settlement: settlementLabel(cn.settlementType),
+        status: cn.status,
+        productCode: item.product?.code ?? "",
+        productName: item.product?.name ?? "",
+        qty: Number(item.qty),
+        unitPrice: Number(item.unitPrice),
+        subtotalAmount: sub,
+        vatType: vatTypeLabel(cn.vatType),
+        vatAmount: vatShare,
+        totalAmount: Number(item.amount),
+        detail: item.detail ?? "",
+      });
+    }
+  }
+  return rows;
+}
+
+// ─── Query: Receipt Register ──────────────────────────────────────────────────
+
+export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptRow[]> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const receipts = await db.receipt.findMany({
+    where: {
+      receiptDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.paymentMethod && filters.paymentMethod !== "ALL"
+        ? { paymentMethod: filters.paymentMethod as PaymentMethod }
+        : {}),
+    },
+    select: {
+      receiptNo: true,
+      receiptDate: true,
+      paymentMethod: true,
+      totalAmount: true,
+      status: true,
+      customerName: true,
+      customer: { select: { code: true } },
+      items: {
+        select: {
+          paidAmount: true,
+          sale: { select: { saleNo: true } },
+          creditNote: { select: { cnNo: true } },
+        },
+      },
+    },
+    orderBy: [{ receiptDate: "asc" }, { receiptNo: "asc" }],
+    take: 2000,
+  });
+
+  const rows: ReceiptRow[] = [];
+  let rowNo = 1;
+  for (const r of receipts) {
+    for (const item of r.items) {
+      rows.push({
+        rowNo: rowNo++,
+        docNo: r.receiptNo,
+        docDate: r.receiptDate,
+        customerCode: r.customer?.code ?? "",
+        customerName: r.customerName ?? "",
+        refDocNo: item.sale?.saleNo ?? item.creditNote?.cnNo ?? "",
+        refType: item.sale ? "ใบขาย" : item.creditNote ? "CN" : "",
+        paymentMethod: paymentMethodLabel(r.paymentMethod),
+        status: r.status,
+        amount: Number(item.paidAmount),
+      });
+    }
+  }
+  return rows;
+}
+
+// ─── Query: Payment Register ──────────────────────────────────────────────────
+
+export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentRow[]> {
+  const showCancelled = filters.showCancelled;
+  const docType = filters.docType ?? "ALL";
+  const rows: PaymentRow[] = [];
+
+  if (docType === "ALL" || docType === "PURCHASE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const purchases = await db.purchase.findMany({
+      where: {
+        purchaseDate: { gte: filters.from, lte: filters.to },
+        ...statusFilter,
+      },
+      select: {
+        purchaseNo: true,
+        purchaseDate: true,
+        vatType: true,
+        vatAmount: true,
+        subtotalAmount: true,
+        netAmount: true,
+        status: true,
+        paymentMethod: true,
+        supplier: { select: { name: true } },
+      },
+      orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
+      take: 2000,
+    });
+    for (const p of purchases) {
+      rows.push({
+        rowNo: 0,
+        docNo: p.purchaseNo,
+        docDate: p.purchaseDate,
+        docType: "ซื้อสินค้า",
+        partyName: p.supplier?.name ?? "(ไม่ระบุ)",
+        paymentMethod: paymentMethodLabel(p.paymentMethod),
+        status: p.status,
+        subtotalAmount: Number(p.subtotalAmount),
+        vatType: vatTypeLabel(p.vatType),
+        vatAmount: Number(p.vatAmount),
+        netAmount: Number(p.netAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "EXPENSE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const expenses = await db.expense.findMany({
+      where: {
+        expenseDate: { gte: filters.from, lte: filters.to },
+        ...statusFilter,
+      },
+      select: {
+        expenseNo: true,
+        expenseDate: true,
+        vatType: true,
+        vatAmount: true,
+        subtotalAmount: true,
+        netAmount: true,
+        status: true,
+        note: true,
+        items: {
+          select: { expenseCode: { select: { name: true } } },
+          take: 1,
+        },
+      },
+      orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
+      take: 2000,
+    });
+    for (const e of expenses) {
+      const codeName = e.items[0]?.expenseCode?.name ?? "";
+      rows.push({
+        rowNo: 0,
+        docNo: e.expenseNo,
+        docDate: e.expenseDate,
+        docType: "ค่าใช้จ่าย",
+        partyName: codeName + (e.note ? ` — ${e.note}` : ""),
+        paymentMethod: "-",
+        status: e.status,
+        subtotalAmount: Number(e.subtotalAmount),
+        vatType: vatTypeLabel(e.vatType),
+        vatAmount: Number(e.vatAmount),
+        netAmount: Number(e.netAmount),
+      });
+    }
+  }
+
+  // Sort by date → docNo, then assign rowNo
+  rows.sort((a, b) => {
+    const dt = a.docDate.getTime() - b.docDate.getTime();
+    return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
+  });
+  rows.forEach((r, i) => (r.rowNo = i + 1));
+
+  return rows;
+}
+
+// ─── CSV builders ─────────────────────────────────────────────────────────────
+
+const BOM = "\uFEFF";
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function csvRow(cells: (string | number)[]): string {
+  return cells
+    .map((c) => {
+      const s = String(c);
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    })
+    .join(",");
+}
+
+export function buildSalesCsv(rows: SaleRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภท","การชำระ","รหัสลูกค้า","ชื่อลูกค้า",
+    "หมายเหตุ","สถานะ","รหัสสินค้า","ชื่อสินค้า","จำนวน","หน่วย","ราคา/หน่วย",
+    "ก่อน VAT","VAT Type","VAT","รวม",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.docType, r.paymentType,
+      r.customerCode, r.customerName, r.note, statusLabel(r.status),
+      r.productCode, r.productName, r.qty, r.unitName, r.unitPrice,
+      r.subtotalAmount, r.vatType, r.vatAmount, r.totalAmount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+export function buildPurchasesCsv(rows: PurchaseRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่เอกสาร","วันที่","รหัสซัพพลายเออร์","ชื่อซัพพลายเออร์",
+    "เลขอ้างอิง","สถานะ","รหัสสินค้า","ชื่อสินค้า","จำนวน","หน่วย",
+    "ราคา/หน่วย","ก่อน VAT","VAT Type","VAT","รวม",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.supplierCode, r.supplierName,
+      r.referenceNo, statusLabel(r.status), r.productCode, r.productName,
+      r.qty, r.unitName, r.unitPrice, r.subtotalAmount,
+      r.vatType, r.vatAmount, r.totalAmount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+export function buildCreditNotesCsv(rows: CreditNoteRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่ CN","วันที่","อ้างอิงใบขาย","รหัสลูกค้า","ชื่อลูกค้า",
+    "ประเภท CN","การตั้งหนี้","สถานะ","รหัสสินค้า","ชื่อสินค้า","รายละเอียด",
+    "จำนวน","ราคา/หน่วย","ก่อน VAT","VAT Type","VAT","รวม",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.refSaleNo,
+      r.customerCode, r.customerName, r.cnType, r.settlement,
+      statusLabel(r.status), r.productCode, r.productName, r.detail,
+      r.qty, r.unitPrice, r.subtotalAmount, r.vatType, r.vatAmount, r.totalAmount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+export function buildReceiptsCsv(rows: ReceiptRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่ใบเสร็จ","วันที่","รหัสลูกค้า","ชื่อลูกค้า",
+    "เอกสารอ้างอิง","ประเภทอ้างอิง","ช่องทางชำระ","สถานะ","จำนวนเงิน",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.customerCode, r.customerName,
+      r.refDocNo, r.refType, r.paymentMethod, statusLabel(r.status), r.amount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+export function buildPaymentsCsv(rows: PaymentRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภทรายการ","คู่ค้า/รายละเอียด",
+    "ช่องทางชำระ","สถานะ","ก่อน VAT","VAT Type","VAT","รวมสุทธิ",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.docType, r.partyName,
+      r.paymentMethod, statusLabel(r.status),
+      r.subtotalAmount, r.vatType, r.vatAmount, r.netAmount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}

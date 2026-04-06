@@ -1,27 +1,77 @@
-import { buildReportsCsv, getReportsData, parseReportFilters } from "@/lib/reports";
-import { requirePermission } from "@/lib/require-auth";
-
 export const dynamic = "force-dynamic";
+
+import { requirePermission } from "@/lib/require-auth";
+import {
+  parseReportQueryFilters,
+  querySalesRows,
+  queryPurchaseRows,
+  queryCreditNoteRows,
+  queryReceiptRows,
+  queryPaymentRows,
+  buildSalesCsv,
+  buildPurchasesCsv,
+  buildCreditNotesCsv,
+  buildReceiptsCsv,
+  buildPaymentsCsv,
+} from "@/lib/report-queries";
 
 export async function GET(request: Request) {
   await requirePermission("reports.view");
 
   const { searchParams } = new URL(request.url);
-  const filters = parseReportFilters({
+
+  const type = searchParams.get("type") ?? "sales";
+
+  const params: Record<string, string | undefined> = {
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
-    customerCodeFrom: searchParams.get("customerCodeFrom") ?? undefined,
-    customerCodeTo: searchParams.get("customerCodeTo") ?? undefined,
-    supplierCodeFrom: searchParams.get("supplierCodeFrom") ?? undefined,
-    supplierCodeTo: searchParams.get("supplierCodeTo") ?? undefined,
-    productCodeFrom: searchParams.get("productCodeFrom") ?? undefined,
-    productCodeTo: searchParams.get("productCodeTo") ?? undefined,
-    expenseCodeFrom: searchParams.get("expenseCodeFrom") ?? undefined,
-    expenseCodeTo: searchParams.get("expenseCodeTo") ?? undefined,
-  });
-  const data = await getReportsData(filters);
-  const csv = buildReportsCsv(data);
-  const fileName = `reports-${filters.fromInput}-to-${filters.toInput}.csv`;
+    showCancelled: searchParams.get("showCancelled") ?? undefined,
+    paymentType: searchParams.get("paymentType") ?? undefined,
+    saleType: searchParams.get("saleType") ?? undefined,
+    cnType: searchParams.get("cnType") ?? undefined,
+    paymentMethod: searchParams.get("paymentMethod") ?? undefined,
+    docType: searchParams.get("docType") ?? undefined,
+  };
+
+  const filters = parseReportQueryFilters(params);
+  const dateRange = `${filters.fromStr}-to-${filters.toStr}`;
+
+  let csv: string;
+  let fileName: string;
+
+  switch (type) {
+    case "purchases": {
+      const rows = await queryPurchaseRows(filters);
+      csv = buildPurchasesCsv(rows);
+      fileName = `purchase-report-${dateRange}.csv`;
+      break;
+    }
+    case "credit-notes": {
+      const rows = await queryCreditNoteRows(filters);
+      csv = buildCreditNotesCsv(rows);
+      fileName = `credit-note-report-${dateRange}.csv`;
+      break;
+    }
+    case "receipts": {
+      const rows = await queryReceiptRows(filters);
+      csv = buildReceiptsCsv(rows);
+      fileName = `receipt-report-${dateRange}.csv`;
+      break;
+    }
+    case "payments": {
+      const rows = await queryPaymentRows(filters);
+      csv = buildPaymentsCsv(rows);
+      fileName = `payment-report-${dateRange}.csv`;
+      break;
+    }
+    default: {
+      // sales
+      const rows = await querySalesRows(filters);
+      csv = buildSalesCsv(rows);
+      fileName = `sale-report-${dateRange}.csv`;
+      break;
+    }
+  }
 
   return new Response(csv, {
     headers: {
