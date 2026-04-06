@@ -92,10 +92,10 @@
 - `lib/vat.ts` — VAT calculation utility (calcVat, calcItemSubtotal)
 
 #### ✅ 3.1 ระบบ BF (ยอดยกมา)
-- หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน
+- หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน + รอง��ับ Lot Control (Phase 5.5-I1)
 
 #### ✅ 3.2 ปรับสต็อก (Adjustment)
-- หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล
+- หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล + รองรับ Lot Control (Phase 5.5-I2: IN=manual input, OUT=dropdown)
 
 #### ✅ 3.3 ระบบซื้อสินค้า
 - `/admin/purchases` — ใบซื้อ + MAVG + VAT (NoVAT/ExclVAT/InclVAT) + referenceNo + auto-fill ราคาทุน
@@ -1060,6 +1060,60 @@ for (const lot of claimLots) {
 | `WarrantyClaimLot` | ตารางใหม่ | `prisma db push` |
 | `WarrantyClaim` | เพิ่ม relation `claimLots` | `prisma db push` |
 | อื่นๆ | ไม่เปลี่ยน schema | — |
+
+---
+
+### ✅ Phase 5.5-I — BF + Adjustment รองรับ Lot Control (เสร็จสมบูรณ์)
+
+> **อัพเดท 2026-04-06:** เพิ่ม Lot Control ให้ BF (ยอดยกมา) และ Adjustment (ปรับสต็อก) ครบทั้ง server + UI
+
+#### ✅ Phase 5.5-I1 — BF (ยอดยกมา) รองรับ Lot
+
+**ไฟล์:**
+- `app/admin/(protected)/stock/bf/actions.ts` — createBF + cancelBF
+- `app/admin/(protected)/stock/bf/BfForm.tsx` — UI Lot sub-table
+- `app/admin/(protected)/stock/bf/page.tsx` — ส่ง isLotControl/requireExpiryDate ให้ form
+
+**Logic:**
+- สินค้า `isLotControl=true` → แสดง Lot sub-table (manual input: lotNo, qty, unitCost, mfgDate, expDate)
+- `createBF`: validate lots → `writePurchaseLots` (bf.id เป็น purchaseItemId) + `writeStockMovementLots` direction="in"
+- `cancelBF`: `reversePurchaseLotBalance(tx, bf.id, bf.productId)` → delete StockCard → recalculate
+
+**Checklist:**
+- [x] actions.ts: lotSubRowSchema + lotItems ใน bfSchema
+- [x] actions.ts: createBF — writePurchaseLots + writeStockMovementLots
+- [x] actions.ts: cancelBF — reversePurchaseLotBalance
+- [x] BfForm.tsx: Lot sub-table UI (amber styling, manual input)
+- [x] page.tsx: query isLotControl + requireExpiryDate
+
+---
+
+#### ✅ Phase 5.5-I2 — Adjustment (ปรับสต็อก) รองรับ Lot
+
+**ไฟล์:**
+- `app/admin/(protected)/stock/adjustments/actions.ts` — createAdjustment + cancelAdjustment + fetchAdjustmentProductLots
+- `app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx` — UI Lot (IN=manual, OUT=dropdown)
+- `app/admin/(protected)/stock/adjustments/page.tsx` — ส่ง isLotControl/requireExpiryDate/lotIssueMethod ให้ form
+- `lib/lot-control.ts` — writeAdjustmentLots + reverseAdjustmentLotBalance
+
+**Logic:**
+- **ADJUST_IN:** แสดง manual input (lotNo, qty, unitCost, mfgDate, expDate) — เหมือน BF/Purchase
+- **ADJUST_OUT:** แสดง dropdown เลือก Lot (filter คงเหลือ, แสดง lotNo | EXP | qty) + ปุ่ม "Auto จัดสรร" — เหมือน SaleForm
+- `createAdjustment`: validate lots → `writeAdjustmentLots` (upsert LotBalance + ProductLot + StockMovementLot)
+- `cancelAdjustment`: `reverseAdjustmentLotBalance(tx, adj.id, affectedProductIds)` → delete StockCard → recalculate
+
+**ฟังก์ชันใหม่ใน `lib/lot-control.ts`:**
+- `writeAdjustmentLots(tx, stockCardId, productId, lots, direction)` — direction="in" upsert LotBalance+ProductLot / direction="out" deduct LotBalance
+- `reverseAdjustmentLotBalance(tx, adjustmentId, productIds)` — อ่าน StockMovementLot จาก StockCard ที่มี referenceId=adjustmentId แล้ว reverse
+
+**Checklist:**
+- [x] lot-control.ts: writeAdjustmentLots + reverseAdjustmentLotBalance
+- [x] actions.ts: lotSubRowSchema + lotItems ใน adjustItemSchema
+- [x] actions.ts: createAdjustment — writeAdjustmentLots per item
+- [x] actions.ts: cancelAdjustment — reverseAdjustmentLotBalance
+- [x] actions.ts: fetchAdjustmentProductLots (FIFO/FEFO sort)
+- [x] AdjustmentForm.tsx: ADJUST_IN = manual lot input, ADJUST_OUT = dropdown + Auto จัดสรร
+- [x] page.tsx: query isLotControl + requireExpiryDate + lotIssueMethod
 
 ---
 

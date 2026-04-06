@@ -116,7 +116,7 @@ export async function createCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true },
+          select: { isLotControl: true, avgCost: true },
         });
         if (type === CreditNoteType.RETURN && product?.isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
@@ -137,6 +137,7 @@ export async function createCreditNote(
 
         // Write StockCard only for RETURN type
         if (type === CreditNoteType.RETURN) {
+          const returnAvgCost = Number(product?.avgCost ?? 0);
           await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       cnNo,
@@ -144,7 +145,7 @@ export async function createCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     0,
+            priceIn:     returnAvgCost,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });
@@ -383,7 +384,7 @@ export async function updateCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true },
+          select: { isLotControl: true, avgCost: true },
         });
         if (type === CreditNoteType.RETURN && product?.isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
@@ -402,6 +403,7 @@ export async function updateCreditNote(
         });
 
         if (type === CreditNoteType.RETURN) {
+          const returnAvgCost = Number(product?.avgCost ?? 0);
           await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       existing.cnNo,
@@ -409,7 +411,7 @@ export async function updateCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     0,
+            priceIn:     returnAvgCost,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });

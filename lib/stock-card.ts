@@ -138,22 +138,32 @@ export async function writeStockCard(
   const pIn = input.priceIn;
   const lc  = input.landedCost ?? 0;
 
-  // Get next sorder (always append — recalculate will fix all balances)
-  const lastRow = await tx.stockCard.findFirst({
-    where: { productId: input.productId },
-    orderBy: { sorder: "desc" },
-  });
-  const sorder = lastRow ? lastRow.sorder + 1 : 1;
+  // Get max sorder and latest docDate (may be different rows)
+  const [maxSorderRow, latestDateRow] = await Promise.all([
+    tx.stockCard.findFirst({
+      where: { productId: input.productId },
+      orderBy: { sorder: "desc" },
+      select: { sorder: true },
+    }),
+    tx.stockCard.findFirst({
+      where: { productId: input.productId },
+      orderBy: { docDate: "desc" },
+      select: { docDate: true },
+    }),
+  ]);
+  const maxSorder = maxSorderRow ? maxSorderRow.sorder + 1 : 1;
 
-  // Insert row with raw data (qtyIn, qtyOut, priceIn, landedCost are the source of truth)
-  // qtyBalance and priceBalance are placeholder — recalculateStockCard will overwrite them
+  // Detect backdating: new docDate is before the latest existing row
+  const isBackdated = latestDateRow != null && input.docDate < latestDateRow.docDate;
+
+  // Insert row with raw data
   await tx.stockCard.create({
     data: {
       productId:    input.productId,
       docNo:        input.docNo,
       docDate:      input.docDate,
       source:       input.source,
-      sorder,
+      sorder:       maxSorder,
       qtyIn:        new Prisma.Decimal(qIn),
       qtyOut:       new Prisma.Decimal(qOut),
       qtyBalance:   new Prisma.Decimal(0),
@@ -166,6 +176,72 @@ export async function writeStockCard(
     },
   });
 
-  // Re-calculate all rows in correct chronological order (handles backdating)
-  await recalculateStockCard(tx, input.productId);
+  if (isBackdated) {
+    // Backdating detected: must recalculate ALL rows in chronological order
+    await recalculateStockCard(tx, input.productId);
+  } else {
+    // Append mode: compute MAVG inline from current Product state (fast path)
+    const product = await tx.product.findUnique({
+      where: { id: input.productId },
+      select: { stock: true, avgCost: true },
+    });
+    const baQty   = product ? product.stock : 0;
+    const baPrice = product ? Number(product.avgCost) : 0;
+    const baTotal = baQty * baPrice;
+
+    // Use baPrice for neutral stock-in sources
+    const NEUTRAL_IN_SOURCES = ["RETURN_IN", "CLAIM_RETURN_IN", "CLAIM_RECV_IN"];
+    const effectivePIn = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(input.source))
+      ? baPrice
+      : pIn;
+
+    let newBaQty   = baQty + qIn - qOut;
+    let newBaPrice = 0;
+    let newBaTotal = 0;
+    let priceOut   = baPrice;
+
+    if (qIn > 0) {
+      if (newBaQty > 0) {
+        if (baQty > 0) {
+          newBaTotal = baTotal + (qIn * effectivePIn) - (qOut * baPrice) + lc;
+          newBaPrice = newBaTotal / newBaQty;
+        } else {
+          newBaPrice = effectivePIn + (lc / qIn);
+          newBaTotal = newBaPrice * newBaQty;
+        }
+      }
+    } else {
+      priceOut = baPrice;
+      if (newBaQty >= 0) {
+        newBaPrice = baPrice;
+        newBaTotal = baTotal - (qOut * baPrice);
+        if (newBaTotal < 0) newBaTotal = 0;
+      }
+    }
+
+    // Update the just-inserted row with computed balances
+    const inserted = await tx.stockCard.findFirst({
+      where: { productId: input.productId, sorder: maxSorder },
+      select: { id: true },
+    });
+    if (inserted) {
+      await tx.stockCard.update({
+        where: { id: inserted.id },
+        data: {
+          priceOut:     new Prisma.Decimal(priceOut),
+          qtyBalance:   new Prisma.Decimal(newBaQty),
+          priceBalance: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
+        },
+      });
+    }
+
+    // Update Product with final balance
+    await tx.product.update({
+      where: { id: input.productId },
+      data: {
+        stock:   Math.round(newBaQty),
+        avgCost: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
+      },
+    });
+  }
 }

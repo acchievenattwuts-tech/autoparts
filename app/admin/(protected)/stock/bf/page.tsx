@@ -22,6 +22,8 @@ const BfPage = async () => {
         name: true,
         avgCost: true,
         stock: true,
+        isLotControl: true,
+        requireExpiryDate: true,
         units: {
           select: { name: true, scale: true, isBase: true },
           orderBy: { isBase: "desc" },
@@ -50,6 +52,8 @@ const BfPage = async () => {
   const mapped = products.map((p) => ({
     ...p,
     avgCost: Number(p.avgCost),
+    isLotControl: p.isLotControl,
+    requireExpiryDate: p.requireExpiryDate,
   }));
 
   const serialized = bfDocs.map((d) => ({

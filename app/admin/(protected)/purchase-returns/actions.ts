@@ -346,7 +346,7 @@ export async function updatePurchaseReturn(
         data: { purchaseId: purchaseId || null, supplierId: supplierId || null, note: note ?? null, vatType, vatRate, totalAmount: netAmount, subtotalAmount, vatAmount, returnDate: docDate },
       });
 
-      // 4. Re-create items + stock cards
+      // 4. Re-create items + stock cards + lots
       for (const line of lineData) {
         const product = await tx.product.findUnique({
           where: { id: line.productId },
@@ -371,6 +371,26 @@ export async function updatePurchaseReturn(
           detail:      `คืน ${line.qty} ${line.unitName}`,
           referenceId: returnItem.id,
         });
+
+        // Re-create Lot rows (PurchaseReturnItemLot + StockMovementLot)
+        if (product?.isLotControl && line.lotItems.length > 0) {
+          const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
+          const lotsInBase = line.lotItems.map((lot) => ({
+            lotNo:        lot.lotNo.trim(),
+            qtyInBase:    lot.qty * lineScale,
+            unitCostBase: line.costPerBase,
+            mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+            expDate:      lot.expDate ? new Date(lot.expDate) : null,
+          }));
+
+          await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+
+          const sc = await tx.stockCard.findFirst({
+            where: { referenceId: returnItem.id, source: "RETURN_OUT" },
+            select: { id: true },
+          });
+          if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+        }
       }
     });
 

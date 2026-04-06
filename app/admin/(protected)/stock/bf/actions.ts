@@ -6,6 +6,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
+import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+
+const lotSubRowSchema = z.object({
+  lotNo:    z.string().min(1).max(100),
+  qty:      z.coerce.number().positive(),
+  unitCost: z.coerce.number().min(0),
+  mfgDate:  z.string().default(""),
+  expDate:  z.string().default(""),
+});
 
 const bfSchema = z.object({
   productId:        z.string().min(1).max(50),
@@ -14,6 +23,7 @@ const bfSchema = z.object({
   costPerBaseUnit:  z.coerce.number().min(0, "ราคาต้นทุนต้องไม่ติดลบ"),
   docDate:          z.string().min(1),
   note:             z.string().max(500).optional(),
+  lotItems:         z.array(lotSubRowSchema).default([]),
 });
 
 export async function createBF(
@@ -22,6 +32,12 @@ export async function createBF(
   const session = await requirePermission("stock.bf.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  let lotItems: z.infer<typeof lotSubRowSchema>[] = [];
+  try {
+    const raw = formData.get("lotItems");
+    if (typeof raw === "string" && raw) lotItems = JSON.parse(raw);
+  } catch { /* ignore */ }
+
   const parsed = bfSchema.safeParse({
     productId:       formData.get("productId"),
     unitName:        formData.get("unitName"),
@@ -29,23 +45,36 @@ export async function createBF(
     costPerBaseUnit: formData.get("costPerBaseUnit"),
     docDate:         formData.get("docDate"),
     note:            formData.get("note") || undefined,
+    lotItems,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { productId, unitName, qty, costPerBaseUnit, docDate, note } = parsed.data;
+  const { productId, unitName, qty, costPerBaseUnit, docDate, note, lotItems: validLots } = parsed.data;
 
   const unit = await db.productUnit.findUnique({
     where: { productId_name: { productId, name: unitName } },
   });
   if (!unit) return { error: "ไม่พบหน่วยนับที่เลือก" };
 
-  const qtyInBase = qty * Number(unit.scale);
+  const scale     = Number(unit.scale);
+  const qtyInBase = qty * scale;
   const docNo     = await generateBFNo(new Date(docDate));
+
+  // Validate lot rows if product uses lot control
+  const product = await db.product.findUnique({
+    where: { id: productId },
+    select: { isLotControl: true, requireExpiryDate: true },
+  });
+  if (product?.isLotControl) {
+    if (validLots.length === 0) return { error: "สินค้านี้ต้องระบุ Lot" };
+    const lotErr = validateLotRows(validLots as LotSubRow[], qty, product.requireExpiryDate);
+    if (lotErr) return { error: lotErr };
+  }
 
   try {
     await dbTx(async (tx) => {
       // Create BalanceForward header
-      await tx.balanceForward.create({
+      const bf = await tx.balanceForward.create({
         data: {
           docNo,
           docDate:         new Date(docDate),
@@ -67,7 +96,28 @@ export async function createBF(
         qtyOut:     0,
         priceIn:    costPerBaseUnit,
         detail:     note ?? `ยอดยกมา ${qty} ${unitName}`,
+        referenceId: bf.id,
       });
+
+      // Lot Control
+      if (product?.isLotControl && validLots.length > 0) {
+        const lotsInBase = validLots.map((lot) => ({
+          lotNo:        lot.lotNo.trim(),
+          qtyInBase:    lot.qty * scale,
+          unitCostBase: lot.unitCost / scale,
+          mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
+          expDate:      lot.expDate ? new Date(lot.expDate) : null,
+        }));
+
+        // Use bf.id as purchaseItemId for lot tracking
+        await writePurchaseLots(tx, bf.id, productId, lotsInBase);
+
+        const sc = await tx.stockCard.findFirst({
+          where: { referenceId: bf.id, source: "BF" },
+          select: { id: true },
+        });
+        if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
+      }
     });
     revalidatePath("/admin/stock/bf");
     return { success: true, docNo };
@@ -102,6 +152,9 @@ export async function cancelBF(
 
   try {
     await dbTx(async (tx) => {
+      // Reverse Lot balances (bf.id is used as purchaseItemId in writePurchaseLots)
+      await reversePurchaseLotBalance(tx, bf.id, bf.productId);
+
       // Delete StockCard rows for this docNo
       await tx.stockCard.deleteMany({ where: { docNo: bf.docNo, source: "BF" } });
 

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createBF } from "./actions";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Plus, Trash2 } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
@@ -11,7 +11,17 @@ interface ProductOption {
   name: string;
   avgCost: number;
   stock: number;
+  isLotControl: boolean;
+  requireExpiryDate: boolean;
   units: { name: string; scale: number; isBase: boolean }[];
+}
+
+interface LotRow {
+  lotNo: string;
+  qty: number;
+  unitCost: number;
+  mfgDate: string;
+  expDate: string;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
@@ -29,16 +39,33 @@ const BfForm = ({
   const [success, setSuccess] = useState("");
   const [productId, setProductId]       = useState("");
   const [selectedProduct, setSelectedProduct] = useState<ProductOption | null>(null);
+  const [lotRows, setLotRows] = useState<LotRow[]>([]);
 
   const handleProductChange = (id: string) => {
     setProductId(id);
-    setSelectedProduct(products.find((p) => p.id === id) ?? null);
+    const prod = products.find((p) => p.id === id) ?? null;
+    setSelectedProduct(prod);
+    setLotRows(prod?.isLotControl ? [{ lotNo: "", qty: 0, unitCost: 0, mfgDate: "", expDate: "" }] : []);
   };
+
+  const addLotRow = () =>
+    setLotRows((prev) => [...prev, { lotNo: "", qty: 0, unitCost: 0, mfgDate: "", expDate: "" }]);
+
+  const removeLotRow = (i: number) =>
+    setLotRows((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateLotRow = (i: number, field: keyof LotRow, value: string | number) =>
+    setLotRows((prev) => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+
+  const lotTotal = lotRows.reduce((s, r) => s + (r.qty || 0), 0);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(""); setSuccess("");
     const formData = new FormData(e.currentTarget);
+    if (selectedProduct?.isLotControl && lotRows.length > 0) {
+      formData.set("lotItems", JSON.stringify(lotRows));
+    }
     startTransition(async () => {
       const result = await createBF(formData);
       if (result.error) setError(result.error);
@@ -46,6 +73,7 @@ const BfForm = ({
         setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${result.docNo}`);
         (e.target as HTMLFormElement).reset();
         setSelectedProduct(null);
+        setLotRows([]);
       }
     });
   };
@@ -111,6 +139,67 @@ const BfForm = ({
             <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700">
               Stock ปัจจุบัน: <span className="font-medium">{selectedProduct.stock}</span> หน่วยหลัก |
               avgCost: <span className="font-medium">{Number(selectedProduct.avgCost).toFixed(4)}</span> บาท/หน่วยหลัก
+              {selectedProduct.isLotControl && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Lot Control</span>
+              )}
+            </div>
+          )}
+
+          {/* Lot Sub-table */}
+          {selectedProduct?.isLotControl && (
+            <div className="border border-amber-200 bg-amber-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-amber-800">รายการ Lot</p>
+                <button type="button" onClick={addLotRow}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 border border-dashed border-amber-400 hover:border-amber-600 text-amber-600 hover:text-amber-800 text-xs rounded-lg transition-colors">
+                  <Plus size={12} /> เพิ่ม Lot
+                </button>
+              </div>
+              {lotRows.map((lot, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-2">
+                    {i === 0 && <p className="text-xs text-gray-500 mb-1">Lot No <span className="text-red-500">*</span></p>}
+                    <input type="text" value={lot.lotNo}
+                      onChange={(e) => updateLotRow(i, "lotNo", e.target.value)}
+                      className={inputCls} placeholder="LOT-001" />
+                  </div>
+                  <div className="col-span-2">
+                    {i === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน <span className="text-red-500">*</span></p>}
+                    <input type="number" value={lot.qty || ""} min={0.0001} step={0.0001}
+                      onChange={(e) => updateLotRow(i, "qty", Number(e.target.value))}
+                      className={inputCls} />
+                  </div>
+                  <div className="col-span-2">
+                    {i === 0 && <p className="text-xs text-gray-500 mb-1">ต้นทุน/หน่วย</p>}
+                    <input type="number" value={lot.unitCost || ""} min={0} step={0.01}
+                      onChange={(e) => updateLotRow(i, "unitCost", Number(e.target.value))}
+                      className={inputCls} />
+                  </div>
+                  <div className="col-span-2">
+                    {i === 0 && <p className="text-xs text-gray-500 mb-1">วันผลิต</p>}
+                    <input type="date" value={lot.mfgDate}
+                      onChange={(e) => updateLotRow(i, "mfgDate", e.target.value)}
+                      className={inputCls} />
+                  </div>
+                  <div className="col-span-2">
+                    {i === 0 && <p className="text-xs text-gray-500 mb-1">วันหมดอายุ{selectedProduct.requireExpiryDate && <span className="text-red-500"> *</span>}</p>}
+                    <input type="date" value={lot.expDate}
+                      onChange={(e) => updateLotRow(i, "expDate", e.target.value)}
+                      className={inputCls} />
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2">
+                    {lotRows.length > 1 && (
+                      <button type="button" onClick={() => removeLotRow(i)}
+                        className="text-red-400 hover:text-red-600 transition-colors p-1">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <p className={`text-xs font-medium ${lotTotal > 0 ? "text-amber-700" : "text-gray-400"}`}>
+                Lot รวม: {lotTotal} ชิ้น
+              </p>
             </div>
           )}
 

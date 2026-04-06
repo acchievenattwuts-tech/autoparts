@@ -350,6 +350,15 @@ export async function cancelSale(
       items:       { select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
+      warranties:  {
+        select: {
+          id: true,
+          claims: {
+            where: { status: { not: "CANCELLED" } },
+            select: { claimNo: true },
+          },
+        },
+      },
     },
   });
   if (!sale)                        return { error: "ไม่พบเอกสาร" };
@@ -368,6 +377,13 @@ export async function cancelSale(
   if (activeReceipts.length > 0) {
     const nos = activeReceipts.map((r) => r.receiptNo).join(", ");
     return { error: `ไม่สามารถยกเลิกได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเสร็จก่อน` };
+  }
+
+  // Reference chain: ตรวจใบเคลมที่ยัง active
+  const activeClaims = sale.warranties.flatMap((w) => w.claims);
+  if (activeClaims.length > 0) {
+    const nos = activeClaims.map((c) => c.claimNo).join(", ");
+    return { error: `ไม่สามารถยกเลิกได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเคลมก่อน` };
   }
 
   const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
@@ -418,6 +434,15 @@ export async function updateSale(
       items:       { select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
+      warranties:  {
+        select: {
+          id: true,
+          claims: {
+            where: { status: { not: "CANCELLED" } },
+            select: { claimNo: true },
+          },
+        },
+      },
     },
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
@@ -430,6 +455,11 @@ export async function updateSale(
   if (activeReceipts.length > 0) {
     const nos = activeReceipts.map((ri) => ri.receipt.receiptNo).join(", ");
     return { error: `ไม่สามารถแก้ไขได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos}` };
+  }
+  const activeClaims = existing.warranties.flatMap((w) => w.claims);
+  if (activeClaims.length > 0) {
+    const nos = activeClaims.map((c) => c.claimNo).join(", ");
+    return { error: `ไม่สามารถแก้ไขได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเคลมก่อน` };
   }
 
   let items: z.infer<typeof saleItemSchema>[] = [];

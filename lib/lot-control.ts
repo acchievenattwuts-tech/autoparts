@@ -51,7 +51,7 @@ export async function writePurchaseLots(
         unitCost:      new Prisma.Decimal(lot.unitCostBase),
       },
       update: {
-        unitCost: new Prisma.Decimal(lot.unitCostBase),
+        // ไม่เขียนทับ unitCost — เก็บต้นทุนครั้งแรกที่ซื้อเข้า
         expDate:  lot.expDate ?? undefined,
       },
     });
@@ -331,6 +331,114 @@ export async function reverseSaleLotBalance(
   }
 }
 
+// ─── Adjustment Lot functions ─────────────────────────────────────────────────
+
+/**
+ * ปรับ LotBalance สำหรับ Adjustment
+ * - direction="in"  → เพิ่ม LotBalance (upsert)
+ * - direction="out" → ลด LotBalance (deduct + clamp)
+ */
+export async function writeAdjustmentLots(
+  tx: TxClient,
+  stockCardId: string,
+  productId: string,
+  lots: LotSubRowBase[],
+  direction: "in" | "out"
+): Promise<void> {
+  for (const lot of lots) {
+    if (direction === "in") {
+      // Upsert ProductLot master
+      await tx.productLot.upsert({
+        where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+        create: {
+          productId,
+          lotNo:    lot.lotNo,
+          mfgDate:  lot.mfgDate,
+          expDate:  lot.expDate,
+          unitCost: new Prisma.Decimal(lot.unitCostBase),
+        },
+        update: {
+          expDate: lot.expDate ?? undefined,
+        },
+      });
+
+      // Increment LotBalance
+      await tx.lotBalance.upsert({
+        where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+        create: { productId, lotNo: lot.lotNo, qtyOnHand: new Prisma.Decimal(lot.qtyInBase) },
+        update: { qtyOnHand: { increment: new Prisma.Decimal(lot.qtyInBase) } },
+      });
+    } else {
+      // Deduct LotBalance
+      await tx.lotBalance.updateMany({
+        where: { productId, lotNo: lot.lotNo },
+        data: { qtyOnHand: { decrement: new Prisma.Decimal(lot.qtyInBase) } },
+      });
+      await tx.$executeRaw`
+        UPDATE "LotBalance"
+        SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+        WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
+      `;
+    }
+
+    // StockMovementLot
+    await tx.stockMovementLot.create({
+      data: {
+        stockCardId,
+        lotNo:    lot.lotNo,
+        qtyIn:    direction === "in"  ? new Prisma.Decimal(lot.qtyInBase) : new Prisma.Decimal(0),
+        qtyOut:   direction === "out" ? new Prisma.Decimal(lot.qtyInBase) : new Prisma.Decimal(0),
+        unitCost: new Prisma.Decimal(lot.unitCostBase),
+      },
+    });
+  }
+}
+
+/**
+ * Reverse LotBalance จาก StockMovementLot ของ Adjustment
+ * อ่าน lotMovements จาก StockCard rows ที่ referenceId ตรง
+ */
+export async function reverseAdjustmentLotBalance(
+  tx: TxClient,
+  adjustmentId: string,
+  productIds: string[]
+): Promise<void> {
+  const stockCards = await tx.stockCard.findMany({
+    where: { referenceId: adjustmentId, productId: { in: productIds } },
+    select: {
+      productId: true,
+      lotMovements: {
+        select: { lotNo: true, qtyIn: true, qtyOut: true },
+      },
+    },
+  });
+
+  for (const sc of stockCards) {
+    for (const lot of sc.lotMovements) {
+      if (Number(lot.qtyIn) > 0) {
+        // Was added in → deduct back
+        await tx.lotBalance.updateMany({
+          where: { productId: sc.productId, lotNo: lot.lotNo },
+          data: { qtyOnHand: { decrement: lot.qtyIn } },
+        });
+        await tx.$executeRaw`
+          UPDATE "LotBalance"
+          SET "qtyOnHand" = GREATEST("qtyOnHand", 0)
+          WHERE "productId" = ${sc.productId} AND "lotNo" = ${lot.lotNo}
+        `;
+      }
+      if (Number(lot.qtyOut) > 0) {
+        // Was taken out → add back
+        await tx.lotBalance.upsert({
+          where: { productId_lotNo: { productId: sc.productId, lotNo: lot.lotNo } },
+          create: { productId: sc.productId, lotNo: lot.lotNo, qtyOnHand: lot.qtyOut },
+          update: { qtyOnHand: { increment: lot.qtyOut } },
+        });
+      }
+    }
+  }
+}
+
 // ─── Warranty Claim Lot functions ─────────────────────────────────────────────
 
 /**
@@ -407,9 +515,12 @@ export async function reverseClaimLotBalance(
   options?: { docNos?: string[] }
 ): Promise<void> {
   const stockCards = await tx.stockCard.findMany({
-    where: options?.docNos?.length
-      ? { docNo: { in: options.docNos } }
-      : { referenceId: claimId },
+    where: {
+      productId,
+      ...(options?.docNos?.length
+        ? { docNo: { in: options.docNos } }
+        : { referenceId: claimId }),
+    },
     select: {
       id: true,
       lotMovements: {
