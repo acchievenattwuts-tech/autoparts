@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, searchPurchaseReturnSuppliers } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnSuppliers } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -496,7 +496,6 @@ const PurchaseReturnForm = ({
                             if (!id) clearItemProduct(i);
                           }}
                           onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
-                          searchProducts={searchPurchaseReturnProducts}
                           selectedProduct={productMap.get(item.productId) ?? null}
                         />
                       </td>

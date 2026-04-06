@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchase, searchPurchaseProducts, updatePurchase } from "../actions";
+import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PaymentMethod } from "@/lib/generated/prisma";
@@ -370,7 +370,6 @@ const PurchaseForm = ({
                           products={productOptions}
                           value={item.productId}
                           selectedProduct={prod ?? null}
-                          searchProducts={isEdit ? undefined : searchPurchaseProducts}
                           onProductSelect={(product) => applySelectedProduct(i, product)}
                           onChange={(id) => {
                             if (!id) clearItemProduct(i);

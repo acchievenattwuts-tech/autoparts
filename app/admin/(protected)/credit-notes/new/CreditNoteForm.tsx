@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteCustomers, searchCreditNoteProducts } from "../actions";
+import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteCustomers } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -523,7 +523,6 @@ const CreditNoteForm = ({
                             if (!id) clearItemProduct(i);
                           }}
                           onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
-                          searchProducts={searchCreditNoteProducts}
                           selectedProduct={productMap.get(item.productId) ?? null}
                         />
                       </td>

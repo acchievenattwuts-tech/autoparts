@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createSale, searchSaleProducts, updateSale } from "../actions";
+import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -653,7 +653,6 @@ const SaleForm = ({
                         products={productOptions}
                         value={item.productId}
                         selectedProduct={prod ?? null}
-                        searchProducts={isEdit ? undefined : searchSaleProducts}
                         onProductSelect={(product) => applySelectedProduct(i, product)}
                         onChange={(id) => {
                           if (!id) clearItemProduct(i);
