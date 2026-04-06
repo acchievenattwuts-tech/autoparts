@@ -10,48 +10,7 @@ import CreditNoteForm from "./CreditNoteForm";
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
 
-  const [products, customers, config] = await Promise.all([
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id:           true,
-        code:         true,
-        name:         true,
-        description:  true,
-        salePrice:    true,
-        saleUnitName: true,
-        isLotControl: true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: {
-          select: { name: true, scale: true, isBase: true },
-          orderBy: { isBase: "desc" },
-        },
-      },
-    }),
-    db.customer.findMany({
-      where:   { isActive: true },
-      orderBy: { name: "asc" },
-      select:  { id: true, name: true },
-    }),
-    getSiteConfig(),
-  ]);
-
-  const productOptions = products.map((p) => ({
-    id:           p.id,
-    code:         p.code,
-    name:         p.name,
-    description:  p.description,
-    salePrice:    Number(p.salePrice),
-    saleUnitName: p.saleUnitName,
-    isLotControl: p.isLotControl,
-    categoryName: p.category.name,
-    brandName:    p.brand?.name ?? null,
-    aliases:      p.aliases.map((a) => a.alias),
-    units:        p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-  }));
+  const config = await getSiteConfig();
 
   return (
     <div>
@@ -66,7 +25,7 @@ const NewCreditNotePage = async () => {
         <span className="text-sm font-medium text-gray-700">สร้าง CN ใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
-      <CreditNoteForm products={productOptions} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <CreditNoteForm products={[]} customers={[]} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, searchPurchaseReturnSuppliers } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -78,6 +78,14 @@ const PurchaseReturnForm = ({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [selectedSupplierOption, setSelectedSupplierOption] = useState<SelectOption | null>(
+    supplierId
+      ? (() => {
+          const supplier = suppliers.find((entry) => entry.id === supplierId);
+          return supplier ? { id: supplier.id, label: supplier.name } : null;
+        })()
+      : null,
+  );
   const [purchaseId, setPurchaseId] = useState(initialData?.purchaseId ?? "");
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
@@ -86,6 +94,8 @@ const PurchaseReturnForm = ({
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialData?.initialAvailableLots ?? {});
   const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
+  const productMap = new Map(productOptions.map((product) => [product.id, product]));
 
   const loadLots = async (itemIdx: number, productId: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -98,6 +108,7 @@ const PurchaseReturnForm = ({
 
   const handleSupplierChange = async (id: string) => {
     setSupplierId(id);
+    if (!id) setSelectedSupplierOption(null);
     setPurchaseId("");
     setItems([emptyItem()]);
     setAvailableLots({});
@@ -117,6 +128,13 @@ const PurchaseReturnForm = ({
     if (!id) return;
     const detail = await getPurchaseDetail(id);
     if (!detail) return;
+    setProductOptions((prev) => {
+      const next = new Map(prev.map((product) => [product.id, product]));
+      detail.products.forEach((product) => {
+        next.set(product.id, product);
+      });
+      return [...next.values()];
+    });
     setItems(detail.items.map((item) => ({ ...item })));
     detail.items.forEach((item, index) => {
       if (item.lotItems.length > 0) void loadLots(index, item.productId);
@@ -126,27 +144,68 @@ const PurchaseReturnForm = ({
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
+  const clearCachedLots = (itemIndex: number) => {
+    setAvailableLots((prev) => {
+      const next = { ...prev };
+      delete next[itemIndex];
+      return next;
+    });
+  };
+
+  const rememberProduct = (product: ProductOption) => {
+    setProductOptions((prev) => {
+      const existingIndex = prev.findIndex((candidate) => candidate.id === product.id);
+      if (existingIndex === -1) return [...prev, product];
+      const next = [...prev];
+      next[existingIndex] = product;
+      return next;
+    });
+  };
+
+  const clearItemProduct = (itemIndex: number) => {
+    clearCachedLots(itemIndex);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: "",
+              unitName: "",
+              lotItems: [],
+            },
+      ),
+    );
+  };
+
+  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+    rememberProduct(product);
+    clearCachedLots(itemIndex);
+    const baseUnit = product.units.find((unit) => unit.isBase) ?? product.units[0];
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: product.id,
+              unitName: baseUnit?.name ?? "",
+              lotItems: product.isLotControl
+                ? [{ lotNo: "", qty: item.qty, unitCost: 0, mfgDate: "", expDate: "" }]
+                : [],
+            },
+      ),
+    );
+    if (product.isLotControl) void loadLots(itemIndex, product.id);
+  };
+
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
-        if (field === "productId") {
-          const prod = products.find((p) => p.id === String(value));
-          const baseUnit = prod?.units.find((u) => u.isBase) ?? prod?.units[0];
-          updated.unitName = baseUnit?.name ?? "";
-          updated.lotItems = prod?.isLotControl
-            ? [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }]
-            : [];
-          setAvailableLots((current) => {
-            const next = { ...current };
-            delete next[i];
-            return next;
-          });
-          if (prod?.isLotControl) void loadLots(i, prod.id);
-        }
         if (field === "qty" && item.productId) {
-          const prod = products.find((p) => p.id === item.productId);
+          const prod = productMap.get(item.productId);
           if (prod?.isLotControl && updated.lotItems.length === 1) {
             updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
           }
@@ -193,7 +252,7 @@ const PurchaseReturnForm = ({
 
   const handleLotSelect = (itemIdx: number, lotIdx: number, lotNo: string) => {
     const item = items[itemIdx];
-    const product = products.find((p) => p.id === item.productId);
+    const product = productMap.get(item.productId);
     const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
     const lot = (availableLots[itemIdx] ?? []).find((entry) => entry.lotNo === lotNo);
 
@@ -218,10 +277,10 @@ const PurchaseReturnForm = ({
     );
   };
 
-  const getUnits = (productId: string) => products.find((p) => p.id === productId)?.units ?? [];
+  const getUnits = (productId: string) => productMap.get(productId)?.units ?? [];
 
   const getDisplayCost = (productId: string, unitName: string): number => {
-    const prod = products.find((p) => p.id === productId);
+    const prod = productMap.get(productId);
     if (!prod) return 0;
     const unit = prod.units.find((u) => u.name === unitName);
     const scale = unit?.scale ?? 1;
@@ -262,7 +321,7 @@ const PurchaseReturnForm = ({
         setError("จำนวนต้องมากกว่า 0");
         return;
       }
-      const product = products.find((p) => p.id === item.productId);
+      const product = productMap.get(item.productId);
       if (product?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) {
@@ -316,6 +375,9 @@ const PurchaseReturnForm = ({
               options={suppliers.map((supplier): SelectOption => ({ id: supplier.id, label: supplier.name }))}
               value={supplierId}
               onChange={handleSupplierChange}
+              onOptionSelect={setSelectedSupplierOption}
+              searchOptions={searchPurchaseReturnSuppliers}
+              selectedOption={selectedSupplierOption}
               placeholder="โปรดระบุผู้จำหน่าย"
             />
           </div>
@@ -419,7 +481,7 @@ const PurchaseReturnForm = ({
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
                 const displayCost = getDisplayCost(item.productId, item.unitName);
-                const product = products.find((p) => p.id === item.productId);
+                const product = productMap.get(item.productId);
                 const isLot = !!product?.isLotControl;
                 const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
 
@@ -428,9 +490,14 @@ const PurchaseReturnForm = ({
                     <tr key={`item-${i}`} className="border-b border-gray-50">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
-                          products={products}
+                          products={productOptions}
                           value={item.productId}
-                          onChange={(id) => updateItem(i, "productId", id)}
+                          onChange={(id) => {
+                            if (!id) clearItemProduct(i);
+                          }}
+                          onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
+                          searchProducts={searchPurchaseReturnProducts}
+                          selectedProduct={productMap.get(item.productId) ?? null}
                         />
                       </td>
                       <td className="py-2 px-2">

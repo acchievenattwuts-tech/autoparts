@@ -10,6 +10,126 @@ import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+
+const creditNoteProductOptionSelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  salePrice: true,
+  saleUnitName: true,
+  isLotControl: true,
+  category: { select: { name: true } },
+  brand: { select: { name: true } },
+  aliases: { select: { alias: true } },
+  units: {
+    select: { name: true, scale: true, isBase: true },
+    orderBy: { isBase: "desc" },
+  },
+} as const;
+
+type CreditNoteProductOption = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  salePrice: number;
+  saleUnitName: string;
+  isLotControl: boolean;
+  categoryName: string;
+  brandName: string | null;
+  aliases: string[];
+  units: { name: string; scale: number; isBase: boolean }[];
+};
+
+function serializeCreditNoteProductOption(product: {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  salePrice: unknown;
+  saleUnitName: string | null;
+  isLotControl: boolean;
+  category: { name: string };
+  brand: { name: string } | null;
+  aliases: { alias: string }[];
+  units: { name: string; scale: unknown; isBase: boolean }[];
+}): CreditNoteProductOption {
+  return {
+    id: product.id,
+    code: product.code,
+    name: product.name,
+    description: product.description,
+    salePrice: Number(product.salePrice),
+    saleUnitName: product.saleUnitName ?? "",
+    isLotControl: product.isLotControl,
+    categoryName: product.category.name,
+    brandName: product.brand?.name ?? null,
+    aliases: product.aliases.map((alias) => alias.alias),
+    units: product.units.map((unit) => ({
+      name: unit.name,
+      scale: Number(unit.scale),
+      isBase: unit.isBase,
+    })),
+  };
+}
+
+async function requireCreditNoteProductPermission() {
+  const createSession = await requirePermission("credit_notes.create").catch(() => null);
+  if (createSession?.user?.id) return createSession;
+  return requirePermission("credit_notes.update").catch(() => null);
+}
+
+export async function searchCreditNoteProducts(query: string) {
+  const session = await requireCreditNoteProductPermission();
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 3) return [];
+
+  const searchResult = await searchProductIds({
+    query: normalizedQuery,
+    isActive: true,
+    take: 20,
+  });
+  if (searchResult.ids.length === 0) return [];
+
+  const products = await db.product.findMany({
+    where: { id: { in: searchResult.ids } },
+    select: creditNoteProductOptionSelect,
+  });
+
+  return sortProductsByIds(products, searchResult.ids).map(serializeCreditNoteProductOption);
+}
+
+export async function searchCreditNoteCustomers(query: string) {
+  const session = await requireCreditNoteProductPermission();
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return [];
+
+  const customers = await db.customer.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: normalizedQuery, mode: "insensitive" } },
+        { code: { contains: normalizedQuery, mode: "insensitive" } },
+        { phone: { contains: normalizedQuery, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { name: "asc" },
+    take: 20,
+    select: { id: true, name: true, code: true, phone: true },
+  });
+
+  return customers.map((customer) => ({
+    id: customer.id,
+    label: customer.name,
+    sublabel: [customer.code, customer.phone].filter(Boolean).join(" | ") || undefined,
+  }));
+}
 
 const lotSubRowSchema = z.object({
   lotNo:       z.string().min(1).max(100),
@@ -481,6 +601,7 @@ export type SaleDetailResult = {
   vatType: string;
   vatRate: number;
   items: { productId: string; unitName: string; qty: number; salePrice: number }[];
+  products: CreditNoteProductOption[];
 } | null;
 
 export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
@@ -498,7 +619,16 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
           salePrice: true,
           product: {
             select: {
+              id: true,
+              code: true,
+              name: true,
+              description: true,
+              salePrice: true,
               saleUnitName: true,
+              isLotControl: true,
+              category: { select: { name: true } },
+              brand: { select: { name: true } },
+              aliases: { select: { alias: true } },
               units: { select: { name: true, scale: true, isBase: true } },
             },
           },
@@ -508,10 +638,12 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
   });
   if (!sale) return null;
 
+  const productMap = new Map<string, CreditNoteProductOption>();
   const items = sale.items.map((item) => {
     const unitName = item.product.saleUnitName ?? "";
     const unit     = item.product.units.find((u) => u.name === unitName);
     const scale    = unit?.scale ?? 1;
+    productMap.set(item.productId, serializeCreditNoteProductOption(item.product));
     return {
       productId: item.productId,
       unitName,
@@ -525,5 +657,6 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
     vatType:      sale.vatType,
     vatRate:      Number(sale.vatRate),
     items,
+    products: [...productMap.values()],
   };
 }

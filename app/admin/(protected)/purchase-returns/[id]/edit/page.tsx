@@ -13,37 +13,47 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const { id } = await params;
 
-  const [ret, rawProducts, suppliers, config] = await Promise.all([
-    db.purchaseReturn.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } } },
-            },
-            lotItems: { select: { lotNo: true, qty: true } },
+  const ret = await db.purchaseReturn.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: { units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } } },
           },
+          lotItems: { select: { lotNo: true, qty: true } },
         },
       },
-    }),
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true, avgCost: true,
-        isLotControl: true,
-        category: { select: { name: true } }, brand: { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    getSiteConfig(),
-  ]);
+    },
+  });
 
   if (!ret) notFound();
   if (ret.status === "CANCELLED") redirect(`/admin/purchase-returns/${id}`);
+
+  const currentProductIds = [...new Set(ret.items.map((item) => item.productId))];
+
+  const [rawProducts, suppliers, config] = await Promise.all([
+    currentProductIds.length === 0
+      ? Promise.resolve([])
+      : db.product.findMany({
+          where: { id: { in: currentProductIds } },
+          select: {
+            id: true, code: true, name: true, description: true, avgCost: true,
+            isLotControl: true,
+            category: { select: { name: true } }, brand: { select: { name: true } },
+            aliases:  { select: { alias: true } },
+            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+          },
+        }),
+    ret.supplierId
+      ? db.supplier.findMany({
+          where: { id: ret.supplierId },
+          select: { id: true, name: true },
+          take: 1,
+        })
+      : Promise.resolve([]),
+    getSiteConfig(),
+  ]);
 
   const initialPurchases = ret.supplierId
     ? await db.purchase.findMany({

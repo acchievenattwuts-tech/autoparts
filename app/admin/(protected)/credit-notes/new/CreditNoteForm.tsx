@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail } from "../actions";
+import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteCustomers, searchCreditNoteProducts } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -98,10 +98,13 @@ const CreditNoteForm = ({
   const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
+  const productMap = new Map(productOptions.map((product) => [product.id, product]));
+  const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
   const handleCustomerChange = async (id: string) => {
     setCustomerId(id);
-    const customer = customers.find((entry) => entry.id === id);
+    const customer = customerMap.get(id);
     setCustomerName(customer?.name ?? "");
     setSaleId("");
     setItems([emptyItem()]);
@@ -120,6 +123,13 @@ const CreditNoteForm = ({
     if (!id) return;
     const detail = await getSaleDetail(id);
     if (!detail) return;
+    setProductOptions((prev) => {
+      const next = new Map(prev.map((product) => [product.id, product]));
+      detail.products.forEach((product) => {
+        next.set(product.id, product);
+      });
+      return [...next.values()];
+    });
     setVatType(detail.vatType);
     setVatRate(detail.vatRate);
     setItems(detail.items.map((item) => ({ ...item, lotItems: [] })));
@@ -128,21 +138,58 @@ const CreditNoteForm = ({
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
+  const rememberProduct = (product: ProductOption) => {
+    setProductOptions((prev) => {
+      const existingIndex = prev.findIndex((candidate) => candidate.id === product.id);
+      if (existingIndex === -1) return [...prev, product];
+      const next = [...prev];
+      next[existingIndex] = product;
+      return next;
+    });
+  };
+
+  const clearItemProduct = (itemIndex: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: "",
+              unitName: "",
+              salePrice: 0,
+              lotItems: [],
+            },
+      ),
+    );
+  };
+
+  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+    rememberProduct(product);
+    setItems((prev) =>
+      prev.map((item, idx) =>
+        idx !== itemIndex
+          ? item
+          : {
+              ...item,
+              productId: product.id,
+              unitName: product.saleUnitName ?? "",
+              salePrice: product.salePrice ?? 0,
+              lotItems: product.isLotControl
+                ? [{ lotNo: "", qty: item.qty, unitCost: product.salePrice, mfgDate: "", expDate: "", isReturnLot: false }]
+                : [],
+            },
+      ),
+    );
+  };
+
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
-        if (field === "productId") {
-          const product = products.find((entry) => entry.id === String(value));
-          updated.unitName = product?.saleUnitName ?? "";
-          updated.salePrice = product?.salePrice ?? 0;
-          updated.lotItems = product?.isLotControl
-            ? [{ lotNo: "", qty: updated.qty, unitCost: updated.salePrice, mfgDate: "", expDate: "", isReturnLot: false }]
-            : [];
-        }
         if (field === "qty" && item.productId) {
-          const product = products.find((entry) => entry.id === item.productId);
+          const product = productMap.get(item.productId);
           if (product?.isLotControl && updated.lotItems.length === 1) {
             updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
           }
@@ -192,7 +239,7 @@ const CreditNoteForm = ({
     );
   };
 
-  const getUnits = (productId: string) => products.find((p) => p.id === productId)?.units ?? [];
+  const getUnits = (productId: string) => productMap.get(productId)?.units ?? [];
 
   const validateCreditNoteLots = (item: LineItem): string | null => {
     const rowsForQtyCheck = item.lotItems.map((lot) => ({
@@ -230,7 +277,7 @@ const CreditNoteForm = ({
         setError("จำนวนต้องมากกว่า 0");
         return;
       }
-      const product = products.find((entry) => entry.id === item.productId);
+      const product = productMap.get(item.productId);
       if (cnType === "RETURN" && product?.isLotControl) {
         const lotErr = validateCreditNoteLots(item);
         if (lotErr) {
@@ -288,6 +335,9 @@ const CreditNoteForm = ({
               options={customers.map((customer): SelectOption => ({ id: customer.id, label: customer.name }))}
               value={customerId}
               onChange={handleCustomerChange}
+              onOptionSelect={(option) => setCustomerName(option.label)}
+              searchOptions={searchCreditNoteCustomers}
+              selectedOption={customerId ? { id: customerId, label: customerName || customerMap.get(customerId)?.name || "" } : null}
               placeholder="โปรดระบุลูกค้า"
             />
           </div>
@@ -459,7 +509,7 @@ const CreditNoteForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
-                const product = products.find((entry) => entry.id === item.productId);
+                const product = productMap.get(item.productId);
                 const showLots = cnType === "RETURN" && !!product?.isLotControl;
 
                 return (
@@ -467,9 +517,14 @@ const CreditNoteForm = ({
                     <tr key={`item-${i}`} className="border-b border-gray-50">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
-                          products={products}
+                          products={productOptions}
                           value={item.productId}
-                          onChange={(id) => updateItem(i, "productId", id)}
+                          onChange={(id) => {
+                            if (!id) clearItemProduct(i);
+                          }}
+                          onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
+                          searchProducts={searchCreditNoteProducts}
+                          selectedProduct={productMap.get(item.productId) ?? null}
                         />
                       </td>
                       <td className="py-2 px-2">

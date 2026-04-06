@@ -10,6 +10,122 @@ import { VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { reversePurchaseReturnLotBalance, validateLotRows, writePurchaseReturnLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+
+const purchaseReturnProductOptionSelect = {
+  id: true,
+  code: true,
+  name: true,
+  description: true,
+  avgCost: true,
+  isLotControl: true,
+  category: { select: { name: true } },
+  brand: { select: { name: true } },
+  aliases: { select: { alias: true } },
+  units: {
+    select: { name: true, scale: true, isBase: true },
+    orderBy: { isBase: "desc" },
+  },
+} as const;
+
+type PurchaseReturnProductOption = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  avgCost: number;
+  isLotControl: boolean;
+  categoryName: string;
+  brandName: string | null;
+  aliases: string[];
+  units: { name: string; scale: number; isBase: boolean }[];
+};
+
+function serializePurchaseReturnProductOption(product: {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  avgCost: unknown;
+  isLotControl: boolean;
+  category: { name: string };
+  brand: { name: string } | null;
+  aliases: { alias: string }[];
+  units: { name: string; scale: unknown; isBase: boolean }[];
+}): PurchaseReturnProductOption {
+  return {
+    id: product.id,
+    code: product.code,
+    name: product.name,
+    description: product.description,
+    avgCost: Number(product.avgCost),
+    isLotControl: product.isLotControl,
+    categoryName: product.category.name,
+    brandName: product.brand?.name ?? null,
+    aliases: product.aliases.map((alias) => alias.alias),
+    units: product.units.map((unit) => ({
+      name: unit.name,
+      scale: Number(unit.scale),
+      isBase: unit.isBase,
+    })),
+  };
+}
+
+async function requirePurchaseReturnProductPermission() {
+  const createSession = await requirePermission("purchase_returns.create").catch(() => null);
+  if (createSession?.user?.id) return createSession;
+  return requirePermission("purchase_returns.update").catch(() => null);
+}
+
+export async function searchPurchaseReturnProducts(query: string) {
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 3) return [];
+
+  const searchResult = await searchProductIds({
+    query: normalizedQuery,
+    isActive: true,
+    take: 20,
+  });
+  if (searchResult.ids.length === 0) return [];
+
+  const products = await db.product.findMany({
+    where: { id: { in: searchResult.ids } },
+    select: purchaseReturnProductOptionSelect,
+  });
+
+  return sortProductsByIds(products, searchResult.ids).map(serializePurchaseReturnProductOption);
+}
+
+export async function searchPurchaseReturnSuppliers(query: string) {
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return [];
+
+  const suppliers = await db.supplier.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: normalizedQuery, mode: "insensitive" } },
+        { code: { contains: normalizedQuery, mode: "insensitive" } },
+        { phone: { contains: normalizedQuery, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { name: "asc" },
+    take: 20,
+    select: { id: true, name: true, code: true, phone: true },
+  });
+
+  return suppliers.map((supplier) => ({
+    id: supplier.id,
+    label: supplier.name,
+    sublabel: [supplier.code, supplier.phone].filter(Boolean).join(" | ") || undefined,
+  }));
+}
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),
@@ -424,6 +540,7 @@ export async function getPurchasesForSupplier(
 // ─────────────────────────────────────────
 export type PurchaseDetailResult = {
   items: { productId: string; unitName: string; qty: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
+  products: PurchaseReturnProductOption[];
 } | null;
 
 export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
@@ -437,8 +554,16 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
           quantity:  true,
           product: {
             select: {
+              id: true,
+              code: true,
+              name: true,
+              description: true,
+              avgCost: true,
               isLotControl: true,
               purchaseUnitName: true,
+              category: { select: { name: true } },
+              brand: { select: { name: true } },
+              aliases: { select: { alias: true } },
               units: { select: { name: true, scale: true, isBase: true } },
             },
           },
@@ -449,10 +574,12 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   });
   if (!purchase) return null;
 
+  const productMap = new Map<string, PurchaseReturnProductOption>();
   const items = purchase.items.map((item) => {
     const unitName = item.product.purchaseUnitName ?? "";
     const unit     = item.product.units.find((u) => u.name === unitName);
     const scale    = unit ? Number(unit.scale) : 1;
+    productMap.set(item.productId, serializePurchaseReturnProductOption(item.product));
     return {
       productId: item.productId,
       unitName,
@@ -469,7 +596,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
     };
   });
 
-  return { items };
+  return { items, products: [...productMap.values()] };
 }
 
 export async function fetchProductLots(

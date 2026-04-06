@@ -14,45 +14,46 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
 
   const { id } = await params;
 
-  const [cn, rawProducts, customers, config] = await Promise.all([
-    db.creditNote.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-              },
+  const cn = await db.creditNote.findUnique({
+    where: { id },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: {
+              units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
             },
-            lotItems: { select: { lotNo: true, qty: true, isReturnLot: true } },
           },
+          lotItems: { select: { lotNo: true, qty: true, isReturnLot: true } },
         },
       },
-    }),
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true,
-        salePrice: true, saleUnitName: true,
-        isLotControl: true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
-    db.customer.findMany({
-      where:   { isActive: true },
-      orderBy: { name: "asc" },
-      select:  { id: true, name: true },
-    }),
-    getSiteConfig(),
-  ]);
+    },
+  });
 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
+
+  const currentProductIds = [
+    ...new Set(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
+  ];
+
+  const [rawProducts, config] = await Promise.all([
+    currentProductIds.length === 0
+      ? Promise.resolve([])
+      : db.product.findMany({
+          where: { id: { in: currentProductIds } },
+          select: {
+            id: true, code: true, name: true, description: true,
+            salePrice: true, saleUnitName: true,
+            isLotControl: true,
+            category: { select: { name: true } },
+            brand:    { select: { name: true } },
+            aliases:  { select: { alias: true } },
+            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+          },
+        }),
+    getSiteConfig(),
+  ]);
 
   const initialSales = cn.customerId
     ? await db.sale.findMany({
@@ -120,7 +121,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบลดหนี้</h1>
       <CreditNoteForm
         products={products}
-        customers={customers}
+        customers={[]}
         initialSales={initialSales}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
