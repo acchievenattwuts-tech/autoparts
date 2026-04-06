@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
@@ -363,7 +363,7 @@ const PurchaseForm = ({
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
-                  <>
+                  <Fragment key={i}>
                     <tr key={i} className="border-b border-gray-50">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
@@ -415,7 +415,7 @@ const PurchaseForm = ({
                       </td>
                     </tr>
                     {isLot && (
-                      <tr key={`lot-${i}`} className="bg-amber-50/60">
+                      <tr className="bg-amber-50/60">
                         <td colSpan={6} className="px-4 pb-3 pt-1">
                           {showReadonlyLots ? (
                             /* Read-only lot display in edit mode */
@@ -533,7 +533,7 @@ const PurchaseForm = ({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
