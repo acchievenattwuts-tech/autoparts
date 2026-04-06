@@ -22,6 +22,8 @@ model User {
   adjustments        Adjustment[]
   balanceForwards    BalanceForward[]
   creditNotes        CreditNote[]
+  cashBankAdjustments CashBankAdjustment[]
+  cashBankTransfers   CashBankTransfer[]
   expenses           Expense[]
   purchases          Purchase[]
   purchaseReturns    PurchaseReturn[]
@@ -272,10 +274,15 @@ model Purchase {
   status          DocStatus        @default(ACTIVE)
   amountRemain    Decimal          @default(0) @db.Decimal(10, 2)
   paymentMethod   PaymentMethod    @default(TRANSFER)
+  paymentStatus   PurchasePaymentStatus @default(UNPAID)
+  cashBankAccountId String?
   supplier        Supplier?        @relation(fields: [supplierId], references: [id])
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   user            User             @relation(fields: [userId], references: [id])
   items           PurchaseItem[]
   purchaseReturns PurchaseReturn[]
+
+  @@index([cashBankAccountId])
 }
 
 model PurchaseItem {
@@ -344,12 +351,16 @@ model Sale {
   shippingMethod  ShippingMethod  @default(NONE)
   shippingStatus  ShippingStatus  @default(PENDING)
   trackingNo      String?
+  cashBankAccountId String?
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   creditNotes     CreditNote[]
   receipts        ReceiptItem[]
   customer        Customer?       @relation(fields: [customerId], references: [id])
   user            User            @relation(fields: [userId], references: [id])
   items           SaleItem[]
   warranties      Warranty[]
+
+  @@index([cashBankAccountId])
 }
 
 model SaleItem {
@@ -459,8 +470,12 @@ model Expense {
   status         DocStatus     @default(ACTIVE)
   totalAmount    Decimal       @db.Decimal(10, 2)
   updatedAt      DateTime      @updatedAt
+  cashBankAccountId String?
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   user           User          @relation(fields: [userId], references: [id])
   items          ExpenseItem[]
+
+  @@index([cashBankAccountId])
 }
 
 model ExpenseItem {
@@ -522,11 +537,15 @@ model CreditNote {
   cancelledAt    DateTime?
   status         DocStatus        @default(ACTIVE)
   amountRemain   Decimal          @default(0) @db.Decimal(10, 2)
+  cashBankAccountId String?
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   customer       Customer?        @relation(fields: [customerId], references: [id])
   sale           Sale?            @relation(fields: [saleId], references: [id])
   user           User             @relation(fields: [userId], references: [id])
   items          CreditNoteItem[]
   receiptItems   ReceiptItem[]
+
+  @@index([cashBankAccountId])
 }
 
 model CreditNoteItem {
@@ -617,9 +636,106 @@ model Receipt {
   cancelNote    String?
   cancelledAt   DateTime?
   status        DocStatus     @default(ACTIVE)
+  cashBankAccountId String?
+  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   customer      Customer?     @relation(fields: [customerId], references: [id])
   user          User          @relation(fields: [userId], references: [id])
   items         ReceiptItem[]
+
+  @@index([cashBankAccountId])
+}
+
+model CashBankAccount {
+  id                String               @id @default(cuid())
+  code              String               @unique
+  name              String
+  type              CashBankAccountType
+  bankName          String?
+  accountNo         String?
+  openingBalance    Decimal              @default(0) @db.Decimal(10, 2)
+  openingDate       DateTime
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  purchases         Purchase[]
+  sales             Sale[]
+  expenses          Expense[]
+  creditNotes       CreditNote[]
+  receipts          Receipt[]
+  movements         CashBankMovement[]
+  transfersFrom     CashBankTransfer[]   @relation("CashBankTransferFrom")
+  transfersTo       CashBankTransfer[]   @relation("CashBankTransferTo")
+  adjustments       CashBankAdjustment[]
+
+  @@index([type, isActive])
+  @@index([name])
+}
+
+model CashBankMovement {
+  id            String             @id @default(cuid())
+  accountId     String
+  txnDate       DateTime
+  sorder        Int
+  direction     CashBankDirection
+  amount        Decimal            @db.Decimal(10, 2)
+  balanceAfter  Decimal            @db.Decimal(10, 2)
+  sourceType    CashBankSourceType
+  sourceId      String
+  referenceNo   String
+  note          String?
+  createdAt     DateTime           @default(now())
+  account       CashBankAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, txnDate, sorder])
+  @@index([sourceType, sourceId])
+  @@index([referenceNo])
+}
+
+model CashBankTransfer {
+  id             String                 @id @default(cuid())
+  transferNo     String                 @unique
+  transferDate   DateTime
+  fromAccountId  String
+  toAccountId    String
+  amount         Decimal                @db.Decimal(10, 2)
+  note           String?
+  userId         String
+  status         CashBankTransferStatus @default(ACTIVE)
+  cancelNote     String?
+  cancelledAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  fromAccount    CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
+  toAccount      CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
+  user           User                   @relation(fields: [userId], references: [id])
+
+  @@index([transferDate])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([userId])
+}
+
+model CashBankAdjustment {
+  id            String                   @id @default(cuid())
+  adjustNo      String                   @unique
+  adjustDate    DateTime
+  accountId     String
+  direction     CashBankDirection
+  amount        Decimal                  @db.Decimal(10, 2)
+  reason        String
+  note          String?
+  userId        String
+  status        CashBankAdjustmentStatus @default(ACTIVE)
+  cancelNote    String?
+  cancelledAt   DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  account       CashBankAccount          @relation(fields: [accountId], references: [id])
+  user          User                     @relation(fields: [userId], references: [id])
+
+  @@index([adjustDate])
+  @@index([accountId, status])
+  @@index([userId])
 }
 
 model ReceiptItem {
@@ -798,6 +914,42 @@ enum PaymentMethod {
   CASH
   TRANSFER
   CREDIT
+}
+
+enum PurchasePaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum CashBankAccountType {
+  CASH
+  BANK
+}
+
+enum CashBankSourceType {
+  SALE
+  RECEIPT
+  PURCHASE
+  EXPENSE
+  CN_SALE
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum CashBankDirection {
+  IN
+  OUT
+}
+
+enum CashBankTransferStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum CashBankAdjustmentStatus {
+  ACTIVE
+  CANCELLED
 }
 
 enum WarrantyClaimStatus {
