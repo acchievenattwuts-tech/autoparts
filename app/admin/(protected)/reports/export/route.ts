@@ -6,13 +6,13 @@ import {
   querySalesRows,
   queryPurchaseRows,
   queryCreditNoteRows,
-  queryReceiptRows,
-  queryPaymentRows,
+  queryDailyReceiptRows,
+  queryDailyPaymentRows,
   buildSalesCsv,
   buildPurchasesCsv,
   buildCreditNotesCsv,
-  buildReceiptsCsv,
-  buildPaymentsCsv,
+  buildDailyReceiptCsv,
+  buildDailyPaymentCsv,
 } from "@/lib/report-queries";
 
 export async function GET(request: Request) {
@@ -52,16 +52,16 @@ export async function GET(request: Request) {
       fileName = `credit-note-report-${dateRange}.csv`;
       break;
     }
-    case "receipts": {
-      const rows = await queryReceiptRows(filters);
-      csv = buildReceiptsCsv(rows);
-      fileName = `receipt-report-${dateRange}.csv`;
+    case "daily-receipt": {
+      const rows = await queryDailyReceiptRows(filters);
+      csv = buildDailyReceiptCsv(rows);
+      fileName = `daily-receipt-${dateRange}.csv`;
       break;
     }
-    case "payments": {
-      const rows = await queryPaymentRows(filters);
-      csv = buildPaymentsCsv(rows);
-      fileName = `payment-report-${dateRange}.csv`;
+    case "daily-payment": {
+      const rows = await queryDailyPaymentRows(filters);
+      csv = buildDailyPaymentCsv(rows);
+      fileName = `daily-payment-${dateRange}.csv`;
       break;
     }
     default: {

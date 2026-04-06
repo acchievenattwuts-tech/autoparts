@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
@@ -66,13 +66,18 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
           className="h-9 self-end inline-flex items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200">
           ล้าง
         </Link>
-        <Link
-          href={`/admin/reports/export?type=purchases&${exportQuery}`}
-          className="h-9 self-end inline-flex items-center gap-2 rounded-md bg-green-600 px-4 text-sm font-medium text-white hover:bg-green-700 ml-auto"
-        >
-          <FileSpreadsheet size={15} />
-          Export Excel
-        </Link>
+        <div className="flex gap-2 ml-auto self-end">
+          <Link href={`/admin/reports/export?type=purchases&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700">
+            <FileText size={14} />
+            CSV
+          </Link>
+          <Link href={`/admin/reports/export-excel?type=purchases&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700">
+            <FileSpreadsheet size={14} />
+            Excel
+          </Link>
+        </div>
       </form>
 
       <p className="text-sm text-gray-500">

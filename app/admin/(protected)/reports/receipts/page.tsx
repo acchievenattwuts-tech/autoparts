@@ -1,14 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
-  queryReceiptRows,
+  queryDailyReceiptRows,
   buildExportQuery,
   statusLabel,
-  type ReceiptRow,
+  type DailyReceiptRow,
 } from "@/lib/report-queries";
 
 interface PageProps {
@@ -27,13 +27,26 @@ function fmtDate(d: Date) {
   });
 }
 
-export default async function ReceiptsReportPage({ searchParams }: PageProps) {
+const DOC_TYPE_COLORS: Record<string, string> = {
+  "ขายสด":       "bg-green-100 text-green-700",
+  "รับชำระหนี้": "bg-blue-100 text-blue-700",
+};
+
+const PM_COLORS: Record<string, string> = {
+  "เงินสด":  "bg-emerald-100 text-emerald-700",
+  "โอนเงิน": "bg-sky-100 text-sky-700",
+  "เครดิต":  "bg-purple-100 text-purple-700",
+};
+
+export default async function DailyReceiptPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
   const filters = parseReportQueryFilters(params);
-  const rows = await queryReceiptRows(filters);
+  const rows = await queryDailyReceiptRows(filters);
 
-  const totalAmount = rows.reduce((s, r) => s + r.amount, 0);
+  const totalAmount = rows.filter(r => r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
+  const cashSaleTotal = rows.filter(r => r.docType === "ขายสด" && r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
+  const receiptTotal = rows.filter(r => r.docType === "รับชำระหนี้" && r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
 
   return (
@@ -51,13 +64,12 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          ช่องทางชำระ
-          <select name="paymentMethod" defaultValue={filters.paymentMethod ?? "ALL"}
+          ประเภทเอกสาร
+          <select name="docType" defaultValue={filters.docType ?? "ALL"}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
             <option value="ALL">ทั้งหมด</option>
-            <option value="CASH">เงินสด</option>
-            <option value="TRANSFER">โอนเงิน</option>
-            <option value="CREDIT">เครดิต</option>
+            <option value="CASH_SALE">ขายสด</option>
+            <option value="RECEIPT">รับชำระหนี้</option>
           </select>
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-600 self-end mb-1">
@@ -74,14 +86,35 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
           className="h-9 self-end inline-flex items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200">
           ล้าง
         </Link>
-        <Link
-          href={`/admin/reports/export?type=receipts&${exportQuery}`}
-          className="h-9 self-end inline-flex items-center gap-2 rounded-md bg-green-600 px-4 text-sm font-medium text-white hover:bg-green-700 ml-auto"
-        >
-          <FileSpreadsheet size={15} />
-          Export Excel
-        </Link>
+        <div className="flex gap-2 ml-auto self-end">
+          <Link href={`/admin/reports/export?type=daily-receipt&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700">
+            <FileText size={14} />
+            CSV
+          </Link>
+          <Link href={`/admin/reports/export-excel?type=daily-receipt&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700">
+            <FileSpreadsheet size={14} />
+            Excel
+          </Link>
+        </div>
       </form>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
+          <p className="text-xs text-gray-500">รวมรับเงิน (เฉพาะที่ใช้งาน)</p>
+          <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
+        </div>
+        <div className="rounded-lg border border-green-100 bg-green-50 p-3 shadow-sm">
+          <p className="text-xs text-green-700">ขายสด</p>
+          <p className="mt-0.5 text-xl font-bold text-green-700 tabular-nums">{fmt(cashSaleTotal)}</p>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 shadow-sm">
+          <p className="text-xs text-blue-700">รับชำระหนี้</p>
+          <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(receiptTotal)}</p>
+        </div>
+      </div>
 
       <p className="text-sm text-gray-500">
         แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
@@ -93,13 +126,13 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="px-3 py-2.5 text-center font-medium w-10">#</th>
-              <th className="px-3 py-2.5 text-left font-medium">เลขที่ใบเสร็จ</th>
+              <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
               <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
+              <th className="px-3 py-2.5 text-left font-medium">ประเภท</th>
               <th className="px-3 py-2.5 text-left font-medium">รหัสลูกค้า</th>
               <th className="px-3 py-2.5 text-left font-medium">ชื่อลูกค้า</th>
-              <th className="px-3 py-2.5 text-left font-medium">เอกสารอ้างอิง</th>
-              <th className="px-3 py-2.5 text-left font-medium">ประเภทอ้างอิง</th>
               <th className="px-3 py-2.5 text-left font-medium">ช่องทางชำระ</th>
+              <th className="px-3 py-2.5 text-left font-medium">หมายเหตุ</th>
               <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
               <th className="px-3 py-2.5 text-right font-medium">จำนวนเงิน</th>
             </tr>
@@ -112,7 +145,7 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
                 </td>
               </tr>
             )}
-            {rows.map((row: ReceiptRow) => (
+            {rows.map((row: DailyReceiptRow) => (
               <tr
                 key={`${row.docNo}-${row.rowNo}`}
                 className={`hover:bg-gray-50 transition-colors ${row.status === "CANCELLED" ? "opacity-50 line-through" : ""}`}
@@ -120,21 +153,19 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2 text-center text-gray-400 tabular-nums">{row.rowNo}</td>
                 <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.docDate)}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TYPE_COLORS[row.docType] ?? "bg-gray-100 text-gray-600"}`}>
+                    {row.docType}
+                  </span>
+                </td>
                 <td className="px-3 py-2 font-mono text-xs">{row.customerCode}</td>
                 <td className="px-3 py-2">{row.customerName}</td>
-                <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.refDocNo}</td>
                 <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    row.refType === "ใบขาย" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                  }`}>{row.refType}</span>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PM_COLORS[row.paymentMethod] ?? "bg-gray-100 text-gray-600"}`}>
+                    {row.paymentMethod}
+                  </span>
                 </td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    row.paymentMethod === "เงินสด" ? "bg-green-100 text-green-700"
-                    : row.paymentMethod === "โอนเงิน" ? "bg-blue-100 text-blue-700"
-                    : "bg-gray-100 text-gray-600"
-                  }`}>{row.paymentMethod}</span>
-                </td>
+                <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate">{row.note}</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                     row.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
@@ -149,8 +180,10 @@ export default async function ReceiptsReportPage({ searchParams }: PageProps) {
           {rows.length > 0 && (
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
-                <td colSpan={9} className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">รวมทั้งสิ้น</td>
-                <td className="px-3 py-2.5 text-right tabular-nums font-bold text-[#1e3a5f]">{fmt(totalAmount)}</td>
+                <td colSpan={9} className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">รวมทั้งสิ้น (รวมที่ยกเลิก)</td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold text-[#1e3a5f]">
+                  {fmt(rows.reduce((s, r) => s + r.amount, 0))}
+                </td>
               </tr>
             </tfoot>
           )}

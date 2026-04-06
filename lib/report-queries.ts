@@ -326,7 +326,7 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
         rowNo: rowNo++,
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
-        supplierCode: p.supplier?.code ?? "",
+        supplierCode: p.supplier?.code ?? "(ไม่มีรหัส)",
         supplierName: p.supplier?.name ?? "(ไม่ระบุ)",
         referenceNo: p.referenceNo ?? "",
         status: p.status,
@@ -674,6 +674,289 @@ export function buildPaymentsCsv(rows: PaymentRow[]): string {
       r.rowNo, r.docNo, fmtDate(r.docDate), r.docType, r.partyName,
       r.paymentMethod, statusLabel(r.status),
       r.subtotalAmount, r.vatType, r.vatAmount, r.netAmount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+// ─── Daily Receipt row type ───────────────────────────────────────────────────
+
+export type DailyReceiptRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  docType: string; // "ขายสด" | "รับชำระหนี้"
+  customerCode: string;
+  customerName: string;
+  paymentMethod: string;
+  note: string;
+  status: DocStatus;
+  amount: number;
+};
+
+// ─── Query: Daily Receipt ─────────────────────────────────────────────────────
+
+export async function queryDailyReceiptRows(
+  filters: ReportFilters,
+): Promise<DailyReceiptRow[]> {
+  const showCancelled = filters.showCancelled;
+  const docType = filters.docType ?? "ALL";
+  const rows: DailyReceiptRow[] = [];
+
+  if (docType === "ALL" || docType === "CASH_SALE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const sales = await db.sale.findMany({
+      where: {
+        saleDate: { gte: filters.from, lte: filters.to },
+        paymentType: "CASH_SALE",
+        ...statusFilter,
+      },
+      select: {
+        saleNo: true,
+        saleDate: true,
+        customerName: true,
+        paymentMethod: true,
+        netAmount: true,
+        note: true,
+        status: true,
+        customer: { select: { code: true } },
+      },
+      orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
+      take: 2000,
+    });
+    for (const s of sales) {
+      rows.push({
+        rowNo: 0,
+        docNo: s.saleNo,
+        docDate: s.saleDate,
+        docType: "ขายสด",
+        customerCode: s.customer?.code ?? "",
+        customerName: s.customerName ?? "",
+        paymentMethod: paymentMethodLabel(s.paymentMethod),
+        note: s.note ?? "",
+        status: s.status,
+        amount: Number(s.netAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "RECEIPT") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const receipts = await db.receipt.findMany({
+      where: {
+        receiptDate: { gte: filters.from, lte: filters.to },
+        ...statusFilter,
+      },
+      select: {
+        receiptNo: true,
+        receiptDate: true,
+        customerName: true,
+        paymentMethod: true,
+        totalAmount: true,
+        note: true,
+        status: true,
+        customer: { select: { code: true } },
+      },
+      orderBy: [{ receiptDate: "asc" }, { receiptNo: "asc" }],
+      take: 2000,
+    });
+    for (const r of receipts) {
+      rows.push({
+        rowNo: 0,
+        docNo: r.receiptNo,
+        docDate: r.receiptDate,
+        docType: "รับชำระหนี้",
+        customerCode: r.customer?.code ?? "",
+        customerName: r.customerName ?? "",
+        paymentMethod: paymentMethodLabel(r.paymentMethod),
+        note: r.note ?? "",
+        status: r.status,
+        amount: Number(r.totalAmount),
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const dt = a.docDate.getTime() - b.docDate.getTime();
+    return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
+  });
+  rows.forEach((r, i) => (r.rowNo = i + 1));
+  return rows;
+}
+
+// ─── Daily Payment row type ───────────────────────────────────────────────────
+
+export type DailyPaymentRow = {
+  rowNo: number;
+  docNo: string;
+  docDate: Date;
+  docType: string; // "ซื้อสินค้า" | "ค่าใช้จ่าย" | "คืนเงินลูกค้า"
+  partyCode: string;
+  partyName: string;
+  paymentMethod: string;
+  note: string;
+  status: DocStatus;
+  amount: number;
+};
+
+// ─── Query: Daily Payment ─────────────────────────────────────────────────────
+
+export async function queryDailyPaymentRows(
+  filters: ReportFilters,
+): Promise<DailyPaymentRow[]> {
+  const showCancelled = filters.showCancelled;
+  const docType = filters.docType ?? "ALL";
+  const rows: DailyPaymentRow[] = [];
+
+  if (docType === "ALL" || docType === "PURCHASE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const purchases = await db.purchase.findMany({
+      where: {
+        purchaseDate: { gte: filters.from, lte: filters.to },
+        ...statusFilter,
+      },
+      select: {
+        purchaseNo: true,
+        purchaseDate: true,
+        netAmount: true,
+        paymentMethod: true,
+        note: true,
+        status: true,
+        supplier: { select: { code: true, name: true } },
+      },
+      orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
+      take: 2000,
+    });
+    for (const p of purchases) {
+      rows.push({
+        rowNo: 0,
+        docNo: p.purchaseNo,
+        docDate: p.purchaseDate,
+        docType: "ซื้อสินค้า",
+        partyCode: p.supplier?.code ?? "",
+        partyName: p.supplier?.name ?? "(ไม่ระบุ)",
+        paymentMethod: paymentMethodLabel(p.paymentMethod),
+        note: p.note ?? "",
+        status: p.status,
+        amount: Number(p.netAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "EXPENSE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const expenses = await db.expense.findMany({
+      where: {
+        expenseDate: { gte: filters.from, lte: filters.to },
+        ...statusFilter,
+      },
+      select: {
+        expenseNo: true,
+        expenseDate: true,
+        netAmount: true,
+        note: true,
+        status: true,
+        items: {
+          select: { expenseCode: { select: { name: true } } },
+          take: 1,
+        },
+      },
+      orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
+      take: 2000,
+    });
+    for (const e of expenses) {
+      const codeName = e.items[0]?.expenseCode?.name ?? "";
+      rows.push({
+        rowNo: 0,
+        docNo: e.expenseNo,
+        docDate: e.expenseDate,
+        docType: "ค่าใช้จ่าย",
+        partyCode: "",
+        partyName: codeName,
+        paymentMethod: "-",
+        note: e.note ?? "",
+        status: e.status,
+        amount: Number(e.netAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "CN_REFUND") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const cns = await db.creditNote.findMany({
+      where: {
+        cnDate: { gte: filters.from, lte: filters.to },
+        settlementType: "CASH_REFUND",
+        ...statusFilter,
+      },
+      select: {
+        cnNo: true,
+        cnDate: true,
+        totalAmount: true,
+        refundMethod: true,
+        customerName: true,
+        note: true,
+        status: true,
+        customer: { select: { code: true } },
+      },
+      orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
+      take: 2000,
+    });
+    for (const cn of cns) {
+      const pmLabel =
+        cn.refundMethod === "CASH" ? "เงินสด"
+        : cn.refundMethod === "TRANSFER" ? "โอนเงิน"
+        : "-";
+      rows.push({
+        rowNo: 0,
+        docNo: cn.cnNo,
+        docDate: cn.cnDate,
+        docType: "คืนเงินลูกค้า",
+        partyCode: cn.customer?.code ?? "",
+        partyName: cn.customerName ?? "",
+        paymentMethod: pmLabel,
+        note: cn.note ?? "",
+        status: cn.status,
+        amount: Number(cn.totalAmount),
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const dt = a.docDate.getTime() - b.docDate.getTime();
+    return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
+  });
+  rows.forEach((r, i) => (r.rowNo = i + 1));
+  return rows;
+}
+
+// ─── CSV builders for daily reports ──────────────────────────────────────────
+
+export function buildDailyReceiptCsv(rows: DailyReceiptRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภท","รหัสลูกค้า","ชื่อลูกค้า",
+    "ช่องทางชำระ","หมายเหตุ","สถานะ","จำนวนเงิน",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.docType,
+      r.customerCode, r.customerName, r.paymentMethod,
+      r.note, statusLabel(r.status), r.amount,
+    ]),
+  );
+  return BOM + [header, ...body].join("\r\n");
+}
+
+export function buildDailyPaymentCsv(rows: DailyPaymentRow[]): string {
+  const header = csvRow([
+    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภทรายการ","รหัสคู่ค้า","ชื่อคู่ค้า/รายละเอียด",
+    "ช่องทางชำระ","หมายเหตุ","สถานะ","จำนวนเงิน",
+  ]);
+  const body = rows.map((r) =>
+    csvRow([
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.docType,
+      r.partyCode, r.partyName, r.paymentMethod,
+      r.note, statusLabel(r.status), r.amount,
     ]),
   );
   return BOM + [header, ...body].join("\r\n");

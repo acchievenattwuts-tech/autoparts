@@ -1,14 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
-  queryPaymentRows,
+  queryDailyPaymentRows,
   buildExportQuery,
   statusLabel,
-  type PaymentRow,
+  type DailyPaymentRow,
 } from "@/lib/report-queries";
 
 interface PageProps {
@@ -27,15 +27,28 @@ function fmtDate(d: Date) {
   });
 }
 
-export default async function PaymentsReportPage({ searchParams }: PageProps) {
+const DOC_TYPE_COLORS: Record<string, string> = {
+  "ซื้อสินค้า":      "bg-blue-100 text-blue-700",
+  "ค่าใช้จ่าย":      "bg-orange-100 text-orange-700",
+  "คืนเงินลูกค้า":   "bg-purple-100 text-purple-700",
+};
+
+const PM_COLORS: Record<string, string> = {
+  "เงินสด":  "bg-emerald-100 text-emerald-700",
+  "โอนเงิน": "bg-sky-100 text-sky-700",
+  "เครดิต":  "bg-purple-100 text-purple-700",
+};
+
+export default async function DailyPaymentPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
   const filters = parseReportQueryFilters(params);
-  const rows = await queryPaymentRows(filters);
+  const rows = await queryDailyPaymentRows(filters);
 
-  const totalSubtotal = rows.reduce((s, r) => s + r.subtotalAmount, 0);
-  const totalVat = rows.reduce((s, r) => s + r.vatAmount, 0);
-  const totalNet = rows.reduce((s, r) => s + r.netAmount, 0);
+  const totalAmount = rows.filter(r => r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
+  const purchaseTotal = rows.filter(r => r.docType === "ซื้อสินค้า" && r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
+  const expenseTotal = rows.filter(r => r.docType === "ค่าใช้จ่าย" && r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
+  const cnRefundTotal = rows.filter(r => r.docType === "คืนเงินลูกค้า" && r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
 
   return (
@@ -59,6 +72,7 @@ export default async function PaymentsReportPage({ searchParams }: PageProps) {
             <option value="ALL">ทั้งหมด</option>
             <option value="PURCHASE">ซื้อสินค้า</option>
             <option value="EXPENSE">ค่าใช้จ่าย</option>
+            <option value="CN_REFUND">คืนเงินลูกค้า (CN)</option>
           </select>
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-600 self-end mb-1">
@@ -75,14 +89,39 @@ export default async function PaymentsReportPage({ searchParams }: PageProps) {
           className="h-9 self-end inline-flex items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200">
           ล้าง
         </Link>
-        <Link
-          href={`/admin/reports/export?type=payments&${exportQuery}`}
-          className="h-9 self-end inline-flex items-center gap-2 rounded-md bg-green-600 px-4 text-sm font-medium text-white hover:bg-green-700 ml-auto"
-        >
-          <FileSpreadsheet size={15} />
-          Export Excel
-        </Link>
+        <div className="flex gap-2 ml-auto self-end">
+          <Link href={`/admin/reports/export?type=daily-payment&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700">
+            <FileText size={14} />
+            CSV
+          </Link>
+          <Link href={`/admin/reports/export-excel?type=daily-payment&${exportQuery}`}
+            className="h-9 inline-flex items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700">
+            <FileSpreadsheet size={14} />
+            Excel
+          </Link>
+        </div>
       </form>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
+          <p className="text-xs text-gray-500">รวมจ่ายเงิน (เฉพาะที่ใช้งาน)</p>
+          <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
+        </div>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 shadow-sm">
+          <p className="text-xs text-blue-700">ซื้อสินค้า</p>
+          <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(purchaseTotal)}</p>
+        </div>
+        <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 shadow-sm">
+          <p className="text-xs text-orange-700">ค่าใช้จ่าย</p>
+          <p className="mt-0.5 text-xl font-bold text-orange-700 tabular-nums">{fmt(expenseTotal)}</p>
+        </div>
+        <div className="rounded-lg border border-purple-100 bg-purple-50 p-3 shadow-sm">
+          <p className="text-xs text-purple-700">คืนเงินลูกค้า (CN)</p>
+          <p className="mt-0.5 text-xl font-bold text-purple-700 tabular-nums">{fmt(cnRefundTotal)}</p>
+        </div>
+      </div>
 
       <p className="text-sm text-gray-500">
         แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
@@ -97,24 +136,23 @@ export default async function PaymentsReportPage({ searchParams }: PageProps) {
               <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
               <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
               <th className="px-3 py-2.5 text-left font-medium">ประเภทรายการ</th>
-              <th className="px-3 py-2.5 text-left font-medium">คู่ค้า / รายละเอียด</th>
+              <th className="px-3 py-2.5 text-left font-medium">รหัสคู่ค้า</th>
+              <th className="px-3 py-2.5 text-left font-medium">ชื่อคู่ค้า / รายละเอียด</th>
               <th className="px-3 py-2.5 text-left font-medium">ช่องทางชำระ</th>
+              <th className="px-3 py-2.5 text-left font-medium">หมายเหตุ</th>
               <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
-              <th className="px-3 py-2.5 text-right font-medium">ก่อน VAT</th>
-              <th className="px-3 py-2.5 text-left font-medium">VAT Type</th>
-              <th className="px-3 py-2.5 text-right font-medium">VAT</th>
-              <th className="px-3 py-2.5 text-right font-medium">รวมสุทธิ</th>
+              <th className="px-3 py-2.5 text-right font-medium">จำนวนเงิน</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
                   ไม่พบข้อมูลในช่วงวันที่ที่เลือก
                 </td>
               </tr>
             )}
-            {rows.map((row: PaymentRow) => (
+            {rows.map((row: DailyPaymentRow) => (
               <tr
                 key={`${row.docNo}-${row.rowNo}`}
                 className={`hover:bg-gray-50 transition-colors ${row.status === "CANCELLED" ? "opacity-50 line-through" : ""}`}
@@ -123,12 +161,22 @@ export default async function PaymentsReportPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{fmtDate(row.docDate)}</td>
                 <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    row.docType === "ซื้อสินค้า" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"
-                  }`}>{row.docType}</span>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TYPE_COLORS[row.docType] ?? "bg-gray-100 text-gray-600"}`}>
+                    {row.docType}
+                  </span>
                 </td>
-                <td className="px-3 py-2 max-w-[240px] truncate">{row.partyName}</td>
-                <td className="px-3 py-2 text-gray-500">{row.paymentMethod}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.partyCode}</td>
+                <td className="px-3 py-2">{row.partyName}</td>
+                <td className="px-3 py-2">
+                  {row.paymentMethod !== "-" ? (
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PM_COLORS[row.paymentMethod] ?? "bg-gray-100 text-gray-600"}`}>
+                      {row.paymentMethod}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate">{row.note}</td>
                 <td className="px-3 py-2 text-center">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                     row.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
@@ -136,21 +184,17 @@ export default async function PaymentsReportPage({ searchParams }: PageProps) {
                     {statusLabel(row.status)}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmt(row.subtotalAmount)}</td>
-                <td className="px-3 py-2 text-gray-500 text-xs">{row.vatType}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmt(row.vatAmount)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(row.netAmount)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(row.amount)}</td>
               </tr>
             ))}
           </tbody>
           {rows.length > 0 && (
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
-                <td colSpan={7} className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">รวมทั้งสิ้น</td>
-                <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{fmt(totalSubtotal)}</td>
-                <td />
-                <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{fmt(totalVat)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums font-bold text-[#1e3a5f]">{fmt(totalNet)}</td>
+                <td colSpan={9} className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">รวมทั้งสิ้น (รวมที่ยกเลิก)</td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-bold text-[#1e3a5f]">
+                  {fmt(rows.reduce((s, r) => s + r.amount, 0))}
+                </td>
               </tr>
             </tfoot>
           )}
