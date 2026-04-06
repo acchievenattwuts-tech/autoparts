@@ -10,10 +10,32 @@ import PurchaseForm from "./PurchaseForm";
 const NewPurchasePage = async () => {
   await requirePermission("purchases.create");
 
-  const [suppliers, config] = await Promise.all([
+  const [rawProducts, suppliers, config] = await Promise.all([
+    db.product.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: {
+        id: true, code: true, name: true, description: true,
+        purchaseUnitName: true, costPrice: true,
+        isLotControl: true, requireExpiryDate: true,
+        category: { select: { name: true } },
+        brand:    { select: { name: true } },
+        aliases:  { select: { alias: true } },
+        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+      },
+    }),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getSiteConfig(),
   ]);
+
+  const products = rawProducts.map((p) => ({
+    id: p.id, code: p.code, name: p.name, description: p.description,
+    purchaseUnitName: p.purchaseUnitName ?? "", costPrice: Number(p.costPrice),
+    isLotControl: p.isLotControl, requireExpiryDate: p.requireExpiryDate,
+    categoryName: p.category.name, brandName: p.brand?.name ?? null,
+    aliases: p.aliases.map((a) => a.alias),
+    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+  }));
 
   return (
     <div>
@@ -26,7 +48,7 @@ const NewPurchasePage = async () => {
         <span className="text-sm font-medium text-gray-700">สร้างใบซื้อใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบซื้อสินค้า</h1>
-      <PurchaseForm products={[]} suppliers={suppliers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <PurchaseForm products={products} suppliers={suppliers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

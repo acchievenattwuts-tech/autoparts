@@ -10,7 +10,29 @@ import PurchaseReturnForm from "./PurchaseReturnForm";
 const NewPurchaseReturnPage = async () => {
   await requirePermission("purchase_returns.create");
 
-  const config = await getSiteConfig();
+  const [rawProducts, config] = await Promise.all([
+    db.product.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      select: {
+        id: true, code: true, name: true, description: true, avgCost: true,
+        isLotControl: true,
+        category: { select: { name: true } },
+        brand:    { select: { name: true } },
+        aliases:  { select: { alias: true } },
+        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+      },
+    }),
+    getSiteConfig(),
+  ]);
+
+  const products = rawProducts.map((p) => ({
+    id: p.id, code: p.code, name: p.name, description: p.description,
+    avgCost: Number(p.avgCost), isLotControl: p.isLotControl,
+    categoryName: p.category.name, brandName: p.brand?.name ?? null,
+    aliases: p.aliases.map((a) => a.alias),
+    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+  }));
 
   return (
     <div>
@@ -26,7 +48,7 @@ const NewPurchaseReturnPage = async () => {
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">คืนสินค้าให้ซัพพลายเออร์</h1>
       <PurchaseReturnForm
-        products={[]}
+        products={products}
         suppliers={[]}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
