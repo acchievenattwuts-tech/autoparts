@@ -1,7 +1,11 @@
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { buildLegacyCategorySlugMap, getProductCategorySlug } from "./product-slug";
+import {
+  buildLegacyCategorySlugMap,
+  getProductCategorySlug,
+  normalizeSlugSegment,
+} from "./product-slug";
 
 export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) => {
   const categories = await unstable_cache(
@@ -15,15 +19,15 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
     { tags: ["storefront:categories", "storefront:products"] },
   )();
 
-  const normalizedCategorySlug = categorySlug.normalize("NFC").trim().toLowerCase();
-  const decodedSlug = decodeURIComponent(categorySlug).normalize("NFC");
+  const normalizedCategorySlug = normalizeSlugSegment(categorySlug);
+  const decodedSlug = normalizeSlugSegment(decodeURIComponent(categorySlug));
   const legacyCategorySlugMap = buildLegacyCategorySlugMap(categories);
   const legacyCategoryId =
     legacyCategorySlugMap.get(categorySlug) ??
     legacyCategorySlugMap.get(normalizedCategorySlug);
   const category =
-    categories.find((item) => item.slug?.normalize("NFC").trim().toLowerCase() === normalizedCategorySlug) ??
-    categories.find((item) => item.name === decodedSlug) ??
+    categories.find((item) => item.slug && normalizeSlugSegment(item.slug) === normalizedCategorySlug) ??
+    categories.find((item) => normalizeSlugSegment(item.name) === decodedSlug) ??
     categories.find((item) => item.id === legacyCategoryId) ??
     categories.find((item) => getProductCategorySlug(item) === normalizedCategorySlug);
   if (!category) {

@@ -1,9 +1,15 @@
-export const slugifySegment = (value: string): string => {
-  const normalized = value
+export const normalizeSlugSegment = (value: string): string => {
+  return value
     .normalize("NFC")
+    .replace(/([\u0E48-\u0E4C])\u0E4D\u0E32/gu, "$1\u0E33")
+    .replace(/\u0E4D\u0E32/gu, "\u0E33")
     .toLowerCase()
-    .trim()
-    .replace(/['’]+/g, "")
+    .trim();
+};
+
+export const slugifySegment = (value: string): string => {
+  const normalized = normalizeSlugSegment(value)
+    .replace(/[\u0027\u2019]+/g, "")
     .replace(/[^\p{Letter}\p{Number}\p{Mark}]+/gu, "-")
     .replace(/-{2,}/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -46,7 +52,7 @@ const getCategoryName = (input: CategorySlugInput): string =>
   typeof input === "string" ? input : input.name;
 
 const getCategoryStoredSlug = (input: CategorySlugInput): string | null =>
-  typeof input === "string" ? null : input.slug?.normalize("NFC").trim().toLowerCase() ?? null;
+  typeof input === "string" ? null : input.slug ? normalizeSlugSegment(input.slug) : null;
 
 const getProductName = (input: ProductSlugInput): string =>
   "productName" in input ? input.productName : input.name;
@@ -56,9 +62,13 @@ const getProductId = (input: ProductSlugInput): string =>
 
 const getProductStoredSlug = (input: ProductSlugInput): string | null =>
   "productSlug" in input
-    ? input.productSlug?.normalize("NFC").trim().toLowerCase() ?? null
+    ? input.productSlug
+      ? normalizeSlugSegment(input.productSlug)
+      : null
     : "slug" in input
-      ? input.slug?.normalize("NFC").trim().toLowerCase() ?? null
+      ? input.slug
+        ? normalizeSlugSegment(input.slug)
+        : null
       : null;
 
 export const getProductCategorySlug = (category: CategorySlugInput): string => {
