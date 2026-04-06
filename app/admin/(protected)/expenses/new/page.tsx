@@ -6,17 +6,19 @@ import Link from "next/link";
 import { Receipt, ChevronRight } from "lucide-react";
 import NewExpenseForm from "./NewExpenseForm";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 
 const NewExpensePage = async () => {
   await requirePermission("expenses.create");
 
-  const [expenseCodes, config] = await Promise.all([
+  const [expenseCodes, config, cashBankAccounts] = await Promise.all([
     db.expenseCode.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: { id: true, code: true, name: true },
     }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   return (
@@ -35,6 +37,7 @@ const NewExpensePage = async () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <NewExpenseForm
           expenseCodes={expenseCodes}
+          cashBankAccounts={cashBankAccounts}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
         />

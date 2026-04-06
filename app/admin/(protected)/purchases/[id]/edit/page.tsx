@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import PurchaseForm from "../../new/PurchaseForm";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -13,7 +14,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
 
   const { id } = await params;
 
-  const [purchase, rawProducts, suppliers, config] = await Promise.all([
+  const [purchase, rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
     db.purchase.findUnique({
       where: { id },
       include: {
@@ -44,6 +45,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     }),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   if (!purchase) notFound();
@@ -82,6 +84,8 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     purchaseDate: purchase.purchaseDate.toISOString().slice(0, 10),
     supplierId:   purchase.supplierId ?? "",
     paymentMethod: purchase.paymentMethod,
+    paymentStatus: purchase.paymentStatus,
+    cashBankAccountId: purchase.cashBankAccountId ?? "",
     referenceNo:  purchase.referenceNo ?? "",
     discount:     Number(purchase.discount),
     note:         purchase.note ?? "",
@@ -104,6 +108,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       <PurchaseForm
         products={products}
         suppliers={suppliers}
+        cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}

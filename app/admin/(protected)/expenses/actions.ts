@@ -7,6 +7,8 @@ import { z } from "zod";
 import { VatType } from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
+import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 const expenseItemSchema = z.object({
   expenseCodeId: z.string().min(1, "กรุณาเลือกรหัสค่าใช้จ่าย"),
@@ -16,6 +18,7 @@ const expenseItemSchema = z.object({
 
 const expenseSchema = z.object({
   expenseDate: z.string().min(1, "กรุณาระบุวันที่"),
+  cashBankAccountId: z.string().min(1, "กรุณาเลือกบัญชีจ่ายเงิน"),
   vatType:     z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:     z.coerce.number().min(0).max(100).default(0),
   note:        z.string().max(500).optional(),
@@ -38,6 +41,7 @@ export async function createExpense(
 
   const parsed = expenseSchema.safeParse({
     expenseDate: formData.get("expenseDate"),
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:     formData.get("vatRate") || 0,
     note:        formData.get("note") || undefined,
@@ -52,26 +56,38 @@ export async function createExpense(
   const expenseNo = await generateExpenseNo(docDate);
 
   try {
-    await db.expense.create({
-      data: {
-        expenseNo,
-        expenseDate:    docDate,
-        userId:         session.user.id!,
-        totalAmount,
-        vatType:        d.vatType,
-        vatRate:        d.vatRate,
-        subtotalAmount,
-        vatAmount,
-        netAmount,
-        note:           d.note,
-        items: {
-          create: d.items.map((it) => ({
-            expenseCodeId: it.expenseCodeId,
-            description:   it.description || null,
-            amount:        it.amount,
-          })),
+    await dbTx(async (tx) => {
+      const expense = await tx.expense.create({
+        data: {
+          expenseNo,
+          expenseDate:    docDate,
+          userId:         session.user.id!,
+          cashBankAccountId: d.cashBankAccountId,
+          totalAmount,
+          vatType:        d.vatType,
+          vatRate:        d.vatRate,
+          subtotalAmount,
+          vatAmount,
+          netAmount,
+          note:           d.note,
+          items: {
+            create: d.items.map((it) => ({
+              expenseCodeId: it.expenseCodeId,
+              description:   it.description || null,
+              amount:        it.amount,
+            })),
+          },
         },
-      },
+      });
+
+      await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [{
+        accountId: d.cashBankAccountId,
+        txnDate: docDate,
+        direction: CashBankDirection.OUT,
+        amount: netAmount,
+        referenceNo: expenseNo,
+        note: d.note ?? null,
+      }]);
     });
 
     revalidatePath("/admin/expenses");
@@ -106,9 +122,12 @@ export async function cancelExpense(
     if (!expense)                        return { error: "ไม่พบเอกสาร" };
     if (expense.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
-    await db.expense.update({
-      where: { id: expenseId },
-      data:  { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+    await dbTx(async (tx) => {
+      await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
+      await tx.expense.update({
+        where: { id: expenseId },
+        data:  { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+      });
     });
     revalidatePath("/admin/expenses");
     return { success: true };
@@ -164,6 +183,7 @@ export async function updateExpense(
         where: { id },
         data: {
           expenseDate:    docDate,
+          cashBankAccountId: d.cashBankAccountId,
           totalAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
@@ -181,6 +201,15 @@ export async function updateExpense(
           amount:        it.amount,
         })),
       });
+
+      await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, id, [{
+        accountId: d.cashBankAccountId,
+        txnDate: docDate,
+        direction: CashBankDirection.OUT,
+        amount: netAmount,
+        referenceNo: existing.expenseNo,
+        note: d.note ?? null,
+      }]);
     });
 
     revalidatePath("/admin/expenses");

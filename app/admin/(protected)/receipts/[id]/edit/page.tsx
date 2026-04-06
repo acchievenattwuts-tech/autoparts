@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -13,7 +14,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const { id } = await params;
 
-  const [receipt, customers] = await Promise.all([
+  const [receipt, customers, cashBankAccounts] = await Promise.all([
     db.receipt.findUnique({
       where: { id },
       include: {
@@ -47,6 +48,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       orderBy: { name: "asc" },
       select:  { id: true, name: true, code: true },
     }).then((rows) => rows.map((c) => ({ ...c, amountRemain: 0 }))),
+    getActiveCashBankAccountOptions(),
   ]);
 
   if (!receipt) notFound();
@@ -170,6 +172,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
     customerName:  receipt.customerName ?? "",
     receiptDate:   receipt.receiptDate.toISOString().slice(0, 10),
     paymentMethod: receipt.paymentMethod as "CASH" | "TRANSFER",
+    cashBankAccountId: receipt.cashBankAccountId ?? "",
     note:          receipt.note ?? "",
     items: [
       // Sale items
@@ -222,6 +225,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบเสร็จรับเงิน</h1>
       <ReceiptForm
         customers={customers}
+        cashBankAccounts={cashBankAccounts}
         initialData={initialData}
         initialCreditSales={initialCreditSales}
       />

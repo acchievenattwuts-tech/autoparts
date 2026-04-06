@@ -184,6 +184,42 @@ export async function generateClaimNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate cash/bank transfer number using CashBankTransfer table
+ * Format: CBT{YYMM}{4-digit}
+ */
+export async function generateCashBankTransferNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `CBT${yy}${mm}`;
+  const last = await db.cashBankTransfer.findFirst({
+    where: { transferNo: { startsWith: pattern } },
+    orderBy: { transferNo: "desc" },
+    select: { transferNo: true },
+  });
+  const seq = last ? parseInt(last.transferNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
+ * Generate cash/bank adjustment number using CashBankAdjustment table
+ * Format: CBA{YYMM}{4-digit}
+ */
+export async function generateCashBankAdjustmentNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `CBA${yy}${mm}`;
+  const last = await db.cashBankAdjustment.findFirst({
+    where: { adjustNo: { startsWith: pattern } },
+    orderBy: { adjustNo: "desc" },
+    select: { adjustNo: true },
+  });
+  const seq = last ? parseInt(last.adjustNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Document prefix reference:
  * BF   — ยอดยกมา (Beginning Balance)
  * RR   — ซื้อสินค้าเข้า (Purchase Order)

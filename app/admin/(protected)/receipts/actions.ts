@@ -7,6 +7,8 @@ import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain } from "@/lib/amount-remain";
+import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 // ─────────────────────────────────────────
 // getCreditSalesForCustomer
@@ -105,6 +107,7 @@ const receiptSchema = z.object({
   customerName:  z.string().max(100).optional(),
   receiptDate:   z.string().min(1),
   paymentMethod: z.nativeEnum(PaymentMethod),
+  cashBankAccountId: z.string().optional(),
   note:          z.string().max(500).optional(),
   items:         z.array(receiptItemSchema).min(1, "ต้องมีรายการชำระอย่างน้อย 1 รายการ"),
 });
@@ -124,6 +127,7 @@ export async function createReceipt(
       customerName:  formData.get("customerName") ?? undefined,
       receiptDate:   formData.get("receiptDate"),
       paymentMethod: formData.get("paymentMethod"),
+      cashBankAccountId: formData.get("cashBankAccountId") ?? undefined,
       note:          formData.get("note") ?? undefined,
       items:         JSON.parse((formData.get("items") as string) ?? "[]"),
     };
@@ -143,6 +147,9 @@ export async function createReceipt(
     const totalAmount = parsed.items.reduce((sum, item) => {
       return item.cnId ? sum - item.paidAmount : sum + item.paidAmount;
     }, 0);
+    if (totalAmount > 0 && !parsed.cashBankAccountId) {
+      return { success: false, error: "กรุณาเลือกบัญชีรับเงิน" };
+    }
 
     const affectedSaleIds = [...new Set(parsed.items.map((i) => i.saleId).filter((id): id is string => !!id))];
     const affectedCnIds   = [...new Set(parsed.items.map((i) => i.cnId).filter((id): id is string => !!id))];
@@ -157,6 +164,7 @@ export async function createReceipt(
           userId:        session.user!.id,
           totalAmount,
           paymentMethod: parsed.paymentMethod,
+          cashBankAccountId: parsed.cashBankAccountId || null,
           note:          parsed.note || null,
         },
       });
@@ -176,6 +184,22 @@ export async function createReceipt(
       for (const cnId of affectedCnIds) {
         await recalculateCNAmountRemain(tx, cnId);
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.RECEIPT,
+        receipt.id,
+        totalAmount > 0 && parsed.cashBankAccountId
+          ? [{
+              accountId: parsed.cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              amount: totalAmount,
+              referenceNo: receiptNo,
+              note: parsed.note || null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/receipts");
@@ -219,6 +243,7 @@ export async function cancelReceipt(
 
   try {
     await dbTx(async (tx) => {
+      await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
       await tx.receipt.update({
         where: { id: receiptId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
@@ -273,6 +298,7 @@ export async function updateReceipt(
       customerName:  formData.get("customerName") ?? undefined,
       receiptDate:   formData.get("receiptDate"),
       paymentMethod: formData.get("paymentMethod"),
+      cashBankAccountId: formData.get("cashBankAccountId") ?? undefined,
       note:          formData.get("note") ?? undefined,
       items,
     });
@@ -285,6 +311,9 @@ export async function updateReceipt(
   const totalAmount = parsed.items.reduce((sum, item) => {
     return item.cnId ? sum - item.paidAmount : sum + item.paidAmount;
   }, 0);
+  if (totalAmount > 0 && !parsed.cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  }
 
   const oldSaleIds = [...new Set(existing.items.map((i) => i.saleId).filter((s): s is string => s !== null))];
   const oldCnIds   = [...new Set(existing.items.map((i) => i.cnId).filter((s): s is string => s !== null))];
@@ -307,6 +336,7 @@ export async function updateReceipt(
           customerName:  parsed.customerName || null,
           totalAmount,
           paymentMethod: parsed.paymentMethod,
+          cashBankAccountId: parsed.cashBankAccountId || null,
           note:          parsed.note || null,
         },
       });
@@ -328,6 +358,22 @@ export async function updateReceipt(
       for (const cnId of allCnIds) {
         await recalculateCNAmountRemain(tx, cnId);
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.RECEIPT,
+        id,
+        totalAmount > 0 && parsed.cashBankAccountId
+          ? [{
+              accountId: parsed.cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              amount: totalAmount,
+              referenceNo: existing.receiptNo,
+              note: parsed.note || null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/receipts");

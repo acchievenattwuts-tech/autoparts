@@ -14,6 +14,15 @@ interface CustomerOption {
   name: string;
 }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface ProductOption {
   id: string;
   code: string;
@@ -56,6 +65,7 @@ interface InitialData {
   type: "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "CREDIT_DEBT";
   refundMethod: "CASH" | "TRANSFER";
+  cashBankAccountId: string;
   note: string;
   vatType: string;
   vatRate: number;
@@ -70,6 +80,7 @@ const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePr
 const CreditNoteForm = ({
   products,
   customers,
+  cashBankAccounts,
   initialSales,
   defaultVatType,
   defaultVatRate,
@@ -77,6 +88,7 @@ const CreditNoteForm = ({
 }: {
   products: ProductOption[];
   customers: CustomerOption[];
+  cashBankAccounts: CashBankAccountOption[];
   initialSales?: SaleOption[];
   defaultVatType: string;
   defaultVatRate: number;
@@ -96,6 +108,7 @@ const CreditNoteForm = ({
   const [cnType, setCnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
   const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
@@ -287,11 +300,17 @@ const CreditNoteForm = ({
       }
     }
 
+    if (settlementType === "CASH_REFUND" && !cashBankAccountId) {
+      setError("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸šà¸±à¸à¸Šà¸µà¸ˆà¹ˆà¸²à¸¢à¹€à¸‡à¸´à¸™");
+      return;
+    }
+
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("customerId", customerId);
     formData.set("customerName", customerName);
     formData.set("items", JSON.stringify(items));
+    formData.set("cashBankAccountId", cashBankAccountId);
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -409,6 +428,21 @@ const CreditNoteForm = ({
               </div>
             </div>
           )}
+          <div>
+            <label className={labelCls}>
+              à¸šà¸±à¸à¸Šà¸µà¸ˆà¹ˆà¸²à¸¢à¹€à¸‡à¸´à¸™ {settlementType === "CASH_REFUND" && <span className="text-red-500">*</span>}
+            </label>
+            <SearchableSelect
+              options={cashBankAccounts.map((account): SelectOption => ({
+                id: account.id,
+                label: account.name,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "à¹€à¸‡à¸´à¸™à¸ªà¸”", account.accountNo].filter(Boolean).join(" | ") || undefined,
+              }))}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+              placeholder="à¹‚à¸›à¸£à¸”à¸£à¸°à¸šà¸¸à¸šà¸±à¸à¸Šà¸µà¸ˆà¹ˆà¸²à¸¢à¹€à¸‡à¸´à¸™"
+            />
+          </div>
           <div>
             <label className={labelCls}>ประเภท CN <span className="text-red-500">*</span></label>
             <select

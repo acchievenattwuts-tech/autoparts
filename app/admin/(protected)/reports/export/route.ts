@@ -14,6 +14,15 @@ import {
   buildDailyReceiptCsv,
   buildDailyPaymentCsv,
 } from "@/lib/report-queries";
+import {
+  buildCashBankAdjustmentHistoryCsv,
+  buildCashBankLedgerCsv,
+  buildCashBankTransferHistoryCsv,
+  parseCashBankReportFilters,
+  queryCashBankAdjustmentHistoryRows,
+  queryCashBankLedgerData,
+  queryCashBankTransferHistoryRows,
+} from "@/lib/cash-bank-report-queries";
 
 export async function GET(request: Request) {
   await requirePermission("reports.view");
@@ -26,6 +35,7 @@ export async function GET(request: Request) {
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
     showCancelled: searchParams.get("showCancelled") ?? undefined,
+    accountId: searchParams.get("accountId") ?? undefined,
     paymentType: searchParams.get("paymentType") ?? undefined,
     saleType: searchParams.get("saleType") ?? undefined,
     cnType: searchParams.get("cnType") ?? undefined,
@@ -40,6 +50,27 @@ export async function GET(request: Request) {
   let fileName: string;
 
   switch (type) {
+    case "cash-bank-ledger": {
+      const cashBankFilters = parseCashBankReportFilters(params);
+      const data = await queryCashBankLedgerData(cashBankFilters);
+      csv = buildCashBankLedgerCsv(data);
+      fileName = `cash-bank-ledger-${dateRange}.csv`;
+      break;
+    }
+    case "cash-bank-transfers": {
+      const cashBankFilters = parseCashBankReportFilters(params);
+      const rows = await queryCashBankTransferHistoryRows(cashBankFilters);
+      csv = buildCashBankTransferHistoryCsv(rows);
+      fileName = `cash-bank-transfers-${dateRange}.csv`;
+      break;
+    }
+    case "cash-bank-adjustments": {
+      const cashBankFilters = parseCashBankReportFilters(params);
+      const rows = await queryCashBankAdjustmentHistoryRows(cashBankFilters);
+      csv = buildCashBankAdjustmentHistoryCsv(rows);
+      fileName = `cash-bank-adjustments-${dateRange}.csv`;
+      break;
+    }
     case "purchases": {
       const rows = await queryPurchaseRows(filters);
       csv = buildPurchasesCsv(rows);

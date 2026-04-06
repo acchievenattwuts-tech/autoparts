@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
@@ -37,7 +38,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     ...new Set(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
   ];
 
-  const [rawProducts, config] = await Promise.all([
+  const [rawProducts, config, cashBankAccounts] = await Promise.all([
     currentProductIds.length === 0
       ? Promise.resolve([])
       : db.product.findMany({
@@ -53,6 +54,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
           },
         }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   const initialSales = cn.customerId
@@ -102,6 +104,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     type:           cn.type as CreditNoteType,
     settlementType: cn.settlementType as CNSettlementType,
     refundMethod:   (cn.refundMethod ?? "CASH") as CNRefundMethod,
+    cashBankAccountId: cn.cashBankAccountId ?? "",
     note:           cn.note ?? "",
     vatType:        cn.vatType,
     vatRate:        Number(cn.vatRate),
@@ -122,6 +125,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       <CreditNoteForm
         products={products}
         customers={[]}
+        cashBankAccounts={cashBankAccounts}
         initialSales={initialSales}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

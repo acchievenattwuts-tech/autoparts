@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { requirePermission } from "@/lib/require-auth";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
@@ -10,7 +11,7 @@ import SaleForm from "./SaleForm";
 const NewSalePage = async () => {
   await requirePermission("sales.create");
 
-  const [rawProducts, customers, config, suppliers] = await Promise.all([
+  const [rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -36,6 +37,7 @@ const NewSalePage = async () => {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    getActiveCashBankAccountOptions(),
   ]);
 
   const products = rawProducts.map((p) => ({
@@ -65,7 +67,14 @@ const NewSalePage = async () => {
         <span className="text-sm font-medium text-gray-700">บันทึกการขายใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">บันทึกการขายสินค้า</h1>
-      <SaleForm products={products} suppliers={suppliers} customers={customers} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <SaleForm
+        products={products}
+        suppliers={suppliers}
+        cashBankAccounts={cashBankAccounts}
+        customers={customers}
+        defaultVatType={config.vatType}
+        defaultVatRate={config.vatRate}
+      />
     </div>
   );
 };

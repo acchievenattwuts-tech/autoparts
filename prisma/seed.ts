@@ -41,8 +41,50 @@ if (seedAdminPassword.length < 8) {
   console.log("Admin user ensured:", admin.email);
 }
 
+async function ensureDefaultCashBankAccounts() {
+  const defaults = [
+    { code: "CASH-MAIN", name: "เงินสดหน้าร้าน", type: "CASH" as const, bankName: null as string | null },
+    { code: "BANK-KBANK", name: "ธนาคารกสิกรไทย", type: "BANK" as const, bankName: "Kasikornbank" },
+    { code: "BANK-KTB", name: "ธนาคารกรุงไทย", type: "BANK" as const, bankName: "Krung Thai Bank" },
+  ];
+
+  const openingDate = new Date();
+  openingDate.setHours(0, 0, 0, 0);
+
+  let created = 0;
+  for (const account of defaults) {
+    const existing = await db.cashBankAccount.findFirst({
+      where: {
+        OR: [{ code: account.code }, { name: account.name }],
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      continue;
+    }
+
+    await db.cashBankAccount.create({
+      data: {
+        code: account.code,
+        name: account.name,
+        type: account.type,
+        bankName: account.bankName,
+        accountNo: null,
+        openingBalance: 0,
+        openingDate,
+        isActive: true,
+      },
+    });
+    created += 1;
+  }
+
+  console.log("Cash-bank defaults ensured:", created, "created");
+}
+
 async function main() {
   await ensureSeedAdminUser();
+  await ensureDefaultCashBankAccounts();
 
   const categories = [
     "คอมเพรสเซอร์แอร์",

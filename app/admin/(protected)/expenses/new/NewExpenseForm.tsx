@@ -19,9 +19,19 @@ interface LineItem {
   amount: number;
 }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface InitialData {
   id: string;
   expenseDate: string;
+  cashBankAccountId: string;
   vatType: string;
   vatRate: number;
   note: string;
@@ -30,6 +40,7 @@ interface InitialData {
 
 interface Props {
   expenseCodes: ExpenseCodeOption[];
+  cashBankAccounts: CashBankAccountOption[];
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
@@ -40,7 +51,7 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1";
 
 const emptyItem = (): LineItem => ({ expenseCodeId: "", description: "", amount: 0 });
 
-const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialData }: Props) => {
+const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaultVatRate, initialData }: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
@@ -48,6 +59,7 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialD
   const [success, setSuccess] = useState("");
 
   const [items, setItems]     = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
@@ -80,8 +92,11 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialD
       if (item.amount <= 0)    { setError("จำนวนเงินต้องมากกว่า 0 ทุกรายการ"); return; }
     }
 
+    if (!cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
+
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
+    fd.set("cashBankAccountId", cashBankAccountId);
     fd.set("vatType", vatType);
     fd.set("vatRate", String(vatRate));
 
@@ -127,6 +142,19 @@ const NewExpenseForm = ({ expenseCodes, defaultVatType, defaultVatRate, initialD
         <div className="md:col-span-2">
           <label className={labelCls}>หมายเหตุ</label>
           <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} placeholder="หมายเหตุเอกสาร (ถ้ามี)" className={inputCls} />
+        </div>
+        <div className="md:col-span-3">
+          <label className={labelCls}>บัญชีจ่ายเงิน <span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={cashBankAccounts.map((account): SelectOption => ({
+              id: account.id,
+              label: account.name,
+              sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+            }))}
+            value={cashBankAccountId}
+            onChange={setCashBankAccountId}
+            placeholder="โปรดระบุบัญชีจ่ายเงิน"
+          />
         </div>
       </div>
 

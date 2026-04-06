@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import BrowserPrintButton from "@/components/shared/BrowserPrintButton";
 import { getReportsData, parseReportFilters } from "@/lib/reports";
 import { requirePermission } from "@/lib/require-auth";
+import CashBankSnapshot from "../CashBankSnapshot";
 import ReportsContent from "../ReportsContent";
 
 interface ReportsPrintPageProps {
@@ -44,6 +45,8 @@ const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
           ช่วงวันที่ {filters.fromInput} ถึง {filters.toInput}
         </p>
       </div>
+
+      <CashBankSnapshot compact />
 
       <ReportsContent data={data} compact />
     </div>

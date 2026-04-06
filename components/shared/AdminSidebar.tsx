@@ -89,6 +89,15 @@ const navItems: SidebarEntry[] = [
     ],
   },
   {
+    section: "การเงิน",
+    items: [
+      { label: "Cash / Bank Accounts", href: "/admin/cash-bank", icon: Wallet, permission: "cash_bank.view" },
+      { label: "Cash / Bank Ledger", href: "/admin/cash-bank/ledger", icon: ClipboardList, permission: "cash_bank.view" },
+      { label: "โอนเงินระหว่างบัญชี", href: "/admin/cash-bank/transfers", icon: RefreshCw, permission: "cash_bank.transfers.view" },
+      { label: "ปรับยอดเงิน", href: "/admin/cash-bank/adjustments", icon: Receipt, permission: "cash_bank.adjustments.view" },
+    ],
+  },
+  {
     section: "รายงาน",
     items: [{ label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view" }],
   },

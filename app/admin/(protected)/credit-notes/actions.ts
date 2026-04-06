@@ -11,6 +11,8 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 const creditNoteProductOptionSelect = {
   id: true,
@@ -156,6 +158,7 @@ const cnSchema = z.object({
   type:           z.nativeEnum(CreditNoteType),
   settlementType: z.nativeEnum(CNSettlementType).default(CNSettlementType.CASH_REFUND),
   refundMethod:   z.nativeEnum(CNRefundMethod).optional(),
+  cashBankAccountId: z.string().optional(),
   note:           z.string().max(500).optional(),
   vatType:        z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:        z.coerce.number().min(0).max(100).default(0),
@@ -184,6 +187,7 @@ export async function createCreditNote(
     type:           formData.get("type"),
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
     refundMethod:   (formData.get("refundMethod") as CNRefundMethod) || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     note:           formData.get("note") || undefined,
     vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:        formData.get("vatRate") || 0,
@@ -191,10 +195,13 @@ export async function createCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
+  if (settlementType === CNSettlementType.CASH_REFUND && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  }
 
   const docDate = new Date(cnDate);
   const cnNo    = await generateCNNo(docDate);
@@ -212,6 +219,7 @@ export async function createCreditNote(
           type,
           settlementType,
           refundMethod:   refundMethod ?? null,
+          cashBankAccountId: cashBankAccountId || null,
           totalAmount:    netAmount,
           vatType,
           vatRate,
@@ -302,6 +310,22 @@ export async function createCreditNote(
       if (settlementType === CNSettlementType.CREDIT_DEBT) {
         await recalculateCNAmountRemain(tx, cn.id);
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.CN_SALE,
+        cn.id,
+        settlementType === CNSettlementType.CASH_REFUND && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.OUT,
+              amount: netAmount,
+              referenceNo: cnNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/credit-notes");
@@ -443,10 +467,13 @@ export async function updateCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
+  if (settlementType === CNSettlementType.CASH_REFUND && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  }
 
   const docDate = new Date(cnDate);
   const oldProductIds = [
@@ -482,6 +509,7 @@ export async function updateCreditNote(
           type,
           settlementType,
           refundMethod:   refundMethod ?? null,
+          cashBankAccountId: cashBankAccountId || null,
           totalAmount:    netAmount,
           vatType,
           vatRate,
@@ -566,6 +594,22 @@ export async function updateCreditNote(
 
       // 5. Recalculate CN amountRemain (totalAmount may have changed)
       await recalculateCNAmountRemain(tx, id);
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.CN_SALE,
+        id,
+        settlementType === CNSettlementType.CASH_REFUND && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.OUT,
+              amount: netAmount,
+              referenceNo: existing.cnNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/credit-notes");

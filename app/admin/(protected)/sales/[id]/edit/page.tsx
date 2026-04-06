@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
@@ -14,7 +15,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const { id } = await params;
 
-  const [sale, rawProducts, customers, config, suppliers] = await Promise.all([
+  const [sale, rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -47,6 +48,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true } }),
     getSiteConfig(),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    getActiveCashBankAccountOptions(),
   ]);
 
   if (!sale) notFound();
@@ -163,6 +165,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     saleType:        sale.saleType,
     paymentType:     sale.paymentType as "CASH_SALE" | "CREDIT_SALE",
     paymentMethod:   sale.paymentMethod ?? "",
+    cashBankAccountId: sale.cashBankAccountId ?? "",
     fulfillmentType: sale.fulfillmentType as "PICKUP" | "DELIVERY",
     shippingAddress: sale.shippingAddress ?? "",
     shippingFee:     Number(sale.shippingFee ?? 0),
@@ -188,6 +191,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       <SaleForm
         products={products}
         suppliers={suppliers}
+        cashBankAccounts={cashBankAccounts}
         customers={customers}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

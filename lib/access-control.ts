@@ -81,6 +81,16 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "expenses.update", group: "ระบบงาน", label: "แก้ไขค่าใช้จ่าย" },
   { key: "expenses.cancel", group: "ระบบงาน", label: "ยกเลิกค่าใช้จ่าย" },
 
+  { key: "cash_bank.view", group: "การเงิน", label: "ดูบัญชีเงินสดและธนาคาร" },
+  { key: "cash_bank.manage", group: "การเงิน", label: "จัดการบัญชีเงินสดและธนาคาร" },
+  { key: "cash_bank.transfers.view", group: "การเงิน", label: "ดูโอนเงินระหว่างบัญชี" },
+  { key: "cash_bank.transfers.create", group: "การเงิน", label: "เพิ่มโอนเงินระหว่างบัญชี" },
+  { key: "cash_bank.transfers.cancel", group: "การเงิน", label: "ยกเลิกโอนเงินระหว่างบัญชี" },
+  { key: "cash_bank.adjustments.view", group: "การเงิน", label: "ดูปรับยอดเงิน" },
+  { key: "cash_bank.adjustments.create", group: "การเงิน", label: "เพิ่มปรับยอดเงิน" },
+  { key: "cash_bank.adjustments.update", group: "การเงิน", label: "แก้ไขปรับยอดเงิน" },
+  { key: "cash_bank.adjustments.cancel", group: "การเงิน", label: "ยกเลิกปรับยอดเงิน" },
+
   { key: "delivery.view",   group: "ระบบงาน", label: "ดูคิวจัดส่ง" },
   { key: "delivery.update", group: "ระบบงาน", label: "อัปเดตสถานะจัดส่ง" },
 
@@ -135,6 +145,13 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "expenses.view",
   "expenses.create",
   "expenses.update",
+  "cash_bank.view",
+  "cash_bank.transfers.view",
+  "cash_bank.transfers.create",
+  "cash_bank.transfers.cancel",
+  "cash_bank.adjustments.view",
+  "cash_bank.adjustments.create",
+  "cash_bank.adjustments.cancel",
   "delivery.view",
   "delivery.update",
   "lot_reports.view",
@@ -157,6 +174,9 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "warranties.view",
   "warranty_claims.view",
   "expenses.view",
+  "cash_bank.view",
+  "cash_bank.transfers.view",
+  "cash_bank.adjustments.view",
   "reports.view",
   "delivery.view",
 ];
@@ -204,6 +224,10 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/warranties", permission: "warranties.view" },
   { prefix: "/admin/warranty-claims", permission: "warranty_claims.view" },
   { prefix: "/admin/expenses", permission: "expenses.view" },
+  { prefix: "/admin/cash-bank/ledger", permission: "cash_bank.view" },
+  { prefix: "/admin/cash-bank/transfers", permission: "cash_bank.transfers.view" },
+  { prefix: "/admin/cash-bank/adjustments", permission: "cash_bank.adjustments.view" },
+  { prefix: "/admin/cash-bank", permission: "cash_bank.view" },
   { prefix: "/admin/reports", permission: "reports.view" },
   { prefix: "/admin/settings/company", permission: "settings.company.view" },
   { prefix: "/admin", permission: "dashboard.view" },
@@ -346,6 +370,10 @@ export function getRoutePermission(pathname: string): PermissionKey | null {
   if (/^\/admin\/receipts\/[^/]+\/edit$/.test(pathname)) return "receipts.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";
   if (/^\/admin\/expenses\/[^/]+\/edit$/.test(pathname)) return "expenses.update";
+  if (pathname === "/admin/cash-bank") return "cash_bank.view";
+  if (pathname === "/admin/cash-bank/ledger") return "cash_bank.view";
+  if (pathname === "/admin/cash-bank/transfers") return "cash_bank.transfers.view";
+  if (pathname === "/admin/cash-bank/adjustments") return "cash_bank.adjustments.view";
   if (pathname === "/admin/warranties/new") return "warranties.create";
   if (pathname === "/admin/warranty-claims/new") return "warranty_claims.create";
   if (pathname === "/admin/users/new") return "admin.users.create";

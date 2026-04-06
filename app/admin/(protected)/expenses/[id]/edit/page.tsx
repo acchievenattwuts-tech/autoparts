@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import NewExpenseForm from "../../new/NewExpenseForm";
 
 const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -13,7 +14,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const { id } = await params;
 
-  const [expense, expenseCodes, config] = await Promise.all([
+  const [expense, expenseCodes, config, cashBankAccounts] = await Promise.all([
     db.expense.findUnique({
       where: { id },
       include: {
@@ -26,6 +27,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
       select: { id: true, code: true, name: true },
     }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   if (!expense) notFound();
@@ -34,6 +36,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
   const initialData = {
     id,
     expenseDate: expense.expenseDate.toISOString().slice(0, 10),
+    cashBankAccountId: expense.cashBankAccountId ?? "",
     vatType:     expense.vatType,
     vatRate:     Number(expense.vatRate),
     note:        expense.note ?? "",
@@ -58,6 +61,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <NewExpenseForm
           expenseCodes={expenseCodes}
+          cashBankAccounts={cashBankAccounts}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
           initialData={initialData}

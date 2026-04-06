@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { requirePermission } from "@/lib/require-auth";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
@@ -10,7 +11,7 @@ import CreditNoteForm from "./CreditNoteForm";
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
 
-  const [rawProducts, config] = await Promise.all([
+  const [rawProducts, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -24,6 +25,7 @@ const NewCreditNotePage = async () => {
       },
     }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   const products = rawProducts.map((p) => ({
@@ -48,7 +50,13 @@ const NewCreditNotePage = async () => {
         <span className="text-sm font-medium text-gray-700">สร้าง CN ใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
-      <CreditNoteForm products={products} customers={[]} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <CreditNoteForm
+        products={products}
+        customers={[]}
+        cashBankAccounts={cashBankAccounts}
+        defaultVatType={config.vatType}
+        defaultVatRate={config.vatRate}
+      />
     </div>
   );
 };

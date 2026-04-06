@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
-import { PaymentMethod } from "@/lib/generated/prisma";
+import { PaymentMethod, PurchasePaymentStatus } from "@/lib/generated/prisma";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
@@ -27,6 +27,15 @@ interface ProductOption {
 
 interface SupplierOption { id: string; name: string }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface LineItem {
   productId:  string;
   unitName:   string;
@@ -41,6 +50,8 @@ interface InitialData {
   purchaseDate: string;
   supplierId:   string;
   paymentMethod: PaymentMethod;
+  paymentStatus: PurchasePaymentStatus;
+  cashBankAccountId: string;
   referenceNo:  string;
   discount:     number;
   note:         string;
@@ -59,6 +70,7 @@ const paymentMethodOptions: Array<{ value: PaymentMethod; label: string }> = [
 const PurchaseForm = ({
   products,
   suppliers,
+  cashBankAccounts,
   defaultVatType,
   defaultVatRate,
   initialData,
@@ -66,6 +78,7 @@ const PurchaseForm = ({
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
+  cashBankAccounts: CashBankAccountOption[];
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
@@ -79,6 +92,8 @@ const PurchaseForm = ({
   const [success, setSuccess]   = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod ?? PaymentMethod.TRANSFER);
+  const [paymentStatus, setPaymentStatus] = useState<PurchasePaymentStatus>(initialData?.paymentStatus ?? PurchasePaymentStatus.UNPAID);
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
@@ -196,8 +211,11 @@ const PurchaseForm = ({
     const formData = new FormData(e.currentTarget);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
+    if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
     formData.set("supplierId", supplierId);
     formData.set("paymentMethod", paymentMethod);
+    formData.set("paymentStatus", paymentStatus);
+    formData.set("cashBankAccountId", cashBankAccountId);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -295,6 +313,47 @@ const PurchaseForm = ({
           <div className="md:col-span-2">
             <label className={labelCls}>หมายเหตุ</label>
             <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} className={inputCls} placeholder="หมายเหตุ" />
+          </div>
+
+          <div>
+            <label className={labelCls}>สถานะการชำระเงิน</label>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPaymentStatus(PurchasePaymentStatus.UNPAID)}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  paymentStatus === PurchasePaymentStatus.UNPAID
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ยังไม่ชำระ
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentStatus(PurchasePaymentStatus.PAID)}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  paymentStatus === PurchasePaymentStatus.PAID
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ชำระแล้ว
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>บัญชีจ่ายเงิน {paymentStatus === PurchasePaymentStatus.PAID && <span className="text-red-500">*</span>}</label>
+            <SearchableSelect
+              options={cashBankAccounts.map((account): SelectOption => ({
+                id: account.id,
+                label: account.name,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+              }))}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+              placeholder="โปรดระบุบัญชีจ่ายเงิน"
+            />
           </div>
 
           {/* VAT Settings */}

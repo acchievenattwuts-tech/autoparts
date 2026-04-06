@@ -12,6 +12,8 @@ import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 const saleProductOptionSelect = {
   id:                  true,
@@ -105,6 +107,7 @@ const saleSchema = z.object({
   shippingFee:     z.coerce.number().min(0).default(0),
   discount:        z.coerce.number().min(0).default(0),
   paymentMethod:   z.nativeEnum(PaymentMethod).optional(),
+  cashBankAccountId: z.string().optional(),
   note:            z.string().max(500).optional(),
   vatType:         z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:         z.coerce.number().min(0).max(100).default(0),
@@ -218,6 +221,7 @@ export async function createSale(
     shippingFee:     formData.get("shippingFee")     || 0,
     discount:        formData.get("discount")        || 0,
     paymentMethod:   formData.get("paymentMethod")   || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     note:            formData.get("note")            || undefined,
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
@@ -239,6 +243,7 @@ export async function createSale(
     discount,
     paymentMethod,
     note,
+    cashBankAccountId,
     vatType,
     vatRate,
     shippingMethod,
@@ -249,6 +254,9 @@ export async function createSale(
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  }
 
   const docDate = new Date(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
@@ -277,6 +285,7 @@ export async function createSale(
           subtotalAmount,
           vatAmount,
           paymentMethod:   paymentMethod   ?? null,
+          cashBankAccountId: cashBankAccountId || null,
           note:            note            ?? null,
           saleDate:        docDate,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
@@ -376,6 +385,22 @@ export async function createSale(
           lotItems: item.lotItems as LotSubRow[],
         });
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.SALE,
+        sale.id,
+        paymentType === SalePaymentType.CASH_SALE && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              amount: netAmount,
+              referenceNo: saleNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/sales");
@@ -452,6 +477,7 @@ export async function cancelSale(
 
   try {
     await dbTx(async (tx) => {
+      await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       // Reverse Lot balances before deleting StockCard rows
       for (const item of sale.items) {
         await reverseSaleLotBalance(tx, item.id, item.productId);
@@ -550,11 +576,14 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, paymentMethod, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, paymentMethod, cashBankAccountId, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  }
   const docDate = new Date(saleDate);
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
@@ -591,6 +620,7 @@ export async function updateSale(
           shippingFee,
           discount,
           paymentMethod:   paymentMethod   ?? null,
+          cashBankAccountId: cashBankAccountId || null,
           note:            note            ?? null,
           vatType,
           vatRate,
@@ -675,6 +705,22 @@ export async function updateSale(
 
       // 4. Recalculate amountRemain after updating netAmount
       await recalculateSaleAmountRemain(tx, id);
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.SALE,
+        id,
+        paymentType === SalePaymentType.CASH_SALE && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              amount: netAmount,
+              referenceNo: existing.saleNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/sales");

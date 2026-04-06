@@ -1,5 +1,11 @@
 import { db } from "@/lib/db";
-import { PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
+import {
+  CNRefundMethod,
+  CNSettlementType,
+  PaymentMethod,
+  PurchasePaymentStatus,
+  SalePaymentType,
+} from "@/lib/generated/prisma";
 
 type ReportRange = { from: Date; to: Date };
 
@@ -106,17 +112,19 @@ type DailyReceiptRow = {
   customerCode: string;
   customerName: string;
   paymentMethod: string;
+  accountName: string;
   amount: number;
   note: string;
 };
 
 type DailyPaymentRow = {
-  source: "PURCHASE" | "EXPENSE";
+  source: "PURCHASE" | "EXPENSE" | "CN_SALE";
   docNo: string;
   docDate: Date;
   counterpartCode: string;
   counterpartName: string;
   paymentMethod: string;
+  accountName: string;
   amount: number;
   note: string;
 };
@@ -204,6 +212,7 @@ export type ReportsData = {
     totalAmount: number;
     purchaseAmount: number;
     expenseAmount: number;
+    creditNoteRefundAmount: number;
     items: DailyPaymentRow[];
   };
 };
@@ -276,6 +285,17 @@ function getPaymentMethodLabel(method: PaymentMethod | null | undefined): string
       return "โอนเงิน";
     case PaymentMethod.CREDIT:
       return "เครดิต";
+    default:
+      return "-";
+  }
+}
+
+function getRefundMethodLabel(method: CNRefundMethod | null | undefined): string {
+  switch (method) {
+    case CNRefundMethod.CASH:
+      return "เงินสด";
+    case CNRefundMethod.TRANSFER:
+      return "โอนเงิน";
     default:
       return "-";
   }
@@ -474,6 +494,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           paymentType: true,
           paymentMethod: true,
           note: true,
+          cashBankAccount: { select: { name: true } },
           customer: { select: { code: true, name: true } },
           items: { select: { quantity: true, costPrice: true } },
         },
@@ -485,11 +506,14 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           id: true,
           cnNo: true,
           cnDate: true,
-          customerName: true,
-          totalAmount: true,
-          vatAmount: true,
-          note: true,
-          customer: { select: { code: true, name: true } },
+            customerName: true,
+            totalAmount: true,
+            vatAmount: true,
+            note: true,
+            settlementType: true,
+            refundMethod: true,
+            cashBankAccount: { select: { name: true } },
+            customer: { select: { code: true, name: true } },
         },
       }),
       db.purchase.findMany({
@@ -497,13 +521,15 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
         select: {
           id: true,
-          purchaseNo: true,
-          purchaseDate: true,
-          paymentMethod: true,
-          referenceNo: true,
-          note: true,
-          supplierId: true,
-          supplier: { select: { code: true, name: true } },
+            purchaseNo: true,
+            purchaseDate: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            referenceNo: true,
+            note: true,
+            supplierId: true,
+            cashBankAccount: { select: { name: true } },
+            supplier: { select: { code: true, name: true } },
           netAmount: true,
           vatAmount: true,
         },
@@ -526,11 +552,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           id: true,
           expenseNo: true,
           expenseDate: true,
-          note: true,
-          totalAmount: true,
-          vatAmount: true,
-          netAmount: true,
-          items: {
+            note: true,
+            totalAmount: true,
+            vatAmount: true,
+            netAmount: true,
+            cashBankAccount: { select: { name: true } },
+            items: {
             select: {
               amount: true,
               description: true,
@@ -590,10 +617,11 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           receiptNo: true,
           receiptDate: true,
           customerName: true,
-          paymentMethod: true,
-          totalAmount: true,
-          note: true,
-          customer: { select: { code: true, name: true } },
+            paymentMethod: true,
+            totalAmount: true,
+            note: true,
+            cashBankAccount: { select: { name: true } },
+            customer: { select: { code: true, name: true } },
         },
       }),
     ]);
@@ -609,6 +637,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     amountRemain: toNumber(sale.amountRemain),
     paymentType: sale.paymentType,
     paymentMethod: sale.paymentMethod,
+    accountName: sale.cashBankAccount?.name ?? "-",
     note: sale.note ?? "",
     cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0),
   }));
@@ -620,6 +649,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     customerName: creditNote.customer?.name ?? (creditNote.customerName?.trim() || "ลูกค้าทั่วไป"),
     returnAmount: toNumber(creditNote.totalAmount),
     vatAmount: toNumber(creditNote.vatAmount),
+    settlementType: creditNote.settlementType,
+    refundMethod: creditNote.refundMethod,
+    accountName: creditNote.cashBankAccount?.name ?? "-",
     note: creditNote.note ?? "",
   }));
   const salesTransactions = [
@@ -823,6 +855,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         customerCode: sale.customerCode,
         customerName: sale.customerName,
         paymentMethod: getPaymentMethodLabel(sale.paymentMethod),
+        accountName: sale.accountName,
         amount: sale.grossSalesAmount,
         note: sale.note,
       })),
@@ -833,19 +866,21 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       customerCode: receipt.customer?.code ?? "",
       customerName: receipt.customer?.name ?? receipt.customerName ?? "ลูกค้าทั่วไป",
       paymentMethod: getPaymentMethodLabel(receipt.paymentMethod),
+      accountName: receipt.cashBankAccount?.name ?? "-",
       amount: toNumber(receipt.totalAmount),
       note: receipt.note ?? "",
     })),
   ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo));
 
   const dailyPaymentRows: DailyPaymentRow[] = [
-    ...purchases.map((purchase) => ({
+    ...purchases.filter((purchase) => purchase.paymentStatus === PurchasePaymentStatus.PAID).map((purchase) => ({
       source: "PURCHASE" as const,
       docNo: purchase.purchaseNo,
       docDate: purchase.purchaseDate,
       counterpartCode: purchase.supplier?.code ?? "",
       counterpartName: purchase.supplier?.name ?? "ไม่ระบุซัพพลายเออร์",
       paymentMethod: getPaymentMethodLabel(purchase.paymentMethod),
+      accountName: purchase.cashBankAccount?.name ?? "-",
       amount: toNumber(purchase.netAmount),
       note: purchase.referenceNo ?? purchase.note ?? "",
     })),
@@ -856,9 +891,23 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       counterpartCode: "",
       counterpartName: expense.items.map((item) => item.expenseCode.code).join(", "),
       paymentMethod: "-",
+      accountName: expense.cashBankAccount?.name ?? "-",
       amount: toNumber(expense.netAmount),
       note: expense.note ?? expense.items.map((item) => item.expenseCode.name).join(", "),
     })),
+    ...normalizedCreditNotes
+      .filter((creditNote) => creditNote.settlementType === CNSettlementType.CASH_REFUND)
+      .map((creditNote) => ({
+        source: "CN_SALE" as const,
+        docNo: creditNote.cnNo,
+        docDate: creditNote.cnDate,
+        counterpartCode: creditNote.customerCode,
+        counterpartName: creditNote.customerName,
+        paymentMethod: getRefundMethodLabel(creditNote.refundMethod),
+        accountName: creditNote.accountName,
+        amount: creditNote.returnAmount,
+        note: creditNote.note,
+      })),
   ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo));
 
   return {
@@ -946,6 +995,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       totalAmount: dailyPaymentRows.reduce((sum, item) => sum + item.amount, 0),
       purchaseAmount: dailyPaymentRows.filter((item) => item.source === "PURCHASE").reduce((sum, item) => sum + item.amount, 0),
       expenseAmount: dailyPaymentRows.filter((item) => item.source === "EXPENSE").reduce((sum, item) => sum + item.amount, 0),
+      creditNoteRefundAmount: dailyPaymentRows.filter((item) => item.source === "CN_SALE").reduce((sum, item) => sum + item.amount, 0),
       items: dailyPaymentRows.slice(0, 100),
     },
   };
@@ -990,16 +1040,40 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["รายงานรับเงินประจำวัน"]);
-  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสลูกค้า", "ลูกค้า", "ช่องทางชำระ", "จำนวนเงิน", "หมายเหตุ"]);
+  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสลูกค้า", "ลูกค้า", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ"]);
   for (const row of data.dailyReceipts.items) {
-    pushRow([row.source === "SALE" ? "ขายสด" : "ใบเสร็จรับเงิน", row.docNo, formatDateInput(row.docDate), row.customerCode || "-", row.customerName, row.paymentMethod, row.amount.toFixed(2), row.note || "-"]);
+    pushRow([
+      row.source === "SALE" ? "ขายสด" : "ใบเสร็จรับเงิน",
+      row.docNo,
+      formatDateInput(row.docDate),
+      row.customerCode || "-",
+      row.customerName,
+      row.paymentMethod,
+      row.accountName,
+      row.amount.toFixed(2),
+      row.note || "-",
+    ]);
   }
   lines.push("");
 
   pushRow(["รายงานจ่ายเงินประจำวัน"]);
-  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "จำนวนเงิน", "หมายเหตุ"]);
+  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ"]);
   for (const row of data.dailyPayments.items) {
-    pushRow([row.source === "PURCHASE" ? "ซื้อสินค้า" : "ค่าใช้จ่าย", row.docNo, formatDateInput(row.docDate), row.counterpartCode || "-", row.counterpartName, row.paymentMethod, row.amount.toFixed(2), row.note || "-"]);
+    pushRow([
+      row.source === "PURCHASE"
+        ? "ซื้อสินค้า"
+        : row.source === "CN_SALE"
+          ? "คืนเงินลูกค้า (CN)"
+          : "ค่าใช้จ่าย",
+      row.docNo,
+      formatDateInput(row.docDate),
+      row.counterpartCode || "-",
+      row.counterpartName,
+      row.paymentMethod,
+      row.accountName,
+      row.amount.toFixed(2),
+      row.note || "-",
+    ]);
   }
   lines.push("");
 

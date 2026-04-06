@@ -11,6 +11,8 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { CashBankDirection, CashBankSourceType, PurchasePaymentStatus } from "@/lib/generated/prisma";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 const purchaseProductOptionSelect = {
   id: true,
@@ -86,6 +88,8 @@ const purchaseSchema = z.object({
   supplierId:   z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
   purchaseDate: z.string().min(1),
   paymentMethod: z.nativeEnum(PaymentMethod).default(PaymentMethod.TRANSFER),
+  paymentStatus: z.nativeEnum(PurchasePaymentStatus).default(PurchasePaymentStatus.UNPAID),
+  cashBankAccountId: z.string().optional(),
   discount:     z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),
   referenceNo:  z.string().max(100).optional(),
@@ -110,6 +114,8 @@ export async function createPurchase(
     supplierId:   formData.get("supplierId") || undefined,
     purchaseDate: formData.get("purchaseDate"),
     paymentMethod: (formData.get("paymentMethod") as PaymentMethod) || PaymentMethod.TRANSFER,
+    paymentStatus: (formData.get("paymentStatus") as PurchasePaymentStatus) || PurchasePaymentStatus.UNPAID,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
@@ -119,12 +125,18 @@ export async function createPurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, paymentMethod, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, paymentMethod, paymentStatus, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  }
+  if (paymentStatus === PurchasePaymentStatus.PARTIALLY_PAID) {
+    return { error: "การจ่ายบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
+  }
 
   const purchaseNo = await generatePurchaseNo(new Date(purchaseDate));
 
@@ -139,7 +151,7 @@ export async function createPurchase(
           totalAmount:   totalAmount,
           discount:      discount,
           netAmount:     netAmount,
-          amountRemain:  new Prisma.Decimal(netAmount),
+          amountRemain:  new Prisma.Decimal(paymentStatus === PurchasePaymentStatus.PAID ? 0 : netAmount),
           note,
           vatType,
           vatRate,
@@ -148,6 +160,8 @@ export async function createPurchase(
           referenceNo:   referenceNo ?? null,
           purchaseDate:  new Date(purchaseDate),
           paymentMethod,
+          paymentStatus,
+          cashBankAccountId: cashBankAccountId || null,
         },
       });
 
@@ -226,6 +240,22 @@ export async function createPurchase(
           }
         }
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.PURCHASE,
+        purchase.id,
+        paymentStatus === PurchasePaymentStatus.PAID && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: new Date(purchaseDate),
+              direction: CashBankDirection.OUT,
+              amount: netAmount,
+              referenceNo: purchaseNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/purchases");
@@ -276,6 +306,7 @@ export async function cancelPurchase(
 
   try {
     await dbTx(async (tx) => {
+      await clearCashBankSourceMovements(tx, CashBankSourceType.PURCHASE, purchaseId);
       // Reverse Lot balances before deleting StockCard rows
       for (const item of purchase.items) {
         await reversePurchaseLotBalance(tx, item.id, item.productId);
@@ -347,11 +378,17 @@ export async function updatePurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, paymentMethod, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, paymentMethod, paymentStatus, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  }
+  if (paymentStatus === PurchasePaymentStatus.PARTIALLY_PAID) {
+    return { error: "การจ่ายบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
+  }
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
@@ -387,8 +424,10 @@ export async function updatePurchase(
           subtotalAmount,
           vatAmount,
           netAmount,
-          amountRemain:  new Prisma.Decimal(netAmount),
+          amountRemain:  new Prisma.Decimal(paymentStatus === PurchasePaymentStatus.PAID ? 0 : netAmount),
           paymentMethod,
+          paymentStatus,
+          cashBankAccountId: cashBankAccountId || null,
         },
       });
 
@@ -459,6 +498,22 @@ export async function updatePurchase(
           }
         }
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.PURCHASE,
+        id,
+        paymentStatus === PurchasePaymentStatus.PAID && cashBankAccountId
+          ? [{
+              accountId: cashBankAccountId,
+              txnDate: new Date(purchaseDate),
+              direction: CashBankDirection.OUT,
+              amount: netAmount,
+              referenceNo: existing.purchaseNo,
+              note: note ?? null,
+            }]
+          : [],
+      );
     });
 
     revalidatePath("/admin/purchases");

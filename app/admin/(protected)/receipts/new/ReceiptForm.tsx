@@ -21,23 +21,34 @@ interface SelectedItem {
   isCN:        boolean;
 }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface InitialData {
   id:            string;
   customerId:    string;
   customerName:  string;
   receiptDate:   string;
   paymentMethod: "CASH" | "TRANSFER";
+  cashBankAccountId: string;
   note:          string;
   items:         SelectedItem[];
 }
 
 interface Props {
   customers:           CustomerOption[];
+  cashBankAccounts:    CashBankAccountOption[];
   initialData?:        InitialData;
   initialCreditSales?: CreditSaleItem[];
 }
 
-const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
+const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales }: Props) => {
   const router  = useRouter();
   const isEdit  = !!initialData;
   const today   = new Date().toISOString().slice(0, 10);
@@ -47,6 +58,7 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
   const [creditSales,     setCreditSales]      = useState<CreditSaleItem[]>(initialCreditSales ?? []);
   const [selectedItems,   setSelectedItems]    = useState<SelectedItem[]>(initialData?.items ?? []);
   const [paymentMethod,   setPaymentMethod]    = useState<"CASH" | "TRANSFER">(initialData?.paymentMethod ?? "CASH");
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [note,            setNote]             = useState(initialData?.note ?? "");
   const [isLoadingSales,  setIsLoadingSales]   = useState(false);
   const [isPending,       startTransition]     = useTransition();
@@ -152,11 +164,17 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
       return;
     }
 
+    if (netTotal > 0 && !cashBankAccountId) {
+      setError("กรุณาเลือกบัญชีรับเงิน");
+      return;
+    }
+
     const formData = new FormData();
     formData.set("customerId",    customerId);
     formData.set("customerName",  selectedCustomer?.name ?? "");
     formData.set("receiptDate",   receiptDate);
     formData.set("paymentMethod", paymentMethod);
+    formData.set("cashBankAccountId", cashBankAccountId);
     formData.set("note",          note);
     formData.set(
       "items",
@@ -348,6 +366,22 @@ const ReceiptForm = ({ customers, initialData, initialCreditSales }: Props) => {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              บัญชีรับเงิน {netTotal > 0 && <span className="text-red-500">*</span>}
+            </label>
+            <SearchableSelect
+              options={cashBankAccounts.map((account): SelectOption => ({
+                id: account.id,
+                label: account.name,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+              }))}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+              placeholder="โปรดระบุบัญชีรับเงิน"
+            />
           </div>
 
           {/* Note */}

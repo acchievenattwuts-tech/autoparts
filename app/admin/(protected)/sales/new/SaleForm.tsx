@@ -34,6 +34,15 @@ interface SupplierOption {
   name: string;
 }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface CustomerOption {
   id:              string;
   name:            string;
@@ -67,6 +76,7 @@ interface InitialData {
   saleType:        string;
   paymentType:     "CASH_SALE" | "CREDIT_SALE";
   paymentMethod:   string;
+  cashBankAccountId: string;
   fulfillmentType: "PICKUP" | "DELIVERY";
   shippingAddress: string;
   shippingFee:     number;
@@ -81,6 +91,7 @@ interface InitialData {
 const SaleForm = ({
   products,
   suppliers,
+  cashBankAccounts,
   customers,
   defaultVatType,
   defaultVatRate,
@@ -90,6 +101,7 @@ const SaleForm = ({
 }: {
   products:       ProductOption[];
   suppliers:      SupplierOption[];
+  cashBankAccounts: CashBankAccountOption[];
   customers:      CustomerOption[];
   defaultVatType: string;
   defaultVatRate: number;
@@ -110,6 +122,7 @@ const SaleForm = ({
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
 
   const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">(initialData?.paymentType ?? "CASH_SALE");
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? "PICKUP");
   const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? "");
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
@@ -337,6 +350,11 @@ const SaleForm = ({
       return;
     }
 
+    if (paymentType === "CASH_SALE" && !cashBankAccountId) {
+      setError("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™");
+      return;
+    }
+
     const form = e.currentTarget;
     const formData = new FormData(form);
     formData.set("items", JSON.stringify(items));
@@ -344,6 +362,7 @@ const SaleForm = ({
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
     formData.set("shippingMethod", fulfillmentType === "DELIVERY" ? shippingMethod : "NONE");
+    formData.set("cashBankAccountId", cashBankAccountId);
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -467,6 +486,21 @@ const SaleForm = ({
             </select>
           </div>
           )}
+          <div>
+            <label className={labelCls}>
+              à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™ {paymentType === "CASH_SALE" && <span className="text-red-500">*</span>}
+            </label>
+            <SearchableSelect
+              options={cashBankAccounts.map((account): SelectOption => ({
+                id: account.id,
+                label: account.name,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "à¹€à¸‡à¸´à¸™à¸ªà¸”", account.accountNo].filter(Boolean).join(" | ") || undefined,
+              }))}
+              value={cashBankAccountId}
+              onChange={setCashBankAccountId}
+              placeholder="à¹‚à¸›à¸£à¸”à¸£à¸°à¸šà¸¸à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™"
+            />
+          </div>
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
             <input

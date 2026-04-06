@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ReceiptForm from "./ReceiptForm";
@@ -10,7 +11,8 @@ const NewReceiptPage = async () => {
   await requirePermission("receipts.create");
 
   // Get customers with outstanding Sale AR balance
-  const saleBalances = await db.sale.groupBy({
+  const [saleBalances, cnBalances, cashBankAccounts] = await Promise.all([
+    db.sale.groupBy({
     by:    ["customerId"],
     where: {
       customerId:   { not: null },
@@ -19,10 +21,10 @@ const NewReceiptPage = async () => {
       amountRemain: { gt: 0 },
     },
     _sum: { amountRemain: true },
-  });
+    }),
 
   // Get customers with unused CREDIT_DEBT credit notes
-  const cnBalances = await db.creditNote.groupBy({
+    db.creditNote.groupBy({
     by:    ["customerId"],
     where: {
       customerId:     { not: null },
@@ -31,7 +33,9 @@ const NewReceiptPage = async () => {
       amountRemain:   { gt: 0 },
     },
     _sum: { amountRemain: true },
-  });
+    }),
+    getActiveCashBankAccountOptions(),
+  ]);
 
   // Merge all customer IDs that have any outstanding balance or CN credit
   const allCustomerIds = [
@@ -83,7 +87,7 @@ const NewReceiptPage = async () => {
 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบเสร็จรับเงิน</h1>
 
-      <ReceiptForm customers={customers} />
+      <ReceiptForm customers={customers} cashBankAccounts={cashBankAccounts} />
     </div>
   );
 };

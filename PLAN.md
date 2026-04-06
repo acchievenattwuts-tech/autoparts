@@ -1183,108 +1183,108 @@ for (const lot of claimLots) {
 ---
 
 ### 🔲 Phase 6.6 — โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
-> เป้าหมาย: ทำ "Cash/Bank ledger ระดับใช้งานจริง" แบบเบา ใช้คุมว่าเงินอยู่บัญชีไหน, เงินเข้าออกจากเอกสารอะไร, และดูยอดคงเหลือรายบัญชีได้ทันที โดยยังไม่เปิด scope เป็นระบบบัญชีเต็มหรือ bank reconcile เต็มรูปแบบตั้งแต่รอบแรก
+> เป้าหมาย: ทำ Cash/Bank ledger ระดับใช้งานจริงแบบเบา ใช้คุมว่าเงินอยู่บัญชีไหน, เงินเข้าออกจากเอกสารอะไร, และดูยอดคงเหลือรายบัญชีได้ทันที โดยยังไม่เปิด scope เป็นระบบบัญชีเต็มหรือ bank reconcile เต็มรูปแบบตั้งแต่รอบแรก
 
 #### ขอบเขตของ Lite Version
-- [ ] เพิ่ม master บัญชีการเงินแบบจำเป็นก่อน
-  - [ ] Cash/Bank Account master
-  - [ ] รองรับประเภทอย่างน้อย `CASH` / `BANK`
-  - [ ] เก็บ Opening balance และ Opening date ของแต่ละบัญชี
-  - [ ] รองรับสถานะ active/inactive
-  - [ ] ใช้จำนวนบัญชีแบบ lean สำหรับธุรกิจเริ่มต้น เช่น เงินสดหน้าร้าน, เงินสดย่อย, ธนาคารหลัก 1-2 บัญชี
-- [ ] เพิ่ม Cash/Bank ledger movement เป็น source of truth ของการเคลื่อนไหวเงิน
-  - [ ] ทุก movement ต้องระบุ `accountId`, `txnDate`, `direction (IN/OUT)`, `amount`, `balanceAfter`, `sourceType`, `sourceId`, `referenceNo`, `note`
-  - [ ] รองรับ source ขั้นต่ำใน Lite อย่างน้อย `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
-  - [ ] `PURCHASE` ใช้สำหรับรายการจ่ายเงินจริงให้ supplier ที่กระทบบัญชีเงินทันที
-  - [ ] `CN_SALE` ใช้สำหรับ Credit Note ฝั่งขายที่มีผลเป็นเงินออก/ปรับเงินลูกค้า
-  - [ ] `ADJUSTMENT` ใช้สำหรับการปรับยอดเงินระดับบัญชี เช่น เงินขาด/เงินเกิน/ค่าใช้จ่ายธนาคาร/ปรับยอดเริ่มต้นหลัง go-live
-  - [ ] ledger movement ต้องใช้เป็น cash/bank card ของแต่ละบัญชี ไม่ใช่คำนวณสดจากรายงานทุกครั้ง
-- [ ] ผูกเอกสารธุรกิจกับบัญชีการเงินเฉพาะจุดที่กระทบเงินจริงก่อน
-  - [ ] Sale แบบขายสด ต้องเลือกบัญชีรับเงิน
-  - [ ] Receipt ต้องเลือกบัญชีรับเงิน
-  - [ ] Purchase ที่จ่ายทันที ต้องเลือกบัญชีจ่ายเงิน
-  - [ ] Purchase ต้องมี `paymentStatus` (`UNPAID` / `PARTIALLY_PAID` / `PAID`) เพื่อแยกรายการที่ยังไม่กระทบเงินสด/ธนาคารออกจากรายการที่จ่ายเงินจริง
-  - [ ] Purchase ที่ `paymentStatus=UNPAID` ต้องยังไม่สร้าง cash/bank movement จนกว่าจะมีการจ่ายเงินจริง
-  - [ ] Expense ต้องเลือกบัญชีจ่ายเงิน
-  - [ ] Credit Note ฝั่งขายที่คืนเงินจริง ต้องเลือกบัญชีจ่ายเงิน
-  - [ ] Credit Note ฝั่งขายที่ `SettlementType=คืนเงินสด` ให้ถือเป็น `CN_SALE` ที่กระทบ cash/bank card โดยตรง
-  - [ ] Transfer ระหว่างบัญชี ต้องสร้าง movement 2 ฝั่ง (ออกจากบัญชีต้นทาง + เข้าบัญชีปลายทาง)
-  - [ ] เพิ่มโมดูล Adjustment สำหรับปรับยอดเงินรายบัญชีโดยตรง พร้อมเหตุผลและการอนุมัติใช้งานตามสิทธิ์
-  - [ ] เฟส Lite ยังไม่ทำ Bank Reconcile เต็ม แต่ต้องวางโครงสร้าง source และ card ให้พร้อมต่อยอด
+- [x] เพิ่ม master บัญชีการเงินแบบจำเป็นก่อน
+  - [x] Cash/Bank Account master
+  - [x] รองรับประเภทอย่างน้อย `CASH` / `BANK`
+  - [x] เก็บ Opening balance และ Opening date ของแต่ละบัญชี
+  - [x] รองรับสถานะ active/inactive
+  - [x] ใช้จำนวนบัญชีแบบ lean สำหรับธุรกิจเริ่มต้น เช่น เงินสดหน้าร้าน, เงินสดย่อย, ธนาคารหลัก 1-2 บัญชี
+- [x] เพิ่ม Cash/Bank ledger movement เป็น source of truth ของการเคลื่อนไหวเงิน
+  - [x] ทุก movement ต้องระบุ `accountId`, `txnDate`, `direction (IN/OUT)`, `amount`, `balanceAfter`, `sourceType`, `sourceId`, `referenceNo`, `note`
+  - [x] รองรับ source ขั้นต่ำใน Lite อย่างน้อย `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
+  - [x] `PURCHASE` ใช้สำหรับรายการจ่ายเงินจริงให้ supplier ที่กระทบบัญชีเงินทันที
+  - [x] `CN_SALE` ใช้สำหรับ Credit Note ฝั่งขายที่มีผลเป็นเงินออก/ปรับเงินลูกค้า
+  - [x] `ADJUSTMENT` ใช้สำหรับการปรับยอดเงินระดับบัญชี เช่น เงินขาด/เงินเกิน/ค่าธรรมเนียมธนาคาร/ปรับยอดเริ่มต้นหลัง go-live
+  - [x] ledger movement ต้องใช้เป็น cash/bank card ของแต่ละบัญชี ไม่ใช่คำนวณสดจากรายงานทุกครั้ง
+- [x] ผูกเอกสารธุรกิจกับบัญชีการเงินเฉพาะจุดที่กระทบเงินจริงก่อน
+  - [x] Sale แบบขายสด ต้องเลือกบัญชีรับเงิน
+  - [x] Receipt ต้องเลือกบัญชีรับเงิน
+  - [x] Purchase ที่จ่ายทันที ต้องเลือกบัญชีจ่ายเงิน
+  - [x] Purchase ต้องมี `paymentStatus` (`UNPAID` / `PARTIALLY_PAID` / `PAID`) เพื่อแยกรายการที่ยังไม่กระทบเงินจริงออกจากรายการที่จ่ายเงินจริง
+  - [x] Purchase ที่ `paymentStatus=UNPAID` ต้องยังไม่สร้าง cash/bank movement จนกว่าจะมีการจ่ายเงินจริง
+  - [x] Expense ต้องเลือกบัญชีจ่ายเงิน
+  - [x] Credit Note ฝั่งขายที่คืนเงินจริง ต้องเลือกบัญชีจ่ายเงิน
+  - [x] Credit Note ฝั่งขายที่ `SettlementType=คืนเงินสด` ให้ถือเป็น `CN_SALE` ที่กระทบ cash/bank card โดยตรง
+  - [x] Transfer ระหว่างบัญชี ต้องสร้าง movement 2 ฝั่ง (ออกจากบัญชีต้นทาง + เข้าบัญชีปลายทาง)
+  - [x] เพิ่มโมดูล Adjustment สำหรับปรับยอดเงินรายบัญชีโดยตรง พร้อมเหตุผลและการอนุมัติใช้งานตามสิทธิ์
+  - [x] เฟส Lite ยังไม่ทำ Bank Reconcile เต็ม แต่ต้องวางโครงสร้าง source และ card ให้พร้อมต่อยอด
 
 #### กติกาธุรกิจสำคัญของ Cash/Bank Card
-- [ ] การ "เพิ่มเอกสาร" ที่กระทบเงินจริง ต้องสร้าง cash/bank movement และอัปเดตยอดคงเหลือปลายรายการของบัญชีนั้นทันที
-- [ ] การ "แก้ไขเอกสาร" ที่กระทบเงินจริง ต้อง reverse movement เดิมก่อน แล้วสร้าง movement ชุดใหม่เสมอ ห้ามแก้ยอดใน card แบบทับค่าเดิม
-- [ ] การ "ยกเลิกเอกสาร" ที่กระทบเงินจริง ต้องยกเลิก movement ที่เกี่ยวข้องและ recalculate cash/bank card ของทุกบัญชีที่ได้รับผลกระทบ
-- [ ] การ "ปรับยอดเงินด้วย Adjustment" ต้องสร้าง movement ใหม่เสมอ และถ้ายกเลิกรายการต้อง reverse + recalculate cash/bank card เหมือนเอกสารประเภทอื่น
-- [ ] Adjustment ต้องผูกกับบทบาทและสิทธิของผู้ใช้ โดยแยกสิทธิ create/edit/cancel ให้ชัดก่อนเปิดใช้งาน
-- [ ] การโอนระหว่างบัญชีต้องเป็น atomic transaction เดียวเสมอ เพื่อไม่ให้ยอดเงินหายระหว่างทาง
-- [ ] ห้ามปล่อยให้เอกสารถูกแก้หรือยกเลิกโดยที่ cash/bank card ไม่อัปเดตตาม
-- [ ] ต้องมี utility กลางสำหรับ recalculate cash/bank card ตามลำดับวันและลำดับเอกสาร คล้ายแนวคิด `recalculateStockCard()` แต่สำหรับ ledger เงิน
+- [x] การเพิ่มเอกสารที่กระทบเงินจริง ต้องสร้าง cash/bank movement และอัปเดตยอดคงเหลือปลายรายการของบัญชีนั้นทันที
+- [x] การแก้ไขเอกสารที่กระทบเงินจริง ต้อง reverse/replace movement เดิมก่อน แล้วสร้าง movement ชุดใหม่เสมอ
+- [x] การยกเลิกเอกสารที่กระทบเงินจริง ต้องยกเลิก movement ที่เกี่ยวข้องและ recalculate cash/bank card ของทุกบัญชีที่ได้รับผลกระทบ
+- [x] การปรับยอดเงินด้วย Adjustment ต้องสร้าง movement ใหม่เสมอ และถ้ายกเลิกรายการต้อง reverse + recalculate cash/bank card เหมือนเอกสารประเภทอื่น
+- [x] Adjustment ต้องผูกกับบทบาทและสิทธิของผู้ใช้ โดยแยกสิทธิ create/edit/cancel ให้ชัดก่อนเปิดใช้งาน
+- [x] การโอนระหว่างบัญชีต้องเป็น atomic transaction เดียวเสมอ เพื่อไม่ให้ยอดเงินหายระหว่างทาง
+- [x] ห้ามปล่อยให้เอกสารถูกแก้หรือยกเลิกโดยที่ cash/bank card ไม่อัปเดตตาม
+- [x] ต้องมี utility กลางสำหรับ recalculate cash/bank card ตามลำดับวันและลำดับเอกสาร คล้ายแนวคิด `recalculateStockCard()` แต่สำหรับ ledger เงิน
 
 #### หน้าจอหลักของ Lite Version
 - [ ] เพิ่มเมนู `/admin/cash-bank/accounts`
-  - [ ] จัดการบัญชีเงินสด/ธนาคาร
-  - [ ] เปิด/ปิดการใช้งาน
-  - [ ] ตั้งยอดยกมา
-- [ ] เพิ่มเมนู `/admin/cash-bank/ledger`
-  - [ ] ดู cash/bank card รายบัญชี
-  - [ ] filter ตามบัญชี / ช่วงวันที่
-  - [ ] แยกประเภท source เช่น `SALE`, `RECEIPT`, `EXPENSE`, `TRANSFER`
-  - [ ] กดเข้าไปดูเอกสารต้นทางได้
-  - [ ] แสดงยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
-  - [ ] แสดง running balance ต่อรายการ
-- [ ] เพิ่มเมนู `/admin/cash-bank/transfers`
-  - [ ] บันทึกโอนเงินระหว่างบัญชีแบบง่าย
-  - [ ] ใช้สำหรับเงินสดฝากธนาคารหรือโอนข้ามบัญชีธนาคาร
-- [ ] เพิ่มเมนู `/admin/cash-bank/adjustments`
-  - [ ] บันทึกปรับยอดเงินเข้า/ออกบัญชีโดยตรง
-  - [ ] ใช้สำหรับเงินสดขาด/เกิน, ค่าธรรมเนียมธนาคาร, ดอกเบี้ย, และรายการปรับปรุงเปิดระบบ
-  - [ ] ต้องมีเหตุผลประกอบและรองรับการยกเลิกรายการพร้อม reverse movement
-  - [ ] ต้องตรวจ role/permission ก่อนสร้าง แก้ไข หรือยกเลิก Adjustment
+  - [x] จัดการบัญชีเงินสด/ธนาคาร
+  - [x] เปิด/ปิดการใช้งาน
+  - [x] ตั้งยอดยกมา
+- [x] เพิ่มเมนู `/admin/cash-bank/ledger`
+  - [x] ดู cash/bank card รายบัญชี
+  - [x] filter ตามบัญชี / ช่วงวันที่
+  - [x] แยกประเภท source เช่น `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
+  - [x] กดเข้าไปดูเอกสารต้นทางได้
+  - [x] แสดงยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
+  - [x] แสดง running balance ต่อรายการ
+- [x] เพิ่มเมนู `/admin/cash-bank/transfers`
+  - [x] บันทึกโอนเงินระหว่างบัญชีแบบง่าย
+  - [x] ใช้สำหรับเงินสดฝากธนาคารหรือโอนข้ามบัญชีธนาคาร
+- [x] เพิ่มเมนู `/admin/cash-bank/adjustments`
+  - [x] บันทึกปรับยอดเงินเข้า/ออกบัญชีโดยตรง
+  - [x] ใช้สำหรับเงินสดขาด/เกิน, ค่าธรรมเนียมธนาคาร, ดอกเบี้ย, และรายการปรับปรุงเปิดระบบ
+  - [x] ต้องมีเหตุผลประกอบและรองรับการยกเลิกรายการพร้อม reverse movement
+  - [x] ต้องตรวจ role/permission ก่อนสร้าง แก้ไข หรือยกเลิก Adjustment
 
 #### รายงานที่ต้องมีใน Lite Version
-- [ ] Cash/Bank Ledger Report
-  - [ ] filter ตามบัญชี / ช่วงวันที่
-  - [ ] แยกประเภท source เช่น `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
-  - [ ] กดเข้าไปดูเอกสารต้นทางได้
-  - [ ] สรุปยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
-- [ ] Cash/Bank Balance Summary
-  - [ ] สรุปยอดคงเหลือล่าสุดทุกบัญชี
-  - [ ] แยกเงินสด vs ธนาคาร
-  - [ ] drill-down เข้า ledger รายบัญชีได้
-- [ ] Transfer History Report
-  - [ ] ดูประวัติโอนระหว่างบัญชี
-  - [ ] ติดตามจากบัญชีต้นทาง/ปลายทาง/ช่วงวันที่ได้
+- [x] Cash/Bank Ledger Report
+  - [x] filter ตามบัญชี / ช่วงวันที่
+  - [x] แยกประเภท source เช่น `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
+  - [x] กดเข้าไปดูเอกสารต้นทางได้
+  - [x] สรุปยอดยกมา, รวมรับ, รวมจ่าย, ยอดคงเหลือปลายงวด
+- [x] Cash/Bank Balance Summary
+  - [x] สรุปยอดคงเหลือล่าสุดทุกบัญชีใน summary/print snapshot
+  - [x] แยกเงินสด vs ธนาคารใน summary/print snapshot
+  - [x] drill-down เข้า ledger รายบัญชีได้
+- [x] Transfer History Report
+  - [x] ดูประวัติโอนระหว่างบัญชี
+  - [x] ติดตามจากบัญชีต้นทาง/ปลายทาง/ช่วงวันที่ได้
 
 #### ผลกระทบที่ต้อง preview และแก้ในโมดูลรายงานปัจจุบัน
-- [ ] preview และทบทวน `/admin/reports/receipts`
-  - [ ] เพิ่มมุมมองบัญชีที่รับเงินจริง ไม่ใช่แค่ payment method
-  - [ ] เพิ่ม filter ตามบัญชีรับเงิน
-  - [ ] export ต้องรองรับ account name / account type / source ref
-- [ ] preview และทบทวน `/admin/reports/payments`
-  - [ ] เพิ่มมุมมองบัญชีที่จ่ายเงินจริง
-  - [ ] เพิ่ม filter ตามบัญชีจ่ายเงิน
-  - [ ] แยก movement จาก `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER OUT`, `ADJUSTMENT` และรายการจ่ายอื่นให้ชัด
-  - [ ] รายงานต้องสะท้อน `Purchase.paymentStatus` ให้ถูกต้อง โดย `UNPAID` ต้องไม่ถูกนับเป็นเงินจ่ายจริงในมุม ledger
-- [ ] preview และทบทวน `/admin/reports/credit-notes`
-  - [ ] แยกกรณี `CN_SALE` ที่เป็นเงินออกจริง ออกจาก CN ที่เป็นเพียงเอกสารลดหนี้
-  - [ ] เพิ่ม account-aware filters และ export fields สำหรับรายการคืนเงินจริง
-- [ ] preview และทบทวน `/admin/reports/summary`
-  - [ ] เพิ่ม summary ของยอดคงเหลือเงินสด/ธนาคาร
-  - [ ] ปรับความหมายของรายงานรับเงิน/จ่ายเงินให้สอดคล้องกับ ledger เงินจริง
-  - [ ] แยก "ยอดตามเอกสาร" ออกจาก "ยอดตามบัญชีเงิน"
-- [ ] preview และทบทวนรายงาน adjustment ใหม่ของ cash/bank
-  - [ ] ต้องเห็นประวัติการปรับยอดเงินรายบัญชี
-  - [ ] ต้องแยก adjustment ที่เป็นเงินเข้าและเงินออก
-- [ ] preview และทบทวน `/admin/reports/export` และ `/admin/reports/export-excel`
-  - [ ] เพิ่ม field บัญชีการเงิน, source type, source ref, running balance ตาม report type ที่เกี่ยวข้อง
-  - [ ] ตรวจว่าไฟล์ export เดิมไม่ทำให้ผู้ใช้เข้าใจว่า payment method เท่ากับบัญชีเงิน
-- [ ] preview และทบทวน `/admin/reports/print`
-  - [ ] ถ้าพิมพ์รายงานรับเงิน/จ่ายเงิน ต้องระบุบัญชีและยอดสรุปตาม ledger ได้ถูกต้อง
-- [ ] preview `lib/reports` และ `lib/report-queries`
-  - [ ] ปรับ query model จาก document-centric ไปเป็น account-aware สำหรับ report ที่เกี่ยวกับการเงิน
-  - [ ] ระบุชัดว่ารายงานไหนยังใช้ document totals ได้เหมือนเดิม และรายงานไหนต้องอิง ledger movement แทน
+- [x] preview และทบทวน `/admin/reports/receipts`
+  - [x] เพิ่มมุมมองบัญชีที่รับเงินจริง ไม่ใช่แค่ payment method
+  - [x] เพิ่ม filter ตามบัญชีรับเงิน
+  - [x] export ต้องรองรับ account name / account type / source ref
+- [x] preview และทบทวน `/admin/reports/payments`
+  - [x] เพิ่มมุมมองบัญชีที่จ่ายเงินจริง
+  - [x] เพิ่ม filter ตามบัญชีจ่ายเงิน
+  - [x] แยก movement จาก `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER OUT`, `ADJUSTMENT` และรายการจ่ายอื่นให้ชัด
+  - [x] รายงานต้องสะท้อน `Purchase.paymentStatus` ให้ถูกต้อง โดย `UNPAID` ต้องไม่ถูกนับเป็นเงินจ่ายจริงในมุม ledger
+- [x] preview และทบทวน `/admin/reports/credit-notes`
+  - [x] แยกกรณี `CN_SALE` ที่เป็นเงินออกจริง ออกจาก CN ที่เป็นเพียงเอกสารลดหนี้
+  - [x] เพิ่ม account-aware filters และ export fields สำหรับรายการคืนเงินจริง
+- [x] preview และทบทวน `/admin/reports/summary`
+  - [x] เพิ่ม summary ของยอดคงเหลือเงินสด/ธนาคาร
+  - [x] ปรับความหมายของรายงานรับเงิน/จ่ายเงินให้สอดคล้องกับ ledger เงินจริง
+  - [x] แยกยอดตามเอกสาร ออกจากยอดตามบัญชีเงิน
+- [x] preview และทบทวนรายงาน adjustment ใหม่ของ cash/bank
+  - [x] ต้องเห็นประวัติการปรับยอดเงินรายบัญชี
+  - [x] ต้องแยก adjustment ที่เป็นเงินเข้าและเงินออก
+- [x] preview และทบทวน `/admin/reports/export` และ `/admin/reports/export-excel`
+  - [x] เพิ่ม field บัญชีการเงินและข้อมูล source ตาม report type ที่เกี่ยวข้อง
+  - [x] ตรวจว่าไฟล์ export เดิมไม่ทำให้ผู้ใช้เข้าใจว่า payment method เท่ากับบัญชีเงิน
+- [x] preview และทบทวน `/admin/reports/print`
+  - [x] ถ้าพิมพ์รายงานรับเงิน/จ่ายเงิน ต้องระบุบัญชีและยอดสรุปตาม ledger ได้ถูกต้อง
+- [x] preview `lib/reports` และ `lib/report-queries`
+  - [x] ปรับ query model จาก document-centric ไปเป็น account-aware สำหรับ report ที่เกี่ยวกับการเงินในส่วนที่ทำแล้ว
+  - [x] ระบุชัดว่ารายงานไหนยังใช้ document totals ได้เหมือนเดิม และรายงานไหนต้องอิง ledger movement แทนให้ครบทั้งหมด
 
 #### เฟสที่ intentionally ยังไม่รวมใน Lite Version
 - [ ] ยังไม่ทำ Bank Reconcile เต็มรูปแบบใน Phase 6.6 Lite
@@ -1293,9 +1293,9 @@ for (const lot of claimLots) {
 - [ ] ย้ายสิ่งเหล่านี้ไปเป็นเฟสต่อยอดหลังธุรกิจเริ่มนิ่งและมี volume มากพอ
 - [ ] ไม่ต้องทำ backfill legacy movement สำหรับข้อมูลเก่า เพราะก่อนเริ่มใช้งานจริงจะ clear data แล้วเริ่มระบบใหม่
 
-> หมายเหตุ: เวอร์ชัน Lite นี้ตั้งใจให้เริ่มใช้งานได้เร็ว, คุมเงินจริงได้จริง, และไม่เพิ่มภาระงานเกินจำเป็นสำหรับธุรกิจเริ่มต้น โดยเน้น "รู้ว่าเงินอยู่บัญชีไหน" ก่อน "กระทบยอด statement อัตโนมัติ"
+> หมายเหตุ: เวอร์ชัน Lite นี้ตั้งใจให้เริ่มใช้งานได้เร็ว, คุมเงินจริงได้จริง, และไม่เพิ่มภาระงานเกินจำเป็นสำหรับธุรกิจเริ่มต้น โดยเน้นรู้ว่าเงินอยู่บัญชีไหนก่อนกระทบยอด statement อัตโนมัติ
 
-**Status update (2026-04-05):** เพิ่ม `/admin/reports` พร้อม filter ช่วงวันที่, สรุปยอดขายรายวัน/รายสัปดาห์/รายเดือน, กำไรขาดทุน + VAT breakdown, สต็อกคงเหลือ/ต่ำกว่า minStock, ประกันใกล้หมด, ลูกหนี้ค้างชำระแบบ aging, COD pending, สรุปซื้อแยกซัพพลายเออร์, สรุปขายแยกลูกค้า, export CSV สำหรับ Excel ที่ `/admin/reports/export`, และหน้า print สำหรับบันทึก PDF ที่ `/admin/reports/print`
+**Status update (2026-04-07):** วาง schema foundation, utility กลางสำหรับ movement/recalculate, ผูกเอกสาร `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`, เพิ่ม validation message, starter account seed, summary/print cash-bank snapshot, เพิ่ม `/admin/cash-bank/ledger`, รายงาน Cash/Bank Ledger, Transfer History, Adjustment History, drill-down จาก snapshot เข้า ledger รายบัญชี, และปรับ CSV/Excel export ให้ account-aware ครบแล้ว
 
 ### ✅ Phase 7 — SEO + AEO + AIO + Core Web Vitals (เสร็จสมบูรณ์ — เหลือ manual actions + ongoing content)
 
@@ -1745,3 +1745,260 @@ npm run db:restore backup-{timestamp}.json
   - knowledge article
 - Phase 7 implementation and external verification are complete.
 - The remaining open item is the ongoing production measurement + tuning loop.
+
+## Roadmap Update (2026-04-07 Phase 6.6 Lite Cash-Bank Progress)
+- Phase 6.6 Lite is now partially implemented in code, beyond the original roadmap draft.
+- The current foundation now includes schema, core movement logic, account-aware document flows, admin module surfaces, seed support, and report/export alignment work.
+
+### Completed in code
+- Added cash-bank schema foundation in `prisma/schema.prisma`
+  - `CashBankAccount`
+  - `CashBankMovement`
+  - `CashBankTransfer`
+  - `CashBankAdjustment`
+  - enums for account type, source type, direction, transfer status, and adjustment status
+- Added `cashBankAccountId` linkage to core money-impacting documents
+  - `Sale`
+  - `Receipt`
+  - `Purchase`
+  - `Expense`
+  - `CreditNote`
+- Added `Purchase.paymentStatus`
+  - `UNPAID`
+  - `PARTIALLY_PAID`
+  - `PAID`
+- Added cash-bank core utility layer
+  - movement replace/rebuild logic
+  - movement clear logic
+  - running balance recalculation per account
+  - account lookup/link helpers
+- Added admin cash-bank module surfaces
+  - `/admin/cash-bank`
+  - `/admin/cash-bank/transfers`
+  - `/admin/cash-bank/adjustments`
+- Added permissions and sidebar integration for cash-bank module access
+- Added seed support for default cash-bank accounts
+  - `CASH-MAIN`
+  - `BANK-KBANK`
+  - `BANK-KTB`
+- Updated `package.json` so `npm run seed` now loads `.env.local` automatically
+
+### Core business logic now implemented
+- `SALE`
+  - cash sale must select a receiving cash/bank account
+  - creates `IN` movement into the selected account
+- `RECEIPT`
+  - receipt must select a receiving cash/bank account
+  - creates `IN` movement into the selected account
+- `PURCHASE`
+  - only `paymentStatus = PAID` is treated as real money-out in ledger
+  - `UNPAID` must not create cash-bank movement
+  - purchase must select a paying cash/bank account when it impactsเงินจริง
+- `EXPENSE`
+  - expense must select a paying cash/bank account
+  - creates `OUT` movement from the selected account
+- `CN_SALE`
+  - only `CreditNote.settlementType = CASH_REFUND` is treated as real money-out
+  - creates `OUT` movement from the selected account
+  - `CREDIT_DEBT` remains document/AR logic, not cash out
+- `TRANSFER`
+  - transfer creates 2 linked movements in one flow
+  - source account `OUT`
+  - destination account `IN`
+- `ADJUSTMENT`
+  - adjustment supports direct in/out movement against an account
+  - intended for opening correction, cash difference, bank fee, manual adjustment cases
+
+### Critical ledger rules that must remain true
+- `CashBankMovement` is the source of truth for cash/bank card movement.
+- Every movement must carry at least:
+  - `accountId`
+  - `txnDate`
+  - `direction`
+  - `amount`
+  - `balanceAfter`
+  - `sourceType`
+  - `sourceId`
+  - `referenceNo`
+  - `note`
+- Document change rules:
+  - add document -> create or replace movement entries
+  - edit document -> clear old movement for that source, rebuild new movement, then recalculate balances
+  - cancel document -> clear movement for that source, then recalculate affected account balances
+- Cash/bank cards must always be recalculated after any add/edit/cancel that affects money.
+- Running balance must come from ordered ledger movement, not from ad hoc report summation.
+- `paymentMethod` alone must never be treated as the bank/cash account identity.
+- `accountId` is the account identity; `paymentMethod` is only the payment channel label.
+
+### Validation and safety rules now added
+- Cash-bank account validation
+  - `BANK` accounts require `bankName`
+  - `BANK` accounts require `accountNo`
+  - opening date must be valid
+- Transfer validation
+  - source and destination accounts cannot be the same
+  - amount must be greater than zero
+  - cancel requires a reason
+- Adjustment validation
+  - account is required
+  - amount must be greater than zero
+  - reason is required
+  - cancel requires a reason
+- Seed logic now skips admin creation if seed admin env vars are not provided, but still creates default cash-bank accounts
+
+### Reporting work completed
+- Added reusable cash-bank snapshot component for summary and print reports
+- Updated summary report and print report to show cash/bank snapshot
+- Updated report data layer so daily receipt/payment summaries can carry account-aware data
+- Daily receipt summary now supports
+  - `SALE`
+  - `RECEIPT`
+  - account name
+- Daily payment summary now supports
+  - `PURCHASE`
+  - `EXPENSE`
+  - `CN_SALE`
+  - account name
+  - `creditNoteRefundAmount`
+
+### Export alignment completed
+- CSV and Excel export flows under:
+  - `/admin/reports/export`
+  - `/admin/reports/export-excel`
+- Export datasets now align more closely with current cash-bank logic:
+  - receipts export includes account
+  - payments export includes account
+  - daily receipt export includes account
+  - daily payment export includes account
+  - sales export now includes payment method and account
+  - purchases export now includes payment status, payment method, and account
+  - credit note export now includes refund method and account
+- Excel layouts were updated so added columns still keep correct total-row positions
+
+### Seed and environment note
+- `npm run seed` should now be the standard command for this repo.
+- It runs:
+  - `npx tsx --env-file=.env.local prisma/seed.ts`
+- This avoids the previous problem where `npm run seed` did not automatically load `.env.local`.
+
+### Still open after the current coding pass
+- UI copy cleanup in some older report pages that still contain mojibake/encoding-damaged Thai text
+- More explicit account-aware filters and fields for:
+  - sales register page UI
+  - purchase register page UI
+  - credit note register page UI
+- Back-office polish
+  - final validation wording across all related forms
+  - usage guide / operating instructions for staff
+
+### Current implementation order from this point
+- [x] Schema foundation
+- [x] Core cash-bank utility logic
+- [x] Document linkage for `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`
+- [x] Cash-bank admin module shell
+- [x] Transfer module
+- [x] Adjustment module
+- [x] Seed default accounts
+- [x] Summary/print cash-bank snapshot
+- [x] Main CSV/Excel export alignment for account/source fields
+- [x] Final summary CSV cleanup in `lib/reports.ts`
+- [x] Cash-bank ledger report page
+- [x] Transfer history report
+- [x] Adjustment history report
+- [ ] Staff usage guide and final UX polish
+
+### Phase 6.6 Lite checklist status snapshot
+
+#### Completed
+- [x] Cash-bank schema foundation
+- [x] `CashBankAccount`
+- [x] `CashBankMovement`
+- [x] `CashBankTransfer`
+- [x] `CashBankAdjustment`
+- [x] Cash-bank enums for account type, source type, direction, and statuses
+- [x] `cashBankAccountId` linkage on `Sale`, `Receipt`, `Purchase`, `Expense`, `CreditNote`
+- [x] `Purchase.paymentStatus`
+
+- [x] Core movement utility layer
+- [x] Replace movement by source
+- [x] Clear movement by source
+- [x] Recalculate running balance by account
+- [x] Use movement as source of truth for cash/bank card
+
+- [x] Document linkage in working code
+- [x] `SALE` cash sale
+- [x] `RECEIPT`
+- [x] `PURCHASE` where `paymentStatus = PAID`
+- [x] `EXPENSE`
+- [x] `CN_SALE` for `CreditNote.settlementType = CASH_REFUND`
+
+- [x] Critical add/edit/cancel ledger rules in working code
+- [x] Add document -> create movement
+- [x] Edit document -> clear old movement and rebuild
+- [x] Cancel document -> clear movement and recalculate
+- [x] Recalculate affected account balances after document change
+
+- [x] Admin cash-bank module shell
+- [x] `/admin/cash-bank`
+- [x] `/admin/cash-bank/transfers`
+- [x] `/admin/cash-bank/adjustments`
+- [x] Permission integration
+- [x] Sidebar integration
+
+- [x] Transfer logic
+- [x] `OUT` from source account
+- [x] `IN` to destination account
+- [x] Cancel transfer and rebuild balances
+
+- [x] Adjustment logic
+- [x] Direct `IN` / `OUT` movement
+- [x] Reason validation
+- [x] Permission-aware create/edit/cancel flow
+
+- [x] Validation improvements
+- [x] `BANK` account requires `bankName`
+- [x] `BANK` account requires `accountNo`
+- [x] Transfer cannot use the same source/destination account
+- [x] Amount must be greater than zero
+- [x] Cancel transfer requires a reason
+- [x] Cancel adjustment requires a reason
+
+- [x] Seed support
+- [x] Default account seed logic
+- [x] `CASH-MAIN`
+- [x] `BANK-KBANK`
+- [x] `BANK-KTB`
+- [x] `npm run seed` now loads `.env.local`
+
+- [x] Summary/print reporting integration
+- [x] Cash-bank snapshot component
+- [x] Summary report shows cash-bank snapshot
+- [x] Print report shows cash-bank snapshot
+- [x] Snapshot drill-down links to `/admin/cash-bank/ledger`
+- [x] Daily receipt summary carries account information
+- [x] Daily payment summary carries account information
+- [x] Daily payment summary includes `CN_SALE` refund amount
+
+- [x] CSV/Excel export alignment
+- [x] Receipts export includes account
+- [x] Payments export includes account
+- [x] Daily receipt export includes account
+- [x] Daily payment export includes account
+- [x] Sales export includes payment method and account
+- [x] Purchases export includes payment status, payment method, and account
+- [x] Credit note export includes refund method and account
+- [x] Excel total-row positions updated to match added columns
+
+- [x] Dedicated cash-bank reporting
+- [x] Full cash-bank ledger report page
+- [x] Transfer history report
+- [x] Adjustment history report
+- [x] Report tab navigation for cash-bank reports
+- [x] CSV/Excel export support for new cash-bank report types
+- [x] `lib/reports` / `lib/report-queries` cleanup for ledger-based vs document-based reporting
+
+- [x] Latest `npm run build` passes after these changes
+
+#### Still open
+- [ ] Final text/encoding cleanup in older report UI surfaces
+- [ ] Staff usage guide / back-office operating notes

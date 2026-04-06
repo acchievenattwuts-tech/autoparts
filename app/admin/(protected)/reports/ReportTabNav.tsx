@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { label: "รายงานขาย",    href: "/admin/reports/sales" },
-  { label: "รายงานซื้อ",    href: "/admin/reports/purchases" },
-  { label: "คืนขาย (CN)",  href: "/admin/reports/credit-notes" },
-  { label: "รับเงิน",       href: "/admin/reports/receipts" },
-  { label: "จ่ายเงิน",      href: "/admin/reports/payments" },
-  { label: "สรุปภาพรวม",   href: "/admin/reports/summary" },
+  { label: "รายงานขาย", href: "/admin/reports/sales" },
+  { label: "รายงานซื้อ", href: "/admin/reports/purchases" },
+  { label: "คืนขาย (CN)", href: "/admin/reports/credit-notes" },
+  { label: "รับเงิน", href: "/admin/reports/receipts" },
+  { label: "จ่ายเงิน", href: "/admin/reports/payments" },
+  { label: "Cash / Bank Ledger", href: "/admin/reports/cash-bank-ledger" },
+  { label: "Transfer History", href: "/admin/reports/cash-bank-transfers" },
+  { label: "Adjustment History", href: "/admin/reports/cash-bank-adjustments" },
+  { label: "สรุปภาพรวม", href: "/admin/reports/summary" },
 ];
 
 export default function ReportTabNav() {
@@ -23,10 +26,10 @@ export default function ReportTabNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            className={`rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               active
-                ? "border-[#1e3a5f] text-[#1e3a5f] bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-[#1e3a5f] bg-white text-[#1e3a5f]"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
             }`}
           >
             {tab.label}

@@ -12,12 +12,12 @@
     "codex:skill:install:seo-aio": "node scripts/install-codex-skill.mjs seo-aio",
     "codex:skill:install:all": "node scripts/install-codex-skill.mjs --all",
     "postinstall": "prisma generate",
-    "seed": "tsx prisma/seed.ts",
+    "seed": "npx tsx --env-file=.env.local prisma/seed.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",
     "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "npx tsx --env-file=.env.local prisma/seed.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
