@@ -198,7 +198,12 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 - Never import `pg.Pool` directly — use `PrismaPg({ connectionString, ... })` instead (avoids type conflicts).
 - Never use the `any` type under any circumstance.
 - Never commit `.env`, `.env.local`, or any file containing secrets.
-- **All files must be saved in UTF-8 encoding** — never use other encodings (e.g., Windows-1252, TIS-620). Thai text that appears garbled (mojibake) is a sign of incorrect encoding and must be fixed immediately.
+- **Thai text must never be corrupted — this is an iron rule.** Every file created or modified must preserve Thai characters correctly. Concretely:
+  - Always write and save source files in **UTF-8 without BOM** (except CSV exports which require a BOM for Excel compatibility — use `\uFEFF` prefix).
+  - Never use Windows-1252, TIS-620, or any non-UTF-8 encoding.
+  - After writing any file that contains Thai text, mentally verify that the characters are intact — garbled output (mojibake such as `àµÒ`) means the encoding is wrong and must be corrected immediately before proceeding.
+  - When generating string literals with Thai content in code, write the actual Thai characters directly — never use escape sequences (`\uXXXX`) as a substitute for readable Thai text.
+  - CSV / Excel exports that target Thai users **must** include a UTF-8 BOM (`\uFEFF`) so Excel opens them correctly without manual encoding selection.
 
 ## 9. Performance Standards (Nasdaq-Grade)
 

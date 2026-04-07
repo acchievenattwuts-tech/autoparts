@@ -98,14 +98,26 @@
       "Bash(grep -n \"items\\\\|productName\\\\|unitName\\\\|unitPrice\" D:/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)",
       "Bash(dir \"d:\\\\autoparts\\\\app\\\\admin\")",
       "Bash(ls \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\delivery\\\\print\"\")",
+      "Bash(DOTENV_CONFIG_PATH=.env.local npx prisma generate)",
+      "Bash(grep -v \"//.*<img\\\\|//.*<Image\")",
+      "Bash(find \"d:/autoparts/app/admin/\\(protected\\)\" -type d)",
+      "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/lots/\")",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "Bash(node -e ':*)",
+      "Bash(ls -la /d/autoparts/app/product*/)",
+      "Bash(sed -n '445,475p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(sed -n '501,545p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(sed -n '605,640p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(sed -n '820,850p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(sed -n '772,830p' d:/autoparts/prisma/schema.prisma)",
+      "Bash(npm audit:*)",
+      "Bash(npm uninstall:*)",
       "mcp__TestSprite__testsprite_bootstrap",
       "mcp__TestSprite__testsprite_generate_code_summary",
       "mcp__TestSprite__testsprite_generate_standardized_prd",
       "mcp__TestSprite__testsprite_generate_frontend_test_plan",
       "mcp__TestSprite__testsprite_generate_code_and_execute",
+      "Bash(node -e ':*)",
       "Bash(node:*)",
       "mcp__TestSprite__testsprite_check_account_info",
       "Bash(xargs -I {} ls \"{}\")",
@@ -119,7 +131,9 @@
       "Bash(cp /tmp/stash_list.tsx \"app/admin/\\(protected\\)/purchases/page.tsx\")",
       "Bash(cp /tmp/stash_edit.tsx \"app/admin/\\(protected\\)/purchases/[id]/edit/page.tsx\")",
       "Bash(cp /tmp/stash_reports.tsx \"app/admin/\\(protected\\)/reports/purchases/page.tsx\")",
-      "Bash(cp /tmp/stash_rq.ts \"lib/report-queries.ts\")"
+      "Bash(cp /tmp/stash_rq.ts \"lib/report-queries.ts\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({path:'.env.local'}\\); console.log\\(process.env.DATABASE_URL ? 'found' : 'not found'\\)\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({path:'.env.local'}\\); const {execSync}=require\\('child_process'\\); console.log\\(execSync\\('npx prisma db push', {env:{...process.env}, encoding:'utf8'}\\)\\);\")"
     ]
   }
 }
