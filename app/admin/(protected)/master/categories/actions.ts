@@ -11,6 +11,12 @@ const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
 });
 
+const buildRevalidationPathVariants = (path: string) => {
+  const variants = new Set<string>([path]);
+  variants.add(encodeURI(path));
+  return [...variants];
+};
+
 const refreshCategorySearchCaches = async ({
   categoryId,
   categoryPaths = [],
@@ -21,7 +27,7 @@ const refreshCategorySearchCaches = async ({
   revalidatePath("/");
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
-  categoryPaths.forEach((path) => revalidatePath(path));
+  categoryPaths.flatMap(buildRevalidationPathVariants).forEach((path) => revalidatePath(path));
   updateTag("storefront:categories");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
