@@ -1,8 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import {
+  parseARAPStockFilters,
+  queryAPData,
+  type ARAPStockFilters,
+} from "@/lib/ar-ap-stock-report-queries";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -23,132 +29,34 @@ function formatCurrency(value: number): string {
   });
 }
 
+function buildQuery(filters: ARAPStockFilters, supplierId: string | undefined): string {
+  const params = new URLSearchParams();
+  params.set("from", filters.fromStr);
+  params.set("to", filters.toStr);
+  if (supplierId) params.set("supplierId", supplierId);
+  return params.toString();
+}
+
 export default async function APReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
+  const filters = parseARAPStockFilters(params);
 
-  const hasFilter = params.from || params.to || params.supplierId;
-
-  type PurchaseRow = {
-    id: string;
-    purchaseNo: string;
-    purchaseDate: Date;
-    supplier: { name: string } | null;
-    totalAmount: unknown;
-    amountRemain: unknown;
-  };
-
-  type AdvanceRow = {
-    id: string;
-    advanceNo: string;
-    advanceDate: Date;
-    supplier: { name: string } | null;
-    totalAmount: unknown;
-    amountRemain: unknown;
-  };
-
-  type CNRow = {
-    id: string;
-    returnNo: string;
-    returnDate: Date;
-    supplier: { name: string } | null;
-    totalAmount: unknown;
-    amountRemain: unknown;
-  };
-
-  let purchases: PurchaseRow[] = [];
-  let advances: AdvanceRow[] = [];
-  let cnCredits: CNRow[] = [];
-  let suppliers: { id: string; name: string }[] = [];
-
-  const dateWhere = (field: string) =>
-    params.from || params.to
-      ? {
-          [field]: {
-            ...(params.from ? { gte: new Date(params.from) } : {}),
-            ...(params.to ? { lte: new Date(params.to + "T23:59:59") } : {}),
-          },
-        }
-      : {};
-
-  if (hasFilter) {
-    [purchases, advances, cnCredits, suppliers] = await Promise.all([
-      db.purchase.findMany({
-        where: {
-          purchaseType: "CREDIT_PURCHASE",
-          status: "ACTIVE",
-          amountRemain: { gt: 0 },
-          ...(params.supplierId ? { supplierId: params.supplierId } : {}),
-          ...dateWhere("purchaseDate"),
-        },
-        orderBy: { purchaseDate: "asc" },
-        take: 200,
-        select: {
-          id: true,
-          purchaseNo: true,
-          purchaseDate: true,
-          supplier: { select: { name: true } },
-          totalAmount: true,
-          amountRemain: true,
-        },
-      }),
-      db.supplierAdvance.findMany({
-        where: {
-          status: "ACTIVE",
-          amountRemain: { gt: 0 },
-          ...(params.supplierId ? { supplierId: params.supplierId } : {}),
-          ...dateWhere("advanceDate"),
-        },
-        orderBy: { advanceDate: "asc" },
-        take: 200,
-        select: {
-          id: true,
-          advanceNo: true,
-          advanceDate: true,
-          supplier: { select: { name: true } },
-          totalAmount: true,
-          amountRemain: true,
-        },
-      }),
-      db.purchaseReturn.findMany({
-        where: {
-          settlementType: "SUPPLIER_CREDIT",
-          status: "ACTIVE",
-          amountRemain: { gt: 0 },
-          ...(params.supplierId ? { supplierId: params.supplierId } : {}),
-          ...dateWhere("returnDate"),
-        },
-        orderBy: { returnDate: "asc" },
-        take: 200,
-        select: {
-          id: true,
-          returnNo: true,
-          returnDate: true,
-          supplier: { select: { name: true } },
-          totalAmount: true,
-          amountRemain: true,
-        },
-      }),
-      db.supplier.findMany({
-        where: { isActive: true },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true },
-        take: 500,
-      }),
-    ]);
-  } else {
-    suppliers = await db.supplier.findMany({
+  const [suppliers, apData] = await Promise.all([
+    db.supplier.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
       take: 500,
-    });
-  }
+    }),
+    filters.hasFilter ? queryAPData(filters) : Promise.resolve({ purchases: [], advances: [], cnCredits: [] }),
+  ]);
 
-  const totalPayable = purchases.reduce((sum, r) => sum + Number(r.amountRemain), 0);
-  const totalAdvance = advances.reduce((sum, r) => sum + Number(r.amountRemain), 0);
-  const totalCN = cnCredits.reduce((sum, r) => sum + Number(r.amountRemain), 0);
+  const totalPayable = apData.purchases.reduce((sum, r) => sum + r.amountRemain, 0);
+  const totalAdvance = apData.advances.reduce((sum, r) => sum + r.amountRemain, 0);
+  const totalCN = apData.cnCredits.reduce((sum, r) => sum + r.amountRemain, 0);
   const netPayable = totalPayable - totalAdvance - totalCN;
+  const exportQuery = buildQuery(filters, params.supplierId);
 
   return (
     <div className="space-y-4">
@@ -165,7 +73,7 @@ export default async function APReportPage({ searchParams }: PageProps) {
           <input
             type="date"
             name="from"
-            defaultValue={params.from ?? ""}
+            defaultValue={filters.fromStr}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </label>
@@ -174,7 +82,7 @@ export default async function APReportPage({ searchParams }: PageProps) {
           <input
             type="date"
             name="to"
-            defaultValue={params.to ?? ""}
+            defaultValue={filters.toStr}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </label>
@@ -201,29 +109,45 @@ export default async function APReportPage({ searchParams }: PageProps) {
         </button>
         <Link
           href="/admin/reports/ap"
-          className="h-9 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
         >
           ล้าง
         </Link>
+        <div className="ml-auto flex gap-2">
+          <Link
+            href={`/admin/reports/export?type=ap&${exportQuery}`}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            <FileText size={14} />
+            CSV
+          </Link>
+          <Link
+            href={`/admin/reports/export-excel?type=ap&${exportQuery}`}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700"
+          >
+            <FileSpreadsheet size={14} />
+            Excel
+          </Link>
+        </div>
       </form>
 
-      {!hasFilter ? (
+      {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-          <p className="text-gray-400">เลือกเงื่อนไขแล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
         </div>
       ) : (
         <div className="space-y-6">
           {/* Net Position Summary */}
           <div className="grid gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-gray-100 bg-rose-50 p-4 shadow-sm">
+            <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 shadow-sm">
               <p className="text-xs text-rose-600">ค้างจ่ายซัพพลายเออร์</p>
               <p className="font-kanit text-xl font-bold text-rose-700">฿{formatCurrency(totalPayable)}</p>
             </div>
-            <div className="rounded-xl border border-gray-100 bg-emerald-50 p-4 shadow-sm">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
               <p className="text-xs text-emerald-600">เงินมัดจำคงเหลือ (ลบ)</p>
               <p className="font-kanit text-xl font-bold text-emerald-700">฿{formatCurrency(totalAdvance)}</p>
             </div>
-            <div className="rounded-xl border border-gray-100 bg-amber-50 p-4 shadow-sm">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
               <p className="text-xs text-amber-700">เครดิต CN คืนสินค้า (ลบ)</p>
               <p className="font-kanit text-xl font-bold text-amber-700">฿{formatCurrency(totalCN)}</p>
             </div>
@@ -242,29 +166,29 @@ export default async function APReportPage({ searchParams }: PageProps) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
+                <thead className="bg-[#1e3a5f] text-white">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">เลขที่</th>
-                    <th className="px-3 py-2 text-left font-medium">วันที่ซื้อ</th>
-                    <th className="px-3 py-2 text-left font-medium">ซัพพลายเออร์</th>
-                    <th className="px-3 py-2 text-right font-medium">ยอดซื้อ</th>
-                    <th className="px-3 py-2 text-right font-medium">ค้างจ่าย</th>
-                    <th className="px-3 py-2 text-center font-medium">เอกสาร</th>
+                    <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">วันที่ซื้อ</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ยอดซื้อ</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ค้างจ่าย</th>
+                    <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {purchases.length === 0 ? (
+                <tbody className="divide-y divide-gray-100">
+                  {apData.purchases.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-6 text-center text-gray-400">ไม่พบรายการ</td>
                     </tr>
                   ) : (
-                    purchases.map((row) => (
-                      <tr key={row.id} className="border-t border-gray-100">
+                    apData.purchases.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.purchaseNo}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(row.purchaseDate)}</td>
-                        <td className="px-3 py-2 text-gray-800">{row.supplier?.name ?? "-"}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(Number(row.totalAmount))}</td>
-                        <td className="px-3 py-2 text-right font-medium text-rose-700">{formatCurrency(Number(row.amountRemain))}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.purchaseDate)}</td>
+                        <td className="px-3 py-2 text-gray-800">{row.supplierName || "-"}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(row.totalAmount)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-rose-700">{formatCurrency(row.amountRemain)}</td>
                         <td className="px-3 py-2 text-center">
                           <Link href={`/admin/purchases/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline">เปิด</Link>
                         </td>
@@ -283,29 +207,29 @@ export default async function APReportPage({ searchParams }: PageProps) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
+                <thead className="bg-[#1e3a5f] text-white">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">เลขที่</th>
-                    <th className="px-3 py-2 text-left font-medium">วันที่</th>
-                    <th className="px-3 py-2 text-left font-medium">ซัพพลายเออร์</th>
-                    <th className="px-3 py-2 text-right font-medium">ยอดมัดจำ</th>
-                    <th className="px-3 py-2 text-right font-medium">คงเหลือ</th>
-                    <th className="px-3 py-2 text-center font-medium">เอกสาร</th>
+                    <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ยอดมัดจำ</th>
+                    <th className="px-3 py-2.5 text-right font-medium">คงเหลือ</th>
+                    <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {advances.length === 0 ? (
+                <tbody className="divide-y divide-gray-100">
+                  {apData.advances.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-6 text-center text-gray-400">ไม่พบรายการ</td>
                     </tr>
                   ) : (
-                    advances.map((row) => (
-                      <tr key={row.id} className="border-t border-gray-100">
+                    apData.advances.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.advanceNo}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(row.advanceDate)}</td>
-                        <td className="px-3 py-2 text-gray-800">{row.supplier?.name ?? "-"}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(Number(row.totalAmount))}</td>
-                        <td className="px-3 py-2 text-right font-medium text-emerald-700">{formatCurrency(Number(row.amountRemain))}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.advanceDate)}</td>
+                        <td className="px-3 py-2 text-gray-800">{row.supplierName || "-"}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(row.totalAmount)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-emerald-700">{formatCurrency(row.amountRemain)}</td>
                         <td className="px-3 py-2 text-center">
                           <Link href={`/admin/supplier-advances/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline">เปิด</Link>
                         </td>
@@ -324,29 +248,29 @@ export default async function APReportPage({ searchParams }: PageProps) {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
+                <thead className="bg-[#1e3a5f] text-white">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">เลขที่</th>
-                    <th className="px-3 py-2 text-left font-medium">วันที่คืน</th>
-                    <th className="px-3 py-2 text-left font-medium">ซัพพลายเออร์</th>
-                    <th className="px-3 py-2 text-right font-medium">ยอดคืน</th>
-                    <th className="px-3 py-2 text-right font-medium">คงเหลือ</th>
-                    <th className="px-3 py-2 text-center font-medium">เอกสาร</th>
+                    <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">วันที่คืน</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ยอดคืน</th>
+                    <th className="px-3 py-2.5 text-right font-medium">คงเหลือ</th>
+                    <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {cnCredits.length === 0 ? (
+                <tbody className="divide-y divide-gray-100">
+                  {apData.cnCredits.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-6 text-center text-gray-400">ไม่พบรายการ</td>
                     </tr>
                   ) : (
-                    cnCredits.map((row) => (
-                      <tr key={row.id} className="border-t border-gray-100">
+                    apData.cnCredits.map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.returnNo}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(row.returnDate)}</td>
-                        <td className="px-3 py-2 text-gray-800">{row.supplier?.name ?? "-"}</td>
-                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(Number(row.totalAmount))}</td>
-                        <td className="px-3 py-2 text-right font-medium text-amber-700">{formatCurrency(Number(row.amountRemain))}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.returnDate)}</td>
+                        <td className="px-3 py-2 text-gray-800">{row.supplierName || "-"}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(row.totalAmount)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-amber-700">{formatCurrency(row.amountRemain)}</td>
                         <td className="px-3 py-2 text-center">
                           <Link href={`/admin/purchase-returns/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline">เปิด</Link>
                         </td>

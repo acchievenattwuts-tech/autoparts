@@ -23,6 +23,15 @@ import {
   queryCashBankLedgerData,
   queryCashBankTransferHistoryRows,
 } from "@/lib/cash-bank-report-queries";
+import {
+  parseARAPStockFilters,
+  queryARRows,
+  queryAPData,
+  queryStockRows,
+  buildARCsv,
+  buildAPCsv,
+  buildStockCsv,
+} from "@/lib/ar-ap-stock-report-queries";
 
 export async function GET(request: Request) {
   await requirePermission("reports.view");
@@ -41,6 +50,11 @@ export async function GET(request: Request) {
     cnType: searchParams.get("cnType") ?? undefined,
     paymentMethod: searchParams.get("paymentMethod") ?? undefined,
     docType: searchParams.get("docType") ?? undefined,
+    customerId: searchParams.get("customerId") ?? undefined,
+    supplierId: searchParams.get("supplierId") ?? undefined,
+    categoryId: searchParams.get("categoryId") ?? undefined,
+    search: searchParams.get("search") ?? undefined,
+    showAll: searchParams.get("showAll") ?? undefined,
   };
 
   const filters = parseReportQueryFilters(params);
@@ -50,6 +64,27 @@ export async function GET(request: Request) {
   let fileName: string;
 
   switch (type) {
+    case "ar": {
+      const arFilters = parseARAPStockFilters(params);
+      const rows = await queryARRows(arFilters);
+      csv = buildARCsv(rows);
+      fileName = `ar-report-${dateRange}.csv`;
+      break;
+    }
+    case "ap": {
+      const apFilters = parseARAPStockFilters(params);
+      const data = await queryAPData(apFilters);
+      csv = buildAPCsv(data);
+      fileName = `ap-report-${dateRange}.csv`;
+      break;
+    }
+    case "stock": {
+      const stockFilters = parseARAPStockFilters(params);
+      const rows = await queryStockRows(stockFilters);
+      csv = buildStockCsv(rows);
+      fileName = `stock-report.csv`;
+      break;
+    }
     case "cash-bank-ledger": {
       const cashBankFilters = parseCashBankReportFilters(params);
       const data = await queryCashBankLedgerData(cashBankFilters);

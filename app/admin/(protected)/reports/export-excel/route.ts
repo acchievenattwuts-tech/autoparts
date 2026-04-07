@@ -25,6 +25,15 @@ import {
   type CashBankTransferHistoryRow,
   type CashBankAdjustmentHistoryRow,
 } from "@/lib/cash-bank-report-queries";
+import {
+  parseARAPStockFilters,
+  queryARRows,
+  queryAPData,
+  queryStockRows,
+  buildARExcel,
+  buildAPExcel,
+  buildStockExcel,
+} from "@/lib/ar-ap-stock-report-queries";
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -434,6 +443,11 @@ export async function GET(request: Request) {
     cnType: searchParams.get("cnType") ?? undefined,
     paymentMethod: searchParams.get("paymentMethod") ?? undefined,
     docType: searchParams.get("docType") ?? undefined,
+    customerId: searchParams.get("customerId") ?? undefined,
+    supplierId: searchParams.get("supplierId") ?? undefined,
+    categoryId: searchParams.get("categoryId") ?? undefined,
+    search: searchParams.get("search") ?? undefined,
+    showAll: searchParams.get("showAll") ?? undefined,
   };
 
   const filters = parseReportQueryFilters(params);
@@ -443,6 +457,27 @@ export async function GET(request: Request) {
   let fileName: string;
 
   switch (type) {
+    case "ar": {
+      const arFilters = parseARAPStockFilters(params);
+      const rows = await queryARRows(arFilters);
+      buffer = await buildARExcel(rows, "ลูกหนี้ค้างชำระ");
+      fileName = `ar-report-${dateRange}.xlsx`;
+      break;
+    }
+    case "ap": {
+      const apFilters = parseARAPStockFilters(params);
+      const data = await queryAPData(apFilters);
+      buffer = await buildAPExcel(data, "เจ้าหนี้คงค้าง");
+      fileName = `ap-report-${dateRange}.xlsx`;
+      break;
+    }
+    case "stock": {
+      const stockFilters = parseARAPStockFilters(params);
+      const rows = await queryStockRows(stockFilters);
+      buffer = await buildStockExcel(rows, "Stock คงเหลือ");
+      fileName = `stock-report.xlsx`;
+      break;
+    }
     case "cash-bank-ledger": {
       const cashBankFilters = parseCashBankReportFilters(params);
       const data = await queryCashBankLedgerData(cashBankFilters);

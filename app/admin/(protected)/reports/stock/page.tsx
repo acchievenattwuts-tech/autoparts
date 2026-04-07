@@ -1,8 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import {
+  parseARAPStockFilters,
+  queryStockRows,
+} from "@/lib/ar-ap-stock-report-queries";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -25,61 +30,22 @@ function formatQty(value: number): string {
 export default async function StockReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
+  const filters = parseARAPStockFilters(params);
 
-  const hasFilter = params.categoryId || params.search || params.showAll;
-
-  let categories: { id: string; name: string }[] = [];
-  let products: {
-    id: string;
-    code: string;
-    name: string;
-    stock: unknown;
-    avgCost: unknown;
-    category: { name: string };
-    minStock: number | null;
-  }[] = [];
-
-  [categories] = await Promise.all([
+  const [categories, products] = await Promise.all([
     db.category.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    filters.hasFilter ? queryStockRows(filters) : Promise.resolve([]),
   ]);
 
-  if (hasFilter) {
-    products = await db.product.findMany({
-      where: {
-        isActive: true,
-        ...(params.categoryId ? { categoryId: params.categoryId } : {}),
-        ...(params.search
-          ? {
-              OR: [
-                { name: { contains: params.search, mode: "insensitive" } },
-                { code: { contains: params.search, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-        ...(params.showAll !== "1" ? { stock: { gt: 0 } } : {}),
-      },
-      orderBy: [{ category: { name: "asc" } }, { code: "asc" }],
-      take: 500,
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        stock: true,
-        avgCost: true,
-        minStock: true,
-        category: { select: { name: true } },
-      },
-    });
-  }
-
-  const totalValue = products.reduce(
-    (sum, p) => sum + Number(p.stock) * Number(p.avgCost),
-    0,
-  );
-  const totalItems = products.length;
+  const totalValue = products.reduce((sum, p) => sum + p.stockValue, 0);
+  const exportQuery = new URLSearchParams({
+    ...(params.categoryId ? { categoryId: params.categoryId } : {}),
+    ...(params.search ? { search: params.search } : {}),
+    ...(params.showAll === "1" ? { showAll: "1" } : {}),
+  }).toString();
 
   return (
     <div className="space-y-4">
@@ -117,7 +83,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-xs font-medium text-gray-600 self-end pb-1">
+        <label className="flex items-center gap-2 self-end pb-1 text-xs font-medium text-gray-600">
           <input
             type="checkbox"
             name="showAll"
@@ -135,13 +101,29 @@ export default async function StockReportPage({ searchParams }: PageProps) {
         </button>
         <Link
           href="/admin/reports/stock"
-          className="h-9 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
         >
           ล้าง
         </Link>
+        <div className="ml-auto flex gap-2">
+          <Link
+            href={`/admin/reports/export?type=stock&${exportQuery}`}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            <FileText size={14} />
+            CSV
+          </Link>
+          <Link
+            href={`/admin/reports/export-excel?type=stock&${exportQuery}`}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700"
+          >
+            <FileSpreadsheet size={14} />
+            Excel
+          </Link>
+        </div>
       </form>
 
-      {!hasFilter ? (
+      {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
           <p className="text-gray-400">เลือกเงื่อนไขแล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
         </div>
@@ -150,16 +132,16 @@ export default async function StockReportPage({ searchParams }: PageProps) {
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <p className="text-xs text-gray-500">จำนวน SKU</p>
-              <p className="font-kanit text-2xl font-bold text-gray-900">{totalItems}</p>
+              <p className="font-kanit text-2xl font-bold text-gray-900">{products.length}</p>
             </div>
             <div className="rounded-xl border border-gray-100 bg-[#1e3a5f]/5 p-4 shadow-sm">
               <p className="text-xs text-gray-600">มูลค่าสต็อกรวม</p>
               <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">฿{formatCurrency(totalValue)}</p>
             </div>
-            <div className="rounded-xl border border-gray-100 bg-amber-50 p-4 shadow-sm">
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
               <p className="text-xs text-amber-700">สินค้าสต็อก 0</p>
               <p className="font-kanit text-2xl font-bold text-amber-700">
-                {products.filter((p) => Number(p.stock) === 0).length}
+                {products.filter((p) => p.stock === 0).length}
               </p>
             </div>
           </div>
@@ -167,17 +149,17 @@ export default async function StockReportPage({ searchParams }: PageProps) {
           <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-600">
+                <thead className="bg-[#1e3a5f] text-white">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">รหัส</th>
-                    <th className="px-3 py-2 text-left font-medium">ชื่อสินค้า</th>
-                    <th className="px-3 py-2 text-left font-medium">หมวดหมู่</th>
-                    <th className="px-3 py-2 text-right font-medium">สต็อก (base)</th>
-                    <th className="px-3 py-2 text-right font-medium">ต้นทุนเฉลี่ย</th>
-                    <th className="px-3 py-2 text-right font-medium">มูลค่า</th>
+                    <th className="px-3 py-2.5 text-left font-medium">รหัส</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ชื่อสินค้า</th>
+                    <th className="px-3 py-2.5 text-left font-medium">หมวดหมู่</th>
+                    <th className="px-3 py-2.5 text-right font-medium">สต็อก (base)</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ต้นทุนเฉลี่ย</th>
+                    <th className="px-3 py-2.5 text-right font-medium">มูลค่า</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-100">
                   {products.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
@@ -186,12 +168,9 @@ export default async function StockReportPage({ searchParams }: PageProps) {
                     </tr>
                   ) : (
                     products.map((p) => {
-                      const stock = Number(p.stock);
-                      const avgCost = Number(p.avgCost);
-                      const value = stock * avgCost;
-                      const isLow = p.minStock != null && stock <= p.minStock;
+                      const isLow = p.minStock != null && p.stock <= p.minStock;
                       return (
-                        <tr key={p.id} className={`border-t border-gray-100 ${isLow ? "bg-rose-50/40" : ""}`}>
+                        <tr key={p.id} className={`hover:bg-gray-50 ${isLow ? "bg-rose-50/40" : ""}`}>
                           <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">
                             <Link href={`/admin/products/${p.id}`} className="hover:underline">
                               {p.code}
@@ -205,15 +184,15 @@ export default async function StockReportPage({ searchParams }: PageProps) {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-gray-500">{p.category.name}</td>
-                          <td className={`px-3 py-2 text-right font-medium ${stock === 0 ? "text-gray-400" : "text-gray-900"}`}>
-                            {formatQty(stock)}
+                          <td className="px-3 py-2 text-gray-500">{p.categoryName}</td>
+                          <td className={`px-3 py-2 text-right font-medium ${p.stock === 0 ? "text-gray-400" : "text-gray-900"}`}>
+                            {formatQty(p.stock)}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-600">
-                            {formatCurrency(avgCost)}
+                            {formatCurrency(p.avgCost)}
                           </td>
                           <td className="px-3 py-2 text-right font-medium text-[#1e3a5f]">
-                            {formatCurrency(value)}
+                            {formatCurrency(p.stockValue)}
                           </td>
                         </tr>
                       );

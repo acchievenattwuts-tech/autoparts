@@ -2281,12 +2281,11 @@ npm run db:restore backup-{timestamp}.json
   - ADMIN_ROUTE_RULES: `/admin/supplier-advances`, `/admin/supplier-payments`
   - AdminSidebar: เงินมัดจำซัพพลายเออร์, จ่ายชำระซัพพลายเออร์
 
-- [ ] ขยาย reports / dashboard / export สำหรับ A/P เต็มรูปแบบ
-  - รายงานเงินมัดจำ supplier คงเหลือ ณ วันที่
-  - รายงานเจ้าหนี้คงค้าง (A/P) ณ วันที่
-  - รายงานเครดิต CN ซื้อคงเหลือ ณ วันที่
-  - รายงานฐานะสุทธิ supplier ณ วันที่
-  - dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding
+- [x] ขยาย reports / export สำหรับ A/R และ A/P เบื้องต้น (เสร็จแล้ว — 2026-04-08)
+  - [x] รายงานลูกหนี้ค้างชำระ (A/R) — `/admin/reports/ar` — filter วันที่ + ลูกค้า, CSV + Excel
+  - [x] รายงานเจ้าหนี้คงค้าง (A/P) — `/admin/reports/ap` — filter วันที่ + supplier, 3 sections (ซื้อเชื่อ / มัดจำ / CN เครดิต), CSV + Excel
+  - [x] รายงาน Stock คงเหลือ — `/admin/reports/stock` — filter หมวดหมู่ + ค้นหา, CSV + Excel
+  - [ ] dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding (ยังไม่ทำ)
 
 - [ ] ทำ data migration / backfill สำหรับเอกสารซื้อเก่าที่ต้องเข้ากับ flow ใหม่
 
@@ -2295,3 +2294,105 @@ npm run db:restore backup-{timestamp}.json
 - [x] ใช้ checklist นี้เป็นตัวบอกสถานะปัจจุบันแทนการ append log ต่อท้าย
 - [x] งานที่เสร็จแล้วต้องย้ายมาอยู่ใต้ `เสร็จแล้ว`
 - [ ] งานที่เริ่มทำรอบถัดไปให้ย้ายมาอยู่หัวข้อ `กำลังทำ` หากต้องการติดตามละเอียดขึ้น
+
+---
+
+## Roadmap Update (2026-04-08 — Purchase Return Type / Credit Term / AR-AP-Stock Reports)
+
+### สิ่งที่ implement เสร็จในรอบนี้
+
+#### 1. PurchaseReturn Type System
+
+เพิ่ม enum `PurchaseReturnType` (RETURN | DISCOUNT | OTHER) ใน schema และผูกกับ `PurchaseReturn.type`:
+
+- [x] Schema: `enum PurchaseReturnType { RETURN DISCOUNT OTHER }` + field `type PurchaseReturnType @default(RETURN)` ใน `PurchaseReturn`
+- [x] `prisma db push` สำเร็จ
+- [x] `PurchaseReturnForm.tsx` — UI เลือก type แบบ 3-button toggle ก่อนส่วน settlementType
+- [x] Business logic: `type = RETURN` → deduct stock + lot เหมือนเดิม; `DISCOUNT` / `OTHER` → ข้าม stock/lot ทั้งหมด
+- [x] Cancel: ตรวจ `ret.type === RETURN` ก่อน reverse stock — ไม่ reverse ถ้าเป็น DISCOUNT/OTHER
+- [x] Update: ตรวจ `oldHadStock` ก่อน decide ว่าต้อง reverse ชุดเก่าหรือไม่
+- [x] Detail page: แสดง label ของ type ที่เลือก
+- [x] Edit page: ส่ง `type: ret.type` เข้า initialData
+
+#### 2. Customer creditTerm
+
+- [x] Schema: `creditTerm Int?` บน `Customer` model
+- [x] `prisma db push` สำเร็จ
+- [x] `CustomerForm.tsx` — เพิ่ม input field creditTerm (จำนวนวัน)
+- [x] `customers/actions.ts` — validate + save `creditTerm` ทั้ง create และ update
+
+#### 3. Sale creditTerm
+
+- [x] Schema: `creditTerm Int?` บน `Sale` model
+- [x] `prisma db push` สำเร็จ
+- [x] `SaleForm.tsx` — auto-fill จาก customer ที่เลือก, แก้ไขได้, state `creditTerm`
+- [x] `sales/new/page.tsx` — ดึง `creditTerm: true` จาก customer
+- [x] `sales/[id]/edit/page.tsx` — ส่ง `creditTerm: sale.creditTerm ?? null` เข้า initialData
+- [x] `sales/actions.ts` — validate + save `creditTerm` ทั้ง create และ update
+
+#### 4. Browser Tab Titles
+
+- [x] `supplier-advances/page.tsx` — เพิ่ม `export const metadata = { title: "เงินมัดจำซัพพลายเออร์" }`
+- [x] `supplier-payments/page.tsx` — เพิ่ม `export const metadata = { title: "จ่ายชำระซัพพลายเออร์" }`
+
+#### 5. Reports — No-Query-on-Open Pattern
+
+เพิ่ม `hasFilter: boolean` ใน filter types และเปลี่ยน query เป็น conditional:
+
+- [x] `lib/report-queries.ts` — เพิ่ม `hasFilter: !!(params.from || params.to)` ใน `parseReportQueryFilters`
+- [x] `lib/cash-bank-report-queries.ts` — เพิ่ม `hasFilter` ใน `parseCashBankReportFilters`
+- [x] ทุกหน้า report (sales, purchases, credit-notes, receipts, payments) — conditional query + empty state
+- [x] ทุกหน้า cash-bank report (ledger, transfers, adjustments) — conditional query + empty state
+
+#### 6. Reports — ปรับ Summary
+
+- [x] `ReportsContent.tsx` — ลบ VAT Summary card ออก, ปรับหัว section จาก "Tax & Stock" เป็น "Stock"
+
+#### 7. Reports — 3 Tab ใหม่ (AR / AP / Stock)
+
+- [x] `ReportTabNav.tsx` — เพิ่ม tab: ลูกหนี้ (AR), เจ้าหนี้ (AP), Stock คงเหลือ
+- [x] `lib/ar-ap-stock-report-queries.ts` (ไฟล์ใหม่) — ครอบคลุม:
+  - `ARAPStockFilters` type + `parseARAPStockFilters()` (date defaults: 1st of month → today)
+  - `ARRow` + `queryARRows()` — query CREDIT_SALE ที่ amountRemain > 0
+  - `buildARCsv()` + `buildARExcel()` — CSV (BOM) + Excel (.xlsx)
+  - `APData` + `queryAPData()` — query purchases/advances/cnCredits แบบ parallel
+  - `buildAPCsv()` — 3 sections ในไฟล์เดียว
+  - `buildAPExcel()` — 3 worksheets ในไฟล์เดียว
+  - `StockRow` + `queryStockRows()` — query products พร้อม categoryName + stockValue
+  - `buildStockCsv()` + `buildStockExcel()`
+
+#### 8. AR Report Page (`/admin/reports/ar`)
+
+- [x] ใช้ `parseARAPStockFilters` — date input pre-filled ด้วย 1st of month / today
+- [x] ใช้ `queryARRows` จาก lib
+- [x] filter: ช่วงวันที่ + ลูกค้า
+- [x] summary cards: จำนวนเอกสาร, ยอดขายรวม, ยอดค้างชำระรวม
+- [x] ตาราง: เลขที่, วันที่, ลูกค้า, ยอดขาย, ค้างชำระ, เครดิต (วัน), link เปิดเอกสาร
+- [x] ปุ่ม CSV + Excel export
+
+#### 9. AP Report Page (`/admin/reports/ap`)
+
+- [x] ใช้ `parseARAPStockFilters` — date defaults เหมือน AR
+- [x] ใช้ `queryAPData` จาก lib
+- [x] filter: ช่วงวันที่ + supplier
+- [x] summary cards: ค้างจ่าย, มัดจำคงเหลือ, CN เครดิต, ยอดสุทธิ
+- [x] 3 ตาราง: ค้างจ่ายซัพพลายเออร์ / มัดจำคงเหลือ / CN เครดิตคงเหลือ
+- [x] ปุ่ม CSV + Excel export (AP Excel = 3 worksheets)
+
+#### 10. Stock Report Page (`/admin/reports/stock`)
+
+- [x] ใช้ `queryStockRows` จาก lib
+- [x] filter: ค้นหา + หมวดหมู่ + รวมสต็อก 0
+- [x] summary cards: จำนวน SKU, มูลค่าสต็อกรวม, สต็อก 0
+- [x] ตาราง: รหัส, ชื่อสินค้า, หมวดหมู่, สต็อก, ต้นทุนเฉลี่ย, มูลค่า (highlight ใกล้ขั้นต่ำ)
+- [x] ปุ่ม CSV + Excel export
+
+#### 11. Export Routes อัพเดท
+
+- [x] `reports/export/route.ts` — เพิ่ม params: customerId, supplierId, categoryId, search, showAll + cases: `ar`, `ap`, `stock`
+- [x] `reports/export-excel/route.ts` — เพิ่ม params เดียวกัน + cases: `ar`, `ap`, `stock`
+
+### ยังไม่ทำในรอบนี้
+
+- [ ] Dashboard cards สำหรับ A/P outstanding, supplier advance, CN credit outstanding
+- [ ] Data migration / backfill เอกสารเก่า
