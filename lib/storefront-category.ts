@@ -1,4 +1,3 @@
-import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import {
@@ -35,42 +34,37 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
 export async function getStorefrontCategoryPageData(categorySlug: string) {
   const category = await getActiveStorefrontCategoryBySlug(categorySlug);
 
-  const products = await unstable_cache(
-    async () =>
-      db.product.findMany({
-        where: {
-          isActive: true,
-          categoryId: category.id,
-        },
+  const products = await db.product.findMany({
+    where: {
+      isActive: true,
+      categoryId: category.id,
+    },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      code: true,
+      imageUrl: true,
+      salePrice: true,
+      stock: true,
+      reportUnitName: true,
+      category: { select: { name: true, slug: true } },
+      brand: { select: { name: true } },
+      carModels: {
         select: {
-          id: true,
-          name: true,
-          slug: true,
-          code: true,
-          imageUrl: true,
-          salePrice: true,
-          stock: true,
-          reportUnitName: true,
-          category: { select: { name: true, slug: true } },
-          brand: { select: { name: true } },
-          carModels: {
+          carModel: {
             select: {
-              carModel: {
-                select: {
-                  name: true,
-                  carBrand: { select: { name: true } },
-                },
-              },
+              name: true,
+              carBrand: { select: { name: true } },
             },
-            take: 6,
           },
         },
-        orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
-        take: 8,
-      }),
-    [`storefront-category-products:${category.id}`],
-    { tags: ["storefront:products", "storefront:categories"] },
-  )();
+        take: 6,
+      },
+    },
+    orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
+    take: 8,
+  });
 
   return { category, products };
 }
