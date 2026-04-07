@@ -11,8 +11,11 @@ const categorySchema = z.object({
 });
 
 const refreshCategorySearchCaches = async (categoryId?: string) => {
+  revalidatePath("/");
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
+  updateTag("storefront:categories");
+  updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateTag("product-search");
 
