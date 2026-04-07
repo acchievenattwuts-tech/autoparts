@@ -1997,3 +1997,224 @@ npm run db:restore backup-{timestamp}.json
 #### Still open
 - [x] Final text/encoding cleanup in older report UI surfaces
 - [x] Staff usage guide / back-office operating notes
+
+## Roadmap Update (2026-04-07 Supplier AP + Advance Redesign)
+
+> **สถานะปัจจุบัน:** approved design + schema foundation started
+> **หลักการ:** ฝั่ง supplier ต้อง mirror logic ฝั่งขายให้มากที่สุด
+> `Receipt` ฝั่งขาย = `SupplierPayment` ฝั่งซื้อ
+> **ตัด `SupplierAdvanceApply` ออก**
+> เงินมัดจำจะถูก apply ผ่าน `SupplierPaymentItem` เท่านั้น
+
+### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
+
+| ประเด็น | ข้อตกลง |
+| --- | --- |
+| เงินมัดจำ supplier | ใช้เอกสาร `SupplierAdvance` แยกจาก `Purchase` เสมอ |
+| การตัดใช้เงินมัดจำ | ไม่สร้าง `SupplierAdvanceApply` |
+| เอกสาร apply กลาง | ใช้ `SupplierPayment` เป็นตัว apply `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, และ `SupplierAdvance` |
+| การผูก supplier | เอกสารใน `SupplierPayment` ต้องเป็น supplier เดียวกันทั้งหมด |
+| ซื้อสินค้า | เพิ่ม `Purchase.purchaseType = CASH_PURCHASE / CREDIT_PURCHASE` |
+| ซื้อสด | เงินออกที่ `Purchase` ทันที และ `amountRemain = 0` |
+| ซื้อเชื่อ | ไม่กระทบ cash/bank ตอนรับสินค้า และไปรับชำระที่ `SupplierPayment` |
+| คืนสินค้าซัพพลายเออร์ | เพิ่ม `settlementType = CASH_REFUND / SUPPLIER_CREDIT` |
+| CN ซื้อแบบคืนเงิน | เป็นเงิน **เข้า** เรา ไม่ใช่เงินออก |
+| CN ซื้อแบบตั้งเครดิต | ไม่กระทบ cash/bank ทันที และใช้หักใน `SupplierPayment` |
+
+### สูตร amountRemain ที่ต้องใช้ต่อจากนี้
+
+> ให้ copy logic จากฝั่งขายและ CN ขาย โดยเปลี่ยนเอกสารอ้างอิงเป็นฝั่ง supplier
+
+- `Sale.amountRemain = netAmount - sum(active ReceiptItem.saleId)`
+- `CreditNote.amountRemain = totalAmount - sum(active ReceiptItem.cnId)` เฉพาะ `CREDIT_DEBT`
+
+ฝั่ง supplier:
+
+- `Purchase.amountRemain = netAmount - sum(active SupplierPaymentItem.purchaseId)`
+- `PurchaseReturn.amountRemain = totalAmount - sum(active SupplierPaymentItem.purchaseReturnId)` เฉพาะ `settlementType = SUPPLIER_CREDIT`
+- `SupplierAdvance.amountRemain = totalAmount - sum(active SupplierPaymentItem.advanceId)`
+
+กติกา:
+
+- `CASH_PURCHASE` ต้องมี `amountRemain = 0` เสมอ
+- `PurchaseReturn.settlementType = CASH_REFUND` ต้องมี `amountRemain = 0` เสมอ
+- เอกสาร `CANCELLED` ทุกประเภทต้องมี `amountRemain = 0`
+- ทุกบรรทัดใน `SupplierPaymentItem` ใช้ได้ไม่เกิน `amountRemain` ล่าสุดของเอกสารปลายทาง
+
+### เอกสารหลักใน design ใหม่
+
+#### 1. Purchase
+
+- หน้าที่: รับสินค้าเข้า + VAT + stock movement
+- เพิ่ม `purchaseType`
+- ใช้ `amountRemain` จริงทั้งซื้อสดและซื้อเชื่อ
+- `paymentStatus` ต้อง derive จาก `amountRemain` และสถานะการชำระจริง
+- cash movement เกิดที่:
+  - `Purchase` เอง เมื่อ `purchaseType = CASH_PURCHASE`
+  - `SupplierPayment` เมื่อ `purchaseType = CREDIT_PURCHASE`
+
+#### 2. SupplierAdvance
+
+- หน้าที่: จ่ายมัดจำหรือจ่ายล่วงหน้า supplier ก่อนรับสินค้า
+- ไม่กระทบ stock
+- กระทบ cash/bank ทันที (เงินออก)
+- ยอดคงเหลือเก็บที่ `amountRemain`
+- ใช้หักได้เฉพาะ supplier เดียวกันผ่าน `SupplierPayment`
+
+#### 3. PurchaseReturn
+
+- หน้าที่: คืนสินค้า supplier + RETURN_OUT + VAT
+- เพิ่ม settlement 2 แบบ:
+  - `CASH_REFUND` = supplier คืนเงินจริงเข้ามา
+  - `SUPPLIER_CREDIT` = เก็บเครดิตไว้หักตอนจ่าย supplier รอบถัดไป
+- `SUPPLIER_CREDIT` ต้องมี `amountRemain`
+- `CASH_REFUND` ต้องสร้าง cash/bank movement ฝั่ง `IN`
+
+#### 4. SupplierPayment
+
+- หน้าที่: mirror หน้า `Receipt`
+- ใช้ชำระ / net off เอกสาร supplier
+- ดึงเอกสารได้ 3 ประเภท:
+  - `Purchase` ค้างจ่าย
+  - `PurchaseReturn` แบบ `SUPPLIER_CREDIT`
+  - `SupplierAdvance` คงเหลือ
+- สูตรเงินสดจริง:
+  - `totalCashPaid = sum(Purchase) - sum(PurchaseReturn SUPPLIER_CREDIT) - sum(SupplierAdvance)`
+- ถ้า `totalCashPaid > 0` ต้องเลือก cash/bank account
+- ถ้า `totalCashPaid = 0` ให้บันทึกได้แบบ net off
+- ถ้า `totalCashPaid < 0` ไม่ให้บันทึก
+
+### Schema foundation ที่ต้องมี
+
+- `Purchase.purchaseType`
+- `PurchaseReturn.settlementType`
+- `PurchaseReturn.refundMethod`
+- `PurchaseReturn.amountRemain`
+- `PurchaseReturn.cashBankAccountId`
+- model `SupplierAdvance`
+- model `SupplierPayment`
+- model `SupplierPaymentItem`
+- cash/bank source ใหม่:
+  - `CN_PURCHASE`
+  - `SUPPLIER_ADVANCE`
+  - `SUPPLIER_PAYMENT`
+
+### จุดที่กระทบของเดิม
+
+#### Purchase flow
+
+- `app/admin/(protected)/purchases/actions.ts`
+  - ต้องเลิก block partial payment
+  - ต้องแยก flow `CASH_PURCHASE` vs `CREDIT_PURCHASE`
+  - ต้องคำนวณ `amountRemain` แบบใหม่
+  - cash movement ของ `CREDIT_PURCHASE` ต้องย้ายไป `SupplierPayment`
+
+#### Purchase Return flow
+
+- `app/admin/(protected)/purchase-returns/actions.ts`
+  - เพิ่ม settlement logic แบบ mirror `CreditNote`
+  - `CASH_REFUND` ต้องเป็นเงินเข้า cash/bank
+  - `SUPPLIER_CREDIT` ต้องคำนวณ `amountRemain`
+  - ยกเลิกเอกสารต้อง reverse เครดิต/ledger ให้ครบ
+
+#### Amount remain utility
+
+- `lib/amount-remain.ts`
+  - เพิ่ม helper:
+    - `recalculatePurchaseAmountRemain`
+    - `recalculatePurchaseReturnAmountRemain`
+    - `recalculateSupplierAdvanceAmountRemain`
+  - สูตรต้องยึด pattern เดียวกับ `Sale` และ `CreditNote`
+
+#### Running number / doc number
+
+- `lib/doc-number.ts`
+  - เพิ่ม running number สำหรับ:
+    - `SupplierAdvance`
+    - `SupplierPayment`
+  - ปรับ prefix logic สำหรับ `Purchase` cash/credit ให้ mirror sale
+
+#### Cash / Bank
+
+- `lib/cash-bank.ts`
+  - เพิ่ม source support:
+    - `CN_PURCHASE`
+    - `SUPPLIER_ADVANCE`
+    - `SUPPLIER_PAYMENT`
+- `lib/cash-bank-links.ts`
+  - เพิ่ม label / route mapping สำหรับเอกสารใหม่
+- `lib/cash-bank-report-queries.ts`
+  - ledger ต้อง drill down ไปเอกสารใหม่ได้
+
+#### Permissions / Routes / Sidebar
+
+- `lib/access-control.ts`
+  - เพิ่ม permission ใหม่สำหรับ:
+    - supplier advances
+    - supplier payments
+  - เพิ่ม route rules
+- `AdminSidebar.tsx`
+  - เพิ่มเมนูตาม permission
+- ทุก page / action ใหม่ต้องใช้ `requirePermission()`
+
+#### Reports / Dashboard / Export
+
+- `lib/report-queries.ts`
+  - รายงาน register ต้องรองรับเอกสารใหม่
+  - รายงานจ่ายเงินต้องเปลี่ยนจากดู `Purchase.paymentStatus = PAID` อย่างเดียว
+  - ต้องรวม `SupplierAdvance` และ `SupplierPayment`
+- `lib/reports.ts`
+  - summary ต้องเพิ่มฝั่งเจ้าหนี้/เครดิต/มัดจำ
+- `app/admin/(protected)/page.tsx`
+  - dashboard ต้องเพิ่ม cards ใหม่
+- `reports/export` และ `reports/export-excel`
+  - ต้องเพิ่ม/ปรับ export datasets และ column
+
+### รายงานที่ต้องมี / ต้องแก้
+
+#### รายงานใหม่
+
+- รายงานเงินมัดจำ supplier คงเหลือ ณ วันที่
+- รายงานเจ้าหนี้คงค้าง ณ วันที่
+- รายงานเครดิต CN ซื้อคงเหลือ ณ วันที่
+- รายงานฐานะสุทธิ supplier ณ วันที่
+  - `เจ้าหนี้คงค้าง - เงินมัดจำคงเหลือ - เครดิต CN ซื้อคงเหลือ`
+
+#### รายงานเดิมที่ต้องขยาย
+
+- รายงานซื้อ
+  - แสดง `purchaseType`, `paymentStatus`, `amountRemain`
+- รายงานจ่ายเงิน
+  - รวม `Purchase` ซื้อสด
+  - รวม `SupplierAdvance`
+  - รวม `SupplierPayment`
+- รายงานรับเงิน
+  - ต้องรองรับ `PurchaseReturn(CASH_REFUND)` เป็นเงินเข้า
+- Cash / Bank Ledger
+  - drill down source ใหม่ครบ
+- Summary report / print report / CSV / Excel
+  - เพิ่ม A/P
+  - เพิ่ม supplier advance outstanding
+  - เพิ่ม purchase return supplier credit outstanding
+  - เพิ่มผลรวม cash in จาก `CN_PURCHASE`
+  - เพิ่มผลรวม cash out จาก `SUPPLIER_ADVANCE` และ `SUPPLIER_PAYMENT`
+
+### Dashboard ที่ต้องเพิ่ม / แก้
+
+- Card: เจ้าหนี้คงค้าง (A/P)
+- Card: เงินมัดจำ supplier คงเหลือ
+- Card: เครดิต CN ซื้อคงเหลือ
+- ปรับ daily cash-in ให้รวม `PurchaseReturn(CASH_REFUND)`
+- ปรับ daily cash-out ให้รวม `SupplierAdvance` และ `SupplierPayment`
+
+### Rollout order
+
+1. Schema foundation
+2. amountRemain helpers
+3. doc number + cash-bank source mappings
+4. SupplierAdvance module
+5. Purchase refactor (`CASH_PURCHASE` / `CREDIT_PURCHASE`)
+6. PurchaseReturn settlement refactor
+7. SupplierPayment module
+8. Reports / dashboard / export / permissions / sidebar
+9. data migration + backfill for old purchase documents
