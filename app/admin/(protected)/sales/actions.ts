@@ -141,7 +141,7 @@ async function assertLotBalanceAvailable(
   for (const lot of lots) {
     const qtyOnHand = balanceMap.get(lot.lotNo) ?? 0;
     if (qtyOnHand + 0.0001 < lot.qtyInBase) {
-      throw new Error(`Lot ${lot.lotNo} à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­à¹„à¸¡à¹ˆà¸žà¸­`);
+      throw new Error(`Lot ${lot.lotNo} คงเหลือไม่พอ`);
     }
   }
 }

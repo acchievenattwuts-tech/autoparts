@@ -11,6 +11,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
         },
         select: {
           id: true,
+          categoryId: true,
           slug: true,
           code: true,
           name: true,
@@ -42,6 +43,52 @@ export const getActiveStorefrontProductById = async (productId: string) => {
       }),
     [`storefront-product:${productId}`],
     { tags: [`storefront-product:${productId}`] },
+  )();
+};
+
+export const getRelatedStorefrontProductsByCategory = async ({
+  categoryId,
+  currentProductId,
+}: {
+  categoryId: string;
+  currentProductId: string;
+}) => {
+  return unstable_cache(
+    async () =>
+      db.product.findMany({
+        where: {
+          isActive: true,
+          categoryId,
+          id: { not: currentProductId },
+        },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          code: true,
+          imageUrl: true,
+          salePrice: true,
+          stock: true,
+          reportUnitName: true,
+          category: { select: { name: true, slug: true } },
+          brand: { select: { name: true } },
+          carModels: {
+            select: {
+              carModel: {
+                select: {
+                  name: true,
+                  carBrand: { select: { name: true } },
+                },
+              },
+            },
+            take: 6,
+          },
+        },
+        orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
+        take: 4,
+      }),
+    [`storefront-related-products:${categoryId}:${currentProductId}`],
+    { tags: ["storefront:products", `storefront-product:${currentProductId}`] },
   )();
 };
 

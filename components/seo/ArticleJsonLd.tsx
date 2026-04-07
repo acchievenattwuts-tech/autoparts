@@ -10,6 +10,8 @@ interface ArticleJsonLdProps {
   authorName?: string;
   publisherName?: string;
   publisherLogoUrl?: string | null;
+  about?: string[];
+  mentions?: string[];
 }
 
 const ArticleJsonLd = ({
@@ -22,6 +24,8 @@ const ArticleJsonLd = ({
   authorName = "ศรีวรรณ อะไหล่แอร์",
   publisherName = "ศรีวรรณ อะไหล่แอร์",
   publisherLogoUrl,
+  about = [],
+  mentions = [],
 }: ArticleJsonLdProps) => {
   return (
     <JsonLd
@@ -38,6 +42,20 @@ const ArticleJsonLd = ({
           "@type": "Organization",
           name: authorName,
         },
+        about:
+          about.length > 0
+            ? about.map((item) => ({
+                "@type": "Thing",
+                name: item,
+              }))
+            : undefined,
+        mentions:
+          mentions.length > 0
+            ? mentions.map((item) => ({
+                "@type": "Thing",
+                name: item,
+              }))
+            : undefined,
         publisher: {
           "@type": "Organization",
           name: publisherName,

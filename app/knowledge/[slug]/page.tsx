@@ -22,7 +22,7 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const [{ slug }, config] = await Promise.all([params, getSiteConfig()]);
+  const { slug } = await params;
   const article = knowledgeArticleMap.get(slug);
 
   if (!article) {
@@ -66,6 +66,29 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
       return scoreB - scoreA;
     })
     .slice(0, 3);
+  const recommendedLinks = [
+    {
+      href: "/products",
+      title: "ไปหน้าสินค้าทั้งหมด",
+      description:
+        "เปิดหน้าสินค้าหลักที่ตั้งใจให้ติด index แล้วค่อยให้ร้านช่วยเช็กความเข้ากันได้ต่อ",
+    },
+    ...relatedArticles.slice(0, 2).map((entry) => ({
+      href: `/knowledge/${entry.slug}`,
+      title: entry.title,
+      description: entry.description,
+    })),
+  ];
+  const aboutTopics = Array.from(
+    new Set([article.category, article.title, ...article.sections.slice(0, 3).map((section) => section.heading)]),
+  );
+  const mentionTopics = Array.from(
+    new Set([
+      ...article.relatedSearches,
+      ...article.keyTakeaways.slice(0, 3),
+      ...relatedArticles.map((entry) => entry.title),
+    ]),
+  );
 
   return (
     <>
@@ -146,16 +169,38 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
                 <Search className="h-5 w-5" />
               </div>
               <h2 className="mt-4 font-kanit text-2xl font-semibold text-[#10213d]">
-                คำค้นที่เกี่ยวข้อง
+                คำค้นที่ลูกค้ามักใช้
               </h2>
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                คำเหล่านี้ช่วยให้รู้ว่าลูกค้ามักอธิบายปัญหาหรือชิ้นส่วนแบบไหน แต่ทางลัดด้านล่างจะพาไปยังหน้าหลักที่ควรติด index มากกว่า
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {article.relatedSearches.map((term) => (
-                  <Link
+                  <span
                     key={term}
-                    href={`/products/search?q=${encodeURIComponent(term)}`}
-                    className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600 transition hover:border-[#10213d] hover:text-[#10213d]"
+                    className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600"
                   >
                     {term}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-6">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                ทางลัดไปหน้าที่เกี่ยวข้อง
+              </h2>
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                {recommendedLinks.map((entry) => (
+                  <Link
+                    key={entry.href}
+                    href={entry.href}
+                    className="rounded-[24px] border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:bg-slate-50"
+                  >
+                    <h3 className="font-kanit text-xl font-semibold leading-tight text-[#10213d]">
+                      {entry.title}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{entry.description}</p>
                   </Link>
                 ))}
               </div>
@@ -232,6 +277,8 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
         imageUrl={config.shopLogoUrl}
         publisherName={config.shopName}
         publisherLogoUrl={config.shopLogoUrl}
+        about={aboutTopics}
+        mentions={mentionTopics}
       />
     </>
   );

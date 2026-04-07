@@ -10,6 +10,13 @@ interface ProductJsonLdProps {
   price: number;
   currency?: string;
   inStock: boolean;
+  categoryName?: string;
+  sellerName?: string;
+  additionalProperties?: Array<{
+    name: string;
+    value: string;
+  }>;
+  relatedLinks?: string[];
 }
 
 const SHIPPING_DETAILS = {
@@ -62,6 +69,10 @@ const ProductJsonLd = ({
   price,
   currency = "THB",
   inStock,
+  categoryName,
+  sellerName,
+  additionalProperties = [],
+  relatedLinks = [],
 }: ProductJsonLdProps) => {
   return (
     <JsonLd
@@ -72,12 +83,29 @@ const ProductJsonLd = ({
         description,
         sku,
         image: imageUrl || undefined,
+        category: categoryName,
+        itemCondition: "https://schema.org/NewCondition",
         brand: brandName
           ? {
               "@type": "Brand",
               name: brandName,
             }
           : undefined,
+        additionalProperty:
+          additionalProperties.length > 0
+            ? additionalProperties.map((property) => ({
+                "@type": "PropertyValue",
+                name: property.name,
+                value: property.value,
+              }))
+            : undefined,
+        isRelatedTo:
+          relatedLinks.length > 0
+            ? relatedLinks.map((link) => ({
+                "@type": "WebPage",
+                url: link,
+              }))
+            : undefined,
         offers: {
           "@type": "Offer",
           priceCurrency: currency,
@@ -86,6 +114,13 @@ const ProductJsonLd = ({
             ? "https://schema.org/InStock"
             : "https://schema.org/OutOfStock",
           url,
+          itemCondition: "https://schema.org/NewCondition",
+          seller: sellerName
+            ? {
+                "@type": "AutoPartsStore",
+                name: sellerName,
+              }
+            : undefined,
           shippingDetails: SHIPPING_DETAILS,
           hasMerchantReturnPolicy: RETURN_POLICY,
         },

@@ -16,6 +16,7 @@ import {
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
 import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import ProductCard from "@/components/shared/ProductCard";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
@@ -30,6 +31,7 @@ import {
 import {
   buildStorefrontProductDescription,
   getActiveStorefrontProductById,
+  getRelatedStorefrontProductsByCategory,
 } from "@/lib/storefront-product";
 import { db } from "@/lib/db";
 
@@ -102,6 +104,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const ProductDetailPage = async ({ params }: Props) => {
   const [config, product] = await Promise.all([getSiteConfig(), getResolvedProductFromParams(params)]);
+  const relatedProducts = await getRelatedStorefrontProductsByCategory({
+    categoryId: product.categoryId,
+    currentProductId: product.id,
+  });
 
   const canonicalPath = getProductPath({
     category: product.category,
@@ -128,6 +134,13 @@ const ProductDetailPage = async ({ params }: Props) => {
       "how-to-check-compressor-plug-pulley-and-mounting-points",
     ].includes(article.slug),
   );
+  const compatibilitySummary =
+    groupedCars.length > 0
+      ? groupedCars
+          .slice(0, 2)
+          .map(([brandName, models]) => `${brandName} ${models.slice(0, 2).join(", ")}`)
+          .join(" | ")
+      : "ให้ร้านช่วยเช็กจากรุ่นรถหรือรูปชิ้นงานเดิม";
 
   return (
     <>
@@ -365,6 +378,59 @@ const ProductDetailPage = async ({ params }: Props) => {
             </div>
           </div>
         </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                ก่อนสั่งชิ้นนี้ควรส่งข้อมูลอะไรให้ร้าน
+              </h2>
+              <ul className="mt-4 space-y-3 text-sm leading-7 text-slate-600 sm:text-base">
+                <li>ส่งรหัสสินค้า {product.code} หรือชื่อสินค้า {product.name} เพื่อให้ร้านจับคู่รายการได้เร็วขึ้น</li>
+                <li>แนบยี่ห้อรถ รุ่นรถ ปีรถ และข้อมูลเครื่องยนต์ถ้ามี โดยเฉพาะถ้าต้องเช็กความเข้ากันได้</li>
+                <li>ถ่ายรูปชิ้นงานเดิม จุดยึด ปลั๊ก ท่อ หรือหน้าสัมผัสที่เกี่ยวข้อง แล้วส่งให้ร้านเทียบก่อนยืนยัน</li>
+              </ul>
+            </div>
+
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                สินค้านี้ช่วยคัดงานแบบไหน
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
+                ถ้าคุณกำลังไล่ดูอะไหล่ในหมวด {product.category.name} หน้านี้ช่วยให้เช็กรายการที่ใกล้เคียงกับงานของคุณได้เร็วขึ้น
+                จากชื่อสินค้า รหัสอ้างอิง และรุ่นรถที่เกี่ยวข้อง ก่อนคุยกับร้านเพื่อยืนยันสเปกจริงอีกครั้ง
+              </p>
+              <Link
+                href={getCategoryPath(product.category)}
+                className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#10213d] transition hover:text-[#f97316]"
+              >
+                ดูสินค้าอื่นในหมวด {product.category.name}
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {relatedProducts.length > 0 && (
+          <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8 lg:pb-16">
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                สินค้าใกล้เคียงในหมวดเดียวกัน
+              </h2>
+              <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
+                ถ้ายังต้องการเทียบหลายตัวก่อนสั่ง ลองเปิดดูสินค้าอื่นในหมวดเดียวกันแล้วส่งลิงก์หรือรหัสที่สงสัยให้ร้านช่วยเช็กต่อได้
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {relatedProducts.map((relatedProduct) => (
+                  <ProductCard
+                    key={relatedProduct.id}
+                    product={relatedProduct}
+                    lineUrl={config.shopLineUrl}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
       </main>
       <Footer config={config} />
       <DeferredFloatingLine lineUrl={config.shopLineUrl} />
@@ -389,6 +455,18 @@ const ProductDetailPage = async ({ params }: Props) => {
         url={canonicalUrl}
         price={Number(product.salePrice)}
         inStock={product.stock > 0}
+        categoryName={product.category.name}
+        sellerName={config.shopName}
+        additionalProperties={[
+          { name: "หมวดสินค้า", value: product.category.name },
+          { name: "รหัสสินค้า", value: product.code },
+          { name: "หน่วยแสดงผล", value: product.reportUnitName },
+          { name: "รุ่นรถที่เกี่ยวข้อง", value: compatibilitySummary },
+        ]}
+        relatedLinks={[
+          absoluteUrl(getCategoryPath(product.category)),
+          ...prepArticles.map((article) => absoluteUrl(`/knowledge/${article.slug}`)),
+        ]}
       />
     </>
   );

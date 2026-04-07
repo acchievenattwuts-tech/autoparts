@@ -26,17 +26,41 @@ import {
   getCategoryPath,
   getProductCategorySlug,
   getProductPath,
+  getProductSlug,
 } from "@/lib/product-slug";
 import {
   buildStorefrontProductDescription,
   getActiveStorefrontProductById,
 } from "@/lib/storefront-product";
+import { db } from "@/lib/db";
 
 interface Props {
   params: Promise<{
     categorySlug: string;
     productSlug: string;
   }>;
+}
+
+export async function generateStaticParams() {
+  const products = await db.product.findMany({
+    where: { isActive: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      category: {
+        select: {
+          name: true,
+          slug: true,
+        },
+      },
+    },
+  });
+
+  return products.map((product) => ({
+    categorySlug: getProductCategorySlug(product.category),
+    productSlug: getProductSlug(product),
+  }));
 }
 
 async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
@@ -57,7 +81,7 @@ async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const [config, product] = await Promise.all([getSiteConfig(), getResolvedProductFromParams(params)]);
+  const product = await getResolvedProductFromParams(params);
   const description = buildStorefrontProductDescription(product);
 
   const canonicalPath = getProductPath({

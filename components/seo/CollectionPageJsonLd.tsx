@@ -4,9 +4,19 @@ interface CollectionPageJsonLdProps {
   name: string;
   description: string;
   url: string;
+  itemListElements?: Array<{
+    name: string;
+    url: string;
+    image?: string;
+  }>;
 }
 
-const CollectionPageJsonLd = ({ name, description, url }: CollectionPageJsonLdProps) => {
+const CollectionPageJsonLd = ({
+  name,
+  description,
+  url,
+  itemListElements = [],
+}: CollectionPageJsonLdProps) => {
   return (
     <JsonLd
       data={{
@@ -15,6 +25,24 @@ const CollectionPageJsonLd = ({ name, description, url }: CollectionPageJsonLdPr
         name,
         description,
         url,
+        mainEntity:
+          itemListElements.length > 0
+            ? {
+                "@type": "ItemList",
+                numberOfItems: itemListElements.length,
+                itemListElement: itemListElements.map((item, index) => ({
+                  "@type": "ListItem",
+                  position: index + 1,
+                  url: item.url,
+                  item: {
+                    "@type": "Product",
+                    name: item.name,
+                    url: item.url,
+                    image: item.image || undefined,
+                  },
+                })),
+              }
+            : undefined,
       }}
     />
   );

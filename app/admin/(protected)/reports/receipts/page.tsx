@@ -29,14 +29,14 @@ function fmtDate(d: Date) {
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  "à¸‚à¸²à¸¢à¸ªà¸”": "bg-green-100 text-green-700",
-  "à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰": "bg-blue-100 text-blue-700",
+  "ขายสด": "bg-green-100 text-green-700",
+  "รับชำระหนี้": "bg-blue-100 text-blue-700",
 };
 
 const PM_COLORS: Record<string, string> = {
-  "à¹€à¸‡à¸´à¸™à¸ªà¸”": "bg-emerald-100 text-emerald-700",
-  "à¹‚à¸­à¸™à¹€à¸‡à¸´à¸™": "bg-sky-100 text-sky-700",
-  "à¹€à¸„à¸£à¸”à¸´à¸•": "bg-purple-100 text-purple-700",
+  "เงินสด": "bg-emerald-100 text-emerald-700",
+  "โอนเงิน": "bg-sky-100 text-sky-700",
+  "เครดิต": "bg-purple-100 text-purple-700",
 };
 
 export default async function DailyReceiptPage({ searchParams }: PageProps) {
@@ -54,10 +54,10 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
 
   const totalAmount = rows.filter((r) => r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
   const cashSaleTotal = rows
-    .filter((r) => r.docType === "à¸‚à¸²à¸¢à¸ªà¸”" && r.status === "ACTIVE")
+    .filter((r) => r.docType === "ขายสด" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const receiptTotal = rows
-    .filter((r) => r.docType === "à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰" && r.status === "ACTIVE")
+    .filter((r) => r.docType === "รับชำระหนี้" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
 
@@ -65,7 +65,7 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸•à¸±à¹‰à¸‡à¹à¸•à¹ˆà¸§à¸±à¸™à¸—à¸µà¹ˆ
+          ตั้งแต่วันที่
           <input
             type="date"
             name="from"
@@ -74,7 +74,7 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸–à¸¶à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆ
+          ถึงวันที่
           <input
             type="date"
             name="to"
@@ -83,15 +83,15 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸›à¸£à¸°à¹€à¸ à¸—à¹€à¸­à¸à¸ªà¸²à¸£
+          ประเภทเอกสาร
           <select
             name="docType"
             defaultValue={filters.docType ?? "ALL"}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="ALL">à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”</option>
-            <option value="CASH_SALE">à¸‚à¸²à¸¢à¸ªà¸”</option>
-            <option value="RECEIPT">à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰</option>
+            <option value="ALL">ทั้งหมด</option>
+            <option value="CASH_SALE">ขายสด</option>
+            <option value="RECEIPT">รับชำระหนี้</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
@@ -101,7 +101,7 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
             defaultValue={filters.accountId ?? ""}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="">Ã Â¸â€”Ã Â¸Â±Ã Â¹â€°Ã Â¸â€¡Ã Â¸Â«Ã Â¸Â¡Ã Â¸â€</option>
+            <option value="">ทุกบัญชี</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.code} - {account.name}
@@ -117,19 +117,19 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
             defaultChecked={filters.showCancelled}
             className="h-4 w-4 rounded border-gray-300"
           />
-          à¸£à¸§à¸¡à¸—à¸µà¹ˆà¸¢à¸à¹€à¸¥à¸´à¸
+          รวมที่ยกเลิก
         </label>
         <button
           type="submit"
           className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
         >
-          à¹à¸ªà¸”à¸‡à¸£à¸²à¸¢à¸‡à¸²à¸™
+          แสดงรายงาน
         </button>
         <Link
           href="/admin/reports/receipts"
           className="inline-flex h-9 items-center self-end rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
         >
-          à¸¥à¹‰à¸²à¸‡
+          ล้าง
         </Link>
         <div className="ml-auto flex gap-2 self-end">
           <Link
@@ -151,22 +151,22 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
 
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-xs text-gray-500">à¸£à¸§à¸¡à¸£à¸±à¸šà¹€à¸‡à¸´à¸™ (à¹€à¸‰à¸žà¸²à¸°à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¸‡à¸²à¸™)</p>
+          <p className="text-xs text-gray-500">รวมรับเงิน (เฉพาะที่ใช้งาน)</p>
           <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
         </div>
         <div className="rounded-lg border border-green-100 bg-green-50 p-3 shadow-sm">
-          <p className="text-xs text-green-700">à¸‚à¸²à¸¢à¸ªà¸”</p>
+          <p className="text-xs text-green-700">ขายสด</p>
           <p className="mt-0.5 text-xl font-bold text-green-700 tabular-nums">{fmt(cashSaleTotal)}</p>
         </div>
         <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 shadow-sm">
-          <p className="text-xs text-blue-700">à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰</p>
+          <p className="text-xs text-blue-700">รับชำระหนี้</p>
           <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(receiptTotal)}</p>
         </div>
       </div>
 
       <p className="text-sm text-gray-500">
-        à¹à¸ªà¸”à¸‡ <span className="font-semibold text-gray-900">{rows.length}</span> à¸£à¸²à¸¢à¸à¸²à¸£
-        {rows.length >= 2000 && " (à¸ˆà¸³à¸à¸±à¸” 2,000 à¸£à¸²à¸¢à¸à¸²à¸£)"}
+        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
+        {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
       </p>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -174,23 +174,23 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¹€à¸¥à¸‚à¸—à¸µà¹ˆà¹€à¸­à¸à¸ªà¸²à¸£</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸§à¸±à¸™à¸—à¸µà¹ˆ</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸›à¸£à¸°à¹€à¸ à¸—</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸£à¸«à¸±à¸ªà¸¥à¸¹à¸à¸„à¹‰à¸²</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸Šà¸·à¹ˆà¸­à¸¥à¸¹à¸à¸„à¹‰à¸²</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸Šà¹ˆà¸­à¸‡à¸—à¸²à¸‡à¸Šà¸³à¸£à¸°</th>
+              <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
+              <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
+              <th className="px-3 py-2.5 text-left font-medium">ประเภท</th>
+              <th className="px-3 py-2.5 text-left font-medium">รหัสลูกค้า</th>
+              <th className="px-3 py-2.5 text-left font-medium">ชื่อลูกค้า</th>
+              <th className="px-3 py-2.5 text-left font-medium">ช่องทางชำระ</th>
               <th className="px-3 py-2.5 text-left font-medium">Account</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸«à¸¡à¸²à¸¢à¹€à¸«à¸•à¸¸</th>
-              <th className="px-3 py-2.5 text-center font-medium">à¸ªà¸–à¸²à¸™à¸°</th>
-              <th className="px-3 py-2.5 text-right font-medium">à¸ˆà¸³à¸™à¸§à¸™à¹€à¸‡à¸´à¸™</th>
+              <th className="px-3 py-2.5 text-left font-medium">หมายเหตุ</th>
+              <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
+              <th className="px-3 py-2.5 text-right font-medium">จำนวนเงิน</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 && (
               <tr>
                 <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
-                  à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆà¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
+                  ไม่พบข้อมูลในช่วงวันที่ที่เลือก
                 </td>
               </tr>
             )}

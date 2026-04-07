@@ -92,7 +92,7 @@
 - `lib/vat.ts` — VAT calculation utility (calcVat, calcItemSubtotal)
 
 #### ✅ 3.1 ระบบ BF (ยอดยกมา)
-- หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน + รอง��ับ Lot Control (Phase 5.5-I1)
+- หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน + รองรับ Lot Control (Phase 5.5-I1)
 
 #### ✅ 3.2 ปรับสต็อก (Adjustment)
 - หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล + รองรับ Lot Control (Phase 5.5-I2: IN=manual input, OUT=dropdown)

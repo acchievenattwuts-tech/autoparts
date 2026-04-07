@@ -1,4 +1,4 @@
-import { Clock, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
+๏ปฟimport { Clock, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 
 interface StoreContactProps {
@@ -10,28 +10,28 @@ const StoreContact = ({ config }: StoreContactProps) => {
     {
       key: "phone",
       icon: Phone,
-      label: "เบอร์โทร",
+      label: "เนเธ—เธฃเธจเธฑเธเธ—เน",
       value: config.shopPhone,
       href: config.shopPhone ? `tel:${config.shopPhone}` : "",
     },
     {
       key: "phone-secondary",
       icon: Phone,
-      label: "เบอร์สำรอง",
+      label: "เน€เธเธญเธฃเนเธชเธณเธฃเธญเธ",
       value: config.shopPhoneSecondary,
       href: config.shopPhoneSecondary ? `tel:${config.shopPhoneSecondary}` : "",
     },
     {
       key: "email",
       icon: Mail,
-      label: "อีเมล",
+      label: "เธญเธตเน€เธกเธฅ",
       value: config.shopEmail,
       href: config.shopEmail ? `mailto:${config.shopEmail}` : "",
     },
     {
       key: "hours",
       icon: Clock,
-      label: "เวลาทำการ",
+      label: "เน€เธงเธฅเธฒเธ—เธณเธเธฒเธฃ",
       value: config.shopBusinessHours,
       href: "",
     },
@@ -43,11 +43,14 @@ const StoreContact = ({ config }: StoreContactProps) => {
         <div>
           <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-[#1e3a5f]/8 px-4 py-1.5 text-sm font-medium text-[#1e3a5f]">
             <MapPin className="h-4 w-4" />
-            ข้อมูลหน้าร้าน
+            เธเนเธญเธกเธนเธฅเธซเธเนเธฒเธฃเนเธฒเธ
           </div>
-          <h2 className="font-kanit text-3xl font-bold text-gray-900 sm:text-4xl">ติดต่อร้านหรือเปิดเส้นทางได้ทันที</h2>
+          <h2 className="font-kanit text-3xl font-bold text-gray-900 sm:text-4xl">
+            เธ•เธดเธ”เธ•เนเธญเธฃเนเธฒเธเนเธฅเธฐเน€เธเนเธเน€เธชเนเธเธ—เธฒเธเนเธ”เนเธ—เธฑเธเธ—เธต
+          </h2>
           <p className="mt-3 max-w-2xl text-base leading-7 text-gray-600">
-            ข้อมูลส่วนนี้เชื่อมตรงจากหลังบ้าน เพื่อให้ลูกค้าเห็นที่อยู่ เบอร์โทร เวลาทำการ แผนที่ และหมายเหตุการเดินทางล่าสุดของร้าน
+            เธฃเธงเธกเธเนเธญเธกเธนเธฅเธ•เธดเธ”เธ•เนเธญเธซเธฅเธฑเธเธเธญเธเธฃเนเธฒเธ เธชเธณเธซเธฃเธฑเธเธฅเธนเธเธเนเธฒเธ—เธตเนเธ•เนเธญเธเธเธฒเธฃเน€เธเนเธเน€เธเธญเธฃเนเนเธ—เธฃ เน€เธงเธฅเธฒเธ—เธณเธเธฒเธฃ เนเธเธเธ—เธตเน
+            เนเธฅเธฐเธซเธกเธฒเธขเน€เธซเธ•เธธเธเธฒเธฃเน€เธ”เธดเธเธ—เธฒเธเธเนเธญเธเน€เธเนเธฒเธฃเนเธฒเธ
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -74,7 +77,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
                 <div className="flex items-start gap-3">
                   <MapPin className="mt-1 h-5 w-5 flex-shrink-0 text-[#f97316]" />
                   <div>
-                    <p className="text-sm font-semibold text-gray-500">ที่อยู่ร้าน</p>
+                    <p className="text-sm font-semibold text-gray-500">เธ—เธตเนเธญเธขเธนเนเธฃเนเธฒเธ</p>
                     <p className="mt-1 whitespace-pre-line text-base text-gray-800">{config.shopAddress}</p>
                   </div>
                 </div>
@@ -82,7 +85,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
 
               {config.shopHolidayNote && (
                 <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-                  <p className="font-semibold">วันหยุด / หมายเหตุหน้าร้าน</p>
+                  <p className="font-semibold">เธงเธฑเธเธซเธขเธธเธ” / เธซเธกเธฒเธขเน€เธซเธ•เธธเธซเธเนเธฒเธฃเนเธฒเธ</p>
                   <p className="mt-1 whitespace-pre-line">{config.shopHolidayNote}</p>
                 </div>
               )}
@@ -101,7 +104,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/15 bg-white px-4 py-2 text-sm font-medium text-[#1e3a5f] transition-colors hover:border-[#1e3a5f] hover:bg-[#1e3a5f] hover:text-white"
                   >
-                    เปิด Google Maps
+                    เน€เธเธดเธ” Google Maps
                     <ExternalLink className="h-4 w-4" />
                   </a>
                 )}
@@ -112,7 +115,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#05a847]"
                   >
-                    ติดต่อผ่าน LINE
+                    เธ•เธดเธ”เธ•เนเธญเธเนเธฒเธ LINE
                   </a>
                 )}
               </div>
@@ -123,7 +126,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
         <div className="overflow-hidden rounded-[2rem] border border-gray-200 bg-white p-3 shadow-xl shadow-[#1e3a5f]/10">
           {config.shopGoogleMapEmbedUrl ? (
             <iframe
-              title={`แผนที่ร้าน ${config.shopName}`}
+              title={`เนเธเธเธ—เธตเนเธฃเนเธฒเธ ${config.shopName}`}
               src={config.shopGoogleMapEmbedUrl}
               className="h-[420px] w-full rounded-[1.4rem] border-0"
               loading="lazy"
@@ -135,7 +138,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
               <MapPin className="mb-4 h-12 w-12" />
               <p className="font-kanit text-2xl font-bold">{config.shopName}</p>
               <p className="mt-3 max-w-sm text-sm leading-6 text-white/80">
-                เพิ่ม Google Maps Embed URL ในแอดมินเพื่อให้แผนที่แสดงบนหน้าบ้านตรงนี้
+                เน€เธเธดเนเธก Google Maps Embed URL เน€เธกเธทเนเธญเธ•เนเธญเธเธเธฒเธฃเนเธซเนเนเธเธเธ—เธตเนเนเธชเธ”เธเธเธเธซเธเนเธฒเธเนเธฒเธเธ•เธฃเธเธเธตเน
               </p>
               {config.shopGoogleMapUrl && (
                 <a
@@ -144,7 +147,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
                   rel="noopener noreferrer"
                   className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#1e3a5f]"
                 >
-                  เปิดเส้นทาง
+                  เน€เธเธดเธ”เน€เธชเนเธเธ—เธฒเธ
                   <ExternalLink className="h-4 w-4" />
                 </a>
               )}

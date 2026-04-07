@@ -351,7 +351,7 @@ const SaleForm = ({
     }
 
     if (paymentType === "CASH_SALE" && !cashBankAccountId) {
-      setError("à¸à¸£à¸¸à¸“à¸²à¹€à¸¥à¸·à¸­à¸à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™");
+      setError("กรุณาเลือกบัญชีรับเงิน");
       return;
     }
 
@@ -488,17 +488,17 @@ const SaleForm = ({
           )}
           <div>
             <label className={labelCls}>
-              à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™ {paymentType === "CASH_SALE" && <span className="text-red-500">*</span>}
+              บัญชีรับเงิน {paymentType === "CASH_SALE" && <span className="text-red-500">*</span>}
             </label>
             <SearchableSelect
               options={cashBankAccounts.map((account): SelectOption => ({
                 id: account.id,
                 label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "à¹€à¸‡à¸´à¸™à¸ªà¸”", account.accountNo].filter(Boolean).join(" | ") || undefined,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
               }))}
               value={cashBankAccountId}
               onChange={setCashBankAccountId}
-              placeholder="à¹‚à¸›à¸£à¸”à¸£à¸°à¸šà¸¸à¸šà¸±à¸à¸Šà¸µà¸£à¸±à¸šà¹€à¸‡à¸´à¸™"
+              placeholder="โปรดระบุบัญชีรับเงิน"
             />
           </div>
           <div>

@@ -29,15 +29,15 @@ function fmtDate(d: Date) {
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  "à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²": "bg-blue-100 text-blue-700",
-  "à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢": "bg-orange-100 text-orange-700",
-  "à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²": "bg-purple-100 text-purple-700",
+  "ซื้อสินค้า": "bg-blue-100 text-blue-700",
+  "ค่าใช้จ่าย": "bg-orange-100 text-orange-700",
+  "คืนเงินลูกค้า": "bg-purple-100 text-purple-700",
 };
 
 const PM_COLORS: Record<string, string> = {
-  "à¹€à¸‡à¸´à¸™à¸ªà¸”": "bg-emerald-100 text-emerald-700",
-  "à¹‚à¸­à¸™à¹€à¸‡à¸´à¸™": "bg-sky-100 text-sky-700",
-  "à¹€à¸„à¸£à¸”à¸´à¸•": "bg-purple-100 text-purple-700",
+  "เงินสด": "bg-emerald-100 text-emerald-700",
+  "โอนเงิน": "bg-sky-100 text-sky-700",
+  "เครดิต": "bg-purple-100 text-purple-700",
 };
 
 export default async function DailyPaymentPage({ searchParams }: PageProps) {
@@ -55,13 +55,13 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
 
   const totalAmount = rows.filter((r) => r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
   const purchaseTotal = rows
-    .filter((r) => r.docType === "à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²" && r.status === "ACTIVE")
+    .filter((r) => r.docType === "ซื้อสินค้า" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const expenseTotal = rows
-    .filter((r) => r.docType === "à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢" && r.status === "ACTIVE")
+    .filter((r) => r.docType === "ค่าใช้จ่าย" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const cnRefundTotal = rows
-    .filter((r) => r.docType === "à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²" && r.status === "ACTIVE")
+    .filter((r) => r.docType === "คืนเงินลูกค้า" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
 
@@ -69,7 +69,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸•à¸±à¹‰à¸‡à¹à¸•à¹ˆà¸§à¸±à¸™à¸—à¸µà¹ˆ
+          ตั้งแต่วันที่
           <input
             type="date"
             name="from"
@@ -78,7 +78,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸–à¸¶à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆ
+          ถึงวันที่
           <input
             type="date"
             name="to"
@@ -87,16 +87,16 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-          à¸›à¸£à¸°à¹€à¸ à¸—à¸£à¸²à¸¢à¸à¸²à¸£
+          ประเภทรายการ
           <select
             name="docType"
             defaultValue={filters.docType ?? "ALL"}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="ALL">à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”</option>
-            <option value="PURCHASE">à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²</option>
-            <option value="EXPENSE">à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢</option>
-            <option value="CN_REFUND">à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸² (CN)</option>
+            <option value="ALL">ทั้งหมด</option>
+            <option value="PURCHASE">ซื้อสินค้า</option>
+            <option value="EXPENSE">ค่าใช้จ่าย</option>
+            <option value="CN_REFUND">คืนเงินลูกค้า (CN)</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
@@ -106,7 +106,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
             defaultValue={filters.accountId ?? ""}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            <option value="">Ã Â¸â€”Ã Â¸Â±Ã Â¹â€°Ã Â¸â€¡Ã Â¸Â«Ã Â¸Â¡Ã Â¸â€</option>
+            <option value="">ทุกบัญชี</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.code} - {account.name}
@@ -122,19 +122,19 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
             defaultChecked={filters.showCancelled}
             className="h-4 w-4 rounded border-gray-300"
           />
-          à¸£à¸§à¸¡à¸—à¸µà¹ˆà¸¢à¸à¹€à¸¥à¸´à¸
+          รวมที่ยกเลิก
         </label>
         <button
           type="submit"
           className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
         >
-          à¹à¸ªà¸”à¸‡à¸£à¸²à¸¢à¸‡à¸²à¸™
+          แสดงรายงาน
         </button>
         <Link
           href="/admin/reports/payments"
           className="inline-flex h-9 items-center self-end rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
         >
-          à¸¥à¹‰à¸²à¸‡
+          ล้าง
         </Link>
         <div className="ml-auto flex gap-2 self-end">
           <Link
@@ -156,26 +156,26 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
 
       <div className="grid grid-cols-4 gap-3">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-xs text-gray-500">à¸£à¸§à¸¡à¸ˆà¹ˆà¸²à¸¢à¹€à¸‡à¸´à¸™ (à¹€à¸‰à¸žà¸²à¸°à¸—à¸µà¹ˆà¹ƒà¸Šà¹‰à¸‡à¸²à¸™)</p>
+          <p className="text-xs text-gray-500">รวมจ่ายเงิน (เฉพาะที่ใช้งาน)</p>
           <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
         </div>
         <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 shadow-sm">
-          <p className="text-xs text-blue-700">à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²</p>
+          <p className="text-xs text-blue-700">ซื้อสินค้า</p>
           <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(purchaseTotal)}</p>
         </div>
         <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 shadow-sm">
-          <p className="text-xs text-orange-700">à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢</p>
+          <p className="text-xs text-orange-700">ค่าใช้จ่าย</p>
           <p className="mt-0.5 text-xl font-bold text-orange-700 tabular-nums">{fmt(expenseTotal)}</p>
         </div>
         <div className="rounded-lg border border-purple-100 bg-purple-50 p-3 shadow-sm">
-          <p className="text-xs text-purple-700">à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸² (CN)</p>
+          <p className="text-xs text-purple-700">คืนเงินลูกค้า (CN)</p>
           <p className="mt-0.5 text-xl font-bold text-purple-700 tabular-nums">{fmt(cnRefundTotal)}</p>
         </div>
       </div>
 
       <p className="text-sm text-gray-500">
-        à¹à¸ªà¸”à¸‡ <span className="font-semibold text-gray-900">{rows.length}</span> à¸£à¸²à¸¢à¸à¸²à¸£
-        {rows.length >= 2000 && " (à¸ˆà¸³à¸à¸±à¸” 2,000 à¸£à¸²à¸¢à¸à¸²à¸£)"}
+        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
+        {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
       </p>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -183,23 +183,23 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¹€à¸¥à¸‚à¸—à¸µà¹ˆà¹€à¸­à¸à¸ªà¸²à¸£</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸§à¸±à¸™à¸—à¸µà¹ˆ</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸›à¸£à¸°à¹€à¸ à¸—à¸£à¸²à¸¢à¸à¸²à¸£</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸£à¸«à¸±à¸ªà¸„à¸¹à¹ˆà¸„à¹‰à¸²</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸Šà¸·à¹ˆà¸­à¸„à¸¹à¹ˆà¸„à¹‰à¸² / à¸£à¸²à¸¢à¸¥à¸°à¹€à¸­à¸µà¸¢à¸”</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸Šà¹ˆà¸­à¸‡à¸—à¸²à¸‡à¸Šà¸³à¸£à¸°</th>
+              <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
+              <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
+              <th className="px-3 py-2.5 text-left font-medium">ประเภทรายการ</th>
+              <th className="px-3 py-2.5 text-left font-medium">รหัสคู่ค้า</th>
+              <th className="px-3 py-2.5 text-left font-medium">ชื่อคู่ค้า / รายละเอียด</th>
+              <th className="px-3 py-2.5 text-left font-medium">ช่องทางชำระ</th>
               <th className="px-3 py-2.5 text-left font-medium">Account</th>
-              <th className="px-3 py-2.5 text-left font-medium">à¸«à¸¡à¸²à¸¢à¹€à¸«à¸•à¸¸</th>
-              <th className="px-3 py-2.5 text-center font-medium">à¸ªà¸–à¸²à¸™à¸°</th>
-              <th className="px-3 py-2.5 text-right font-medium">à¸ˆà¸³à¸™à¸§à¸™à¹€à¸‡à¸´à¸™</th>
+              <th className="px-3 py-2.5 text-left font-medium">หมายเหตุ</th>
+              <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
+              <th className="px-3 py-2.5 text-right font-medium">จำนวนเงิน</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 && (
               <tr>
                 <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
-                  à¹„à¸¡à¹ˆà¸žà¸šà¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¹ƒà¸™à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆà¸—à¸µà¹ˆà¹€à¸¥à¸·à¸­à¸
+                  ไม่พบข้อมูลในช่วงวันที่ที่เลือก
                 </td>
               </tr>
             )}

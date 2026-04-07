@@ -11,7 +11,9 @@ import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
-import { getCategoryPath } from "@/lib/product-slug";
+import { getCategoryPath, getProductPath } from "@/lib/product-slug";
+import { db } from "@/lib/db";
+import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   getActiveStorefrontCategoryBySlug,
   getStorefrontCategoryPageData,
@@ -21,6 +23,46 @@ interface Props {
   params: Promise<{
     categorySlug: string;
   }>;
+}
+
+const getCategorySupportArticles = (categoryName: string) => {
+  const normalizedCategoryName = categoryName.toLowerCase();
+
+  return [...knowledgeArticles]
+    .map((article) => {
+      const haystack = [
+        article.title,
+        article.description,
+        article.intro,
+        ...article.relatedSearches,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      const score =
+        (haystack.includes(normalizedCategoryName) ? 3 : 0) +
+        (article.category === "การเลือกซื้อ" ? 1 : 0);
+
+      return { article, score };
+    })
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 3)
+    .map(({ article }) => article);
+};
+
+export async function generateStaticParams() {
+  const categories = await db.category.findMany({
+    where: { isActive: true },
+    select: {
+      name: true,
+      slug: true,
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return categories.map((category) => ({
+    categorySlug: getCategoryPath(category).replace("/products/", ""),
+  }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -61,6 +103,7 @@ const CategoryPage = async ({ params }: Props) => {
   const { category, products } = categoryData;
   const canonicalPath = getCategoryPath(category);
   const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
+  const supportArticles = getCategorySupportArticles(category.name);
 
   if (requestedPath !== canonicalPath) {
     permanentRedirect(canonicalPath);
@@ -130,6 +173,57 @@ const CategoryPage = async ({ params }: Props) => {
             </div>
           )}
         </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                หมวด {category.name} เหมาะกับการค้นหาแบบไหน
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-slate-600 sm:text-base">
+                หน้านี้เหมาะสำหรับลูกค้าที่เริ่มรู้แล้วว่ากำลังหาอะไหล่ในหมวด {category.name}
+                และต้องการไล่ดูสินค้าที่ใกล้เคียงกันก่อนคุยกับร้าน หากยังไม่แน่ใจรุ่นรถ รหัสเดิม
+                หรือความเข้ากันได้ ควรเปิดรายละเอียดสินค้าแล้วส่งข้อมูลให้ร้านช่วยเช็กอีกครั้ง
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                ก่อนทักร้านควรเตรียมข้อมูลอะไร
+              </h2>
+              <ul className="mt-4 space-y-3 text-sm leading-7 text-slate-600 sm:text-base">
+                <li>ยี่ห้อรถ รุ่นรถ ปีรถ และรายละเอียดเครื่องยนต์ถ้ามี</li>
+                <li>รหัสอะไหล่เดิม รูปชิ้นงานเดิม หรือจุดยึด ปลั๊ก และท่อที่เกี่ยวข้อง</li>
+                <li>ลิงก์สินค้าหรือชื่อสินค้าที่เจอในหมวดนี้ เพื่อให้ร้านเช็กได้เร็วขึ้น</li>
+              </ul>
+            </div>
+          </div>
+
+          {supportArticles.length > 0 && (
+            <div className="mt-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+              <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
+                คู่มือที่ช่วยเลือกสินค้าในหมวดนี้
+              </h2>
+              <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                {supportArticles.map((article) => (
+                  <Link
+                    key={article.slug}
+                    href={`/knowledge/${article.slug}`}
+                    className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 transition hover:border-slate-300 hover:bg-white"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f97316]">
+                      {article.category}
+                    </p>
+                    <h3 className="mt-3 font-kanit text-xl font-semibold leading-tight text-[#10213d]">
+                      {article.title}
+                    </h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{article.description}</p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
       </main>
       <Footer config={config} />
       <DeferredFloatingLine lineUrl={config.shopLineUrl} />
@@ -145,6 +239,16 @@ const CategoryPage = async ({ params }: Props) => {
         name={`${category.name} | ${config.shopName}`}
         description={description}
         url={canonicalUrl}
+        itemListElements={products.map((product) => ({
+          name: product.name,
+          url: absoluteUrl(
+            getProductPath({
+              category,
+              product,
+            }),
+          ),
+          image: product.imageUrl ?? undefined,
+        }))}
       />
     </>
   );

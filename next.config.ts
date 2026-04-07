@@ -75,6 +75,23 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [
+          {
+            type: "host",
+            value: "sriwanparts.com",
+          },
+        ],
+        destination: "https://www.sriwanparts.com/:path*",
+        permanent: true,
+        basePath: false,
+      },
+    ];
+  },
+
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 2678400,
