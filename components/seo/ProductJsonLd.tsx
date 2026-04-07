@@ -19,11 +19,18 @@ interface ProductJsonLdProps {
   relatedLinks?: string[];
 }
 
+const STANDARD_SHIPPING_RATE_THB = 50;
+
 const SHIPPING_DETAILS = {
   "@type": "OfferShippingDetails",
   shippingDestination: {
     "@type": "DefinedRegion",
     addressCountry: "TH",
+  },
+  shippingRate: {
+    "@type": "MonetaryAmount",
+    value: STANDARD_SHIPPING_RATE_THB,
+    currency: "THB",
   },
   description: "ค่าจัดส่งคิดตามจริง ระยะเวลาจัดส่งโดยประมาณ 1-3 วันทำการ",
   deliveryTime: {
@@ -37,6 +44,12 @@ const SHIPPING_DETAILS = {
         "https://schema.org/Thursday",
         "https://schema.org/Friday",
       ],
+    },
+    handlingTime: {
+      "@type": "QuantitativeValue",
+      minValue: 0,
+      maxValue: 0,
+      unitCode: "DAY",
     },
     transitTime: {
       "@type": "QuantitativeValue",
@@ -54,7 +67,7 @@ const RETURN_POLICY = {
   returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
   merchantReturnDays: 15,
   returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnShippingFees",
+  returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
   itemCondition: "https://schema.org/NewCondition",
   description: "รับคืนภายใน 15 วัน โดยสินค้าต้องอยู่ในสภาพเดิมและลูกค้ารับผิดชอบค่าส่งคืน",
 } as const;

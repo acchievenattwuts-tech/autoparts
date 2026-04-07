@@ -13,7 +13,7 @@ const RETURN_POLICY = {
   returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
   merchantReturnDays: 15,
   returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnShippingFees",
+  returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
   itemCondition: "https://schema.org/NewCondition",
   description: "รับคืนภายใน 15 วัน โดยสินค้าต้องอยู่ในสภาพเดิมและลูกค้ารับผิดชอบค่าส่งคืน",
 } as const;
