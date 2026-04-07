@@ -8,16 +8,11 @@ import {
 } from "./product-slug";
 
 export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) => {
-  const categories = await unstable_cache(
-    async () =>
-      db.category.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true, slug: true, createdAt: true },
-        orderBy: { name: "asc" },
-      }),
-    ["storefront-categories"],
-    { tags: ["storefront:categories", "storefront:products"] },
-  )();
+  const categories = await db.category.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, slug: true, createdAt: true },
+    orderBy: { name: "asc" },
+  });
 
   const normalizedCategorySlug = normalizeSlugSegment(categorySlug);
   const decodedSlug = normalizeSlugSegment(decodeURIComponent(categorySlug));
