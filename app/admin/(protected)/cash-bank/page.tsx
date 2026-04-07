@@ -154,14 +154,14 @@ export default async function CashBankPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-2">
         <div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">Cash / Bank Dashboard</h1>
           <p className="text-sm text-gray-500">
             ติดตามเงินเข้า เงินออก และยอดคงเหลือรายบัญชีจาก ledger จริง พร้อมลิงก์ย้อนกลับไปยังเอกสารต้นทาง
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden">
           <Link href="/admin/cash-bank/ledger" className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
             ดู ledger เต็ม
           </Link>

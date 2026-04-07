@@ -78,7 +78,7 @@ export default async function CashBankSnapshot({ compact = false }: Props) {
         {rows.map((row) => (
           <Link
             key={row.id}
-            href={`/admin/cash-bank/ledger?accountId=${row.id}`}
+            href={`/admin/reports/cash-bank-ledger?accountId=${row.id}`}
             className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-[#1e3a5f]/20 hover:shadow-md"
           >
             <div className="flex items-center justify-between gap-3">

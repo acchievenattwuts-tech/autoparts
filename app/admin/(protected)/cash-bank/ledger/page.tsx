@@ -39,14 +39,14 @@ export default async function CashBankLedgerPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-2">
         <div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">Cash / Bank Ledger</h1>
           <p className="text-sm text-gray-500">
             ดูสมุดเคลื่อนไหวเงินรายบัญชี พร้อม filter, source, เอกสารต้นทาง และ running balance
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden">
           <Link href="/admin/cash-bank" className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
             จัดการบัญชี
           </Link>
