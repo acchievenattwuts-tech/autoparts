@@ -11,6 +11,7 @@ import {
   PaymentMethod,
 } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { recalculateSupplierAdvanceAmountRemain } from "@/lib/amount-remain";
 
 const supplierAdvanceSchema = z.object({
   supplierId: z.string().min(1, "กรุณาเลือกซัพพลายเออร์"),
@@ -181,12 +182,15 @@ export async function updateSupplierAdvance(
           advanceDate,
           supplierId: parsed.supplierId,
           totalAmount: parsed.totalAmount,
-          amountRemain: parsed.totalAmount,
           paymentMethod,
           note: parsed.note?.trim() || null,
           cashBankAccountId: parsed.cashBankAccountId,
         },
       });
+
+      // Recalculate amountRemain from active SupplierPayment usages instead of
+      // blindly resetting to totalAmount (which would erase existing applications)
+      await recalculateSupplierAdvanceAmountRemain(tx, id);
 
       await replaceCashBankSourceMovements(
         tx,

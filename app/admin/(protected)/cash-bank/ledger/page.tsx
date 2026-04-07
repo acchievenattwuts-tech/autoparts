@@ -102,13 +102,16 @@ export default async function CashBankLedgerPage({ searchParams }: PageProps) {
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="ALL">ทั้งหมด</option>
-              <option value="SALE">SALE</option>
-              <option value="RECEIPT">RECEIPT</option>
-              <option value="PURCHASE">PURCHASE</option>
-              <option value="EXPENSE">EXPENSE</option>
-              <option value="CN_SALE">CN_SALE</option>
-              <option value="TRANSFER">TRANSFER</option>
-              <option value="ADJUSTMENT">ADJUSTMENT</option>
+              <option value="SALE">ขายสินค้า</option>
+              <option value="RECEIPT">รับชำระหนี้</option>
+              <option value="PURCHASE">ซื้อสินค้า</option>
+              <option value="EXPENSE">ค่าใช้จ่าย</option>
+              <option value="CN_SALE">CN ขาย</option>
+              <option value="CN_PURCHASE">CN ซื้อ</option>
+              <option value="SUPPLIER_ADVANCE">เงินมัดจำซัพพลายเออร์</option>
+              <option value="SUPPLIER_PAYMENT">จ่ายชำระซัพพลายเออร์</option>
+              <option value="TRANSFER">โอนเงิน</option>
+              <option value="ADJUSTMENT">ปรับยอดเงิน</option>
             </select>
           </label>
           <div className="flex items-end gap-2">

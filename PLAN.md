@@ -2258,29 +2258,35 @@ npm run db:restore backup-{timestamp}.json
 
 ### คิวถัดไป
 
-- [ ] ทำโมดูล `SupplierAdvance`
-  - หน้า list / create / detail / edit
-  - cash/bank movement เงินออก
-  - คำนวณ `amountRemain`
+- [x] ทำโมดูล `SupplierAdvance`
+  - หน้า list / create / detail / edit (loading.tsx ครบทุก segment)
+  - cash/bank movement เงินออก (SUPPLIER_ADVANCE source type)
+  - คำนวณ `amountRemain` ผ่าน `recalculateSupplierAdvanceAmountRemain`
+  - Reference chain check: ป้องกันแก้ไข/ยกเลิกถ้ามี SupplierPayment active อ้างถึง
 
-- [ ] refactor `PurchaseReturn` ให้รองรับ `CASH_REFUND` / `SUPPLIER_CREDIT`
-  - `CASH_REFUND` = เงินเข้า cash/bank
-  - `SUPPLIER_CREDIT` = เก็บเครดิตไว้หักใน `SupplierPayment`
-  - คำนวณ `amountRemain` และ reverse ตอน cancel ให้ครบ
+- [x] refactor `PurchaseReturn` ให้รองรับ `CASH_REFUND` / `SUPPLIER_CREDIT`
+  - `CASH_REFUND` = เงินเข้า cash/bank (CN_PURCHASE source type)
+  - `SUPPLIER_CREDIT` = เก็บเครดิตไว้หักใน `SupplierPayment`, `amountRemain` = totalAmount
+  - คำนวณ `amountRemain` ผ่าน `recalculatePurchaseReturnAmountRemain` ตอน cancel
 
-- [ ] ทำโมดูล `SupplierPayment`
-  - ดึง `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, `SupplierAdvance`
+- [x] ทำโมดูล `SupplierPayment`
+  - หน้า list / create / detail / edit (loading.tsx ครบทุก segment)
+  - ดึง `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, `SupplierAdvance` ของ supplier เดียวกัน
   - คำนวณ `totalCashPaid = sum(Purchase) - sum(PurchaseReturn SUPPLIER_CREDIT) - sum(SupplierAdvance)`
-  - รองรับทั้งจ่ายเงินจริงและ net off
+  - validate ต่อบรรทัดไม่เกิน `amountRemain` ของเอกสารปลายทาง
+  - cash/bank movement เงินออก เฉพาะกรณี `totalCashPaid > 0`
+
+- [x] เพิ่ม permissions / routes / sidebar สำหรับ Supplier AP modules
+  - permission keys: `supplier_advances.*`, `supplier_payments.*` ครบ
+  - ADMIN_ROUTE_RULES: `/admin/supplier-advances`, `/admin/supplier-payments`
+  - AdminSidebar: เงินมัดจำซัพพลายเออร์, จ่ายชำระซัพพลายเออร์
 
 - [ ] ขยาย reports / dashboard / export สำหรับ A/P เต็มรูปแบบ
   - รายงานเงินมัดจำ supplier คงเหลือ ณ วันที่
-  - รายงานเจ้าหนี้คงค้าง ณ วันที่
+  - รายงานเจ้าหนี้คงค้าง (A/P) ณ วันที่
   - รายงานเครดิต CN ซื้อคงเหลือ ณ วันที่
   - รายงานฐานะสุทธิ supplier ณ วันที่
   - dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding
-
-- [ ] เพิ่ม permissions / routes / sidebar สำหรับ Supplier AP modules
 
 - [ ] ทำ data migration / backfill สำหรับเอกสารซื้อเก่าที่ต้องเข้ากับ flow ใหม่
 
