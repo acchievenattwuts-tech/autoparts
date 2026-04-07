@@ -1,16 +1,30 @@
 "use server";
 
-import { db, dbTx } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
+import { db, dbTx } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
-import { VatType } from "@/lib/generated/prisma";
+import {
+  CashBankDirection,
+  CashBankSourceType,
+  PurchaseReturnRefundMethod,
+  PurchaseReturnSettlementType,
+  VatType,
+} from "@/lib/generated/prisma";
+import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
-import { reversePurchaseReturnLotBalance, validateLotRows, writePurchaseReturnLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
+import {
+  reversePurchaseReturnLotBalance,
+  validateLotRows,
+  writePurchaseReturnLots,
+  writeStockMovementLots,
+  type LotSubRow,
+} from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 
 const purchaseReturnProductOptionSelect = {
   id: true,
@@ -39,6 +53,17 @@ type PurchaseReturnProductOption = {
   brandName: string | null;
   aliases: string[];
   units: { name: string; scale: number; isBase: boolean }[];
+};
+
+type LineData = {
+  productId: string;
+  unitName: string;
+  qty: number;
+  qtyInBase: number;
+  costPerBase: number;
+  totalAmount: number;
+  subtotalAmount: number;
+  lotItems: z.infer<typeof lotSubRowSchema>[];
 };
 
 function serializePurchaseReturnProductOption(product: {
@@ -128,32 +153,179 @@ export async function searchPurchaseReturnSuppliers(query: string) {
 }
 
 const lotSubRowSchema = z.object({
-  lotNo:    z.string().min(1).max(100),
-  qty:      z.coerce.number().positive(),
+  lotNo: z.string().min(1).max(100),
+  qty: z.coerce.number().positive(),
   unitCost: z.coerce.number().min(0),
-  mfgDate:  z.string().default(""),
-  expDate:  z.string().default(""),
+  mfgDate: z.string().default(""),
+  expDate: z.string().default(""),
 });
 
 const returnItemSchema = z.object({
   productId: z.string().min(1).max(50),
-  unitName:  z.string().min(1).max(20),
-  qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
-  lotItems:  z.array(lotSubRowSchema).default([]),
+  unitName: z.string().min(1).max(20),
+  qty: z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
+  lotItems: z.array(lotSubRowSchema).default([]),
 });
 
 const returnSchema = z.object({
   returnDate: z.string().min(1, "กรุณาระบุวันที่"),
   purchaseId: z.string().max(50).optional(),
   supplierId: z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
-  note:       z.string().max(500).optional(),
-  vatType:    z.nativeEnum(VatType).default(VatType.NO_VAT),
-  vatRate:    z.coerce.number().min(0).max(100).default(0),
-  items:      z.array(returnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
+  settlementType: z.nativeEnum(PurchaseReturnSettlementType).default(PurchaseReturnSettlementType.CASH_REFUND),
+  refundMethod: z.nativeEnum(PurchaseReturnRefundMethod).optional(),
+  cashBankAccountId: z.string().optional(),
+  note: z.string().max(500).optional(),
+  vatType: z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate: z.coerce.number().min(0).max(100).default(0),
+  items: z.array(returnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+async function resolvePurchaseReturnRefundMethod(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  accountId: string | undefined,
+): Promise<PurchaseReturnRefundMethod | null> {
+  if (!accountId) return null;
+
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { type: true },
+  });
+  if (!account) {
+    throw new Error("ไม่พบบัญชีรับเงิน");
+  }
+
+  return account.type === "CASH"
+    ? PurchaseReturnRefundMethod.CASH
+    : PurchaseReturnRefundMethod.TRANSFER;
+}
+
+async function getActiveSupplierPaymentRefs(returnId: string): Promise<string[]> {
+  const refs = await db.supplierPaymentItem.findMany({
+    where: {
+      purchaseReturnId: returnId,
+      payment: { status: "ACTIVE" },
+    },
+    select: {
+      payment: { select: { paymentNo: true } },
+    },
+  });
+
+  return [...new Set(refs.map((item) => item.payment.paymentNo))];
+}
+
+async function buildLineData(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  validItems: z.infer<typeof returnItemSchema>[],
+  vatType: VatType,
+  vatRate: number,
+): Promise<LineData[]> {
+  const lineData: LineData[] = [];
+
+  for (const item of validItems) {
+    const unit = await tx.productUnit.findUnique({
+      where: { productId_name: { productId: item.productId, name: item.unitName } },
+    });
+    if (!unit) {
+      throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+    }
+
+    const scale = Number(unit.scale);
+    const qtyInBase = item.qty * scale;
+
+    const product = await tx.product.findUnique({
+      where: { id: item.productId },
+      select: { avgCost: true },
+    });
+    if (!product) {
+      throw new Error("ไม่พบสินค้า");
+    }
+
+    const costPerBase = Number(product.avgCost);
+    const totalAmount = Math.round(qtyInBase) * costPerBase;
+    const subtotalAmount = calcItemSubtotal(totalAmount, vatType, vatRate);
+
+    lineData.push({
+      productId: item.productId,
+      unitName: item.unitName,
+      qty: item.qty,
+      qtyInBase,
+      costPerBase,
+      totalAmount,
+      subtotalAmount,
+      lotItems: item.lotItems,
+    });
+  }
+
+  return lineData;
+}
+
+async function writePurchaseReturnLines(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  purchaseReturnId: string,
+  returnNo: string,
+  docDate: Date,
+  lineData: LineData[],
+): Promise<void> {
+  for (const line of lineData) {
+    const product = await tx.product.findUnique({
+      where: { id: line.productId },
+      select: { isLotControl: true },
+    });
+
+    if (product?.isLotControl) {
+      const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
+      if (lotError) throw new Error(lotError);
+    }
+
+    const returnItem = await tx.purchaseReturnItem.create({
+      data: {
+        purchaseReturnId,
+        productId: line.productId,
+        qty: Math.round(line.qtyInBase),
+        costPrice: line.costPerBase,
+        amount: line.totalAmount,
+        subtotalAmount: line.subtotalAmount,
+        detail: `คืน ${line.qty} ${line.unitName}`,
+      },
+    });
+
+    await writeStockCard(tx, {
+      productId: line.productId,
+      docNo: returnNo,
+      docDate,
+      source: "RETURN_OUT",
+      qtyIn: 0,
+      qtyOut: line.qtyInBase,
+      priceIn: 0,
+      detail: `คืน ${line.qty} ${line.unitName}`,
+      referenceId: returnItem.id,
+    });
+
+    if (product?.isLotControl && line.lotItems.length > 0) {
+      const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
+      const lotsInBase = line.lotItems.map((lot) => ({
+        lotNo: lot.lotNo.trim(),
+        qtyInBase: lot.qty * lineScale,
+        unitCostBase: line.costPerBase,
+        mfgDate: lot.mfgDate ? new Date(lot.mfgDate) : null,
+        expDate: lot.expDate ? new Date(lot.expDate) : null,
+      }));
+
+      await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+
+      const stockCard = await tx.stockCard.findFirst({
+        where: { referenceId: returnItem.id, source: "RETURN_OUT" },
+        select: { id: true },
+      });
+      if (stockCard) {
+        await writeStockMovementLots(tx, stockCard.id, lotsInBase, "out");
+      }
+    }
+  }
+}
+
 export async function createPurchaseReturn(
-  formData: FormData
+  formData: FormData,
 ): Promise<{ success?: boolean; returnNo?: string; error?: string }> {
   const session = await requirePermission("purchase_returns.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
@@ -170,206 +342,175 @@ export async function createPurchaseReturn(
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
-    note:       formData.get("note") || undefined,
-    vatType:    (formData.get("vatType") as VatType) || VatType.NO_VAT,
-    vatRate:    formData.get("vatRate") || 0,
+    settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
+    refundMethod: (formData.get("refundMethod") as PurchaseReturnRefundMethod) || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
+    note: formData.get("note") || undefined,
+    vatType: (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate: formData.get("vatRate") || 0,
     items,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
-  const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const {
+    returnDate,
+    purchaseId,
+    supplierId,
+    settlementType,
+    cashBankAccountId,
+    note,
+    vatType,
+    vatRate,
+    items: validItems,
+  } = parsed.data;
 
-  const docDate  = new Date(returnDate);
+  if (settlementType === PurchaseReturnSettlementType.CASH_REFUND && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  }
+
+  const docDate = new Date(returnDate);
   const returnNo = await generatePurchaseReturnNo(docDate);
 
   try {
     await dbTx(async (tx) => {
-      // Pre-calculate: gather unit/cost data for all items
-      const lineData: {
-        productId:     string;
-        unitName:      string;
-        qty:           number;
-        qtyInBase:     number;
-        costPerBase:   number;
-        totalAmount:   number;
-        subtotalAmount: number;
-        lotItems:      z.infer<typeof lotSubRowSchema>[];
-      }[] = [];
-
-      for (const item of validItems) {
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
-
-        const scale     = Number(unit.scale);
-        const qtyInBase = item.qty * scale;
-
-        const prod = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { avgCost: true },
-        });
-        if (!prod) throw new Error("ไม่พบสินค้า");
-
-        const costPerBase  = Number(prod.avgCost);
-        const totalAmount  = Math.round(qtyInBase) * costPerBase;
-        const itemSubtotal = calcItemSubtotal(totalAmount, vatType, vatRate);
-
-        lineData.push({
-          productId: item.productId,
-          unitName:  item.unitName,
-          qty:       item.qty,
-          qtyInBase,
-          costPerBase,
-          totalAmount,
-          subtotalAmount: itemSubtotal,
-          lotItems: item.lotItems,
-        });
-      }
-
-      const rawTotal    = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
+      const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+      const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
+      const resolvedCashBankAccountId =
+        settlementType === PurchaseReturnSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
+      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, resolvedCashBankAccountId);
 
-      // Create PurchaseReturn header
-      const pr = await tx.purchaseReturn.create({
+      const purchaseReturn = await tx.purchaseReturn.create({
         data: {
           returnNo,
-          purchaseId:    purchaseId || null,
-          supplierId:    supplierId || null,
-          userId:        session.user!.id!,
-          totalAmount:   netAmount,
+          returnDate: docDate,
+          purchaseId: purchaseId || null,
+          supplierId,
+          userId: session.user.id,
+          totalAmount: netAmount,
+          note: note?.trim() || null,
           vatType,
           vatRate,
           subtotalAmount,
           vatAmount,
-          note:          note ?? null,
-          returnDate:    docDate,
+          settlementType,
+          refundMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
+          amountRemain:
+            settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT ? netAmount : 0,
         },
       });
 
-      // Create items and write stock cards
-      for (const line of lineData) {
-        const product = await tx.product.findUnique({
-          where: { id: line.productId },
-          select: { isLotControl: true },
-        });
-        if (product?.isLotControl) {
-          const lotErr = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
-          if (lotErr) throw new Error(lotErr);
-        }
+      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData);
 
-        const returnItem = await tx.purchaseReturnItem.create({
-          data: {
-            purchaseReturnId: pr.id,
-            productId:        line.productId,
-            qty:              Math.round(line.qtyInBase),
-            costPrice:        line.costPerBase,
-            amount:           line.totalAmount,
-            subtotalAmount:   line.subtotalAmount,
-            detail:           `คืน ${line.qty} ${line.unitName}`,
-          },
-        });
-
-        await writeStockCard(tx, {
-          productId:   line.productId,
-          docNo:       returnNo,
-          docDate,
-          source:      "RETURN_OUT",
-          qtyIn:       0,
-          qtyOut:      line.qtyInBase,
-          priceIn:     0,
-          detail:      `คืน ${line.qty} ${line.unitName}`,
-          referenceId: returnItem.id,
-        });
-
-        if (product?.isLotControl && line.lotItems.length > 0) {
-          const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
-          const lotsInBase = line.lotItems.map((lot) => ({
-            lotNo:        lot.lotNo.trim(),
-            qtyInBase:    lot.qty * lineScale,
-            unitCostBase: line.costPerBase,
-            mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-            expDate:      lot.expDate ? new Date(lot.expDate) : null,
-          }));
-
-          await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
-
-          const sc = await tx.stockCard.findFirst({
-            where: { referenceId: returnItem.id, source: "RETURN_OUT" },
-            select: { id: true },
-          });
-          if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
-        }
+      if (settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT) {
+        await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
       }
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.CN_PURCHASE,
+        purchaseReturn.id,
+        settlementType === PurchaseReturnSettlementType.CASH_REFUND && resolvedCashBankAccountId
+          ? [
+              {
+                accountId: resolvedCashBankAccountId,
+                txnDate: docDate,
+                direction: CashBankDirection.IN,
+                amount: netAmount,
+                referenceNo: returnNo,
+                note: note?.trim() || null,
+              },
+            ]
+          : [],
+      );
     });
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath("/admin/products");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
     return { success: true, returnNo };
-  } catch (err) {
-    console.error("[createPurchaseReturn]", err);
+  } catch (error) {
+    console.error("[createPurchaseReturn]", error);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
 
 const cancelReturnSchema = z.object({
-  returnId:   z.string().min(1),
+  returnId: z.string().min(1),
   cancelNote: z.string().max(200).optional(),
 });
 
 export async function cancelPurchaseReturn(
-  formData: FormData
+  formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await requirePermission("purchase_returns.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelReturnSchema.safeParse({
-    returnId:   formData.get("returnId"),
+    returnId: formData.get("returnId"),
     cancelNote: formData.get("cancelNote") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-
-  const { returnId, cancelNote } = parsed.data;
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const ret = await db.purchaseReturn.findUnique({
-    where: { id: returnId },
-    include: { items: { select: { id: true, productId: true } } },
+    where: { id: parsed.data.returnId },
+    include: {
+      items: { select: { id: true, productId: true } },
+    },
   });
-  if (!ret)                        return { error: "ไม่พบเอกสาร" };
-  if (ret.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  if (!ret) return { error: "ไม่พบเอกสาร" };
+  if (ret.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
-  const affectedProductIds = [...new Set(ret.items.map((i) => i.productId))];
+  const activeRefs = await getActiveSupplierPaymentRefs(ret.id);
+  if (activeRefs.length > 0) {
+    return {
+      error: `ไม่สามารถยกเลิกได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
+    };
+  }
+
+  const affectedProductIds = [...new Set(ret.items.map((item) => item.productId))];
 
   try {
     await dbTx(async (tx) => {
-      // Reverse Lot balances (คืน stock ที่เคยส่งกลับซัพพลายเออร์)
       for (const item of ret.items) {
         await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
       }
+
       await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
       for (const productId of affectedProductIds) {
         await recalculateStockCard(tx, productId);
       }
+
+      await clearCashBankSourceMovements(tx, CashBankSourceType.CN_PURCHASE, ret.id);
+
       await tx.purchaseReturn.update({
-        where: { id: returnId },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
+        where: { id: ret.id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+          cancelNote: parsed.data.cancelNote?.trim() || null,
+          amountRemain: 0,
+        },
       });
     });
+
     revalidatePath("/admin/purchase-returns");
+    revalidatePath(`/admin/purchase-returns/${ret.id}`);
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
     return { success: true };
-  } catch (err) {
-    console.error("[cancelPurchaseReturn]", err);
+  } catch (error) {
+    console.error("[cancelPurchaseReturn]", error);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
 
-// ─────────────────────────────────────────
-// updatePurchaseReturn
-// ─────────────────────────────────────────
-
 export async function updatePurchaseReturn(
   id: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await requirePermission("purchase_returns.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
@@ -380,40 +521,66 @@ export async function updatePurchaseReturn(
 
   const existing = await db.purchaseReturn.findUnique({
     where: { id },
-    include: { items: { select: { id: true, productId: true } } },
+    include: {
+      items: { select: { id: true, productId: true } },
+    },
   });
-  if (!existing)                        return { error: "ไม่พบเอกสาร" };
-  if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  if (!existing) return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED") {
+    return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  }
+
+  const activeRefs = await getActiveSupplierPaymentRefs(id);
+  if (activeRefs.length > 0) {
+    return {
+      error: `ไม่สามารถแก้ไขได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
+    };
+  }
 
   let items: z.infer<typeof returnItemSchema>[] = [];
   try {
     const raw = formData.get("items");
     if (typeof raw === "string") items = JSON.parse(raw);
-  } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+  } catch {
+    return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" };
+  }
 
   const parsed = returnSchema.safeParse({
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
-    note:       formData.get("note") || undefined,
-    vatType:    (formData.get("vatType") as VatType) || VatType.NO_VAT,
-    vatRate:    formData.get("vatRate") || 0,
+    settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
+    refundMethod: (formData.get("refundMethod") as PurchaseReturnRefundMethod) || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
+    note: formData.get("note") || undefined,
+    vatType: (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate: formData.get("vatRate") || 0,
     items,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
-  const { returnDate, purchaseId, supplierId, note, vatType, vatRate, items: validItems } = parsed.data;
-  const docDate    = new Date(returnDate);
-  const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
+  const {
+    returnDate,
+    purchaseId,
+    supplierId,
+    settlementType,
+    cashBankAccountId,
+    note,
+    vatType,
+    vatRate,
+    items: validItems,
+  } = parsed.data;
+
+  if (settlementType === PurchaseReturnSettlementType.CASH_REFUND && !cashBankAccountId) {
+    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  }
+
+  const docDate = new Date(returnDate);
+  const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
 
   try {
     await dbTx(async (tx) => {
-      // 1. Reverse old stock effects
-      const oldItems = await tx.purchaseReturnItem.findMany({
-        where: { purchaseReturnId: id },
-        select: { id: true, productId: true },
-      });
-      for (const item of oldItems) {
+      for (const item of existing.items) {
         await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
       }
       await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
@@ -422,111 +589,73 @@ export async function updatePurchaseReturn(
         await recalculateStockCard(tx, productId);
       }
 
-      // 2. Build new line data (uses current avgCost at time of update)
-      const lineData: {
-        productId:     string;
-        unitName:      string;
-        qty:           number;
-        qtyInBase:     number;
-        costPerBase:   number;
-        totalAmount:   number;
-        subtotalAmount: number;
-        lotItems:      z.infer<typeof lotSubRowSchema>[];
-      }[] = [];
-
-      for (const item of validItems) {
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
-
-        const scale     = Number(unit.scale);
-        const qtyInBase = item.qty * scale;
-        const prod = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { avgCost: true },
-        });
-        if (!prod) throw new Error("ไม่พบสินค้า");
-        const costPerBase  = Number(prod.avgCost);
-        const totalAmount  = Math.round(qtyInBase) * costPerBase;
-        const itemSubtotal = calcItemSubtotal(totalAmount, vatType, vatRate);
-        lineData.push({ productId: item.productId, unitName: item.unitName, qty: item.qty, qtyInBase, costPerBase, totalAmount, subtotalAmount: itemSubtotal, lotItems: item.lotItems });
-      }
-
-      const rawTotal = lineData.reduce((sum, l) => sum + l.totalAmount, 0);
+      const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+      const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
+      const resolvedCashBankAccountId =
+        settlementType === PurchaseReturnSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
+      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, resolvedCashBankAccountId);
 
-      // 3. Update header
       await tx.purchaseReturn.update({
         where: { id },
-        data: { purchaseId: purchaseId || null, supplierId: supplierId || null, note: note ?? null, vatType, vatRate, totalAmount: netAmount, subtotalAmount, vatAmount, returnDate: docDate },
+        data: {
+          returnDate: docDate,
+          purchaseId: purchaseId || null,
+          supplierId,
+          totalAmount: netAmount,
+          note: note?.trim() || null,
+          vatType,
+          vatRate,
+          subtotalAmount,
+          vatAmount,
+          settlementType,
+          refundMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
+          amountRemain:
+            settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT ? netAmount : 0,
+        },
       });
 
-      // 4. Re-create items + stock cards + lots
-      for (const line of lineData) {
-        const product = await tx.product.findUnique({
-          where: { id: line.productId },
-          select: { isLotControl: true },
-        });
-        if (product?.isLotControl) {
-          const lotErr = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
-          if (lotErr) throw new Error(lotErr);
-        }
+      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData);
 
-        const returnItem = await tx.purchaseReturnItem.create({
-          data: { purchaseReturnId: id, productId: line.productId, qty: Math.round(line.qtyInBase), costPrice: line.costPerBase, amount: line.totalAmount, subtotalAmount: line.subtotalAmount, detail: `คืน ${line.qty} ${line.unitName}` },
-        });
-        await writeStockCard(tx, {
-          productId:   line.productId,
-          docNo:       existing.returnNo,
-          docDate,
-          source:      "RETURN_OUT",
-          qtyIn:       0,
-          qtyOut:      line.qtyInBase,
-          priceIn:     0,
-          detail:      `คืน ${line.qty} ${line.unitName}`,
-          referenceId: returnItem.id,
-        });
+      await recalculatePurchaseReturnAmountRemain(tx, id);
 
-        // Re-create Lot rows (PurchaseReturnItemLot + StockMovementLot)
-        if (product?.isLotControl && line.lotItems.length > 0) {
-          const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
-          const lotsInBase = line.lotItems.map((lot) => ({
-            lotNo:        lot.lotNo.trim(),
-            qtyInBase:    lot.qty * lineScale,
-            unitCostBase: line.costPerBase,
-            mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-            expDate:      lot.expDate ? new Date(lot.expDate) : null,
-          }));
-
-          await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
-
-          const sc = await tx.stockCard.findFirst({
-            where: { referenceId: returnItem.id, source: "RETURN_OUT" },
-            select: { id: true },
-          });
-          if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
-        }
-      }
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.CN_PURCHASE,
+        id,
+        settlementType === PurchaseReturnSettlementType.CASH_REFUND && resolvedCashBankAccountId
+          ? [
+              {
+                accountId: resolvedCashBankAccountId,
+                txnDate: docDate,
+                direction: CashBankDirection.IN,
+                amount: netAmount,
+                referenceNo: existing.returnNo,
+                note: note?.trim() || null,
+              },
+            ]
+          : [],
+      );
     });
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath(`/admin/purchase-returns/${id}`);
     revalidatePath("/admin/products");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
     return { success: true };
-  } catch (err) {
-    console.error("[updatePurchaseReturn]", err);
+  } catch (error) {
+    console.error("[updatePurchaseReturn]", error);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
 
-// ─────────────────────────────────────────
-// getPurchasesForSupplier — ดึงใบซื้อของซัพพลายเออร์
-// ─────────────────────────────────────────
 export async function getPurchasesForSupplier(
-  supplierId: string
+  supplierId: string,
 ): Promise<{ id: string; purchaseNo: string; purchaseDate: Date }[]> {
   if (!supplierId) return [];
+
   return db.purchase.findMany({
     where: { supplierId },
     orderBy: { purchaseDate: "desc" },
@@ -535,9 +664,6 @@ export async function getPurchasesForSupplier(
   });
 }
 
-// ─────────────────────────────────────────
-// getPurchaseDetail — ดึง items จากใบซื้อ
-// ─────────────────────────────────────────
 export type PurchaseDetailResult = {
   items: { productId: string; unitName: string; qty: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
   products: PurchaseReturnProductOption[];
@@ -545,13 +671,14 @@ export type PurchaseDetailResult = {
 
 export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
   if (!purchaseId) return null;
+
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
     select: {
       items: {
         select: {
           productId: true,
-          quantity:  true,
+          quantity: true,
           product: {
             select: {
               id: true,
@@ -567,7 +694,15 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
               units: { select: { name: true, scale: true, isBase: true } },
             },
           },
-          lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
+          lotItems: {
+            select: {
+              lotNo: true,
+              qty: true,
+              unitCost: true,
+              mfgDate: true,
+              expDate: true,
+            },
+          },
         },
       },
     },
@@ -577,9 +712,10 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   const productMap = new Map<string, PurchaseReturnProductOption>();
   const items = purchase.items.map((item) => {
     const unitName = item.product.purchaseUnitName ?? "";
-    const unit     = item.product.units.find((u) => u.name === unitName);
-    const scale    = unit ? Number(unit.scale) : 1;
+    const unit = item.product.units.find((entry) => entry.name === unitName);
+    const scale = unit ? Number(unit.scale) : 1;
     productMap.set(item.productId, serializePurchaseReturnProductOption(item.product));
+
     return {
       productId: item.productId,
       unitName,
@@ -596,13 +732,17 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
     };
   });
 
-  return { items, products: [...productMap.values()] };
+  return {
+    items,
+    products: [...productMap.values()],
+  };
 }
 
 export async function fetchProductLots(
-  productId: string
+  productId: string,
 ): Promise<LotAvailableJSON[] | { error: string }> {
   if (!productId) return { error: "ไม่ระบุสินค้า" };
+
   try {
     const balances = await db.lotBalance.findMany({
       where: { productId, qtyOnHand: { gt: 0 } },
@@ -624,7 +764,7 @@ export async function fetchProductLots(
           expDate: master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
           mfgDate: master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
         };
-      })
+      }),
     );
 
     return lots;

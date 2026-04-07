@@ -53,7 +53,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">Purchase Register</h1>
+        <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงานซื้อสินค้า</h1>
         <p className="text-sm text-gray-500">
           ดูรายการซื้อแบบรายบรรทัดสินค้า พร้อมสถานะการจ่าย ช่องทางจ่าย และบัญชีเงินที่ใช้จริง
         </p>
@@ -145,7 +145,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
               <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
               <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
-              <th className="px-3 py-2.5 text-left font-medium">Purchase Type</th>
+              <th className="px-3 py-2.5 text-left font-medium">ประเภทการซื้อ</th>
               <th className="px-3 py-2.5 text-left font-medium">ช่องทางจ่าย</th>
               <th className="px-3 py-2.5 text-left font-medium">บัญชีจ่ายเงิน</th>
               <th className="px-3 py-2.5 text-left font-medium">รหัสซัพพลายเออร์</th>

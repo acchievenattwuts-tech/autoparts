@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { requirePermission } from "@/lib/require-auth";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
@@ -10,7 +11,7 @@ import PurchaseReturnForm from "./PurchaseReturnForm";
 const NewPurchaseReturnPage = async () => {
   await requirePermission("purchase_returns.create");
 
-  const [rawProducts, config] = await Promise.all([
+  const [rawProducts, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -24,6 +25,7 @@ const NewPurchaseReturnPage = async () => {
       },
     }),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   const products = rawProducts.map((p) => ({
@@ -50,6 +52,7 @@ const NewPurchaseReturnPage = async () => {
       <PurchaseReturnForm
         products={products}
         suppliers={[]}
+        cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
       />

@@ -110,7 +110,7 @@ const PurchasesPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Purchase Type</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภทการซื้อ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">จำนวนรายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
@@ -138,7 +138,7 @@ const PurchasesPage = async ({
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-gray-600">
                       {purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}
-                      {p.cashBankAccountId ? ` โ€ข ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
+                      {p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -32,7 +33,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const currentProductIds = [...new Set(ret.items.map((item) => item.productId))];
 
-  const [rawProducts, suppliers, config] = await Promise.all([
+  const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
     currentProductIds.length === 0
       ? Promise.resolve([])
       : db.product.findMany({
@@ -53,6 +54,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         })
       : Promise.resolve([]),
     getSiteConfig(),
+    getActiveCashBankAccountOptions(),
   ]);
 
   const initialPurchases = ret.supplierId
@@ -93,6 +95,8 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     returnDate: ret.returnDate.toISOString().slice(0, 10),
     purchaseId: ret.purchaseId ?? "",
     supplierId: ret.supplierId ?? "",
+    settlementType: ret.settlementType,
+    cashBankAccountId: ret.cashBankAccountId ?? "",
     note:       ret.note ?? "",
     vatType:    ret.vatType,
     vatRate:    Number(ret.vatRate),
@@ -113,6 +117,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       <PurchaseReturnForm
         products={products}
         suppliers={suppliers}
+        cashBankAccounts={cashBankAccounts}
         initialPurchases={initialPurchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

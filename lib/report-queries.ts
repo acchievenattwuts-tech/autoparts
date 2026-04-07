@@ -350,7 +350,7 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
         purchaseType:
-          p.purchaseType === PurchaseType.CASH_PURCHASE ? "Cash Purchase" : "Credit Purchase",
+          p.purchaseType === PurchaseType.CASH_PURCHASE ? "ซื้อสด" : "ซื้อเชื่อ",
         paymentMethod:
           p.purchaseType === PurchaseType.CASH_PURCHASE && p.cashBankAccountId
             ? paymentMethodLabel(p.paymentMethod)
@@ -667,7 +667,7 @@ export function buildSalesCsv(rows: SaleRow[]): string {
 
 export function buildPurchasesCsv(rows: PurchaseRow[]): string {
   const header = csvRow([
-    "ลำดับ","เลขที่เอกสาร","วันที่","สถานะชำระเงิน","ช่องทางชำระ","บัญชีเงิน","รหัสซัพพลายเออร์","ชื่อซัพพลายเออร์",
+    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภทการซื้อ","ช่องทางจ่าย","บัญชีจ่ายเงิน","รหัสซัพพลายเออร์","ชื่อซัพพลายเออร์",
     "เลขอ้างอิง","สถานะเอกสาร","รหัสสินค้า","ชื่อสินค้า","จำนวน","หน่วย",
     "ราคา/หน่วย","ก่อน VAT","VAT Type","VAT","รวม",
   ]);

@@ -38,8 +38,8 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         purchaseUnitName: true, costPrice: true,
         isLotControl: true, requireExpiryDate: true,
         category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
+        brand: { select: { name: true } },
+        aliases: { select: { alias: true } },
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
@@ -64,17 +64,17 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   const initialItems = purchase.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];
     return {
-      productId:  item.productId,
-      unitName:   baseUnit?.name ?? "",
-      qty:        item.quantity,               // already in base units
-      costPrice:  Number(item.costPrice),      // per base unit
-      landedCost: Number(item.landedCost) * item.quantity, // total landed back to per unit approximation
-      lotItems:   item.lotItems.map((lot) => ({
-        lotNo:    lot.lotNo,
-        qty:      Number(lot.qty),
+      productId: item.productId,
+      unitName: baseUnit?.name ?? "",
+      qty: item.quantity,
+      costPrice: Number(item.costPrice),
+      landedCost: Number(item.landedCost) * item.quantity,
+      lotItems: item.lotItems.map((lot) => ({
+        lotNo: lot.lotNo,
+        qty: Number(lot.qty),
         unitCost: Number(lot.unitCost),
-        mfgDate:  lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
-        expDate:  lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+        mfgDate: lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
+        expDate: lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
       })),
     };
   });
@@ -82,22 +82,24 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   const initialData = {
     id,
     purchaseDate: purchase.purchaseDate.toISOString().slice(0, 10),
-    supplierId:   purchase.supplierId ?? "",
+    supplierId: purchase.supplierId ?? "",
     purchaseType: purchase.purchaseType,
     cashBankAccountId: purchase.cashBankAccountId ?? "",
-    referenceNo:  purchase.referenceNo ?? "",
-    discount:     Number(purchase.discount),
-    note:         purchase.note ?? "",
-    vatType:      purchase.vatType,
-    vatRate:      Number(purchase.vatRate),
-    items:        initialItems,
+    referenceNo: purchase.referenceNo ?? "",
+    discount: Number(purchase.discount),
+    note: purchase.note ?? "",
+    vatType: purchase.vatType,
+    vatRate: Number(purchase.vatRate),
+    items: initialItems,
   };
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">
-        <Link href={`/admin/purchases/${id}`}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors">
+        <Link
+          href={`/admin/purchases/${id}`}
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+        >
           <ChevronLeft size={16} /> {purchase.purchaseNo}
         </Link>
         <span className="text-gray-300">/</span>

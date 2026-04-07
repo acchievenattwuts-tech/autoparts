@@ -18,6 +18,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
     include: {
       supplier: { select: { name: true } },
       purchase: { select: { purchaseNo: true } },
+      cashBankAccount: { select: { name: true } },
       user:     { select: { name: true } },
       items: {
         include: {

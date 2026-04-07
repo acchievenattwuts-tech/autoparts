@@ -27,6 +27,15 @@ interface SupplierOption {
   name: string;
 }
 
+interface CashBankAccountOption {
+  id: string;
+  name: string;
+  code: string;
+  type: "CASH" | "BANK";
+  bankName: string | null;
+  accountNo: string | null;
+}
+
 interface PurchaseOption {
   id: string;
   purchaseNo: string;
@@ -45,6 +54,8 @@ interface InitialData {
   returnDate: string;
   purchaseId: string;
   supplierId: string;
+  settlementType: "CASH_REFUND" | "SUPPLIER_CREDIT";
+  cashBankAccountId: string;
   note: string;
   vatType: string;
   vatRate: number;
@@ -60,6 +71,7 @@ const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, lotIte
 const PurchaseReturnForm = ({
   products,
   suppliers,
+  cashBankAccounts,
   initialPurchases,
   defaultVatType,
   defaultVatRate,
@@ -67,6 +79,7 @@ const PurchaseReturnForm = ({
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
+  cashBankAccounts: CashBankAccountOption[];
   initialPurchases?: PurchaseOption[];
   defaultVatType: string;
   defaultVatRate: number;
@@ -90,6 +103,10 @@ const PurchaseReturnForm = ({
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "SUPPLIER_CREDIT">(
+    initialData?.settlementType ?? "CASH_REFUND",
+  );
+  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialData?.initialAvailableLots ?? {});
@@ -292,6 +309,14 @@ const PurchaseReturnForm = ({
     return sum + item.qty * cost;
   }, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalBeforeVat, vatType as VatType, vatRate);
+  const cashBankOptions: SelectOption[] = cashBankAccounts.map((account) => ({
+    id: account.id,
+    label: account.name,
+    sublabel:
+      [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
+        .filter(Boolean)
+        .join(" | ") || undefined,
+  }));
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -307,6 +332,13 @@ const PurchaseReturnForm = ({
     }
     formData.set("supplierId", supplierId);
     formData.set("purchaseId", purchaseId);
+    formData.set("settlementType", settlementType);
+    formData.set("cashBankAccountId", settlementType === "CASH_REFUND" ? cashBankAccountId : "");
+
+    if (settlementType === "CASH_REFUND" && !cashBankAccountId) {
+      setError("กรุณาเลือกบัญชีรับเงิน");
+      return;
+    }
 
     for (const item of items) {
       if (!item.productId) {
@@ -405,6 +437,51 @@ const PurchaseReturnForm = ({
             />
             <input type="hidden" name="purchaseId" value={purchaseId} />
           </div>
+          <div>
+            <label className={labelCls}>รูปแบบการรับชดเชย</label>
+            <div className="overflow-hidden rounded-lg border border-gray-300">
+              <button
+                type="button"
+                onClick={() => setSettlementType("CASH_REFUND")}
+                className={`w-1/2 px-4 py-2 text-sm font-medium transition-colors ${
+                  settlementType === "CASH_REFUND"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                รับเงินคืน
+              </button>
+              <button
+                type="button"
+                onClick={() => setSettlementType("SUPPLIER_CREDIT")}
+                className={`w-1/2 border-l border-gray-300 px-4 py-2 text-sm font-medium transition-colors ${
+                  settlementType === "SUPPLIER_CREDIT"
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                เครดิตซัพพลายเออร์
+              </button>
+            </div>
+          </div>
+          {settlementType === "CASH_REFUND" ? (
+            <div>
+              <label className={labelCls}>
+                บัญชีรับเงิน <span className="text-red-500">*</span>
+              </label>
+              <SearchableSelect
+                options={cashBankOptions}
+                value={cashBankAccountId}
+                onChange={setCashBankAccountId}
+                placeholder="โปรดระบุบัญชีรับเงิน"
+              />
+              <p className="mt-1 text-xs text-gray-500">ระบบจะบันทึกเงินเข้า cash/bank ให้อัตโนมัติ</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+              ระบบจะเก็บยอดคงเหลือไว้เพื่อนำไปหักในเอกสารจ่ายชำระซัพพลายเออร์ภายหลัง
+            </div>
+          )}
           <div className="md:col-span-3">
             <label className={labelCls}>หมายเหตุ</label>
             <input

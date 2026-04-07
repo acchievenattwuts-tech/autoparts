@@ -79,6 +79,8 @@ const navItems: SidebarEntry[] = [
     items: [
       { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart, permission: "purchases.view" },
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view" },
+      { label: "เงินมัดจำซัพพลายเออร์", href: "/admin/supplier-advances", icon: Wallet, permission: "supplier_advances.view" },
+      { label: "จ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments", icon: FileCheck, permission: "supplier_payments.view" },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view" },
       { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view" },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view" },

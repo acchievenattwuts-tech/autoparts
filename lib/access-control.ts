@@ -67,6 +67,15 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "receipts.update", group: "ระบบงาน", label: "แก้ไขรับชำระ" },
   { key: "receipts.cancel", group: "ระบบงาน", label: "ยกเลิกรับชำระ" },
 
+  { key: "supplier_advances.view", group: "ระบบงาน", label: "ดูเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advances.create", group: "ระบบงาน", label: "เพิ่มเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advances.update", group: "ระบบงาน", label: "แก้ไขเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advances.cancel", group: "ระบบงาน", label: "ยกเลิกเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_payments.view", group: "ระบบงาน", label: "ดูจ่ายชำระซัพพลายเออร์" },
+  { key: "supplier_payments.create", group: "ระบบงาน", label: "เพิ่มจ่ายชำระซัพพลายเออร์" },
+  { key: "supplier_payments.update", group: "ระบบงาน", label: "แก้ไขจ่ายชำระซัพพลายเออร์" },
+  { key: "supplier_payments.cancel", group: "ระบบงาน", label: "ยกเลิกจ่ายชำระซัพพลายเออร์" },
+
   { key: "warranties.view", group: "ระบบงาน", label: "ดูประกัน" },
   { key: "warranties.create", group: "ระบบงาน", label: "เพิ่มประกัน" },
   { key: "warranties.update", group: "ระบบงาน", label: "แก้ไขประกัน" },
@@ -138,6 +147,12 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "receipts.view",
   "receipts.create",
   "receipts.update",
+  "supplier_advances.view",
+  "supplier_advances.create",
+  "supplier_advances.update",
+  "supplier_payments.view",
+  "supplier_payments.create",
+  "supplier_payments.update",
   "warranties.view",
   "warranty_claims.view",
   "warranty_claims.create",
@@ -171,6 +186,8 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "sales.view",
   "credit_notes.view",
   "receipts.view",
+  "supplier_advances.view",
+  "supplier_payments.view",
   "warranties.view",
   "warranty_claims.view",
   "expenses.view",
@@ -221,6 +238,8 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
+  { prefix: "/admin/supplier-advances", permission: "supplier_advances.view" },
+  { prefix: "/admin/supplier-payments", permission: "supplier_payments.view" },
   { prefix: "/admin/warranties", permission: "warranties.view" },
   { prefix: "/admin/warranty-claims", permission: "warranty_claims.view" },
   { prefix: "/admin/expenses", permission: "expenses.view" },
@@ -368,6 +387,10 @@ export function getRoutePermission(pathname: string): PermissionKey | null {
   if (/^\/admin\/credit-notes\/[^/]+\/edit$/.test(pathname)) return "credit_notes.update";
   if (pathname === "/admin/receipts/new") return "receipts.create";
   if (/^\/admin\/receipts\/[^/]+\/edit$/.test(pathname)) return "receipts.update";
+  if (pathname === "/admin/supplier-advances/new") return "supplier_advances.create";
+  if (/^\/admin\/supplier-advances\/[^/]+\/edit$/.test(pathname)) return "supplier_advances.update";
+  if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";
+  if (/^\/admin\/supplier-payments\/[^/]+\/edit$/.test(pathname)) return "supplier_payments.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";
   if (/^\/admin\/expenses\/[^/]+\/edit$/.test(pathname)) return "expenses.update";
   if (pathname === "/admin/cash-bank") return "cash_bank.view";

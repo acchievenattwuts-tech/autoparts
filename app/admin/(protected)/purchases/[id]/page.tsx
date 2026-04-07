@@ -116,11 +116,11 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
             <p className="font-medium text-gray-900">{vatLabel[purchase.vatType] ?? purchase.vatType}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">Purchase Type</p>
+            <p className="mb-0.5 text-gray-500">ประเภทการซื้อ</p>
             <p className="font-medium text-gray-900">{purchaseTypeLabel[purchase.purchaseType] ?? purchase.purchaseType}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">Payment Account / Method</p>
+            <p className="mb-0.5 text-gray-500">บัญชีจ่ายเงิน / ช่องทางชำระ</p>
             <p className="font-medium text-gray-900">
               {purchase.purchaseType === "CASH_PURCHASE"
                 ? `${purchase.cashBankAccount?.name ?? "-"} / ${paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod}`
