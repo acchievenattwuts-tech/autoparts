@@ -4,16 +4,24 @@ import { db } from "@/lib/db";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
+import { getCategoryPath } from "@/lib/product-slug";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
 });
 
-const refreshCategorySearchCaches = async (categoryId?: string) => {
+const refreshCategorySearchCaches = async ({
+  categoryId,
+  categoryPaths = [],
+}: {
+  categoryId?: string;
+  categoryPaths?: string[];
+}) => {
   revalidatePath("/");
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
+  categoryPaths.forEach((path) => revalidatePath(path));
   updateTag("storefront:categories");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
@@ -41,14 +49,16 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
   }
 
   const parsed = categorySchema.safeParse({ name: formData.get("name") });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
 
   try {
     const existingSlugs = await db.category.findMany({
       select: { slug: true },
     });
 
-    await db.category.create({
+    const category = await db.category.create({
       data: {
         name: parsed.data.name,
         slug: buildUniqueSlug({
@@ -58,8 +68,12 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
         }),
       },
     });
+
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches();
+    await refreshCategorySearchCaches({
+      categoryId: category.id,
+      categoryPaths: [getCategoryPath(category)],
+    });
     return {};
   } catch {
     return { error: "ชื่อหมวดหมู่นี้มีอยู่แล้ว" };
@@ -68,7 +82,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
 
 export const updateCategory = async (
   id: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error?: string }> => {
   try {
     await requirePermission("master.update");
@@ -81,15 +95,30 @@ export const updateCategory = async (
   }
 
   const parsed = categorySchema.safeParse({ name: formData.get("name") });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
 
   try {
+    const existingCategory = await db.category.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true },
+    });
+
+    if (!existingCategory) {
+      return { error: "ไม่พบหมวดหมู่นี้" };
+    }
+
     await db.category.update({
       where: { id },
       data: { name: parsed.data.name },
     });
+
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches(id);
+    await refreshCategorySearchCaches({
+      categoryId: id,
+      categoryPaths: [getCategoryPath(existingCategory)],
+    });
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขชื่อหมวดหมู่ได้" };
@@ -108,9 +137,22 @@ export const toggleCategory = async (id: string, isActive: boolean): Promise<{ e
   }
 
   try {
+    const existingCategory = await db.category.findUnique({
+      where: { id },
+      select: { id: true, name: true, slug: true },
+    });
+
+    if (!existingCategory) {
+      return { error: "ไม่พบหมวดหมู่นี้" };
+    }
+
     await db.category.update({ where: { id }, data: { isActive } });
+
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches(id);
+    await refreshCategorySearchCaches({
+      categoryId: id,
+      categoryPaths: [getCategoryPath(existingCategory)],
+    });
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

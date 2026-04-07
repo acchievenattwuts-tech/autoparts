@@ -19,6 +19,8 @@ import {
   getStorefrontCategoryPageData,
 } from "@/lib/storefront-category";
 
+export const dynamicParams = true;
+
 interface Props {
   params: Promise<{
     categorySlug: string;
