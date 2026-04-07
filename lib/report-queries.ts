@@ -530,7 +530,9 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
       where: {
         purchaseDate: { gte: filters.from, lte: filters.to },
         paymentStatus: "PAID",
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...(filters.accountId
+          ? { cashBankAccountId: filters.accountId }
+          : { cashBankAccountId: { not: null } }),
         ...statusFilter,
       },
       select: {
@@ -571,7 +573,9 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
     const expenses = await db.expense.findMany({
       where: {
         expenseDate: { gte: filters.from, lte: filters.to },
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...(filters.accountId
+          ? { cashBankAccountId: filters.accountId }
+          : { cashBankAccountId: { not: null } }),
         ...statusFilter,
       },
       select: {

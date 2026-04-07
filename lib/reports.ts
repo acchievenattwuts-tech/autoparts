@@ -525,6 +525,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
             purchaseDate: true,
             paymentMethod: true,
             paymentStatus: true,
+            cashBankAccountId: true,
             referenceNo: true,
             note: true,
             supplierId: true,
@@ -873,7 +874,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
   ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo));
 
   const dailyPaymentRows: DailyPaymentRow[] = [
-    ...purchases.filter((purchase) => purchase.paymentStatus === PurchasePaymentStatus.PAID).map((purchase) => ({
+    ...purchases
+      .filter(
+        (purchase) =>
+          purchase.paymentStatus === PurchasePaymentStatus.PAID && Boolean(purchase.cashBankAccountId),
+      )
+      .map((purchase) => ({
       source: "PURCHASE" as const,
       docNo: purchase.purchaseNo,
       docDate: purchase.purchaseDate,

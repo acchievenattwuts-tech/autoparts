@@ -286,8 +286,6 @@ const PurchaseForm = ({
               className={inputCls}
               placeholder="เช่น เลขที่ใบกำกับของผู้จำหน่าย"
             />
-          </div>          <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-            ระบบจะระบุช่องทางจ่ายเงินจากประเภทบัญชีให้อัตโนมัติ เมื่อเลือกแบบตัดบัญชีทันที
           </div>
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
@@ -356,7 +354,7 @@ const PurchaseForm = ({
             </div>
           ) : (
             <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
-              โหมดบันทึกเงินแยกจะไม่สร้าง movement จากใบซื้อ และให้ไปลงเงินออกผ่านเมนูปรับยอดเงินแทน
+              โหมดบันทึกเงินแยกจะไม่สร้าง movement จากใบซื้อ
             </div>
           )}
 
