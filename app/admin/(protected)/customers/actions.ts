@@ -13,6 +13,7 @@ const customerSchema = z.object({
   shippingAddress: z.string().max(500).optional(),
   taxId:           z.string().max(20).optional(),
   note:            z.string().max(500).optional(),
+  creditTerm:      z.coerce.number().int().min(0).max(365).optional(),
 });
 
 export async function createCustomer(
@@ -28,10 +29,11 @@ export async function createCustomer(
     shippingAddress: formData.get("shippingAddress") || undefined,
     taxId:           formData.get("taxId")           || undefined,
     note:            formData.get("note")            || undefined,
+    creditTerm:      formData.get("creditTerm")      || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm } = parsed.data;
   const code = await generateCustomerCode();
 
   try {
@@ -44,6 +46,7 @@ export async function createCustomer(
         shippingAddress: shippingAddress ?? null,
         taxId:           taxId           ?? null,
         note:            note            ?? null,
+        creditTerm:      creditTerm      ?? null,
       },
     });
     revalidatePath("/admin/customers");
@@ -68,10 +71,11 @@ export async function updateCustomer(
     shippingAddress: formData.get("shippingAddress") || undefined,
     taxId:           formData.get("taxId")           || undefined,
     note:            formData.get("note")            || undefined,
+    creditTerm:      formData.get("creditTerm")      || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm } = parsed.data;
 
   try {
     await db.customer.update({
@@ -83,6 +87,7 @@ export async function updateCustomer(
         shippingAddress: shippingAddress ?? null,
         taxId:           taxId           ?? null,
         note:            note            ?? null,
+        creditTerm:      creditTerm      ?? null,
         isActive:        true,
       },
     });

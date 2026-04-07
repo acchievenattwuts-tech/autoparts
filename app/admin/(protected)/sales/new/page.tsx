@@ -29,7 +29,7 @@ const NewSalePage = async () => {
     db.customer.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, phone: true, code: true, shippingAddress: true },
+      select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true },
     }),
     getSiteConfig(),
     db.supplier.findMany({

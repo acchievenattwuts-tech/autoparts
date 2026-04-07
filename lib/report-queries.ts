@@ -28,6 +28,7 @@ export type ReportFilters = {
   to: Date;
   fromStr: string;
   toStr: string;
+  hasFilter: boolean;
   showCancelled: boolean;
   accountId?: string;
   paymentType?: string;  // for sales
@@ -44,11 +45,13 @@ export function parseReportQueryFilters(
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const from = parseDate(params.from, firstOfMonth);
   const to = parseDate(params.to, today);
+  const hasFilter = !!(params.from || params.to);
   return {
     from,
     to: endOfDay(to),
     fromStr: params.from ?? from.toISOString().slice(0, 10),
     toStr: params.to ?? today.toISOString().slice(0, 10),
+    hasFilter,
     showCancelled: params.showCancelled === "1",
     accountId: params.accountId,
     paymentType: params.paymentType,

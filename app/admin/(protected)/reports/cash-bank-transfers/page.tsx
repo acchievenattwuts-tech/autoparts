@@ -45,7 +45,7 @@ export default async function CashBankTransferHistoryReportPage({ searchParams }
 
   const [accounts, rows] = await Promise.all([
     getActiveCashBankAccountOptions(),
-    queryCashBankTransferHistoryRows(filters),
+    filters.hasFilter ? queryCashBankTransferHistoryRows(filters) : Promise.resolve([]),
   ]);
 
   const activeRows = rows.filter((row) => row.status === "ACTIVE");
@@ -143,6 +143,12 @@ export default async function CashBankTransferHistoryReportPage({ searchParams }
         </div>
       </form>
 
+      {!filters.hasFilter ? (
+        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+        </div>
+      ) : (
+      <>
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
           <p className="text-xs text-gray-500">จำนวนรายการ</p>
@@ -219,6 +225,8 @@ export default async function CashBankTransferHistoryReportPage({ searchParams }
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export default async function CashBankLedgerReportPage({ searchParams }: PagePro
 
   const [accounts, ledger] = await Promise.all([
     getActiveCashBankAccountOptions(),
-    queryCashBankLedgerData(filters),
+    filters.hasFilter ? queryCashBankLedgerData(filters) : Promise.resolve({ rows: [], openingBalance: 0, totalIn: 0, totalOut: 0, endingBalance: 0 }),
   ]);
 
   const exportQuery = buildQuery(filters);
@@ -132,6 +132,12 @@ export default async function CashBankLedgerReportPage({ searchParams }: PagePro
         </div>
       </form>
 
+      {!filters.hasFilter ? (
+        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+        </div>
+      ) : (
+      <>
       <div className="grid gap-3 md:grid-cols-4">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
           <p className="text-xs text-gray-500">ยอดยกมา</p>
@@ -220,6 +226,8 @@ export default async function CashBankLedgerReportPage({ searchParams }: PagePro
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

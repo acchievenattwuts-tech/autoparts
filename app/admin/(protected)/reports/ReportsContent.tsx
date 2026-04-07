@@ -489,30 +489,11 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
 
       <section className="space-y-4">
         <SectionHeader
-          eyebrow="Tax & Stock"
-          title="ภาษี สต็อก และรายการติดตาม"
-          subtitle="สรุป VAT มูลค่าสต็อก สินค้าใกล้ขั้นต่ำ และงานติดตามหลังการขาย"
+          eyebrow="Stock"
+          title="สต็อกและรายการติดตาม"
+          subtitle="มูลค่าสต็อก สินค้าใกล้ขั้นต่ำ และงานติดตามหลังการขาย"
         />
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="VAT Summary" subtitle="ภาพรวมภาษีซื้อ ภาษีขาย และ VAT สุทธิคงชำระ">
-            <div className="space-y-2 p-4 text-sm">
-              {[
-                ["VAT ขาย", data.profitLoss.salesVat],
-                ["VAT คืนขาย", -data.profitLoss.creditNoteVat],
-                ["VAT ซื้อ", -data.profitLoss.purchaseVat],
-                ["VAT ค่าใช้จ่าย", -data.profitLoss.expenseVat],
-                ["VAT สุทธิคงชำระ", data.profitLoss.vatPayable],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
-                  <span className="text-gray-600">{label}</span>
-                  <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                    {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </TableCard>
-
           <TableCard title="สินค้าใกล้ขั้นต่ำ" subtitle="รายการที่ควรติดตามและวางแผนสั่งซื้อ">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

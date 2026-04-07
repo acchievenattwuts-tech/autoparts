@@ -46,7 +46,7 @@ export default async function CashBankAdjustmentHistoryReportPage({ searchParams
 
   const [accounts, rows] = await Promise.all([
     getActiveCashBankAccountOptions(),
-    queryCashBankAdjustmentHistoryRows(filters),
+    filters.hasFilter ? queryCashBankAdjustmentHistoryRows(filters) : Promise.resolve([]),
   ]);
 
   const activeRows = rows.filter((row) => row.status === "ACTIVE");
@@ -146,6 +146,12 @@ export default async function CashBankAdjustmentHistoryReportPage({ searchParams
         </div>
       </form>
 
+      {!filters.hasFilter ? (
+        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+        </div>
+      ) : (
+      <>
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 shadow-sm">
           <p className="text-xs text-emerald-700">Adjustment เงินเข้า</p>
@@ -231,6 +237,8 @@ export default async function CashBankAdjustmentHistoryReportPage({ searchParams
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

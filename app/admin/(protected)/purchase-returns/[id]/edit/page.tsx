@@ -95,6 +95,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     returnDate: ret.returnDate.toISOString().slice(0, 10),
     purchaseId: ret.purchaseId ?? "",
     supplierId: ret.supplierId ?? "",
+    type: ret.type,
     settlementType: ret.settlementType,
     cashBankAccountId: ret.cashBankAccountId ?? "",
     note:       ret.note ?? "",

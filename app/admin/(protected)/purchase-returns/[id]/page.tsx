@@ -37,6 +37,12 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
     INCLUDING_VAT:  "รวม VAT แล้ว",
   };
 
+  const returnTypeLabel: Record<string, string> = {
+    RETURN:   "ส่งคืนสินค้า",
+    DISCOUNT: "ส่วนลดราคา",
+    OTHER:    "อื่นๆ",
+  };
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">
@@ -90,6 +96,10 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
               </Link>
             </div>
           )}
+          <div>
+            <p className="text-gray-500 mb-0.5">ประเภทการคืน</p>
+            <p className="font-medium text-gray-900">{returnTypeLabel[ret.type] ?? ret.type}</p>
+          </div>
           <div>
             <p className="text-gray-500 mb-0.5">ภาษี</p>
             <p className="font-medium text-gray-900">{vatLabel[ret.vatType] ?? ret.vatType}</p>

@@ -49,6 +49,7 @@ interface CustomerOption {
   phone:           string | null;
   code:            string | null;
   shippingAddress: string | null;
+  creditTerm:      number | null;
 }
 
 interface LineItem {
@@ -85,6 +86,7 @@ interface InitialData {
   note:            string;
   vatType:         string;
   vatRate:         number;
+  creditTerm:      number | null;
   items:           (LineItem & { lotItems: LotSubRow[] })[];
 }
 
@@ -119,6 +121,7 @@ const SaleForm = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState(initialData?.customerPhone ?? "");
+  const [creditTerm, setCreditTerm] = useState<number | "">(initialData?.creditTerm ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
 
   const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">(initialData?.paymentType ?? "CASH_SALE");
@@ -320,10 +323,12 @@ const SaleForm = ({
       setCustomerNameOverride(found?.name ?? "");
       setCustomerPhoneOverride(found?.phone ?? "");
       setShippingAddress(found?.shippingAddress ?? "");
+      setCreditTerm(found?.creditTerm ?? "");
     } else {
       setCustomerNameOverride("");
       setCustomerPhoneOverride("");
       setShippingAddress("");
+      setCreditTerm("");
     }
   };
 
@@ -446,6 +451,19 @@ const SaleForm = ({
               onChange={(e) => setCustomerPhoneOverride(e.target.value)}
               className={inputCls}
               placeholder="ไม่ระบุ"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>เครดิต (วัน)</label>
+            <input
+              type="number"
+              name="creditTerm"
+              min={0}
+              max={365}
+              value={creditTerm}
+              onChange={(e) => setCreditTerm(e.target.value === "" ? "" : Number(e.target.value))}
+              className={inputCls}
+              placeholder="0 = เงินสด, ว่าง = ไม่กำหนด"
             />
           </div>
           <div>

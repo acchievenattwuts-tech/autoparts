@@ -15,6 +15,7 @@ interface CustomerFormProps {
     shippingAddress: string | null;
     taxId:           string | null;
     note:            string | null;
+    creditTerm:      number | null;
   };
 }
 
@@ -96,6 +97,21 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               className={inputCls}
               placeholder="0xx-xxx-xxxx"
             />
+          </div>
+
+          {/* Credit Term */}
+          <div>
+            <label className={labelCls}>เครดิต (วัน)</label>
+            <input
+              type="number"
+              name="creditTerm"
+              min={0}
+              max={365}
+              defaultValue={customer?.creditTerm ?? ""}
+              className={inputCls}
+              placeholder="0 = เงินสด"
+            />
+            <p className="mt-1 text-xs text-gray-400">จำนวนวันเครดิตสำหรับลูกค้า (ว่างไว้ = ไม่กำหนด)</p>
           </div>
 
           {/* เลขผู้เสียภาษี */}

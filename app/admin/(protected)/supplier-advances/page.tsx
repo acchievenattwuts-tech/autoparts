@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const metadata = { title: "เงินมัดจำซัพพลายเออร์" };
 
 import Link from "next/link";
 import { Eye, Pencil, Plus } from "lucide-react";

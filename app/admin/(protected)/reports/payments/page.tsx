@@ -45,7 +45,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const filters = parseReportQueryFilters(params);
   const [rows, accounts] = await Promise.all([
-    queryDailyPaymentRows(filters),
+    filters.hasFilter ? queryDailyPaymentRows(filters) : Promise.resolve([]),
     db.cashBankAccount.findMany({
       where: { isActive: true },
       orderBy: [{ type: "asc" }, { code: "asc" }],
@@ -173,6 +173,12 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         </div>
       </div>
 
+      {!filters.hasFilter ? (
+        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+        </div>
+      ) : (
+      <>
       <p className="text-sm text-gray-500">
         แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
         {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
@@ -256,6 +262,8 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
           )}
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

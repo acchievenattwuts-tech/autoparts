@@ -10,6 +10,7 @@ import {
   CashBankSourceType,
   PurchaseReturnRefundMethod,
   PurchaseReturnSettlementType,
+  PurchaseReturnType,
   VatType,
 } from "@/lib/generated/prisma";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -171,6 +172,7 @@ const returnSchema = z.object({
   returnDate: z.string().min(1, "กรุณาระบุวันที่"),
   purchaseId: z.string().max(50).optional(),
   supplierId: z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
+  type: z.nativeEnum(PurchaseReturnType).default(PurchaseReturnType.RETURN),
   settlementType: z.nativeEnum(PurchaseReturnSettlementType).default(PurchaseReturnSettlementType.CASH_REFUND),
   refundMethod: z.nativeEnum(PurchaseReturnRefundMethod).optional(),
   cashBankAccountId: z.string().optional(),
@@ -265,14 +267,17 @@ async function writePurchaseReturnLines(
   returnNo: string,
   docDate: Date,
   lineData: LineData[],
+  type: PurchaseReturnType,
 ): Promise<void> {
+  const writeStock = type === PurchaseReturnType.RETURN;
+
   for (const line of lineData) {
     const product = await tx.product.findUnique({
       where: { id: line.productId },
       select: { isLotControl: true },
     });
 
-    if (product?.isLotControl) {
+    if (writeStock && product?.isLotControl) {
       const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
       if (lotError) throw new Error(lotError);
     }
@@ -289,36 +294,38 @@ async function writePurchaseReturnLines(
       },
     });
 
-    await writeStockCard(tx, {
-      productId: line.productId,
-      docNo: returnNo,
-      docDate,
-      source: "RETURN_OUT",
-      qtyIn: 0,
-      qtyOut: line.qtyInBase,
-      priceIn: 0,
-      detail: `คืน ${line.qty} ${line.unitName}`,
-      referenceId: returnItem.id,
-    });
-
-    if (product?.isLotControl && line.lotItems.length > 0) {
-      const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
-      const lotsInBase = line.lotItems.map((lot) => ({
-        lotNo: lot.lotNo.trim(),
-        qtyInBase: lot.qty * lineScale,
-        unitCostBase: line.costPerBase,
-        mfgDate: lot.mfgDate ? new Date(lot.mfgDate) : null,
-        expDate: lot.expDate ? new Date(lot.expDate) : null,
-      }));
-
-      await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
-
-      const stockCard = await tx.stockCard.findFirst({
-        where: { referenceId: returnItem.id, source: "RETURN_OUT" },
-        select: { id: true },
+    if (writeStock) {
+      await writeStockCard(tx, {
+        productId: line.productId,
+        docNo: returnNo,
+        docDate,
+        source: "RETURN_OUT",
+        qtyIn: 0,
+        qtyOut: line.qtyInBase,
+        priceIn: 0,
+        detail: `คืน ${line.qty} ${line.unitName}`,
+        referenceId: returnItem.id,
       });
-      if (stockCard) {
-        await writeStockMovementLots(tx, stockCard.id, lotsInBase, "out");
+
+      if (product?.isLotControl && line.lotItems.length > 0) {
+        const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
+        const lotsInBase = line.lotItems.map((lot) => ({
+          lotNo: lot.lotNo.trim(),
+          qtyInBase: lot.qty * lineScale,
+          unitCostBase: line.costPerBase,
+          mfgDate: lot.mfgDate ? new Date(lot.mfgDate) : null,
+          expDate: lot.expDate ? new Date(lot.expDate) : null,
+        }));
+
+        await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+
+        const stockCard = await tx.stockCard.findFirst({
+          where: { referenceId: returnItem.id, source: "RETURN_OUT" },
+          select: { id: true },
+        });
+        if (stockCard) {
+          await writeStockMovementLots(tx, stockCard.id, lotsInBase, "out");
+        }
       }
     }
   }
@@ -342,6 +349,7 @@ export async function createPurchaseReturn(
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
+    type: (formData.get("type") as PurchaseReturnType) || PurchaseReturnType.RETURN,
     settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
     refundMethod: (formData.get("refundMethod") as PurchaseReturnRefundMethod) || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
@@ -356,6 +364,7 @@ export async function createPurchaseReturn(
     returnDate,
     purchaseId,
     supplierId,
+    type,
     settlementType,
     cashBankAccountId,
     note,
@@ -393,6 +402,7 @@ export async function createPurchaseReturn(
           vatRate,
           subtotalAmount,
           vatAmount,
+          type,
           settlementType,
           refundMethod,
           cashBankAccountId: resolvedCashBankAccountId || null,
@@ -401,7 +411,7 @@ export async function createPurchaseReturn(
         },
       });
 
-      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData);
+      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type);
 
       if (settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT) {
         await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
@@ -471,16 +481,18 @@ export async function cancelPurchaseReturn(
   }
 
   const affectedProductIds = [...new Set(ret.items.map((item) => item.productId))];
+  const hadStock = ret.type === PurchaseReturnType.RETURN;
 
   try {
     await dbTx(async (tx) => {
-      for (const item of ret.items) {
-        await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
-      }
-
-      await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
-      for (const productId of affectedProductIds) {
-        await recalculateStockCard(tx, productId);
+      if (hadStock) {
+        for (const item of ret.items) {
+          await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+        }
+        await tx.stockCard.deleteMany({ where: { docNo: ret.returnNo } });
+        for (const productId of affectedProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
       }
 
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_PURCHASE, ret.id);
@@ -549,6 +561,7 @@ export async function updatePurchaseReturn(
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
+    type: (formData.get("type") as PurchaseReturnType) || PurchaseReturnType.RETURN,
     settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
     refundMethod: (formData.get("refundMethod") as PurchaseReturnRefundMethod) || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
@@ -563,6 +576,7 @@ export async function updatePurchaseReturn(
     returnDate,
     purchaseId,
     supplierId,
+    type,
     settlementType,
     cashBankAccountId,
     note,
@@ -577,17 +591,20 @@ export async function updatePurchaseReturn(
 
   const docDate = new Date(returnDate);
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
+  const oldHadStock = existing.type === PurchaseReturnType.RETURN;
 
   try {
     await dbTx(async (tx) => {
-      for (const item of existing.items) {
-        await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+      if (oldHadStock) {
+        for (const item of existing.items) {
+          await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+        }
+        await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
+        for (const productId of oldProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
       }
-      await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
       await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
-      for (const productId of oldProductIds) {
-        await recalculateStockCard(tx, productId);
-      }
 
       const lineData = await buildLineData(tx, validItems, vatType, vatRate);
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
@@ -608,6 +625,7 @@ export async function updatePurchaseReturn(
           vatRate,
           subtotalAmount,
           vatAmount,
+          type,
           settlementType,
           refundMethod,
           cashBankAccountId: resolvedCashBankAccountId || null,
@@ -616,7 +634,7 @@ export async function updatePurchaseReturn(
         },
       });
 
-      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData);
+      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData, type);
 
       await recalculatePurchaseReturnAmountRemain(tx, id);
 

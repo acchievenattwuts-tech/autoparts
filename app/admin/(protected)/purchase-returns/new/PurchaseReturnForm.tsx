@@ -54,6 +54,7 @@ interface InitialData {
   returnDate: string;
   purchaseId: string;
   supplierId: string;
+  type: "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "SUPPLIER_CREDIT";
   cashBankAccountId: string;
   note: string;
@@ -62,6 +63,12 @@ interface InitialData {
   items: LineItem[];
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }
+
+const RETURN_TYPE_LABELS: Record<string, string> = {
+  RETURN: "ส่งคืนสินค้า",
+  DISCOUNT: "ส่วนลดราคา",
+  OTHER: "อื่นๆ",
+};
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
@@ -103,6 +110,9 @@ const PurchaseReturnForm = ({
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
   const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [returnType, setReturnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(
+    initialData?.type ?? "RETURN",
+  );
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "SUPPLIER_CREDIT">(
     initialData?.settlementType ?? "CASH_REFUND",
   );
@@ -332,6 +342,7 @@ const PurchaseReturnForm = ({
     }
     formData.set("supplierId", supplierId);
     formData.set("purchaseId", purchaseId);
+    formData.set("type", returnType);
     formData.set("settlementType", settlementType);
     formData.set("cashBankAccountId", settlementType === "CASH_REFUND" ? cashBankAccountId : "");
 
@@ -354,7 +365,7 @@ const PurchaseReturnForm = ({
         return;
       }
       const product = productMap.get(item.productId);
-      if (product?.isLotControl) {
+      if (returnType === "RETURN" && product?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) {
           setError(lotErr);
@@ -436,6 +447,30 @@ const PurchaseReturnForm = ({
               disabled={!supplierId || loadingPurchases}
             />
             <input type="hidden" name="purchaseId" value={purchaseId} />
+          </div>
+          <div>
+            <label className={labelCls}>ประเภทการคืน <span className="text-red-500">*</span></label>
+            <div className="overflow-hidden rounded-lg border border-gray-300">
+              {(["RETURN", "DISCOUNT", "OTHER"] as const).map((value, idx) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setReturnType(value)}
+                  className={`w-1/3 px-3 py-2 text-sm font-medium transition-colors ${
+                    idx > 0 ? "border-l border-gray-300" : ""
+                  } ${
+                    returnType === value
+                      ? "bg-[#1e3a5f] text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {RETURN_TYPE_LABELS[value]}
+                </button>
+              ))}
+            </div>
+            {returnType === "RETURN" && (
+              <p className="mt-1 text-xs text-[#1e3a5f]">ส่งคืนสินค้า: ระบบจะหักสต็อก + Lot อัตโนมัติ</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>รูปแบบการรับชดเชย</label>
@@ -619,7 +654,7 @@ const PurchaseReturnForm = ({
                         )}
                       </td>
                     </tr>
-                    {isLot && (
+                    {isLot && returnType === "RETURN" && (
                       <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50">
                         <td colSpan={6} className="px-3 py-3">
                           <div className="flex items-center justify-between mb-2">

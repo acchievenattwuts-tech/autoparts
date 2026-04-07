@@ -15,6 +15,7 @@ export type CashBankReportFilters = {
   to: Date;
   fromStr: string;
   toStr: string;
+  hasFilter: boolean;
   accountId?: string;
   fromAccountId?: string;
   toAccountId?: string;
@@ -118,6 +119,7 @@ export function parseCashBankReportFilters(
     to: endOfDay(to),
     fromStr: params.from ?? formatCashBankDateInput(from),
     toStr: params.to ?? formatCashBankDateInput(today),
+    hasFilter: !!(params.from || params.to),
     accountId: params.accountId?.trim() || undefined,
     fromAccountId: params.fromAccountId?.trim() || undefined,
     toAccountId: params.toAccountId?.trim() || undefined,

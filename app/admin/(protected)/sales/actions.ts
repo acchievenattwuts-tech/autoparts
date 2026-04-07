@@ -112,6 +112,7 @@ const saleSchema = z.object({
   vatType:         z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:         z.coerce.number().min(0).max(100).default(0),
   shippingMethod:  z.nativeEnum(ShippingMethod).default(ShippingMethod.NONE),
+  creditTerm:      z.coerce.number().int().min(0).max(365).optional(),
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -243,6 +244,7 @@ export async function createSale(
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
     shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
+    creditTerm:      formData.get("creditTerm") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -263,6 +265,7 @@ export async function createSale(
     vatType,
     vatRate,
     shippingMethod,
+    creditTerm,
     items: validItems,
   } = parsed.data;
 
@@ -314,6 +317,7 @@ export async function createSale(
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
           shippingMethod,
           shippingStatus:  ShippingStatus.PENDING,
+          creditTerm:      creditTerm      ?? null,
         },
       });
 
@@ -594,11 +598,12 @@ export async function updateSale(
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
     shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
+    creditTerm:      formData.get("creditTerm") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -659,6 +664,7 @@ export async function updateSale(
           netAmount,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
           shippingMethod,
+          creditTerm:      creditTerm      ?? null,
         },
       });
 
