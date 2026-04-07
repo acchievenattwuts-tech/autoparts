@@ -57,6 +57,24 @@ export async function generateReceiptNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate supplier payment number using SupplierPayment table
+ * Format: PAY{YYMM}{4-digit}
+ */
+export async function generateSupplierPaymentNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `PAY${yy}${mm}`;
+  const last = await db.supplierPayment.findFirst({
+    where: { paymentNo: { startsWith: pattern } },
+    orderBy: { paymentNo: "desc" },
+    select: { paymentNo: true },
+  });
+  const seq = last ? parseInt(last.paymentNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Generate expense number using Expense table
  * Format: OE{YYMM}{4-digit}
  */
@@ -76,19 +94,41 @@ export async function generateExpenseNo(date?: Date): Promise<string> {
 
 /**
  * Generate purchase number using Purchase table
- * Format: RR{YYMM}{4-digit}
+ * prefix: RR (cash) or RRC (credit)
+ * Format: {prefix}{YYMM}{4-digit}
  */
-export async function generatePurchaseNo(date?: Date): Promise<string> {
+export async function generatePurchaseNo(
+  prefix: "RR" | "RRC",
+  date?: Date,
+): Promise<string> {
   const d = date ?? new Date();
   const yy = String(d.getFullYear()).slice(-2);
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const pattern = `RR${yy}${mm}`;
+  const pattern = `${prefix}${yy}${mm}`;
   const last = await db.purchase.findFirst({
     where: { purchaseNo: { startsWith: pattern } },
     orderBy: { purchaseNo: "desc" },
     select: { purchaseNo: true },
   });
   const seq = last ? parseInt(last.purchaseNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
+ * Generate supplier advance number using SupplierAdvance table
+ * Format: ADV{YYMM}{4-digit}
+ */
+export async function generateSupplierAdvanceNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `ADV${yy}${mm}`;
+  const last = await db.supplierAdvance.findFirst({
+    where: { advanceNo: { startsWith: pattern } },
+    orderBy: { advanceNo: "desc" },
+    select: { advanceNo: true },
+  });
+  const seq = last ? parseInt(last.advanceNo.slice(pattern.length), 10) + 1 : 1;
   return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 

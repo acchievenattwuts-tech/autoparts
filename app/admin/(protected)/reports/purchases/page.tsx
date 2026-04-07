@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
@@ -145,7 +145,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
               <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
               <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
-              <th className="px-3 py-2.5 text-left font-medium">สถานะการจ่าย</th>
+              <th className="px-3 py-2.5 text-left font-medium">Purchase Type</th>
               <th className="px-3 py-2.5 text-left font-medium">ช่องทางจ่าย</th>
               <th className="px-3 py-2.5 text-left font-medium">บัญชีจ่ายเงิน</th>
               <th className="px-3 py-2.5 text-left font-medium">รหัสซัพพลายเออร์</th>
@@ -179,7 +179,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2 text-center tabular-nums text-gray-400">{row.rowNo}</td>
                 <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.docDate)}</td>
-                <td className="px-3 py-2">{row.paymentStatus}</td>
+                <td className="px-3 py-2">{row.purchaseType}</td>
                 <td className="px-3 py-2">{row.paymentMethod}</td>
                 <td className="px-3 py-2 text-gray-600">{row.accountName}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.supplierCode}</td>

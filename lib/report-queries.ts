@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+﻿import { db } from "@/lib/db";
 import {
   DocStatus,
   VatType,
@@ -6,6 +6,7 @@ import {
   SalePaymentType,
   CreditNoteType,
   PaymentMethod,
+  PurchaseType,
 } from "@/lib/generated/prisma";
 
 // Filter helpers
@@ -138,7 +139,7 @@ export type PurchaseRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  paymentStatus: string;
+  purchaseType: string;
   paymentMethod: string;
   accountName: string;
   supplierCode: string;
@@ -309,7 +310,7 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
     select: {
       purchaseNo: true,
       purchaseDate: true,
-      paymentStatus: true,
+      purchaseType: true,
       paymentMethod: true,
       cashBankAccountId: true,
       referenceNo: true,
@@ -348,13 +349,12 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
         rowNo: rowNo++,
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
-        paymentStatus:
-          p.paymentStatus === "PAID"
-            ? p.cashBankAccountId
-              ? "ชำระแล้ว (ตัดบัญชีทันที)"
-              : "ชำระแล้ว (บันทึกเงินแยก)"
-            : p.paymentStatus,
-        paymentMethod: p.cashBankAccountId ? paymentMethodLabel(p.paymentMethod) : "-",
+        purchaseType:
+          p.purchaseType === PurchaseType.CASH_PURCHASE ? "Cash Purchase" : "Credit Purchase",
+        paymentMethod:
+          p.purchaseType === PurchaseType.CASH_PURCHASE && p.cashBankAccountId
+            ? paymentMethodLabel(p.paymentMethod)
+            : "-",
         accountName: p.cashBankAccount?.name ?? "-",
         supplierCode: p.supplier?.code ?? "(ไม่มีรหัส)",
         supplierName: p.supplier?.name ?? "(ไม่ระบุ)",
@@ -529,7 +529,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
     const purchases = await db.purchase.findMany({
       where: {
         purchaseDate: { gte: filters.from, lte: filters.to },
-        paymentStatus: "PAID",
+        purchaseType: "CASH_PURCHASE",
         ...(filters.accountId
           ? { cashBankAccountId: filters.accountId }
           : { cashBankAccountId: { not: null } }),
@@ -673,7 +673,7 @@ export function buildPurchasesCsv(rows: PurchaseRow[]): string {
   ]);
   const body = rows.map((r) =>
     csvRow([
-      r.rowNo, r.docNo, fmtDate(r.docDate), r.paymentStatus, r.paymentMethod, r.accountName, r.supplierCode, r.supplierName,
+      r.rowNo, r.docNo, fmtDate(r.docDate), r.purchaseType, r.paymentMethod, r.accountName, r.supplierCode, r.supplierName,
       r.referenceNo, statusLabel(r.status), r.productCode, r.productName,
       r.qty, r.unitName, r.unitPrice, r.subtotalAmount,
       r.vatType, r.vatAmount, r.totalAmount,
@@ -870,7 +870,7 @@ export async function queryDailyPaymentRows(
     const purchases = await db.purchase.findMany({
       where: {
         purchaseDate: { gte: filters.from, lte: filters.to },
-        paymentStatus: "PAID",
+        purchaseType: "CASH_PURCHASE",
         ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
         ...statusFilter,
       },
@@ -1028,6 +1028,7 @@ export function buildDailyPaymentCsv(rows: DailyPaymentRow[]): string {
   );
   return BOM + [header, ...body].join("\r\n");
 }
+
 
 
 

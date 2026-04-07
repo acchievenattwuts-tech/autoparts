@@ -94,7 +94,32 @@
       "Bash(ls \"d:/autoparts/app/admin/\\(protected\\)/\")",
       "Bash(ls \"app/admin/\\(protected\\)/delivery/\")",
       "Bash(xargs ls:*)",
-      "Bash(grep -A 6 \"const shippingStatusLabel\\\\|const shippingStatusBadge\\\\|const shippingMethodLabel\" /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)"
+      "Bash(grep -A 6 \"const shippingStatusLabel\\\\|const shippingStatusBadge\\\\|const shippingMethodLabel\" /d/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)",
+      "Bash(grep -n \"items\\\\|productName\\\\|unitName\\\\|unitPrice\" D:/autoparts/app/admin/\\\\\\(protected\\\\\\)/sales/[id]/page.tsx)",
+      "Bash(dir \"d:\\\\autoparts\\\\app\\\\admin\")",
+      "Bash(ls \"d:\\\\autoparts\\\\app\\\\admin\\\\\\(protected\\)\\\\delivery\\\\print\"\")",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(node -e ':*)",
+      "mcp__TestSprite__testsprite_bootstrap",
+      "mcp__TestSprite__testsprite_generate_code_summary",
+      "mcp__TestSprite__testsprite_generate_standardized_prd",
+      "mcp__TestSprite__testsprite_generate_frontend_test_plan",
+      "mcp__TestSprite__testsprite_generate_code_and_execute",
+      "Bash(node:*)",
+      "mcp__TestSprite__testsprite_check_account_info",
+      "Bash(xargs -I {} ls \"{}\")",
+      "Bash(find \"D:/autoparts/app/admin/\\(protected\\)\" -name \"page.tsx\" -exec wc -l {} +)",
+      "Bash(netstat -ano)",
+      "mcp__TestSprite__testsprite_open_test_result_dashboard",
+      "Bash(cp /tmp/stash_purchase_detail.tsx \"app/admin/\\(protected\\)/purchases/[id]/page.tsx\")",
+      "Bash(cp /tmp/stash_purchase_edit.tsx \"app/admin/\\(protected\\)/purchases/[id]/edit/page.tsx\")",
+      "Bash(cp /tmp/stash_PurchaseForm.tsx \"app/admin/\\(protected\\)/purchases/new/PurchaseForm.tsx\")",
+      "Bash(cp /tmp/stash_detail.tsx \"app/admin/\\(protected\\)/purchases/[id]/page.tsx\")",
+      "Bash(cp /tmp/stash_list.tsx \"app/admin/\\(protected\\)/purchases/page.tsx\")",
+      "Bash(cp /tmp/stash_edit.tsx \"app/admin/\\(protected\\)/purchases/[id]/edit/page.tsx\")",
+      "Bash(cp /tmp/stash_reports.tsx \"app/admin/\\(protected\\)/reports/purchases/page.tsx\")",
+      "Bash(cp /tmp/stash_rq.ts \"lib/report-queries.ts\")"
     ]
   }
 }

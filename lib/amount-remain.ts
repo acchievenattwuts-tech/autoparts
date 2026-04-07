@@ -1,4 +1,9 @@
-import { Prisma } from "@/lib/generated/prisma";
+import {
+  Prisma,
+  PurchasePaymentStatus,
+  PurchaseReturnSettlementType,
+  PurchaseType,
+} from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -118,6 +123,152 @@ export async function recalculateCNAmountRemain(
 
   await tx.creditNote.update({
     where: { id: cnId },
+    data: { amountRemain: new Prisma.Decimal(remain) },
+  });
+}
+
+function resolvePurchasePaymentStatus(
+  netAmount: number,
+  remain: number,
+): PurchasePaymentStatus {
+  if (remain <= 0) return PurchasePaymentStatus.PAID;
+  if (remain < netAmount) return PurchasePaymentStatus.PARTIALLY_PAID;
+  return PurchasePaymentStatus.UNPAID;
+}
+
+export async function recalculatePurchaseAmountRemain(
+  tx: TxClient,
+  purchaseId: string,
+): Promise<void> {
+  const purchase = await tx.purchase.findUnique({
+    where: { id: purchaseId },
+    select: {
+      netAmount: true,
+      status: true,
+      purchaseType: true,
+      supplierPaymentItems: {
+        where: { payment: { status: "ACTIVE" } },
+        select: { paidAmount: true },
+      },
+    },
+  });
+
+  if (!purchase) return;
+
+  if (purchase.status === "CANCELLED") {
+    await tx.purchase.update({
+      where: { id: purchaseId },
+      data: { amountRemain: new Prisma.Decimal(0) },
+    });
+    return;
+  }
+
+  if (purchase.purchaseType === PurchaseType.CASH_PURCHASE) {
+    await tx.purchase.update({
+      where: { id: purchaseId },
+      data: {
+        amountRemain: new Prisma.Decimal(0),
+        paymentStatus: PurchasePaymentStatus.PAID,
+      },
+    });
+    return;
+  }
+
+  const paidBySupplierPayments = purchase.supplierPaymentItems.reduce(
+    (sum, item) => sum + Number(item.paidAmount),
+    0,
+  );
+  const netAmount = Number(purchase.netAmount);
+  const remain = Math.max(0, netAmount - paidBySupplierPayments);
+
+  await tx.purchase.update({
+    where: { id: purchaseId },
+    data: {
+      amountRemain: new Prisma.Decimal(remain),
+      paymentStatus: resolvePurchasePaymentStatus(netAmount, remain),
+    },
+  });
+}
+
+export async function recalculatePurchaseReturnAmountRemain(
+  tx: TxClient,
+  purchaseReturnId: string,
+): Promise<void> {
+  const purchaseReturn = await tx.purchaseReturn.findUnique({
+    where: { id: purchaseReturnId },
+    select: {
+      totalAmount: true,
+      status: true,
+      settlementType: true,
+      supplierPaymentItems: {
+        where: { payment: { status: "ACTIVE" } },
+        select: { paidAmount: true },
+      },
+    },
+  });
+
+  if (!purchaseReturn) return;
+
+  if (
+    purchaseReturn.status === "CANCELLED" ||
+    purchaseReturn.settlementType !== PurchaseReturnSettlementType.SUPPLIER_CREDIT
+  ) {
+    await tx.purchaseReturn.update({
+      where: { id: purchaseReturnId },
+      data: { amountRemain: new Prisma.Decimal(0) },
+    });
+    return;
+  }
+
+  const appliedBySupplierPayments = purchaseReturn.supplierPaymentItems.reduce(
+    (sum, item) => sum + Number(item.paidAmount),
+    0,
+  );
+  const remain = Math.max(
+    0,
+    Number(purchaseReturn.totalAmount) - appliedBySupplierPayments,
+  );
+
+  await tx.purchaseReturn.update({
+    where: { id: purchaseReturnId },
+    data: { amountRemain: new Prisma.Decimal(remain) },
+  });
+}
+
+export async function recalculateSupplierAdvanceAmountRemain(
+  tx: TxClient,
+  advanceId: string,
+): Promise<void> {
+  const advance = await tx.supplierAdvance.findUnique({
+    where: { id: advanceId },
+    select: {
+      totalAmount: true,
+      status: true,
+      supplierPayments: {
+        where: { payment: { status: "ACTIVE" } },
+        select: { paidAmount: true },
+      },
+    },
+  });
+
+  if (!advance) return;
+
+  if (advance.status === "CANCELLED") {
+    await tx.supplierAdvance.update({
+      where: { id: advanceId },
+      data: { amountRemain: new Prisma.Decimal(0) },
+    });
+    return;
+  }
+
+  const appliedBySupplierPayments = advance.supplierPayments.reduce(
+    (sum, item) => sum + Number(item.paidAmount),
+    0,
+  );
+  const remain = Math.max(0, Number(advance.totalAmount) - appliedBySupplierPayments);
+
+  await tx.supplierAdvance.update({
+    where: { id: advanceId },
     data: { amountRemain: new Prisma.Decimal(remain) },
   });
 }

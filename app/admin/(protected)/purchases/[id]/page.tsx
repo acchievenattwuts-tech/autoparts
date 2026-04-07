@@ -1,11 +1,11 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { PaymentMethod, PurchasePaymentStatus } from "@/lib/generated/prisma";
+import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -19,6 +19,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     include: {
       supplier: { select: { name: true } },
       user: { select: { name: true } },
+      cashBankAccount: { select: { name: true } },
       items: {
         include: {
           product: { select: { code: true, name: true, isLotControl: true } },
@@ -29,6 +30,11 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   });
 
   if (!purchase) notFound();
+
+  const purchaseTypeLabel: Record<PurchaseType, string> = {
+    CASH_PURCHASE: "ซื้อสด",
+    CREDIT_PURCHASE: "ซื้อเชื่อ",
+  };
 
   const vatLabel: Record<string, string> = {
     NO_VAT: "ไม่มี VAT",
@@ -42,11 +48,6 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     CREDIT: "เครดิต",
   };
 
-  const paymentStatusLabel: Record<PurchasePaymentStatus, string> = {
-    UNPAID: "ยังไม่ชำระ",
-    PAID: purchase.cashBankAccountId ? "ชำระแล้ว (ตัดบัญชีทันที)" : "ชำระแล้ว (บันทึกเงินแยก)",
-    PARTIALLY_PAID: "ชำระบางส่วน",
-  };
 
   return (
     <div>
@@ -115,13 +116,15 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
             <p className="font-medium text-gray-900">{vatLabel[purchase.vatType] ?? purchase.vatType}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">สถานะการชำระเงิน</p>
-            <p className="font-medium text-gray-900">{paymentStatusLabel[purchase.paymentStatus] ?? purchase.paymentStatus}</p>
+            <p className="mb-0.5 text-gray-500">Purchase Type</p>
+            <p className="font-medium text-gray-900">{purchaseTypeLabel[purchase.purchaseType] ?? purchase.purchaseType}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ช่องทางชำระเงิน</p>
+            <p className="mb-0.5 text-gray-500">Payment Account / Method</p>
             <p className="font-medium text-gray-900">
-              {purchase.cashBankAccountId ? (paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod) : "-"}
+              {purchase.purchaseType === "CASH_PURCHASE"
+                ? `${purchase.cashBankAccount?.name ?? "-"} / ${paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod}`
+                : "-"}
             </p>
           </div>
           <div>

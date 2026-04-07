@@ -44,6 +44,9 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     CashBankSourceType.PURCHASE,
     CashBankSourceType.EXPENSE,
     CashBankSourceType.CN_SALE,
+    CashBankSourceType.CN_PURCHASE,
+    CashBankSourceType.SUPPLIER_ADVANCE,
+    CashBankSourceType.SUPPLIER_PAYMENT,
     CashBankSourceType.TRANSFER,
     CashBankSourceType.ADJUSTMENT,
   ]);

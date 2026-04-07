@@ -3,7 +3,7 @@ import {
   CNRefundMethod,
   CNSettlementType,
   PaymentMethod,
-  PurchasePaymentStatus,
+  PurchaseType,
   SalePaymentType,
 } from "@/lib/generated/prisma";
 
@@ -523,8 +523,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           id: true,
             purchaseNo: true,
             purchaseDate: true,
+            purchaseType: true,
             paymentMethod: true,
-            paymentStatus: true,
             cashBankAccountId: true,
             referenceNo: true,
             note: true,
@@ -877,7 +877,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     ...purchases
       .filter(
         (purchase) =>
-          purchase.paymentStatus === PurchasePaymentStatus.PAID && Boolean(purchase.cashBankAccountId),
+          purchase.purchaseType === PurchaseType.CASH_PURCHASE && Boolean(purchase.cashBankAccountId),
       )
       .map((purchase) => ({
       source: "PURCHASE" as const,

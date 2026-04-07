@@ -133,7 +133,7 @@ async function buildPurchasesExcel(rows: PurchaseRow[], title: string): Promise<
     { header: "#", key: "rowNo", width: 6 },
     { header: "เลขที่เอกสาร", key: "docNo", width: 16 },
     { header: "วันที่", key: "docDate", width: 12 },
-    { header: "Payment Status", key: "paymentStatus", width: 14 },
+    { header: "Purchase Type", key: "purchaseType", width: 14 },
     { header: "Payment Method", key: "paymentMethod", width: 14 },
     { header: "Account", key: "accountName", width: 22 },
     { header: "รหัสซัพพลายเออร์", key: "supplierCode", width: 16 },
@@ -503,4 +503,3 @@ export async function GET(request: Request) {
     },
   });
 }
-

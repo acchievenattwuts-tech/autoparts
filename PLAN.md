@@ -2207,14 +2207,85 @@ npm run db:restore backup-{timestamp}.json
 - ปรับ daily cash-in ให้รวม `PurchaseReturn(CASH_REFUND)`
 - ปรับ daily cash-out ให้รวม `SupplierAdvance` และ `SupplierPayment`
 
-### Rollout order
+## Supplier AP Implementation Checklist
 
-1. Schema foundation
-2. amountRemain helpers
-3. doc number + cash-bank source mappings
-4. SupplierAdvance module
-5. Purchase refactor (`CASH_PURCHASE` / `CREDIT_PURCHASE`)
-6. PurchaseReturn settlement refactor
-7. SupplierPayment module
-8. Reports / dashboard / export / permissions / sidebar
-9. data migration + backfill for old purchase documents
+อัปเดตล่าสุด: `2026-04-07`
+
+### เสร็จแล้ว
+
+- [x] วาง schema foundation สำหรับฝั่ง Supplier AP
+  - เพิ่ม `Purchase.purchaseType`
+  - เพิ่ม `PurchaseReturn.settlementType`, `refundMethod`, `amountRemain`, `cashBankAccountId`
+  - เพิ่ม model `SupplierAdvance`, `SupplierPayment`, `SupplierPaymentItem`
+  - เพิ่ม cash/bank source ใหม่ `CN_PURCHASE`, `SUPPLIER_ADVANCE`, `SUPPLIER_PAYMENT`
+
+- [x] ปรับสูตร `amountRemain` ตาม logic ล่าสุด
+  - `Purchase.amountRemain = netAmount - sum(active SupplierPaymentItem.purchaseId)`
+  - `PurchaseReturn.amountRemain = totalAmount - sum(active SupplierPaymentItem.purchaseReturnId)` เฉพาะ `settlementType = SUPPLIER_CREDIT`
+  - `SupplierAdvance.amountRemain = totalAmount - sum(active SupplierPaymentItem.advanceId)`
+
+- [x] เพิ่ม running number และ cash/bank source mappings
+  - running number สำหรับ `ADV`, `PAY`, และ prefix `RR` / `RRC`
+  - เชื่อม source ใหม่ใน cash/bank link และ report query ที่เกี่ยวข้อง
+
+- [x] refactor หน้า `ซื้อสินค้า` ให้ใช้ `purchaseType` แทน `paymentStatus`
+  - ตัด UI `สถานะการชำระเงิน`
+  - `ซื้อสด` ต้องเลือก `บัญชีจ่ายเงิน`
+  - `ซื้อเชื่อ` ซ่อน `บัญชีจ่ายเงิน`
+  - form submit ส่งเฉพาะ `purchaseType` + `cashBankAccountId`
+
+- [x] ปรับ server action ของ `Purchase` ให้ derive ค่าจาก `purchaseType`
+  - derive `paymentStatus` จาก `purchaseType`
+  - derive `paymentMethod` จากบัญชีเงินสด/ธนาคารเมื่อเป็น `CASH_PURCHASE`
+  - `CASH_PURCHASE` กำหนด `amountRemain = 0`
+  - `CREDIT_PURCHASE` ยังไม่เกิด cash movement ตอนรับสินค้า และไปชำระภายหลังผ่าน `SupplierPayment`
+
+- [x] ปรับ purchase flow ที่กระทบแล้ว
+  - `app/admin/(protected)/purchases/new/PurchaseForm.tsx`
+  - `app/admin/(protected)/purchases/actions.ts`
+  - `app/admin/(protected)/purchases/[id]/edit/page.tsx`
+  - `app/admin/(protected)/purchases/page.tsx`
+  - `app/admin/(protected)/purchases/[id]/page.tsx`
+
+- [x] ปรับ report / export / dashboard alignment ที่กระทบจาก purchase cash vs credit
+  - `lib/report-queries.ts` ให้ purchase register และ daily payment ดู `purchaseType = CASH_PURCHASE` แทน `paymentStatus = PAID`
+  - `lib/reports.ts` ปรับ daily payments summary ให้ใช้ logic ใหม่
+  - `app/admin/(protected)/reports/purchases/page.tsx` ปรับ dataset เป็น `purchaseType`
+  - `app/admin/(protected)/reports/export-excel/route.ts` ปรับ export column จาก `Payment Status` เป็น `Purchase Type`
+
+- [x] ตรวจสอบ build หลัง refactor รอบล่าสุด
+  - `npm run build` ผ่าน
+
+### คิวถัดไป
+
+- [ ] ทำโมดูล `SupplierAdvance`
+  - หน้า list / create / detail / edit
+  - cash/bank movement เงินออก
+  - คำนวณ `amountRemain`
+
+- [ ] refactor `PurchaseReturn` ให้รองรับ `CASH_REFUND` / `SUPPLIER_CREDIT`
+  - `CASH_REFUND` = เงินเข้า cash/bank
+  - `SUPPLIER_CREDIT` = เก็บเครดิตไว้หักใน `SupplierPayment`
+  - คำนวณ `amountRemain` และ reverse ตอน cancel ให้ครบ
+
+- [ ] ทำโมดูล `SupplierPayment`
+  - ดึง `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, `SupplierAdvance`
+  - คำนวณ `totalCashPaid = sum(Purchase) - sum(PurchaseReturn SUPPLIER_CREDIT) - sum(SupplierAdvance)`
+  - รองรับทั้งจ่ายเงินจริงและ net off
+
+- [ ] ขยาย reports / dashboard / export สำหรับ A/P เต็มรูปแบบ
+  - รายงานเงินมัดจำ supplier คงเหลือ ณ วันที่
+  - รายงานเจ้าหนี้คงค้าง ณ วันที่
+  - รายงานเครดิต CN ซื้อคงเหลือ ณ วันที่
+  - รายงานฐานะสุทธิ supplier ณ วันที่
+  - dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding
+
+- [ ] เพิ่ม permissions / routes / sidebar สำหรับ Supplier AP modules
+
+- [ ] ทำ data migration / backfill สำหรับเอกสารซื้อเก่าที่ต้องเข้ากับ flow ใหม่
+
+### หมายเหตุการติดตามงาน
+
+- [x] ใช้ checklist นี้เป็นตัวบอกสถานะปัจจุบันแทนการ append log ต่อท้าย
+- [x] งานที่เสร็จแล้วต้องย้ายมาอยู่ใต้ `เสร็จแล้ว`
+- [ ] งานที่เริ่มทำรอบถัดไปให้ย้ายมาอยู่หัวข้อ `กำลังทำ` หากต้องการติดตามละเอียดขึ้น

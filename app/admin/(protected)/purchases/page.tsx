@@ -1,9 +1,9 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Plus, Eye, Pencil } from "lucide-react";
-import { PaymentMethod } from "@/lib/generated/prisma";
+import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
@@ -13,28 +13,16 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 30;
+const purchaseTypeLabel: Record<PurchaseType, string> = {
+  CASH_PURCHASE: "ซื้อสด",
+  CREDIT_PURCHASE: "ซื้อเชื่อ",
+};
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH: "เงินสด",
   TRANSFER: "โอนเงิน",
   CREDIT: "เครดิต",
 };
 
-const purchaseSettlementLabel = (purchase: {
-  paymentStatus: string;
-  cashBankAccountId: string | null;
-}) => {
-  if (purchase.paymentStatus === "PAID") {
-    return purchase.cashBankAccountId
-      ? "ชำระแล้ว (ตัดบัญชีทันที)"
-      : "ชำระแล้ว (บันทึกเงินแยก)";
-  }
-
-  if (purchase.paymentStatus === "PARTIALLY_PAID") {
-    return "จ่ายบางส่วน";
-  }
-
-  return "ยังไม่จ่าย";
-};
 
 const PurchasesPage = async ({
   searchParams,
@@ -122,7 +110,7 @@ const PurchasesPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">การจ่ายเงิน</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Purchase Type</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">จำนวนรายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
@@ -149,8 +137,8 @@ const PurchasesPage = async ({
                     </td>
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {purchaseSettlementLabel(p)}
-                      {p.cashBankAccountId ? ` • ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
+                      {purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}
+                      {p.cashBankAccountId ? ` โ€ข ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">

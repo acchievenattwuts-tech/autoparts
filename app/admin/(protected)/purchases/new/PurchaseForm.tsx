@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
-import { calcVat, calcItemSubtotal, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
-import { PaymentMethod, PurchasePaymentStatus } from "@/lib/generated/prisma";
+import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import { PurchaseType } from "@/lib/generated/prisma";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
@@ -49,8 +49,7 @@ interface InitialData {
   id:           string;
   purchaseDate: string;
   supplierId:   string;
-  paymentMethod: PaymentMethod;
-  paymentStatus: PurchasePaymentStatus;
+  purchaseType: PurchaseType;
   cashBankAccountId: string;
   referenceNo:  string;
   discount:     number;
@@ -86,15 +85,8 @@ const PurchaseForm = ({
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
-  const paymentMethod = initialData?.paymentMethod ?? PaymentMethod.TRANSFER;
-  const paymentStatus = initialData?.paymentStatus ?? PurchasePaymentStatus.PAID;
-  const legacyPaymentStatus = initialData?.paymentStatus && initialData.paymentStatus !== PurchasePaymentStatus.PAID
-    ? initialData.paymentStatus
-    : null;
-  const [cashPostingMode, setCashPostingMode] = useState<"DIRECT" | "SEPARATE">(
-    initialData?.paymentStatus === PurchasePaymentStatus.PAID && initialData.cashBankAccountId
-      ? "DIRECT"
-      : "SEPARATE",
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>(
+    initialData?.purchaseType ?? PurchaseType.CASH_PURCHASE,
   );
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
@@ -214,12 +206,10 @@ const PurchaseForm = ({
     const formData = new FormData(e.currentTarget);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
-    if (!legacyPaymentStatus && cashPostingMode === "DIRECT" && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
+    if (purchaseType === PurchaseType.CASH_PURCHASE && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
     formData.set("supplierId", supplierId);
-    formData.set("paymentMethod", paymentMethod);
-    formData.set("paymentStatus", legacyPaymentStatus ?? PurchasePaymentStatus.PAID);
-    formData.set("cashPostingMode", cashPostingMode);
-    formData.set("cashBankAccountId", !legacyPaymentStatus && cashPostingMode === "SEPARATE" ? "" : cashBankAccountId);
+    formData.set("purchaseType", purchaseType);
+    formData.set("cashBankAccountId", purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : "");
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -305,39 +295,33 @@ const PurchaseForm = ({
           </div>
 
           <div>
-            <label className={labelCls}>สถานะการชำระเงิน</label>
-            {legacyPaymentStatus ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                เอกสารเดิมใช้สถานะการชำระแบบเก่า ระบบจะคงสถานะเดิมไว้จนกว่าจะสร้างเอกสารใหม่
-              </div>
-            ) : (
-              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setCashPostingMode("DIRECT")}
-                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                    cashPostingMode === "DIRECT"
-                      ? "bg-emerald-600 text-white"
-                      : "bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  ชำระแล้ว (ตัดบัญชีทันที)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCashPostingMode("SEPARATE")}
-                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
-                    cashPostingMode === "SEPARATE"
-                      ? "bg-orange-500 text-white"
-                      : "bg-white text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  ชำระแล้ว (บันทึกเงินแยก)
-                </button>
-              </div>
-            )}
+            <label className={labelCls}>ประเภทการซื้อ</label>
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPurchaseType(PurchaseType.CASH_PURCHASE)}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                  purchaseType === PurchaseType.CASH_PURCHASE
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ซื้อสด
+              </button>
+              <button
+                type="button"
+                onClick={() => setPurchaseType(PurchaseType.CREDIT_PURCHASE)}
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                  purchaseType === PurchaseType.CREDIT_PURCHASE
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                ซื้อเชื่อ
+              </button>
+            </div>
           </div>
-          {legacyPaymentStatus ? null : cashPostingMode === "DIRECT" ? (
+          {purchaseType === PurchaseType.CASH_PURCHASE ? (
             <div>
               <label className={labelCls}>บัญชีจ่ายเงิน <span className="text-red-500">*</span></label>
               <SearchableSelect
@@ -353,8 +337,8 @@ const PurchaseForm = ({
               <p className="mt-1 text-xs text-gray-500">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
-              โหมดบันทึกเงินแยกจะไม่สร้าง movement จากใบซื้อ
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+              ซื้อเชื่อจะยังไม่ตัดบัญชีจ่ายเงินจากใบซื้อ และยอดค้างจะไปชำระผ่านเอกสารจ่ายชำระเงินภายหลัง
             </div>
           )}
 
