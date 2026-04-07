@@ -104,18 +104,7 @@ export function parseCashBankReportFilters(
 
   const sourceType =
     params.sourceType &&
-    [
-      CashBankSourceType.SALE,
-      CashBankSourceType.RECEIPT,
-      CashBankSourceType.PURCHASE,
-      CashBankSourceType.EXPENSE,
-      CashBankSourceType.CN_SALE,
-      CashBankSourceType.CN_PURCHASE,
-      CashBankSourceType.SUPPLIER_ADVANCE,
-      CashBankSourceType.SUPPLIER_PAYMENT,
-      CashBankSourceType.TRANSFER,
-      CashBankSourceType.ADJUSTMENT,
-    ].includes(params.sourceType as CashBankSourceType)
+    (Object.values(CashBankSourceType) as string[]).includes(params.sourceType)
       ? (params.sourceType as CashBankSourceType)
       : "ALL";
 
