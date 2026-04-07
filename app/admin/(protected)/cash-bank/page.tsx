@@ -197,7 +197,8 @@ export default async function CashBankPage({ searchParams }: PageProps) {
 
       <CashBankAccountManager accounts={accounts} canManage={canManage} />
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      {false && (
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="font-kanit text-lg font-semibold text-gray-900">สมุดเคลื่อนไหวบัญชี</h2>
           <p className="text-sm text-gray-500">
@@ -330,7 +331,8 @@ export default async function CashBankPage({ searchParams }: PageProps) {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
         <h2 className="font-kanit text-lg font-semibold text-gray-900">คู่มือการใช้งานสำหรับพนักงาน</h2>

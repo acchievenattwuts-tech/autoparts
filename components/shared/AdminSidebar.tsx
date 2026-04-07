@@ -138,8 +138,18 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
     return items;
   }, []);
 
-  const isActive = (href: string) =>
-    href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+  const visibleHrefs = visibleItems.flatMap((item) =>
+    "section" in item ? item.items.map((subItem) => subItem.href) : [item.href]
+  );
+
+  const activeHref =
+    visibleHrefs
+      .filter((href) =>
+        href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`)
+      )
+      .sort((left, right) => right.length - left.length)[0] ?? "";
+
+  const isActive = (href: string) => href === activeHref;
 
   return (
     <div className="flex h-full w-64 flex-col bg-[#1e3a5f] text-white">
