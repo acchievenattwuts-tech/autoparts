@@ -49,7 +49,8 @@ function emptyFormState(): FormState {
   };
 }
 
-const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+const inputCls =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
 
 export default function CashBankAccountManager({ accounts, canManage }: Props) {
   const router = useRouter();
@@ -163,7 +164,9 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           <h2 className="font-kanit text-lg font-semibold text-gray-900">
             {form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}
           </h2>
-          <p className="text-sm text-gray-500">ใช้กำหนดบัญชีเงินสดหรือธนาคารสำหรับ movement และรายงาน</p>
+          <p className="text-sm text-gray-500">
+            ใช้กำหนดบัญชีเงินสดหรือธนาคารสำหรับ movement และรายงาน cash/bank
+          </p>
         </div>
         {form.accountId && (
           <button
@@ -176,8 +179,16 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
         )}
       </div>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      {success && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {success}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
@@ -286,12 +297,21 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
                 <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{account.code}</td>
                 <td className="px-3 py-2 text-gray-900">{account.name}</td>
                 <td className="px-3 py-2 text-gray-600">{account.type}</td>
-                <td className="px-3 py-2 text-gray-500">{[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "-"}</td>
+                <td className="px-3 py-2 text-gray-500">
+                  {[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "-"}
+                </td>
                 <td className="px-3 py-2 text-right font-medium text-gray-800">
-                  {account.openingBalance.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {account.openingBalance.toLocaleString("th-TH", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
                 </td>
                 <td className="px-3 py-2 text-center">
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${account.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      account.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
                     {account.isActive ? "ใช้งาน" : "ปิดใช้งาน"}
                   </span>
                 </td>

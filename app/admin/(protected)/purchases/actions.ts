@@ -98,6 +98,26 @@ const purchaseSchema = z.object({
   items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+const cashPostingModeSchema = z.enum(["DIRECT", "SEPARATE"]);
+
+async function resolvePurchasePaymentMethod(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  accountId: string | undefined,
+  fallback: PaymentMethod,
+): Promise<PaymentMethod> {
+  if (!accountId) return fallback;
+
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { type: true },
+  });
+  if (!account) {
+    throw new Error("ไม่พบบัญชีจ่ายเงิน");
+  }
+
+  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
 export async function createPurchase(
   formData: FormData
 ): Promise<{ success?: boolean; purchaseNo?: string; error?: string }> {
@@ -109,6 +129,10 @@ export async function createPurchase(
     const raw = formData.get("items");
     if (typeof raw === "string") items = JSON.parse(raw);
   } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
+
+  const cashPostingMode = cashPostingModeSchema.parse(
+    (formData.get("cashPostingMode") as string | null) ?? "DIRECT",
+  );
 
   const parsed = purchaseSchema.safeParse({
     supplierId:   formData.get("supplierId") || undefined,
@@ -131,17 +155,28 @@ export async function createPurchase(
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
-  if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) {
+  const resolvedCashBankAccountId =
+    paymentStatus === PurchasePaymentStatus.PAID && cashPostingMode === "DIRECT"
+      ? cashBankAccountId
+      : undefined;
+
+  if (paymentStatus === PurchasePaymentStatus.PAID && cashPostingMode === "DIRECT" && !resolvedCashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
   }
   if (paymentStatus === PurchasePaymentStatus.PARTIALLY_PAID) {
-    return { error: "การจ่ายบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
+    return { error: "การชำระบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
   }
 
   const purchaseNo = await generatePurchaseNo(new Date(purchaseDate));
 
   try {
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+        paymentMethod,
+      );
+
       // 1. Create Purchase header
       const purchase = await tx.purchase.create({
         data: {
@@ -159,9 +194,9 @@ export async function createPurchase(
           vatAmount,
           referenceNo:   referenceNo ?? null,
           purchaseDate:  new Date(purchaseDate),
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           paymentStatus,
-          cashBankAccountId: cashBankAccountId || null,
+          cashBankAccountId: resolvedCashBankAccountId || null,
         },
       });
 
@@ -209,7 +244,7 @@ export async function createPurchase(
           referenceId: purchaseItem.id,
         });
 
-        // 4. Lot Control — only if product has isLotControl=true
+        // 4. Lot Control - only if product has isLotControl=true
         if (item.lotItems.length > 0) {
           const product = await tx.product.findUnique({
             where: { id: item.productId },
@@ -245,9 +280,9 @@ export async function createPurchase(
         tx,
         CashBankSourceType.PURCHASE,
         purchase.id,
-        paymentStatus === PurchasePaymentStatus.PAID && cashBankAccountId
+        paymentStatus === PurchasePaymentStatus.PAID && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: new Date(purchaseDate),
               direction: CashBankDirection.OUT,
               amount: netAmount,
@@ -296,10 +331,10 @@ export async function cancelPurchase(
   if (!purchase)                        return { error: "ไม่พบเอกสาร" };
   if (purchase.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
-  // Reference chain check: ห้ามยกเลิกถ้ามีใบคืนซัพพลายเออร์ที่ยัง active
+  // Reference chain check: ห้ามยกเลิกถ้ามีใบคืนสินค้าที่ยัง active
   if (purchase.purchaseReturns.length > 0) {
     const nos = purchase.purchaseReturns.map((r) => r.returnNo).join(", ");
-    return { error: `ไม่สามารถยกเลิกได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบคืนก่อน` };
+    return { error: `ไม่สามารถยกเลิกได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบคืนก่อน` };
   }
 
   const affectedProductIds = [...new Set(purchase.items.map((i) => i.productId))];
@@ -328,9 +363,7 @@ export async function cancelPurchase(
   }
 }
 
-// ─────────────────────────────────────────
 // updatePurchase
-// ─────────────────────────────────────────
 
 export async function updatePurchase(
   id: string,
@@ -365,10 +398,16 @@ export async function updatePurchase(
     if (typeof raw === "string") items = JSON.parse(raw);
   } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
 
+  const cashPostingMode = cashPostingModeSchema.parse(
+    (formData.get("cashPostingMode") as string | null) ?? "DIRECT",
+  );
+
   const parsed = purchaseSchema.safeParse({
     supplierId:   formData.get("supplierId") || undefined,
     purchaseDate: formData.get("purchaseDate"),
     paymentMethod: (formData.get("paymentMethod") as PaymentMethod) || PaymentMethod.TRANSFER,
+    paymentStatus: (formData.get("paymentStatus") as PurchasePaymentStatus) || existing.paymentStatus,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     discount:     formData.get("discount") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
@@ -383,17 +422,28 @@ export async function updatePurchase(
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
-  if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) {
+  const resolvedCashBankAccountId =
+    paymentStatus === PurchasePaymentStatus.PAID && cashPostingMode === "DIRECT"
+      ? cashBankAccountId
+      : undefined;
+
+  if (paymentStatus === PurchasePaymentStatus.PAID && cashPostingMode === "DIRECT" && !resolvedCashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
   }
   if (paymentStatus === PurchasePaymentStatus.PARTIALLY_PAID) {
-    return { error: "การจ่ายบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
+    return { error: "การชำระบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
   }
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
   try {
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+        paymentMethod,
+      );
+
       const oldItems = await tx.purchaseItem.findMany({
         where: { purchaseId: id },
         select: { id: true, productId: true },
@@ -425,9 +475,9 @@ export async function updatePurchase(
           vatAmount,
           netAmount,
           amountRemain:  new Prisma.Decimal(paymentStatus === PurchasePaymentStatus.PAID ? 0 : netAmount),
-          paymentMethod,
+          paymentMethod: resolvedPaymentMethod,
           paymentStatus,
-          cashBankAccountId: cashBankAccountId || null,
+          cashBankAccountId: resolvedCashBankAccountId || null,
         },
       });
 
@@ -503,9 +553,9 @@ export async function updatePurchase(
         tx,
         CashBankSourceType.PURCHASE,
         id,
-        paymentStatus === PurchasePaymentStatus.PAID && cashBankAccountId
+        paymentStatus === PurchasePaymentStatus.PAID && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: new Date(purchaseDate),
               direction: CashBankDirection.OUT,
               amount: netAmount,
@@ -525,3 +575,5 @@ export async function updatePurchase(
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
+
+

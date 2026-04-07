@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { CashBankSourceType } from "@/lib/generated/prisma";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getCashBankSourceHref, getCashBankSourceLabel } from "@/lib/cash-bank-links";
 import CashBankAccountManager, { type CashBankAccountRow } from "./CashBankAccountManager";
 
@@ -93,14 +93,12 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     currentBalance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
   }));
 
-  const where = {
-    txnDate: { gte: from, lte: to },
-    ...(accountId ? { accountId } : {}),
-    ...(sourceType !== "ALL" ? { sourceType } : {}),
-  };
-
   const movements = await db.cashBankMovement.findMany({
-    where,
+    where: {
+      txnDate: { gte: from, lte: to },
+      ...(accountId ? { accountId } : {}),
+      ...(sourceType !== "ALL" ? { sourceType } : {}),
+    },
     orderBy: [
       { txnDate: "asc" },
       { account: { code: "asc" } },
@@ -125,6 +123,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
 
   let openingBalance: number | null = null;
   let endingBalance: number | null = null;
+
   if (accountId) {
     const account = accountsRaw.find((item) => item.id === accountId);
     if (account) {
@@ -157,12 +156,14 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="font-kanit text-2xl font-bold text-gray-900">Cash / Bank Ledger</h1>
-          <p className="text-sm text-gray-500">ติดตามเงินเข้า เงินออก และยอดคงเหลือของแต่ละบัญชีแบบ running balance</p>
+          <h1 className="font-kanit text-2xl font-bold text-gray-900">Cash / Bank Dashboard</h1>
+          <p className="text-sm text-gray-500">
+            ติดตามเงินเข้า เงินออก และยอดคงเหลือรายบัญชีจาก ledger จริง พร้อมลิงก์ย้อนกลับไปยังเอกสารต้นทาง
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin/cash-bank/ledger" className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
-            ดู Ledger เต็ม
+            ดู ledger เต็ม
           </Link>
           <Link href="/admin/cash-bank/transfers" className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#163055]">
             โอนเงิน
@@ -185,9 +186,11 @@ export default async function CashBankPage({ searchParams }: PageProps) {
                 {account.type}
               </span>
             </div>
-            <p className="mt-3 text-xs text-gray-400">{[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "เงินสด / ไม่มีรายละเอียดธนาคาร"}</p>
+            <p className="mt-3 text-xs text-gray-400">
+              {[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "เงินสด / ไม่มีรายละเอียดธนาคาร"}
+            </p>
             <p className="mt-4 font-kanit text-2xl font-bold text-[#1e3a5f]">{formatCurrency(account.currentBalance)}</p>
-            <p className="mt-1 text-xs text-gray-400">{account.isActive ? "บัญชีใช้งานอยู่" : "บัญชีนี้ปิดใช้งานแล้ว"}</p>
+            <p className="mt-1 text-xs text-gray-400">{account.isActive ? "บัญชีนี้เปิดใช้งานอยู่" : "บัญชีนี้ปิดใช้งานแล้ว"}</p>
           </div>
         ))}
       </div>
@@ -197,7 +200,9 @@ export default async function CashBankPage({ searchParams }: PageProps) {
       <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4">
           <h2 className="font-kanit text-lg font-semibold text-gray-900">สมุดเคลื่อนไหวบัญชี</h2>
-          <p className="text-sm text-gray-500">กรองตามบัญชี ช่วงวันที่ และ source เพื่อดู in / out / balance พร้อมลิงก์เอกสารต้นทาง</p>
+          <p className="text-sm text-gray-500">
+            กรองตามบัญชี ช่วงวันที่ และ source เพื่อดูยอดยกมา รับเข้า จ่ายออก และ running balance
+          </p>
         </div>
 
         <form method="GET" className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -258,7 +263,9 @@ export default async function CashBankPage({ searchParams }: PageProps) {
           </div>
           <div className="rounded-xl bg-blue-50 p-3">
             <p className="text-xs text-blue-700">ยอดคงเหลือปลายงวด</p>
-            <p className="font-kanit text-xl font-bold text-[#1e3a5f]">{formatCurrency(endingBalance ?? (openingBalance ?? 0) + totalIn - totalOut)}</p>
+            <p className="font-kanit text-xl font-bold text-[#1e3a5f]">
+              {formatCurrency(endingBalance ?? (openingBalance ?? 0) + totalIn - totalOut)}
+            </p>
           </div>
         </div>
 
@@ -268,7 +275,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
               <tr>
                 <th className="px-3 py-2 text-left font-medium">วันที่</th>
                 <th className="px-3 py-2 text-left font-medium">บัญชี</th>
-                <th className="px-3 py-2 text-left font-medium">อ้างอิง</th>
+                <th className="px-3 py-2 text-left font-medium">เลขอ้างอิง</th>
                 <th className="px-3 py-2 text-left font-medium">Source</th>
                 <th className="px-3 py-2 text-left font-medium">เอกสารต้นทาง</th>
                 <th className="px-3 py-2 text-left font-medium">หมายเหตุ</th>
@@ -322,6 +329,28 @@ export default async function CashBankPage({ searchParams }: PageProps) {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 shadow-sm">
+        <h2 className="font-kanit text-lg font-semibold text-gray-900">คู่มือการใช้งานสำหรับพนักงาน</h2>
+        <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">1. ตั้งบัญชีให้พร้อมก่อนใช้งาน</p>
+            <p className="text-sm text-gray-600">สร้างบัญชีเงินสดหน้าร้าน เงินสดย่อย และบัญชีธนาคารที่ใช้งานจริง พร้อมยอดยกมาและวันที่เริ่มต้น</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">2. เอกสารที่รับหรือจ่ายเงินจริงต้องเลือกบัญชี</p>
+            <p className="text-sm text-gray-600">ขายสด รับชำระหนี้ ซื้อที่จ่ายแล้ว ค่าใช้จ่าย และเครดิตโน้ตคืนเงินสด ต้องผูกบัญชีเงินให้ถูกต้องทุกครั้ง</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">3. โอนเงินและปรับยอดให้ใช้เมนูเฉพาะ</p>
+            <p className="text-sm text-gray-600">ห้ามใช้เอกสารอื่นแทนการโอนเงินหรือปรับยอด ถ้าต้องย้ายเงินระหว่างบัญชีให้ใช้เมนูโอนเงิน และถ้าเป็นเงินเกินขาดหรือค่าธรรมเนียมให้ใช้ปรับยอด</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900">4. ตรวจยอดจาก ledger ไม่ใช่จากการจำ</p>
+            <p className="text-sm text-gray-600">ก่อนปิดวันให้ดูยอดคงเหลือจากหน้า ledger หรือ summary เสมอ และเปิดเอกสารต้นทางจากแต่ละ movement เมื่อต้องไล่หาสาเหตุ</p>
+          </div>
         </div>
       </div>
     </div>

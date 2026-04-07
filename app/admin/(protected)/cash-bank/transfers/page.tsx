@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import TransferManager from "./TransferManager";
 
 export default async function CashBankTransfersPage() {
@@ -26,8 +26,8 @@ export default async function CashBankTransfersPage() {
         note: true,
         status: true,
         cancelNote: true,
-        fromAccount: { select: { name: true } },
-        toAccount: { select: { name: true } },
+        fromAccount: { select: { code: true, name: true } },
+        toAccount: { select: { code: true, name: true } },
       },
     }),
   ]);
@@ -36,7 +36,9 @@ export default async function CashBankTransfersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-kanit text-2xl font-bold text-gray-900">โอนเงินระหว่างบัญชี</h1>
-        <p className="text-sm text-gray-500">จัดการการย้ายเงินสดเข้าธนาคาร หรือโอนระหว่างบัญชี โดยสร้าง movement สองฝั่งอัตโนมัติ</p>
+        <p className="text-sm text-gray-500">
+          ใช้สำหรับย้ายเงินระหว่างบัญชีเงินสดและธนาคาร โดยระบบจะสร้าง movement ออกและเข้าให้อัตโนมัติในรายการเดียว
+        </p>
       </div>
 
       <TransferManager
@@ -45,7 +47,9 @@ export default async function CashBankTransfersPage() {
           id: transfer.id,
           transferNo: transfer.transferNo,
           transferDate: transfer.transferDate.toISOString().slice(0, 10),
+          fromAccountCode: transfer.fromAccount.code,
           fromAccountName: transfer.fromAccount.name,
+          toAccountCode: transfer.toAccount.code,
           toAccountName: transfer.toAccount.name,
           amount: Number(transfer.amount),
           note: transfer.note,

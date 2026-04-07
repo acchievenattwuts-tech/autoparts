@@ -476,19 +476,10 @@ const SaleForm = ({
               </button>
             </div>
           </div>
-          {paymentType === "CASH_SALE" && (
-          <div>
-            <label className={labelCls}>ช่องทางชำระเงิน</label>
-            <select name="paymentMethod" defaultValue={initialData?.paymentMethod ?? "CASH"} className={`${inputCls} bg-white`}>
-              <option value="CASH">เงินสด</option>
-              <option value="TRANSFER">โอนเงิน</option>
-              <option value="CREDIT">เครดิต</option>
-            </select>
-          </div>
-          )}
+          {paymentType === "CASH_SALE" ? (
           <div>
             <label className={labelCls}>
-              บัญชีรับเงิน {paymentType === "CASH_SALE" && <span className="text-red-500">*</span>}
+              บัญชีรับเงิน <span className="text-red-500">*</span>
             </label>
             <SearchableSelect
               options={cashBankAccounts.map((account): SelectOption => ({
@@ -500,7 +491,13 @@ const SaleForm = ({
               onChange={setCashBankAccountId}
               placeholder="โปรดระบุบัญชีรับเงิน"
             />
+            <p className="mt-1 text-xs text-gray-500">ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ</p>
           </div>
+          ) : (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+            ขายเชื่อจะยังไม่สร้างรายการเงินรับ และไม่ต้องระบุบัญชีรับเงิน
+          </div>
+          )}
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
             <input
@@ -597,7 +594,7 @@ const SaleForm = ({
 
           {paymentType === "CREDIT_SALE" && fulfillmentType === "DELIVERY" && (
             <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-              ⚠️ ขายเชื่อ+จัดส่ง: ยอดค้างชำระจะเปิด AR — บันทึกใบเสร็จรับเงินเมื่อได้รับเงิน
+              ขายเชื่อ + จัดส่ง: ระบบจะเปิดยอดค้างชำระใน AR และค่อยบันทึกใบเสร็จเมื่อได้รับเงินจริง
             </p>
           )}
 
@@ -635,7 +632,7 @@ const SaleForm = ({
                   <option value="KERRY">Kerry</option>
                   <option value="FLASH">Flash</option>
                   <option value="JT">J&T</option>
-                  <option value="OTHER">อื่นๆ</option>
+                  <option value="OTHER">อื่น ๆ</option>
                 </select>
               </div>
             </div>
@@ -713,7 +710,7 @@ const SaleForm = ({
                         disabled={!item.productId}
                         className={`${inputCls} bg-white`}
                       >
-                        <option value="">-- โปรดระบุ --</option>
+                          <option value="">-- โปรดระบุ --</option>
                         {units.map((u) => (
                           <option key={u.name} value={u.name}>
                             {u.name}
@@ -785,7 +782,7 @@ const SaleForm = ({
                                 {totalLotQty}
                               </span>
                               <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                              {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ยังไม่ครบ</span>}
+                              {!lotQtyMatch && <span className="text-xs text-red-500">จำนวน Lot ยังไม่ครบ</span>}
                               <button
                                 type="button"
                                 onClick={() => handleAutoAllocate(i)}
@@ -981,3 +978,4 @@ const SaleForm = ({
 };
 
 export default SaleForm;
+

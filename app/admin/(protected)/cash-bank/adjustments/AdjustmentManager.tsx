@@ -19,6 +19,7 @@ type AdjustmentRow = {
   adjustNo: string;
   adjustDate: string;
   accountId: string;
+  accountCode: string;
   accountName: string;
   direction: "IN" | "OUT";
   amount: number;
@@ -36,7 +37,20 @@ type Props = {
   canCancel: boolean;
 };
 
-const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+const inputCls =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 export default function AdjustmentManager({ accounts, adjustments, canCreate, canUpdate, canCancel }: Props) {
   const router = useRouter();
@@ -47,12 +61,17 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelNote, setCancelNote] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const sortedAdjustments = useMemo(
-    () => [...adjustments].sort((left, right) => right.adjustDate.localeCompare(left.adjustDate) || right.adjustNo.localeCompare(left.adjustNo)),
+    () =>
+      [...adjustments].sort(
+        (left, right) => right.adjustDate.localeCompare(left.adjustDate) || right.adjustNo.localeCompare(left.adjustNo),
+      ),
     [adjustments],
   );
 
@@ -66,6 +85,11 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
     setNote("");
     setError("");
     setSuccess("");
+  };
+
+  const resetCancelState = () => {
+    setCancelTarget(null);
+    setCancelNote("");
   };
 
   const handleEdit = (adjustment: AdjustmentRow) => {
@@ -125,24 +149,24 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
     });
   };
 
-  const handleCancel = (id: string) => {
-    const cancelNote = window.prompt("กรุณาระบุเหตุผลที่ยกเลิกรายการปรับยอด");
-    if (cancelNote === null) return;
+  const handleCancel = () => {
+    if (!cancelTarget) return;
     if (!cancelNote.trim()) {
       setError("กรุณาระบุเหตุผลที่ยกเลิกรายการปรับยอด");
       return;
     }
 
     const formData = new FormData();
-    formData.set("cancelNote", cancelNote);
+    formData.set("cancelNote", cancelNote.trim());
 
     startTransition(async () => {
-      const result = await cancelCashBankAdjustment(id, formData);
+      const result = await cancelCashBankAdjustment(cancelTarget, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
-      setSuccess("ยกเลิกการปรับยอดแล้ว");
+      setSuccess("ยกเลิกรายการปรับยอดแล้ว");
+      resetCancelState();
       router.refresh();
     });
   };
@@ -153,8 +177,12 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="font-kanit text-lg font-semibold text-gray-900">{adjustmentId ? "แก้ไขการปรับยอด" : "บันทึกการปรับยอดเงิน"}</h2>
-              <p className="text-sm text-gray-500">ใช้สำหรับรายการเงินเข้า/เงินออกที่ไม่ได้เกิดจากเอกสารหลัก เช่น เงินสดขาดเกิน หรือยอดเปิดระบบ</p>
+              <h2 className="font-kanit text-lg font-semibold text-gray-900">
+                {adjustmentId ? "แก้ไขการปรับยอด" : "บันทึกการปรับยอดเงิน"}
+              </h2>
+              <p className="text-sm text-gray-500">
+                ใช้สำหรับรายการเงินเข้าออกที่ไม่เกิดจากเอกสารหลัก เช่น เงินสดขาดเกิน ค่าธรรมเนียมธนาคาร หรือการตั้งยอดเริ่มต้น
+              </p>
             </div>
             {adjustmentId && (
               <button type="button" onClick={resetForm} className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
@@ -193,7 +221,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">เหตุผล</label>
-              <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น ยอดเปิดระบบ / เงินสดขาดเกิน" />
+              <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น เงินขาดเกิน / ค่าธรรมเนียม" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">หมายเหตุ</label>
@@ -226,6 +254,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
                 <th className="px-3 py-2 text-left font-medium">ทิศทาง</th>
                 <th className="px-3 py-2 text-right font-medium">จำนวนเงิน</th>
                 <th className="px-3 py-2 text-left font-medium">เหตุผล</th>
+                <th className="px-3 py-2 text-left font-medium">หมายเหตุ</th>
                 <th className="px-3 py-2 text-center font-medium">สถานะ</th>
                 <th className="px-3 py-2 text-right font-medium">จัดการ</th>
               </tr>
@@ -234,18 +263,22 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
               {sortedAdjustments.map((adjustment) => (
                 <tr key={adjustment.id} className="border-t border-gray-100">
                   <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{adjustment.adjustNo}</td>
-                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(adjustment.adjustDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}</td>
-                  <td className="px-3 py-2 text-gray-900">{adjustment.accountName}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(adjustment.adjustDate)}</td>
+                  <td className="px-3 py-2 text-gray-900">
+                    <p>{adjustment.accountName}</p>
+                    <p className="text-xs text-gray-400">{adjustment.accountCode}</p>
+                  </td>
                   <td className="px-3 py-2">
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.direction === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                      {adjustment.direction}
+                      {adjustment.direction === "IN" ? "เงินเข้า" : "เงินออก"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-medium text-gray-900">{adjustment.amount.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td className="px-3 py-2 text-gray-500">{adjustment.reason}</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{formatCurrency(adjustment.amount)}</td>
+                  <td className="px-3 py-2 text-gray-600">{adjustment.reason}</td>
+                  <td className="px-3 py-2 text-gray-500">{adjustment.note || adjustment.cancelNote || "-"}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                      {adjustment.status}
+                      {adjustment.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิกแล้ว"}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -256,7 +289,16 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
                         </button>
                       )}
                       {canCancel && adjustment.status === "ACTIVE" && (
-                        <button type="button" onClick={() => handleCancel(adjustment.id)} className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError("");
+                            setSuccess("");
+                            setCancelTarget(adjustment.id);
+                            setCancelNote("");
+                          }}
+                          className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                        >
                           ยกเลิก
                         </button>
                       )}
@@ -268,6 +310,38 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
           </table>
         </div>
       </div>
+
+      {cancelTarget && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900">ยืนยันการยกเลิกรายการปรับยอด</h2>
+          <p className="text-sm text-gray-600">ระบุเหตุผลเพื่อเก็บไว้ในประวัติการยกเลิก</p>
+          <div className="mt-4 flex flex-col gap-3 md:flex-row">
+            <input
+              className={inputCls}
+              value={cancelNote}
+              onChange={(e) => setCancelNote(e.target.value)}
+              placeholder="เหตุผลที่ยกเลิก"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={isPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                ยืนยันยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={resetCancelState}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

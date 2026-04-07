@@ -1882,14 +1882,9 @@ npm run db:restore backup-{timestamp}.json
 - This avoids the previous problem where `npm run seed` did not automatically load `.env.local`.
 
 ### Still open after the current coding pass
-- UI copy cleanup in some older report pages that still contain mojibake/encoding-damaged Thai text
-- More explicit account-aware filters and fields for:
-  - sales register page UI
-  - purchase register page UI
-  - credit note register page UI
 - Back-office polish
   - final validation wording across all related forms
-  - usage guide / operating instructions for staff
+  - transfer / adjustment sub-pages and related manager copy should be reviewed for final consistency
 
 ### Current implementation order from this point
 - [x] Schema foundation
@@ -1905,7 +1900,7 @@ npm run db:restore backup-{timestamp}.json
 - [x] Cash-bank ledger report page
 - [x] Transfer history report
 - [x] Adjustment history report
-- [ ] Staff usage guide and final UX polish
+- [x] Staff usage guide and final UX polish
 
 ### Phase 6.6 Lite checklist status snapshot
 
@@ -2000,5 +1995,5 @@ npm run db:restore backup-{timestamp}.json
 - [x] Latest `npm run build` passes after these changes
 
 #### Still open
-- [ ] Final text/encoding cleanup in older report UI surfaces
-- [ ] Staff usage guide / back-office operating notes
+- [x] Final text/encoding cleanup in older report UI surfaces
+- [x] Staff usage guide / back-office operating notes

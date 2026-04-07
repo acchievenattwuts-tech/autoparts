@@ -19,6 +19,23 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   CREDIT: "เครดิต",
 };
 
+const purchaseSettlementLabel = (purchase: {
+  paymentStatus: string;
+  cashBankAccountId: string | null;
+}) => {
+  if (purchase.paymentStatus === "PAID") {
+    return purchase.cashBankAccountId
+      ? "ชำระแล้ว (ตัดบัญชีทันที)"
+      : "ชำระแล้ว (บันทึกเงินแยก)";
+  }
+
+  if (purchase.paymentStatus === "PARTIALLY_PAID") {
+    return "จ่ายบางส่วน";
+  }
+
+  return "ยังไม่จ่าย";
+};
+
 const PurchasesPage = async ({
   searchParams,
 }: {
@@ -105,7 +122,7 @@ const PurchasesPage = async ({
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ชำระเงิน</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">การจ่ายเงิน</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">จำนวนรายการ</th>
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
@@ -131,7 +148,10 @@ const PurchasesPage = async ({
                       {new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
-                    <td className="py-3 px-4 text-gray-600">{paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}</td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {purchaseSettlementLabel(p)}
+                      {p.cashBankAccountId ? ` • ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
+                    </td>
                     <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>
                     <td className="py-3 px-4 text-right font-medium text-gray-900">
                       {Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

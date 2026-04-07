@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnSuppliers } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
@@ -486,8 +486,8 @@ const PurchaseReturnForm = ({
                 const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
 
                 return (
-                  <>
-                    <tr key={`item-${i}`} className="border-b border-gray-50">
+                  <Fragment key={i}>
+                    <tr className="border-b border-gray-50">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
@@ -611,7 +611,7 @@ const PurchaseReturnForm = ({
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>

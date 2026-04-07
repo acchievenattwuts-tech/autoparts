@@ -14,7 +14,9 @@ type TransferRow = {
   id: string;
   transferNo: string;
   transferDate: string;
+  fromAccountCode: string;
   fromAccountName: string;
+  toAccountCode: string;
   toAccountName: string;
   amount: number;
   note: string | null;
@@ -29,7 +31,20 @@ type Props = {
   canCancel: boolean;
 };
 
-const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+const inputCls =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
 
 export default function TransferManager({ accounts, transfers, canCreate, canCancel }: Props) {
   const router = useRouter();
@@ -38,9 +53,16 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
   const [toAccountId, setToAccountId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelNote, setCancelNote] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isPending, startTransition] = useTransition();
+
+  const resetCancelState = () => {
+    setCancelTarget(null);
+    setCancelNote("");
+  };
 
   const handleCreate = () => {
     setError("");
@@ -80,6 +102,7 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
         setError(result.error);
         return;
       }
+
       setSuccess("บันทึกการโอนเงินแล้ว");
       setFromAccountId("");
       setToAccountId("");
@@ -89,24 +112,24 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
     });
   };
 
-  const handleCancel = (transferId: string) => {
-    const cancelNote = window.prompt("กรุณาระบุเหตุผลที่ยกเลิกรายการโอนเงิน");
-    if (cancelNote === null) return;
+  const handleCancel = () => {
+    if (!cancelTarget) return;
     if (!cancelNote.trim()) {
       setError("กรุณาระบุเหตุผลที่ยกเลิกรายการโอนเงิน");
       return;
     }
 
     const formData = new FormData();
-    formData.set("cancelNote", cancelNote);
+    formData.set("cancelNote", cancelNote.trim());
 
     startTransition(async () => {
-      const result = await cancelCashBankTransfer(transferId, formData);
+      const result = await cancelCashBankTransfer(cancelTarget, formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
-      setSuccess("ยกเลิกการโอนเงินแล้ว");
+      setSuccess("ยกเลิกรายการโอนเงินแล้ว");
+      resetCancelState();
       router.refresh();
     });
   };
@@ -116,7 +139,9 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
       {canCreate && (
         <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <h2 className="font-kanit text-lg font-semibold text-gray-900">บันทึกโอนเงินระหว่างบัญชี</h2>
-          <p className="text-sm text-gray-500">สร้าง movement ออกและเข้าใน transaction เดียว เพื่อให้ running balance ถูกต้อง</p>
+          <p className="text-sm text-gray-500">
+            ระบบจะสร้าง movement ออกจากบัญชีต้นทางและ movement เข้าบัญชีปลายทางให้อัตโนมัติ
+          </p>
 
           {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
           {success && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
@@ -175,8 +200,8 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
               <tr>
                 <th className="px-3 py-2 text-left font-medium">เลขที่</th>
                 <th className="px-3 py-2 text-left font-medium">วันที่</th>
-                <th className="px-3 py-2 text-left font-medium">จาก</th>
-                <th className="px-3 py-2 text-left font-medium">ไป</th>
+                <th className="px-3 py-2 text-left font-medium">จากบัญชี</th>
+                <th className="px-3 py-2 text-left font-medium">ไปบัญชี</th>
                 <th className="px-3 py-2 text-right font-medium">จำนวนเงิน</th>
                 <th className="px-3 py-2 text-left font-medium">หมายเหตุ</th>
                 <th className="px-3 py-2 text-center font-medium">สถานะ</th>
@@ -187,21 +212,32 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
               {transfers.map((transfer) => (
                 <tr key={transfer.id} className="border-t border-gray-100">
                   <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{transfer.transferNo}</td>
-                  <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{new Date(transfer.transferDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}</td>
-                  <td className="px-3 py-2 text-gray-900">{transfer.fromAccountName}</td>
-                  <td className="px-3 py-2 text-gray-900">{transfer.toAccountName}</td>
-                  <td className="px-3 py-2 text-right font-medium text-gray-900">{transfer.amount.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(transfer.transferDate)}</td>
+                  <td className="px-3 py-2 text-gray-900">
+                    <p>{transfer.fromAccountName}</p>
+                    <p className="text-xs text-gray-400">{transfer.fromAccountCode}</p>
+                  </td>
+                  <td className="px-3 py-2 text-gray-900">
+                    <p>{transfer.toAccountName}</p>
+                    <p className="text-xs text-gray-400">{transfer.toAccountCode}</p>
+                  </td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900">{formatCurrency(transfer.amount)}</td>
                   <td className="px-3 py-2 text-gray-500">{transfer.note || transfer.cancelNote || "-"}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`rounded-full px-2 py-1 text-xs font-medium ${transfer.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                      {transfer.status}
+                      {transfer.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิกแล้ว"}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canCancel && transfer.status === "ACTIVE" && (
                       <button
                         type="button"
-                        onClick={() => handleCancel(transfer.id)}
+                        onClick={() => {
+                          setError("");
+                          setSuccess("");
+                          setCancelTarget(transfer.id);
+                          setCancelNote("");
+                        }}
                         className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
                       >
                         ยกเลิก
@@ -214,6 +250,38 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
           </table>
         </div>
       </div>
+
+      {cancelTarget && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900">ยืนยันการยกเลิกรายการโอนเงิน</h2>
+          <p className="text-sm text-gray-600">ระบุเหตุผลเพื่อเก็บไว้ในประวัติการยกเลิก</p>
+          <div className="mt-4 flex flex-col gap-3 md:flex-row">
+            <input
+              className={inputCls}
+              value={cancelNote}
+              onChange={(e) => setCancelNote(e.target.value)}
+              placeholder="เหตุผลที่ยกเลิก"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={isPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                ยืนยันยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={resetCancelState}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

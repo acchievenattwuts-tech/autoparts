@@ -115,6 +115,23 @@ const saleSchema = z.object({
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+async function resolveSalePaymentMethod(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  accountId: string | undefined,
+): Promise<PaymentMethod | null> {
+  if (!accountId) return null;
+
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { type: true },
+  });
+  if (!account) {
+    throw new Error("ไม่พบบัญชีรับเงิน");
+  }
+
+  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
 async function assertLotBalanceAvailable(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   productId: string,
@@ -241,7 +258,6 @@ export async function createSale(
     shippingAddress,
     shippingFee,
     discount,
-    paymentMethod,
     note,
     cashBankAccountId,
     vatType,
@@ -258,12 +274,19 @@ export async function createSale(
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
 
+  const resolvedCashBankAccountId =
+    paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
   const docDate = new Date(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
 
   try {
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolveSalePaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+      );
+
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -284,8 +307,8 @@ export async function createSale(
           vatRate,
           subtotalAmount,
           vatAmount,
-          paymentMethod:   paymentMethod   ?? null,
-          cashBankAccountId: cashBankAccountId || null,
+          paymentMethod:   resolvedPaymentMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           note:            note            ?? null,
           saleDate:        docDate,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
@@ -310,7 +333,7 @@ export async function createSale(
           where: { id: item.productId },
           select: { avgCost: true },
         });
-        if (!prod) throw new Error(`ไม่พบสินค้า`);
+        if (!prod) throw new Error("ไม่พบสินค้า");
         const costPerBase = Number(prod.avgCost);
 
         const itemTotal    = item.qty * item.salePrice;
@@ -332,7 +355,7 @@ export async function createSale(
           },
         });
 
-        // Auto-create Warranty rows — one per display-unit qty (N warranties for N pieces sold)
+        // Auto-create Warranty rows - one per display-unit qty (N warranties for N pieces sold)
         // Write StockCard (outgoing)
         await writeStockCard(tx, {
           productId:   item.productId,
@@ -346,7 +369,7 @@ export async function createSale(
           referenceId: saleItem.id,
         });
 
-        // Lot Control — only if product has isLotControl=true
+        // Lot Control - only if product has isLotControl=true
         if (item.lotItems.length > 0) {
           const product = await tx.product.findUnique({
             where: { id: item.productId },
@@ -390,9 +413,9 @@ export async function createSale(
         tx,
         CashBankSourceType.SALE,
         sale.id,
-        paymentType === SalePaymentType.CASH_SALE && cashBankAccountId
+        paymentType === SalePaymentType.CASH_SALE && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.IN,
               amount: netAmount,
@@ -454,7 +477,7 @@ export async function cancelSale(
   // Reference chain: ตรวจ CN ที่ยัง active
   if (sale.creditNotes.length > 0) {
     const nos = sale.creditNotes.map((cn) => cn.cnNo).join(", ");
-    return { error: `ไม่สามารถยกเลิกได้ มีใบลดหนี้ที่อ้างอิงอยู่: ${nos} — กรุณายกเลิก CN ก่อน` };
+    return { error: `ไม่สามารถยกเลิกได้ มีใบลดหนี้ที่อ้างอิงอยู่: ${nos} กรุณายกเลิก CN ก่อน` };
   }
 
   // Reference chain: ตรวจใบเสร็จที่ยัง active
@@ -463,14 +486,14 @@ export async function cancelSale(
     .map((ri) => ri.receipt);
   if (activeReceipts.length > 0) {
     const nos = activeReceipts.map((r) => r.receiptNo).join(", ");
-    return { error: `ไม่สามารถยกเลิกได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเสร็จก่อน` };
+    return { error: `ไม่สามารถยกเลิกได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบเสร็จก่อน` };
   }
 
   // Reference chain: ตรวจใบเคลมที่ยัง active
   const activeClaims = sale.warranties.flatMap((w) => w.claims);
   if (activeClaims.length > 0) {
     const nos = activeClaims.map((c) => c.claimNo).join(", ");
-    return { error: `ไม่สามารถยกเลิกได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเคลมก่อน` };
+    return { error: `ไม่สามารถยกเลิกได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบเคลมก่อน` };
   }
 
   const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
@@ -501,9 +524,7 @@ export async function cancelSale(
   }
 }
 
-// ─────────────────────────────────────────
 // updateSale
-// ─────────────────────────────────────────
 
 export async function updateSale(
   id: string,
@@ -547,7 +568,7 @@ export async function updateSale(
   const activeClaims = existing.warranties.flatMap((w) => w.claims);
   if (activeClaims.length > 0) {
     const nos = activeClaims.map((c) => c.claimNo).join(", ");
-    return { error: `ไม่สามารถแก้ไขได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} — กรุณายกเลิกใบเคลมก่อน` };
+    return { error: `ไม่สามารถแก้ไขได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบเคลมก่อน` };
   }
 
   let items: z.infer<typeof saleItemSchema>[] = [];
@@ -568,6 +589,7 @@ export async function updateSale(
     shippingFee:     formData.get("shippingFee")     || 0,
     discount:        formData.get("discount")        || 0,
     paymentMethod:   formData.get("paymentMethod")   || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     note:            formData.get("note")            || undefined,
     vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:         formData.get("vatRate")         || 0,
@@ -576,7 +598,7 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, paymentMethod, cashBankAccountId, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -584,12 +606,19 @@ export async function updateSale(
   if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
+  const resolvedCashBankAccountId =
+    paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
   const docDate = new Date(saleDate);
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
   try {
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolveSalePaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+      );
+
       // 1. Reverse old stock + warranties (warranty ต้องลบก่อน saleItem เพราะมี FK)
       const oldItems = await tx.saleItem.findMany({
         where: { saleId: id },
@@ -619,8 +648,8 @@ export async function updateSale(
           shippingAddress: shippingAddress ?? null,
           shippingFee,
           discount,
-          paymentMethod:   paymentMethod   ?? null,
-          cashBankAccountId: cashBankAccountId || null,
+          paymentMethod:   resolvedPaymentMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           note:            note            ?? null,
           vatType,
           vatRate,
@@ -710,9 +739,9 @@ export async function updateSale(
         tx,
         CashBankSourceType.SALE,
         id,
-        paymentType === SalePaymentType.CASH_SALE && cashBankAccountId
+        paymentType === SalePaymentType.CASH_SALE && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.IN,
               amount: netAmount,
@@ -733,9 +762,7 @@ export async function updateSale(
   }
 }
 
-// ─────────────────────────────────────────
 // updateShippingStatus
-// ─────────────────────────────────────────
 
 const shippingUpdateSchema = z.object({
   shippingStatus: z.nativeEnum(ShippingStatus),
@@ -771,9 +798,7 @@ export async function updateShippingStatus(
   }
 }
 
-// ─────────────────────────────────────────
-// fetchProductLots — for SaleForm auto-allocate
-// ─────────────────────────────────────────
+// fetchProductLots - for SaleForm auto-allocate
 
 export async function fetchProductLots(
   productId: string,
@@ -818,3 +843,4 @@ export async function fetchProductLots(
     return { error: "ไม่สามารถโหลดข้อมูล Lot ได้" };
   }
 }
+

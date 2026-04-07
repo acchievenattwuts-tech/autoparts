@@ -106,11 +106,31 @@ const receiptSchema = z.object({
   customerId:    z.string().optional(),
   customerName:  z.string().max(100).optional(),
   receiptDate:   z.string().min(1),
-  paymentMethod: z.nativeEnum(PaymentMethod),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
   cashBankAccountId: z.string().optional(),
   note:          z.string().max(500).optional(),
   items:         z.array(receiptItemSchema).min(1, "ต้องมีรายการชำระอย่างน้อย 1 รายการ"),
 });
+
+async function resolveReceiptPaymentMethod(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  accountId: string | undefined,
+  totalAmount: number,
+): Promise<PaymentMethod> {
+  if (!accountId) {
+    return totalAmount > 0 ? PaymentMethod.TRANSFER : PaymentMethod.CREDIT;
+  }
+
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { type: true },
+  });
+  if (!account) {
+    throw new Error("ไม่พบบัญชีรับเงิน");
+  }
+
+  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
 
 export async function createReceipt(
   formData: FormData,
@@ -151,10 +171,17 @@ export async function createReceipt(
       return { success: false, error: "กรุณาเลือกบัญชีรับเงิน" };
     }
 
+    const resolvedCashBankAccountId = totalAmount > 0 ? parsed.cashBankAccountId : undefined;
     const affectedSaleIds = [...new Set(parsed.items.map((i) => i.saleId).filter((id): id is string => !!id))];
     const affectedCnIds   = [...new Set(parsed.items.map((i) => i.cnId).filter((id): id is string => !!id))];
 
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+        totalAmount,
+      );
+
       const receipt = await tx.receipt.create({
         data: {
           receiptNo,
@@ -163,8 +190,8 @@ export async function createReceipt(
           customerName:  parsed.customerName || null,
           userId:        session.user!.id,
           totalAmount,
-          paymentMethod: parsed.paymentMethod,
-          cashBankAccountId: parsed.cashBankAccountId || null,
+          paymentMethod: resolvedPaymentMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           note:          parsed.note || null,
         },
       });
@@ -189,9 +216,9 @@ export async function createReceipt(
         tx,
         CashBankSourceType.RECEIPT,
         receipt.id,
-        totalAmount > 0 && parsed.cashBankAccountId
+        totalAmount > 0 && resolvedCashBankAccountId
           ? [{
-              accountId: parsed.cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.IN,
               amount: totalAmount,
@@ -315,6 +342,7 @@ export async function updateReceipt(
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
 
+  const resolvedCashBankAccountId = totalAmount > 0 ? parsed.cashBankAccountId : undefined;
   const oldSaleIds = [...new Set(existing.items.map((i) => i.saleId).filter((s): s is string => s !== null))];
   const oldCnIds   = [...new Set(existing.items.map((i) => i.cnId).filter((s): s is string => s !== null))];
   const newSaleIds = [...new Set(parsed.items.map((i) => i.saleId).filter((s): s is string => !!s))];
@@ -324,6 +352,12 @@ export async function updateReceipt(
 
   try {
     await dbTx(async (tx) => {
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
+        tx,
+        resolvedCashBankAccountId,
+        totalAmount,
+      );
+
       // 1. Delete old receipt items
       await tx.receiptItem.deleteMany({ where: { receiptId: id } });
 
@@ -335,8 +369,8 @@ export async function updateReceipt(
           customerId:    parsed.customerId || null,
           customerName:  parsed.customerName || null,
           totalAmount,
-          paymentMethod: parsed.paymentMethod,
-          cashBankAccountId: parsed.cashBankAccountId || null,
+          paymentMethod: resolvedPaymentMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           note:          parsed.note || null,
         },
       });
@@ -363,9 +397,9 @@ export async function updateReceipt(
         tx,
         CashBankSourceType.RECEIPT,
         id,
-        totalAmount > 0 && parsed.cashBankAccountId
+        totalAmount > 0 && resolvedCashBankAccountId
           ? [{
-              accountId: parsed.cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.IN,
               amount: totalAmount,

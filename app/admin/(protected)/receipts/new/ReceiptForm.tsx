@@ -6,19 +6,19 @@ import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface CustomerOption {
-  id:           string;
-  name:         string;
-  code:         string | null;
+  id: string;
+  name: string;
+  code: string | null;
   amountRemain: number;
 }
 
 interface SelectedItem {
-  saleId?:     string;
-  cnId?:       string;
-  saleNo:      string;
+  saleId?: string;
+  cnId?: string;
+  saleNo: string;
   outstanding: number;
-  paidAmount:  number;
-  isCN:        boolean;
+  paidAmount: number;
+  isCN: boolean;
 }
 
 interface CashBankAccountOption {
@@ -31,45 +31,42 @@ interface CashBankAccountOption {
 }
 
 interface InitialData {
-  id:            string;
-  customerId:    string;
-  customerName:  string;
-  receiptDate:   string;
+  id: string;
+  customerId: string;
+  customerName: string;
+  receiptDate: string;
   paymentMethod: "CASH" | "TRANSFER";
   cashBankAccountId: string;
-  note:          string;
-  items:         SelectedItem[];
+  note: string;
+  items: SelectedItem[];
 }
 
 interface Props {
-  customers:           CustomerOption[];
-  cashBankAccounts:    CashBankAccountOption[];
-  initialData?:        InitialData;
+  customers: CustomerOption[];
+  cashBankAccounts: CashBankAccountOption[];
+  initialData?: InitialData;
   initialCreditSales?: CreditSaleItem[];
 }
 
 const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales }: Props) => {
-  const router  = useRouter();
-  const isEdit  = !!initialData;
-  const today   = new Date().toISOString().slice(0, 10);
+  const router = useRouter();
+  const isEdit = !!initialData;
+  const today = new Date().toISOString().slice(0, 10);
 
-  const [customerId,      setCustomerId]      = useState(initialData?.customerId ?? "");
-  const [receiptDate,     setReceiptDate]      = useState(initialData?.receiptDate ?? today);
-  const [creditSales,     setCreditSales]      = useState<CreditSaleItem[]>(initialCreditSales ?? []);
-  const [selectedItems,   setSelectedItems]    = useState<SelectedItem[]>(initialData?.items ?? []);
-  const [paymentMethod,   setPaymentMethod]    = useState<"CASH" | "TRANSFER">(initialData?.paymentMethod ?? "CASH");
+  const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
+  const [receiptDate, setReceiptDate] = useState(initialData?.receiptDate ?? today);
+  const [creditSales, setCreditSales] = useState<CreditSaleItem[]>(initialCreditSales ?? []);
+  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>(initialData?.items ?? []);
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
-  const [note,            setNote]             = useState(initialData?.note ?? "");
-  const [isLoadingSales,  setIsLoadingSales]   = useState(false);
-  const [isPending,       startTransition]     = useTransition();
-  const [error,           setError]            = useState("");
-  const [successMsg,      setSuccessMsg]       = useState("");
+  const [note, setNote] = useState(initialData?.note ?? "");
+  const [isLoadingSales, setIsLoadingSales] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
-  // Skip the first effect run if initialData is provided (sales already pre-loaded)
   const skipFirstLoad = useRef(isEdit);
 
-  // Load credit sales when customer changes
   useEffect(() => {
     if (skipFirstLoad.current) {
       skipFirstLoad.current = false;
@@ -84,16 +81,15 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
     getCreditSalesForCustomer(customerId)
       .then((sales) => {
         setCreditSales(sales);
-        // Default: select all with full outstanding (Sale items only)
         setSelectedItems(
           sales
-            .filter((s) => s.type === "SALE")
-            .map((s) => ({
-              saleId:      s.id,
-              saleNo:      s.saleNo,
-              outstanding: s.outstanding,
-              paidAmount:  s.outstanding,
-              isCN:        false,
+            .filter((sale) => sale.type === "SALE")
+            .map((sale) => ({
+              saleId: sale.id,
+              saleNo: sale.saleNo,
+              outstanding: sale.outstanding,
+              paidAmount: sale.outstanding,
+              isCN: false,
             })),
         );
       })
@@ -102,48 +98,45 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         setSelectedItems([]);
       })
       .finally(() => setIsLoadingSales(false));
-  }, [customerId]);
+  }, [customerId, isEdit]);
 
-  const isChecked = (itemId: string) =>
-    selectedItems.some((i) => (i.saleId ?? i.cnId) === itemId);
+  const isChecked = (itemId: string) => selectedItems.some((item) => (item.saleId ?? item.cnId) === itemId);
 
   const toggleItem = (sale: CreditSaleItem) => {
     const key = sale.id;
     if (isChecked(key)) {
-      setSelectedItems((prev) =>
-        prev.filter((i) => (i.saleId ?? i.cnId) !== key),
-      );
-    } else {
-      setSelectedItems((prev) => [
-        ...prev,
-        {
-          saleId:      sale.type === "SALE" ? sale.id : undefined,
-          cnId:        sale.type === "CN"   ? sale.id : undefined,
-          saleNo:      sale.saleNo,
-          outstanding: sale.outstanding,
-          paidAmount:  sale.outstanding,
-          isCN:        sale.type === "CN",
-        },
-      ]);
+      setSelectedItems((prev) => prev.filter((item) => (item.saleId ?? item.cnId) !== key));
+      return;
     }
+    setSelectedItems((prev) => [
+      ...prev,
+      {
+        saleId: sale.type === "SALE" ? sale.id : undefined,
+        cnId: sale.type === "CN" ? sale.id : undefined,
+        saleNo: sale.saleNo,
+        outstanding: sale.outstanding,
+        paidAmount: sale.outstanding,
+        isCN: sale.type === "CN",
+      },
+    ]);
   };
 
   const updatePaidAmount = (itemId: string, value: number) => {
     setSelectedItems((prev) =>
-      prev.map((i) =>
-        (i.saleId ?? i.cnId) === itemId
-          ? { ...i, paidAmount: Math.max(0, Math.min(value, i.outstanding)) }
-          : i,
+      prev.map((item) =>
+        (item.saleId ?? item.cnId) === itemId
+          ? { ...item, paidAmount: Math.max(0, Math.min(value, item.outstanding)) }
+          : item,
       ),
     );
   };
 
-  const saleItems = creditSales.filter((s) => s.type === "SALE");
-  const cnItems   = creditSales.filter((s) => s.type === "CN");
+  const saleItems = creditSales.filter((sale) => sale.type === "SALE");
+  const cnItems = creditSales.filter((sale) => sale.type === "CN");
 
-  const saleTotal = selectedItems.filter((i) => !i.isCN).reduce((sum, i) => sum + i.paidAmount, 0);
-  const cnTotal   = selectedItems.filter((i) => i.isCN).reduce((sum, i) => sum + i.paidAmount, 0);
-  const netTotal  = saleTotal - cnTotal;
+  const saleTotal = selectedItems.filter((item) => !item.isCN).reduce((sum, item) => sum + item.paidAmount, 0);
+  const cnTotal = selectedItems.filter((item) => item.isCN).reduce((sum, item) => sum + item.paidAmount, 0);
+  const netTotal = saleTotal - cnTotal;
 
   const selectedCustomer = customerMap.get(customerId);
 
@@ -156,33 +149,31 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       return;
     }
     if (selectedItems.length === 0) {
-      setError("กรุณาเลือกรายการที่ต้องการชำระหรือนำเครดิตมาหัก");
+      setError("กรุณาเลือกรายการที่ต้องการรับชำระหรือใช้เครดิต");
       return;
     }
-    if (selectedItems.some((i) => i.paidAmount <= 0)) {
-      setError("ยอดแต่ละรายการต้องมากกว่า 0");
+    if (selectedItems.some((item) => item.paidAmount <= 0)) {
+      setError("ยอดของแต่ละรายการต้องมากกว่า 0");
       return;
     }
-
     if (netTotal > 0 && !cashBankAccountId) {
       setError("กรุณาเลือกบัญชีรับเงิน");
       return;
     }
 
     const formData = new FormData();
-    formData.set("customerId",    customerId);
-    formData.set("customerName",  selectedCustomer?.name ?? "");
-    formData.set("receiptDate",   receiptDate);
-    formData.set("paymentMethod", paymentMethod);
+    formData.set("customerId", customerId);
+    formData.set("customerName", selectedCustomer?.name ?? "");
+    formData.set("receiptDate", receiptDate);
     formData.set("cashBankAccountId", cashBankAccountId);
-    formData.set("note",          note);
+    formData.set("note", note);
     formData.set(
       "items",
       JSON.stringify(
-        selectedItems.map((i) => ({
-          saleId:     i.saleId,
-          cnId:       i.cnId,
-          paidAmount: i.paidAmount,
+        selectedItems.map((item) => ({
+          saleId: item.saleId,
+          cnId: item.cnId,
+          paidAmount: item.paidAmount,
         })),
       ),
     );
@@ -211,36 +202,31 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   const renderSaleRow = (sale: CreditSaleItem) => {
     const checked = isChecked(sale.id);
-    const item    = selectedItems.find((i) => (i.saleId ?? i.cnId) === sale.id);
+    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
     return (
-      <tr
-        key={sale.id}
-        className={`border-t border-gray-50 transition-colors ${
-          checked ? "bg-blue-50/40" : "hover:bg-gray-50"
-        }`}
-      >
-        <td className="py-2 px-3">
+      <tr key={sale.id} className={`border-t border-gray-50 transition-colors ${checked ? "bg-blue-50/40" : "hover:bg-gray-50"}`}>
+        <td className="px-3 py-2">
           <input
             type="checkbox"
             checked={checked}
             onChange={() => toggleItem(sale)}
-            className="w-4 h-4 accent-[#1e3a5f]"
+            className="h-4 w-4 accent-[#1e3a5f]"
           />
         </td>
-        <td className="py-2 px-3 font-mono text-[#1e3a5f] font-medium">{sale.saleNo}</td>
-        <td className="py-2 px-3 text-gray-600">
+        <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f]">{sale.saleNo}</td>
+        <td className="px-3 py-2 text-gray-600">
           {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
         </td>
-        <td className="py-2 px-3 text-right text-gray-800">
+        <td className="px-3 py-2 text-right text-gray-800">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right text-gray-600">
+        <td className="px-3 py-2 text-right text-gray-600">
           {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right font-medium text-orange-600">
+        <td className="px-3 py-2 text-right font-medium text-orange-600">
           {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right">
+        <td className="px-3 py-2 text-right">
           {checked ? (
             <input
               type="number"
@@ -248,11 +234,11 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               max={sale.outstanding}
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
-              onChange={(e) => updatePaidAmount(sale.id, Number(e.target.value))}
-              className="w-28 border border-gray-200 rounded px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+              onChange={(event) => updatePaidAmount(sale.id, Number(event.target.value))}
+              className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
             />
           ) : (
-            <span className="text-gray-400 text-sm">-</span>
+            <span className="text-sm text-gray-400">-</span>
           )}
         </td>
       </tr>
@@ -261,36 +247,31 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   const renderCNRow = (sale: CreditSaleItem) => {
     const checked = isChecked(sale.id);
-    const item    = selectedItems.find((i) => (i.saleId ?? i.cnId) === sale.id);
+    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
     return (
-      <tr
-        key={sale.id}
-        className={`border-t border-gray-50 transition-colors ${
-          checked ? "bg-emerald-50/40" : "hover:bg-gray-50"
-        }`}
-      >
-        <td className="py-2 px-3">
+      <tr key={sale.id} className={`border-t border-gray-50 transition-colors ${checked ? "bg-emerald-50/40" : "hover:bg-gray-50"}`}>
+        <td className="px-3 py-2">
           <input
             type="checkbox"
             checked={checked}
             onChange={() => toggleItem(sale)}
-            className="w-4 h-4 accent-emerald-600"
+            className="h-4 w-4 accent-emerald-600"
           />
         </td>
-        <td className="py-2 px-3 font-mono text-emerald-700 font-medium">{sale.saleNo}</td>
-        <td className="py-2 px-3 text-gray-600">
+        <td className="px-3 py-2 font-mono font-medium text-emerald-700">{sale.saleNo}</td>
+        <td className="px-3 py-2 text-gray-600">
           {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
         </td>
-        <td className="py-2 px-3 text-right text-gray-800">
+        <td className="px-3 py-2 text-right text-gray-800">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right text-gray-600">
+        <td className="px-3 py-2 text-right text-gray-600">
           {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right font-medium text-emerald-600">
+        <td className="px-3 py-2 text-right font-medium text-emerald-600">
           {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="py-2 px-3 text-right">
+        <td className="px-3 py-2 text-right">
           {checked ? (
             <input
               type="number"
@@ -298,11 +279,11 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               max={sale.outstanding}
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
-              onChange={(e) => updatePaidAmount(sale.id, Number(e.target.value))}
-              className="w-28 border border-emerald-200 rounded px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              onChange={(event) => updatePaidAmount(sale.id, Number(event.target.value))}
+              className="w-28 rounded border border-emerald-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
             />
           ) : (
-            <span className="text-gray-400 text-sm">-</span>
+            <span className="text-sm text-gray-400">-</span>
           )}
         </td>
       </tr>
@@ -311,20 +292,20 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   return (
     <div className="space-y-6">
-      {/* Header form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-4">ข้อมูลทั่วไป</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Customer */}
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">ข้อมูลทั่วไป</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
               ลูกค้า <span className="text-red-500">*</span>
             </label>
             <SearchableSelect
-              options={customers.map((c): SelectOption => ({
-                id:       c.id,
-                label:    c.name,
-                sublabel: `ค้างชำระสุทธิ ฿${c.amountRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}${c.code ? ` · ${c.code}` : ""}`,
+              options={customers.map((customer): SelectOption => ({
+                id: customer.id,
+                label: customer.name,
+                sublabel: `ค้างชำระสุทธิ ${customer.amountRemain.toLocaleString("th-TH", {
+                  minimumFractionDigits: 2,
+                })}${customer.code ? ` | ${customer.code}` : ""}`,
               }))}
               value={customerId}
               onChange={setCustomerId}
@@ -332,51 +313,33 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             />
           </div>
 
-          {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
               วันที่รับชำระ <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
               value={receiptDate}
-              onChange={(e) => setReceiptDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+              onChange={(event) => setReceiptDate(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
             />
           </div>
 
-          {/* Payment method */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              ช่องทางชำระ <span className="text-red-500">*</span>
-            </label>
-            <div className="flex gap-3">
-              {(["CASH", "TRANSFER"] as const).map((method) => (
-                <button
-                  key={method}
-                  type="button"
-                  onClick={() => setPaymentMethod(method)}
-                  className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${
-                    paymentMethod === method
-                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                      : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  {method === "CASH" ? "เงินสด" : "โอนเงิน"}
-                </button>
-              ))}
-            </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 md:col-span-2">
+            ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ และถ้ายอดสุทธิไม่เกิน 0 จะถือว่าเป็นการตัดเครดิตโดยไม่มีการรับเงินจริง
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
               บัญชีรับเงิน {netTotal > 0 && <span className="text-red-500">*</span>}
             </label>
             <SearchableSelect
               options={cashBankAccounts.map((account): SelectOption => ({
                 id: account.id,
                 label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
+                  .filter(Boolean)
+                  .join(" | ") || undefined,
               }))}
               value={cashBankAccountId}
               onChange={setCashBankAccountId}
@@ -384,45 +347,39 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             />
           </div>
 
-          {/* Note */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">หมายเหตุ</label>
             <textarea
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(event) => setNote(event.target.value)}
               rows={2}
               placeholder="หมายเหตุ (ไม่บังคับ)"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 resize-none"
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
             />
           </div>
         </div>
       </div>
 
-      {/* Credit sales — Sale items */}
       {customerId && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-4">
-            รายการขายเชื่อค้างชำระ
-          </h2>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">รายการขายเชื่อค้างชำระ</h2>
 
           {isLoadingSales ? (
-            <p className="text-sm text-gray-400 text-center py-6">กำลังโหลด...</p>
+            <p className="py-6 text-center text-sm text-gray-400">กำลังโหลด...</p>
           ) : saleItems.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">
-              ลูกค้ารายนี้ไม่มียอดค้างชำระ
-            </p>
+            <p className="py-6 text-center text-sm text-gray-400">ลูกค้ารายนี้ไม่มียอดค้างชำระ</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="w-10 py-3 px-3" />
-                    <th className="text-left py-3 px-3 font-medium text-gray-600">เลขที่ใบขาย</th>
-                    <th className="text-left py-3 px-3 font-medium text-gray-600">วันที่</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-600">ยอดทั้งหมด</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-600">ชำระแล้ว</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-600">ค้างชำระ</th>
-                    <th className="text-right py-3 px-3 font-medium text-gray-600">ชำระงวดนี้</th>
+                    <th className="w-10 px-3 py-3" />
+                    <th className="px-3 py-3 text-left font-medium text-gray-600">เลขที่ใบขาย</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600">วันที่</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600">ยอดทั้งหมด</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600">ชำระแล้ว</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600">ค้างชำระ</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600">รับชำระงวดนี้</th>
                   </tr>
                 </thead>
                 <tbody>{saleItems.map(renderSaleRow)}</tbody>
@@ -432,26 +389,21 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </div>
       )}
 
-      {/* CN credits section */}
       {customerId && !isLoadingSales && cnItems.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-emerald-100 p-6">
-          <h2 className="font-kanit text-lg font-semibold text-emerald-800 mb-1">
-            เครดิตใบลดหนี้ที่ยังไม่ได้ใช้
-          </h2>
-          <p className="text-xs text-gray-500 mb-4">
-            เลือกรายการเครดิตที่ต้องการนำมาหักลบกับยอดค้างชำระ
-          </p>
+        <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 font-kanit text-lg font-semibold text-emerald-800">เครดิตจากใบลดหนี้ที่ยังไม่ใช้</h2>
+          <p className="mb-4 text-xs text-gray-500">เลือกรายการเครดิตที่ต้องการนำมาหักลบกับยอดค้างชำระ</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-emerald-50">
                 <tr>
-                  <th className="w-10 py-3 px-3" />
-                  <th className="text-left py-3 px-3 font-medium text-emerald-700">เลขที่ใบลดหนี้</th>
-                  <th className="text-left py-3 px-3 font-medium text-emerald-700">วันที่</th>
-                  <th className="text-right py-3 px-3 font-medium text-emerald-700">เครดิตทั้งหมด</th>
-                  <th className="text-right py-3 px-3 font-medium text-emerald-700">ใช้แล้ว</th>
-                  <th className="text-right py-3 px-3 font-medium text-emerald-700">คงเหลือ</th>
-                  <th className="text-right py-3 px-3 font-medium text-emerald-700">นำมาหักงวดนี้</th>
+                  <th className="w-10 px-3 py-3" />
+                  <th className="px-3 py-3 text-left font-medium text-emerald-700">เลขที่ใบลดหนี้</th>
+                  <th className="px-3 py-3 text-left font-medium text-emerald-700">วันที่</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700">เครดิตทั้งหมด</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700">ใช้แล้ว</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700">คงเหลือ</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700">นำมาหักงวดนี้</th>
                 </tr>
               </thead>
               <tbody>{cnItems.map(renderCNRow)}</tbody>
@@ -460,16 +412,14 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </div>
       )}
 
-      {/* Footer summary & submit */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        {/* Error / success */}
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
         {successMsg && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-4 py-3">
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
             {successMsg}
           </div>
         )}
@@ -481,29 +431,29 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
                 <div className="flex items-center gap-8 text-sm text-gray-600">
                   <span>ยอดค้างชำระที่เลือก</span>
                   <span className="font-medium text-gray-900">
-                    ฿{saleTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    {saleTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
                 <div className="flex items-center gap-8 text-sm text-emerald-700">
                   <span>หักเครดิต CN</span>
                   <span className="font-medium">
-                    −฿{cnTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    -{cnTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="h-px bg-gray-200 my-1" />
+                <div className="my-1 h-px bg-gray-200" />
               </>
             )}
             <p className="text-sm text-gray-500">ยอดสุทธิที่รับชำระ</p>
             <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
               {netTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              <span className="text-sm font-normal text-gray-500 ml-1">บาท</span>
+              <span className="ml-1 text-sm font-normal text-gray-500">บาท</span>
             </p>
           </div>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={isPending || selectedItems.length === 0}
-            className="px-6 py-2.5 bg-[#1e3a5f] hover:bg-[#162d4a] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+            className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:bg-gray-300"
           >
             {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบเสร็จ"}
           </button>

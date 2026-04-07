@@ -28,6 +28,7 @@
 *.pem
 /.tmp/
 /.claude/settings.local.json
+/testsprite_tests/
 
 # debug
 npm-debug.log*

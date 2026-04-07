@@ -62,11 +62,6 @@ interface InitialData {
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
-const paymentMethodOptions: Array<{ value: PaymentMethod; label: string }> = [
-  { value: PaymentMethod.TRANSFER, label: "โอนเงิน" },
-  { value: PaymentMethod.CASH, label: "เงินสด" },
-];
-
 const PurchaseForm = ({
   products,
   suppliers,
@@ -91,8 +86,16 @@ const PurchaseForm = ({
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod ?? PaymentMethod.TRANSFER);
-  const [paymentStatus, setPaymentStatus] = useState<PurchasePaymentStatus>(initialData?.paymentStatus ?? PurchasePaymentStatus.UNPAID);
+  const paymentMethod = initialData?.paymentMethod ?? PaymentMethod.TRANSFER;
+  const paymentStatus = initialData?.paymentStatus ?? PurchasePaymentStatus.PAID;
+  const legacyPaymentStatus = initialData?.paymentStatus && initialData.paymentStatus !== PurchasePaymentStatus.PAID
+    ? initialData.paymentStatus
+    : null;
+  const [cashPostingMode, setCashPostingMode] = useState<"DIRECT" | "SEPARATE">(
+    initialData?.paymentStatus === PurchasePaymentStatus.PAID && initialData.cashBankAccountId
+      ? "DIRECT"
+      : "SEPARATE",
+  );
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
@@ -211,11 +214,12 @@ const PurchaseForm = ({
     const formData = new FormData(e.currentTarget);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
-    if (paymentStatus === PurchasePaymentStatus.PAID && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
+    if (!legacyPaymentStatus && cashPostingMode === "DIRECT" && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
     formData.set("supplierId", supplierId);
     formData.set("paymentMethod", paymentMethod);
-    formData.set("paymentStatus", paymentStatus);
-    formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set("paymentStatus", legacyPaymentStatus ?? PurchasePaymentStatus.PAID);
+    formData.set("cashPostingMode", cashPostingMode);
+    formData.set("cashBankAccountId", !legacyPaymentStatus && cashPostingMode === "SEPARATE" ? "" : cashBankAccountId);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -264,7 +268,7 @@ const PurchaseForm = ({
               className={inputCls} />
           </div>
           <div>
-            <label className={labelCls}>ซัพพลายเออร์</label>
+            <label className={labelCls}>ผู้จำหน่าย</label>
             <SearchableSelect
               options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
               value={supplierId}
@@ -280,23 +284,10 @@ const PurchaseForm = ({
               maxLength={100}
               defaultValue={initialData?.referenceNo ?? ""}
               className={inputCls}
-              placeholder="เช่น เลขที่ใบกำกับซัพพลายเออร์"
+              placeholder="เช่น เลขที่ใบกำกับของผู้จำหน่าย"
             />
-          </div>
-          <div>
-            <label className={labelCls}>ช่องทางชำระเงิน</label>
-            <select
-              name="paymentMethod"
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className={`${inputCls} bg-white`}
-            >
-              {paymentMethodOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+          </div>          <div className="md:col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            ระบบจะระบุช่องทางจ่ายเงินจากประเภทบัญชีให้อัตโนมัติ เมื่อเลือกแบบตัดบัญชีทันที
           </div>
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
@@ -317,44 +308,57 @@ const PurchaseForm = ({
 
           <div>
             <label className={labelCls}>สถานะการชำระเงิน</label>
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setPaymentStatus(PurchasePaymentStatus.UNPAID)}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  paymentStatus === PurchasePaymentStatus.UNPAID
-                    ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                ยังไม่ชำระ
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentStatus(PurchasePaymentStatus.PAID)}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
-                  paymentStatus === PurchasePaymentStatus.PAID
-                    ? "bg-emerald-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                ชำระแล้ว
-              </button>
+            {legacyPaymentStatus ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                เอกสารเดิมใช้สถานะการชำระแบบเก่า ระบบจะคงสถานะเดิมไว้จนกว่าจะสร้างเอกสารใหม่
+              </div>
+            ) : (
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setCashPostingMode("DIRECT")}
+                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                    cashPostingMode === "DIRECT"
+                      ? "bg-emerald-600 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  ชำระแล้ว (ตัดบัญชีทันที)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashPostingMode("SEPARATE")}
+                  className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                    cashPostingMode === "SEPARATE"
+                      ? "bg-orange-500 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  ชำระแล้ว (บันทึกเงินแยก)
+                </button>
+              </div>
+            )}
+          </div>
+          {legacyPaymentStatus ? null : cashPostingMode === "DIRECT" ? (
+            <div>
+              <label className={labelCls}>บัญชีจ่ายเงิน <span className="text-red-500">*</span></label>
+              <SearchableSelect
+                options={cashBankAccounts.map((account): SelectOption => ({
+                  id: account.id,
+                  label: account.name,
+                  sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+                }))}
+                value={cashBankAccountId}
+                onChange={setCashBankAccountId}
+                placeholder="โปรดระบุบัญชีจ่ายเงิน"
+              />
+              <p className="mt-1 text-xs text-gray-500">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
             </div>
-          </div>
-          <div>
-            <label className={labelCls}>บัญชีจ่ายเงิน {paymentStatus === PurchasePaymentStatus.PAID && <span className="text-red-500">*</span>}</label>
-            <SearchableSelect
-              options={cashBankAccounts.map((account): SelectOption => ({
-                id: account.id,
-                label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-              }))}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
-              placeholder="โปรดระบุบัญชีจ่ายเงิน"
-            />
-          </div>
+          ) : (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+              โหมดบันทึกเงินแยกจะไม่สร้าง movement จากใบซื้อ และให้ไปลงเงินออกผ่านเมนูปรับยอดเงินแทน
+            </div>
+          )}
 
           {/* VAT Settings */}
           <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
@@ -409,7 +413,7 @@ const PurchaseForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium">สินค้า</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32">ราคาทุน/หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32">ทุน/หน่วย</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
                 <th className="w-8" />
               </tr>
@@ -504,7 +508,7 @@ const PurchaseForm = ({
                                   {totalLotQty}
                                 </span>
                                 <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                                {!lotQtyMatch && <span className="text-xs text-red-500">⚠ ไม่ตรง</span>}
+                                {!lotQtyMatch && <span className="text-xs text-red-500">จำนวน Lot ยังไม่ตรง</span>}
                               </div>
                               {/* Lot sub-table */}
                               <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
@@ -676,3 +680,9 @@ const PurchaseForm = ({
 };
 
 export default PurchaseForm;
+
+
+
+
+
+

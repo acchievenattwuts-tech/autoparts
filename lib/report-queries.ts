@@ -1,4 +1,4 @@
-﻿import { db } from "@/lib/db";
+import { db } from "@/lib/db";
 import {
   DocStatus,
   VatType,
@@ -8,7 +8,7 @@ import {
   PaymentMethod,
 } from "@/lib/generated/prisma";
 
-// â”€â”€â”€ Filter helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Filter helpers
 
 function parseDate(s: string | undefined, fallback: Date): Date {
   if (!s) return fallback;
@@ -72,44 +72,44 @@ export function buildExportQuery(filters: ReportFilters): string {
   return p.toString();
 }
 
-// â”€â”€â”€ Label helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Label helpers
 
 export function saleTypeLabel(t: SaleType): string {
-  return t === "RETAIL" ? "à¸›à¸¥à¸µà¸" : "à¸ªà¹ˆà¸‡";
+  return t === "RETAIL" ? "ปลีก" : "ส่ง";
 }
 
 export function paymentTypeLabel(t: SalePaymentType): string {
-  return t === "CASH_SALE" ? "à¹€à¸‡à¸´à¸™à¸ªà¸”" : "à¹€à¸Šà¸·à¹ˆà¸­";
+  return t === "CASH_SALE" ? "เงินสด" : "เชื่อ";
 }
 
 export function vatTypeLabel(t: VatType): string {
-  if (t === "NO_VAT") return "à¹„à¸¡à¹ˆà¸¡à¸µ VAT";
-  if (t === "EXCLUDING_VAT") return "à¹à¸¢à¸ VAT";
-  return "à¸£à¸§à¸¡ VAT";
+  if (t === "NO_VAT") return "ไม่มี VAT";
+  if (t === "EXCLUDING_VAT") return "แยก VAT";
+  return "รวม VAT";
 }
 
 export function cnTypeLabel(t: CreditNoteType): string {
-  if (t === "RETURN") return "à¸„à¸·à¸™à¸ªà¸´à¸™à¸„à¹‰à¸²";
-  if (t === "DISCOUNT") return "à¸ªà¹ˆà¸§à¸™à¸¥à¸”";
-  return "à¸­à¸·à¹ˆà¸™à¹†";
+  if (t === "RETURN") return "คืนสินค้า";
+  if (t === "DISCOUNT") return "ส่วนลด";
+  return "อื่นๆ";
 }
 
 export function paymentMethodLabel(m: PaymentMethod | null | undefined): string {
-  if (m === "CASH") return "à¹€à¸‡à¸´à¸™à¸ªà¸”";
-  if (m === "TRANSFER") return "à¹‚à¸­à¸™à¹€à¸‡à¸´à¸™";
-  if (m === "CREDIT") return "à¹€à¸„à¸£à¸”à¸´à¸•";
+  if (m === "CASH") return "เงินสด";
+  if (m === "TRANSFER") return "โอนเงิน";
+  if (m === "CREDIT") return "เครดิต";
   return "-";
 }
 
 export function settlementLabel(s: string): string {
-  return s === "CASH_REFUND" ? "à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸ªà¸”" : "à¸•à¸±à¹‰à¸‡à¸«à¸™à¸µà¹‰";
+  return s === "CASH_REFUND" ? "คืนเงินสด" : "ตั้งหนี้";
 }
 
 export function statusLabel(s: DocStatus): string {
-  return s === "ACTIVE" ? "à¸›à¸à¸•à¸´" : "à¸¢à¸à¹€à¸¥à¸´à¸";
+  return s === "ACTIVE" ? "ปกติ" : "ยกเลิก";
 }
 
-// â”€â”€â”€ Row types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Row types
 
 export type SaleRow = {
   rowNo: number;
@@ -208,7 +208,7 @@ export type PaymentRow = {
   netAmount: number;
 };
 
-// â”€â”€â”€ Query: Sales Register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Sales Register
 
 export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
@@ -219,6 +219,7 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
     where: {
       saleDate: { gte: filters.from, lte: filters.to },
       ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
       ...(filters.paymentType && filters.paymentType !== "ALL"
         ? { paymentType: filters.paymentType as SalePaymentType }
         : {}),
@@ -226,7 +227,7 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
         ? { saleType: filters.saleType as SaleType }
         : {}),
     },
-      select: {
+    select: {
         saleNo: true,
         saleDate: true,
         saleType: true,
@@ -240,16 +241,16 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
         note: true,
         cashBankAccount: { select: { name: true } },
         customer: { select: { code: true } },
-      items: {
-        select: {
-          quantity: true,
-          salePrice: true,
-          subtotalAmount: true,
-          totalAmount: true,
-          product: { select: { code: true, name: true, saleUnitName: true } },
+        items: {
+          select: {
+            quantity: true,
+            salePrice: true,
+            subtotalAmount: true,
+            totalAmount: true,
+            product: { select: { code: true, name: true, saleUnitName: true } },
+          },
         },
       },
-    },
     orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
     take: 2000,
   });
@@ -292,7 +293,7 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
   return rows;
 }
 
-// â”€â”€â”€ Query: Purchase Register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Purchase Register
 
 export async function queryPurchaseRows(filters: ReportFilters): Promise<PurchaseRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
@@ -303,29 +304,31 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
     where: {
       purchaseDate: { gte: filters.from, lte: filters.to },
       ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
     },
-      select: {
-        purchaseNo: true,
-        purchaseDate: true,
-        paymentStatus: true,
-        paymentMethod: true,
-        referenceNo: true,
+    select: {
+      purchaseNo: true,
+      purchaseDate: true,
+      paymentStatus: true,
+      paymentMethod: true,
+      cashBankAccountId: true,
+      referenceNo: true,
         vatType: true,
         vatAmount: true,
         subtotalAmount: true,
         cashBankAccount: { select: { name: true } },
         status: true,
         supplier: { select: { code: true, name: true } },
-      items: {
-        select: {
-          quantity: true,
-          costPrice: true,
-          subtotalAmount: true,
-          totalAmount: true,
-          product: { select: { code: true, name: true, purchaseUnitName: true } },
+        items: {
+          select: {
+            quantity: true,
+            costPrice: true,
+            subtotalAmount: true,
+            totalAmount: true,
+            product: { select: { code: true, name: true, purchaseUnitName: true } },
+          },
         },
       },
-    },
     orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
     take: 2000,
   });
@@ -345,11 +348,16 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
         rowNo: rowNo++,
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
-        paymentStatus: p.paymentStatus,
-        paymentMethod: paymentMethodLabel(p.paymentMethod),
+        paymentStatus:
+          p.paymentStatus === "PAID"
+            ? p.cashBankAccountId
+              ? "ชำระแล้ว (ตัดบัญชีทันที)"
+              : "ชำระแล้ว (บันทึกเงินแยก)"
+            : p.paymentStatus,
+        paymentMethod: p.cashBankAccountId ? paymentMethodLabel(p.paymentMethod) : "-",
         accountName: p.cashBankAccount?.name ?? "-",
-        supplierCode: p.supplier?.code ?? "(à¹„à¸¡à¹ˆà¸¡à¸µà¸£à¸«à¸±à¸ª)",
-        supplierName: p.supplier?.name ?? "(à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸)",
+        supplierCode: p.supplier?.code ?? "(ไม่มีรหัส)",
+        supplierName: p.supplier?.name ?? "(ไม่ระบุ)",
         referenceNo: p.referenceNo ?? "",
         status: p.status,
         productCode: item.product.code,
@@ -367,7 +375,7 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
   return rows;
 }
 
-// â”€â”€â”€ Query: Credit Note Register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Credit Note Register
 
 export async function queryCreditNoteRows(filters: ReportFilters): Promise<CreditNoteRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
@@ -378,11 +386,12 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
     where: {
       cnDate: { gte: filters.from, lte: filters.to },
       ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
       ...(filters.cnType && filters.cnType !== "ALL"
         ? { type: filters.cnType as CreditNoteType }
         : {}),
     },
-      select: {
+    select: {
         cnNo: true,
         cnDate: true,
         type: true,
@@ -395,18 +404,18 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
         customerName: true,
         cashBankAccount: { select: { name: true } },
         sale: { select: { saleNo: true } },
-      customer: { select: { code: true } },
-      items: {
-        select: {
-          qty: true,
-          unitPrice: true,
-          subtotalAmount: true,
-          amount: true,
-          detail: true,
-          product: { select: { code: true, name: true } },
+        customer: { select: { code: true } },
+        items: {
+          select: {
+            qty: true,
+            unitPrice: true,
+            subtotalAmount: true,
+            amount: true,
+            detail: true,
+            product: { select: { code: true, name: true } },
+          },
         },
       },
-    },
     orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
     take: 2000,
   });
@@ -431,14 +440,7 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
         customerName: cn.customerName ?? "",
         cnType: cnTypeLabel(cn.type),
         settlement: settlementLabel(cn.settlementType),
-        paymentMethod:
-          cn.settlementType === "CASH_REFUND"
-            ? cn.refundMethod === "CASH"
-              ? "à¹€à¸‡à¸´à¸™à¸ªà¸”"
-              : cn.refundMethod === "TRANSFER"
-                ? "à¹‚à¸­à¸™à¹€à¸‡à¸´à¸™"
-                : "-"
-            : "-",
+        paymentMethod: cn.settlementType === "CASH_REFUND" ? paymentMethodLabel(cn.refundMethod) : "-",
         accountName: cn.cashBankAccount?.name ?? "-",
         status: cn.status,
         productCode: item.product?.code ?? "",
@@ -456,7 +458,7 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
   return rows;
 }
 
-// â”€â”€â”€ Query: Receipt Register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Receipt Register
 
 export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
@@ -504,7 +506,7 @@ export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptR
         customerCode: r.customer?.code ?? "",
         customerName: r.customerName ?? "",
         refDocNo: item.sale?.saleNo ?? item.creditNote?.cnNo ?? "",
-        refType: item.sale ? "à¹ƒà¸šà¸‚à¸²à¸¢" : item.creditNote ? "CN" : "",
+        refType: item.sale ? "ใบขาย" : item.creditNote ? "CN" : "",
         paymentMethod: paymentMethodLabel(r.paymentMethod),
         accountName: r.cashBankAccount?.name ?? "-",
         status: r.status,
@@ -515,7 +517,7 @@ export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptR
   return rows;
 }
 
-// â”€â”€â”€ Query: Payment Register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Payment Register
 
 export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentRow[]> {
   const showCancelled = filters.showCancelled;
@@ -551,8 +553,8 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
         rowNo: 0,
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
-        docType: "à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²",
-        partyName: p.supplier?.name ?? "(à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸)",
+        docType: "ซื้อสินค้า",
+        partyName: p.supplier?.name ?? "(ไม่ระบุ)",
         paymentMethod: paymentMethodLabel(p.paymentMethod),
         accountName: p.cashBankAccount?.name ?? "-",
         status: p.status,
@@ -596,8 +598,8 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
         rowNo: 0,
         docNo: e.expenseNo,
         docDate: e.expenseDate,
-        docType: "à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢",
-        partyName: codeName + (e.note ? ` â€” ${e.note}` : ""),
+        docType: "ค่าใช้จ่าย",
+        partyName: codeName + (e.note ? ` - ${e.note}` : ""),
         paymentMethod: "-",
         accountName: e.cashBankAccount?.name ?? "-",
         status: e.status,
@@ -609,7 +611,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
     }
   }
 
-  // Sort by date â†’ docNo, then assign rowNo
+  // Sort by date -> docNo, then assign rowNo
   rows.sort((a, b) => {
     const dt = a.docDate.getTime() - b.docDate.getTime();
     return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
@@ -619,7 +621,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
   return rows;
 }
 
-// â”€â”€â”€ CSV builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// CSV builders
 
 const BOM = "\uFEFF";
 
@@ -722,13 +724,13 @@ export function buildPaymentsCsv(rows: PaymentRow[]): string {
   return BOM + [header, ...body].join("\r\n");
 }
 
-// â”€â”€â”€ Daily Receipt row type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Daily Receipt row type
 
 export type DailyReceiptRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "à¸‚à¸²à¸¢à¸ªà¸”" | "à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰"
+  docType: string; // "ขายสด" | "รับชำระหนี้"
   customerCode: string;
   customerName: string;
   paymentMethod: string;
@@ -738,7 +740,7 @@ export type DailyReceiptRow = {
   amount: number;
 };
 
-// â”€â”€â”€ Query: Daily Receipt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Daily Receipt
 
 export async function queryDailyReceiptRows(
   filters: ReportFilters,
@@ -775,7 +777,7 @@ export async function queryDailyReceiptRows(
         rowNo: 0,
         docNo: s.saleNo,
         docDate: s.saleDate,
-        docType: "à¸‚à¸²à¸¢à¸ªà¸”",
+        docType: "ขายสด",
         customerCode: s.customer?.code ?? "",
         customerName: s.customerName ?? "",
         paymentMethod: paymentMethodLabel(s.paymentMethod),
@@ -814,7 +816,7 @@ export async function queryDailyReceiptRows(
         rowNo: 0,
         docNo: r.receiptNo,
         docDate: r.receiptDate,
-        docType: "à¸£à¸±à¸šà¸Šà¸³à¸£à¸°à¸«à¸™à¸µà¹‰",
+        docType: "รับชำระหนี้",
         customerCode: r.customer?.code ?? "",
         customerName: r.customerName ?? "",
         paymentMethod: paymentMethodLabel(r.paymentMethod),
@@ -834,13 +836,13 @@ export async function queryDailyReceiptRows(
   return rows;
 }
 
-// â”€â”€â”€ Daily Payment row type â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Daily Payment row type
 
 export type DailyPaymentRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²" | "à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢" | "à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²"
+  docType: string; // "ซื้อสินค้า" | "ค่าใช้จ่าย" | "คืนเงินลูกค้า"
   partyCode: string;
   partyName: string;
   paymentMethod: string;
@@ -850,7 +852,7 @@ export type DailyPaymentRow = {
   amount: number;
 };
 
-// â”€â”€â”€ Query: Daily Payment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Query: Daily Payment
 
 export async function queryDailyPaymentRows(
   filters: ReportFilters,
@@ -886,9 +888,9 @@ export async function queryDailyPaymentRows(
         rowNo: 0,
         docNo: p.purchaseNo,
         docDate: p.purchaseDate,
-        docType: "à¸‹à¸·à¹‰à¸­à¸ªà¸´à¸™à¸„à¹‰à¸²",
+        docType: "ซื้อสินค้า",
         partyCode: p.supplier?.code ?? "",
-        partyName: p.supplier?.name ?? "(à¹„à¸¡à¹ˆà¸£à¸°à¸šà¸¸)",
+        partyName: p.supplier?.name ?? "(ไม่ระบุ)",
         paymentMethod: paymentMethodLabel(p.paymentMethod),
         accountName: p.cashBankAccount?.name ?? "-",
         note: p.note ?? "",
@@ -927,7 +929,7 @@ export async function queryDailyPaymentRows(
         rowNo: 0,
         docNo: e.expenseNo,
         docDate: e.expenseDate,
-        docType: "à¸„à¹ˆà¸²à¹ƒà¸Šà¹‰à¸ˆà¹ˆà¸²à¸¢",
+        docType: "ค่าใช้จ่าย",
         partyCode: "",
         partyName: codeName,
         paymentMethod: "-",
@@ -964,14 +966,14 @@ export async function queryDailyPaymentRows(
     });
     for (const cn of cns) {
       const pmLabel =
-        cn.refundMethod === "CASH" ? "à¹€à¸‡à¸´à¸™à¸ªà¸”"
-        : cn.refundMethod === "TRANSFER" ? "à¹‚à¸­à¸™à¹€à¸‡à¸´à¸™"
+        cn.refundMethod === "CASH" ? "เงินสด"
+        : cn.refundMethod === "TRANSFER" ? "โอนเงิน"
         : "-";
       rows.push({
         rowNo: 0,
         docNo: cn.cnNo,
         docDate: cn.cnDate,
-        docType: "à¸„à¸·à¸™à¹€à¸‡à¸´à¸™à¸¥à¸¹à¸à¸„à¹‰à¸²",
+        docType: "คืนเงินลูกค้า",
         partyCode: cn.customer?.code ?? "",
         partyName: cn.customerName ?? "",
         paymentMethod: pmLabel,
@@ -991,7 +993,7 @@ export async function queryDailyPaymentRows(
   return rows;
 }
 
-// â”€â”€â”€ CSV builders for daily reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// CSV builders for daily reports
 
 export function buildDailyReceiptCsv(rows: DailyReceiptRow[]): string {
   const header = csvRow([

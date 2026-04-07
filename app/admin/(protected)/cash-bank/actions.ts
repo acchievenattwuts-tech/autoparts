@@ -1,7 +1,9 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { dbTx } from "@/lib/db";
+import { generateCashBankAdjustmentNo, generateCashBankTransferNo } from "@/lib/doc-number";
 import {
   CashBankAccountType,
   CashBankAdjustmentStatus,
@@ -9,9 +11,7 @@ import {
   CashBankSourceType,
   CashBankTransferStatus,
 } from "@/lib/generated/prisma";
-import { dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import { generateCashBankAdjustmentNo, generateCashBankTransferNo } from "@/lib/doc-number";
 import {
   clearCashBankSourceMovements,
   recalculateCashBankAccount,
@@ -26,7 +26,7 @@ const accountSchema = z.object({
   type: z.nativeEnum(CashBankAccountType),
   bankName: z.string().trim().max(120).optional(),
   accountNo: z.string().trim().max(50).optional(),
-  openingBalance: z.coerce.number().min(0, "ยอดยกมาต้องไม่น้อยกว่า 0"),
+  openingBalance: z.coerce.number().min(0, "ยอดยกมาต้องไม่ต่ำกว่า 0"),
   openingDate: z.string().min(1, "กรุณาระบุวันที่ยอดยกมา"),
   isActive: z.boolean(),
 });
@@ -76,7 +76,7 @@ function revalidateCashBankViews(): void {
 function validateCashBankAccountInput(data: z.infer<typeof accountSchema>): string | null {
   if (data.type === CashBankAccountType.BANK) {
     if (!data.bankName?.trim()) return "กรุณาระบุชื่อธนาคารสำหรับบัญชีประเภทธนาคาร";
-    if (!data.accountNo?.trim()) return "กรุณาระบุเลขที่บัญชีสำหรับบัญชีธนาคาร";
+    if (!data.accountNo?.trim()) return "กรุณาระบุเลขที่บัญชีสำหรับบัญชีประเภทธนาคาร";
   }
 
   if (Number.isNaN(new Date(data.openingDate).getTime())) {
@@ -316,7 +316,7 @@ export async function cancelCashBankTransfer(transferId: string, formData: FormD
         where: { id: transferId },
         data: {
           status: CashBankTransferStatus.CANCELLED,
-          cancelNote: cancelNote || null,
+          cancelNote,
           cancelledAt: new Date(),
         },
       });
@@ -466,7 +466,7 @@ export async function cancelCashBankAdjustment(adjustmentId: string, formData: F
         where: { id: adjustmentId },
         data: {
           status: CashBankAdjustmentStatus.CANCELLED,
-          cancelNote: cancelNote || null,
+          cancelNote,
           cancelledAt: new Date(),
         },
       });

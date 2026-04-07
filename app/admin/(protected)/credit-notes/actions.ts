@@ -165,6 +165,23 @@ const cnSchema = z.object({
   items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+async function resolveCreditNoteRefundMethod(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  accountId: string | undefined,
+): Promise<CNRefundMethod | null> {
+  if (!accountId) return null;
+
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { type: true },
+  });
+  if (!account) {
+    throw new Error("ไม่พบบัญชีจ่ายเงิน");
+  }
+
+  return account.type === "CASH" ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
+}
+
 export async function createCreditNote(
   formData: FormData
 ): Promise<{ success?: boolean; cnNo?: string; error?: string }> {
@@ -195,7 +212,7 @@ export async function createCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
@@ -203,11 +220,18 @@ export async function createCreditNote(
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
   }
 
+  const resolvedCashBankAccountId =
+    settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
   const docDate = new Date(cnDate);
   const cnNo    = await generateCNNo(docDate);
 
   try {
     await dbTx(async (tx) => {
+      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
+        tx,
+        resolvedCashBankAccountId,
+      );
+
       // Create CreditNote header
       const cn = await tx.creditNote.create({
         data: {
@@ -218,8 +242,8 @@ export async function createCreditNote(
           userId:         session.user!.id!,
           type,
           settlementType,
-          refundMethod:   refundMethod ?? null,
-          cashBankAccountId: cashBankAccountId || null,
+          refundMethod:   resolvedRefundMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           totalAmount:    netAmount,
           vatType,
           vatRate,
@@ -315,9 +339,9 @@ export async function createCreditNote(
         tx,
         CashBankSourceType.CN_SALE,
         cn.id,
-        settlementType === CNSettlementType.CASH_REFUND && cashBankAccountId
+        settlementType === CNSettlementType.CASH_REFUND && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.OUT,
               amount: netAmount,
@@ -460,6 +484,7 @@ export async function updateCreditNote(
     type:           formData.get("type"),
     settlementType: formData.get("settlementType") || CNSettlementType.CASH_REFUND,
     refundMethod:   (formData.get("refundMethod") as CNRefundMethod) || undefined,
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     note:           formData.get("note") || undefined,
     vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:        formData.get("vatRate") || 0,
@@ -467,7 +492,7 @@ export async function updateCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, refundMethod, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
@@ -475,6 +500,8 @@ export async function updateCreditNote(
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
   }
 
+  const resolvedCashBankAccountId =
+    settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
   const docDate = new Date(cnDate);
   const oldProductIds = [
     ...new Set(existing.items.map((i) => i.productId).filter((pid): pid is string => pid !== null)),
@@ -482,6 +509,11 @@ export async function updateCreditNote(
 
   try {
     await dbTx(async (tx) => {
+      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
+        tx,
+        resolvedCashBankAccountId,
+      );
+
       // 1. Reverse old stock effects (only if old type was RETURN)
       if (existing.type === "RETURN" && oldProductIds.length > 0) {
         for (const item of existing.items) {
@@ -508,8 +540,8 @@ export async function updateCreditNote(
           customerName:   customerName ?? null,
           type,
           settlementType,
-          refundMethod:   refundMethod ?? null,
-          cashBankAccountId: cashBankAccountId || null,
+          refundMethod:   resolvedRefundMethod,
+          cashBankAccountId: resolvedCashBankAccountId || null,
           totalAmount:    netAmount,
           vatType,
           vatRate,
@@ -599,9 +631,9 @@ export async function updateCreditNote(
         tx,
         CashBankSourceType.CN_SALE,
         id,
-        settlementType === CNSettlementType.CASH_REFUND && cashBankAccountId
+        settlementType === CNSettlementType.CASH_REFUND && resolvedCashBankAccountId
           ? [{
-              accountId: cashBankAccountId,
+              accountId: resolvedCashBankAccountId,
               txnDate: docDate,
               direction: CashBankDirection.OUT,
               amount: netAmount,

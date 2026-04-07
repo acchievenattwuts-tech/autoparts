@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
 
-import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
-import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import AdjustmentManager from "./AdjustmentManager";
 
 export default async function CashBankAdjustmentsPage() {
@@ -29,7 +29,7 @@ export default async function CashBankAdjustmentsPage() {
         note: true,
         status: true,
         cancelNote: true,
-        account: { select: { name: true } },
+        account: { select: { code: true, name: true } },
       },
     }),
   ]);
@@ -38,7 +38,9 @@ export default async function CashBankAdjustmentsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-kanit text-2xl font-bold text-gray-900">ปรับยอดเงิน</h1>
-        <p className="text-sm text-gray-500">ใช้กับรายการเงินเข้า/ออกที่ไม่ได้เกิดจากเอกสารธุรกิจหลัก โดยยังคงลง cash-bank card และ running balance ให้ถูกต้อง</p>
+        <p className="text-sm text-gray-500">
+          ใช้กับรายการเงินเข้าออกที่ไม่ได้เกิดจากเอกสารหลัก เช่น เงินขาด เงินเกิน ค่าธรรมเนียมธนาคาร หรือการตั้งยอดเริ่มต้น
+        </p>
       </div>
 
       <AdjustmentManager
@@ -48,6 +50,7 @@ export default async function CashBankAdjustmentsPage() {
           adjustNo: adjustment.adjustNo,
           adjustDate: adjustment.adjustDate.toISOString().slice(0, 10),
           accountId: adjustment.accountId,
+          accountCode: adjustment.account.code,
           accountName: adjustment.account.name,
           direction: adjustment.direction,
           amount: Number(adjustment.amount),

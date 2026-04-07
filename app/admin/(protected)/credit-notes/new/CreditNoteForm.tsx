@@ -394,7 +394,7 @@ const CreditNoteForm = ({
                   settlementType === "CASH_REFUND" ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 }`}
               >
-                คืนเป็นเงินสด
+                คืนเงิน
               </button>
               <button
                 type="button"
@@ -407,42 +407,28 @@ const CreditNoteForm = ({
               </button>
             </div>
           </div>
-          {settlementType === "CASH_REFUND" && (
+          {settlementType === "CASH_REFUND" ? (
             <div>
-              <label className={labelCls}>ช่องทางการคืนเงิน <span className="text-red-500">*</span></label>
-              <div className="flex gap-2">
-                {(["CASH", "TRANSFER"] as const).map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() => setRefundMethod(method)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      refundMethod === method
-                        ? "bg-emerald-600 text-white border-emerald-600"
-                        : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
-                    }`}
-                  >
-                    {method === "CASH" ? "เงินสด" : "โอนเงิน"}
-                  </button>
-                ))}
-              </div>
+              <label className={labelCls}>
+                บัญชีจ่ายเงิน <span className="text-red-500">*</span>
+              </label>
+              <SearchableSelect
+                options={cashBankAccounts.map((account): SelectOption => ({
+                  id: account.id,
+                  label: account.name,
+                  sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
+                }))}
+                value={cashBankAccountId}
+                onChange={setCashBankAccountId}
+                placeholder="โปรดระบุบัญชีจ่ายเงิน"
+              />
+              <p className="mt-1 text-xs text-gray-500">ระบบจะระบุช่องทางคืนเงินจากประเภทบัญชีให้อัตโนมัติ</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+              ตั้งหนี้จะยังไม่สร้างรายการเงินออก และไม่ต้องระบุบัญชีจ่ายเงิน
             </div>
           )}
-          <div>
-            <label className={labelCls}>
-              บัญชีจ่ายเงิน {settlementType === "CASH_REFUND" && <span className="text-red-500">*</span>}
-            </label>
-            <SearchableSelect
-              options={cashBankAccounts.map((account): SelectOption => ({
-                id: account.id,
-                label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-              }))}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
-              placeholder="โปรดระบุบัญชีจ่ายเงิน"
-            />
-          </div>
           <div>
             <label className={labelCls}>ประเภท CN <span className="text-red-500">*</span></label>
             <select
@@ -453,7 +439,7 @@ const CreditNoteForm = ({
             >
               <option value="RETURN">รับคืนสินค้า</option>
               <option value="DISCOUNT">ส่วนลดราคา</option>
-              <option value="OTHER">อื่นๆ</option>
+              <option value="OTHER">อื่น ๆ</option>
             </select>
           </div>
           <div className="md:col-span-3">
@@ -506,12 +492,12 @@ const CreditNoteForm = ({
         {cnType === "RETURN" ? (
           <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>รับคืนสินค้าเข้าสโต๊ก และถ้าเป็นสินค้า Lot Control ต้องระบุ Lot ของสินค้าที่รับคืนด้วย</span>
+            <span>รับคืนสินค้าเข้าสต็อก และถ้าเป็นสินค้า Lot Control ต้องระบุ Lot ของสินค้าที่รับคืนด้วย</span>
           </div>
         ) : (
           <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>ไม่กระทบสต็อก เหมาะสำหรับส่วนลดราคาและรายการอื่น ๆ ที่ไม่รับสินค้าคืน</span>
+            <span>ไม่กระทบสต็อก เหมาะสำหรับส่วนลดราคาและรายการอื่น ๆ ที่ไม่ได้รับสินค้าคืน</span>
           </div>
         )}
       </div>
@@ -754,3 +740,4 @@ const CreditNoteForm = ({
 };
 
 export default CreditNoteForm;
+
