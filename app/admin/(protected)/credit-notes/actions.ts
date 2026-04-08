@@ -182,6 +182,69 @@ async function resolveCreditNoteRefundMethod(
   return account.type === "CASH" ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
 }
 
+async function preloadCreditNoteLineMaps(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  items: z.infer<typeof cnItemSchema>[],
+): Promise<{
+  unitScaleMap: Map<string, number>;
+  productMap: Map<string, { isLotControl: boolean; avgCost: number }>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const [units, products] = await Promise.all([
+    tx.productUnit.findMany({
+      where: {
+        OR: items.map((item) => ({
+          productId: item.productId,
+          name: item.unitName,
+        })),
+      },
+      select: { productId: true, name: true, scale: true },
+    }),
+    tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, isLotControl: true, avgCost: true },
+    }),
+  ]);
+
+  return {
+    unitScaleMap: new Map(
+      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        { isLotControl: product.isLotControl, avgCost: Number(product.avgCost) },
+      ]),
+    ),
+  };
+}
+
+async function validateCreditNoteSourceSale(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  saleId: string | undefined,
+  customerId: string,
+): Promise<void> {
+  if (!saleId) return;
+
+  const sale = await tx.sale.findUnique({
+    where: { id: saleId },
+    select: {
+      id: true,
+      status: true,
+      customerId: true,
+      saleNo: true,
+    },
+  });
+
+  if (!sale || sale.status !== "ACTIVE") {
+    throw new Error("ไม่พบใบขายอ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
+  }
+
+  if (sale.customerId !== customerId) {
+    throw new Error(`ใบขาย ${sale.saleNo} ไม่ได้เป็นของลูกค้ารายที่เลือก`);
+  }
+}
+
 export async function createCreditNote(
   formData: FormData
 ): Promise<{ success?: boolean; cnNo?: string; error?: string }> {
@@ -227,10 +290,13 @@ export async function createCreditNote(
 
   try {
     await dbTx(async (tx) => {
+      await validateCreditNoteSourceSale(tx, saleId, customerId);
+
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
         tx,
         resolvedCashBankAccountId,
       );
+      const { unitScaleMap, productMap } = await preloadCreditNoteLineMaps(tx, validItems);
 
       // Create CreditNote header
       const cn = await tx.creditNote.create({
@@ -270,7 +336,8 @@ export async function createCreditNote(
           where: { id: item.productId },
           select: { isLotControl: true, avgCost: true },
         });
-        if (type === CreditNoteType.RETURN && product?.isLotControl) {
+        if (!product) throw new Error("Missing product");
+        if (type === CreditNoteType.RETURN && product.isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -289,8 +356,8 @@ export async function createCreditNote(
 
         // Write StockCard only for RETURN type
         if (type === CreditNoteType.RETURN) {
-          const returnAvgCost = Number(product?.avgCost ?? 0);
-          await writeStockCard(tx, {
+          const returnAvgCost = Number(product.avgCost);
+          const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       cnNo,
             docDate,
@@ -302,7 +369,7 @@ export async function createCreditNote(
             referenceId: cnItem.id,
           });
 
-          if (product?.isLotControl && item.lotItems.length > 0) {
+          if (product.isLotControl && item.lotItems.length > 0) {
             const lotsInBase = item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
@@ -314,18 +381,12 @@ export async function createCreditNote(
 
             await writeCreditNoteLots(tx, cnItem.id, item.productId, lotsInBase);
 
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: cnItem.id, source: "RETURN_IN" },
-              select: { id: true },
-            });
-            if (sc) {
-              await writeStockMovementLots(
-                tx,
-                sc.id,
-                lotsInBase.map(({ isReturnLot, ...lot }) => lot),
-                "in"
-              );
-            }
+            await writeStockMovementLots(
+              tx,
+              stockCardId,
+              lotsInBase.map(({ isReturnLot, ...lot }) => lot),
+              "in"
+            );
           }
         }
       }
@@ -406,6 +467,8 @@ export async function cancelCreditNote(
 
   try {
     await dbTx(async (tx) => {
+      await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
+
       // ถ้าเป็น RETURN ให้ reverse Lot + ลบ StockCard และ recalculate
       if (cn.type === "RETURN") {
         // Reverse Lot balances (ลบ stock ที่เคยรับคืนจากลูกค้า)
@@ -509,6 +572,8 @@ export async function updateCreditNote(
 
   try {
     await dbTx(async (tx) => {
+      await validateCreditNoteSourceSale(tx, saleId, customerId);
+
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
         tx,
         resolvedCashBankAccountId,
@@ -566,7 +631,8 @@ export async function updateCreditNote(
           where: { id: item.productId },
           select: { isLotControl: true, avgCost: true },
         });
-        if (type === CreditNoteType.RETURN && product?.isLotControl) {
+        if (!product) throw new Error("Missing product");
+        if (type === CreditNoteType.RETURN && product.isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -583,8 +649,8 @@ export async function updateCreditNote(
         });
 
         if (type === CreditNoteType.RETURN) {
-          const returnAvgCost = Number(product?.avgCost ?? 0);
-          await writeStockCard(tx, {
+          const returnAvgCost = Number(product.avgCost);
+          const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       existing.cnNo,
             docDate,
@@ -596,7 +662,7 @@ export async function updateCreditNote(
             referenceId: cnItem.id,
           });
 
-          if (product?.isLotControl && item.lotItems.length > 0) {
+          if (product.isLotControl && item.lotItems.length > 0) {
             const lotsInBase = item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
@@ -608,18 +674,12 @@ export async function updateCreditNote(
 
             await writeCreditNoteLots(tx, cnItem.id, item.productId, lotsInBase);
 
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: cnItem.id, source: "RETURN_IN" },
-              select: { id: true },
-            });
-            if (sc) {
-              await writeStockMovementLots(
-                tx,
-                sc.id,
-                lotsInBase.map(({ isReturnLot, ...lot }) => lot),
-                "in"
-              );
-            }
+            await writeStockMovementLots(
+              tx,
+              stockCardId,
+              lotsInBase.map(({ isReturnLot, ...lot }) => lot),
+              "in"
+            );
           }
         }
       }

@@ -90,6 +90,65 @@ export async function recalculateCashBankAccount(
   }
 }
 
+async function recalculateCashBankAccountFrom(
+  tx: TxClient,
+  accountId: string,
+  startDate: Date,
+): Promise<void> {
+  const account = await tx.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: { openingBalance: true },
+  });
+  if (!account) return;
+
+  const previousMovement = await tx.cashBankMovement.findFirst({
+    where: {
+      accountId,
+      txnDate: { lt: startDate },
+    },
+    orderBy: [
+      { txnDate: "desc" },
+      { sorder: "desc" },
+      { createdAt: "desc" },
+      { id: "desc" },
+    ],
+    select: { balanceAfter: true },
+  });
+
+  const movements = await tx.cashBankMovement.findMany({
+    where: {
+      accountId,
+      txnDate: { gte: startDate },
+    },
+    orderBy: [
+      { txnDate: "asc" },
+      { sorder: "asc" },
+      { createdAt: "asc" },
+      { id: "asc" },
+    ],
+    select: {
+      id: true,
+      direction: true,
+      amount: true,
+      balanceAfter: true,
+    },
+  });
+
+  let runningBalance = previousMovement
+    ? Number(previousMovement.balanceAfter)
+    : Number(account.openingBalance);
+
+  for (const movement of movements) {
+    runningBalance += toSignedAmount(movement.direction, movement.amount);
+    if (Number(movement.balanceAfter) === runningBalance) continue;
+
+    await tx.cashBankMovement.update({
+      where: { id: movement.id },
+      data: { balanceAfter: runningBalance },
+    });
+  }
+}
+
 export async function replaceCashBankSourceMovements(
   tx: TxClient,
   sourceType: CashBankSourceType,
@@ -98,7 +157,7 @@ export async function replaceCashBankSourceMovements(
 ): Promise<void> {
   const oldMovements = await tx.cashBankMovement.findMany({
     where: { sourceType, sourceId },
-    select: { accountId: true },
+    select: { accountId: true, txnDate: true },
   });
 
   const nextEntries = entries.filter((entry) => entry.amount > 0);
@@ -128,13 +187,22 @@ export async function replaceCashBankSourceMovements(
     });
   }
 
-  const affectedAccountIds = uniqueIds([
-    ...oldMovements.map((movement) => movement.accountId),
-    ...nextEntries.map((entry) => entry.accountId),
-  ]);
+  const dirtyStartByAccount = new Map<string, Date>();
+  for (const movement of oldMovements) {
+    const previous = dirtyStartByAccount.get(movement.accountId);
+    if (!previous || movement.txnDate < previous) {
+      dirtyStartByAccount.set(movement.accountId, movement.txnDate);
+    }
+  }
+  for (const entry of nextEntries) {
+    const previous = dirtyStartByAccount.get(entry.accountId);
+    if (!previous || entry.txnDate < previous) {
+      dirtyStartByAccount.set(entry.accountId, entry.txnDate);
+    }
+  }
 
-  for (const accountId of affectedAccountIds) {
-    await recalculateCashBankAccount(tx, accountId);
+  for (const [accountId, startDate] of dirtyStartByAccount) {
+    await recalculateCashBankAccountFrom(tx, accountId, startDate);
   }
 }
 
@@ -145,7 +213,7 @@ export async function clearCashBankSourceMovements(
 ): Promise<void> {
   const oldMovements = await tx.cashBankMovement.findMany({
     where: { sourceType, sourceId },
-    select: { accountId: true },
+    select: { accountId: true, txnDate: true },
   });
 
   if (oldMovements.length === 0) return;
@@ -154,8 +222,15 @@ export async function clearCashBankSourceMovements(
     where: { sourceType, sourceId },
   });
 
-  const affectedAccountIds = uniqueIds(oldMovements.map((movement) => movement.accountId));
-  for (const accountId of affectedAccountIds) {
-    await recalculateCashBankAccount(tx, accountId);
+  const dirtyStartByAccount = new Map<string, Date>();
+  for (const movement of oldMovements) {
+    const previous = dirtyStartByAccount.get(movement.accountId);
+    if (!previous || movement.txnDate < previous) {
+      dirtyStartByAccount.set(movement.accountId, movement.txnDate);
+    }
+  }
+
+  for (const [accountId, startDate] of dirtyStartByAccount) {
+    await recalculateCashBankAccountFrom(tx, accountId, startDate);
   }
 }

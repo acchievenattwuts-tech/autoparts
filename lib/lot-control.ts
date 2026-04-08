@@ -6,7 +6,7 @@ export type { LotSubRow, LotAvailable } from "@/lib/lot-control-client";
 export { validateLotRows, autoAllocateLots } from "@/lib/lot-control-client";
 
 // Import types for internal use
-import type { LotSubRow } from "@/lib/lot-control-client";
+import type { LotAvailableJSON, LotSubRow } from "@/lib/lot-control-client";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -22,6 +22,89 @@ export interface LotSubRowBase {
 
 export interface ClaimLotWriteInput extends LotSubRowBase {
   direction: "in" | "out";
+}
+
+export async function getLotAvailability(
+  tx: Pick<TxClient, "lotBalance" | "productLot">,
+  productId: string,
+): Promise<LotAvailableJSON[]> {
+  const balances = await tx.lotBalance.findMany({
+    where: { productId, qtyOnHand: { gt: 0 } },
+    select: { lotNo: true, qtyOnHand: true },
+    orderBy: { lotNo: "asc" },
+  });
+
+  const lotNos = balances.map((balance) => balance.lotNo);
+  if (lotNos.length === 0) return [];
+
+  const productLots = await tx.productLot.findMany({
+    where: {
+      productId,
+      lotNo: { in: lotNos },
+    },
+    select: {
+      lotNo: true,
+      unitCost: true,
+      mfgDate: true,
+      expDate: true,
+    },
+  });
+
+  const productLotMap = new Map(
+    productLots.map((productLot) => [
+      productLot.lotNo,
+      {
+        unitCost: Number(productLot.unitCost),
+        mfgDate: productLot.mfgDate ? productLot.mfgDate.toISOString().slice(0, 10) : null,
+        expDate: productLot.expDate ? productLot.expDate.toISOString().slice(0, 10) : null,
+      },
+    ]),
+  );
+
+  return balances.map((balance) => {
+    const productLot = productLotMap.get(balance.lotNo);
+    return {
+      lotNo: balance.lotNo,
+      qtyOnHand: Number(balance.qtyOnHand),
+      unitCost: productLot?.unitCost ?? 0,
+      mfgDate: productLot?.mfgDate ?? null,
+      expDate: productLot?.expDate ?? null,
+    };
+  });
+}
+
+async function ensureLotBalanceAvailable(
+  tx: TxClient,
+  productId: string,
+  lots: LotSubRowBase[],
+): Promise<void> {
+  if (lots.length === 0) return;
+
+  const requestedByLot = new Map<string, number>();
+  for (const lot of lots) {
+    const normalizedLotNo = lot.lotNo.trim();
+    requestedByLot.set(normalizedLotNo, (requestedByLot.get(normalizedLotNo) ?? 0) + lot.qtyInBase);
+  }
+
+  const balances = await tx.lotBalance.findMany({
+    where: {
+      productId,
+      lotNo: { in: [...requestedByLot.keys()] },
+    },
+    select: {
+      lotNo: true,
+      qtyOnHand: true,
+    },
+  });
+
+  const balanceMap = new Map(balances.map((balance) => [balance.lotNo, Number(balance.qtyOnHand)]));
+
+  for (const [lotNo, requestedQty] of requestedByLot.entries()) {
+    const availableQty = balanceMap.get(lotNo) ?? 0;
+    if (requestedQty > availableQty + 0.0001) {
+      throw new Error(`Lot ${lotNo} คงเหลือไม่พอสำหรับการตัดสต็อก`);
+    }
+  }
 }
 
 // ─── Write lot rows after purchase ───────────────────────────────────────────
@@ -182,6 +265,8 @@ export async function writePurchaseReturnLots(
   productId: string,
   lots: LotSubRowBase[]
 ): Promise<void> {
+  await ensureLotBalanceAvailable(tx, productId, lots);
+
   for (const lot of lots) {
     // Deduct LotBalance (stock goes out to supplier)
     await tx.lotBalance.updateMany({
@@ -345,6 +430,10 @@ export async function writeAdjustmentLots(
   lots: LotSubRowBase[],
   direction: "in" | "out"
 ): Promise<void> {
+  if (direction === "out") {
+    await ensureLotBalanceAvailable(tx, productId, lots);
+  }
+
   for (const lot of lots) {
     if (direction === "in") {
       // Upsert ProductLot master

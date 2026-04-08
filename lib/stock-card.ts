@@ -132,7 +132,7 @@ export async function recalculateStockCard(
 export async function writeStockCard(
   tx: TxClient,
   input: StockCardInput
-): Promise<void> {
+): Promise<string> {
   const qIn = input.qtyIn;
   const qOut = input.qtyOut;
   const pIn = input.priceIn;
@@ -157,7 +157,7 @@ export async function writeStockCard(
   const isBackdated = latestDateRow != null && input.docDate < latestDateRow.docDate;
 
   // Insert row with raw data
-  await tx.stockCard.create({
+  const createdRow = await tx.stockCard.create({
     data: {
       productId:    input.productId,
       docNo:        input.docNo,
@@ -174,6 +174,7 @@ export async function writeStockCard(
       detail:       input.detail,
       referenceId:  input.referenceId,
     },
+    select: { id: true },
   });
 
   if (isBackdated) {
@@ -220,20 +221,14 @@ export async function writeStockCard(
     }
 
     // Update the just-inserted row with computed balances
-    const inserted = await tx.stockCard.findFirst({
-      where: { productId: input.productId, sorder: maxSorder },
-      select: { id: true },
+    await tx.stockCard.update({
+      where: { id: createdRow.id },
+      data: {
+        priceOut:     new Prisma.Decimal(priceOut),
+        qtyBalance:   new Prisma.Decimal(newBaQty),
+        priceBalance: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
+      },
     });
-    if (inserted) {
-      await tx.stockCard.update({
-        where: { id: inserted.id },
-        data: {
-          priceOut:     new Prisma.Decimal(priceOut),
-          qtyBalance:   new Prisma.Decimal(newBaQty),
-          priceBalance: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
-        },
-      });
-    }
 
     // Update Product with final balance
     await tx.product.update({
@@ -244,4 +239,6 @@ export async function writeStockCard(
       },
     });
   }
+
+  return createdRow.id;
 }

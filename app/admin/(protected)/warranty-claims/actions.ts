@@ -8,6 +8,7 @@ import { generateClaimNo } from "@/lib/doc-number";
 import { ClaimOutcome, ClaimType, WarrantyClaimStatus } from "@/lib/generated/prisma";
 import {
   autoAllocateLots,
+  getLotAvailability,
   reverseClaimLotBalance,
   writeClaimLot,
   writeStockMovementLots,
@@ -58,55 +59,7 @@ async function getClaimReplacementLots(
   tx: TxClient,
   productId: string
 ): Promise<LotAvailableJSON[]> {
-  const balances = await tx.lotBalance.findMany({
-    where: {
-      productId,
-      qtyOnHand: { gt: 0 },
-    },
-    select: {
-      lotNo: true,
-      qtyOnHand: true,
-    },
-    orderBy: [{ lotNo: "asc" }],
-  });
-
-  const lotNos = balances.map((balance) => balance.lotNo);
-  if (lotNos.length === 0) return [];
-
-  const masters = await tx.productLot.findMany({
-    where: {
-      productId,
-      lotNo: { in: lotNos },
-    },
-    select: {
-      lotNo: true,
-      unitCost: true,
-      mfgDate: true,
-      expDate: true,
-    },
-  });
-
-  const masterMap = new Map(
-    masters.map((master) => [
-      master.lotNo,
-      {
-        unitCost: Number(master.unitCost),
-        mfgDate: master.mfgDate?.toISOString() ?? null,
-        expDate: master.expDate?.toISOString() ?? null,
-      },
-    ])
-  );
-
-  return balances.map((balance) => {
-    const master = masterMap.get(balance.lotNo);
-    return {
-      lotNo: balance.lotNo,
-      qtyOnHand: Number(balance.qtyOnHand),
-      unitCost: master?.unitCost ?? 0,
-      mfgDate: master?.mfgDate ?? null,
-      expDate: master?.expDate ?? null,
-    };
-  });
+  return getLotAvailability(tx, productId);
 }
 
 function normalizeOptionalDate(value?: string): Date | null {
@@ -150,13 +103,30 @@ export async function createClaim(
     where: { id: data.warrantyId },
     select: {
       id: true,
+      endDate: true,
       lotNo: true,
       productId: true,
       product: { select: { isLotControl: true } },
       saleItem: { select: { supplierId: true, supplierName: true } },
+      claims: {
+        where: { status: { not: WarrantyClaimStatus.CANCELLED } },
+        select: { claimNo: true },
+      },
     },
   });
   if (!warranty) return { error: "ไม่พบข้อมูลประกัน" };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const warrantyEndDate = new Date(warranty.endDate);
+  warrantyEndDate.setHours(0, 0, 0, 0);
+  if (warrantyEndDate < today) {
+    return { error: "รายการประกันนี้หมดอายุแล้ว ไม่สามารถเปิดเคลมได้" };
+  }
+
+  if (warranty.claims.length > 0) {
+    return { error: `รายการประกันนี้มีใบเคลม ${warranty.claims[0].claimNo} ค้างอยู่แล้ว` };
+  }
 
   const claimDate = new Date(data.claimDate);
   const claimNo = await generateClaimNo(claimDate);
@@ -197,7 +167,7 @@ export async function createClaim(
       });
 
       if (data.claimType === ClaimType.REPLACE_NOW || data.claimType === ClaimType.CUSTOMER_WAIT) {
-        await writeStockCard(tx, {
+        const returnStockCardId = await writeStockCard(tx, {
           productId: warranty.productId,
           docNo: claimNo,
           docDate: claimDate,
@@ -219,30 +189,23 @@ export async function createClaim(
             direction: "in",
           });
 
-          const returnStockCard = await tx.stockCard.findFirst({
-            where: { referenceId: claim.id, source: "CLAIM_RETURN_IN" },
-            select: { id: true },
-          });
-
-          if (returnStockCard) {
-            await writeStockMovementLots(
-              tx,
-              returnStockCard.id,
-              [{
-                lotNo: warranty.lotNo,
-                qtyInBase: 1,
-                unitCostBase: avgCost,
-                mfgDate: null,
-                expDate: null,
-              }],
-              "in"
-            );
-          }
+          await writeStockMovementLots(
+            tx,
+            returnStockCardId,
+            [{
+              lotNo: warranty.lotNo,
+              qtyInBase: 1,
+              unitCostBase: avgCost,
+              mfgDate: null,
+              expDate: null,
+            }],
+            "in"
+          );
         }
       }
 
       if (data.claimType === ClaimType.REPLACE_NOW) {
-        await writeStockCard(tx, {
+        const replaceStockCardId = await writeStockCard(tx, {
           productId: warranty.productId,
           docNo: claimNo,
           docDate: claimDate,
@@ -264,25 +227,18 @@ export async function createClaim(
             direction: "out",
           });
 
-          const replaceStockCard = await tx.stockCard.findFirst({
-            where: { referenceId: claim.id, source: "CLAIM_REPLACE_OUT" },
-            select: { id: true },
-          });
-
-          if (replaceStockCard) {
-            await writeStockMovementLots(
-              tx,
-              replaceStockCard.id,
-              [{
-                lotNo: replacementLot.lotNo,
-                qtyInBase: 1,
-                unitCostBase: replacementLot.unitCost,
-                mfgDate: null,
-                expDate: null,
-              }],
-              "out"
-            );
-          }
+          await writeStockMovementLots(
+            tx,
+            replaceStockCardId,
+            [{
+              lotNo: replacementLot.lotNo,
+              qtyInBase: 1,
+              unitCostBase: replacementLot.unitCost,
+              mfgDate: null,
+              expDate: null,
+            }],
+            "out"
+          );
         }
       }
     });
@@ -384,7 +340,7 @@ export async function sendClaimToSupplier(
         data: { status: WarrantyClaimStatus.SENT_TO_SUPPLIER, sentAt: sentDate },
       });
 
-      await writeStockCard(tx, {
+      const stockCardId = await writeStockCard(tx, {
         productId: claim.warranty.productId,
         docNo,
         docDate: sentDate,
@@ -406,25 +362,18 @@ export async function sendClaimToSupplier(
           direction: "out",
         });
 
-        const stockCard = await tx.stockCard.findFirst({
-          where: { referenceId: id, source: "CLAIM_SEND_OUT" },
-          select: { id: true },
-        });
-
-        if (stockCard) {
-          await writeStockMovementLots(
-            tx,
-            stockCard.id,
-            [{
-              lotNo: claim.warranty.lotNo,
-              qtyInBase: 1,
-              unitCostBase: avgCost,
-              mfgDate: null,
-              expDate: null,
-            }],
-            "out"
-          );
-        }
+        await writeStockMovementLots(
+          tx,
+          stockCardId,
+          [{
+            lotNo: claim.warranty.lotNo,
+            qtyInBase: 1,
+            unitCostBase: avgCost,
+            mfgDate: null,
+            expDate: null,
+          }],
+          "out"
+        );
       }
     });
 
@@ -466,9 +415,11 @@ export async function closeClaim(
     where: { id },
     select: {
       claimNo: true,
+      claimType: true,
       status: true,
       warranty: {
         select: {
+          lotNo: true,
           productId: true,
           product: { select: { isLotControl: true } },
         },
@@ -505,7 +456,7 @@ export async function closeClaim(
       });
 
       if (parsedOutcome.data === ClaimOutcome.RECEIVED) {
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId: claim.warranty.productId,
           docNo,
           docDate: resolvedDate,
@@ -527,15 +478,46 @@ export async function closeClaim(
             direction: "in",
           });
 
-          const stockCard = await tx.stockCard.findFirst({
-            where: { referenceId: id, source: "CLAIM_RECV_IN" },
-            select: { id: true },
+          await writeStockMovementLots(
+            tx,
+            stockCardId,
+            [{
+              lotNo: receivedLotNoValue,
+              qtyInBase: 1,
+              unitCostBase: avgCost,
+              mfgDate: receivedMfg,
+              expDate: receivedExp,
+            }],
+            "in"
+          );
+        }
+
+        if (claim.claimType === ClaimType.CUSTOMER_WAIT) {
+          const replaceStockCardId = await writeStockCard(tx, {
+            productId: claim.warranty.productId,
+            docNo,
+            docDate: resolvedDate,
+            source: "CLAIM_REPLACE_OUT",
+            qtyIn: 0,
+            qtyOut: 1,
+            priceIn: 0,
+            detail: `ส่งสินค้าให้ลูกค้าที่รอเคลม ${claim.claimNo}`,
+            referenceId: id,
           });
 
-          if (stockCard) {
+          if (claim.warranty.product.isLotControl && receivedLotNoValue) {
+            await writeClaimLot(tx, id, claim.warranty.productId, {
+              lotNo: receivedLotNoValue,
+              qtyInBase: 1,
+              unitCostBase: avgCost,
+              mfgDate: receivedMfg,
+              expDate: receivedExp,
+              direction: "out",
+            });
+
             await writeStockMovementLots(
               tx,
-              stockCard.id,
+              replaceStockCardId,
               [{
                 lotNo: receivedLotNoValue,
                 qtyInBase: 1,
@@ -543,7 +525,7 @@ export async function closeClaim(
                 mfgDate: receivedMfg,
                 expDate: receivedExp,
               }],
-              "in"
+              "out"
             );
           }
         }

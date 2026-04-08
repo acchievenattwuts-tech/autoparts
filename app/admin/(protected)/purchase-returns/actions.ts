@@ -16,6 +16,7 @@ import {
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import {
+  getLotAvailability,
   reversePurchaseReturnLotBalance,
   validateLotRows,
   writePurchaseReturnLots,
@@ -62,10 +63,48 @@ type LineData = {
   qty: number;
   qtyInBase: number;
   costPerBase: number;
+  isLotControl: boolean;
   totalAmount: number;
   subtotalAmount: number;
   lotItems: z.infer<typeof lotSubRowSchema>[];
 };
+
+async function preloadPurchaseReturnLineMaps(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  items: z.infer<typeof returnItemSchema>[],
+): Promise<{
+  unitScaleMap: Map<string, number>;
+  productMap: Map<string, { avgCost: number; isLotControl: boolean }>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const [units, products] = await Promise.all([
+    tx.productUnit.findMany({
+      where: {
+        OR: items.map((item) => ({
+          productId: item.productId,
+          name: item.unitName,
+        })),
+      },
+      select: { productId: true, name: true, scale: true },
+    }),
+    tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, avgCost: true, isLotControl: true },
+    }),
+  ]);
+
+  return {
+    unitScaleMap: new Map(
+      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        { avgCost: Number(product.avgCost), isLotControl: product.isLotControl },
+      ]),
+    ),
+  };
+}
 
 function serializePurchaseReturnProductOption(product: {
   id: string;
@@ -221,28 +260,22 @@ async function buildLineData(
   vatType: VatType,
   vatRate: number,
 ): Promise<LineData[]> {
+  const { unitScaleMap, productMap } = await preloadPurchaseReturnLineMaps(tx, validItems);
   const lineData: LineData[] = [];
 
   for (const item of validItems) {
-    const unit = await tx.productUnit.findUnique({
-      where: { productId_name: { productId: item.productId, name: item.unitName } },
-    });
-    if (!unit) {
-      throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+    const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
+    if (scale === undefined) {
+      throw new Error(`????????????? ${item.unitName} ?????????`);
     }
 
-    const scale = Number(unit.scale);
     const qtyInBase = item.qty * scale;
-
-    const product = await tx.product.findUnique({
-      where: { id: item.productId },
-      select: { avgCost: true },
-    });
+    const product = productMap.get(item.productId);
     if (!product) {
-      throw new Error("ไม่พบสินค้า");
+      throw new Error("???????????");
     }
 
-    const costPerBase = Number(product.avgCost);
+    const costPerBase = product.avgCost;
     const totalAmount = Math.round(qtyInBase) * costPerBase;
     const subtotalAmount = calcItemSubtotal(totalAmount, vatType, vatRate);
 
@@ -252,6 +285,7 @@ async function buildLineData(
       qty: item.qty,
       qtyInBase,
       costPerBase,
+      isLotControl: product.isLotControl,
       totalAmount,
       subtotalAmount,
       lotItems: item.lotItems,
@@ -272,12 +306,7 @@ async function writePurchaseReturnLines(
   const writeStock = type === PurchaseReturnType.RETURN;
 
   for (const line of lineData) {
-    const product = await tx.product.findUnique({
-      where: { id: line.productId },
-      select: { isLotControl: true },
-    });
-
-    if (writeStock && product?.isLotControl) {
+    if (writeStock && line.isLotControl) {
       const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
       if (lotError) throw new Error(lotError);
     }
@@ -295,7 +324,7 @@ async function writePurchaseReturnLines(
     });
 
     if (writeStock) {
-      await writeStockCard(tx, {
+      const stockCardId = await writeStockCard(tx, {
         productId: line.productId,
         docNo: returnNo,
         docDate,
@@ -307,7 +336,7 @@ async function writePurchaseReturnLines(
         referenceId: returnItem.id,
       });
 
-      if (product?.isLotControl && line.lotItems.length > 0) {
+      if (line.isLotControl && line.lotItems.length > 0) {
         const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
         const lotsInBase = line.lotItems.map((lot) => ({
           lotNo: lot.lotNo.trim(),
@@ -319,15 +348,35 @@ async function writePurchaseReturnLines(
 
         await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
 
-        const stockCard = await tx.stockCard.findFirst({
-          where: { referenceId: returnItem.id, source: "RETURN_OUT" },
-          select: { id: true },
-        });
-        if (stockCard) {
-          await writeStockMovementLots(tx, stockCard.id, lotsInBase, "out");
-        }
+        await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
       }
     }
+  }
+}
+
+async function validatePurchaseReturnSourcePurchase(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  purchaseId: string | undefined,
+  supplierId: string,
+): Promise<void> {
+  if (!purchaseId) return;
+
+  const purchase = await tx.purchase.findUnique({
+    where: { id: purchaseId },
+    select: {
+      id: true,
+      status: true,
+      supplierId: true,
+      purchaseNo: true,
+    },
+  });
+
+  if (!purchase || purchase.status !== "ACTIVE") {
+    throw new Error("ไม่พบใบซื้ออ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
+  }
+
+  if (purchase.supplierId !== supplierId) {
+    throw new Error(`ใบซื้อ ${purchase.purchaseNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
   }
 }
 
@@ -382,6 +431,8 @@ export async function createPurchaseReturn(
 
   try {
     await dbTx(async (tx) => {
+      await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+
       const lineData = await buildLineData(tx, validItems, vatType, vatRate);
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
@@ -595,6 +646,8 @@ export async function updatePurchaseReturn(
 
   try {
     await dbTx(async (tx) => {
+      await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+
       if (oldHadStock) {
         for (const item of existing.items) {
           await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
@@ -762,30 +815,7 @@ export async function fetchProductLots(
   if (!productId) return { error: "ไม่ระบุสินค้า" };
 
   try {
-    const balances = await db.lotBalance.findMany({
-      where: { productId, qtyOnHand: { gt: 0 } },
-      select: { lotNo: true, qtyOnHand: true },
-      orderBy: { lotNo: "asc" },
-    });
-
-    const lots: LotAvailableJSON[] = await Promise.all(
-      balances.map(async (balance) => {
-        const master = await db.productLot.findUnique({
-          where: { productId_lotNo: { productId, lotNo: balance.lotNo } },
-          select: { unitCost: true, expDate: true, mfgDate: true },
-        });
-
-        return {
-          lotNo: balance.lotNo,
-          qtyOnHand: Number(balance.qtyOnHand),
-          unitCost: Number(master?.unitCost ?? 0),
-          expDate: master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
-          mfgDate: master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
-        };
-      }),
-    );
-
-    return lots;
+    return await getLotAvailability(db, productId);
   } catch (error) {
     console.error("[fetchProductLots purchase-returns]", error);
     return { error: "โหลด Lot ไม่สำเร็จ" };

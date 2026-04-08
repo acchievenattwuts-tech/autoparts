@@ -70,7 +70,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     AND: [dateWhere, searchWhere, buildWarrantyStatusWhere(status, now, soonDate)],
   };
 
-  const [warrantyRows, filteredCount, activeCount, soonCount, expiredCount] = await Promise.all([
+  const [warrantyRows, filteredCount, summaryRows] = await Promise.all([
     db.warranty.findMany({
       where: filteredWhere,
       orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
@@ -91,9 +91,10 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
       },
     }),
     db.warranty.count({ where: filteredWhere }),
-    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("active", now, soonDate)] } }),
-    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("soon", now, soonDate)] } }),
-    db.warranty.count({ where: { AND: [dateWhere, buildWarrantyStatusWhere("expired", now, soonDate)] } }),
+    db.warranty.findMany({
+      where: { AND: [dateWhere] },
+      select: { endDate: true },
+    }),
   ]);
 
   const paginated = warrantyRows.map((w) => {
@@ -104,11 +105,19 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   });
   const filtered = { length: filteredCount };
 
-  const counts = {
-    active: activeCount,
-    soon: soonCount,
-    expired: expiredCount,
-  };
+  const counts = summaryRows.reduce(
+    (acc, row) => {
+      if (row.endDate < now) {
+        acc.expired += 1;
+      } else if (row.endDate <= soonDate) {
+        acc.soon += 1;
+      } else {
+        acc.active += 1;
+      }
+      return acc;
+    },
+    { active: 0, soon: 0, expired: 0 },
+  );
 
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
 

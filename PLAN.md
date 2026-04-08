@@ -2453,39 +2453,39 @@ npm run db:restore backup-{timestamp}.json
 
 ### C. เชิงโครงสร้าง / Performance (ไม่เปลี่ยน logic หลัก)
 
-- [ ] ลด N+1 query ตอนดึง lot detail ในทุกฟอร์มที่ใช้ lot
+- [x] ลด N+1 query ตอนดึง lot detail ในทุกฟอร์มที่ใช้ lot
   แนวทางแก้ไข: เปลี่ยนจาก loop `findUnique/findFirst` ต่อ lot เป็น bulk fetch `productLot` / `lotBalance` แล้ว map ใน memory
   ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/warranty-claims/actions.ts`
 
-- [ ] preload `product` และ `productUnit` ก่อนเข้าลูปใน document line items
+- [x] preload `product` และ `productUnit` ก่อนเข้าลูปใน document line items
   แนวทางแก้ไข: ดึง `productId in [...]` และ `(productId, unitName)` ที่ใช้ทั้งหมดครั้งเดียว แล้วทำ map ใน memory แทน query ต่อ item
   ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/credit-notes/actions.ts`
 
-- [ ] ให้ `writeStockCard()` คืน `stockCardId` กลับมาเพื่อตัด query `findFirst` ซ้ำ
+- [x] ให้ `writeStockCard()` คืน `stockCardId` กลับมาเพื่อตัด query `findFirst` ซ้ำ
   แนวทางแก้ไข: ปรับ helper ให้ return row id ที่เพิ่งสร้าง แล้วส่งต่อเข้า `writeStockMovementLots()` ได้ทันที
   ไฟล์หลัก: `lib/stock-card.ts`, จุดเรียกใช้ใน `sales/actions.ts`, `purchase-returns/actions.ts`, `credit-notes/actions.ts`, `warranty-claims/actions.ts`, `stock/adjustments/actions.ts`
 
-- [ ] ทำ utility validation กลางให้ AR ใช้ pattern เดียวกับ AP
+- [x] ทำ utility validation กลางให้ AR ใช้ pattern เดียวกับ AP
   แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ helper สำหรับ `Receipt` เพื่อให้ logic สมมาตรและดูแลง่าย
   ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `app/admin/(protected)/supplier-payments/actions.ts`
 
-- [ ] ปรับ `cash-bank` recalc ให้คุ้มขึ้นเมื่อ ledger โต
+- [x] ปรับ `cash-bank` recalc ให้คุ้มขึ้นเมื่อ ledger โต
   แนวทางแก้ไข: จากเดิม recalc ทั้งบัญชีและ update ทีละ row ทุกครั้ง ให้พิจารณา recalc เฉพาะช่วงที่ได้รับผลกระทบ หรือทำ set-based recalculation ในรอบถัดไป
   ไฟล์หลัก: `lib/cash-bank.ts`
 
-- [ ] ลด query summary ซ้ำในหน้าที่มี count หลายก้อน
+- [x] ลด query summary ซ้ำในหน้าที่มี count หลายก้อน
   แนวทางแก้ไข: ทบทวนหน้า list ที่ยิง count หลาย query พร้อมกัน เช่น warranty list เพื่อรวม summary ให้เหลือ query น้อยลงเมื่อข้อมูลโต
   ไฟล์หลัก: `app/admin/(protected)/warranties/page.tsx`
 
 ### D. ภาพรวมที่ต้องรักษาไว้
 
-- [ ] Reference-chain guard ต้องคงหลักเดิมไว้ทุกจุด
+- [x] Reference-chain guard ต้องคงหลักเดิมไว้ทุกจุด
   แนวทางแก้ไข: ก่อน edit/cancel เอกสารต้นทาง ต้อง reject ถ้ามี downstream `ACTIVE` อ้างอิงอยู่; งานรอบนี้เพิ่มเฉพาะ server-side validation ตอน create/update เอกสารลูก ไม่เปลี่ยนลำดับธุรกิจเดิม
 
-- [ ] ฝั่ง AP ปัจจุบันเป็น baseline ที่แข็งแรงกว่า AR
+- [x] ฝั่ง AP ปัจจุบันเป็น baseline ที่แข็งแรงกว่า AR
   แนวทางแก้ไข: เวลาเติม validation ฝั่ง AR ให้ mirror pattern จาก `SupplierPayment` โดยไม่เปลี่ยนสูตร `amountRemain` เดิม
 
 ### E. Notes
 
-- [ ] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
+- [x] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
   แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation

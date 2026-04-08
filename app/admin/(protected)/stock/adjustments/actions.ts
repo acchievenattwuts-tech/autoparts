@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateAdjNo } from "@/lib/doc-number";
-import { writeAdjustmentLots, reverseAdjustmentLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { getLotAvailability, writeAdjustmentLots, reverseAdjustmentLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
 const lotSubRowSchema = z.object({
@@ -31,6 +31,47 @@ const adjustSchema = z.object({
   note:       z.string().max(500).optional(),
   items:      z.array(adjustItemSchema).min(1, "ต้องมีรายการอย่างน้อย 1 รายการ").max(50),
 });
+
+async function preloadAdjustmentMaps(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  items: z.infer<typeof adjustItemSchema>[],
+): Promise<{
+  unitScaleMap: Map<string, number>;
+  productMap: Map<string, { isLotControl: boolean; requireExpiryDate: boolean; avgCost: number }>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const [units, products] = await Promise.all([
+    tx.productUnit.findMany({
+      where: {
+        OR: items.map((item) => ({
+          productId: item.productId,
+          name: item.unitName,
+        })),
+      },
+      select: { productId: true, name: true, scale: true },
+    }),
+    tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, isLotControl: true, requireExpiryDate: true, avgCost: true },
+    }),
+  ]);
+
+  return {
+    unitScaleMap: new Map(
+      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        {
+          isLotControl: product.isLotControl,
+          requireExpiryDate: product.requireExpiryDate,
+          avgCost: Number(product.avgCost),
+        },
+      ]),
+    ),
+  };
+}
 
 export async function createAdjustment(
   formData: FormData
@@ -57,6 +98,8 @@ export async function createAdjustment(
   try {
     await dbTx(async (tx) => {
       // Create Adjustment header
+      const { unitScaleMap, productMap } = await preloadAdjustmentMaps(tx, validItems);
+
       const adj = await tx.adjustment.create({
         data: {
           adjustNo,
@@ -64,18 +107,15 @@ export async function createAdjustment(
           userId: session.user!.id!,
           note,
           items: {
-            create: await Promise.all(validItems.map(async (item) => {
-              const unit = await tx.productUnit.findUnique({
-                where: { productId_name: { productId: item.productId, name: item.unitName } },
-              });
-              const scale = unit ? Number(unit.scale) : 1;
+            create: validItems.map((item) => {
+              const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`) ?? 1;
               const qtyBase = item.qty * scale;
               return {
                 productId: item.productId,
                 qtyAdjust: item.type === "ADJUST_IN" ? qtyBase : -qtyBase,
                 reason:    item.reason,
               };
-            })),
+            }),
           },
         },
         include: { items: true },
@@ -88,7 +128,7 @@ export async function createAdjustment(
         const qtyBase = Math.abs(Number(adjItem.qtyAdjust));
         const source = Number(adjItem.qtyAdjust) > 0 ? "ADJUST_IN" as const : "ADJUST_OUT" as const;
 
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId:   adjItem.productId,
           docNo:       adjustNo,
           docDate:     new Date(adjustDate),
@@ -102,36 +142,23 @@ export async function createAdjustment(
 
         // Lot Control
         if (inputItem.lotItems.length > 0) {
-          const product = await tx.product.findUnique({
-            where: { id: adjItem.productId },
-            select: { isLotControl: true, requireExpiryDate: true, avgCost: true },
-          });
+          const product = productMap.get(adjItem.productId);
           if (product?.isLotControl) {
             const lotErr = validateLotRows(inputItem.lotItems as LotSubRow[], inputItem.qty, source === "ADJUST_IN" && product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
 
-            const unit = await tx.productUnit.findUnique({
-              where: { productId_name: { productId: adjItem.productId, name: inputItem.unitName } },
-            });
-            const scale = unit ? Number(unit.scale) : 1;
+            const scale = unitScaleMap.get(`${adjItem.productId}::${inputItem.unitName}`) ?? 1;
 
             const lotsInBase = inputItem.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
-              unitCostBase: lot.unitCost > 0 ? lot.unitCost / scale : Number(product.avgCost),
+              unitCostBase: lot.unitCost > 0 ? lot.unitCost / scale : product.avgCost,
               mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
               expDate:      lot.expDate ? new Date(lot.expDate) : null,
             }));
 
-            const sc = await tx.stockCard.findFirst({
-              where: { docNo: adjustNo, productId: adjItem.productId, referenceId: adj.id, source },
-              select: { id: true },
-            });
-
-            if (sc) {
-              const direction = source === "ADJUST_IN" ? "in" as const : "out" as const;
-              await writeAdjustmentLots(tx, sc.id, adjItem.productId, lotsInBase, direction);
-            }
+            const direction = source === "ADJUST_IN" ? "in" as const : "out" as const;
+            await writeAdjustmentLots(tx, stockCardId, adjItem.productId, lotsInBase, direction);
           }
         }
       }
@@ -151,25 +178,7 @@ export async function fetchAdjustmentProductLots(
 ): Promise<LotAvailableJSON[] | { error: string }> {
   if (!productId) return { error: "ไม่ระบุสินค้า" };
   try {
-    const balances = await db.lotBalance.findMany({
-      where: { productId, qtyOnHand: { gt: 0 } },
-      select: { lotNo: true, qtyOnHand: true },
-    });
-    const lots: LotAvailableJSON[] = await Promise.all(
-      balances.map(async (b) => {
-        const master = await db.productLot.findUnique({
-          where: { productId_lotNo: { productId, lotNo: b.lotNo } },
-          select: { unitCost: true, expDate: true, mfgDate: true },
-        });
-        return {
-          lotNo:     b.lotNo,
-          qtyOnHand: Number(b.qtyOnHand),
-          unitCost:  Number(master?.unitCost ?? 0),
-          expDate:   master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
-          mfgDate:   master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
-        };
-      })
-    );
+    const lots: LotAvailableJSON[] = await getLotAvailability(db, productId);
     if (lotIssueMethod === "FEFO") {
       lots.sort((a, b) => {
         if (!a.expDate) return 1;

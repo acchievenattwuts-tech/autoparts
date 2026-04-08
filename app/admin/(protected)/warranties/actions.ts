@@ -35,9 +35,23 @@ export async function createWarranty(
 
     const saleItem = await db.saleItem.findUnique({
       where: { id: d.saleItemId },
-      select: { productId: true, sale: { select: { saleDate: true } } },
+      select: {
+        productId: true,
+        quantity: true,
+        sale: { select: { id: true, saleDate: true } },
+        product: { select: { isLotControl: true } },
+        lotItems: { select: { lotNo: true } },
+      },
     });
     if (!saleItem) return { error: "ไม่พบรายการสินค้า" };
+
+    const derivedSaleId = saleItem.sale.id;
+    const lotNoSnapshot =
+      saleItem.product.isLotControl && saleItem.lotItems.length === 1 ? saleItem.lotItems[0]?.lotNo ?? null : null;
+
+    if (saleItem.product.isLotControl && !lotNoSnapshot) {
+      return { error: "ไม่สามารถสร้างประกันแบบ manual ได้ เพราะไม่พบ lot snapshot ที่ชัดเจนของรายการขายนี้" };
+    }
 
     const startDate = new Date(saleItem.sale.saleDate);
     const endDate   = new Date(startDate);
@@ -45,9 +59,10 @@ export async function createWarranty(
 
     await db.warranty.create({
       data: {
-        saleId:       d.saleId,
+        saleId:       derivedSaleId,
         saleItemId:   d.saleItemId,
         productId:    saleItem.productId,
+        lotNo:        lotNoSnapshot,
         warrantyDays: d.warrantyDays,
         startDate,
         endDate,

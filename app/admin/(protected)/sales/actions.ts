@@ -9,7 +9,7 @@ import { generateSaleNo } from "@/lib/doc-number";
 import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, ShippingMethod, ShippingStatus, VatType } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
-import { writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -176,6 +176,43 @@ function buildWarrantyLotSequence(lots: LotSubRow[]): string[] {
   return sequence;
 }
 
+async function preloadSaleLineMaps(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  items: z.infer<typeof saleItemSchema>[],
+): Promise<{
+  unitScaleMap: Map<string, number>;
+  productMap: Map<string, { avgCost: number; isLotControl: boolean }>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const [units, products] = await Promise.all([
+    tx.productUnit.findMany({
+      where: {
+        OR: items.map((item) => ({
+          productId: item.productId,
+          name: item.unitName,
+        })),
+      },
+      select: { productId: true, name: true, scale: true },
+    }),
+    tx.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, avgCost: true, isLotControl: true },
+    }),
+  ]);
+
+  return {
+    unitScaleMap: new Map(
+      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        { avgCost: Number(product.avgCost), isLotControl: product.isLotControl },
+      ]),
+    ),
+  };
+}
+
 async function createWarrantySnapshots(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   input: {
@@ -289,7 +326,7 @@ export async function createSale(
         tx,
         resolvedCashBankAccountId,
       );
-
+      const { unitScaleMap, productMap } = await preloadSaleLineMaps(tx, validItems);
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -361,7 +398,7 @@ export async function createSale(
 
         // Auto-create Warranty rows - one per display-unit qty (N warranties for N pieces sold)
         // Write StockCard (outgoing)
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       saleNo,
           docDate,
@@ -394,11 +431,7 @@ export async function createSale(
             await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
             await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
 
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: saleItem.id, source: "SALE" },
-              select: { id: true },
-            });
-            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+            await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
           }
         }
 
@@ -687,7 +720,7 @@ export async function updateSale(
           data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
         });
 
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.saleNo,
           docDate,
@@ -719,11 +752,7 @@ export async function updateSale(
             await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
             await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
 
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: saleItem.id, source: "SALE" },
-              select: { id: true },
-            });
-            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "out");
+            await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
           }
         }
 
@@ -787,6 +816,34 @@ export async function updateShippingStatus(
   if (!parsed.success) return { error: "ข้อมูลไม่ถูกต้อง" };
 
   try {
+    const sale = await db.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        id: true,
+        status: true,
+        fulfillmentType: true,
+        shippingMethod: true,
+        trackingNo: true,
+      },
+    });
+
+    if (!sale || sale.status !== "ACTIVE") {
+      return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
+    }
+
+    if (sale.fulfillmentType !== FulfillmentType.DELIVERY) {
+      return { error: "ใบขายนี้ไม่ได้เป็นรายการจัดส่ง" };
+    }
+
+    const nextShippingMethod = parsed.data.shippingMethod ?? sale.shippingMethod;
+    const nextTrackingNo = parsed.data.trackingNo ?? sale.trackingNo ?? undefined;
+    const requiresTrackingNo =
+      nextShippingMethod !== ShippingMethod.NONE && nextShippingMethod !== ShippingMethod.SELF;
+
+    if (requiresTrackingNo && !nextTrackingNo?.trim()) {
+      return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
+    }
+
     await db.sale.update({
       where: { id: saleId },
       data: {
@@ -812,25 +869,7 @@ export async function fetchProductLots(
 ): Promise<LotAvailableJSON[] | { error: string }> {
   if (!productId) return { error: "ไม่ระบุสินค้า" };
   try {
-    const balances = await db.lotBalance.findMany({
-      where: { productId, qtyOnHand: { gt: 0 } },
-      select: { lotNo: true, qtyOnHand: true },
-    });
-    const lots: LotAvailableJSON[] = await Promise.all(
-      balances.map(async (b) => {
-        const master = await db.productLot.findUnique({
-          where: { productId_lotNo: { productId, lotNo: b.lotNo } },
-          select: { unitCost: true, expDate: true, mfgDate: true },
-        });
-        return {
-          lotNo:     b.lotNo,
-          qtyOnHand: Number(b.qtyOnHand),
-          unitCost:  Number(master?.unitCost ?? 0),
-          expDate:   master?.expDate ? master.expDate.toISOString().slice(0, 10) : null,
-          mfgDate:   master?.mfgDate ? master.mfgDate.toISOString().slice(0, 10) : null,
-        };
-      })
-    );
+    const lots: LotAvailableJSON[] = await getLotAvailability(db, productId);
     if (lotIssueMethod === "FEFO") {
       lots.sort((a, b) => {
         if (!a.expDate) return 1;
