@@ -80,7 +80,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           },
         },
         user:     { select: { name: true } },
-        customer: { select: { id: true, name: true, phone: true } },
+        customer: { select: { id: true, name: true, phone: true, address: true } },
       },
     }),
     getSiteConfig(),
@@ -89,18 +89,23 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   if (!sale) notFound();
 
   const dueDate =
-    sale.paymentType === "CREDIT_SALE" && sale.creditTerm && sale.creditTerm > 0
+    sale.creditTerm && sale.creditTerm > 0
       ? new Date(new Date(sale.saleDate).getTime() + sale.creditTerm * 24 * 60 * 60 * 1000)
       : null;
 
   return (
     <>
       <style>{`
+        @page { margin: 0; }
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
-          #receipt { position: absolute; left: 0; top: 0; width: 100%; }
+          #receipt {
+            position: absolute; left: 0; top: 0; width: 100%;
+            display: flex; flex-direction: column; min-height: 100vh;
+          }
           .no-print { display: none !important; }
+          .receipt-footer { margin-top: auto; }
         }
       `}</style>
 
@@ -248,13 +253,17 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       {/* ─── Print Area ─────────────────────────────────────────── */}
       <div id="receipt" className="bg-white p-8 mx-auto text-[13px] leading-snug" style={{ maxWidth: "900px" }}>
 
-        {/* 1. Shop header — contact info only, no shop name */}
+        {/* 1. Shop header */}
         <div className="flex justify-between items-start mb-4 pb-3 border-b-2 border-gray-800">
           <div className="text-xs text-gray-600 space-y-0.5">
+            {cfg.shopName && <p className="text-sm font-semibold text-gray-800">{cfg.shopName}</p>}
             {cfg.shopAddress && <p>{cfg.shopAddress}</p>}
             {cfg.shopPhone && <p>โทร: {cfg.shopPhone}</p>}
-            {cfg.shopWebsiteUrl && <p>{cfg.shopWebsiteUrl}</p>}
-            {cfg.shopLineId && <p>Line: {cfg.shopLineId}</p>}
+            {(cfg.shopWebsiteUrl || cfg.shopLineId) && (
+              <p>
+                {[cfg.shopWebsiteUrl, cfg.shopLineId && `Line: ${cfg.shopLineId}`].filter(Boolean).join("  |  ")}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-base font-bold border border-gray-700 px-6 py-1.5 inline-block">
@@ -279,6 +288,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 {sale.customerPhone ?? sale.customer?.phone}
               </p>
             )}
+            {sale.customer?.address && (
+              <p>
+                <span className="text-gray-500">ที่อยู่: </span>
+                {sale.customer.address}
+              </p>
+            )}
             {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
               <p>
                 <span className="text-gray-500">ที่อยู่จัดส่ง: </span>
@@ -295,6 +310,10 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 <tr>
                   <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เลขที่เอกสาร</td>
                   <td className="font-mono font-semibold">{sale.saleNo}</td>
+                </tr>
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันที่เอกสาร</td>
+                  <td>{fmtDate(sale.saleDate)}</td>
                 </tr>
                 <tr>
                   <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เงื่อนไขชำระ</td>
@@ -390,6 +409,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         )}
 
         {/* 6. Signature — กรอบสี่เหลี่ยม ด้านล่างสุด */}
+        <div className="receipt-footer">
         {sale.paymentType === "CREDIT_SALE" ? (
           <div className="grid grid-cols-3 gap-0 border border-gray-400 text-xs text-center">
             {["ผู้มีอำนาจลงนาม", "ผู้ส่งของ", "ผู้รับของ"].map((label, i) => (
@@ -411,6 +431,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             ))}
           </div>
         )}
+        </div>
       </div>
     </>
   );
