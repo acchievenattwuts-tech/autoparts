@@ -70,7 +70,6 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
   const currentPage = parsePage(page);
   const activeFilters = [category, brand, model].filter(Boolean);
-  const hasSearchState = Boolean(q || activeFilters.length > 0 || currentPage > 1);
   const titleParts = ["สินค้าทั้งหมด"];
 
   if (activeFilters.length > 0) {
@@ -92,17 +91,12 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     alternates: {
       canonical: absoluteUrl("/products"),
     },
-    robots: hasSearchState
-      ? {
-          index: false,
-          follow: true,
-        }
-      : {
-          index: true,
-          follow: true,
-        },
+    robots: {
+      index: false,
+      follow: true,
+    },
     openGraph: {
-      url: absoluteUrl("/products/search"),
+      url: absoluteUrl("/products"),
       title: titleParts.join(" | "),
       description:
         "รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",

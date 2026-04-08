@@ -1,11 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-
-const FloatingLine = dynamic(() => import("./FloatingLine"), {
-  ssr: false,
-});
+import FloatingLine from "./FloatingLine";
 
 export default function DeferredFloatingLine({ lineUrl }: { lineUrl?: string }) {
   const [enabled, setEnabled] = useState(false);

@@ -1746,6 +1746,12 @@ npm run db:restore backup-{timestamp}.json
 - Phase 7 implementation and external verification are complete.
 - The remaining open item is the ongoing production measurement + tuning loop.
 
+## Roadmap Update (2026-04-08 Phase 7 Canonical Consolidation Follow-up)
+- Tightened duplicate-control for legacy product URLs under `/products/[categorySlug]/[productSlug]` so the route now acts as a redirect-only legacy entrypoint.
+- The legacy product route now returns `noindex, follow` metadata alongside the canonical product URL to reduce mixed canonical signals while Google refreshes older URLs.
+- `/products/search` now stays `noindex, follow` in metadata for every state and aligns its Open Graph URL with the canonical `/products` catalog page.
+- This follow-up is intended to reduce "Duplicate, Google chose different canonical than user" risk while the canonical `/product/[productSlug]` URLs continue to accumulate stronger signals.
+
 ## Roadmap Update (2026-04-07 Phase 6.6 Lite Cash-Bank Progress)
 - Phase 6.6 Lite is now partially implemented in code, beyond the original roadmap draft.
 - The current foundation now includes schema, core movement logic, account-aware document flows, admin module surfaces, seed support, and report/export alignment work.
@@ -2407,41 +2413,41 @@ npm run db:restore backup-{timestamp}.json
 
 ### A. จุดหลัก (แก้ก่อน)
 
-- [ ] AR / Receipt: ปิดช่อง over-apply และอ้างอิงเอกสารผิด
+- [x] AR / Receipt: ปิดช่อง over-apply และอ้างอิงเอกสารผิด
   แนวทางแก้ไข: เพิ่ม server-side validation ตอน create/update ให้ตรวจ `saleId` / `cnId` ว่า `ACTIVE`, เป็นลูกค้าคนเดียวกัน, และ `paidAmount` รวมต่อเอกสารไม่เกิน outstanding ปัจจุบัน
   ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `lib/amount-remain.ts`
 
-- [ ] Cash-bank: cancel `CreditNote(CASH_REFUND)` ต้อง reverse movement
+- [x] Cash-bank: cancel `CreditNote(CASH_REFUND)` ต้อง reverse movement
   แนวทางแก้ไข: เรียก `clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cn.id)` ก่อน set status = `CANCELLED`
   ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`
 
-- [ ] Stock lot: `PurchaseReturn` ต้องกันการตัด lot เกินคงเหลือ
+- [x] Stock lot: `PurchaseReturn` ต้องกันการตัด lot เกินคงเหลือ
   แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writePurchaseReturnLots` และ throw error เมื่อ lot ไม่พอ แทนการปล่อยให้ clamp เป็น `0`
   ไฟล์หลัก: `app/admin/(protected)/purchase-returns/actions.ts`, `lib/lot-control.ts`
 
-- [ ] Stock lot: `Stock Adjustment OUT` ต้องกันการตัด lot เกินคงเหลือ
+- [x] Stock lot: `Stock Adjustment OUT` ต้องกันการตัด lot เกินคงเหลือ
   แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writeAdjustmentLots` สำหรับ direction = `out`
   ไฟล์หลัก: `app/admin/(protected)/stock/adjustments/actions.ts`, `lib/lot-control.ts`
 
-- [ ] Warranty Claim: `CUSTOMER_WAIT` ตอนปิดเคลม `RECEIVED` ต้องส่งของออกให้ลูกค้าที่รออยู่ด้วย
+- [x] Warranty Claim: `CUSTOMER_WAIT` ตอนปิดเคลม `RECEIVED` ต้องส่งของออกให้ลูกค้าที่รออยู่ด้วย
   แนวทางแก้ไข: ตอน `closeClaim(outcome=RECEIVED)` ถ้า `claimType = CUSTOMER_WAIT` ให้สร้าง `CLAIM_REPLACE_OUT` เพิ่มอีก 1 movement พร้อม lot movement ที่เกี่ยวข้อง เพื่อให้ net stock = 0 ตาม roadmap
   ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
 
 ### B. จุดรอง (Hardening / Validation)
 
-- [ ] Document reference: `CreditNote` และ `PurchaseReturn` ต้อง re-validate source document ฝั่ง server
+- [x] Document reference: `CreditNote` และ `PurchaseReturn` ต้อง re-validate source document ฝั่ง server
   แนวทางแก้ไข: ตอน create/update ตรวจ `saleId` / `purchaseId` ว่าเอกสารต้นทาง `ACTIVE` และสัมพันธ์กับ customer/supplier เดียวกันจริงก่อนบันทึก
   ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`
 
-- [ ] Warranty Claim: ต้อง validate ว่า warranty ยังอยู่ในช่วงประกันและยังไม่มี active claim ค้างอยู่
+- [x] Warranty Claim: ต้อง validate ว่า warranty ยังอยู่ในช่วงประกันและยังไม่มี active claim ค้างอยู่
   แนวทางแก้ไข: เพิ่ม check `endDate >= today` และไม่ให้สร้าง claim ถ้ามี claim status != `CANCELLED`
   ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
 
-- [ ] Warranty manual create: ต้องผูก snapshot ให้สอดคล้องกับ claim flow ปัจจุบัน
+- [x] Warranty manual create: ต้องผูก snapshot ให้สอดคล้องกับ claim flow ปัจจุบัน
   แนวทางแก้ไข: ไม่เชื่อ `saleId` จาก payload ตรงๆ ให้ derive จาก `saleItem`; ถ้าเป็นสินค้าคุม lot ต้องเติม `lotNo` snapshot หรือ block manual create สำหรับกรณีที่ derive lot ไม่ได้
   ไฟล์หลัก: `app/admin/(protected)/warranties/actions.ts`
 
-- [ ] Delivery: `updateShippingStatus` ต้องมี server-side guard เท่ากับหน้า UI
+- [x] Delivery: `updateShippingStatus` ต้องมี server-side guard เท่ากับหน้า UI
   แนวทางแก้ไข: ตรวจว่า sale เป็น `ACTIVE`, `fulfillmentType = DELIVERY`; ถ้า `shippingMethod` เป็น carrier ภายนอกต้องมี `trackingNo`; reject การอัปเดตเอกสารที่ไม่เข้าเงื่อนไข
   ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`
 
