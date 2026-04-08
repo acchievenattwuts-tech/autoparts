@@ -2405,7 +2405,7 @@ npm run db:restore backup-{timestamp}.json
 > สรุปรายการจาก code audit รอบ logic หลัก: stock mavg, stock lot, AR/AP, cash-bank, document reference, warranty, claim, delivery
 > เป้าหมาย: แก้ bug และเพิ่ม guard โดยไม่เปลี่ยน business logic เดิมของระบบ
 
-### A. Confirmed Bugs
+### A. จุดหลัก (แก้ก่อน)
 
 - [ ] AR / Receipt: ปิดช่อง over-apply และอ้างอิงเอกสารผิด
   แนวทางแก้ไข: เพิ่ม server-side validation ตอน create/update ให้ตรวจ `saleId` / `cnId` ว่า `ACTIVE`, เป็นลูกค้าคนเดียวกัน, และ `paidAmount` รวมต่อเอกสารไม่เกิน outstanding ปัจจุบัน
@@ -2427,7 +2427,7 @@ npm run db:restore backup-{timestamp}.json
   แนวทางแก้ไข: ตอน `closeClaim(outcome=RECEIVED)` ถ้า `claimType = CUSTOMER_WAIT` ให้สร้าง `CLAIM_REPLACE_OUT` เพิ่มอีก 1 movement พร้อม lot movement ที่เกี่ยวข้อง เพื่อให้ net stock = 0 ตาม roadmap
   ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
 
-### B. Hardening / Validation Fixes
+### B. จุดรอง (Hardening / Validation)
 
 - [ ] Document reference: `CreditNote` และ `PurchaseReturn` ต้อง re-validate source document ฝั่ง server
   แนวทางแก้ไข: ตอน create/update ตรวจ `saleId` / `purchaseId` ว่าเอกสารต้นทาง `ACTIVE` และสัมพันธ์กับ customer/supplier เดียวกันจริงก่อนบันทึก
@@ -2445,17 +2445,41 @@ npm run db:restore backup-{timestamp}.json
   แนวทางแก้ไข: ตรวจว่า sale เป็น `ACTIVE`, `fulfillmentType = DELIVERY`; ถ้า `shippingMethod` เป็น carrier ภายนอกต้องมี `trackingNo`; reject การอัปเดตเอกสารที่ไม่เข้าเงื่อนไข
   ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`
 
-### C. Performance / Query Cleanup
+### C. เชิงโครงสร้าง / Performance (ไม่เปลี่ยน logic หลัก)
 
-- [ ] ลด N+1 query ตอนดึง lot detail
+- [ ] ลด N+1 query ตอนดึง lot detail ในทุกฟอร์มที่ใช้ lot
   แนวทางแก้ไข: เปลี่ยนจาก loop `findUnique/findFirst` ต่อ lot เป็น bulk fetch `productLot` / `lotBalance` แล้ว map ใน memory
   ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/warranty-claims/actions.ts`
 
-- [ ] ทบทวน helper validation ให้ reuse pattern เดียวกันระหว่าง AR และ AP
-  แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ utility สำหรับ `Receipt`
+- [ ] preload `product` และ `productUnit` ก่อนเข้าลูปใน document line items
+  แนวทางแก้ไข: ดึง `productId in [...]` และ `(productId, unitName)` ที่ใช้ทั้งหมดครั้งเดียว แล้วทำ map ใน memory แทน query ต่อ item
+  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/credit-notes/actions.ts`
+
+- [ ] ให้ `writeStockCard()` คืน `stockCardId` กลับมาเพื่อตัด query `findFirst` ซ้ำ
+  แนวทางแก้ไข: ปรับ helper ให้ return row id ที่เพิ่งสร้าง แล้วส่งต่อเข้า `writeStockMovementLots()` ได้ทันที
+  ไฟล์หลัก: `lib/stock-card.ts`, จุดเรียกใช้ใน `sales/actions.ts`, `purchase-returns/actions.ts`, `credit-notes/actions.ts`, `warranty-claims/actions.ts`, `stock/adjustments/actions.ts`
+
+- [ ] ทำ utility validation กลางให้ AR ใช้ pattern เดียวกับ AP
+  แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ helper สำหรับ `Receipt` เพื่อให้ logic สมมาตรและดูแลง่าย
   ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `app/admin/(protected)/supplier-payments/actions.ts`
 
-### D. Notes
+- [ ] ปรับ `cash-bank` recalc ให้คุ้มขึ้นเมื่อ ledger โต
+  แนวทางแก้ไข: จากเดิม recalc ทั้งบัญชีและ update ทีละ row ทุกครั้ง ให้พิจารณา recalc เฉพาะช่วงที่ได้รับผลกระทบ หรือทำ set-based recalculation ในรอบถัดไป
+  ไฟล์หลัก: `lib/cash-bank.ts`
+
+- [ ] ลด query summary ซ้ำในหน้าที่มี count หลายก้อน
+  แนวทางแก้ไข: ทบทวนหน้า list ที่ยิง count หลาย query พร้อมกัน เช่น warranty list เพื่อรวม summary ให้เหลือ query น้อยลงเมื่อข้อมูลโต
+  ไฟล์หลัก: `app/admin/(protected)/warranties/page.tsx`
+
+### D. ภาพรวมที่ต้องรักษาไว้
+
+- [ ] Reference-chain guard ต้องคงหลักเดิมไว้ทุกจุด
+  แนวทางแก้ไข: ก่อน edit/cancel เอกสารต้นทาง ต้อง reject ถ้ามี downstream `ACTIVE` อ้างอิงอยู่; งานรอบนี้เพิ่มเฉพาะ server-side validation ตอน create/update เอกสารลูก ไม่เปลี่ยนลำดับธุรกิจเดิม
+
+- [ ] ฝั่ง AP ปัจจุบันเป็น baseline ที่แข็งแรงกว่า AR
+  แนวทางแก้ไข: เวลาเติม validation ฝั่ง AR ให้ mirror pattern จาก `SupplierPayment` โดยไม่เปลี่ยนสูตร `amountRemain` เดิม
+
+### E. Notes
 
 - [ ] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
   แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation
