@@ -21,7 +21,13 @@ export const useTabStore = create<TabStore>()(
       tabs: [],
       addTab: (tab) =>
         set((state) => {
-          if (state.tabs.some((t) => t.path === tab.path)) return state;
+          const existingIndex = state.tabs.findIndex((t) => t.path === tab.path);
+          if (existingIndex >= 0) {
+            if (state.tabs[existingIndex]?.label === tab.label) return state;
+            const nextTabs = [...state.tabs];
+            nextTabs[existingIndex] = tab;
+            return { tabs: nextTabs };
+          }
           return { tabs: [...state.tabs, tab] };
         }),
       removeTab: (path) =>

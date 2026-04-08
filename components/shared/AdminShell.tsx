@@ -26,10 +26,16 @@ const AdminShell = ({ children, permissions, mustChangePassword, username }: Adm
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100 font-sarabun">
-      <div className="hidden flex-shrink-0 lg:flex">
+      {/* Desktop sidebar — inline, default hidden, toggles with transition */}
+      <div
+        className={`hidden flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out lg:flex ${
+          sidebarOpen ? "w-64" : "w-0"
+        }`}
+      >
         <AdminSidebar permissions={permissions} />
       </div>
 
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
           <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
@@ -42,12 +48,12 @@ const AdminShell = ({ children, permissions, mustChangePassword, username }: Adm
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
           <button
-            onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 hover:bg-gray-100 lg:hidden"
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            className="rounded-lg p-2 hover:bg-gray-100"
           >
             <Menu size={20} />
           </button>
-          <div className="flex-1 lg:flex-none" />
+          <div className="flex-1" />
           <div className="flex items-center gap-3">
             {username && (
               <div className="hidden sm:flex items-center gap-1.5 text-sm text-gray-600">

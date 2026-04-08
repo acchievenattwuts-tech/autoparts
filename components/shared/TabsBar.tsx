@@ -21,6 +21,8 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/lots": "Stock Card Lot",
   "/admin/purchases": "ซื้อสินค้าเข้า",
   "/admin/purchase-returns": "คืนสินค้าซัพพลายเออร์",
+  "/admin/supplier-advances": "เงินมัดจำซัพพลายเออร์",
+  "/admin/supplier-payments": "จ่ายชำระซัพพลายเออร์",
   "/admin/sales": "บันทึกการขาย",
   "/admin/credit-notes": "Credit Note (CN)",
   "/admin/receipts": "ใบเสร็จรับเงิน",
