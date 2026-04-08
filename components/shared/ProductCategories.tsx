@@ -1,4 +1,5 @@
-﻿import Link from "next/link";
+﻿import { unstable_cache } from "next/cache";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { getCategoryPath } from "@/lib/product-slug";
@@ -28,17 +29,24 @@ const fallbackCategories = [
   { label: "วาล์วและอุปกรณ์", desc: "อะไหล่เสริม", icon: "⚙️" },
 ];
 
+const fetchCategories = unstable_cache(
+  async () =>
+    db.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        _count: { select: { products: { where: { isActive: true } } } },
+      },
+    }),
+  ["storefront-home-categories"],
+  { tags: ["storefront:categories"] },
+);
+
 const ProductCategories = async () => {
-  const categories = await db.category.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      _count: { select: { products: { where: { isActive: true } } } },
-    },
-  });
+  const categories = await fetchCategories();
 
   const items =
     categories.length > 0

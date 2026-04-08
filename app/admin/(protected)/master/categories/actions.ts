@@ -4,34 +4,30 @@ import { db } from "@/lib/db";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
-import { getCategoryPath } from "@/lib/product-slug";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
 });
 
-const buildRevalidationPathVariants = (path: string) => {
-  const variants = new Set<string>([path]);
-  variants.add(encodeURI(path));
-  return [...variants];
-};
-
 const refreshCategorySearchCaches = async ({
   categoryId,
-  categoryPaths = [],
 }: {
   categoryId?: string;
-  categoryPaths?: string[];
 }) => {
-  revalidatePath("/");
-  revalidatePath("/products");
-  revalidatePath("/sitemap.xml");
-  categoryPaths.flatMap(buildRevalidationPathVariants).forEach((path) => revalidatePath(path));
+  // Invalidate cached data via tags — this covers unstable_cache in
+  // storefront-category.ts and any fetch-based caches tagged with these keys.
+  // No need to revalidatePath for every category page individually;
+  // tag invalidation ensures the next request gets fresh data.
   updateTag("storefront:categories");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateTag("product-search");
+
+  // Only revalidate pages that are always rendered (home, product index, sitemap).
+  revalidatePath("/");
+  revalidatePath("/products");
+  revalidatePath("/sitemap.xml");
 
   if (!categoryId) {
     return;
@@ -76,10 +72,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: category.id,
-      categoryPaths: [getCategoryPath(category)],
-    });
+    await refreshCategorySearchCaches({ categoryId: category.id });
     return {};
   } catch {
     return { error: "ชื่อหมวดหมู่นี้มีอยู่แล้ว" };
@@ -121,10 +114,7 @@ export const updateCategory = async (
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: id,
-      categoryPaths: [getCategoryPath(existingCategory)],
-    });
+    await refreshCategorySearchCaches({ categoryId: id });
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขชื่อหมวดหมู่ได้" };
@@ -155,10 +145,7 @@ export const toggleCategory = async (id: string, isActive: boolean): Promise<{ e
     await db.category.update({ where: { id }, data: { isActive } });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: id,
-      categoryPaths: [getCategoryPath(existingCategory)],
-    });
+    await refreshCategorySearchCaches({ categoryId: id });
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

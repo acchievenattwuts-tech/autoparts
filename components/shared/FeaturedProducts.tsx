@@ -1,41 +1,49 @@
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
 import { db } from "@/lib/db";
+
+const fetchFeaturedProducts = unstable_cache(
+  async () =>
+    db.product.findMany({
+      where: { isActive: true, stock: { gt: 0 } },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        code: true,
+        imageUrl: true,
+        salePrice: true,
+        stock: true,
+        reportUnitName: true,
+        category: { select: { name: true, slug: true } },
+        brand: { select: { name: true } },
+        carModels: {
+          select: {
+            carModel: {
+              select: {
+                name: true,
+                carBrand: { select: { name: true } },
+              },
+            },
+          },
+          take: 6,
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+    }),
+  ["storefront-featured-products"],
+  { tags: ["storefront:products"] },
+);
 
 interface Props {
   lineUrl: string;
 }
 
 const FeaturedProducts = async ({ lineUrl }: Props) => {
-  const products = await db.product.findMany({
-    where: { isActive: true, stock: { gt: 0 } },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      code: true,
-      imageUrl: true,
-      salePrice: true,
-      stock: true,
-      reportUnitName: true,
-      category: { select: { name: true, slug: true } },
-      brand: { select: { name: true } },
-      carModels: {
-        select: {
-          carModel: {
-            select: {
-              name: true,
-              carBrand: { select: { name: true } },
-            },
-          },
-        },
-        take: 6,
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-  });
+  const products = await fetchFeaturedProducts();
 
   if (products.length === 0) return null;
 
