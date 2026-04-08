@@ -2201,15 +2201,15 @@ npm run db:restore backup-{timestamp}.json
 
 ### Dashboard ที่ต้องเพิ่ม / แก้
 
-- Card: เจ้าหนี้คงค้าง (A/P)
-- Card: เงินมัดจำ supplier คงเหลือ
-- Card: เครดิต CN ซื้อคงเหลือ
-- ปรับ daily cash-in ให้รวม `PurchaseReturn(CASH_REFUND)`
-- ปรับ daily cash-out ให้รวม `SupplierAdvance` และ `SupplierPayment`
+- [x] Card: เจ้าหนี้คงค้าง (A/P)
+- [x] Card: เงินมัดจำ supplier คงเหลือ
+- [x] Card: เครดิต CN ซื้อคงเหลือ
+- [x] ปรับ daily cash-in ให้รวม `PurchaseReturn(CASH_REFUND)`
+- [x] ปรับ daily cash-out ให้รวม `SupplierAdvance` และ `SupplierPayment`
 
 ## Supplier AP Implementation Checklist
 
-อัปเดตล่าสุด: `2026-04-07`
+อัปเดตล่าสุด: `2026-04-08`
 
 ### เสร็จแล้ว
 
@@ -2285,7 +2285,9 @@ npm run db:restore backup-{timestamp}.json
   - [x] รายงานลูกหนี้ค้างชำระ (A/R) — `/admin/reports/ar` — filter วันที่ + ลูกค้า, CSV + Excel
   - [x] รายงานเจ้าหนี้คงค้าง (A/P) — `/admin/reports/ap` — filter วันที่ + supplier, 3 sections (ซื้อเชื่อ / มัดจำ / CN เครดิต), CSV + Excel
   - [x] รายงาน Stock คงเหลือ — `/admin/reports/stock` — filter หมวดหมู่ + ค้นหา, CSV + Excel
-  - [ ] dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding (ยังไม่ทำ)
+  - [x] dashboard cards: A/P, supplier advance outstanding, purchase return supplier credit outstanding
+  - [x] ปรับ daily cash-in ให้รวม `PurchaseReturn(CASH_REFUND)` ใน summary report
+  - [x] ปรับ daily cash-out ให้รวม `SupplierAdvance` และ `SupplierPayment` ใน summary report
 
 - [ ] ทำ data migration / backfill สำหรับเอกสารซื้อเก่าที่ต้องเข้ากับ flow ใหม่
 
@@ -2394,5 +2396,4 @@ npm run db:restore backup-{timestamp}.json
 
 ### ยังไม่ทำในรอบนี้
 
-- [ ] Dashboard cards สำหรับ A/P outstanding, supplier advance, CN credit outstanding
 - [ ] Data migration / backfill เอกสารเก่า

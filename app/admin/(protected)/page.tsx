@@ -27,6 +27,9 @@ const AdminDashboard = async () => {
     arNormal,
     arCOD,
     expensesMonthAgg,
+    apOutstandingAgg,
+    supplierAdvanceOutstandingAgg,
+    purchaseReturnCreditOutstandingAgg,
     storefrontVisitorsToday,
     storefrontVisitorsMonth,
     storefrontVisitorsTotal,
@@ -67,6 +70,26 @@ const AdminDashboard = async () => {
     db.expense.aggregate({
       _sum: { netAmount: true },
       where: { status: "ACTIVE", expenseDate: { gte: startOfMonth } },
+    }),
+    db.purchase.aggregate({
+      _sum: { amountRemain: true },
+      where: {
+        status: "ACTIVE",
+        purchaseType: "CREDIT_PURCHASE",
+        amountRemain: { gt: 0 },
+      },
+    }),
+    db.supplierAdvance.aggregate({
+      _sum: { amountRemain: true },
+      where: { status: "ACTIVE", amountRemain: { gt: 0 } },
+    }),
+    db.purchaseReturn.aggregate({
+      _sum: { amountRemain: true },
+      where: {
+        status: "ACTIVE",
+        settlementType: "SUPPLIER_CREDIT",
+        amountRemain: { gt: 0 },
+      },
     }),
     db.storefrontVisitDaily.count({
       where: { visitDay: bangkokToday },
@@ -139,6 +162,27 @@ const AdminDashboard = async () => {
       unit: `ณ ${todayLabel}`,
       icon: Receipt,
       color: "bg-orange-50 text-orange-600",
+    },
+    {
+      label: "A/P Outstanding",
+      value: `฿${fmt(apOutstandingAgg._sum.amountRemain)}`,
+      unit: `ณ ${todayLabel}`,
+      icon: ShoppingCart,
+      color: "bg-rose-50 text-rose-600",
+    },
+    {
+      label: "Supplier Advance",
+      value: `฿${fmt(supplierAdvanceOutstandingAgg._sum.amountRemain)}`,
+      unit: `คงเหลือ ณ ${todayLabel}`,
+      icon: Banknote,
+      color: "bg-emerald-50 text-emerald-600",
+    },
+    {
+      label: "CN Credit Outstanding",
+      value: `฿${fmt(purchaseReturnCreditOutstandingAgg._sum.amountRemain)}`,
+      unit: `ณ ${todayLabel}`,
+      icon: Receipt,
+      color: "bg-amber-50 text-amber-600",
     },
     {
       label: "ค่าใช้จ่ายเดือนนี้",

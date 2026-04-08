@@ -20,11 +20,22 @@ function formatDate(value: Date): string {
   });
 }
 
-function getReceiptSourceLabel(source: "SALE" | "RECEIPT"): string {
-  return source === "SALE" ? "ขายสด" : "รับชำระ";
+function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "PURCHASE_RETURN"): string {
+  switch (source) {
+    case "SALE":
+      return "ขายสด";
+    case "RECEIPT":
+      return "รับชำระ";
+    case "PURCHASE_RETURN":
+      return "รับเงินคืนซื้อ";
+    default:
+      return source;
+  }
 }
 
-function getPaymentSourceLabel(source: "PURCHASE" | "EXPENSE" | "CN_SALE"): string {
+function getPaymentSourceLabel(
+  source: "PURCHASE" | "EXPENSE" | "CN_SALE" | "SUPPLIER_ADVANCE" | "SUPPLIER_PAYMENT"
+): string {
   switch (source) {
     case "PURCHASE":
       return "ซื้อสินค้า";
@@ -32,6 +43,10 @@ function getPaymentSourceLabel(source: "PURCHASE" | "EXPENSE" | "CN_SALE"): stri
       return "ค่าใช้จ่าย";
     case "CN_SALE":
       return "คืนเงิน CN";
+    case "SUPPLIER_ADVANCE":
+      return "มัดจำซัพพลายเออร์";
+    case "SUPPLIER_PAYMENT":
+      return "จ่ายซัพพลายเออร์";
     default:
       return source;
   }
@@ -165,13 +180,13 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
             label="รับเงินจริง"
             value={`฿${formatCurrency(data.dailyReceipts.totalAmount)}`}
             accent="text-emerald-600"
-            hint="ขายสดและใบรับชำระในช่วงรายงาน"
+            hint="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ"
           />
           <SummaryCard
             label="จ่ายเงินจริง"
             value={`฿${formatCurrency(data.dailyPayments.totalAmount)}`}
             accent="text-rose-600"
-            hint="ซื้อสินค้า ค่าใช้จ่าย และคืนเงิน CN"
+            hint="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายซัพพลายเออร์"
           />
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -201,6 +216,26 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           />
           <SummaryCard label="มูลค่าสต็อก" value={`฿${formatCurrency(data.stock.totalStockValue)}`} hint="คำนวณจาก stock on hand x avg cost" />
         </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <SummaryCard
+            label="A/P Outstanding"
+            value={`฿${formatCurrency(data.payables.purchaseOutstanding)}`}
+            accent="text-rose-700"
+            hint="เจ้าหนี้คงค้างจากใบซื้อเชื่อ"
+          />
+          <SummaryCard
+            label="Supplier Advance Outstanding"
+            value={`฿${formatCurrency(data.payables.advanceOutstanding)}`}
+            accent="text-emerald-700"
+            hint="เงินมัดจำซัพพลายเออร์ที่ยังไม่ถูกใช้"
+          />
+          <SummaryCard
+            label="CN Credit Outstanding"
+            value={`฿${formatCurrency(data.payables.purchaseReturnCreditOutstanding)}`}
+            accent="text-amber-700"
+            hint="เครดิตใบคืนซื้อที่ยังรอหักชำระ"
+          />
+        </div>
       </section>
 
       <section className="space-y-4">
@@ -210,8 +245,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           subtitle="เพิ่มมุมมองบัญชีเงินให้สรุปและพิมพ์แล้วเห็น source, payment method และ account ที่กระทบจริง"
         />
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="รับเงินรายวัน" subtitle="ขายสดและใบรับชำระ พร้อมบัญชีที่เงินเข้า">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
+          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-xs text-gray-500">รวมรับเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
@@ -224,13 +259,17 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                 <p className="text-xs text-gray-500">รับชำระหนี้</p>
                 <p className="font-kanit text-xl font-bold text-emerald-600">฿{formatCurrency(data.dailyReceipts.receiptAmount)}</p>
               </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">รับเงินคืนซื้อ</p>
+                <p className="font-kanit text-xl font-bold text-cyan-700">฿{formatCurrency(data.dailyReceipts.purchaseReturnRefundAmount)}</p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">คู่ค้า/รายละเอียด</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600">ช่องทาง</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600">บัญชี</th>
                     <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
@@ -253,8 +292,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                           </p>
                         </td>
                         <td className="px-4 py-2">
-                          <p className="text-gray-800">{item.customerName}</p>
-                          <p className="text-xs text-gray-400">{item.customerCode || "-"}</p>
+                          <p className="text-gray-800">{item.counterpartName}</p>
+                          <p className="text-xs text-gray-400">{item.counterpartCode || "-"}</p>
                         </td>
                         <td className="px-4 py-2 text-gray-600">{item.paymentMethod}</td>
                         <td className="px-4 py-2 text-gray-600">{item.accountName}</td>
@@ -267,8 +306,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
             </div>
           </TableCard>
 
-          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย และคืนเงิน CN พร้อมบัญชีที่เงินออก">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-4">
+          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายชำระซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-xs text-gray-500">รวมจ่ายเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyPayments.totalAmount)}</p>
@@ -284,6 +323,14 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-xs text-gray-500">คืนเงิน CN</p>
                 <p className="font-kanit text-xl font-bold text-orange-600">฿{formatCurrency(data.dailyPayments.creditNoteRefundAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">มัดจำซัพพลายเออร์</p>
+                <p className="font-kanit text-xl font-bold text-emerald-700">฿{formatCurrency(data.dailyPayments.supplierAdvanceAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">จ่ายซัพพลายเออร์</p>
+                <p className="font-kanit text-xl font-bold text-rose-700">฿{formatCurrency(data.dailyPayments.supplierPaymentAmount)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
