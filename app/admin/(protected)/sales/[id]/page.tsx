@@ -18,6 +18,24 @@ const paymentMethodLabel: Record<string, string> = {
   CREDIT:   "เครดิต",
 };
 
+const PAYMENT_PRINT_LABELS: { key: string; label: string }[] = [
+  { key: "CASH",     label: "เงินสด" },
+  { key: "TRANSFER", label: "เงินโอน" },
+  { key: "CREDIT",   label: "บัตรเครดิต" },
+  { key: "CHECK",    label: "เช็ค" },
+  { key: "OTHER",    label: "อื่นๆ" },
+];
+
+const fmtDate = (d: Date | string) =>
+  new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+const fmtNum = (n: number) =>
+  n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
   WHOLESALE: "ส่ง",
@@ -75,6 +93,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   if (!sale) notFound();
 
   const cfg = Object.fromEntries(contents.map((c) => [c.key, c.value]));
+
+  const dueDate =
+    sale.paymentType === "CREDIT_SALE" && sale.creditTerm && sale.creditTerm > 0
+      ? new Date(new Date(sale.saleDate).getTime() + sale.creditTerm * 24 * 60 * 60 * 1000)
+      : null;
 
   return (
     <>
@@ -228,150 +251,177 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         </div>
       </div>
 
-      {/* Print area */}
-      <div id="receipt" className="bg-white p-8 max-w-2xl mx-auto">
-        {/* Shop header */}
-        <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">
-            {cfg.shopName ?? "ร้านอะไหล่รถยนต์"}
-          </h2>
-          {cfg.shopAddress && (
-            <p className="text-sm text-gray-600 mt-1">{cfg.shopAddress}</p>
-          )}
-          {cfg.shopPhone && (
-            <p className="text-sm text-gray-600">โทร: {cfg.shopPhone}</p>
-          )}
-          {cfg.shopTaxId && (
-            <p className="text-sm text-gray-600">เลขประจำตัวผู้เสียภาษี: {cfg.shopTaxId}</p>
-          )}
-        </div>
+      {/* ─── Print Area ─────────────────────────────────────────── */}
+      <div id="receipt" className="bg-white p-8 max-w-3xl mx-auto text-[13px] leading-snug">
 
-        <div className="text-center mb-6">
-          <h3 className="text-lg font-bold border-t border-b border-gray-300 py-2 inline-block px-8">
-            {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้/ใบส่งของ" : "ใบเสร็จรับเงิน"}
-          </h3>
-        </div>
-
-        {/* Sale info */}
-        <div className="grid grid-cols-2 gap-x-4 mb-4 text-sm">
+        {/* 1. Shop header */}
+        <div className="flex justify-between items-start mb-4 pb-3 border-b-2 border-gray-800">
           <div>
-            <span className="text-gray-600">เลขที่: </span>
-            <span className="font-semibold">{sale.saleNo}</span>
+            <p className="text-xl font-bold text-gray-900">{cfg.shopName ?? "ร้านอะไหล่รถยนต์"}</p>
+            {cfg.shopAddress && <p className="text-xs text-gray-500 mt-0.5">{cfg.shopAddress}</p>}
+            {cfg.shopPhone && <p className="text-xs text-gray-500">โทร: {cfg.shopPhone}</p>}
           </div>
           <div className="text-right">
-            <span className="text-gray-600">วันที่: </span>
-            <span className="font-semibold">
-              {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-            </span>
+            <p className="text-base font-bold border border-gray-700 px-5 py-1 inline-block">
+              {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
+            </p>
+            <p className="text-xs font-mono text-gray-400 mt-1">{sale.saleNo}</p>
           </div>
-          <div>
-            <span className="text-gray-600">ลูกค้า: </span>
-            <span className="font-semibold">{sale.customerName ?? "-"}</span>
-          </div>
-          {sale.customerPhone && (
-            <div className="text-right">
-              <span className="text-gray-600">โทร: </span>
-              <span>{sale.customerPhone}</span>
-            </div>
-          )}
         </div>
 
-        {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
-          <div className="mb-4 text-sm border border-gray-200 rounded p-2 bg-gray-50">
-            <span className="text-gray-600">ที่อยู่จัดส่ง: </span>
-            <span>{sale.shippingAddress}</span>
+        {/* 2. Customer + Doc info */}
+        <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+          {/* Customer */}
+          <div className="border border-gray-400 rounded p-2 space-y-0.5">
+            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">ข้อมูลลูกค้า</p>
+            <p>
+              <span className="text-gray-500">ชื่อ: </span>
+              <span className="font-semibold">{sale.customerName ?? "-"}</span>
+            </p>
+            {(sale.customerPhone ?? sale.customer?.phone) && (
+              <p>
+                <span className="text-gray-500">โทร: </span>
+                {sale.customerPhone ?? sale.customer?.phone}
+              </p>
+            )}
+            {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
+              <p>
+                <span className="text-gray-500">ที่อยู่จัดส่ง: </span>
+                {sale.shippingAddress}
+              </p>
+            )}
           </div>
-        )}
 
-        {/* Items table */}
-        <table className="w-full text-sm mb-4 border-collapse">
+          {/* Doc info */}
+          <div className="border border-gray-400 rounded p-2">
+            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">ข้อมูลเอกสาร</p>
+            <table className="w-full text-xs">
+              <tbody>
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เลขที่เอกสาร</td>
+                  <td className="font-mono font-semibold">{sale.saleNo}</td>
+                </tr>
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5">วันที่</td>
+                  <td>{fmtDate(sale.saleDate)}</td>
+                </tr>
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เงื่อนไขชำระ</td>
+                  <td>{sale.creditTerm ? `${sale.creditTerm} วัน` : "ชำระทันที"}</td>
+                </tr>
+                {dueDate && (
+                  <tr>
+                    <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันครบกำหนด</td>
+                    <td>{fmtDate(dueDate)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">พนักงานขาย</td>
+                  <td>{sale.user?.name ?? "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 3. Items table */}
+        <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="border-t border-b border-gray-300">
-              <th className="text-left py-2 font-medium text-gray-700 w-8">ลำดับ</th>
-              <th className="text-left py-2 font-medium text-gray-700">รายการ</th>
-              <th className="text-right py-2 font-medium text-gray-700 w-16">จำนวน</th>
-              <th className="text-left py-2 font-medium text-gray-700 w-16 pl-2">หน่วย</th>
-              <th className="text-right py-2 font-medium text-gray-700 w-24">ราคา/หน่วย</th>
-              <th className="text-right py-2 font-medium text-gray-700 w-24">รวม</th>
+            <tr className="bg-gray-100 text-gray-700">
+              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-7">#</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-left w-24">รหัสสินค้า</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-left">รายละเอียด</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">จำนวน</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">หน่วย</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-20">ราคา/หน่วย</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-20">ยอดรวม</th>
             </tr>
           </thead>
           <tbody>
             {sale.items.map((item, idx) => (
-              <>
-                <tr key={item.id} className="border-b border-gray-100">
-                  <td className="py-1.5 text-gray-600">{idx + 1}</td>
-                  <td className="py-1.5">
-                    <div className="font-medium text-gray-900">{item.product.name}</div>
-                  </td>
-                  <td className="py-1.5 text-right text-gray-800">{item.quantity}</td>
-                  <td className="py-1.5 pl-2 text-gray-600">{item.product.reportUnitName}</td>
-                  <td className="py-1.5 text-right text-gray-800">
-                    {Number(item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="py-1.5 text-right font-medium text-gray-900">
-                    {Number(item.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-                {item.lotItems.length > 0 && (
-                  <tr key={`lot-${item.id}`} className="bg-amber-50/40 border-b border-gray-100">
-                    <td />
-                    <td colSpan={5} className="py-1 pb-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        {item.lotItems.map((lot) => (
-                          <span key={lot.lotNo} className="inline-flex items-center gap-1 text-xs bg-white border border-amber-200 rounded px-1.5 py-0.5">
-                            <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
-                            <span className="text-gray-500">×{Number(lot.qty)}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </>
+              <tr key={item.id}>
+                <td className="border border-gray-300 px-1.5 py-1.5 text-center text-gray-500">{idx + 1}</td>
+                <td className="border border-gray-300 px-1.5 py-1.5 font-mono text-gray-500 whitespace-nowrap">{item.product.code}</td>
+                <td className="border border-gray-300 px-1.5 py-1.5">
+                  <div className="font-medium text-gray-900">{item.product.name}</div>
+                  {item.lotItems.length > 0 && (
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                      Lot: {item.lotItems.map((l) => `${l.lotNo} ×${Number(l.qty)}`).join(", ")}
+                    </div>
+                  )}
+                </td>
+                <td className="border border-gray-300 px-1.5 py-1.5 text-center">{item.quantity}</td>
+                <td className="border border-gray-300 px-1.5 py-1.5 text-center text-gray-500">{item.product.reportUnitName}</td>
+                <td className="border border-gray-300 px-1.5 py-1.5 text-right">{fmtNum(Number(item.salePrice))}</td>
+                <td className="border border-gray-300 px-1.5 py-1.5 text-right font-medium">{fmtNum(Number(item.totalAmount))}</td>
+              </tr>
             ))}
           </tbody>
         </table>
 
-        {/* Summary */}
-        <div className="flex justify-end mb-6">
-          <div className="w-56 space-y-1 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>ยอดรวม</span>
-              <span>{Number(sale.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+        {/* 4. Note + Summary */}
+        <div className="flex border-l border-r border-b border-gray-400 mb-4 text-xs">
+          <div className="flex-1 border-r border-gray-400 p-2">
+            <p className="text-gray-400 mb-1">หมายเหตุ:</p>
+            <p className="text-gray-700 min-h-[2rem]">{sale.note ?? ""}</p>
+          </div>
+          <div className="w-52 p-2 space-y-0.5">
+            <div className="flex justify-between">
+              <span className="text-gray-500">มูลค่ารวม</span>
+              <span>{fmtNum(Number(sale.totalAmount))}</span>
             </div>
-            {sale.shippingFee !== null && Number(sale.shippingFee) > 0 && (
-              <div className="flex justify-between text-gray-600">
-                <span>ค่าจัดส่ง</span>
-                <span>+{Number(sale.shippingFee).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">ส่วนลด</span>
+              <span>{fmtNum(Number(sale.discount))}</span>
+            </div>
+            {Number(sale.shippingFee) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">ค่าจัดส่ง</span>
+                <span>{fmtNum(Number(sale.shippingFee))}</span>
               </div>
             )}
-            <div className="flex justify-between text-gray-600">
-              <span>ส่วนลด</span>
-              <span>-{Number(sale.discount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
-            </div>
-            <div className="flex justify-between border-t border-gray-300 pt-1 font-bold text-gray-900">
+            <div className="flex justify-between border-t border-gray-400 pt-1 font-bold text-gray-900">
               <span>ยอดสุทธิ</span>
-              <span className="text-[#1e3a5f] text-base">
-                {Number(sale.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              </span>
+              <span className="text-[#1e3a5f]">{fmtNum(Number(sale.netAmount))}</span>
             </div>
           </div>
         </div>
 
+        {/* 5. Payment checkboxes (cash sales only) */}
+        {sale.paymentType === "CASH_SALE" && (
+          <div className="border border-gray-400 px-3 py-2 mb-5 text-xs flex items-center gap-5">
+            <span className="text-gray-500 whitespace-nowrap">ชำระโดย:</span>
+            {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
+              <span key={key} className="flex items-center gap-1">
+                <span className="inline-flex w-3.5 h-3.5 items-center justify-center border border-gray-500 text-[10px]">
+                  {sale.paymentMethod === key ? "✓" : ""}
+                </span>
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* 6. Signature */}
         {sale.paymentType === "CREDIT_SALE" ? (
-          <div className="mt-8 grid grid-cols-2 gap-8 text-sm text-center">
-            <div>
-              <div className="border-t border-gray-400 pt-2 mt-8">ผู้ส่งของ</div>
-              <div className="text-gray-500 mt-1">วันที่ ...............</div>
-            </div>
-            <div>
-              <div className="border-t border-gray-400 pt-2 mt-8">ผู้รับของ</div>
-              <div className="text-gray-500 mt-1">วันที่ ...............</div>
-            </div>
+          <div className="grid grid-cols-3 gap-6 text-xs text-center mt-6">
+            {["ผู้มีอำนาจลงนาม", "ผู้ส่งของ", "ผู้รับของ"].map((label) => (
+              <div key={label}>
+                <div className="h-14" />
+                <div className="border-t border-gray-500 pt-1">{label}</div>
+                <div className="text-gray-400 mt-0.5">วันที่ ...............</div>
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="text-center text-sm text-gray-500 border-t border-gray-200 pt-4">
-            ขอบคุณที่ใช้บริการ
+          <div className="grid grid-cols-2 gap-16 text-xs text-center mt-6">
+            {["ผู้รับเงิน", "ผู้รับของ"].map((label) => (
+              <div key={label}>
+                <div className="h-14" />
+                <div className="border-t border-gray-500 pt-1">{label}</div>
+                <div className="text-gray-400 mt-0.5">วันที่ ...............</div>
+              </div>
+            ))}
           </div>
         )}
       </div>
