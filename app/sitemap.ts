@@ -37,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           slug: true,
           name: true,
           updatedAt: true,
-          category: { select: { name: true, slug: true } },
+          category: { select: { id: true, name: true, slug: true } },
         },
         orderBy: { updatedAt: "desc" },
       }),

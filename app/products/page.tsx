@@ -51,7 +51,7 @@ const ProductsPage = async () => {
         salePrice: true,
         stock: true,
         reportUnitName: true,
-        category: { select: { name: true, slug: true } },
+        category: { select: { id: true, name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
           select: {

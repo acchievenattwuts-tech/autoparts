@@ -56,6 +56,7 @@ export async function generateStaticParams() {
   const categories = await db.category.findMany({
     where: { isActive: true },
     select: {
+      id: true,
       name: true,
       slug: true,
     },

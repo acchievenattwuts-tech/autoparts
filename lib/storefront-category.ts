@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import {
   buildLegacyCategorySlugMap,
+  extractCategoryIdFromSlug,
   getProductCategorySlug,
   normalizeSlugSegment,
 } from "./product-slug";
@@ -23,13 +24,16 @@ const fetchActiveCategories = unstable_cache(
 export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) => {
   const categories = await fetchActiveCategories();
 
+  const decodedCategorySlug = decodeURIComponent(categorySlug);
   const normalizedCategorySlug = normalizeSlugSegment(categorySlug);
-  const decodedSlug = normalizeSlugSegment(decodeURIComponent(categorySlug));
+  const decodedSlug = normalizeSlugSegment(decodedCategorySlug);
+  const categoryId = extractCategoryIdFromSlug(decodedCategorySlug);
   const legacyCategorySlugMap = buildLegacyCategorySlugMap(categories);
   const legacyCategoryId =
     legacyCategorySlugMap.get(categorySlug) ??
     legacyCategorySlugMap.get(normalizedCategorySlug);
   const category =
+    categories.find((item) => item.id === categoryId) ??
     categories.find((item) => item.slug && normalizeSlugSegment(item.slug) === normalizedCategorySlug) ??
     categories.find((item) => normalizeSlugSegment(item.name) === decodedSlug) ??
     categories.find((item) => item.id === legacyCategoryId) ??
@@ -57,7 +61,7 @@ const fetchCategoryProducts = unstable_cache(
         salePrice: true,
         stock: true,
         reportUnitName: true,
-        category: { select: { name: true, slug: true } },
+        category: { select: { id: true, name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
           select: {

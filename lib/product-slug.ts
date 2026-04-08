@@ -32,6 +32,7 @@ const legacySlugifySegment = (value: string): string => {
 type CategorySlugInput =
   | string
   | {
+      id?: string;
       name: string;
       slug?: string | null;
     };
@@ -54,6 +55,9 @@ const getCategoryName = (input: CategorySlugInput): string =>
 const getCategoryStoredSlug = (input: CategorySlugInput): string | null =>
   typeof input === "string" ? null : input.slug ? normalizeSlugSegment(input.slug) : null;
 
+const getCategoryId = (input: CategorySlugInput): string | null =>
+  typeof input === "string" ? null : input.id ?? null;
+
 const getProductName = (input: ProductSlugInput): string =>
   "productName" in input ? input.productName : input.name;
 
@@ -72,7 +76,24 @@ const getProductStoredSlug = (input: ProductSlugInput): string | null =>
       : null;
 
 export const getProductCategorySlug = (category: CategorySlugInput): string => {
-  return getCategoryStoredSlug(category) ?? slugifySegment(getCategoryName(category));
+  const storedSlug = getCategoryStoredSlug(category);
+
+  if (storedSlug && !/^(?:item|category|product)(?:-\d+)?$/.test(storedSlug)) {
+    return storedSlug;
+  }
+
+  return slugifySegment(getCategoryName(category));
+};
+
+export const getCategorySlug = (category: CategorySlugInput): string => {
+  const categorySlug = getProductCategorySlug(category);
+  const categoryId = getCategoryId(category);
+
+  if (!categoryId) {
+    return categorySlug;
+  }
+
+  return `${categorySlug}-${categoryId}`;
 };
 
 type LegacyCategorySlugRecord = {
@@ -135,7 +156,7 @@ export const isPlaceholderSlug = (slug: string | null | undefined): boolean => {
 };
 
 export const getCategoryPath = (category: CategorySlugInput): string => {
-  return `/products/${getProductCategorySlug(category)}`;
+  return `/products/${getCategorySlug(category)}`;
 };
 
 export const getProductSlug = (product: ProductSlugInput): string => {
@@ -161,4 +182,16 @@ export const extractProductIdFromSlug = (slug: string): string | null => {
 
   const id = slug.slice(index + 1).trim();
   return id || null;
+};
+
+export const extractCategoryIdFromSlug = (slug: string): string | null => {
+  const normalizedSlug = decodeURIComponent(slug).trim();
+  const index = normalizedSlug.lastIndexOf("-");
+
+  if (index === -1) {
+    return null;
+  }
+
+  const id = normalizedSlug.slice(index + 1).trim();
+  return /^[a-z0-9]+$/.test(id) ? id : null;
 };

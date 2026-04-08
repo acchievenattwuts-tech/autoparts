@@ -24,7 +24,7 @@ import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   extractProductIdFromSlug,
   getCategoryPath,
-  getProductCategorySlug,
+  getCategorySlug,
   getProductPath,
   getProductSlug,
 } from "@/lib/product-slug";
@@ -50,6 +50,7 @@ export async function generateStaticParams() {
       name: true,
       category: {
         select: {
+          id: true,
           name: true,
           slug: true,
         },
@@ -58,7 +59,7 @@ export async function generateStaticParams() {
   });
 
   return products.map((product) => ({
-    categorySlug: getProductCategorySlug(product.category),
+    categorySlug: getCategorySlug(product.category),
     productSlug: getProductSlug(product),
   }));
 }

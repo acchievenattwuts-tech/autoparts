@@ -20,7 +20,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           salePrice: true,
           stock: true,
           reportUnitName: true,
-          category: { select: { name: true, slug: true } },
+          category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           aliases: {
             select: { alias: true },
@@ -70,7 +70,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
           salePrice: true,
           stock: true,
           reportUnitName: true,
-          category: { select: { name: true, slug: true } },
+          category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {
             select: {
