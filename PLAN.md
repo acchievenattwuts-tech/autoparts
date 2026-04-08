@@ -2397,3 +2397,65 @@ npm run db:restore backup-{timestamp}.json
 ### ยังไม่ทำในรอบนี้
 
 - [ ] Data migration / backfill เอกสารเก่า
+
+---
+
+## Roadmap Update (2026-04-08 - Audit Fix Checklist)
+
+> สรุปรายการจาก code audit รอบ logic หลัก: stock mavg, stock lot, AR/AP, cash-bank, document reference, warranty, claim, delivery
+> เป้าหมาย: แก้ bug และเพิ่ม guard โดยไม่เปลี่ยน business logic เดิมของระบบ
+
+### A. Confirmed Bugs
+
+- [ ] AR / Receipt: ปิดช่อง over-apply และอ้างอิงเอกสารผิด
+  แนวทางแก้ไข: เพิ่ม server-side validation ตอน create/update ให้ตรวจ `saleId` / `cnId` ว่า `ACTIVE`, เป็นลูกค้าคนเดียวกัน, และ `paidAmount` รวมต่อเอกสารไม่เกิน outstanding ปัจจุบัน
+  ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `lib/amount-remain.ts`
+
+- [ ] Cash-bank: cancel `CreditNote(CASH_REFUND)` ต้อง reverse movement
+  แนวทางแก้ไข: เรียก `clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cn.id)` ก่อน set status = `CANCELLED`
+  ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`
+
+- [ ] Stock lot: `PurchaseReturn` ต้องกันการตัด lot เกินคงเหลือ
+  แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writePurchaseReturnLots` และ throw error เมื่อ lot ไม่พอ แทนการปล่อยให้ clamp เป็น `0`
+  ไฟล์หลัก: `app/admin/(protected)/purchase-returns/actions.ts`, `lib/lot-control.ts`
+
+- [ ] Stock lot: `Stock Adjustment OUT` ต้องกันการตัด lot เกินคงเหลือ
+  แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writeAdjustmentLots` สำหรับ direction = `out`
+  ไฟล์หลัก: `app/admin/(protected)/stock/adjustments/actions.ts`, `lib/lot-control.ts`
+
+- [ ] Warranty Claim: `CUSTOMER_WAIT` ตอนปิดเคลม `RECEIVED` ต้องส่งของออกให้ลูกค้าที่รออยู่ด้วย
+  แนวทางแก้ไข: ตอน `closeClaim(outcome=RECEIVED)` ถ้า `claimType = CUSTOMER_WAIT` ให้สร้าง `CLAIM_REPLACE_OUT` เพิ่มอีก 1 movement พร้อม lot movement ที่เกี่ยวข้อง เพื่อให้ net stock = 0 ตาม roadmap
+  ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
+
+### B. Hardening / Validation Fixes
+
+- [ ] Document reference: `CreditNote` และ `PurchaseReturn` ต้อง re-validate source document ฝั่ง server
+  แนวทางแก้ไข: ตอน create/update ตรวจ `saleId` / `purchaseId` ว่าเอกสารต้นทาง `ACTIVE` และสัมพันธ์กับ customer/supplier เดียวกันจริงก่อนบันทึก
+  ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`
+
+- [ ] Warranty Claim: ต้อง validate ว่า warranty ยังอยู่ในช่วงประกันและยังไม่มี active claim ค้างอยู่
+  แนวทางแก้ไข: เพิ่ม check `endDate >= today` และไม่ให้สร้าง claim ถ้ามี claim status != `CANCELLED`
+  ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
+
+- [ ] Warranty manual create: ต้องผูก snapshot ให้สอดคล้องกับ claim flow ปัจจุบัน
+  แนวทางแก้ไข: ไม่เชื่อ `saleId` จาก payload ตรงๆ ให้ derive จาก `saleItem`; ถ้าเป็นสินค้าคุม lot ต้องเติม `lotNo` snapshot หรือ block manual create สำหรับกรณีที่ derive lot ไม่ได้
+  ไฟล์หลัก: `app/admin/(protected)/warranties/actions.ts`
+
+- [ ] Delivery: `updateShippingStatus` ต้องมี server-side guard เท่ากับหน้า UI
+  แนวทางแก้ไข: ตรวจว่า sale เป็น `ACTIVE`, `fulfillmentType = DELIVERY`; ถ้า `shippingMethod` เป็น carrier ภายนอกต้องมี `trackingNo`; reject การอัปเดตเอกสารที่ไม่เข้าเงื่อนไข
+  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`
+
+### C. Performance / Query Cleanup
+
+- [ ] ลด N+1 query ตอนดึง lot detail
+  แนวทางแก้ไข: เปลี่ยนจาก loop `findUnique/findFirst` ต่อ lot เป็น bulk fetch `productLot` / `lotBalance` แล้ว map ใน memory
+  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/warranty-claims/actions.ts`
+
+- [ ] ทบทวน helper validation ให้ reuse pattern เดียวกันระหว่าง AR และ AP
+  แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ utility สำหรับ `Receipt`
+  ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `app/admin/(protected)/supplier-payments/actions.ts`
+
+### D. Notes
+
+- [ ] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
+  แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation

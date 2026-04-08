@@ -37,7 +37,7 @@
 - `/types`: Shared TypeScript definitions.
 
 ## 5. Agent-Specific Instructions
-- **Plan First**: Before writing code, summarize the plan in the chat and ask for confirmation.
+- **Plan First**: Before writing code, summarize the plan in the chat and ask for confirmation. Exception: if the task is already discussed, summarized, or explicitly confirmed by the human and clearly maps to an item/checklist in `PLAN.md`, you may proceed without asking again — but you must still keep the roadmap updated after implementation.
 - **Check Environment**: Always verify if required environment variables exist in `.env.example` before implementation.
 - **Verify Build**: After significant changes, run `npm run build` or `next lint` to ensure no regressions.
 - **Error Handling**: Always wrap async operations (API routes, Server Actions) in try-catch blocks and use Zod for input validation.
@@ -101,6 +101,13 @@
 - **Deleting data**: Never write delete/drop/truncate statements without an explicit instruction to do so.
 - **New features not in the roadmap**: If a requested feature is not in `PLAN.md`, ask which phase it belongs to before starting.
 - **Business logic changes**: e.g. MAVG formula, price calculation, stock deduction — always explain the change before making it.
+
+### Roadmap Maintenance Rules
+- If a task is already discussed, summarized, or explicitly confirmed by the human, and the work belongs to a checklist item in `PLAN.md`, then after completing the implementation you must update `PLAN.md` immediately without asking again.
+- Mark the completed checklist item status in `PLAN.md` to match the real implementation state.
+- If the actual implementation differs from the original plan, update the roadmap text/checklist/details so `PLAN.md` reflects the final behavior accurately.
+- If new sub-steps, caveats, or follow-up fixes are discovered while completing a roadmap checklist item, append them to `PLAN.md` in a concise checklist form without asking first.
+- These roadmap maintenance updates are considered mandatory housekeeping for confirmed roadmap work, not a separate action that requires additional human approval.
 
 ### Schema Decisions
 - Use `prisma db push` only (not `migrate dev`) — Supabase Transaction pooler does not support shadow databases.
