@@ -1,6 +1,7 @@
 export const revalidate = 300;
 
 import type { Metadata } from "next";
+export const dynamic = "force-dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -24,15 +25,12 @@ import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   extractProductIdFromSlug,
   getCategoryPath,
-  getCategorySlug,
   getProductPath,
-  getProductSlug,
 } from "@/lib/product-slug";
 import {
   buildStorefrontProductDescription,
   getActiveStorefrontProductById,
 } from "@/lib/storefront-product";
-import { db } from "@/lib/db";
 
 interface Props {
   params: Promise<{
@@ -42,26 +40,9 @@ interface Props {
 }
 
 export async function generateStaticParams() {
-  const products = await db.product.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      category: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-        },
-      },
-    },
-  });
-
-  return products.map((product) => ({
-    categorySlug: getCategorySlug(product.category),
-    productSlug: getProductSlug(product),
-  }));
+  // Avoid product-wide DB fan-out during build; pages are generated on first hit
+  // and kept fresh by the existing ISR window.
+  return [];
 }
 
 async function getResolvedProductFromParams(paramsPromise: Props["params"]) {

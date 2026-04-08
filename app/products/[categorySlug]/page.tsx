@@ -1,5 +1,6 @@
 ﻿export const revalidate = 300;
 import type { Metadata } from "next";
+export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -12,7 +13,6 @@ import ProductCard from "@/components/shared/ProductCard";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
-import { db } from "@/lib/db";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   getActiveStorefrontCategoryBySlug,
@@ -53,19 +53,9 @@ const getCategorySupportArticles = (categoryName: string) => {
 };
 
 export async function generateStaticParams() {
-  const categories = await db.category.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-    },
-    orderBy: { name: "asc" },
-  });
-
-  return categories.map((category) => ({
-    categorySlug: getCategoryPath(category).replace("/products/", ""),
-  }));
+  // Avoid category-wide DB fan-out during build; pages are generated on first hit
+  // and kept fresh by the existing ISR window.
+  return [];
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

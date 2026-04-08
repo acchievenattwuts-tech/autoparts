@@ -62,8 +62,8 @@ const nextConfig: NextConfig = {
     },
     // Keep prerender fan-out low enough for the current Supabase session pool during build.
     staticGenerationRetryCount: 1,
-    staticGenerationMaxConcurrency: 2,
-    staticGenerationMinPagesPerWorker: 40,
+    staticGenerationMaxConcurrency: 1,
+    staticGenerationMinPagesPerWorker: 80,
   },
 
   async headers() {

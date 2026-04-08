@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import type { Metadata } from "next";
 import Navbar from "@/components/shared/Navbar";
 import Hero from "@/components/shared/Hero";

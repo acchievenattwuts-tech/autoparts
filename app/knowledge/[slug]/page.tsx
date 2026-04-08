@@ -1,5 +1,6 @@
 ﻿import type { Metadata } from "next";
 import Link from "next/link";
+export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpenText, Clock3, Search } from "lucide-react";
 import Navbar from "@/components/shared/Navbar";

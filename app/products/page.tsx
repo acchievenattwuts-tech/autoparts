@@ -1,6 +1,7 @@
 ﻿export const revalidate = 300;
 
 import type { Metadata } from "next";
+export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
