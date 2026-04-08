@@ -17,6 +17,18 @@ export const slugifySegment = (value: string): string => {
   return normalized || "item";
 };
 
+const slugifyAsciiSegmentRaw = (value: string): string => {
+  return normalizeSlugSegment(value)
+    .replace(/[\u0027\u2019]+/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+export const slugifyAsciiSegment = (value: string): string => {
+  return slugifyAsciiSegmentRaw(value) || "item";
+};
+
 const legacySlugifySegment = (value: string): string => {
   const normalized = value
     .normalize("NFKD")
@@ -86,7 +98,13 @@ export const getProductCategorySlug = (category: CategorySlugInput): string => {
 };
 
 export const getCategorySlug = (category: CategorySlugInput): string => {
-  const categorySlug = getProductCategorySlug(category);
+  const storedSlug = getCategoryStoredSlug(category);
+  const storedAsciiSlug = storedSlug ? slugifyAsciiSegmentRaw(storedSlug) : "";
+  const nameAsciiSlug = slugifyAsciiSegmentRaw(getCategoryName(category));
+  const categorySlug =
+    (storedAsciiSlug && !isPlaceholderSlug(storedAsciiSlug) ? storedAsciiSlug : null) ??
+    (nameAsciiSlug && !isPlaceholderSlug(nameAsciiSlug) ? nameAsciiSlug : null) ??
+    "category";
   const categoryId = getCategoryId(category);
 
   if (!categoryId) {

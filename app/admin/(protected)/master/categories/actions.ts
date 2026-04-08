@@ -5,6 +5,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
+import { slugifyAsciiSegment } from "@/lib/product-slug";
 
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
@@ -72,6 +73,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
           value: parsed.data.name,
           taken: existingSlugs.flatMap(({ slug }) => (slug ? [slug] : [])),
           fallback: "category",
+          slugify: slugifyAsciiSegment,
         }),
       },
     });
