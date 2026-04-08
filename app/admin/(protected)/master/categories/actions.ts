@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
+import { refreshCategoryStorefrontCaches } from "@/lib/storefront-revalidation";
 
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
@@ -49,6 +50,8 @@ const refreshCategorySearchCaches = async ({
   });
 };
 
+void refreshCategorySearchCaches;
+
 export const createCategory = async (formData: FormData): Promise<{ error?: string }> => {
   try {
     await requirePermission("master.create");
@@ -79,7 +82,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({ categoryId: category.id });
+    await refreshCategoryStorefrontCaches(category.id);
     return {};
   } catch {
     return { error: "ชื่อหมวดหมู่นี้มีอยู่แล้ว" };
@@ -121,7 +124,7 @@ export const updateCategory = async (
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({ categoryId: id });
+    await refreshCategoryStorefrontCaches(id);
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขชื่อหมวดหมู่ได้" };
@@ -152,7 +155,7 @@ export const toggleCategory = async (id: string, isActive: boolean): Promise<{ e
     await db.category.update({ where: { id }, data: { isActive } });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({ categoryId: id });
+    await refreshCategoryStorefrontCaches(id);
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
