@@ -167,6 +167,10 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
             <label className={labelClass}>อีเมลร้าน</label>
             <input name="shop_email" defaultValue={config.shopEmail} className={inputClass} placeholder="email@example.com" />
           </div>
+          <div>
+            <label className={labelClass}>เว็บไซต์ร้าน</label>
+            <input name="shop_website_url" defaultValue={config.shopWebsiteUrl} className={inputClass} placeholder="https://www.example.com" />
+          </div>
           <div className="md:col-span-2">
             <label className={labelClass}>ที่อยู่ร้าน</label>
             <textarea name="shop_address" defaultValue={config.shopAddress} rows={2} className={inputClass} placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" />

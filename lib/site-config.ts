@@ -18,6 +18,7 @@ export interface SiteConfig {
   shopContactNote: string;
   heroTitle: string;
   heroSubtitle: string;
+  shopWebsiteUrl: string;
   shopFacebookUrl: string;
   shopFacebookEnabled: boolean;
   shopTiktokUrl: string;
@@ -47,6 +48,7 @@ const defaultConfig: SiteConfig = {
   shopContactNote: "",
   heroTitle: "ศรีวรรณ อะไหล่แอร์",
   heroSubtitle: "อะไหล่แอร์และหม้อน้ำรถยนต์ทุกยี่ห้อ คุณภาพดี ราคายุติธรรม",
+  shopWebsiteUrl: "",
   shopFacebookUrl: "",
   shopFacebookEnabled: false,
   shopTiktokUrl: "",
@@ -81,6 +83,7 @@ export const getSiteConfig = unstable_cache(
       shopContactNote: map["shop_contact_note"] ?? defaultConfig.shopContactNote,
       heroTitle: map["hero_title"] ?? defaultConfig.heroTitle,
       heroSubtitle: map["hero_subtitle"] ?? defaultConfig.heroSubtitle,
+      shopWebsiteUrl: map["shop_website_url"] ?? defaultConfig.shopWebsiteUrl,
       shopFacebookUrl: map["shop_facebook_url"] ?? defaultConfig.shopFacebookUrl,
       shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
       shopTiktokUrl: map["shop_tiktok_url"] ?? defaultConfig.shopTiktokUrl,

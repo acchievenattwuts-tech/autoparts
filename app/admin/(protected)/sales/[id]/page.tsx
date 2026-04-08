@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { getSiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -21,9 +22,6 @@ const paymentMethodLabel: Record<string, string> = {
 const PAYMENT_PRINT_LABELS: { key: string; label: string }[] = [
   { key: "CASH",     label: "เงินสด" },
   { key: "TRANSFER", label: "เงินโอน" },
-  { key: "CREDIT",   label: "บัตรเครดิต" },
-  { key: "CHECK",    label: "เช็ค" },
-  { key: "OTHER",    label: "อื่นๆ" },
 ];
 
 const fmtDate = (d: Date | string) =>
@@ -71,7 +69,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
-  const [sale, contents] = await Promise.all([
+  const [sale, cfg] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -85,14 +83,10 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         customer: { select: { id: true, name: true, phone: true } },
       },
     }),
-    db.siteContent.findMany({
-      where: { key: { in: ["shopName", "shopPhone", "shopAddress", "shopTaxId"] } },
-    }),
+    getSiteConfig(),
   ]);
 
   if (!sale) notFound();
-
-  const cfg = Object.fromEntries(contents.map((c) => [c.key, c.value]));
 
   const dueDate =
     sale.paymentType === "CREDIT_SALE" && sale.creditTerm && sale.creditTerm > 0
@@ -252,17 +246,18 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       </div>
 
       {/* ─── Print Area ─────────────────────────────────────────── */}
-      <div id="receipt" className="bg-white p-8 max-w-3xl mx-auto text-[13px] leading-snug">
+      <div id="receipt" className="bg-white p-8 mx-auto text-[13px] leading-snug" style={{ maxWidth: "900px" }}>
 
-        {/* 1. Shop header */}
+        {/* 1. Shop header — contact info only, no shop name */}
         <div className="flex justify-between items-start mb-4 pb-3 border-b-2 border-gray-800">
-          <div>
-            <p className="text-xl font-bold text-gray-900">{cfg.shopName ?? "ร้านอะไหล่รถยนต์"}</p>
-            {cfg.shopAddress && <p className="text-xs text-gray-500 mt-0.5">{cfg.shopAddress}</p>}
-            {cfg.shopPhone && <p className="text-xs text-gray-500">โทร: {cfg.shopPhone}</p>}
+          <div className="text-xs text-gray-600 space-y-0.5">
+            {cfg.shopAddress && <p>{cfg.shopAddress}</p>}
+            {cfg.shopPhone && <p>โทร: {cfg.shopPhone}</p>}
+            {cfg.shopWebsiteUrl && <p>{cfg.shopWebsiteUrl}</p>}
+            {cfg.shopLineId && <p>Line: {cfg.shopLineId}</p>}
           </div>
           <div className="text-right">
-            <p className="text-base font-bold border border-gray-700 px-5 py-1 inline-block">
+            <p className="text-base font-bold border border-gray-700 px-6 py-1.5 inline-block">
               {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
             </p>
             <p className="text-xs font-mono text-gray-400 mt-1">{sale.saleNo}</p>
@@ -292,7 +287,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             )}
           </div>
 
-          {/* Doc info */}
+          {/* Doc info — วันที่ และ พนักงานขาย ตัดออก */}
           <div className="border border-gray-400 rounded p-2">
             <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">ข้อมูลเอกสาร</p>
             <table className="w-full text-xs">
@@ -300,10 +295,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 <tr>
                   <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เลขที่เอกสาร</td>
                   <td className="font-mono font-semibold">{sale.saleNo}</td>
-                </tr>
-                <tr>
-                  <td className="text-gray-500 pr-2 py-0.5">วันที่</td>
-                  <td>{fmtDate(sale.saleDate)}</td>
                 </tr>
                 <tr>
                   <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เงื่อนไขชำระ</td>
@@ -315,10 +306,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                     <td>{fmtDate(dueDate)}</td>
                   </tr>
                 )}
-                <tr>
-                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">พนักงานขาย</td>
-                  <td>{sale.user?.name ?? "-"}</td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -333,8 +320,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <th className="border border-gray-400 px-1.5 py-1.5 text-left">รายละเอียด</th>
               <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">จำนวน</th>
               <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">หน่วย</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-20">ราคา/หน่วย</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-20">ยอดรวม</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">ราคา/หน่วย</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">ยอดรวม</th>
             </tr>
           </thead>
           <tbody>
@@ -365,7 +352,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             <p className="text-gray-400 mb-1">หมายเหตุ:</p>
             <p className="text-gray-700 min-h-[2rem]">{sale.note ?? ""}</p>
           </div>
-          <div className="w-52 p-2 space-y-0.5">
+          <div className="w-56 p-2 space-y-0.5">
             <div className="flex justify-between">
               <span className="text-gray-500">มูลค่ารวม</span>
               <span>{fmtNum(Number(sale.totalAmount))}</span>
@@ -387,13 +374,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         </div>
 
-        {/* 5. Payment checkboxes (cash sales only) */}
+        {/* 5. Payment checkboxes (cash sales only) — เงินสด / เงินโอน */}
         {sale.paymentType === "CASH_SALE" && (
-          <div className="border border-gray-400 px-3 py-2 mb-5 text-xs flex items-center gap-5">
+          <div className="border border-gray-400 px-3 py-2 mb-5 text-xs flex items-center gap-6">
             <span className="text-gray-500 whitespace-nowrap">ชำระโดย:</span>
             {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
-              <span key={key} className="flex items-center gap-1">
-                <span className="inline-flex w-3.5 h-3.5 items-center justify-center border border-gray-500 text-[10px]">
+              <span key={key} className="flex items-center gap-1.5">
+                <span className="inline-flex w-4 h-4 items-center justify-center border border-gray-500 text-[11px]">
                   {sale.paymentMethod === key ? "✓" : ""}
                 </span>
                 {label}
@@ -402,24 +389,24 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         )}
 
-        {/* 6. Signature */}
+        {/* 6. Signature — กรอบสี่เหลี่ยม ด้านล่างสุด */}
         {sale.paymentType === "CREDIT_SALE" ? (
-          <div className="grid grid-cols-3 gap-6 text-xs text-center mt-6">
-            {["ผู้มีอำนาจลงนาม", "ผู้ส่งของ", "ผู้รับของ"].map((label) => (
-              <div key={label}>
-                <div className="h-14" />
-                <div className="border-t border-gray-500 pt-1">{label}</div>
-                <div className="text-gray-400 mt-0.5">วันที่ ...............</div>
+          <div className="grid grid-cols-3 gap-0 border border-gray-400 text-xs text-center">
+            {["ผู้มีอำนาจลงนาม", "ผู้ส่งของ", "ผู้รับของ"].map((label, i) => (
+              <div key={label} className={`${i < 2 ? "border-r border-gray-400" : ""}`}>
+                <div className="h-16" />
+                <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
+                <div className="text-gray-400 pb-2">วันที่ ...............</div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-16 text-xs text-center mt-6">
-            {["ผู้รับเงิน", "ผู้รับของ"].map((label) => (
-              <div key={label}>
-                <div className="h-14" />
-                <div className="border-t border-gray-500 pt-1">{label}</div>
-                <div className="text-gray-400 mt-0.5">วันที่ ...............</div>
+          <div className="grid grid-cols-2 gap-0 border border-gray-400 text-xs text-center">
+            {["ผู้รับเงิน", "ผู้รับของ"].map((label, i) => (
+              <div key={label} className={`${i < 1 ? "border-r border-gray-400" : ""}`}>
+                <div className="h-16" />
+                <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
+                <div className="text-gray-400 pb-2">วันที่ ...............</div>
               </div>
             ))}
           </div>
