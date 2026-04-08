@@ -81,6 +81,7 @@ const companySchema = z.object({
   shop_contact_note: z.string().max(500),
   hero_title: z.string().max(100),
   hero_subtitle: z.string().max(300),
+  shop_website_url: urlOrEmpty,
   shop_facebook_url: urlOrEmpty,
   shop_facebook_enabled: z.enum(["true", "false"]),
   shop_tiktok_url: urlOrEmpty,
