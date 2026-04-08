@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import {
-  Package, TrendingUp, AlertTriangle, ShieldAlert,
+  TrendingUp, AlertTriangle,
   Banknote, Users, ShoppingCart, Receipt, Globe,
 } from "lucide-react";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
@@ -13,15 +13,12 @@ const AdminDashboard = async () => {
   const now = new Date();
   const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const bangkokToday = getBangkokDayKey(now);
   const bangkokMonthStart = `${bangkokToday.slice(0, 8)}01`;
 
   const [
-    totalProducts,
     salesTodayAgg,
     lowStockCount,
-    expiringWarranties,
     salesMonthAgg,
     purchasesMonthAgg,
     arNormal,
@@ -34,7 +31,6 @@ const AdminDashboard = async () => {
     storefrontVisitorsMonth,
     storefrontVisitorsTotal,
   ] = await Promise.all([
-    db.product.count({ where: { isActive: true } }),
     db.sale.aggregate({
       _count: { id: true },
       _sum: { netAmount: true },
@@ -43,9 +39,6 @@ const AdminDashboard = async () => {
     db.product.count({
       where: { isActive: true, stock: { gt: 0, lte: db.product.fields.minStock } },
     }).catch(() => 0),
-    db.warranty.count({
-      where: { endDate: { gte: now, lte: in30Days } },
-    }),
     db.sale.aggregate({
       _sum: { netAmount: true },
       where: { status: "ACTIVE", saleDate: { gte: startOfMonth } },
@@ -111,7 +104,6 @@ const AdminDashboard = async () => {
 
   const todayLabel    = fmtDate(now);
   const monthLabel    = `${fmtDate(startOfMonth)} – ${todayLabel}`;
-  const next30Label   = `${todayLabel} – ${fmtDate(in30Days)}`;
 
   const cards = [
     {
@@ -120,13 +112,6 @@ const AdminDashboard = async () => {
       unit: `เดือนนี้ ${storefrontVisitorsMonth.toLocaleString()} | สะสม ${storefrontVisitorsTotal.toLocaleString()}`,
       icon: Globe,
       color: "bg-cyan-50 text-cyan-600",
-    },
-    {
-      label: "สินค้าทั้งหมด",
-      value: totalProducts.toLocaleString(),
-      unit: "รายการ",
-      icon: Package,
-      color: "bg-blue-50 text-blue-600",
     },
     {
       label: "บิลขายวันนี้",
@@ -197,13 +182,6 @@ const AdminDashboard = async () => {
       unit: "รายการ",
       icon: AlertTriangle,
       color: "bg-orange-50 text-orange-600",
-    },
-    {
-      label: "ประกันกำลังหมด",
-      value: expiringWarranties.toLocaleString(),
-      unit: next30Label,
-      icon: ShieldAlert,
-      color: "bg-red-50 text-red-600",
     },
   ];
 
