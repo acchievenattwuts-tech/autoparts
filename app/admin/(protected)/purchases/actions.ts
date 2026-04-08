@@ -333,6 +333,10 @@ export async function cancelPurchase(
     include: {
       items:          { select: { id: true, productId: true } },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
+      supplierPaymentItems: {
+        where: { payment: { status: "ACTIVE" } },
+        select: { payment: { select: { paymentNo: true } } },
+      },
     },
   });
   if (!purchase)                        return { error: "ไม่พบเอกสาร" };
@@ -342,6 +346,12 @@ export async function cancelPurchase(
   if (purchase.purchaseReturns.length > 0) {
     const nos = purchase.purchaseReturns.map((r) => r.returnNo).join(", ");
     return { error: `ไม่สามารถยกเลิกได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบคืนก่อน` };
+  }
+
+  // Reference chain check: ห้ามยกเลิกถ้ามี SupplierPayment ที่ยัง active อ้างถึง
+  if (purchase.supplierPaymentItems.length > 0) {
+    const nos = [...new Set(purchase.supplierPaymentItems.map((i) => i.payment.paymentNo))].join(", ");
+    return { error: `ไม่สามารถยกเลิกได้ มีเอกสารจ่ายชำระที่อ้างอิงอยู่: ${nos} กรุณายกเลิกเอกสารจ่ายชำระก่อน` };
   }
 
   const affectedProductIds = [...new Set(purchase.items.map((i) => i.productId))];
@@ -389,6 +399,10 @@ export async function updatePurchase(
     include: {
       items:          { select: { id: true, productId: true } },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
+      supplierPaymentItems: {
+        where: { payment: { status: "ACTIVE" } },
+        select: { payment: { select: { paymentNo: true } } },
+      },
     },
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
@@ -396,6 +410,10 @@ export async function updatePurchase(
   if (existing.purchaseReturns.length > 0) {
     const nos = existing.purchaseReturns.map((r) => r.returnNo).join(", ");
     return { error: `ไม่สามารถแก้ไขได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos}` };
+  }
+  if (existing.supplierPaymentItems.length > 0) {
+    const nos = [...new Set(existing.supplierPaymentItems.map((i) => i.payment.paymentNo))].join(", ");
+    return { error: `ไม่สามารถแก้ไขได้ มีเอกสารจ่ายชำระที่อ้างอิงอยู่: ${nos}` };
   }
 
   // Parse form data
