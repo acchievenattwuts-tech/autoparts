@@ -88,10 +88,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
   if (!sale) notFound();
 
-  const dueDate =
-    sale.creditTerm && sale.creditTerm > 0
-      ? new Date(new Date(sale.saleDate).getTime() + sale.creditTerm * 24 * 60 * 60 * 1000)
-      : null;
+  const dueDate = new Date(
+    new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000
+  );
 
   return (
     <>
@@ -269,7 +268,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             <p className="text-base font-bold border border-gray-700 px-6 py-1.5 inline-block">
               {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
             </p>
-            <p className="text-xs font-mono text-gray-400 mt-1">{sale.saleNo}</p>
+            <p className="text-xs text-gray-400 mt-1">หน้า 1/1</p>
           </div>
         </div>
 
@@ -282,16 +281,16 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <span className="text-gray-500">ชื่อ: </span>
               <span className="font-semibold">{sale.customerName ?? "-"}</span>
             </p>
-            {(sale.customerPhone ?? sale.customer?.phone) && (
-              <p>
-                <span className="text-gray-500">โทร: </span>
-                {sale.customerPhone ?? sale.customer?.phone}
-              </p>
-            )}
             {sale.customer?.address && (
               <p>
                 <span className="text-gray-500">ที่อยู่: </span>
                 {sale.customer.address}
+              </p>
+            )}
+            {(sale.customerPhone ?? sale.customer?.phone) && (
+              <p>
+                <span className="text-gray-500">โทร: </span>
+                {sale.customerPhone ?? sale.customer?.phone}
               </p>
             )}
             {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
@@ -317,14 +316,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 </tr>
                 <tr>
                   <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เงื่อนไขชำระ</td>
-                  <td>{sale.creditTerm ? `${sale.creditTerm} วัน` : "ชำระทันที"}</td>
+                  <td>{`${sale.creditTerm ?? 0} วัน`}</td>
                 </tr>
-                {dueDate && (
-                  <tr>
-                    <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันครบกำหนด</td>
-                    <td>{fmtDate(dueDate)}</td>
-                  </tr>
-                )}
+                <tr>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันครบกำหนด</td>
+                  <td>{fmtDate(dueDate)}</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -416,7 +413,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <div key={label} className={`${i < 2 ? "border-r border-gray-400" : ""}`}>
                 <div className="h-16" />
                 <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
-                <div className="text-gray-400 pb-2">วันที่ ...............</div>
+                <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
               </div>
             ))}
           </div>
@@ -426,7 +423,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               <div key={label} className={`${i < 1 ? "border-r border-gray-400" : ""}`}>
                 <div className="h-16" />
                 <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
-                <div className="text-gray-400 pb-2">วันที่ ...............</div>
+                <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
               </div>
             ))}
           </div>
