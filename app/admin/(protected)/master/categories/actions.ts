@@ -43,6 +43,8 @@ const refreshCategorySearchCaches = async ({
     return;
   }
 
+  updateTag(`storefront-category:${categoryId}`);
+
   const productIds = await db.product.findMany({
     where: { categoryId },
     select: { id: true },

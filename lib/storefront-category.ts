@@ -10,6 +10,20 @@ import {
 
 const CATEGORY_CACHE_TAGS = ["storefront:categories"];
 
+const fetchActiveCategoryById = async (categoryId: string) =>
+  unstable_cache(
+    async () =>
+      db.category.findFirst({
+        where: {
+          id: categoryId,
+          isActive: true,
+        },
+        select: { id: true, name: true, slug: true, createdAt: true },
+      }),
+    [`storefront-category:${categoryId}`],
+    { tags: [...CATEGORY_CACHE_TAGS, `storefront-category:${categoryId}`] },
+  )();
+
 const fetchActiveCategories = unstable_cache(
   async () =>
     db.category.findMany({
@@ -22,18 +36,22 @@ const fetchActiveCategories = unstable_cache(
 );
 
 export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) => {
-  const categories = await fetchActiveCategories();
-
   const decodedCategorySlug = decodeURIComponent(categorySlug);
   const normalizedCategorySlug = normalizeSlugSegment(categorySlug);
   const decodedSlug = normalizeSlugSegment(decodedCategorySlug);
   const categoryId = extractCategoryIdFromSlug(decodedCategorySlug);
+  const categoryFromId = categoryId ? await fetchActiveCategoryById(categoryId) : null;
+
+  if (categoryFromId) {
+    return categoryFromId;
+  }
+
+  const categories = await fetchActiveCategories();
   const legacyCategorySlugMap = buildLegacyCategorySlugMap(categories);
   const legacyCategoryId =
     legacyCategorySlugMap.get(categorySlug) ??
     legacyCategorySlugMap.get(normalizedCategorySlug);
   const category =
-    categories.find((item) => item.id === categoryId) ??
     categories.find((item) => item.slug && normalizeSlugSegment(item.slug) === normalizedCategorySlug) ??
     categories.find((item) => normalizeSlugSegment(item.name) === decodedSlug) ??
     categories.find((item) => item.id === legacyCategoryId) ??
