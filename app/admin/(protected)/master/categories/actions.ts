@@ -5,7 +5,6 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
-import { getCategoryPath } from "@/lib/product-slug";
 
 const categorySchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
@@ -13,10 +12,8 @@ const categorySchema = z.object({
 
 const refreshCategorySearchCaches = async ({
   categoryId,
-  categoryPath,
 }: {
   categoryId?: string;
-  categoryPath?: string;
 }) => {
   // Invalidate cached data via tags — this covers unstable_cache in
   // storefront-category.ts and any fetch-based caches tagged with these keys.
@@ -34,10 +31,6 @@ const refreshCategorySearchCaches = async ({
   revalidatePath("/products/[categorySlug]", "page");
   revalidatePath("/products/[categorySlug]/[productSlug]", "page");
   revalidatePath("/product/[productSlug]", "page");
-
-  if (categoryPath) {
-    revalidatePath(categoryPath);
-  }
 
   if (!categoryId) {
     return;
@@ -84,10 +77,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: category.id,
-      categoryPath: getCategoryPath(category),
-    });
+    await refreshCategorySearchCaches({ categoryId: category.id });
     return {};
   } catch {
     return { error: "ชื่อหมวดหมู่นี้มีอยู่แล้ว" };
@@ -129,10 +119,7 @@ export const updateCategory = async (
     });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: id,
-      categoryPath: getCategoryPath(existingCategory),
-    });
+    await refreshCategorySearchCaches({ categoryId: id });
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขชื่อหมวดหมู่ได้" };
@@ -163,10 +150,7 @@ export const toggleCategory = async (id: string, isActive: boolean): Promise<{ e
     await db.category.update({ where: { id }, data: { isActive } });
 
     revalidatePath("/admin/master/categories");
-    await refreshCategorySearchCaches({
-      categoryId: id,
-      categoryPath: getCategoryPath(existingCategory),
-    });
+    await refreshCategorySearchCaches({ categoryId: id });
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
