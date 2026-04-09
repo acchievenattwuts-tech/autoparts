@@ -287,6 +287,17 @@ function buildStringRange(from: string, to: string): { gte?: string; lte?: strin
   return { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
 }
 
+async function runQueryBatches(batches: Array<Array<Promise<unknown>>>) {
+  const results: unknown[] = [];
+
+  for (const batch of batches) {
+    const batchResults = await Promise.all(batch);
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 function getPaymentMethodLabel(method: PaymentMethod | null | undefined): string {
   switch (method) {
     case PaymentMethod.CASH:
@@ -511,20 +522,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
   };
 
-  const [
-    sales,
-    creditNotes,
-    purchases,
-    purchaseReturns,
-    expenses,
-    supplierAdvances,
-    supplierPayments,
-    products,
-    warranties,
-    outstandingSales,
-    receipts,
-  ] = await Promise.all([
-      db.sale.findMany({
+  const salesPromise = db.sale.findMany({
         where: saleWhere,
         orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
         select: {
@@ -542,45 +540,45 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           customer: { select: { code: true, name: true } },
           items: { select: { quantity: true, costPrice: true } },
         },
-      }),
-      db.creditNote.findMany({
+      });
+  const creditNotesPromise = db.creditNote.findMany({
         where: creditNoteWhere,
         orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
         select: {
           id: true,
           cnNo: true,
           cnDate: true,
-            customerName: true,
-            totalAmount: true,
-            vatAmount: true,
-            note: true,
-            settlementType: true,
-            refundMethod: true,
-            cashBankAccount: { select: { name: true } },
-            customer: { select: { code: true, name: true } },
+          customerName: true,
+          totalAmount: true,
+          vatAmount: true,
+          note: true,
+          settlementType: true,
+          refundMethod: true,
+          cashBankAccount: { select: { name: true } },
+          customer: { select: { code: true, name: true } },
         },
-      }),
-      db.purchase.findMany({
+      });
+  const purchasesPromise = db.purchase.findMany({
         where: purchaseWhere,
         orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
         select: {
           id: true,
-            purchaseNo: true,
-            purchaseDate: true,
-            purchaseType: true,
-            paymentMethod: true,
-            cashBankAccountId: true,
-            referenceNo: true,
-            note: true,
-            supplierId: true,
-            cashBankAccount: { select: { name: true } },
+          purchaseNo: true,
+          purchaseDate: true,
+          purchaseType: true,
+          paymentMethod: true,
+          cashBankAccountId: true,
+          referenceNo: true,
+          note: true,
+          supplierId: true,
+          cashBankAccount: { select: { name: true } },
           supplier: { select: { code: true, name: true } },
           netAmount: true,
           amountRemain: true,
           vatAmount: true,
         },
-      }),
-      db.purchaseReturn.findMany({
+      });
+  const purchaseReturnsPromise = db.purchaseReturn.findMany({
         where: purchaseReturnWhere,
         orderBy: [{ returnDate: "asc" }, { returnNo: "asc" }],
         select: {
@@ -596,20 +594,20 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           note: true,
           cashBankAccount: { select: { name: true } },
         },
-      }),
-      db.expense.findMany({
+      });
+  const expensesPromise = db.expense.findMany({
         where: expenseWhere,
         orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
         select: {
           id: true,
           expenseNo: true,
           expenseDate: true,
-            note: true,
-            totalAmount: true,
-            vatAmount: true,
-            netAmount: true,
-            cashBankAccount: { select: { name: true } },
-            items: {
+          note: true,
+          totalAmount: true,
+          vatAmount: true,
+          netAmount: true,
+          cashBankAccount: { select: { name: true } },
+          items: {
             select: {
               amount: true,
               description: true,
@@ -617,8 +615,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
             },
           },
         },
-      }),
-      db.supplierAdvance.findMany({
+      });
+  const supplierAdvancesPromise = db.supplierAdvance.findMany({
         where: supplierAdvanceWhere,
         orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
         select: {
@@ -632,8 +630,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           cashBankAccount: { select: { name: true } },
           supplier: { select: { code: true, name: true } },
         },
-      }),
-      db.supplierPayment.findMany({
+      });
+  const supplierPaymentsPromise = db.supplierPayment.findMany({
         where: supplierPaymentWhere,
         orderBy: [{ paymentDate: "asc" }, { paymentNo: "asc" }],
         select: {
@@ -646,8 +644,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           cashBankAccount: { select: { name: true } },
           supplier: { select: { code: true, name: true } },
         },
-      }),
-      db.product.findMany({
+      });
+  const productsPromise = db.product.findMany({
         where: { isActive: true, ...(productCodeRange ? { code: productCodeRange } : {}) },
         orderBy: [{ stock: "asc" }, { code: "asc" }],
         select: {
@@ -659,8 +657,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           avgCost: true,
           category: { select: { name: true } },
         },
-      }),
-      db.warranty.findMany({
+      });
+  const warrantiesPromise = db.warranty.findMany({
         where: {
           endDate: { lte: soonDate },
           ...(productCodeRange ? { product: { code: productCodeRange } } : {}),
@@ -674,8 +672,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           sale: { select: { saleNo: true, customerName: true } },
         },
         take: 100,
-      }),
-      db.sale.findMany({
+      });
+  const outstandingSalesPromise = db.sale.findMany({
         where: outstandingSaleWhere,
         orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
         select: {
@@ -689,8 +687,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           shippingStatus: true,
           customer: { select: { code: true, name: true } },
         },
-      }),
-      db.receipt.findMany({
+      });
+  const receiptsPromise = db.receipt.findMany({
         where: receiptWhere,
         orderBy: [{ receiptDate: "asc" }, { receiptNo: "asc" }],
         select: {
@@ -698,14 +696,43 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           receiptNo: true,
           receiptDate: true,
           customerName: true,
-            paymentMethod: true,
-            totalAmount: true,
-            note: true,
-            cashBankAccount: { select: { name: true } },
-            customer: { select: { code: true, name: true } },
+          paymentMethod: true,
+          totalAmount: true,
+          note: true,
+          cashBankAccount: { select: { name: true } },
+          customer: { select: { code: true, name: true } },
         },
-      }),
-    ]);
+      });
+
+  const [
+    sales,
+    creditNotes,
+    purchases,
+    purchaseReturns,
+    expenses,
+    supplierAdvances,
+    supplierPayments,
+    products,
+    warranties,
+    outstandingSales,
+    receipts,
+  ] = (await runQueryBatches([
+    [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise],
+    [supplierAdvancesPromise, supplierPaymentsPromise, productsPromise, warrantiesPromise],
+    [outstandingSalesPromise, receiptsPromise],
+  ])) as [
+    Awaited<typeof salesPromise>,
+    Awaited<typeof creditNotesPromise>,
+    Awaited<typeof purchasesPromise>,
+    Awaited<typeof purchaseReturnsPromise>,
+    Awaited<typeof expensesPromise>,
+    Awaited<typeof supplierAdvancesPromise>,
+    Awaited<typeof supplierPaymentsPromise>,
+    Awaited<typeof productsPromise>,
+    Awaited<typeof warrantiesPromise>,
+    Awaited<typeof outstandingSalesPromise>,
+    Awaited<typeof receiptsPromise>,
+  ];
 
   const normalizedSales = sales.map((sale) => ({
     id: sale.id,

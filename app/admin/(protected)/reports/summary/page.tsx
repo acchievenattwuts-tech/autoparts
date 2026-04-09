@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { requirePermission } from "@/lib/require-auth";
 import { getReportsData, parseReportFilters } from "@/lib/reports";
@@ -10,6 +11,53 @@ interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
+function SectionUnavailable({
+  title,
+  body,
+}: {
+  title: string;
+  body: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+      <h2 className="font-kanit text-lg font-semibold">{title}</h2>
+      <p className="mt-2 text-sm text-amber-900">{body}</p>
+    </section>
+  );
+}
+
+async function getSummaryReportsData(from?: string, to?: string) {
+  try {
+    const filters = parseReportFilters({ from, to });
+    return await getReportsData(filters);
+  } catch {
+    return null;
+  }
+}
+
+async function SummaryReportsSection({ from, to }: { from?: string; to?: string }) {
+  const data = await getSummaryReportsData(from, to);
+
+  if (!data) {
+    return (
+      <SectionUnavailable
+        title="โหลดสรุปรายงานไม่สำเร็จชั่วคราว"
+        body="ฐานข้อมูลตอบช้าหรือเชื่อมต่อไม่ทันเวลา ลองรีเฟรชหน้าอีกครั้ง หรือลดช่วงวันที่ของรายงานแล้วลองใหม่"
+      />
+    );
+  }
+
+  return <ReportsContent data={data} />;
+}
+
+async function SummaryCashBankSection() {
+  return <CashBankSnapshot />;
+}
+
+function SectionSkeleton({ heightClass }: { heightClass: string }) {
+  return <div className={`animate-pulse rounded-2xl bg-gray-100 ${heightClass}`} />;
+}
+
 export default async function SummaryReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
@@ -18,8 +66,6 @@ export default async function SummaryReportPage({ searchParams }: PageProps) {
     from: params.from,
     to: params.to,
   });
-
-  const data = await getReportsData(filters);
 
   return (
     <div className="space-y-4">
@@ -56,9 +102,13 @@ export default async function SummaryReportPage({ searchParams }: PageProps) {
         </Link>
       </form>
 
-      <CashBankSnapshot />
+      <Suspense fallback={<SectionSkeleton heightClass="min-h-[280px]" />}>
+        <SummaryCashBankSection />
+      </Suspense>
 
-      <ReportsContent data={data} />
+      <Suspense fallback={<SectionSkeleton heightClass="min-h-[720px]" />}>
+        <SummaryReportsSection from={params.from} to={params.to} />
+      </Suspense>
     </div>
   );
 }
