@@ -18,6 +18,7 @@ type SupplierOption = {
   name: string;
   code: string | null;
   phone: string | null;
+  amountRemain: number;
 };
 
 type CashBankAccountOption = {
@@ -111,7 +112,14 @@ const SupplierPaymentForm = ({
   const supplierOptions: SelectOption[] = suppliers.map((supplier) => ({
     id: supplier.id,
     label: supplier.name,
-    sublabel: [supplier.code, supplier.phone].filter(Boolean).join(" | ") || undefined,
+    sublabel:
+      [
+        `ค้างจ่ายสุทธิ ${supplier.amountRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}`,
+        supplier.code,
+        supplier.phone,
+      ]
+        .filter(Boolean)
+        .join(" | ") || undefined,
   }));
 
   const accountOptions: SelectOption[] = cashBankAccounts.map((account) => ({

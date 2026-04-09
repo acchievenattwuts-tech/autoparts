@@ -2,25 +2,16 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import SupplierPaymentForm from "../SupplierPaymentForm";
+import { getSupplierPaymentSupplierOptions } from "../supplier-options";
 
 const NewSupplierPaymentPage = async () => {
   await requirePermission("supplier_payments.create");
 
   const [suppliers, cashBankAccounts] = await Promise.all([
-    db.supplier.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        phone: true,
-      },
-    }),
+    getSupplierPaymentSupplierOptions(),
     getActiveCashBankAccountOptions(),
   ]);
 

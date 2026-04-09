@@ -8,13 +8,14 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import ReceiptForm from "../../new/ReceiptForm";
 import type { CreditSaleItem } from "../../actions";
+import { getReceiptCustomerOptions } from "../../customer-options";
 
 const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("receipts.update");
 
   const { id } = await params;
 
-  const [receipt, customers, cashBankAccounts] = await Promise.all([
+  const [receipt, cashBankAccounts] = await Promise.all([
     db.receipt.findUnique({
       where: { id },
       include: {
@@ -43,16 +44,13 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
         },
       },
     }),
-    db.customer.findMany({
-      where:   { isActive: true },
-      orderBy: { name: "asc" },
-      select:  { id: true, name: true, code: true },
-    }).then((rows) => rows.map((c) => ({ ...c, amountRemain: 0 }))),
     getActiveCashBankAccountOptions(),
   ]);
 
   if (!receipt) notFound();
   if (receipt.status === "CANCELLED") redirect(`/admin/receipts/${id}`);
+
+  const customerOptions = await getReceiptCustomerOptions(receipt.customerId ?? undefined);
 
   const receiptSaleIds = new Set(receipt.items.map((i) => i.saleId).filter(Boolean));
   const receiptCnIds   = new Set(receipt.items.map((i) => i.cnId).filter(Boolean));
@@ -224,7 +222,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบเสร็จรับเงิน</h1>
       <ReceiptForm
-        customers={customers}
+        customers={customerOptions}
         cashBankAccounts={cashBankAccounts}
         initialData={initialData}
         initialCreditSales={initialCreditSales}

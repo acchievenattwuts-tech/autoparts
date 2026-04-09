@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getOutstandingSupplierDocuments } from "../../actions";
 import SupplierPaymentForm from "../../SupplierPaymentForm";
+import { getSupplierPaymentSupplierOptions } from "../../supplier-options";
 
 const EditSupplierPaymentPage = async ({
   params,
@@ -34,16 +35,7 @@ const EditSupplierPaymentPage = async ({
   }
 
   const [suppliers, cashBankAccounts, initialDocuments] = await Promise.all([
-    db.supplier.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        phone: true,
-      },
-    }),
+    getSupplierPaymentSupplierOptions(payment.supplierId),
     getActiveCashBankAccountOptions(),
     getOutstandingSupplierDocuments(payment.supplierId, payment.id),
   ]);

@@ -2550,3 +2550,9 @@ npm run db:restore backup-{timestamp}.json
 - [x] Receipt print (`/admin/receipts/[id]`) now renders the saved signature in the `ผู้รับเงิน` section.
 - [x] Cash-sale print from sale detail (`/admin/sales/[id]`) now renders the saved signature in the `ผู้รับเงิน` section when printing the receipt form.
 - [x] Scope was intentionally kept narrow to the current print flows only: `User`, `Receipt`, and `Sale`. No legal digital-signature workflow, approval chain, or cross-document signature engine was introduced in this round.
+
+## Roadmap Update (2026-04-09 Supplier Payment Supplier Filter)
+
+- [x] `supplier-payments` supplier dropdown now mirrors the receipt-style outstanding filter by loading only suppliers with non-zero net payable balance.
+- [x] Net payable is derived from active `CREDIT_PURCHASE.amountRemain - SUPPLIER_CREDIT.amountRemain - SupplierAdvance.amountRemain`, and edit mode keeps the current supplier selectable.
+- [x] Updated the outstanding dropdown rule again so both `supplier-payments` and `receipts` now include any non-zero net balance (`!== 0`), not only positive balances.
