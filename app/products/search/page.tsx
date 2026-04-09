@@ -1,6 +1,7 @@
 ﻿export const revalidate = 300;
 
 import type { Metadata } from "next";
+// Keep search dynamic so query-driven catalog results do not go stale.
 export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -8,12 +9,13 @@ import { redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "../ProductFilterBar";
+import ProductFilterBarFallback from "../ProductFilterBarFallback";
 import ProductsHero from "../ProductsHero";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { absoluteUrl } from "@/lib/seo";
@@ -167,7 +169,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -181,7 +183,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-6 lg:flex-row">
             <aside className="w-full shrink-0 lg:w-72">
-              <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white" />}>
+              <Suspense fallback={<ProductFilterBarFallback />}>
                 <ProductFilterBar
                   brands={filterData.carBrands}
                   categories={filterData.categories}
@@ -295,7 +297,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
         </div>
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
       <BreadcrumbJsonLd
         items={[
           { name: "หน้าแรก", item: absoluteUrl("/") },

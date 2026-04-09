@@ -1,7 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+
+const CLOSE_ICON = (
+  <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+  </svg>
+);
 
 const FloatingLine = ({ lineUrl = "https://lin.ee/18P0SqG" }: { lineUrl?: string }) => {
   const LINE_OA_URL = lineUrl;
@@ -19,7 +24,9 @@ const FloatingLine = ({ lineUrl = "https://lin.ee/18P0SqG" }: { lineUrl?: string
           className="w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
           aria-label="ปิด"
         >
-          <X className="w-3 h-3 text-gray-500" />
+          <span className="text-gray-500" aria-hidden="true">
+            {CLOSE_ICON}
+          </span>
         </button>
       </div>
 

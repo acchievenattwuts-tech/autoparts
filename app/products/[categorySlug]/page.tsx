@@ -4,9 +4,9 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
@@ -107,7 +107,7 @@ const CategoryPage = async ({ params }: Props) => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -219,7 +219,7 @@ const CategoryPage = async ({ params }: Props) => {
         </section>
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
 
       <BreadcrumbJsonLd
         items={[

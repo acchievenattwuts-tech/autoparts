@@ -3,9 +3,9 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpenText, Clock3, Search } from "lucide-react";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ArticleJsonLd from "@/components/seo/ArticleJsonLd";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
@@ -93,7 +93,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -261,7 +261,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
         </section>
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
       <BreadcrumbJsonLd
         items={[
           { name: "หน้าแรก", item: absoluteUrl("/") },

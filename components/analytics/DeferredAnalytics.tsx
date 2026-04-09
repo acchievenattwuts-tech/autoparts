@@ -15,6 +15,8 @@ export default function DeferredAnalytics() {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
+    // After route-scoping analytics to storefront pages, keep the existing
+    // idle gate so short sessions and early vitals still have coverage.
     const activate = () => setEnabled(true);
 
     if ("requestIdleCallback" in window) {

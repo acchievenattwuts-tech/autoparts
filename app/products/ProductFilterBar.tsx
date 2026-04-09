@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
+// Reduce client bundle pressure on the products route by keeping the filter UI
+// self-contained instead of pulling the lucide runtime into this client path.
 
 type CarModel = { id: string; name: string };
 type CarBrand = { id: string; name: string; carModels: CarModel[] };
@@ -15,6 +16,42 @@ interface Props {
 
 const MOBILE_BRAND_PREVIEW_COUNT = 6;
 const MOBILE_CATEGORY_PREVIEW_COUNT = 6;
+
+const FILTER_ICON = (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18M6 12h12M10 19h4" />
+  </svg>
+);
+
+const CHEVRON_DOWN_ICON = (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+const CHEVRON_RIGHT_ICON = (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+  </svg>
+);
+
+const SMALL_CHEVRON_RIGHT_ICON = (
+  <svg viewBox="0 0 24 24" className="h-[13px] w-[13px]" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
+  </svg>
+);
+
+const CLOSE_ICON_12 = (
+  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+const CLOSE_ICON_10 = (
+  <svg viewBox="0 0 24 24" className="h-[10px] w-[10px]" fill="none" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
 
 const ProductFilterBar = ({ brands, categories }: Props) => {
   const searchParams = useSearchParams();
@@ -88,7 +125,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
         >
           <div className="flex items-center gap-3">
             <span className="rounded-xl bg-[#1e3a5f]/10 p-2 text-[#1e3a5f]">
-              <SlidersHorizontal className="h-4 w-4" />
+              {FILTER_ICON}
             </span>
             <div>
               <p className="text-sm font-semibold text-gray-800">ตัวกรองสินค้า</p>
@@ -106,11 +143,12 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                 {model || brand || category}
               </span>
             )}
-            <ChevronDown
-              className={`h-4 w-4 text-gray-400 transition-transform ${
-                isExpanded ? "rotate-180" : ""
-              }`}
-            />
+            <span
+              className={`text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              {CHEVRON_DOWN_ICON}
+            </span>
           </div>
         </button>
 
@@ -133,7 +171,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                     onClick={() => navigate({ brand: "", model: "" })}
                     className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-red-500"
                   >
-                    <X size={12} /> ล้าง
+                    <span aria-hidden="true">{CLOSE_ICON_12}</span> ล้าง
                   </button>
                 )}
               </div>
@@ -161,13 +199,13 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                         className="inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/15 bg-[#1e3a5f]/5 px-4 py-2 text-sm font-medium text-[#1e3a5f]"
                       >
                         เปิดเลือกยี่ห้อรถ
-                        <ChevronRight className="h-4 w-4" />
+                        <span aria-hidden="true">{CHEVRON_RIGHT_ICON}</span>
                       </button>
                     )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {(isDesktop ? brands : brands).map((item) => (
+                    {brands.map((item) => (
                       <button
                         key={item.id}
                         type="button"
@@ -204,7 +242,9 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                 {showBrandOptions && selectedBrand && selectedBrand.carModels.length > 0 && (
                   <div className="mt-4 border-t border-gray-100 pt-4">
                     <div className="mb-2.5 flex items-center gap-1.5">
-                      <ChevronRight size={13} className="text-[#1e3a5f]" />
+                      <span className="text-[#1e3a5f]" aria-hidden="true">
+                        {SMALL_CHEVRON_RIGHT_ICON}
+                      </span>
                       <span className="text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]">
                         รุ่น {selectedBrand.name}
                       </span>
@@ -270,7 +310,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                   >
                     ทั้งหมด
                   </button>
-                  {(isDesktop ? categories : categories).map((item) => (
+                  {categories.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -308,7 +348,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                       onClick={() => navigate({ brand: "", model: "" })}
                       className="ml-0.5 hover:text-red-500"
                     >
-                      <X size={10} />
+                      <span aria-hidden="true">{CLOSE_ICON_10}</span>
                     </button>
                   </span>
                 )}
@@ -320,7 +360,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                       onClick={() => navigate({ model: "" })}
                       className="ml-0.5 hover:text-red-500"
                     >
-                      <X size={10} />
+                      <span aria-hidden="true">{CLOSE_ICON_10}</span>
                     </button>
                   </span>
                 )}
@@ -332,7 +372,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                       onClick={() => navigate({ category: "" })}
                       className="ml-0.5 hover:text-red-500"
                     >
-                      <X size={10} />
+                      <span aria-hidden="true">{CLOSE_ICON_10}</span>
                     </button>
                   </span>
                 )}

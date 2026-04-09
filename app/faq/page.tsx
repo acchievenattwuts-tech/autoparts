@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, MessagesSquare, Phone, Search } from "lucide-react";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
@@ -70,7 +70,7 @@ const FaqPage = async () => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -189,7 +189,7 @@ const FaqPage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
 
       <FaqJsonLd items={storefrontFaqItems} />
       <BreadcrumbJsonLd

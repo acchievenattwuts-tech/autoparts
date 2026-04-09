@@ -2505,3 +2505,37 @@ npm run db:restore backup-{timestamp}.json
   - `/products` request count drops versus the previous run
   - `/products` CLS improves from the previous `0.13` regression
   - no meaningful regression appears on the other benchmark storefront pages
+
+## Roadmap Update (2026-04-09 Phase 7 Shared Client Bundle Reduction Audit)
+
+- Scope: audit and reduce shared storefront client bundle cost only where it materially helps the Phase 7 production tuning loop.
+- Safety note: every item below must be implemented conservatively, with the explicit goal of avoiding regressions in `UI/UX`, business `logic`, and visual rendering. If a change risks altering healthy storefront behaviour, keep the current behaviour and skip the reduction.
+
+### Candidate checklist
+
+- [x] Split `Navbar` into a server-first shell and a minimal client island for the mobile menu only
+- [x] Keep `Navbar` search, logo, contact links, and static navigation markup server-rendered where possible
+- [x] Review whether `DeferredAnalytics` should stay mounted in the root app layout or be narrowed to storefront-only scope
+- [x] Review whether `DeferredAnalytics` can be deferred more aggressively without losing required tracking coverage
+- [x] Reduce `FloatingLine` / `DeferredFloatingLine` client footprint while preserving the current CTA behaviour
+- [x] Review whether `FloatingLine` should mount only on the storefront routes where it adds real conversion value
+- [x] Audit shared `lucide-react` usage inside storefront client components and reduce icon-driven shared chunk weight only after the client surface has been reduced first
+- [x] Keep `ProductCard` server-rendered and avoid introducing new client logic into the catalog card path
+- [x] Refactor `ProductFilterBar` only if the change can shrink the `/products` route client cost without changing filter behaviour, query-string behaviour, or perceived UX
+- [x] Re-check `/products/search` rendering strategy only if a safe reduction in server/runtime cost can be made without stale or incorrect search results
+- [x] Keep fallback shells for `/products` and `/products/search` visually close to the hydrated UI to avoid new CLS regressions during bundle reductions
+- [x] Re-run bundle/performance verification after each reduction pass and reject any change that causes meaningful regressions on already healthy storefront pages
+
+### Status update (2026-04-09)
+
+- Storefront benchmark routes now use a new server-first `StorefrontNavbar`, so the old client `Navbar.tsx` is no longer part of the public route client reference path.
+- Deferred storefront analytics were moved out of the root app layout and are now mounted only on storefront/public pages via `StorefrontDeferredAssets`, reducing app-wide shared client scope without changing public page behaviour.
+- Analytics deferral policy was reviewed again after route scoping and intentionally kept on the current idle/timeout gate because delaying it further risks missing short-session visit tracking and early vitals coverage.
+- `DeferredFloatingLine` now lazy-loads the interactive floating CTA, and the floating dismiss button no longer pulls its own `lucide-react` icon import.
+- Floating CTA route scoping was reviewed and intentionally kept on the current public storefront pages because about/FAQ/knowledge routes still feed the LINE/phone handoff path; removing the CTA there would trade conversion/help UX for only a small JS gain.
+- `ProductFilterBar` now uses inline SVG icons instead of a `lucide-react` client import, trimming route client work without changing filter behaviour or query-string behaviour.
+- The storefront `lucide-react` audit is now reduced to server-rendered public components plus the unused legacy client `Navbar.tsx`; the active storefront client path no longer depends on `lucide-react` for `FloatingLine` or `ProductFilterBar`.
+- `/products/search` now reuses the same `ProductFilterBarFallback` shell as `/products`, so the catalog filter placeholder stays closer to the hydrated UI.
+- `/products/search` rendering strategy was re-checked and intentionally kept as `force-dynamic`; the route is query-driven and should prefer freshness/correctness over risky caching changes.
+- Validation: `npm run build` passes after the reduction pass, and the `/products` client reference manifest no longer includes `components/shared/Navbar.tsx`.
+- Validation was re-run with both `npm run build` and `npm run analyze` after the final reduction pass.

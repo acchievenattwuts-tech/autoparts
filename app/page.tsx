@@ -1,14 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Hero from "@/components/shared/Hero";
 import ProductCategories from "@/components/shared/ProductCategories";
 import WhyUs from "@/components/shared/WhyUs";
 import FeaturedProducts from "@/components/shared/FeaturedProducts";
 import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
@@ -48,7 +48,7 @@ const Home = async () => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -72,7 +72,7 @@ const Home = async () => {
         />
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
       <OrganizationJsonLd config={config} />
       <LocalBusinessJsonLd config={config} />
       <WebSiteJsonLd />

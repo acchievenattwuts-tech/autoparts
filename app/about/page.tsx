@@ -13,9 +13,9 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
@@ -97,7 +97,7 @@ const AboutPage = async () => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -229,7 +229,7 @@ const AboutPage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
 
       <OrganizationJsonLd config={config} />
       <LocalBusinessJsonLd config={config} />

@@ -14,9 +14,9 @@ import {
   Phone,
   ShieldCheck,
 } from "lucide-react";
-import Navbar from "@/components/shared/Navbar";
+import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
+import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductCard from "@/components/shared/ProductCard";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
@@ -134,7 +134,7 @@ const ProductDetailPage = async ({ params }: Props) => {
 
   return (
     <>
-      <Navbar
+      <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
@@ -423,7 +423,7 @@ const ProductDetailPage = async ({ params }: Props) => {
         )}
       </main>
       <Footer config={config} />
-      <DeferredFloatingLine lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
 
       <BreadcrumbJsonLd
         items={[
