@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-white" aria-hidden="true">
@@ -70,7 +71,7 @@ const StorefrontNavbar = ({
       <div className="relative">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between gap-4">
-            <a href="/" className="flex shrink-0 items-center gap-3">
+            <Link href="/" className="flex shrink-0 items-center gap-3">
               <div className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e3a5f]/10 bg-white shadow-sm">
                 {shopLogoUrl ? (
                   <div className="relative h-8 w-8">
@@ -90,7 +91,7 @@ const StorefrontNavbar = ({
                 <p className="text-sm font-bold leading-none text-[#1e3a5f]">{firstName}</p>
                 <p className="text-xs font-medium text-[#f97316]">{restName}</p>
               </div>
-            </a>
+            </Link>
 
             <form action="/products/search" method="GET" className="flex min-w-0 flex-1 items-center md:hidden">
               <div className="relative w-full">
@@ -116,13 +117,13 @@ const StorefrontNavbar = ({
 
             <nav className="hidden items-center gap-5 md:flex">
               {navLinks.map((link) => (
-                <a
+                <Link
                   key={link.href}
                   href={link.href}
                   className="whitespace-nowrap text-sm font-medium text-gray-600 transition-colors hover:text-[#1e3a5f]"
                 >
                   {link.label}
-                </a>
+                </Link>
               ))}
             </nav>
 
@@ -181,13 +182,13 @@ const StorefrontNavbar = ({
               <div className="absolute left-0 right-0 top-full border-t border-gray-100 bg-white px-4 pb-4 shadow-lg">
                 <nav className="flex flex-col gap-1">
                   {navLinks.map((link) => (
-                    <a
+                    <Link
                       key={link.href}
                       href={link.href}
                       className="rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-[#1e3a5f]"
                     >
                       {link.label}
-                    </a>
+                    </Link>
                   ))}
                 </nav>
 

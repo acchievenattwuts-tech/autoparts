@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
@@ -66,20 +66,14 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
   const [successMsg, setSuccessMsg] = useState("");
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
-  const skipFirstLoad = useRef(isEdit);
+  const handleCustomerChange = (nextCustomerId: string) => {
+    setCustomerId(nextCustomerId);
+    setCreditSales([]);
+    setSelectedItems([]);
+    if (!nextCustomerId) return;
 
-  useEffect(() => {
-    if (skipFirstLoad.current) {
-      skipFirstLoad.current = false;
-      return;
-    }
-    if (!customerId) {
-      setCreditSales([]);
-      setSelectedItems([]);
-      return;
-    }
     setIsLoadingSales(true);
-    getCreditSalesForCustomer(customerId)
+    getCreditSalesForCustomer(nextCustomerId)
       .then((sales) => {
         setCreditSales(sales);
         setSelectedItems(
@@ -99,7 +93,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         setSelectedItems([]);
       })
       .finally(() => setIsLoadingSales(false));
-  }, [customerId, isEdit]);
+  };
 
   const isChecked = (itemId: string) => selectedItems.some((item) => (item.saleId ?? item.cnId) === itemId);
 
@@ -307,7 +301,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
                 })}${customer.code ? ` | ${customer.code}` : ""}`,
               }))}
               value={customerId}
-              onChange={setCustomerId}
+              onChange={handleCustomerChange}
               placeholder="โปรดระบุลูกค้า"
             />
           </div>

@@ -372,7 +372,7 @@ export function hasAnyPermissionAccess(
   return requiredPermissions.some((permission) => permissions.includes(permission));
 }
 
-export function getRoutePermission(pathname: string): PermissionKey | null {
+export function getRoutePermission(pathname: string): PermissionKey | null | undefined {
   if (pathname === "/admin/products/new") return "products.create";
   if (/^\/admin\/products\/[^/]+\/edit$/.test(pathname)) return "products.update";
   if (pathname === "/admin/customers/new") return "customers.create";
@@ -405,5 +405,5 @@ export function getRoutePermission(pathname: string): PermissionKey | null {
   if (/^\/admin\/roles\/[^/]+\/edit$/.test(pathname)) return "admin.roles.manage";
 
   const rule = ADMIN_ROUTE_RULES.find((item) => pathname.startsWith(item.prefix));
-  return rule?.permission ?? null;
+  return rule ? rule.permission : undefined;
 }

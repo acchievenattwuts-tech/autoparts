@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 
 type AdminNumberInputProps = Omit<ComponentProps<"input">, "type" | "value" | "onChange"> & {
   value: number | null | undefined;
@@ -20,12 +20,6 @@ export default function AdminNumberInput({
 }: AdminNumberInputProps) {
   const [draft, setDraft] = useState(() => toInputValue(value));
   const [isFocused, setIsFocused] = useState(false);
-
-  useEffect(() => {
-    if (!isFocused) {
-      setDraft(toInputValue(value));
-    }
-  }, [isFocused, value]);
 
   const commitValue = (rawValue: string) => {
     const trimmedValue = rawValue.trim();
@@ -51,9 +45,10 @@ export default function AdminNumberInput({
     <input
       {...props}
       type="number"
-      value={draft}
+      value={isFocused ? draft : toInputValue(value)}
       onFocus={(event) => {
         setIsFocused(true);
+        setDraft(toInputValue(value));
         onFocus?.(event);
       }}
       onChange={(event) => {

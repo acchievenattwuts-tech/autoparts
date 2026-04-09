@@ -9,22 +9,31 @@ export const authConfig: NextAuthConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isAdmin = auth?.user?.role === "ADMIN";
+      const mustChangePassword = Boolean(auth?.user?.mustChangePassword);
       const permissions = auth?.user?.permissions ?? [];
       const hasAppRole = !!auth?.user?.appRoleId;
       const isAdminRoute = nextUrl.pathname.startsWith("/admin");
       const isLoginPage = nextUrl.pathname === "/admin/login";
+      const isChangePasswordPage = nextUrl.pathname === "/admin/profile/change-password";
       const requiredPermission = getRoutePermission(nextUrl.pathname);
 
       if (isLoginPage) {
-        if (isAdmin || hasAppRole) return Response.redirect(new URL("/admin", nextUrl));
+        if (isAdmin || hasAppRole) {
+          const destination = mustChangePassword ? "/admin/profile/change-password" : "/admin";
+          return Response.redirect(new URL(destination, nextUrl));
+        }
         return true;
       }
 
       if (isAdminRoute) {
         if (!isLoggedIn) return false;
+        if (mustChangePassword && !isChangePasswordPage) {
+          return Response.redirect(new URL("/admin/profile/change-password", nextUrl));
+        }
         if (isAdmin) return true;
         if (!hasAppRole) return false;
-        if (!requiredPermission) return true;
+        if (typeof requiredPermission === "undefined") return false;
+        if (requiredPermission === null) return true;
         return permissions.includes(requiredPermission);
       }
 

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { requirePermission } from "@/lib/require-auth";
 import {
   TrendingUp, AlertTriangle,
   Banknote, Users, ShoppingCart, Receipt, Globe,
@@ -10,6 +11,8 @@ import AdminDashboardCharts from "./AdminDashboardCharts";
 import ExpiryAlerts from "./ExpiryAlerts";
 
 const AdminDashboard = async () => {
+  await requirePermission("dashboard.view");
+
   const now = new Date();
   const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

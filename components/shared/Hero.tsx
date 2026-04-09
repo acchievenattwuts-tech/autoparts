@@ -1,4 +1,5 @@
 ﻿import Image from "next/image";
+import Link from "next/link";
 import { ArrowRight, CheckCircle2, Clock, Phone, Truck } from "lucide-react";
 
 const badges = [
@@ -105,13 +106,13 @@ const Hero = ({
                 </svg>
                 ส่งข้อมูลให้ร้านเช็กทาง LINE
               </a>
-              <a
+              <Link
                 href="/products"
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f97316] px-6 py-3.5 font-semibold text-white transition-all hover:scale-[1.02] hover:bg-[#ea6c0a] shadow-lg shadow-orange-500/30"
               >
                 ดูสินค้าทั้งหมด
                 <ArrowRight className="h-4 w-4" />
-              </a>
+              </Link>
             </div>
 
             <div className="mt-5 rounded-3xl border border-white/12 bg-white/8 p-4 backdrop-blur-sm">

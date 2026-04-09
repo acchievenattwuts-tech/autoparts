@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -78,22 +78,15 @@ const SupplierPaymentForm = ({
     initialDocuments ?? { purchases: [], credits: [], advances: [] },
   );
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>(initialData?.items ?? []);
-  const skipFirstLoad = useRef(isEdit && !!initialDocuments);
 
-  useEffect(() => {
-    if (skipFirstLoad.current) {
-      skipFirstLoad.current = false;
-      return;
-    }
-
-    if (!supplierId) {
-      setDocuments({ purchases: [], credits: [], advances: [] });
-      setSelectedItems([]);
-      return;
-    }
+  const handleSupplierChange = (nextSupplierId: string) => {
+    setSupplierId(nextSupplierId);
+    setDocuments({ purchases: [], credits: [], advances: [] });
+    setSelectedItems([]);
+    if (!nextSupplierId) return;
 
     setIsLoadingDocs(true);
-    getOutstandingSupplierDocuments(supplierId, initialData?.id)
+    getOutstandingSupplierDocuments(nextSupplierId, initialData?.id)
       .then((nextDocuments) => {
         setDocuments(nextDocuments);
         setSelectedItems((prev) =>
@@ -113,7 +106,7 @@ const SupplierPaymentForm = ({
         setSelectedItems([]);
       })
       .finally(() => setIsLoadingDocs(false));
-  }, [supplierId, initialData?.id, isEdit]);
+  };
 
   const supplierOptions: SelectOption[] = suppliers.map((supplier) => ({
     id: supplier.id,
@@ -372,7 +365,7 @@ const SupplierPaymentForm = ({
             <SearchableSelect
               options={supplierOptions}
               value={supplierId}
-              onChange={setSupplierId}
+              onChange={handleSupplierChange}
               placeholder="โปรดระบุซัพพลายเออร์"
             />
           </div>

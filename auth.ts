@@ -17,7 +17,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-export const { auth, signIn, signOut, handlers } = NextAuth({
+export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({

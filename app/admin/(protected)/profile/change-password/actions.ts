@@ -2,6 +2,7 @@
 
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { unstable_update } from "@/auth";
 import { db } from "@/lib/db";
 import { getRequiredSession } from "@/lib/require-auth";
 
@@ -57,6 +58,13 @@ export async function changeOwnPassword(
       where: { id: session.user.id },
       data: {
         password: await bcrypt.hash(newPassword, 12),
+        mustChangePassword: false,
+      },
+    });
+
+    await unstable_update({
+      user: {
+        ...session.user,
         mustChangePassword: false,
       },
     });

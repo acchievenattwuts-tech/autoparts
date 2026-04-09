@@ -73,7 +73,7 @@ export async function recalculateStockCard(
       : Number(row.priceIn);
     const lc   = Number(row.landedCost);
 
-    let newBaQty   = baQty + qIn - qOut;
+    const newBaQty = baQty + qIn - qOut;
     let newBaPrice = 0;
     let newBaTotal = 0;
     let priceOut   = baPrice;
@@ -196,7 +196,7 @@ export async function writeStockCard(
       ? baPrice
       : pIn;
 
-    let newBaQty   = baQty + qIn - qOut;
+    const newBaQty = baQty + qIn - qOut;
     let newBaPrice = 0;
     let newBaTotal = 0;
     let priceOut   = baPrice;

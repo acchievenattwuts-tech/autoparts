@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
+import { requirePermission } from "@/lib/require-auth";
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
@@ -37,6 +38,8 @@ const statusBadge: Record<SaleStatus, string> = {
 };
 
 const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+  await requirePermission("customers.view");
+
   const { id } = await params;
 
   const [customer, creditSales, receipts, creditNotes] = await Promise.all([
