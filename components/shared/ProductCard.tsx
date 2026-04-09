@@ -20,9 +20,10 @@ type ProductForCard = {
 interface Props {
   product: ProductForCard;
   lineUrl: string;
+  prefetchDetail?: boolean;
 }
 
-const ProductCard = ({ product, lineUrl }: Props) => {
+const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
   const inStock = product.stock > 0;
   const productPath = getProductPath({
     category: product.category,
@@ -47,7 +48,7 @@ const ProductCard = ({ product, lineUrl }: Props) => {
     <div className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:border-gray-200 hover:shadow-lg">
       <Link
         href={productPath}
-        prefetch
+        prefetch={prefetchDetail}
         className="relative h-32 shrink-0 bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44"
       >
         {product.imageUrl ? (
@@ -75,7 +76,7 @@ const ProductCard = ({ product, lineUrl }: Props) => {
           {product.category.name}
         </span>
 
-        <Link href={productPath} prefetch className="mt-2 block flex-1">
+        <Link href={productPath} prefetch={prefetchDetail} className="mt-2 block flex-1">
           <h3 className="line-clamp-2 text-xs font-bold leading-snug text-gray-900 transition-colors group-hover:text-[#1e3a5f] sm:text-sm">
             {product.name}
           </h3>
@@ -99,7 +100,7 @@ const ProductCard = ({ product, lineUrl }: Props) => {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Link
               href={productPath}
-              prefetch
+              prefetch={prefetchDetail}
               className="rounded-full border border-gray-200 px-2.5 py-2 text-[11px] font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f] sm:px-3 sm:text-xs"
             >
               ดูรายละเอียด

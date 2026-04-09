@@ -235,6 +235,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
                         key={product.id}
                         product={product}
                         lineUrl={config.shopLineUrl}
+                        prefetchDetail={false}
                       />
                     ))}
                   </div>

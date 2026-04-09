@@ -1,10 +1,8 @@
 ﻿export const revalidate = 300;
 
 import type { Metadata } from "next";
-export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
-import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import Navbar from "@/components/shared/Navbar";
 import Footer from "@/components/shared/Footer";
@@ -12,9 +10,13 @@ import ProductCard from "@/components/shared/ProductCard";
 import DeferredFloatingLine from "@/components/shared/DeferredFloatingLine";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "./ProductFilterBar";
+import ProductFilterBarFallback from "./ProductFilterBarFallback";
 import ProductsHero from "./ProductsHero";
 import { absoluteUrl } from "@/lib/seo";
-import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
+import {
+  getStorefrontProductFilters,
+  getStorefrontProductsLandingPageData,
+} from "@/lib/storefront-catalog";
 
 const PRODUCTS_PER_PAGE = 24;
 
@@ -38,39 +40,12 @@ export const metadata: Metadata = {
 };
 
 const ProductsPage = async () => {
-  const [config, filterData, products, totalProducts] = await Promise.all([
+  const [config, filterData, landingPageData] = await Promise.all([
     getSiteConfig(),
     getStorefrontProductFilters(),
-    db.product.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        code: true,
-        imageUrl: true,
-        salePrice: true,
-        stock: true,
-        reportUnitName: true,
-        category: { select: { id: true, name: true, slug: true } },
-        brand: { select: { name: true } },
-        carModels: {
-          select: {
-            carModel: {
-              select: {
-                name: true,
-                carBrand: { select: { name: true } },
-              },
-            },
-          },
-          take: 6,
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      take: PRODUCTS_PER_PAGE,
-    }),
-    db.product.count({ where: { isActive: true } }),
+    getStorefrontProductsLandingPageData(),
   ]);
+  const { products, totalProducts } = landingPageData;
 
   const pageEnd = Math.min(products.length, totalProducts);
   const totalPages = Math.max(1, Math.ceil(totalProducts / PRODUCTS_PER_PAGE));
@@ -90,7 +65,7 @@ const ProductsPage = async () => {
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-6 lg:flex-row">
             <aside className="w-full shrink-0 lg:w-72">
-              <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white" />}>
+              <Suspense fallback={<ProductFilterBarFallback />}>
                 <ProductFilterBar
                   brands={filterData.carBrands}
                   categories={filterData.categories}
@@ -126,6 +101,7 @@ const ProductsPage = async () => {
                         key={product.id}
                         product={product}
                         lineUrl={config.shopLineUrl}
+                        prefetchDetail={false}
                       />
                     ))}
                   </div>

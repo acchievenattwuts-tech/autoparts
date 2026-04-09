@@ -2489,3 +2489,19 @@ npm run db:restore backup-{timestamp}.json
 
 - [x] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
   แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation
+
+---
+
+## Roadmap Update (2026-04-09 Phase 7 Products Runtime Reduction)
+
+- Continued the Phase 7 production tuning loop with a route-specific pass focused on `/products` and `/products/search`, without changing the already healthy public detail/category flows.
+- Removed `force-dynamic` from `/products` so the landing route can be served as a static/ISR page again.
+- Moved the `/products` landing query into a tagged cached helper (`getStorefrontProductsLandingPageData`) so the route no longer re-runs the same product list + count query work on every request.
+- Tightened `getStorefrontProductFilters()` to fetch only the fields used by the filter UI (`id`, `name`, and active `carModels`) instead of full table rows.
+- Added a collapsed `ProductFilterBar` fallback shell for `/products` so the static shell is closer to the hydrated UI and less likely to introduce layout shift while the client filter panel boots.
+- Disabled automatic product-detail prefetch on the high-cardinality grids used by `/products` and `/products/search` to reduce request fan-out and non-critical client work during catalog browsing.
+- Validation: `npm run build` passes after the tuning pass, and the build output now shows `/products` as a static route again.
+- The production measurement + tuning loop remains open and should be re-measured after deploy to confirm:
+  - `/products` request count drops versus the previous run
+  - `/products` CLS improves from the previous `0.13` regression
+  - no meaningful regression appears on the other benchmark storefront pages
