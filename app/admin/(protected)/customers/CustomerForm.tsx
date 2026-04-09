@@ -107,7 +107,12 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               name="creditTerm"
               min={0}
               max={365}
-              defaultValue={customer?.creditTerm ?? ""}
+              defaultValue={customer?.creditTerm ?? 0}
+              onBlur={(e) => {
+                if (e.target.value.trim() === "") {
+                  e.target.value = "0";
+                }
+              }}
               className={inputCls}
               placeholder="0 = เงินสด"
             />

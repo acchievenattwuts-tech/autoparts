@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteCustomers } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
@@ -473,10 +474,9 @@ const CreditNoteForm = ({
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
                   <span className="text-sm text-gray-500">อัตรา</span>
-                  <input
-                    type="number"
+                  <AdminNumberInput
                     value={vatRate}
-                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    onValueChange={setVatRate}
                     min={0}
                     max={100}
                     step={0.01}
@@ -562,22 +562,20 @@ const CreditNoteForm = ({
                         </select>
                       </td>
                       <td className="py-2 px-2">
-                        <input
-                          type="number"
+                        <AdminNumberInput
                           value={item.qty}
                           min={0.0001}
                           step={0.0001}
-                          onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                          onValueChange={(value) => updateItem(i, "qty", value)}
                           className={inputCls}
                         />
                       </td>
                       <td className="py-2 px-2">
-                        <input
-                          type="number"
+                        <AdminNumberInput
                           value={item.salePrice}
                           min={0}
                           step={0.01}
-                          onChange={(e) => updateItem(i, "salePrice", Number(e.target.value))}
+                          onValueChange={(value) => updateItem(i, "salePrice", value)}
                           className={inputCls}
                           placeholder="0.00"
                         />
@@ -628,20 +626,18 @@ const CreditNoteForm = ({
                                   />
                                   Return Lot
                                 </label>
-                                <input
-                                  type="number"
+                                <AdminNumberInput
                                   value={lot.qty}
                                   min={0.0001}
                                   step={0.0001}
-                                  onChange={(e) => updateLotRow(i, lotIdx, "qty", Number(e.target.value))}
+                                  onValueChange={(value) => updateLotRow(i, lotIdx, "qty", value)}
                                   className={inputCls}
                                 />
-                                <input
-                                  type="number"
+                                <AdminNumberInput
                                   value={lot.unitCost}
                                   min={0}
                                   step={0.01}
-                                  onChange={(e) => updateLotRow(i, lotIdx, "unitCost", Number(e.target.value))}
+                                  onValueChange={(value) => updateLotRow(i, lotIdx, "unitCost", value)}
                                   className={inputCls}
                                 />
                                 <input
@@ -740,4 +736,3 @@ const CreditNoteForm = ({
 };
 
 export default CreditNoteForm;
-

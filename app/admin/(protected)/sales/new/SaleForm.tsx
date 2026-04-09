@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
@@ -121,7 +122,7 @@ const SaleForm = ({
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState(initialData?.customerPhone ?? "");
-  const [creditTerm, setCreditTerm] = useState<number | "">(initialData?.creditTerm ?? "");
+  const [creditTerm, setCreditTerm] = useState<number>(initialData?.creditTerm ?? 0);
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
 
   const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">(initialData?.paymentType ?? "CASH_SALE");
@@ -323,12 +324,12 @@ const SaleForm = ({
       setCustomerNameOverride(found?.name ?? "");
       setCustomerPhoneOverride(found?.phone ?? "");
       setShippingAddress(found?.shippingAddress ?? "");
-      setCreditTerm(found?.creditTerm ?? "");
+      setCreditTerm(found?.creditTerm ?? 0);
     } else {
       setCustomerNameOverride("");
       setCustomerPhoneOverride("");
       setShippingAddress("");
-      setCreditTerm("");
+      setCreditTerm(0);
     }
   };
 
@@ -455,13 +456,12 @@ const SaleForm = ({
           </div>
           <div>
             <label className={labelCls}>เครดิต (วัน)</label>
-            <input
-              type="number"
+            <AdminNumberInput
               name="creditTerm"
               min={0}
               max={365}
               value={creditTerm}
-              onChange={(e) => setCreditTerm(e.target.value === "" ? "" : Number(e.target.value))}
+              onValueChange={setCreditTerm}
               className={inputCls}
               placeholder="0 = เงินสด, ว่าง = ไม่กำหนด"
             />
@@ -518,13 +518,12 @@ const SaleForm = ({
           )}
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
-            <input
-              type="number"
+            <AdminNumberInput
               name="discount"
               min={0}
               step={0.01}
-              defaultValue={initialData?.discount ?? 0}
-              onChange={(e) => setDiscount(Number(e.target.value))}
+              value={discount}
+              onValueChange={setDiscount}
               className={inputCls}
             />
           </div>
@@ -561,10 +560,9 @@ const SaleForm = ({
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
                   <span className="text-sm text-gray-500">อัตรา</span>
-                  <input
-                    type="number"
+                  <AdminNumberInput
                     value={vatRate}
-                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    onValueChange={setVatRate}
                     min={0} max={100} step={0.01}
                     className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
                   />
@@ -633,12 +631,11 @@ const SaleForm = ({
               </div>
               <div>
                 <label className={labelCls}>ค่าจัดส่ง (บาท)</label>
-                <input
-                  type="number"
+                <AdminNumberInput
                   min={0}
                   step={0.01}
                   value={shippingFee}
-                  onChange={(e) => setShippingFee(Number(e.target.value))}
+                  onValueChange={setShippingFee}
                   className={inputCls}
                 />
               </div>
@@ -737,33 +734,30 @@ const SaleForm = ({
                       </select>
                     </td>
                     <td className="py-2 px-2">
-                      <input
-                        type="number"
+                      <AdminNumberInput
                         value={item.qty}
                         min={0.0001}
                         step={0.0001}
-                        onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                        onValueChange={(value) => updateItem(i, "qty", value)}
                         className={inputCls}
                       />
                     </td>
                     <td className="py-2 px-2">
-                      <input
-                        type="number"
+                      <AdminNumberInput
                         value={item.salePrice}
                         min={0}
                         step={0.01}
-                        onChange={(e) => updateItem(i, "salePrice", Number(e.target.value))}
+                        onValueChange={(value) => updateItem(i, "salePrice", value)}
                         className={inputCls}
                         placeholder="0.00"
                       />
                     </td>
                     <td className="py-2 px-2">
-                      <input
-                        type="number"
+                      <AdminNumberInput
                         value={item.warrantyDays}
                         min={0}
                         step={1}
-                        onChange={(e) => updateItem(i, "warrantyDays", Number(e.target.value))}
+                        onValueChange={(value) => updateItem(i, "warrantyDays", value)}
                         className={`${inputCls} ${item.warrantyDays > 0 ? "border-green-400 bg-green-50" : ""}`}
                         placeholder="0"
                       />
@@ -869,11 +863,10 @@ const SaleForm = ({
                                     </select>
                                   </div>
                                   <div className="w-24 shrink-0">
-                                    <input
-                                      type="number"
+                                    <AdminNumberInput
                                       value={lot.qty}
                                       min={0.0001} step={0.0001}
-                                      onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                      onValueChange={(value) => updateLotRow(i, li, "qty", value)}
                                       className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
                                       placeholder="จำนวน"
                                     />

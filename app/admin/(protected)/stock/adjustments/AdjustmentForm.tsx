@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createAdjustment, fetchAdjustmentProductLots } from "./actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 
@@ -262,8 +263,8 @@ const AdjustmentForm = ({
                     </div>
                     <div className="col-span-2">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน</p>}
-                      <input type="number" value={item.qty} min={0.0001} step={0.0001}
-                        onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                      <AdminNumberInput value={item.qty} min={0.0001} step={0.0001}
+                        onValueChange={(value) => updateItem(i, "qty", value)}
                         className={inputCls} />
                     </div>
                     <div className="col-span-2">
@@ -331,14 +332,14 @@ const AdjustmentForm = ({
                               </div>
                               <div className="col-span-2">
                                 {li === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน <span className="text-red-500">*</span></p>}
-                                <input type="number" value={lot.qty || ""} min={0.0001} step={0.0001}
-                                  onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                <AdminNumberInput value={lot.qty} min={0.0001} step={0.0001}
+                                  onValueChange={(value) => updateLotRow(i, li, "qty", value)}
                                   className={inputCls} />
                               </div>
                               <div className="col-span-2">
                                 {li === 0 && <p className="text-xs text-gray-500 mb-1">ต้นทุน/หน่วย</p>}
-                                <input type="number" value={lot.unitCost || ""} min={0} step={0.01}
-                                  onChange={(e) => updateLotRow(i, li, "unitCost", Number(e.target.value))}
+                                <AdminNumberInput value={lot.unitCost} min={0} step={0.01}
+                                  onValueChange={(value) => updateLotRow(i, li, "unitCost", value)}
                                   className={inputCls} />
                               </div>
                               <div className="col-span-2">
@@ -401,11 +402,10 @@ const AdjustmentForm = ({
                                   </select>
                                 </div>
                                 <div className="w-24 shrink-0">
-                                  <input
-                                    type="number"
+                                  <AdminNumberInput
                                     value={lot.qty}
                                     min={0.0001} step={0.0001}
-                                    onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                    onValueChange={(value) => updateLotRow(i, li, "qty", value)}
                                     className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
                                     placeholder="จำนวน"
                                   />

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import {
   createSupplierPayment,
@@ -322,15 +323,12 @@ const SupplierPaymentForm = ({
                     </td>
                     <td className="px-3 py-2 text-right">
                       {checked ? (
-                        <input
-                          type="number"
+                        <AdminNumberInput
                           min={0}
                           max={doc.outstanding}
                           step={0.01}
                           value={selected?.paidAmount ?? doc.outstanding}
-                          onChange={(event) =>
-                            updatePaidAmount(kind, doc.id, Number(event.target.value))
-                          }
+                          onValueChange={(value) => updatePaidAmount(kind, doc.id, value)}
                           className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
                         />
                       ) : (

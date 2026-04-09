@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createExpense, updateExpense } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ExpenseCodeOption {
@@ -179,10 +180,9 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
           {vatType !== "NO_VAT" && (
             <div className="flex items-center gap-1.5 ml-2">
               <span className="text-sm text-gray-500">อัตรา</span>
-              <input
-                type="number"
+              <AdminNumberInput
                 value={vatRate}
-                onChange={(e) => setVatRate(Number(e.target.value))}
+                onValueChange={setVatRate}
                 min={0} max={100} step={0.01}
                 className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
               />
@@ -244,10 +244,9 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
                     />
                   </td>
                   <td className="py-2 px-2">
-                    <input
-                      type="number"
-                      value={item.amount || ""}
-                      onChange={(e) => updateItem(i, "amount", Number(e.target.value))}
+                    <AdminNumberInput
+                      value={item.amount}
+                      onValueChange={(value) => updateItem(i, "amount", value)}
                       min={0.01}
                       step={0.01}
                       placeholder="0.00"

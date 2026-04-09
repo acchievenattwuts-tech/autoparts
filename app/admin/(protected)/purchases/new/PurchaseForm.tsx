@@ -6,6 +6,7 @@ import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PurchaseType } from "@/lib/generated/prisma";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
@@ -279,13 +280,12 @@ const PurchaseForm = ({
           </div>
           <div>
             <label className={labelCls}>ส่วนลดรวม (บาท)</label>
-            <input
-              type="number"
+            <AdminNumberInput
               name="discount"
               min={0}
               step={0.01}
               value={discount}
-              onChange={(e) => setDiscount(Number(e.target.value))}
+              onValueChange={setDiscount}
               className={inputCls}
             />
           </div>
@@ -363,10 +363,9 @@ const PurchaseForm = ({
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
                   <span className="text-sm text-gray-500">อัตรา</span>
-                  <input
-                    type="number"
+                  <AdminNumberInput
                     value={vatRate}
-                    onChange={(e) => setVatRate(Number(e.target.value))}
+                    onValueChange={setVatRate}
                     min={0} max={100} step={0.01}
                     className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
                   />
@@ -438,13 +437,13 @@ const PurchaseForm = ({
                         </select>
                       </td>
                       <td className="py-2 px-2">
-                        <input type="number" value={item.qty} min={0.0001} step={0.0001}
-                          onChange={(e) => updateItem(i, "qty", Number(e.target.value))}
+                        <AdminNumberInput value={item.qty} min={0.0001} step={0.0001}
+                          onValueChange={(value) => updateItem(i, "qty", value)}
                           className={inputCls} />
                       </td>
                       <td className="py-2 px-2">
-                        <input type="number" value={item.costPrice} min={0} step={0.0001}
-                          onChange={(e) => updateItem(i, "costPrice", Number(e.target.value))}
+                        <AdminNumberInput value={item.costPrice} min={0} step={0.0001}
+                          onValueChange={(value) => updateItem(i, "costPrice", value)}
                           className={inputCls} placeholder="0.00" />
                       </td>
                       <td className="py-2 px-2 text-right font-medium text-gray-700">
@@ -520,20 +519,18 @@ const PurchaseForm = ({
                                         />
                                       </td>
                                       <td className="py-1 px-2">
-                                        <input
-                                          type="number"
+                                        <AdminNumberInput
                                           value={lot.qty}
                                           min={0.0001} step={0.0001}
-                                          onChange={(e) => updateLotRow(i, li, "qty", Number(e.target.value))}
+                                          onValueChange={(value) => updateLotRow(i, li, "qty", value)}
                                           className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
                                         />
                                       </td>
                                       <td className="py-1 px-2">
-                                        <input
-                                          type="number"
+                                        <AdminNumberInput
                                           value={lot.unitCost}
                                           min={0} step={0.0001}
-                                          onChange={(e) => updateLotRow(i, li, "unitCost", Number(e.target.value))}
+                                          onValueChange={(value) => updateLotRow(i, li, "unitCost", value)}
                                           className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
                                         />
                                       </td>
@@ -662,7 +659,6 @@ const PurchaseForm = ({
 };
 
 export default PurchaseForm;
-
 
 
 

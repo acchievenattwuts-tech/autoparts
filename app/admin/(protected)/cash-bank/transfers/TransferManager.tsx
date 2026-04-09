@@ -171,7 +171,18 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">จำนวนเงิน</label>
-              <input type="number" step={0.01} className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <input
+                type="number"
+                step={0.01}
+                className={inputCls}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onBlur={(e) => {
+                  if (e.target.value.trim() === "") {
+                    setAmount("0");
+                  }
+                }}
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">หมายเหตุ</label>

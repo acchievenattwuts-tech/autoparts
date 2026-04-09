@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
@@ -228,13 +229,12 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </td>
         <td className="px-3 py-2 text-right">
           {checked ? (
-            <input
-              type="number"
+            <AdminNumberInput
               min={0}
               max={sale.outstanding}
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
-              onChange={(event) => updatePaidAmount(sale.id, Number(event.target.value))}
+              onValueChange={(value) => updatePaidAmount(sale.id, value)}
               className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
             />
           ) : (
@@ -273,13 +273,12 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </td>
         <td className="px-3 py-2 text-right">
           {checked ? (
-            <input
-              type="number"
+            <AdminNumberInput
               min={0}
               max={sale.outstanding}
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
-              onChange={(event) => updatePaidAmount(sale.id, Number(event.target.value))}
+              onValueChange={(value) => updatePaidAmount(sale.id, value)}
               className="w-28 rounded border border-emerald-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
             />
           ) : (

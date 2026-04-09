@@ -218,6 +218,11 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
             className={inputCls}
             value={form.openingBalance}
             onChange={(e) => setForm((prev) => ({ ...prev, openingBalance: e.target.value }))}
+            onBlur={(e) => {
+              if (e.target.value.trim() === "") {
+                setForm((prev) => ({ ...prev, openingBalance: "0" }));
+              }
+            }}
           />
         </div>
         <div>

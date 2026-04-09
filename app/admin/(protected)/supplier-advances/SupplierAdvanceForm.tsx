@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { createSupplierAdvance, updateSupplierAdvance } from "./actions";
 
@@ -158,12 +159,11 @@ const SupplierAdvanceForm = ({
             <label className={labelCls}>
               จำนวนเงินมัดจำ <span className="text-red-500">*</span>
             </label>
-            <input
-              type="number"
+            <AdminNumberInput
               min={0.01}
               step={0.01}
               value={totalAmount}
-              onChange={(event) => setTotalAmount(Number(event.target.value))}
+              onValueChange={setTotalAmount}
               className={inputCls}
               placeholder="0.00"
             />

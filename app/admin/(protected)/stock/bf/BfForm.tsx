@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createBF } from "./actions";
 import { CheckCircle, Plus, Trash2 } from "lucide-react";
+import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 
 interface ProductOption {
@@ -165,14 +166,14 @@ const BfForm = ({
                   </div>
                   <div className="col-span-2">
                     {i === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน <span className="text-red-500">*</span></p>}
-                    <input type="number" value={lot.qty || ""} min={0.0001} step={0.0001}
-                      onChange={(e) => updateLotRow(i, "qty", Number(e.target.value))}
+                    <AdminNumberInput value={lot.qty} min={0.0001} step={0.0001}
+                      onValueChange={(value) => updateLotRow(i, "qty", value)}
                       className={inputCls} />
                   </div>
                   <div className="col-span-2">
                     {i === 0 && <p className="text-xs text-gray-500 mb-1">ต้นทุน/หน่วย</p>}
-                    <input type="number" value={lot.unitCost || ""} min={0} step={0.01}
-                      onChange={(e) => updateLotRow(i, "unitCost", Number(e.target.value))}
+                    <AdminNumberInput value={lot.unitCost} min={0} step={0.01}
+                      onValueChange={(value) => updateLotRow(i, "unitCost", value)}
                       className={inputCls} />
                   </div>
                   <div className="col-span-2">
