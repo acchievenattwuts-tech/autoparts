@@ -33,9 +33,8 @@ const CollectionPageJsonLd = ({
                 itemListElement: itemListElements.map((item, index) => ({
                   "@type": "ListItem",
                   position: index + 1,
-                  url: item.url,
                   item: {
-                    "@type": "Product",
+                    "@type": "WebPage",
                     name: item.name,
                     url: item.url,
                     image: item.image || undefined,
