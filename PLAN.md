@@ -2539,3 +2539,14 @@ npm run db:restore backup-{timestamp}.json
 - `/products/search` rendering strategy was re-checked and intentionally kept as `force-dynamic`; the route is query-driven and should prefer freshness/correctness over risky caching changes.
 - Validation: `npm run build` passes after the reduction pass, and the `/products` client reference manifest no longer includes `components/shared/Navbar.tsx`.
 - Validation was re-run with both `npm run build` and `npm run analyze` after the final reduction pass.
+
+## Roadmap Update (2026-04-09 Electronic Signatures for Receipt Print)
+
+- [x] Added per-user electronic signature fields on `User` so admin can maintain a reusable signature image from the existing user management flow.
+- [x] Reused the current Supabase Storage upload pattern for signature images, with server-side validation for MIME type, extension, and file size.
+- [x] Added signer snapshot fields on both `Receipt` and `Sale` so printed documents keep the signer name/signature used at document time instead of reading live user data only.
+- [x] `createReceipt` and `createSale` now snapshot the current user signature into the document header at creation time.
+- [x] `updateReceipt` and `updateSale` preserve the existing signer snapshot instead of replacing historical signatures automatically.
+- [x] Receipt print (`/admin/receipts/[id]`) now renders the saved signature in the `ผู้รับเงิน` section.
+- [x] Cash-sale print from sale detail (`/admin/sales/[id]`) now renders the saved signature in the `ผู้รับเงิน` section when printing the receipt form.
+- [x] Scope was intentionally kept narrow to the current print flows only: `User`, `Receipt`, and `Sale`. No legal digital-signature workflow, approval chain, or cross-document signature engine was introduced in this round.
