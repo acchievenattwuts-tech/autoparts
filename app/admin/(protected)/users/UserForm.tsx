@@ -1,9 +1,10 @@
 ﻿"use client";
 
-import { useState, useTransition } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { CheckCircle } from "lucide-react";
-import { createUser, updateUser } from "./actions";
+import { useRef, useState, useTransition, type ChangeEvent } from "react";
+import { CheckCircle, Upload, X } from "lucide-react";
+import { createUser, updateUser, uploadUserSignature } from "./actions";
 
 type RoleOption = {
   id: string;
@@ -20,6 +21,7 @@ interface UserFormProps {
     appRoleId: string | null;
     mustChangePassword: boolean;
     isActive: boolean;
+    signatureUrl: string | null;
   };
   roleOptions: RoleOption[];
 }
@@ -34,8 +36,38 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(user?.mustChangePassword ?? true);
+  const signatureFileRef = useRef<HTMLInputElement>(null);
+  const [signatureUrl, setSignatureUrl] = useState(user?.signatureUrl ?? "");
+  const [signatureUploading, setSignatureUploading] = useState(false);
+  const [signatureError, setSignatureError] = useState("");
 
   const isEdit = Boolean(user);
+
+  const handleSignatureChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setSignatureError("");
+    setSignatureUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await uploadUserSignature(formData);
+
+    setSignatureUploading(false);
+
+    if (result.error) {
+      setSignatureError(result.error);
+    }
+
+    if (result.url) {
+      setSignatureUrl(result.url);
+    }
+
+    if (signatureFileRef.current) {
+      signatureFileRef.current.value = "";
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -44,6 +76,7 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
 
     const formData = new FormData(e.currentTarget);
     formData.set("mustChangePassword", String(mustChangePassword));
+    formData.set("signatureUrl", signatureUrl);
 
     startTransition(async () => {
       const result = isEdit ? await updateUser(user!.id, formData) : await createUser(formData);
@@ -132,6 +165,62 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
               />
               <span className="text-sm text-gray-700">บังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าระบบ</span>
             </label>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelCls}>ลายเซ็นอิเล็กทรอนิก</label>
+            <input type="hidden" name="signatureUrl" value={signatureUrl} />
+            <div className="flex flex-col gap-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-start">
+              <div className="relative flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white sm:w-56">
+                {signatureUrl ? (
+                  <>
+                    <Image
+                      src={signatureUrl}
+                      alt="ตัวอย่างลายเซ็น"
+                      fill
+                      sizes="224px"
+                      className="object-contain p-3"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSignatureUrl("")}
+                      className="absolute right-1 top-1 rounded-full border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500"
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
+                ) : (
+                  <p className="px-3 text-center text-sm text-gray-400">ยังไม่ได้อัปโหลดลายเซ็น</p>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-3">
+                <input
+                  ref={signatureFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleSignatureChange}
+                  className="hidden"
+                  id="user-signature-upload"
+                />
+                <label
+                  htmlFor="user-signature-upload"
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors ${
+                    signatureUploading
+                      ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                      : "bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <Upload size={14} />
+                  {signatureUploading ? "กำลังอัปโหลด..." : "เลือกลายเซ็น"}
+                </label>
+                <div className="space-y-1 text-xs text-gray-400">
+                  <p>รองรับไฟล์ JPG, PNG, WebP ขนาดไม่เกิน 3MB</p>
+                  <p>แนะนำ PNG พื้นหลังโปร่งใส เพื่อให้แสดงผลบนเอกสารได้คมชัด</p>
+                </div>
+                {signatureError && <p className="text-xs text-red-500">{signatureError}</p>}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -46,6 +47,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
 
   const cfg = Object.fromEntries(contents.map((c) => [c.key, c.value]));
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
+  const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
 
   return (
     <>
@@ -288,6 +290,30 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             <span className="font-medium">หมายเหตุ: </span>{receipt.note}
           </div>
         )}
+
+        <div className="mb-6 grid grid-cols-2 gap-8 text-sm">
+          <div className="text-center">
+            <p className="mb-2 text-gray-600">ผู้รับเงิน</p>
+            <div className="flex h-24 items-end justify-center border-b border-gray-300 px-4">
+              {receipt.signerSignatureUrl ? (
+                <Image
+                  src={receipt.signerSignatureUrl}
+                  alt={`ลายเซ็น ${signerDisplayName}`}
+                  width={180}
+                  height={72}
+                  className="max-h-[72px] w-auto object-contain"
+                />
+              ) : null}
+            </div>
+            <p className="mt-2 font-medium text-gray-900">{signerDisplayName}</p>
+          </div>
+
+          <div className="text-center">
+            <p className="mb-2 text-gray-600">ผู้ชำระเงิน</p>
+            <div className="h-24 border-b border-gray-300" />
+            <p className="mt-2 font-medium text-gray-900">&nbsp;</p>
+          </div>
+        </div>
 
         <div className="text-center text-sm text-gray-500 border-t border-gray-200 pt-4">
           ขอบคุณที่ใช้บริการ

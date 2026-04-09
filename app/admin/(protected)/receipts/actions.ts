@@ -15,22 +15,6 @@ import {
 } from "@/lib/ar-settlement";
 
 type TxClient = Prisma.TransactionClient;
-type ReceiptDocumentClient = Pick<typeof db, "sale" | "creditNote"> &
-  Pick<TxClient, "sale" | "creditNote">;
-
-type AvailableReceiptDocument = {
-  id: string;
-  docNo: string;
-  docDate: Date;
-  totalAmount: number;
-  usedAmount: number;
-  outstanding: number;
-};
-
-type AvailableReceiptDocumentBundle = {
-  sales: AvailableReceiptDocument[];
-  creditNotes: AvailableReceiptDocument[];
-};
 
 // ─────────────────────────────────────────
 // getCreditSalesForCustomer
@@ -144,10 +128,6 @@ const receiptSchema = z.object({
 
 type ParsedReceipt = z.infer<typeof receiptSchema>;
 
-function sumReceiptUsage(items: Array<{ paidAmount: Prisma.Decimal | number }>): number {
-  return items.reduce((sum, item) => sum + Number(item.paidAmount), 0);
-}
-
 function parseReceiptForm(
   formData: FormData,
 ): { success: true; data: ParsedReceipt } | { success: false; error: string } {
@@ -187,133 +167,6 @@ function collectAffectedReceiptIds(items: Array<{
   };
 }
 
-async function getAvailableReceiptDocuments(
-  tx: ReceiptDocumentClient,
-  customerId: string,
-  excludeReceiptId?: string,
-): Promise<AvailableReceiptDocumentBundle> {
-  const saleOr = [{ amountRemain: { gt: 0 } }] as Prisma.SaleWhereInput[];
-  const cnOr = [{ amountRemain: { gt: 0 } }] as Prisma.CreditNoteWhereInput[];
-
-  if (excludeReceiptId) {
-    saleOr.push({ receipts: { some: { receiptId: excludeReceiptId } } });
-    cnOr.push({ receiptItems: { some: { receiptId: excludeReceiptId } } });
-  }
-
-  const [sales, creditNotes] = await Promise.all([
-    tx.sale.findMany({
-      where: {
-        customerId,
-        paymentType: "CREDIT_SALE",
-        status: "ACTIVE",
-        OR: saleOr,
-      },
-      orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-      select: {
-        id: true,
-        saleNo: true,
-        saleDate: true,
-        netAmount: true,
-        amountRemain: true,
-        receipts: {
-          where: { receiptId: excludeReceiptId ?? "__never__" },
-          select: { paidAmount: true },
-        },
-      },
-    }),
-    tx.creditNote.findMany({
-      where: {
-        customerId,
-        settlementType: "CREDIT_DEBT",
-        status: "ACTIVE",
-        OR: cnOr,
-      },
-      orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
-      select: {
-        id: true,
-        cnNo: true,
-        cnDate: true,
-        totalAmount: true,
-        amountRemain: true,
-        receiptItems: {
-          where: { receiptId: excludeReceiptId ?? "__never__" },
-          select: { paidAmount: true },
-        },
-      },
-    }),
-  ]);
-
-  return {
-    sales: sales.map((sale) => {
-      const currentUsage = sumReceiptUsage(sale.receipts);
-      return {
-        id: sale.id,
-        docNo: sale.saleNo,
-        docDate: sale.saleDate,
-        totalAmount: Number(sale.netAmount),
-        usedAmount: Number(sale.netAmount) - Number(sale.amountRemain) - currentUsage,
-        outstanding: Number(sale.amountRemain) + currentUsage,
-      };
-    }),
-    creditNotes: creditNotes.map((creditNote) => {
-      const currentUsage = sumReceiptUsage(creditNote.receiptItems);
-      return {
-        id: creditNote.id,
-        docNo: creditNote.cnNo,
-        docDate: creditNote.cnDate,
-        totalAmount: Number(creditNote.totalAmount),
-        usedAmount: Number(creditNote.totalAmount) - Number(creditNote.amountRemain) - currentUsage,
-        outstanding: Number(creditNote.amountRemain) + currentUsage,
-      };
-    }),
-  };
-}
-
-function validateReceiptItemsAgainstAvailable(
-  customerId: string | undefined,
-  items: ParsedReceipt["items"],
-  available: AvailableReceiptDocumentBundle,
-): string | null {
-  if (!customerId) {
-    return "กรุณาเลือกลูกค้า";
-  }
-
-  const saleMap = new Map(available.sales.map((item) => [item.id, item]));
-  const cnMap = new Map(available.creditNotes.map((item) => [item.id, item]));
-  const usedMap = new Map<string, number>();
-
-  const registerAmount = (key: string, amount: number): number => {
-    const nextAmount = (usedMap.get(key) ?? 0) + amount;
-    usedMap.set(key, nextAmount);
-    return nextAmount;
-  };
-
-  for (const item of items) {
-    if (item.saleId) {
-      const sale = saleMap.get(item.saleId);
-      if (!sale) {
-        return "พบใบขายเชื่อที่เลือกไม่ถูกต้อง ถูกยกเลิก หรือไม่ใช่ของลูกค้ารายนี้";
-      }
-      if (registerAmount(`sale:${item.saleId}`, item.paidAmount) > sale.outstanding + 0.0001) {
-        return `ยอดรับชำระของ ${sale.docNo} มากกว่ายอดคงเหลือที่รับได้`;
-      }
-      continue;
-    }
-
-    if (item.cnId) {
-      const creditNote = cnMap.get(item.cnId);
-      if (!creditNote) {
-        return "พบใบลดหนี้เครดิตที่เลือกไม่ถูกต้อง ถูกยกเลิก หรือไม่ใช่ของลูกค้ารายนี้";
-      }
-      if (registerAmount(`cn:${item.cnId}`, item.paidAmount) > creditNote.outstanding + 0.0001) {
-        return `ยอดที่นำเครดิต ${creditNote.docNo} มาใช้ มากกว่ายอดคงเหลือที่ใช้ได้`;
-      }
-    }
-  }
-
-  return null;
-}
-
 async function recalculateAffectedReceiptDocuments(
   tx: TxClient,
   affectedIds: ReturnType<typeof collectAffectedReceiptIds>,
@@ -344,6 +197,27 @@ async function resolveReceiptPaymentMethod(
   }
 
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
+async function getReceiptSignerSnapshot(
+  tx: TxClient,
+  userId: string,
+  signedAt: Date,
+): Promise<{
+  signerName: string | null;
+  signerSignatureUrl: string | null;
+  signedAt: Date | null;
+}> {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { name: true, signatureUrl: true },
+  });
+
+  return {
+    signerName: user?.name ?? null,
+    signerSignatureUrl: user?.signatureUrl ?? null,
+    signedAt: user?.name ? signedAt : null,
+  };
 }
 
 export async function createReceipt(
@@ -378,6 +252,7 @@ export async function createReceipt(
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
       if (validationError) throw new Error(validationError);
 
+      const signerSnapshot = await getReceiptSignerSnapshot(tx, session.user!.id, docDate);
       const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
         tx,
         resolvedCashBankAccountId,
@@ -391,6 +266,9 @@ export async function createReceipt(
           customerId:    parsed.customerId || null,
           customerName:  parsed.customerName || null,
           userId:        session.user!.id,
+          signerName: signerSnapshot.signerName,
+          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+          signedAt: signerSnapshot.signedAt,
           totalAmount,
           paymentMethod: resolvedPaymentMethod,
           cashBankAccountId: resolvedCashBankAccountId || null,
@@ -507,7 +385,10 @@ export async function updateReceipt(
 
   const existing = await db.receipt.findUnique({
     where: { id },
-    include: { items: { select: { saleId: true, cnId: true } } },
+    include: {
+      user: { select: { name: true, signatureUrl: true } },
+      items: { select: { saleId: true, cnId: true } },
+    },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
@@ -536,6 +417,11 @@ export async function updateReceipt(
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
       if (validationError) throw new Error(validationError);
 
+      const fallbackSignerName = existing.signerName ?? existing.user?.name ?? null;
+      const fallbackSignerSignatureUrl =
+        existing.signerSignatureUrl ?? existing.user?.signatureUrl ?? null;
+      const fallbackSignedAt = existing.signedAt ?? (fallbackSignerName ? docDate : null);
+
       const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
         tx,
         resolvedCashBankAccountId,
@@ -552,6 +438,9 @@ export async function updateReceipt(
           receiptDate:   docDate,
           customerId:    parsed.customerId || null,
           customerName:  parsed.customerName || null,
+          signerName: fallbackSignerName,
+          signerSignatureUrl: fallbackSignerSignatureUrl,
+          signedAt: fallbackSignedAt,
           totalAmount,
           paymentMethod: resolvedPaymentMethod,
           cashBankAccountId: resolvedCashBankAccountId || null,

@@ -19,6 +19,8 @@ model User {
   appRoleId          String?
   mustChangePassword Boolean          @default(false)
   username           String?          @unique
+  signatureUrl       String?
+  signatureUpdatedAt DateTime?
   adjustments        Adjustment[]
   balanceForwards    BalanceForward[]
   creditNotes        CreditNote[]
@@ -334,6 +336,9 @@ model Sale {
   customerName    String?
   customerPhone   String?
   userId          String
+  signerName      String?
+  signerSignatureUrl String?
+  signedAt        DateTime?
   totalAmount     Decimal         @db.Decimal(10, 2)
   discount        Decimal         @default(0) @db.Decimal(10, 2)
   netAmount       Decimal         @db.Decimal(10, 2)
@@ -647,6 +652,9 @@ model Receipt {
   customerId    String?
   customerName  String?
   userId        String
+  signerName    String?
+  signerSignatureUrl String?
+  signedAt      DateTime?
   totalAmount   Decimal       @db.Decimal(10, 2)
   paymentMethod PaymentMethod
   note          String?

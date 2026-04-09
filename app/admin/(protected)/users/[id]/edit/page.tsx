@@ -26,6 +26,7 @@ const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => 
         appRoleId: true,
         mustChangePassword: true,
         isActive: true,
+        signatureUrl: true,
       },
     }),
     db.appRole.findMany({

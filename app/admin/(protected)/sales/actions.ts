@@ -133,6 +133,27 @@ async function resolveSalePaymentMethod(
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
+async function getSaleSignerSnapshot(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  userId: string,
+  signedAt: Date,
+): Promise<{
+  signerName: string | null;
+  signerSignatureUrl: string | null;
+  signedAt: Date | null;
+}> {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { name: true, signatureUrl: true },
+  });
+
+  return {
+    signerName: user?.name ?? null,
+    signerSignatureUrl: user?.signatureUrl ?? null,
+    signedAt: user?.name ? signedAt : null,
+  };
+}
+
 async function assertLotBalanceAvailable(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   productId: string,
@@ -174,43 +195,6 @@ function buildWarrantyLotSequence(lots: LotSubRow[]): string[] {
     }
   }
   return sequence;
-}
-
-async function preloadSaleLineMaps(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  items: z.infer<typeof saleItemSchema>[],
-): Promise<{
-  unitScaleMap: Map<string, number>;
-  productMap: Map<string, { avgCost: number; isLotControl: boolean }>;
-}> {
-  const productIds = [...new Set(items.map((item) => item.productId))];
-  const [units, products] = await Promise.all([
-    tx.productUnit.findMany({
-      where: {
-        OR: items.map((item) => ({
-          productId: item.productId,
-          name: item.unitName,
-        })),
-      },
-      select: { productId: true, name: true, scale: true },
-    }),
-    tx.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, avgCost: true, isLotControl: true },
-    }),
-  ]);
-
-  return {
-    unitScaleMap: new Map(
-      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
-    ),
-    productMap: new Map(
-      products.map((product) => [
-        product.id,
-        { avgCost: Number(product.avgCost), isLotControl: product.isLotControl },
-      ]),
-    ),
-  };
 }
 
 async function createWarrantySnapshots(
@@ -326,7 +310,7 @@ export async function createSale(
         tx,
         resolvedCashBankAccountId,
       );
-      const { unitScaleMap, productMap } = await preloadSaleLineMaps(tx, validItems);
+      const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -340,6 +324,9 @@ export async function createSale(
           customerName:    customerName    ?? null,
           customerPhone:   customerPhone   ?? null,
           userId:          session.user!.id!,
+          signerName:      signerSnapshot.signerName,
+          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+          signedAt:        signerSnapshot.signedAt,
           totalAmount,
           discount,
           netAmount,
@@ -577,6 +564,7 @@ export async function updateSale(
   const existing = await db.sale.findUnique({
     where: { id },
     include: {
+      user:        { select: { name: true, signatureUrl: true } },
       items:       { select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
@@ -656,6 +644,10 @@ export async function updateSale(
         tx,
         resolvedCashBankAccountId,
       );
+      const fallbackSignerName = existing.signerName ?? existing.user?.name ?? null;
+      const fallbackSignerSignatureUrl =
+        existing.signerSignatureUrl ?? existing.user?.signatureUrl ?? null;
+      const fallbackSignedAt = existing.signedAt ?? (fallbackSignerName ? docDate : null);
 
       // 1. Reverse old stock + warranties (warranty ต้องลบก่อน saleItem เพราะมี FK)
       const oldItems = await tx.saleItem.findMany({
@@ -683,6 +675,9 @@ export async function updateSale(
           fulfillmentType,
           customerName:    customerName    ?? null,
           customerPhone:   customerPhone   ?? null,
+          signerName:      fallbackSignerName,
+          signerSignatureUrl: fallbackSignerSignatureUrl,
+          signedAt:        fallbackSignedAt,
           shippingAddress: shippingAddress ?? null,
           shippingFee,
           discount,

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
+import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -91,6 +92,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const dueDate = new Date(
     new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000
   );
+  const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
 
   return (
     <>
@@ -419,13 +421,28 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-0 border border-gray-400 text-xs text-center">
-            {["ผู้รับเงิน", "ผู้รับของ"].map((label, i) => (
-              <div key={label} className={`${i < 1 ? "border-r border-gray-400" : ""}`}>
-                <div className="h-16" />
-                <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
-                <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
+            <div className="border-r border-gray-400">
+              <div className="flex h-16 items-end justify-center px-4">
+                {sale.signerSignatureUrl ? (
+                  <Image
+                    src={sale.signerSignatureUrl}
+                    alt={`ลายเซ็น ${signerDisplayName}`}
+                    width={180}
+                    height={64}
+                    className="max-h-[64px] w-auto object-contain"
+                  />
+                ) : null}
               </div>
-            ))}
+              <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">ผู้รับเงิน</div>
+              <div className="px-4 pb-1 text-gray-700">{signerDisplayName}</div>
+              <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
+            </div>
+            <div>
+              <div className="h-16" />
+              <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">ผู้รับของ</div>
+              <div className="pb-1 px-4 text-gray-700">&nbsp;</div>
+              <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
+            </div>
           </div>
         )}
         </div>
