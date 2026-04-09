@@ -121,6 +121,7 @@ const EditableRow = ({
   const [isEditing, setIsEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string>("");
+  const [isToggling, setIsToggling] = useState(false);
 
   const handleUpdate = (formData: FormData) => {
     setError("");
@@ -137,8 +138,13 @@ const EditableRow = ({
   const handleToggle = () => {
     const action = supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน";
     if (!confirm(`ต้องการ${action}ผู้จำหน่าย "${supplier.name}" ใช่หรือไม่?`)) return;
+    setIsToggling(true);
     startTransition(async () => {
-      await toggleSupplier(supplier.id, !supplier.isActive);
+      try {
+        await toggleSupplier(supplier.id, !supplier.isActive);
+      } finally {
+        setIsToggling(false);
+      }
     });
   };
 
@@ -210,7 +216,7 @@ const EditableRow = ({
                 supplier.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
               }`}
             >
-              {supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
+              {isToggling ? "กำลังบันทึก..." : supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
             </button>
           )}
         </div>
