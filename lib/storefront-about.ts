@@ -23,3 +23,17 @@ export const getStorefrontAboutStats = unstable_cache(
     revalidate: 3600,
   },
 );
+
+export async function getPublicStorefrontAboutStats() {
+  try {
+    return await getStorefrontAboutStats();
+  } catch (error) {
+    console.warn("Falling back to default about stats", error);
+    return {
+      activeProductCount: 0,
+      activeCategoryCount: 0,
+      activeBrandCount: 0,
+      activeModelCount: 0,
+    };
+  }
+}

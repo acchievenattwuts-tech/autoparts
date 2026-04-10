@@ -9,11 +9,11 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
   const title = `คำถามที่พบบ่อย | ${config.shopName}`;
   const description =
     "รวมคำถามที่ลูกค้ามักสงสัยเกี่ยวกับร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ วิธีสั่งซื้อ การเช็กสต็อก การจัดส่ง ความน่าเชื่อถือของร้าน และการติดต่อร้าน";
@@ -40,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const FaqPage = async () => {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
 
   const quickGuides = [
     {

@@ -1,5 +1,5 @@
 ﻿import { ImageResponse } from "next/og";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export const size = {
 export const contentType = "image/png";
 
 export default async function Icon() {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
   const logoUrl = config.shopLogoUrl?.trim();
   const shopName = config.shopName?.trim() || "ศรีวรรณ อะไหล่แอร์";
   const initials =

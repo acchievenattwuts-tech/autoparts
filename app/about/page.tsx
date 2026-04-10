@@ -20,11 +20,11 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
-import { getStorefrontAboutStats } from "@/lib/storefront-about";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicStorefrontAboutStats } from "@/lib/storefront-about";
+import { getPublicSiteConfig } from "@/lib/site-config";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
   const title = `เกี่ยวกับร้าน ${config.shopName}`;
   const description =
     "ข้อมูลร้านศรีวรรณ อะไหล่แอร์ ร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ ช่องทางติดต่อ วิธีสั่งซื้อ และแนวทางที่ช่วยให้ลูกค้าค้นหาอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ได้รวดเร็วขึ้น";
@@ -51,7 +51,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const AboutPage = async () => {
-  const [config, statsData] = await Promise.all([getSiteConfig(), getStorefrontAboutStats()]);
+  const [config, statsData] = await Promise.all([
+    getPublicSiteConfig(),
+    getPublicStorefrontAboutStats(),
+  ]);
   const { activeProductCount, activeCategoryCount, activeBrandCount, activeModelCount } = statsData;
 
   const stats = [

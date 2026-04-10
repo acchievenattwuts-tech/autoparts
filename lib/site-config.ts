@@ -32,7 +32,7 @@ export interface SiteConfig {
   vatRate: number; // e.g. 7
 }
 
-const defaultConfig: SiteConfig = {
+export const defaultSiteConfig: SiteConfig = {
   shopName: "ศรีวรรณ อะไหล่แอร์",
   shopSlogan: "อะไหล่แอร์และหม้อน้ำรถยนต์ครบวงจร",
   shopAddress: "",
@@ -69,36 +69,45 @@ export const getSiteConfig = unstable_cache(
     const map = Object.fromEntries(contents.map((c) => [c.key, c.value]));
 
     return {
-      shopName: map["shop_name"] ?? defaultConfig.shopName,
-      shopSlogan: map["shop_slogan"] ?? defaultConfig.shopSlogan,
-      shopAddress: map["shop_address"] ?? defaultConfig.shopAddress,
-      shopPhone: map["shop_phone"] ?? defaultConfig.shopPhone,
-      shopPhoneSecondary: map["shop_phone_secondary"] ?? defaultConfig.shopPhoneSecondary,
-      shopEmail: map["shop_email"] ?? defaultConfig.shopEmail,
-      shopLineId: map["shop_line_id"] ?? defaultConfig.shopLineId,
-      shopLineUrl: map["shop_line_url"] ?? defaultConfig.shopLineUrl,
-      shopLogoUrl: map["shop_logo_url"] ?? defaultConfig.shopLogoUrl,
-      shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultConfig.shopGoogleMapUrl,
-      shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultConfig.shopGoogleMapEmbedUrl,
-      shopBusinessHours: map["shop_business_hours"] ?? defaultConfig.shopBusinessHours,
-      shopHolidayNote: map["shop_holiday_note"] ?? defaultConfig.shopHolidayNote,
-      shopContactNote: map["shop_contact_note"] ?? defaultConfig.shopContactNote,
-      heroTitle: map["hero_title"] ?? defaultConfig.heroTitle,
-      heroSubtitle: map["hero_subtitle"] ?? defaultConfig.heroSubtitle,
-      shopWebsiteUrl: map["shop_website_url"] ?? defaultConfig.shopWebsiteUrl,
-      shopFacebookUrl: map["shop_facebook_url"] ?? defaultConfig.shopFacebookUrl,
+      shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
+      shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
+      shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
+      shopPhone: map["shop_phone"] ?? defaultSiteConfig.shopPhone,
+      shopPhoneSecondary: map["shop_phone_secondary"] ?? defaultSiteConfig.shopPhoneSecondary,
+      shopEmail: map["shop_email"] ?? defaultSiteConfig.shopEmail,
+      shopLineId: map["shop_line_id"] ?? defaultSiteConfig.shopLineId,
+      shopLineUrl: map["shop_line_url"] ?? defaultSiteConfig.shopLineUrl,
+      shopLogoUrl: map["shop_logo_url"] ?? defaultSiteConfig.shopLogoUrl,
+      shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultSiteConfig.shopGoogleMapUrl,
+      shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultSiteConfig.shopGoogleMapEmbedUrl,
+      shopBusinessHours: map["shop_business_hours"] ?? defaultSiteConfig.shopBusinessHours,
+      shopHolidayNote: map["shop_holiday_note"] ?? defaultSiteConfig.shopHolidayNote,
+      shopContactNote: map["shop_contact_note"] ?? defaultSiteConfig.shopContactNote,
+      heroTitle: map["hero_title"] ?? defaultSiteConfig.heroTitle,
+      heroSubtitle: map["hero_subtitle"] ?? defaultSiteConfig.heroSubtitle,
+      shopWebsiteUrl: map["shop_website_url"] ?? defaultSiteConfig.shopWebsiteUrl,
+      shopFacebookUrl: map["shop_facebook_url"] ?? defaultSiteConfig.shopFacebookUrl,
       shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
-      shopTiktokUrl: map["shop_tiktok_url"] ?? defaultConfig.shopTiktokUrl,
+      shopTiktokUrl: map["shop_tiktok_url"] ?? defaultSiteConfig.shopTiktokUrl,
       shopTiktokEnabled: map["shop_tiktok_enabled"] === "true",
-      shopShopeeUrl: map["shop_shopee_url"] ?? defaultConfig.shopShopeeUrl,
+      shopShopeeUrl: map["shop_shopee_url"] ?? defaultSiteConfig.shopShopeeUrl,
       shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
-      shopLazadaUrl: map["shop_lazada_url"] ?? defaultConfig.shopLazadaUrl,
+      shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
       shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
-      printNoticeText: map["print_notice_text"] ?? defaultConfig.printNoticeText,
-      vatType: map["vat_type"] ?? defaultConfig.vatType,
-      vatRate: Number(map["vat_rate"] ?? defaultConfig.vatRate),
+      printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+      vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
+      vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
     };
   },
   ["site-config"],
   { tags: ["site-config"] }
 );
+
+export async function getPublicSiteConfig(): Promise<SiteConfig> {
+  try {
+    return await getSiteConfig();
+  } catch (error) {
+    console.warn("Falling back to default public site config", error);
+    return defaultSiteConfig;
+  }
+}
