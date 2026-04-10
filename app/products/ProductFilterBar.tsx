@@ -14,9 +14,6 @@ interface Props {
   categories: Category[];
 }
 
-const MOBILE_BRAND_PREVIEW_COUNT = 6;
-const MOBILE_CATEGORY_PREVIEW_COUNT = 6;
-
 const FILTER_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18M6 12h12M10 19h4" />
@@ -69,12 +66,8 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
 
   const [isDesktop, setIsDesktop] = useState(false);
   const [isExpanded, setIsExpanded] = useState<boolean>(hasAnyFilter);
-  const [showBrandOptions, setShowBrandOptions] = useState<boolean>(hasCarFilter);
-  const [showCategoryOptions, setShowCategoryOptions] = useState<boolean>(Boolean(category));
 
   const selectedBrand = brands.find((item) => item.name === brand);
-  const mobileBrandPreview = brands.slice(0, MOBILE_BRAND_PREVIEW_COUNT);
-  const mobileCategoryPreview = categories.slice(0, MOBILE_CATEGORY_PREVIEW_COUNT);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
@@ -83,8 +76,6 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
       const nextDesktop = mediaQuery.matches;
       setIsDesktop(nextDesktop);
       setIsExpanded(Boolean(nextDesktop || hasAnyFilter));
-      setShowBrandOptions(Boolean(nextDesktop || hasCarFilter));
-      setShowCategoryOptions(Boolean(nextDesktop || category));
     };
 
     syncState();
@@ -93,7 +84,7 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
     return () => {
       mediaQuery.removeEventListener("change", syncState);
     };
-  }, [category, hasAnyFilter, hasCarFilter]);
+  }, [hasAnyFilter]);
 
   const navigate = (updates: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -177,69 +168,32 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
               </div>
 
               <div className="px-5 py-4">
-                {!isDesktop && !showBrandOptions ? (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {mobileBrandPreview.map((item) => (
-                        <span
-                          key={item.id}
-                          className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500"
-                        >
-                          {item.name}
-                        </span>
-                      ))}
-                      {brands.length === 0 && (
-                        <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
-                      )}
-                    </div>
-                    {brands.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowBrandOptions(true)}
-                        className="inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/15 bg-[#1e3a5f]/5 px-4 py-2 text-sm font-medium text-[#1e3a5f]"
-                      >
-                        เปิดเลือกยี่ห้อรถ
-                        <span aria-hidden="true">{CHEVRON_RIGHT_ICON}</span>
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {brands.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() =>
-                          navigate({
-                            brand: brand === item.name ? "" : item.name,
-                            model: "",
-                          })
-                        }
-                        className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
-                          brand === item.name
-                            ? "border-[#1e3a5f] bg-[#1e3a5f] text-white shadow-sm"
-                            : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
-                        }`}
-                      >
-                        {item.name}
-                      </button>
-                    ))}
-                    {!isDesktop && showBrandOptions && (
-                      <button
-                        type="button"
-                        onClick={() => setShowBrandOptions(false)}
-                        className="rounded-full border border-dashed border-gray-300 px-3.5 py-1.5 text-sm text-gray-500"
-                      >
-                        ย่อรายการ
-                      </button>
-                    )}
-                    {brands.length === 0 && (
-                      <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
-                    )}
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {brands.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        navigate({
+                          brand: brand === item.name ? "" : item.name,
+                          model: "",
+                        })
+                      }
+                      className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all ${
+                        brand === item.name
+                          ? "border-[#1e3a5f] bg-[#1e3a5f] text-white shadow-sm"
+                          : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
+                      }`}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                  {brands.length === 0 && (
+                    <p className="text-sm text-gray-400">ยังไม่มีข้อมูลยี่ห้อรถ</p>
+                  )}
+                </div>
 
-                {showBrandOptions && selectedBrand && selectedBrand.carModels.length > 0 && (
+                {selectedBrand && selectedBrand.carModels.length > 0 && (
                   <div className="mt-4 border-t border-gray-100 pt-4">
                     <div className="mb-2.5 flex items-center gap-1.5">
                       <span className="text-[#1e3a5f]" aria-hidden="true">
@@ -275,66 +229,35 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                   หมวดหมู่สินค้า
                 </p>
-                {!isDesktop && !showCategoryOptions && categories.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryOptions(true)}
-                    className="text-xs font-medium text-[#1e3a5f]"
-                  >
-                    เปิดทั้งหมด
-                  </button>
-                )}
               </div>
 
-              {!isDesktop && !showCategoryOptions ? (
-                <div className="flex flex-wrap gap-2">
-                  {mobileCategoryPreview.map((item) => (
-                    <span
-                      key={item.id}
-                      className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-500"
-                    >
-                      {item.name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate({ category: "" })}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
+                    !category
+                      ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
+                      : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
+                  }`}
+                >
+                  ทั้งหมด
+                </button>
+                {categories.map((item) => (
                   <button
+                    key={item.id}
                     type="button"
-                    onClick={() => navigate({ category: "" })}
+                    onClick={() => navigate({ category: category === item.name ? "" : item.name })}
                     className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                      !category
+                      category === item.name
                         ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
                         : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
                     }`}
                   >
-                    ทั้งหมด
+                    {item.name}
                   </button>
-                  {categories.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => navigate({ category: category === item.name ? "" : item.name })}
-                      className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-all ${
-                        category === item.name
-                          ? "border-[#1e3a5f] bg-[#1e3a5f] text-white"
-                          : "border-gray-200 bg-gray-50 text-gray-600 hover:border-[#1e3a5f] hover:bg-white hover:text-[#1e3a5f]"
-                      }`}
-                    >
-                      {item.name}
-                    </button>
-                  ))}
-                  {!isDesktop && showCategoryOptions && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCategoryOptions(false)}
-                      className="rounded-full border border-dashed border-gray-300 px-4 py-1.5 text-sm text-gray-500"
-                    >
-                      ย่อรายการ
-                    </button>
-                  )}
-                </div>
-              )}
+                ))}
+              </div>
             </div>
 
             {hasAnyFilter && (
