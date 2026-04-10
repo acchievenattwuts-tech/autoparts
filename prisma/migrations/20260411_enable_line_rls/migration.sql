@@ -1,0 +1,3 @@
+ALTER TABLE public."LineRecipient" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public."UserLineRecipient" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public."LineDailySummaryDispatch" ENABLE ROW LEVEL SECURITY;
