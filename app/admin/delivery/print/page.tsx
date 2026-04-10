@@ -70,10 +70,18 @@ const DeliveryPrintPage = async ({
   return (
     <>
       <style>{`
+        @page { margin: 0; }
         @media print {
           .no-print { display: none !important; }
-          .slip { page-break-after: always; }
+          .slip {
+            page-break-after: always;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+          }
           .slip:last-child { page-break-after: avoid; }
+          .receipt-footer { margin-top: auto; }
         }
         @media screen {
           body { background: #f3f4f6; }
@@ -121,7 +129,7 @@ const DeliveryPrintPage = async ({
               transferPrimaryAccount={transferPrimaryAccount}
               promptPayQrDataUrl={promptPayQrDataUrl}
               qrAmount={transferDocumentState.qrAmount}
-              rootClassName="slip mx-auto bg-white p-8 text-[13px] leading-snug"
+              rootClassName="slip mx-auto bg-white p-8 text-[13px] leading-snug md:flex md:min-h-[100vh] md:flex-col"
             />
           );
         }),
