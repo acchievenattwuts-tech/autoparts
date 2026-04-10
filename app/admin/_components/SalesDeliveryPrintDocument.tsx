@@ -88,6 +88,7 @@ const PRINT_BODY_BORDER_CLASS = "border-gray-300";
 const PRINT_HEADER_CELL_CLASS = `border ${PRINT_HEADER_BORDER_CLASS} px-1.5 py-1.5`;
 const PRINT_TABLE_CELL_CLASS = `border ${PRINT_BODY_BORDER_CLASS} px-1.5 py-1.5`;
 const PRINT_SECTION_BORDER_CLASS = `border ${PRINT_BODY_BORDER_CLASS}`;
+const PRINT_SECTION_BOTTOM_BORDER_CLASS = `border-b ${PRINT_BODY_BORDER_CLASS}`;
 const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLASS}`;
 const PRINT_GRID_COLUMN_STYLE = {
   gridTemplateColumns: "1.75rem 6rem minmax(0,1fr) 3rem 3rem 6rem 6rem",
@@ -125,7 +126,7 @@ export default function SalesDeliveryPrintDocument({
       className={rootClassName ?? "mx-auto bg-white p-8 text-[13px] leading-snug"}
       style={{ maxWidth: "900px" }}
     >
-      <div className="mb-4 flex items-start justify-between border-b-2 border-gray-800 pb-3">
+      <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
         <div className="space-y-0.5 text-xs text-gray-600">
           {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
           {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
@@ -139,7 +140,7 @@ export default function SalesDeliveryPrintDocument({
           ) : null}
         </div>
         <div className="text-right">
-          <p className="inline-block border border-gray-700 px-6 py-1.5 text-base font-bold">
+          <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>
             {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
           </p>
           <p className="mt-1 text-xs text-gray-400">หน้า 1/1</p>
@@ -297,7 +298,7 @@ export default function SalesDeliveryPrintDocument({
               <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
               {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
                 <span key={key} className="flex items-center gap-1.5">
-                  <span className="inline-flex h-4 w-4 items-center justify-center border border-gray-500 text-[11px]">
+                  <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
                     {sale.paymentMethod === key ? "✓" : ""}
                   </span>
                   {label}
