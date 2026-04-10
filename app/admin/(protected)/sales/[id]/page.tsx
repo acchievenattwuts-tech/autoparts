@@ -80,6 +80,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         },
         user: { select: { name: true } },
         customer: { select: { id: true, name: true, phone: true, address: true } },
+        cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       },
     }),
     getSiteConfig(),
@@ -95,6 +96,10 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     netAmount: Number(sale.netAmount),
     primaryTransferAccount,
   });
+  const receivedTransferAccount =
+    sale.paymentType === "CASH_SALE" && sale.paymentMethod === "TRANSFER"
+      ? sale.cashBankAccount ?? primaryTransferAccount
+      : null;
   const transferPrimaryAccount = transferDocumentState.shouldShowTransferSection ? primaryTransferAccount : null;
   const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
     ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
@@ -263,6 +268,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         dueDate={dueDate}
         signerDisplayName={signerDisplayName}
         transferPrimaryAccount={transferPrimaryAccount}
+        receivedTransferAccount={receivedTransferAccount}
         promptPayQrDataUrl={promptPayQrDataUrl}
         qrAmount={transferDocumentState.qrAmount}
         rootId="receipt"

@@ -62,6 +62,12 @@ type TransferAccount = {
   promptPayId?: string | null;
 };
 
+type ReceivedTransferAccount = {
+  name: string;
+  bankName?: string | null;
+  accountNo?: string | null;
+} | null;
+
 const PAYMENT_PRINT_LABELS: { key: string; label: string }[] = [
   { key: "CASH", label: "เงินสด" },
   { key: "TRANSFER", label: "เงินโอน" },
@@ -83,6 +89,7 @@ export default function SalesDeliveryPrintDocument({
   dueDate,
   signerDisplayName,
   transferPrimaryAccount,
+  receivedTransferAccount,
   promptPayQrDataUrl,
   qrAmount,
   rootId,
@@ -93,6 +100,7 @@ export default function SalesDeliveryPrintDocument({
   dueDate: Date;
   signerDisplayName: string;
   transferPrimaryAccount: TransferAccount | null;
+  receivedTransferAccount: ReceivedTransferAccount;
   promptPayQrDataUrl: string | null;
   qrAmount: number;
   rootId?: string;
@@ -271,16 +279,25 @@ export default function SalesDeliveryPrintDocument({
       ) : null}
 
       {sale.paymentType === "CASH_SALE" ? (
-        <div className="mb-5 flex items-center gap-6 border border-gray-400 px-3 py-2 text-xs">
-          <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
-          {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span className="inline-flex h-4 w-4 items-center justify-center border border-gray-500 text-[11px]">
-                {sale.paymentMethod === key ? "✓" : ""}
+        <div className="mb-5 border border-gray-400 px-3 py-2 text-xs">
+          <div className="flex items-center gap-6">
+            <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
+            {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
+              <span key={key} className="flex items-center gap-1.5">
+                <span className="inline-flex h-4 w-4 items-center justify-center border border-gray-500 text-[11px]">
+                  {sale.paymentMethod === key ? "✓" : ""}
+                </span>
+                {label}
               </span>
-              {label}
-            </span>
-          ))}
+            ))}
+          </div>
+          {sale.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
+            <div className="mt-2 border-t border-gray-300 pt-2 text-gray-700">
+              <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
+              <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
+              <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
