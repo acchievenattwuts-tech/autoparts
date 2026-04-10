@@ -274,11 +274,11 @@ export default function SalesDeliveryPrintDocument({
       <div className="mt-auto">
         {transferPrimaryAccount || sale.paymentType === "CASH_SALE" || hasPrintNotice ? (
           <div
-            className={`mb-5 grid gap-4 ${hasPrintNotice && hasPrintSupportBlock ? "grid-cols-[minmax(0,7fr)_minmax(0,3fr)]" : "grid-cols-1"}`}
+            className={`mb-5 grid gap-4 ${hasPrintNotice && hasPrintSupportBlock ? "grid-cols-[minmax(0,6fr)_minmax(0,4fr)]" : "grid-cols-1"}`}
           >
             <div>
               {transferPrimaryAccount ? (
-                <div className={`grid grid-cols-[1fr_180px] gap-4 ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}>
+                <div className={`grid grid-cols-[1fr_140px] gap-4 ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}>
                   <div className="space-y-1">
                     <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
                     <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
@@ -296,10 +296,10 @@ export default function SalesDeliveryPrintDocument({
                   </div>
                   <div className="flex items-center justify-center">
                     {promptPayQrDataUrl ? (
-                      <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={180} height={180} />
+                      <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={140} height={140} />
                     ) : (
                       <div
-                        className={`flex h-[180px] w-[180px] items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
+                        className={`flex h-[140px] w-[140px] items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
                       >
                         QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
                       </div>
