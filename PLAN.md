@@ -2561,6 +2561,8 @@ npm run db:restore backup-{timestamp}.json
 
 > Scope for this round: manual collection only. Customer can scan and pay from the document, but staff still verify the incoming payment and key the receipt manually in the existing `Receipt` flow.
 
+> Maintenance rule: `app/admin/(protected)/sales/[id]/page.tsx` and `app/admin/delivery/print/page.tsx` share the same invoice / delivery-note form. Any layout or content change to one must be applied to the other in the same round. Do not leave these two print forms out of sync.
+
 ### Completion update
 
 - [x] Added `isPrimaryTransferAccount` to `CashBankAccount`
@@ -2571,6 +2573,7 @@ npm run db:restore backup-{timestamp}.json
 - [x] Added shared utility/query for reading the current primary transfer account
 - [x] Updated `/admin/sales/[id]` print to show transfer account details and QR from `netAmount`
 - [x] Updated `/admin/delivery/print` bulk print to show transfer account details and QR from `netAmount`
+- [x] Refactored the sales invoice / delivery-note / receipt print layout into a shared template so `/admin/sales/[id]` and `/admin/delivery/print` now use the same form logic
 - [x] Kept documents printable when no primary account exists, with QR/details hidden by fallback
 - [x] Kept this round manual-only: no auto receipt creation, no webhook/bank callback, no reconciliation, no slip OCR
 - [x] Verified the implementation with `npm run build`
