@@ -13,6 +13,8 @@ export type CashBankAccountRow = {
   type: AccountType;
   bankName: string | null;
   accountNo: string | null;
+  promptPayId: string | null;
+  isPrimaryTransferAccount: boolean;
   openingBalance: number;
   openingDate: string;
   isActive: boolean;
@@ -30,6 +32,8 @@ type FormState = {
   type: AccountType;
   bankName: string;
   accountNo: string;
+  promptPayId: string;
+  isPrimaryTransferAccount: boolean;
   openingBalance: string;
   openingDate: string;
   isActive: boolean;
@@ -43,6 +47,8 @@ function emptyFormState(): FormState {
     type: "CASH",
     bankName: "",
     accountNo: "",
+    promptPayId: "",
+    isPrimaryTransferAccount: false,
     openingBalance: "0",
     openingDate: new Date().toISOString().slice(0, 10),
     isActive: true,
@@ -76,6 +82,8 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
       type: account.type,
       bankName: account.bankName ?? "",
       accountNo: account.accountNo ?? "",
+      promptPayId: account.promptPayId ?? "",
+      isPrimaryTransferAccount: account.isPrimaryTransferAccount,
       openingBalance: String(account.openingBalance),
       openingDate: account.openingDate,
       isActive: account.isActive,
@@ -121,6 +129,8 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
     formData.set("type", form.type);
     formData.set("bankName", form.bankName);
     formData.set("accountNo", form.accountNo);
+    formData.set("promptPayId", form.promptPayId);
+    formData.set("isPrimaryTransferAccount", String(form.isPrimaryTransferAccount));
     formData.set("openingBalance", form.openingBalance);
     formData.set("openingDate", form.openingDate);
     formData.set("isActive", String(form.isActive));
@@ -204,7 +214,16 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           <select
             className={`${inputCls} bg-white`}
             value={form.type}
-            onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as AccountType }))}
+            onChange={(e) =>
+              setForm((prev) => {
+                const nextType = e.target.value as AccountType;
+                return {
+                  ...prev,
+                  type: nextType,
+                  isPrimaryTransferAccount: nextType === "BANK" ? prev.isPrimaryTransferAccount : false,
+                };
+              })
+            }
           >
             <option value="CASH">เงินสด</option>
             <option value="BANK">ธนาคาร</option>
@@ -254,15 +273,47 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
             placeholder={form.type === "BANK" ? "ระบุเลขที่บัญชี" : "ใช้เฉพาะบัญชีธนาคาร"}
           />
         </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">PromptPay ID</label>
+          <input
+            className={inputCls}
+            value={form.promptPayId}
+            onChange={(e) => setForm((prev) => ({ ...prev, promptPayId: e.target.value }))}
+            disabled={form.type !== "BANK"}
+            placeholder={form.type === "BANK" ? "เบอร์โทร / เลขบัตร / e-Wallet ID" : "ใช้เฉพาะบัญชีธนาคาร"}
+          />
+        </div>
+        <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <input
+            type="checkbox"
+            checked={form.isPrimaryTransferAccount}
+            disabled={form.type !== "BANK" || !form.isActive}
+            onChange={(e) => setForm((prev) => ({ ...prev, isPrimaryTransferAccount: e.target.checked }))}
+          />
+          บัญชีหลักรับโอน
+        </label>
         <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
           <input
             type="checkbox"
             checked={form.isActive}
-            onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                isActive: e.target.checked,
+                isPrimaryTransferAccount: e.target.checked ? prev.isPrimaryTransferAccount : false,
+              }))
+            }
           />
           ใช้งานบัญชีนี้
         </label>
       </div>
+
+      <p className="text-xs text-gray-500">
+        การเปลี่ยนบัญชีหลักรับโอนใช้แบบ 2 ขั้น: เอาติ๊กออกจากบัญชีเดิมและบันทึกก่อน แล้วค่อยไปติ๊กบัญชีธนาคารใหม่
+      </p>
+      <p className="text-xs text-gray-500">
+        หากต้องการ QR พร้อมยอดชำระ ระบบต้องมี PromptPay ID ในบัญชีธนาคารที่ตั้งเป็นบัญชีหลักรับโอน
+      </p>
 
       <div className="flex flex-wrap gap-3">
         <button
@@ -304,6 +355,9 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
                 <td className="px-3 py-2 text-gray-600">{account.type}</td>
                 <td className="px-3 py-2 text-gray-500">
                   {[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "-"}
+                  {account.promptPayId ? (
+                    <div className="mt-1 text-xs text-gray-400">PromptPay: {account.promptPayId}</div>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 text-right font-medium text-gray-800">
                   {account.openingBalance.toLocaleString("th-TH", {
@@ -319,6 +373,11 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
                   >
                     {account.isActive ? "ใช้งาน" : "ปิดใช้งาน"}
                   </span>
+                  {account.isPrimaryTransferAccount ? (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                      บัญชีหลักรับโอน
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button

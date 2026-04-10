@@ -2556,3 +2556,54 @@ npm run db:restore backup-{timestamp}.json
 - [x] `supplier-payments` supplier dropdown now mirrors the receipt-style outstanding filter by loading only suppliers with non-zero net payable balance.
 - [x] Net payable is derived from active `CREDIT_PURCHASE.amountRemain - SUPPLIER_CREDIT.amountRemain - SupplierAdvance.amountRemain`, and edit mode keeps the current supplier selectable.
 - [x] Updated the outstanding dropdown rule again so both `supplier-payments` and `receipts` now include any non-zero net balance (`!== 0`), not only positive balances.
+
+## Roadmap Update (2026-04-10 Primary Transfer Account + Invoice/Delivery QR)
+
+> Scope for this round: manual collection only. Customer can scan and pay from the document, but staff still verify the incoming payment and key the receipt manually in the existing `Receipt` flow.
+
+### Completion update
+
+- [x] Added `isPrimaryTransferAccount` to `CashBankAccount`
+- [x] Added `promptPayId` on `CashBankAccount` so payment QR can be generated from the primary transfer account
+- [x] Ran schema sync / `prisma db push` for the new fields
+- [x] Enforced server-side rules for `BANK only`, `0 or 1 primary`, `inactive not allowed`, and `unset old primary before setting a new one`
+- [x] Updated `/admin/cash-bank` UI with primary-transfer control, PromptPay ID input, badge, and 2-step change guidance
+- [x] Added shared utility/query for reading the current primary transfer account
+- [x] Updated `/admin/sales/[id]` print to show transfer account details and QR from `netAmount`
+- [x] Updated `/admin/delivery/print` bulk print to show transfer account details and QR from `netAmount`
+- [x] Kept documents printable when no primary account exists, with QR/details hidden by fallback
+- [x] Kept this round manual-only: no auto receipt creation, no webhook/bank callback, no reconciliation, no slip OCR
+- [x] Verified the implementation with `npm run build`
+
+> Checklist below now reflects the actual status of this round.
+
+- [x] Add `isPrimaryTransferAccount` to `CashBankAccount`
+- [x] Add migration / `prisma db push` for the new field
+- [x] Enforce business rules on the server
+- [x] Allow primary transfer account only when `type = BANK`
+- [x] Allow at most `0 or 1` primary transfer account in the whole system
+- [x] Allow the system to stay in a "no primary transfer account" state
+- [x] If a primary already exists, require users to unset it first before setting another account as primary
+- [x] Prevent inactive accounts (`isActive = false`) from being marked as primary
+- [x] Update `/admin/cash-bank` UI
+- [x] Add a control for the primary transfer account
+- [x] Show a clear badge in the account list for the current primary account
+- [x] Show validation messaging when a user attempts to set a second primary account
+- [x] Support the agreed 2-step change flow: unset old primary, save, then set the new `BANK` account
+- [x] Add a shared utility/query for reading the current primary transfer account
+- [x] Update print documents to read bank name and account number from the primary transfer account
+- [x] Generate payment QR using `netAmount`
+- [x] Show QR only when a primary transfer account exists
+- [x] Keep documents printable when no primary transfer account exists, but hide QR and transfer-account details
+- [x] Limit first-round document scope to:
+- [x] `/admin/sales/[id]` invoice / delivery-note print
+- [x] `/admin/delivery/print` bulk delivery print
+- [x] Test the agreed business rules
+- [x] Existing primary blocks creating a second primary
+- [x] Unsetting primary does not auto-switch another account into primary
+- [x] Documents without a primary account still render safely
+- [x] QR amount follows `netAmount` exactly per current policy
+- [x] Keep non-scope items out of this round
+- [x] No auto receipt creation
+- [x] No webhook / bank callback / reconciliation
+- [x] No slip OCR / slip matching / payment-status automation

@@ -17,6 +17,7 @@ import {
   recalculateCashBankAccount,
   replaceCashBankSourceMovements,
 } from "@/lib/cash-bank";
+import { getPrimaryTransferRuleViolation, type PrimaryTransferRuleCode } from "@/lib/cash-bank-primary-transfer";
 
 const parseBoolean = (value: FormDataEntryValue | null): boolean => value === "true" || value === "on";
 
@@ -26,6 +27,8 @@ const accountSchema = z.object({
   type: z.nativeEnum(CashBankAccountType),
   bankName: z.string().trim().max(120).optional(),
   accountNo: z.string().trim().max(50).optional(),
+  promptPayId: z.string().trim().max(50).optional(),
+  isPrimaryTransferAccount: z.boolean(),
   openingBalance: z.coerce.number().min(0, "ยอดยกมาต้องไม่ต่ำกว่า 0"),
   openingDate: z.string().min(1, "กรุณาระบุวันที่ยอดยกมา"),
   isActive: z.boolean(),
@@ -64,6 +67,8 @@ function revalidateCashBankViews(): void {
   revalidatePath("/admin/cash-bank/ledger");
   revalidatePath("/admin/cash-bank/transfers");
   revalidatePath("/admin/cash-bank/adjustments");
+  revalidatePath("/admin/delivery");
+  revalidatePath("/admin/sales");
   revalidatePath("/admin/reports/cash-bank-ledger");
   revalidatePath("/admin/reports/cash-bank-transfers");
   revalidatePath("/admin/reports/cash-bank-adjustments");
@@ -84,6 +89,78 @@ function validateCashBankAccountInput(data: z.infer<typeof accountSchema>): stri
   }
 
   return null;
+}
+
+async function validatePrimaryTransferAccountAvailability(
+  tx: any,
+  data: z.infer<typeof accountSchema>,
+  accountId?: string,
+): Promise<string | null> {
+  if (!data.isPrimaryTransferAccount) return null;
+
+  const currentPrimary = await tx.cashBankAccount.findFirst({
+    where: {
+      isPrimaryTransferAccount: true,
+      ...(accountId ? { id: { not: accountId } } : {}),
+    },
+    select: { code: true, name: true },
+  });
+
+  const violation = getPrimaryTransferRuleViolation({
+    type: data.type,
+    isActive: data.isActive,
+    isPrimaryTransferAccount: data.isPrimaryTransferAccount,
+    promptPayId: data.promptPayId,
+    hasAnotherPrimary: Boolean(currentPrimary),
+  });
+
+  if (violation) {
+    return getPrimaryTransferRuleMessage(violation, currentPrimary ?? null);
+  }
+  return null;
+
+  if (data.type !== CashBankAccountType.BANK) {
+    return "บัญชีหลักรับโอนต้องเป็นบัญชีประเภทธนาคาร";
+  }
+
+  if (!data.isActive) {
+    return "บัญชีหลักรับโอนต้องอยู่ในสถานะใช้งาน";
+  }
+
+  if (!data.promptPayId?.trim()) {
+    return "บัญชีหลักรับโอนต้องระบุ PromptPay ID เพื่อสร้าง QR สำหรับชำระเงิน";
+  }
+
+  const legacyExistingPrimary = await tx.cashBankAccount.findFirst({
+    where: {
+      isPrimaryTransferAccount: true,
+      ...(accountId ? { id: { not: accountId } } : {}),
+    },
+    select: { code: true, name: true },
+  });
+
+  if (!legacyExistingPrimary) return null;
+  const existingPrimary = legacyExistingPrimary;
+
+  return `มีบัญชีหลักรับโอนอยู่แล้ว (${existingPrimary.code} - ${existingPrimary.name}) กรุณาเอาติ๊กออกจากบัญชีเดิมก่อน`;
+}
+
+function getPrimaryTransferRuleMessage(
+  violation: PrimaryTransferRuleCode,
+  existingPrimary: { code: string; name: string } | null,
+): string {
+  switch (violation) {
+    case "PRIMARY_REQUIRES_BANK":
+      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเน€เธเนเธเธเธฑเธเธเธตเธเธฃเธฐเน€เธ เธ—เธเธเธฒเธเธฒเธฃ";
+    case "PRIMARY_REQUIRES_ACTIVE":
+      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเธญเธขเธนเนเนเธเธชเธ–เธฒเธเธฐเนเธเนเธเธฒเธ";
+    case "PRIMARY_REQUIRES_PROMPTPAY":
+      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเธฃเธฐเธเธธ PromptPay ID เน€เธเธทเนเธญเธชเธฃเนเธฒเธ QR เธชเธณเธซเธฃเธฑเธเธเธณเธฃเธฐเน€เธเธดเธ";
+    case "PRIMARY_ALREADY_EXISTS":
+      return existingPrimary
+        ? `เธกเธตเธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธญเธขเธนเนเนเธฅเนเธง (${existingPrimary.code} - ${existingPrimary.name}) เธเธฃเธธเธ“เธฒเน€เธญเธฒเธ•เธดเนเธเธญเธญเธเธเธฒเธเธเธฑเธเธเธตเน€เธ”เธดเธกเธเนเธญเธ`
+        : "เธกเธตเธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธญเธขเธนเนเนเธฅเนเธง เธเธฃเธธเธ“เธฒเน€เธญเธฒเธ•เธดเนเธเธญเธญเธเธเธฒเธเธเธฑเธเธเธตเน€เธ”เธดเธกเธเนเธญเธ";
+  }
 }
 
 export async function seedDefaultCashBankAccounts() {
@@ -153,6 +230,8 @@ export async function createCashBankAccount(formData: FormData) {
       type: formData.get("type"),
       bankName: formData.get("bankName") || undefined,
       accountNo: formData.get("accountNo") || undefined,
+      promptPayId: formData.get("promptPayId") || undefined,
+      isPrimaryTransferAccount: parseBoolean(formData.get("isPrimaryTransferAccount")),
       openingBalance: formData.get("openingBalance") || 0,
       openingDate: formData.get("openingDate"),
       isActive: parseBoolean(formData.get("isActive")),
@@ -164,6 +243,11 @@ export async function createCashBankAccount(formData: FormData) {
 
     const data = parsed.data;
     await dbTx(async (tx) => {
+      const primaryValidationError = await validatePrimaryTransferAccountAvailability(tx, data);
+      if (primaryValidationError) {
+        throw new Error(primaryValidationError);
+      }
+
       await tx.cashBankAccount.create({
         data: {
           code: data.code,
@@ -171,6 +255,8 @@ export async function createCashBankAccount(formData: FormData) {
           type: data.type,
           bankName: data.type === CashBankAccountType.BANK ? data.bankName || null : null,
           accountNo: data.type === CashBankAccountType.BANK ? data.accountNo || null : null,
+          promptPayId: data.type === CashBankAccountType.BANK ? data.promptPayId || null : null,
+          isPrimaryTransferAccount: data.isPrimaryTransferAccount,
           openingBalance: data.openingBalance,
           openingDate: new Date(data.openingDate),
           isActive: data.isActive,
@@ -182,6 +268,9 @@ export async function createCashBankAccount(formData: FormData) {
     return { success: true };
   } catch (error) {
     console.error("createCashBankAccount", error);
+    if (error instanceof Error && error.message) {
+      return { error: error.message };
+    }
     return { error: "ไม่สามารถสร้างบัญชีเงินได้" };
   }
 }
@@ -196,6 +285,8 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
       type: formData.get("type"),
       bankName: formData.get("bankName") || undefined,
       accountNo: formData.get("accountNo") || undefined,
+      promptPayId: formData.get("promptPayId") || undefined,
+      isPrimaryTransferAccount: parseBoolean(formData.get("isPrimaryTransferAccount")),
       openingBalance: formData.get("openingBalance") || 0,
       openingDate: formData.get("openingDate"),
       isActive: parseBoolean(formData.get("isActive")),
@@ -207,6 +298,11 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
 
     const data = parsed.data;
     await dbTx(async (tx) => {
+      const primaryValidationError = await validatePrimaryTransferAccountAvailability(tx, data, accountId);
+      if (primaryValidationError) {
+        throw new Error(primaryValidationError);
+      }
+
       await tx.cashBankAccount.update({
         where: { id: accountId },
         data: {
@@ -215,6 +311,8 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
           type: data.type,
           bankName: data.type === CashBankAccountType.BANK ? data.bankName || null : null,
           accountNo: data.type === CashBankAccountType.BANK ? data.accountNo || null : null,
+          promptPayId: data.type === CashBankAccountType.BANK ? data.promptPayId || null : null,
+          isPrimaryTransferAccount: data.isPrimaryTransferAccount,
           openingBalance: data.openingBalance,
           openingDate: new Date(data.openingDate),
           isActive: data.isActive,
@@ -227,6 +325,9 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
     return { success: true };
   } catch (error) {
     console.error("updateCashBankAccount", error);
+    if (error instanceof Error && error.message) {
+      return { error: error.message };
+    }
     return { error: "ไม่สามารถแก้ไขบัญชีเงินได้" };
   }
 }

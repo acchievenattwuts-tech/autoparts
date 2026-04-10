@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import AutoPrint from "@/components/shared/AutoPrint";
 import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
+import { buildPromptPayQrDataUrl, getPrimaryTransferAccount, getTransferDocumentState } from "@/lib/payment-qr";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 
@@ -22,7 +23,7 @@ const DeliveryPrintPage = async ({
   const idList = ids.split(",").filter(Boolean).slice(0, 100);
   if (idList.length === 0) notFound();
 
-  const [sales, contents] = await Promise.all([
+  const [sales, contents, primaryTransferAccount] = await Promise.all([
     db.sale.findMany({
       where: { id: { in: idList }, fulfillmentType: "DELIVERY", status: "ACTIVE" },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
@@ -57,6 +58,7 @@ const DeliveryPrintPage = async ({
     db.siteContent.findMany({
       where: { key: { in: ["shopName", "shopPhone", "shopAddress"] } },
     }),
+    getPrimaryTransferAccount(),
   ]);
 
   if (sales.length === 0) notFound();
@@ -96,10 +98,19 @@ const DeliveryPrintPage = async ({
         <AutoPrint />
       </Suspense>
 
-      {sales.map((sale) => {
+      {await Promise.all(sales.map(async (sale) => {
         const customerName = sale.customer?.name ?? sale.customerName ?? "-";
         const customerPhone = sale.customer?.phone ?? sale.customerPhone ?? "-";
+        const transferDocumentState = getTransferDocumentState({
+          paymentType: sale.paymentType,
+          netAmount: Number(sale.netAmount),
+          primaryTransferAccount,
+        });
+        const transferPrimaryAccount = transferDocumentState.shouldShowTransferSection ? primaryTransferAccount : null;
         const isCOD = sale.paymentType === "CREDIT_SALE";
+        const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
+          ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
+          : null;
 
         return (
           <div key={sale.id} className="slip">
@@ -202,6 +213,35 @@ const DeliveryPrintPage = async ({
               {isCOD ? `กรุณาชำระ ฿${fmt(sale.amountRemain)}` : "ชำระแล้ว"}
             </div>
 
+            {transferPrimaryAccount ? (
+              <div className="mt-4 grid grid-cols-[1fr_160px] gap-4 rounded border border-gray-300 p-3">
+                <div className="text-sm">
+                  <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
+                  <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
+                  <p className="font-mono text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
+                  {transferPrimaryAccount.promptPayId ? (
+                    <p className="text-xs text-gray-500">
+                      PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-500">ยังไม่ได้ตั้ง PromptPay ID จึงแสดงเฉพาะเลขบัญชี</p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">
+                    ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">฿{fmt(transferDocumentState.qrAmount)}</span>
+                  </p>
+                </div>
+                <div className="flex items-center justify-center">
+                  {promptPayQrDataUrl ? (
+                    <img src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} className="h-40 w-40" />
+                  ) : (
+                    <div className="flex h-40 w-40 items-center justify-center border border-dashed border-gray-300 p-3 text-center text-xs text-gray-400">
+                      QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-2 gap-8 mt-6 text-sm text-gray-500">
               <div>
                 <p>ผู้ส่งของ .......................................</p>
@@ -214,7 +254,7 @@ const DeliveryPrintPage = async ({
             </div>
           </div>
         );
-      })}
+      }))}
     </>
   );
 };

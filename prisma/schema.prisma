@@ -679,6 +679,8 @@ model CashBankAccount {
   type              CashBankAccountType
   bankName          String?
   accountNo         String?
+  promptPayId       String?
+  isPrimaryTransferAccount Boolean       @default(false)
   openingBalance    Decimal              @default(0) @db.Decimal(10, 2)
   openingDate       DateTime
   isActive          Boolean              @default(true)

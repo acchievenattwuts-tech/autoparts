@@ -11,6 +11,7 @@ import PrintButton from "./PrintButton";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { buildPromptPayQrDataUrl, getPrimaryTransferAccount, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 
@@ -70,7 +71,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
-  const [sale, cfg] = await Promise.all([
+  const [sale, cfg, primaryTransferAccount] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -85,6 +86,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       },
     }),
     getSiteConfig(),
+    getPrimaryTransferAccount(),
   ]);
 
   if (!sale) notFound();
@@ -93,6 +95,16 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000
   );
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
+  const transferDocumentState = getTransferDocumentState({
+    paymentType: sale.paymentType,
+    netAmount: Number(sale.netAmount),
+    primaryTransferAccount,
+  });
+  const transferPrimaryAccount = transferDocumentState.shouldShowTransferSection ? primaryTransferAccount : null;
+  const promptPayQrDataUrl =
+    transferDocumentState.shouldGenerateQr
+      ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
+      : null;
 
   return (
     <>
@@ -393,6 +405,35 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         </div>
 
         {/* 5. Payment checkboxes (cash sales only) — เงินสด / เงินโอน */}
+        {transferPrimaryAccount ? (
+          <div className="mb-5 grid grid-cols-[1fr_180px] gap-4 border border-gray-400 p-3 text-xs">
+            <div className="space-y-1">
+              <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
+              <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
+              <p className="font-mono text-sm text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
+              {transferPrimaryAccount.promptPayId ? (
+                <p className="text-gray-500">
+                  PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
+                </p>
+              ) : (
+                <p className="text-gray-500">ยังไม่ได้ตั้ง PromptPay ID จึงแสดงเฉพาะข้อมูลบัญชีสำหรับโอน</p>
+              )}
+              <p className="text-gray-500">
+                ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">{fmtNum(transferDocumentState.qrAmount)}</span>
+              </p>
+            </div>
+            <div className="flex items-center justify-center">
+              {promptPayQrDataUrl ? (
+                <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={180} height={180} />
+              ) : (
+                <div className="flex h-[180px] w-[180px] items-center justify-center border border-dashed border-gray-300 p-4 text-center text-[11px] text-gray-400">
+                  QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {sale.paymentType === "CASH_SALE" && (
           <div className="border border-gray-400 px-3 py-2 mb-5 text-xs flex items-center gap-6">
             <span className="text-gray-500 whitespace-nowrap">ชำระโดย:</span>
