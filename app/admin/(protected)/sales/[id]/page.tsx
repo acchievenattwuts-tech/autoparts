@@ -112,6 +112,10 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
+          #receipt, #receipt * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           #receipt {
             position: absolute;
             left: 0;

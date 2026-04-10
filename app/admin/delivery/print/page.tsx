@@ -74,6 +74,10 @@ const DeliveryPrintPage = async ({
         @page { margin: 0; }
         @media print {
           .no-print { display: none !important; }
+          .slip, .slip * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           .slip {
             page-break-after: always;
             width: 100%;
