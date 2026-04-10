@@ -33,10 +33,64 @@ model User {
   sales              Sale[]
   supplierAdvances   SupplierAdvance[]
   supplierPayments   SupplierPayment[]
+  lineRecipientLinks UserLineRecipient[]
+  lineSummaryDispatches LineDailySummaryDispatch[]
   appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
   @@index([appRoleId])
+}
+
+model LineRecipient {
+  id              String             @id @default(cuid())
+  lineId          String             @unique
+  type            LineRecipientType
+  status          LineRecipientStatus @default(ACTIVE)
+  displayName     String?
+  sourceName      String?
+  sourceDetail    String?
+  lastWebhookAt   DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  userLinks       UserLineRecipient[]
+
+  @@index([type, status])
+}
+
+model UserLineRecipient {
+  id          String        @id @default(cuid())
+  userId      String        @unique
+  recipientId String        @unique
+  note        String?
+  linkedAt    DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  recipient   LineRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId])
+}
+
+model LineDailySummaryDispatch {
+  id                String                       @id @default(cuid())
+  dispatchKey       String?                      @unique
+  reportDayKey      String
+  dispatchKind      LineDailySummaryDispatchKind
+  status            LineDailySummaryDispatchStatus
+  targetMode        LineDailySummaryTargetMode
+  recipientCount    Int                          @default(0)
+  sentCount         Int                          @default(0)
+  recipientSnapshot String?
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  triggeredByUserId String?
+  triggeredByUser   User?                        @relation(fields: [triggeredByUserId], references: [id])
+
+  @@index([reportDayKey, dispatchKind])
+  @@index([status, createdAt])
+  @@index([triggeredByUserId])
 }
 
 model LoginThrottle {
@@ -967,6 +1021,34 @@ model product_search_documents {
 enum Role {
   ADMIN
   STAFF
+}
+
+enum LineRecipientType {
+  USER
+  GROUP
+  ROOM
+}
+
+enum LineRecipientStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum LineDailySummaryTargetMode {
+  ENV_IDS
+  ADMIN_USERS
+}
+
+enum LineDailySummaryDispatchKind {
+  SCHEDULED
+  TEST
+}
+
+enum LineDailySummaryDispatchStatus {
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
 }
 
 enum StockCardSource {

@@ -1,9 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { LineRecipientType } from "@/lib/generated/prisma";
+import LineDailySummaryManager from "@/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager";
 import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
-import { getLineDailySummaryConfig } from "@/lib/line-messaging";
+import { getLineDailySummarySettings } from "@/lib/line-daily-summary-settings";
+import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 import { requirePermission } from "@/lib/require-auth";
+import { db } from "@/lib/db";
 
 interface PageProps {
   searchParams: Promise<{
@@ -43,10 +47,102 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
   await requirePermission("reports.view");
   const params = await searchParams;
   const reportDayKey = resolveBangkokDayKey(params.date);
-  const summary = await buildLineDailySummary(reportDayKey);
-  const lineConfig = getLineDailySummaryConfig();
+
+  const [
+    summary,
+    settings,
+    lineConfig,
+    resolvedRecipients,
+    adminUsers,
+    recipients,
+    recentDispatches,
+  ] = await Promise.all([
+    buildLineDailySummary(reportDayKey),
+    getLineDailySummarySettings(),
+    Promise.resolve(getLineDailySummaryConfig()),
+    getLineDailySummarySettings().then((value) => resolveConfiguredLineRecipients(value.targetMode)),
+    db.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        lineRecipientLinks: {
+          select: {
+            recipient: {
+              select: {
+                id: true,
+                lineId: true,
+                displayName: true,
+              },
+            },
+          },
+          take: 1,
+        },
+      },
+      orderBy: { name: "asc" },
+    }),
+    db.lineRecipient.findMany({
+      orderBy: [{ type: "asc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        lineId: true,
+        type: true,
+        displayName: true,
+        sourceName: true,
+        lastWebhookAt: true,
+        userLinks: {
+          select: {
+            user: {
+              select: {
+                name: true,
+              },
+            },
+          },
+          take: 1,
+        },
+      },
+    }),
+    db.lineDailySummaryDispatch.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: {
+        id: true,
+        reportDayKey: true,
+        dispatchKind: true,
+        status: true,
+        targetMode: true,
+        recipientCount: true,
+        sentCount: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
   const missingCronSecret = !lineConfig.cronSecret;
   const totalRiskItems = summary.counts.lowStockCount + summary.counts.outOfStockCount;
+  const availableUserRecipients = recipients
+    .filter((recipient) => recipient.type === LineRecipientType.USER)
+    .map((recipient) => ({
+      id: recipient.id,
+      lineId: recipient.lineId,
+      type: recipient.type,
+      displayName: recipient.displayName,
+      sourceName: recipient.sourceName,
+      lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
+      linkedUserName: recipient.userLinks[0]?.user.name ?? null,
+    }));
+  const otherRecipients = recipients
+    .filter((recipient) => recipient.type !== LineRecipientType.USER)
+    .map((recipient) => ({
+      id: recipient.id,
+      lineId: recipient.lineId,
+      type: recipient.type,
+      displayName: recipient.displayName,
+      sourceName: recipient.sourceName,
+      lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
+      linkedUserName: recipient.userLinks[0]?.user.name ?? null,
+    }));
 
   return (
     <div className="space-y-4">
@@ -54,7 +150,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         <div>
           <h2 className="font-kanit text-2xl font-bold text-gray-900">LINE OA Daily Summary</h2>
           <p className="text-sm text-gray-500">
-            Preview ข้อความสรุปงานรายวันสำหรับเจ้าของร้าน โดยยึดข้อมูลจริงจากระบบและแยกยอดขายออกจากเงินรับเข้า
+            Preview ข้อความสรุปรายวัน พร้อมตั้งเวลาในระบบ, Test Send, webhook recipient capture และ mapping สำหรับส่งหา ADMIN
           </p>
         </div>
 
@@ -99,47 +195,61 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">สถานะการตั้งค่า</h3>
+          <h3 className="font-kanit text-lg font-semibold text-gray-900">สถานะการส่งปัจจุบัน</h3>
           <p className="text-sm text-gray-500">
-            Schedule รอบแรกถูกตั้งไว้ที่ `19:30 Asia/Bangkok` ผ่าน `vercel.json` และ route จะส่งจริงเมื่อ env พร้อมกับมี `CRON_SECRET`
+            หน้า admin นี้ยังคง preview ข้อความเดิมไว้เหมือนเดิม แต่เพิ่ม scheduler setting และ admin-targeting เป็น layer ใหม่ด้านบน
           </p>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard title="ผู้รับ LINE" value={`${lineConfig.recipientIds.length} คน/ปลายทาง`} />
+          <StatCard
+            title="ผู้รับตาม target ปัจจุบัน"
+            value={`${resolvedRecipients.recipientIds.length} ปลายทาง`}
+            tone={resolvedRecipients.recipientIds.length > 0 ? "default" : "warn"}
+          />
           <StatCard
             title="Channel Token"
             value={lineConfig.channelAccessToken ? "พร้อมใช้งาน" : "ยังไม่ตั้งค่า"}
             tone={lineConfig.channelAccessToken ? "default" : "warn"}
           />
           <StatCard
+            title="Channel Secret"
+            value={lineConfig.channelSecret ? "พร้อม webhook" : "ยังไม่ตั้งค่า"}
+            tone={lineConfig.channelSecret ? "default" : "warn"}
+          />
+          <StatCard
             title="Cron Secret"
             value={missingCronSecret ? "ยังไม่ตั้งค่า" : "พร้อมใช้งาน"}
             tone={missingCronSecret ? "warn" : "default"}
           />
-          <StatCard
-            title="Delivery Config"
-            value={lineConfig.missingDeliveryEnv.length === 0 ? "พร้อมส่งจริง" : "ยังไม่ครบ"}
-            tone={lineConfig.missingDeliveryEnv.length === 0 ? "default" : "warn"}
-          />
         </div>
 
-        {lineConfig.missingDeliveryEnv.length > 0 && (
+        {(lineConfig.missingDeliveryEnv.length > 0 || resolvedRecipients.missingDeliveryEnv.length > 0) && (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-medium">Env ที่ยังต้องตั้งค่าก่อนส่งจริง</p>
-            <p className="mt-1">{lineConfig.missingDeliveryEnv.join(", ")}</p>
-          </div>
-        )}
-
-        {missingCronSecret && (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p className="font-medium">ยังไม่มี `CRON_SECRET`</p>
+            <p className="font-medium">รายการที่ยังต้องเตรียมก่อนส่งจริง</p>
             <p className="mt-1">
-              Route scheduled send จะยังไม่รับคำสั่งส่งจริงจนกว่าจะตั้งค่า secret ฝั่ง server ให้เรียบร้อย
+              {[...lineConfig.missingDeliveryEnv, ...resolvedRecipients.missingDeliveryEnv].join(", ")}
             </p>
           </div>
         )}
       </section>
+
+      <LineDailySummaryManager
+        reportDayKey={reportDayKey}
+        settings={settings}
+        adminUsers={adminUsers.map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          lineRecipient: user.lineRecipientLinks[0]?.recipient ?? null,
+        }))}
+        availableUserRecipients={availableUserRecipients}
+        otherRecipients={otherRecipients}
+        recentDispatches={recentDispatches.map((dispatch) => ({
+          ...dispatch,
+          createdAt: dispatch.createdAt.toISOString(),
+        }))}
+      />
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-gray-200 bg-white p-5">

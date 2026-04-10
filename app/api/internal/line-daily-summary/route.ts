@@ -1,8 +1,14 @@
 export const dynamic = "force-dynamic";
 
 import type { NextRequest } from "next/server";
+import { LineDailySummaryDispatchKind } from "@/lib/generated/prisma";
 import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
-import { getLineDailySummaryConfig, pushLineTextMessage } from "@/lib/line-messaging";
+import { deliverLineDailySummary } from "@/lib/line-daily-summary-delivery";
+import {
+  getLineDailySummarySettings,
+  shouldSendLineDailySummaryNow,
+} from "@/lib/line-daily-summary-settings";
+import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 
 function unauthorizedResponse() {
   return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
@@ -24,41 +30,71 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const reportDayKey = resolveBangkokDayKey(searchParams.get("date") ?? undefined);
+  const settings = await getLineDailySummarySettings();
   const dryRun = searchParams.get("dryRun") === "1";
-  const summary = await buildLineDailySummary(reportDayKey);
+  const forcedReportDayKey = searchParams.get("date");
 
   if (dryRun) {
+    const reportDayKey = resolveBangkokDayKey(forcedReportDayKey ?? undefined);
+    const [summary, recipients] = await Promise.all([
+      buildLineDailySummary(reportDayKey),
+      resolveConfiguredLineRecipients(settings.targetMode),
+    ]);
+
     return Response.json({
       ok: true,
       dryRun: true,
       reportDayKey: summary.reportDayKey,
-      recipientCount: config.recipientIds.length,
-      missingDeliveryEnv: config.missingDeliveryEnv,
+      settings,
+      recipientCount: recipients.recipientIds.length,
+      recipients: recipients.recipientIds,
+      missingDeliveryEnv: [...config.missingDeliveryEnv, ...recipients.missingDeliveryEnv],
       message: summary.message,
     });
   }
 
-  if (config.missingDeliveryEnv.length > 0 || !config.channelAccessToken) {
+  const scheduleCheck = shouldSendLineDailySummaryNow(settings, new Date());
+  if (!scheduleCheck.ok) {
+    return Response.json({
+      ok: true,
+      skipped: true,
+      reason: scheduleCheck.reason,
+      settings,
+    });
+  }
+
+  const reportDayKey = scheduleCheck.reportDayKey;
+
+  const result = await deliverLineDailySummary({
+    reportDayKey,
+    dispatchKind: LineDailySummaryDispatchKind.SCHEDULED,
+    targetMode: settings.targetMode,
+  });
+
+  if (!result.ok && result.status === "SKIPPED") {
+    return Response.json({
+      ok: true,
+      skipped: true,
+      reason: result.reason,
+      reportDayKey: result.reportDayKey,
+    });
+  }
+
+  if (!result.ok) {
     return Response.json(
       {
         ok: false,
-        error: "LINE delivery config is incomplete",
-        missingDeliveryEnv: config.missingDeliveryEnv,
+        error: result.reason,
+        reportDayKey: result.reportDayKey,
+        missingDeliveryEnv: result.missingDeliveryEnv ?? [],
       },
       { status: 503 }
     );
   }
 
-  const result = await pushLineTextMessage({
-    channelAccessToken: config.channelAccessToken,
-    recipientIds: config.recipientIds,
-    text: summary.message,
-  });
-
   return Response.json({
     ok: true,
-    reportDayKey: summary.reportDayKey,
+    reportDayKey: result.reportDayKey,
     sentCount: result.sentCount,
     recipientIds: result.recipientIds,
   });

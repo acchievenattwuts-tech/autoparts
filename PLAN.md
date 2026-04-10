@@ -2827,3 +2827,33 @@ npm run db:restore backup-{timestamp}.json
 - [x] Added LINE Messaging API delivery helper with env-based recipient configuration
 - [x] Added first-pass daily evening schedule in `vercel.json` at `19:30 Asia/Bangkok` (`12:30 UTC`)
 - [x] Kept this round owner-facing only and out of scope from webhook/slip-OCR/chatbot/customer messaging flows
+
+## Roadmap Update (2026-04-11 LINE OA Admin Targeting + Scheduler Settings)
+
+> Scope for this round: keep the existing LINE daily summary payload intact, but add runtime scheduling in DB, admin-side test send, LINE recipient capture, admin-to-LINE mapping, and admin-target delivery. Do not change the existing sales/receipt/purchase/business calculations inside the summary builder.
+
+### Checklist
+
+- [x] Keep `lib/line-daily-summary.ts` business totals unchanged so the summary content still matches the agreed mapping
+- [x] Add DB-backed runtime settings for `enabled`, `sendTime`, `targetMode`, and last successful scheduled send markers
+- [x] Change cron strategy from fixed once-per-day timing to frequent polling plus DB time check before send
+- [x] Add a `Test Send` action on `/admin/reports/line-daily-summary`
+- [x] Add a dedicated table for LINE recipients captured from webhook events
+- [x] Add a dedicated table for `User -> LINE recipient` mapping so admin targeting is explicit and auditable
+- [x] Add a dispatch log table for scheduled/test sends to support visibility and duplicate protection
+- [x] Add webhook route to capture `userId`, `groupId`, and `roomId` automatically from LINE events
+- [x] Verify LINE webhook requests with `LINE_MESSAGING_API_CHANNEL_SECRET`
+- [x] Add admin-target recipient resolution that sends only to active `ADMIN` users with mapped LINE `USER` recipients
+- [x] Preserve env-based target delivery as the default non-breaking mode (`ENV_IDS`) until the owner switches to `ADMIN_USERS`
+- [x] Keep group/room recipients visible in admin, but do not include them in admin-user targeting
+- [x] Add admin UI on the LINE summary page for schedule settings, mappings, captured recipients, and recent dispatches
+- [x] Update `.env.example` with webhook secret requirements
+- [x] Run Prisma generate / db push for the new LINE models
+- [x] Verify `npm run build`
+
+### Guard rails
+
+- [x] Do not alter existing sale / receipt / purchase / stock logic used by the daily summary numbers
+- [x] Do not remove the existing env-recipient delivery path
+- [x] Do not auto-link LINE recipients to system users heuristically; mapping must be explicit
+- [x] Do not send scheduled messages twice for the same day when a dispatch lock already exists
