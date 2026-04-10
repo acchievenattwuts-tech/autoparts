@@ -45,6 +45,7 @@ const DeliveryPrintPage = async ({
         note: true,
         signerName: true,
         signerSignatureUrl: true,
+        cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
         user: { select: { name: true } },
         customer: { select: { name: true, phone: true, address: true } },
         items: {
@@ -114,6 +115,10 @@ const DeliveryPrintPage = async ({
           });
           const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
           const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
+          const receivedTransferAccount =
+            sale.paymentType === "CASH_SALE" && sale.paymentMethod === "TRANSFER"
+              ? sale.cashBankAccount ?? primaryTransferAccount
+              : null;
           const transferPrimaryAccount = transferDocumentState.shouldShowTransferSection ? primaryTransferAccount : null;
           const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
             ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
@@ -127,6 +132,7 @@ const DeliveryPrintPage = async ({
               dueDate={dueDate}
               signerDisplayName={signerDisplayName}
               transferPrimaryAccount={transferPrimaryAccount}
+              receivedTransferAccount={receivedTransferAccount}
               promptPayQrDataUrl={promptPayQrDataUrl}
               qrAmount={transferDocumentState.qrAmount}
               rootClassName="slip mx-auto bg-white p-8 text-[13px] leading-snug md:flex md:min-h-[100vh] md:flex-col"
