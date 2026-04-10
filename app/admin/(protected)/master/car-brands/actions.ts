@@ -19,35 +19,13 @@ const refreshCarSearchCaches = async (filters?: {
   carModelId?: string;
 }) => {
   revalidatePath("/products");
-  revalidatePath("/sitemap.xml");
+  updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateTag("product-search");
 
   if (!filters?.carBrandId && !filters?.carModelId) {
     return;
   }
-
-  const productIds = await db.product.findMany({
-    where: {
-      carModels: {
-        some: {
-          ...(filters.carModelId ? { carModelId: filters.carModelId } : {}),
-          ...(filters.carBrandId
-            ? {
-                carModel: {
-                  carBrandId: filters.carBrandId,
-                },
-              }
-            : {}),
-        },
-      },
-    },
-    select: { id: true },
-  });
-
-  productIds.forEach(({ id }) => {
-    updateTag(`storefront-product:${id}`);
-  });
 };
 
 export const createCarBrand = async (formData: FormData): Promise<{ error?: string }> => {

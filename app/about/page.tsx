@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -19,8 +19,8 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
-import { db } from "@/lib/db";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { getStorefrontAboutStats } from "@/lib/storefront-about";
 import { getSiteConfig } from "@/lib/site-config";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -51,14 +51,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const AboutPage = async () => {
-  const [config, activeProductCount, activeCategoryCount, activeBrandCount, activeModelCount] =
-    await Promise.all([
-      getSiteConfig(),
-      db.product.count({ where: { isActive: true } }),
-      db.category.count({ where: { isActive: true } }),
-      db.carBrand.count({ where: { isActive: true } }),
-      db.carModel.count({ where: { isActive: true } }),
-    ]);
+  const [config, statsData] = await Promise.all([getSiteConfig(), getStorefrontAboutStats()]);
+  const { activeProductCount, activeCategoryCount, activeBrandCount, activeModelCount } = statsData;
 
   const stats = [
     { label: "รายการสินค้าที่เปิดใช้งาน", value: activeProductCount, icon: Boxes },

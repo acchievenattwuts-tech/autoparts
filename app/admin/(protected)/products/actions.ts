@@ -52,6 +52,7 @@ type ProductInput = z.infer<typeof productSchema>;
 const revalidateStorefrontProductCaches = (productId?: string) => {
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
+  updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateTag("product-search");
 

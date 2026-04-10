@@ -42,7 +42,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
         },
       }),
     [`storefront-product:${productId}`],
-    { tags: [`storefront-product:${productId}`] },
+    { tags: ["storefront:products", `storefront-product:${productId}`] },
   )();
 };
 

@@ -123,6 +123,9 @@ export async function updateCompanySettings(formData: FormData) {
 
   revalidateTag("site-config", "max");
   revalidatePath("/", "layout");
+  revalidatePath("/about");
+  revalidatePath("/faq");
+  revalidatePath("/knowledge");
   revalidatePath("/admin/settings/company");
   return { success: true };
 }
