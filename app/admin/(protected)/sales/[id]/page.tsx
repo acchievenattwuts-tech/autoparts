@@ -1,4 +1,4 @@
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
@@ -16,14 +16,14 @@ import { getSessionPermissionContext, requirePermission } from "@/lib/require-au
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 
 const paymentMethodLabel: Record<string, string> = {
-  CASH:     "เงินสด",
-  TRANSFER: "โอนเงิน",
-  CREDIT:   "เครดิต",
+  CASH:     "เน€เธเธดเธเธชเธ”",
+  TRANSFER: "เนเธญเธเน€เธเธดเธ",
+  CREDIT:   "เน€เธเธฃเธ”เธดเธ•",
 };
 
 const PAYMENT_PRINT_LABELS: { key: string; label: string }[] = [
-  { key: "CASH",     label: "เงินสด" },
-  { key: "TRANSFER", label: "เงินโอน" },
+  { key: "CASH",     label: "เน€เธเธดเธเธชเธ”" },
+  { key: "TRANSFER", label: "เน€เธเธดเธเนเธญเธ" },
 ];
 
 const fmtDate = (d: Date | string) =>
@@ -37,8 +37,8 @@ const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const saleTypeLabel: Record<SaleType, string> = {
-  RETAIL:    "ปลีก",
-  WHOLESALE: "ส่ง",
+  RETAIL:    "เธเธฅเธตเธ",
+  WHOLESALE: "เธชเนเธ",
 };
 
 const saleTypeBadge: Record<SaleType, string> = {
@@ -47,8 +47,8 @@ const saleTypeBadge: Record<SaleType, string> = {
 };
 
 const fulfillmentLabel: Record<FulfillmentType, string> = {
-  PICKUP:   "หน้าร้าน",
-  DELIVERY: "จัดส่ง",
+  PICKUP:   "เธซเธเนเธฒเธฃเนเธฒเธ",
+  DELIVERY: "เธเธฑเธ”เธชเนเธ",
 };
 
 const fulfillmentBadge: Record<FulfillmentType, string> = {
@@ -58,8 +58,8 @@ const fulfillmentBadge: Record<FulfillmentType, string> = {
 
 
 const paymentTypeLabel: Record<SalePaymentType, string> = {
-  CASH_SALE:   "ขายสด",
-  CREDIT_SALE: "ขายเชื่อ",
+  CASH_SALE:   "เธเธฒเธขเธชเธ”",
+  CREDIT_SALE: "เธเธฒเธขเน€เธเธทเนเธญ",
 };
 const paymentTypeBadge: Record<SalePaymentType, string> = {
   CASH_SALE:   "bg-emerald-100 text-emerald-700",
@@ -129,7 +129,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             href="/admin/sales"
             className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
           >
-            <ChevronLeft size={16} /> รายการขาย
+            <ChevronLeft size={16} /> เธฃเธฒเธขเธเธฒเธฃเธเธฒเธข
           </Link>
           <span className="text-gray-300">/</span>
           <span className="text-sm font-medium text-gray-700">{sale.saleNo}</span>
@@ -139,37 +139,37 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-3">
-              <h1 className="font-kanit text-xl font-bold text-gray-900">สรุปข้อมูลใบขาย</h1>
+              <h1 className="font-kanit text-xl font-bold text-gray-900">เธชเธฃเธธเธเธเนเธญเธกเธนเธฅเนเธเธเธฒเธข</h1>
               {sale.status === "CANCELLED" ? (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">ยกเลิกแล้ว</span>
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">เธขเธเน€เธฅเธดเธเนเธฅเนเธง</span>
               ) : (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">ใช้งาน</span>
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">เนเธเนเธเธฒเธ</span>
               )}
             </div>
             <div className="flex items-center gap-2">
               {sale.status === "ACTIVE" && canUpdate && (
                 <Link href={`/admin/sales/${id}/edit`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
-                  <Pencil size={14} /> แก้ไข
+                  <Pencil size={14} /> เนเธเนเนเธ
                 </Link>
               )}
-              <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "พิมพ์ใบแจ้งหนี้" : "พิมพ์ใบเสร็จ"} />
+              <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "เธเธดเธกเธเนเนเธเนเธเนเธเธซเธเธตเน" : "เธเธดเธกเธเนเนเธเน€เธชเธฃเนเธ"} />
             </div>
           </div>
           <Suspense fallback={null}><AutoPrint /></Suspense>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-gray-500 mb-1">เลขที่ใบขาย</p>
+              <p className="text-gray-500 mb-1">เน€เธฅเธเธ—เธตเนเนเธเธเธฒเธข</p>
               <p className="font-mono font-semibold text-[#1e3a5f]">{sale.saleNo}</p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">วันที่</p>
+              <p className="text-gray-500 mb-1">เธงเธฑเธเธ—เธตเน</p>
               <p className="font-medium text-gray-900">
                 {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
               </p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">ลูกค้า</p>
+              <p className="text-gray-500 mb-1">เธฅเธนเธเธเนเธฒ</p>
               {sale.customer ? (
                 <Link
                   href={`/admin/customers/${sale.customer.id}`}
@@ -182,35 +182,35 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               )}
             </div>
             <div>
-              <p className="text-gray-500 mb-1">เบอร์โทร</p>
+              <p className="text-gray-500 mb-1">เน€เธเธญเธฃเนเนเธ—เธฃ</p>
               <p className="font-medium text-gray-900">
                 {sale.customer?.phone ?? sale.customerPhone ?? "-"}
               </p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">ประเภทการขาย</p>
+              <p className="text-gray-500 mb-1">เธเธฃเธฐเน€เธ เธ—เธเธฒเธฃเธเธฒเธข</p>
               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${saleTypeBadge[sale.saleType]}`}>
                 {saleTypeLabel[sale.saleType]}
               </span>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">ประเภทการชำระ</p>
+              <p className="text-gray-500 mb-1">เธเธฃเธฐเน€เธ เธ—เธเธฒเธฃเธเธณเธฃเธฐ</p>
               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${paymentTypeBadge[sale.paymentType]}`}>
                 {paymentTypeLabel[sale.paymentType]}
               </span>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">ช่องทางชำระ</p>
+              <p className="text-gray-500 mb-1">เธเนเธญเธเธ—เธฒเธเธเธณเธฃเธฐ</p>
               <p className="font-medium text-gray-900">
                 {sale.paymentType === "CREDIT_SALE"
-                  ? "ขายเชื่อ"
+                  ? "เธเธฒเธขเน€เธเธทเนเธญ"
                   : sale.paymentMethod
                     ? (paymentMethodLabel[sale.paymentMethod] ?? sale.paymentMethod)
                     : "-"}
               </p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">การจัดส่ง</p>
+              <p className="text-gray-500 mb-1">เธเธฒเธฃเธเธฑเธ”เธชเนเธ</p>
               <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${fulfillmentBadge[sale.fulfillmentType]}`}>
                 {fulfillmentLabel[sale.fulfillmentType]}
               </span>
@@ -218,44 +218,44 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             {sale.fulfillmentType === "DELIVERY" && (
               <>
                 <div>
-                  <p className="text-gray-500 mb-1">สถานะจัดส่ง</p>
+                  <p className="text-gray-500 mb-1">เธชเธ–เธฒเธเธฐเธเธฑเธ”เธชเนเธ</p>
                   <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SHIPPING_STATUS_BADGE[sale.shippingStatus]}`}>
                     {SHIPPING_STATUS_LABEL[sale.shippingStatus]}
                   </span>
                 </div>
                 <div>
-                  <p className="text-gray-500 mb-1">ขนส่ง</p>
+                  <p className="text-gray-500 mb-1">เธเธเธชเนเธ</p>
                   <p className="font-medium text-gray-900">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</p>
                 </div>
                 {sale.trackingNo && (
                   <div>
-                    <p className="text-gray-500 mb-1">เลข Tracking</p>
+                    <p className="text-gray-500 mb-1">เน€เธฅเธ Tracking</p>
                     <p className="font-medium text-gray-900 font-mono">{sale.trackingNo}</p>
                   </div>
                 )}
               </>
             )}
             <div>
-              <p className="text-gray-500 mb-1">ผู้บันทึก</p>
+              <p className="text-gray-500 mb-1">เธเธนเนเธเธฑเธเธ—เธถเธ</p>
               <p className="font-medium text-gray-900">{sale.user?.name ?? "-"}</p>
             </div>
             {sale.fulfillmentType === "DELIVERY" && sale.shippingAddress && (
               <div className="col-span-2 md:col-span-3">
-                <p className="text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
+                <p className="text-gray-500 mb-1">เธ—เธตเนเธญเธขเธนเนเธเธฑเธ”เธชเนเธ</p>
                 <p className="font-medium text-gray-900">{sale.shippingAddress}</p>
               </div>
             )}
             {sale.fulfillmentType === "DELIVERY" && sale.shippingFee !== null && Number(sale.shippingFee) > 0 && (
               <div>
-                <p className="text-gray-500 mb-1">ค่าจัดส่ง</p>
+                <p className="text-gray-500 mb-1">เธเนเธฒเธเธฑเธ”เธชเนเธ</p>
                 <p className="font-medium text-gray-900">
-                  {Number(sale.shippingFee).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                  {Number(sale.shippingFee).toLocaleString("th-TH", { minimumFractionDigits: 2 })} เธเธฒเธ—
                 </p>
               </div>
             )}
             {sale.note && (
               <div className="col-span-2 md:col-span-3">
-                <p className="text-gray-500 mb-1">หมายเหตุ</p>
+                <p className="text-gray-500 mb-1">เธซเธกเธฒเธขเน€เธซเธ•เธธ</p>
                 <p className="font-medium text-gray-900">{sale.note}</p>
               </div>
             )}
@@ -263,7 +263,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         </div>
       </div>
 
-      {/* ─── Print Area ─────────────────────────────────────────── */}
+      {/* โ”€โ”€โ”€ Print Area โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€โ”€ */}
       <div id="receipt" className="bg-white p-8 mx-auto text-[13px] leading-snug" style={{ maxWidth: "900px" }}>
 
         {/* 1. Shop header */}
@@ -271,7 +271,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           <div className="text-xs text-gray-600 space-y-0.5">
             {cfg.shopName && <p className="text-sm font-semibold text-gray-800">{cfg.shopName}</p>}
             {cfg.shopAddress && <p>{cfg.shopAddress}</p>}
-            {cfg.shopPhone && <p>โทร: {cfg.shopPhone}</p>}
+            {cfg.shopPhone && <p>เนเธ—เธฃ: {cfg.shopPhone}</p>}
             {(cfg.shopWebsiteUrl || cfg.shopLineId) && (
               <p>
                 {[cfg.shopWebsiteUrl, cfg.shopLineId && `Line: ${cfg.shopLineId}`].filter(Boolean).join("  |  ")}
@@ -280,9 +280,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
           <div className="text-right">
             <p className="text-base font-bold border border-gray-700 px-6 py-1.5 inline-block">
-              {sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
+              {sale.paymentType === "CREDIT_SALE" ? "เนเธเนเธเนเธเธซเธเธตเน / เนเธเธชเนเธเธเธญเธ" : "เนเธเน€เธชเธฃเนเธเธฃเธฑเธเน€เธเธดเธ"}
             </p>
-            <p className="text-xs text-gray-400 mt-1">หน้า 1/1</p>
+            <p className="text-xs text-gray-400 mt-1">เธซเธเนเธฒ 1/1</p>
           </div>
         </div>
 
@@ -290,50 +290,50 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
           {/* Customer */}
           <div className="border border-gray-400 rounded p-2 space-y-0.5">
-            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">ข้อมูลลูกค้า</p>
+            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">เธเนเธญเธกเธนเธฅเธฅเธนเธเธเนเธฒ</p>
             <p>
-              <span className="text-gray-500">ชื่อ: </span>
+              <span className="text-gray-500">เธเธทเนเธญ: </span>
               <span className="font-semibold">{sale.customerName ?? "-"}</span>
             </p>
             {sale.customer?.address && (
               <p>
-                <span className="text-gray-500">ที่อยู่: </span>
+                <span className="text-gray-500">เธ—เธตเนเธญเธขเธนเน: </span>
                 {sale.customer.address}
               </p>
             )}
             {(sale.customerPhone ?? sale.customer?.phone) && (
               <p>
-                <span className="text-gray-500">โทร: </span>
+                <span className="text-gray-500">เนเธ—เธฃ: </span>
                 {sale.customerPhone ?? sale.customer?.phone}
               </p>
             )}
             {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress && (
               <p>
-                <span className="text-gray-500">ที่อยู่จัดส่ง: </span>
+                <span className="text-gray-500">เธ—เธตเนเธญเธขเธนเนเธเธฑเธ”เธชเนเธ: </span>
                 {sale.shippingAddress}
               </p>
             )}
           </div>
 
-          {/* Doc info — วันที่ และ พนักงานขาย ตัดออก */}
+          {/* Doc info โ€” เธงเธฑเธเธ—เธตเน เนเธฅเธฐ เธเธเธฑเธเธเธฒเธเธเธฒเธข เธ•เธฑเธ”เธญเธญเธ */}
           <div className="border border-gray-400 rounded p-2">
-            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">ข้อมูลเอกสาร</p>
+            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide mb-1">เธเนเธญเธกเธนเธฅเน€เธญเธเธชเธฒเธฃ</p>
             <table className="w-full text-xs">
               <tbody>
                 <tr>
-                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เลขที่เอกสาร</td>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เน€เธฅเธเธ—เธตเนเน€เธญเธเธชเธฒเธฃ</td>
                   <td className="font-mono font-semibold">{sale.saleNo}</td>
                 </tr>
                 <tr>
-                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันที่เอกสาร</td>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เธงเธฑเธเธ—เธตเนเน€เธญเธเธชเธฒเธฃ</td>
                   <td>{fmtDate(sale.saleDate)}</td>
                 </tr>
                 <tr>
-                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เงื่อนไขชำระ</td>
-                  <td>{`${sale.creditTerm ?? 0} วัน`}</td>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เน€เธเธทเนเธญเธเนเธเธเธณเธฃเธฐ</td>
+                  <td>{`${sale.creditTerm ?? 0} เธงเธฑเธ`}</td>
                 </tr>
                 <tr>
-                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">วันครบกำหนด</td>
+                  <td className="text-gray-500 pr-2 py-0.5 whitespace-nowrap">เธงเธฑเธเธเธฃเธเธเธณเธซเธเธ”</td>
                   <td>{fmtDate(dueDate)}</td>
                 </tr>
               </tbody>
@@ -346,12 +346,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           <thead>
             <tr className="bg-gray-100 text-gray-700">
               <th className="border border-gray-400 px-1.5 py-1.5 text-center w-7">#</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-left w-24">รหัสสินค้า</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-left">รายละเอียด</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">จำนวน</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">หน่วย</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">ราคา/หน่วย</th>
-              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">ยอดรวม</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-left w-24">เธฃเธซเธฑเธชเธชเธดเธเธเนเธฒ</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-left">เธฃเธฒเธขเธฅเธฐเน€เธญเธตเธขเธ”</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">เธเธณเธเธงเธ</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-center w-12">เธซเธเนเธงเธข</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">เธฃเธฒเธเธฒ/เธซเธเนเธงเธข</th>
+              <th className="border border-gray-400 px-1.5 py-1.5 text-right w-24">เธขเธญเธ”เธฃเธงเธก</th>
             </tr>
           </thead>
           <tbody>
@@ -363,7 +363,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   <div className="font-medium text-gray-900">{item.product.name}</div>
                   {item.lotItems.length > 0 && (
                     <div className="text-[11px] text-gray-400 mt-0.5">
-                      Lot: {item.lotItems.map((l) => `${l.lotNo} ×${Number(l.qty)}`).join(", ")}
+                      Lot: {item.lotItems.map((l) => `${l.lotNo} ร—${Number(l.qty)}`).join(", ")}
                     </div>
                   )}
                 </td>
@@ -379,36 +379,36 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         {/* 4. Note + Summary */}
         <div className="flex border-l border-r border-b border-gray-400 mb-4 text-xs">
           <div className="flex-1 border-r border-gray-400 p-2">
-            <p className="text-gray-400 mb-1">หมายเหตุ:</p>
+            <p className="text-gray-400 mb-1">เธซเธกเธฒเธขเน€เธซเธ•เธธ:</p>
             <p className="text-gray-700 min-h-[2rem]">{sale.note ?? ""}</p>
           </div>
           <div className="w-56 p-2 space-y-0.5">
             <div className="flex justify-between">
-              <span className="text-gray-500">มูลค่ารวม</span>
+              <span className="text-gray-500">เธกเธนเธฅเธเนเธฒเธฃเธงเธก</span>
               <span>{fmtNum(Number(sale.totalAmount))}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">ส่วนลด</span>
+              <span className="text-gray-500">เธชเนเธงเธเธฅเธ”</span>
               <span>{fmtNum(Number(sale.discount))}</span>
             </div>
             {Number(sale.shippingFee) > 0 && (
               <div className="flex justify-between">
-                <span className="text-gray-500">ค่าจัดส่ง</span>
+                <span className="text-gray-500">เธเนเธฒเธเธฑเธ”เธชเนเธ</span>
                 <span>{fmtNum(Number(sale.shippingFee))}</span>
               </div>
             )}
             <div className="flex justify-between border-t border-gray-400 pt-1 font-bold text-gray-900">
-              <span>ยอดสุทธิ</span>
+              <span>เธขเธญเธ”เธชเธธเธ—เธเธด</span>
               <span className="text-[#1e3a5f]">{fmtNum(Number(sale.netAmount))}</span>
             </div>
           </div>
         </div>
 
-        {/* 5. Payment checkboxes (cash sales only) — เงินสด / เงินโอน */}
+        {/* 5. Payment checkboxes (cash sales only) โ€” เน€เธเธดเธเธชเธ” / เน€เธเธดเธเนเธญเธ */}
         {transferPrimaryAccount ? (
           <div className="mb-5 grid grid-cols-[1fr_180px] gap-4 border border-gray-400 p-3 text-xs">
             <div className="space-y-1">
-              <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
+              <p className="font-semibold text-gray-900">เธเนเธญเธกเธนเธฅเธเธฑเธเธเธตเธฃเธฑเธเนเธญเธ</p>
               <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
               <p className="font-mono text-sm text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
               {transferPrimaryAccount.promptPayId ? (
@@ -416,10 +416,10 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
                 </p>
               ) : (
-                <p className="text-gray-500">ยังไม่ได้ตั้ง PromptPay ID จึงแสดงเฉพาะข้อมูลบัญชีสำหรับโอน</p>
+                <p className="text-gray-500">เธขเธฑเธเนเธกเนเนเธ”เนเธ•เธฑเนเธ PromptPay ID เธเธถเธเนเธชเธ”เธเน€เธเธเธฒเธฐเธเนเธญเธกเธนเธฅเธเธฑเธเธเธตเธชเธณเธซเธฃเธฑเธเนเธญเธ</p>
               )}
               <p className="text-gray-500">
-                ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">{fmtNum(transferDocumentState.qrAmount)}</span>
+                เธขเธญเธ”เธชเธณเธซเธฃเธฑเธเธชเนเธเธ/เนเธญเธ: <span className="font-semibold text-gray-900">{fmtNum(transferDocumentState.qrAmount)}</span>
               </p>
             </div>
             <div className="flex items-center justify-center">
@@ -427,7 +427,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={180} height={180} />
               ) : (
                 <div className="flex h-[180px] w-[180px] items-center justify-center border border-dashed border-gray-300 p-4 text-center text-[11px] text-gray-400">
-                  QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
+                  QR เธเธฐเนเธชเธ”เธเน€เธกเธทเนเธญเธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธกเธต PromptPay ID
                 </div>
               )}
             </div>
@@ -436,11 +436,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
         {sale.paymentType === "CASH_SALE" && (
           <div className="border border-gray-400 px-3 py-2 mb-5 text-xs flex items-center gap-6">
-            <span className="text-gray-500 whitespace-nowrap">ชำระโดย:</span>
+            <span className="text-gray-500 whitespace-nowrap">เธเธณเธฃเธฐเนเธ”เธข:</span>
             {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
               <span key={key} className="flex items-center gap-1.5">
                 <span className="inline-flex w-4 h-4 items-center justify-center border border-gray-500 text-[11px]">
-                  {sale.paymentMethod === key ? "✓" : ""}
+                  {sale.paymentMethod === key ? "โ“" : ""}
                 </span>
                 {label}
               </span>
@@ -448,12 +448,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         )}
 
-        {/* 6. Signature — กรอบสี่เหลี่ยม ด้านล่างสุด */}
+        {/* 6. Signature */}
         <div className="receipt-footer">
         {sale.paymentType === "CREDIT_SALE" ? (
-          <div className="grid grid-cols-3 gap-0 border border-gray-400 text-xs text-center">
-            {["ผู้มีอำนาจลงนาม", "ผู้ส่งของ", "ผู้รับของ"].map((label, i) => (
-              <div key={label} className={`${i < 2 ? "border-r border-gray-400" : ""}`}>
+          <div className="grid grid-cols-2 gap-0 border border-gray-400 text-xs text-center">
+            {["ผู้ส่งของ", "ผู้รับของ"].map((label, i) => (
+              <div key={label} className={`${i < 1 ? "border-r border-gray-400" : ""}`}>
                 <div className="h-16" />
                 <div className="border-t border-gray-400 py-1.5 font-medium text-gray-700">{label}</div>
                 <div className="text-gray-400 pb-2 px-4">วันที่ ................................................</div>
@@ -493,3 +493,4 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 };
 
 export default SaleDetailPage;
+
