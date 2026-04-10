@@ -86,12 +86,12 @@ export default function LineDailySummaryManager(props: {
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">ตั้งเวลาส่งจากในระบบ</h3>
           <p className="text-sm text-gray-500">
-            สำหรับแผน Hobby ระบบจะมี cron วันละครั้งช่วงเย็น และ route จะเช็กเวลาที่ตั้งไว้ใน DB ก่อนส่งจริง ถ้าตั้งเวลาเกินรอบ cron ของวันนั้น ระบบจะข้ามไปส่งในวันถัดไป
+            สำหรับแผน Hobby ระบบจะส่งสรุปรายวันตามรอบ cron คงที่ทุกวันเวลา 19:30 น. (Asia/Bangkok) โดยหน้า admin จะแสดงข้อมูลให้รับทราบแทนการให้ตั้งเวลาเอง
           </p>
         </div>
 
         <form
-          className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]"
+          className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr_auto]"
           onSubmit={(event) => {
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
@@ -102,6 +102,8 @@ export default function LineDailySummaryManager(props: {
             });
           }}
         >
+          <input type="hidden" name="sendTime" value="19:30" />
+
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             เปิดใช้งาน
             <select name="enabled" defaultValue={settings.enabled ? "true" : "false"} className={inputCls}>
@@ -110,10 +112,10 @@ export default function LineDailySummaryManager(props: {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
-            เวลาส่ง (Asia/Bangkok)
-            <input type="time" name="sendTime" defaultValue={settings.sendTime} className={inputCls} />
-          </label>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="font-medium">เวลาส่งคงที่</p>
+            <p className="mt-1">ระบบจะส่งทุกวันเวลา 19:30 น. ตามเวลาไทย</p>
+          </div>
 
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             ปลายทางหลัก
@@ -134,8 +136,8 @@ export default function LineDailySummaryManager(props: {
 
         <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-3">
           <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
-          <p>ส่งล่าสุด: {settings.lastSentDayKey ?? "-"}</p>
-          <p>เวลา send ล่าสุด: {formatDateTime(settings.lastSentAt)}</p>
+          <p>รอบส่งประจำ: 19:30 น. ทุกวัน</p>
+          <p>ส่งล่าสุด: {settings.lastSentDayKey ?? "-"} ({formatDateTime(settings.lastSentAt)})</p>
         </div>
 
         {settingsMessage && <p className="mt-3 text-sm text-[#1e3a5f]">{settingsMessage}</p>}
