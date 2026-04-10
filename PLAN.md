@@ -2610,3 +2610,26 @@ npm run db:restore backup-{timestamp}.json
 - [x] No auto receipt creation
 - [x] No webhook / bank callback / reconciliation
 - [x] No slip OCR / slip matching / payment-status automation
+
+## Roadmap Update (2026-04-11 Print Notice Block for Sales Documents)
+
+> Scope for this round: extend the existing shared sales print form only. Keep the work inside company settings + current print layouts. Do not introduce new document types, schema changes, or workflow automation.
+
+> Maintenance rule: `app/admin/(protected)/sales/[id]/page.tsx` and `app/admin/delivery/print/page.tsx` share the same invoice / delivery-note form. Any layout or content change to one must be applied to the other in the same round. Do not leave these two print forms out of sync.
+
+### Checklist
+
+- [x] Add company-setting content for print notice details using the existing `SiteContent` path
+- [x] Keep the print notice title fixed as `โปรดทราบ`
+- [x] Allow admins to edit print notice detail lines from `/admin/settings/company`
+- [x] Validate print notice details to no more than 5 lines
+- [x] Keep print notice rendering safe when settings are empty
+- [x] Update the shared sales print template to render the notice block for both invoice/delivery-note and receipt print
+- [x] Place the notice block in the lower-right print area beside the existing QR/payment block
+- [x] Use a 70/30 width split between the existing QR/payment block and the new notice block
+- [x] Keep visible table borders and spacing between the two lower blocks
+- [x] Render notice detail text at 2px smaller than the normal print body text
+- [x] Preserve existing QR/payment behaviour and existing receipt/delivery-note business rules
+- [x] Re-verify single-document print from `/admin/sales/[id]`
+- [x] Re-verify bulk delivery print from `/admin/delivery/print`
+- [x] Verify `npm run build`

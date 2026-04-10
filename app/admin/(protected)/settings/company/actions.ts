@@ -64,6 +64,18 @@ const urlOrEmpty = z.string().max(500).refine(
   { message: "URL ต้องเริ่มต้นด้วย http:// หรือ https://" }
 );
 
+const printNoticeTextSchema = z
+  .string()
+  .max(500)
+  .refine(
+    (value) =>
+      value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean).length <= 5,
+    { message: "รายละเอียดโปรดทราบต้องไม่เกิน 5 บรรทัด" }
+  );
+
 const companySchema = z.object({
   shop_name: z.string().min(1, "กรุณาใส่ชื่อร้าน").max(100),
   shop_slogan: z.string().max(200),
@@ -90,6 +102,7 @@ const companySchema = z.object({
   shop_shopee_enabled: z.enum(["true", "false"]),
   shop_lazada_url: urlOrEmpty,
   shop_lazada_enabled: z.enum(["true", "false"]),
+  print_notice_text: printNoticeTextSchema,
   vat_type: z.enum(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"]),
   vat_rate: z.coerce.number().min(0).max(100).transform(String),
 });

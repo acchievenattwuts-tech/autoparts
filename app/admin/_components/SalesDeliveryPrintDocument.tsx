@@ -53,6 +53,7 @@ type SalePrintShopConfig = {
   shopPhone?: string | null;
   shopWebsiteUrl?: string | null;
   shopLineId?: string | null;
+  printNoticeText?: string | null;
 };
 
 type TransferAccount = {
@@ -94,6 +95,13 @@ const PRINT_GRID_COLUMN_STYLE = {
   gridTemplateColumns: "1.75rem 6rem minmax(0,1fr) 3rem 3rem 6rem 6rem",
 } as const;
 
+const getPrintNoticeLines = (text?: string | null) =>
+  (text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
 export default function SalesDeliveryPrintDocument({
   sale,
   shopConfig,
@@ -119,6 +127,9 @@ export default function SalesDeliveryPrintDocument({
 }) {
   const customerName = sale.customer?.name ?? sale.customerName ?? "-";
   const customerPhone = sale.customer?.phone ?? sale.customerPhone ?? null;
+  const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
+  const hasPrintNotice = printNoticeLines.length > 0;
+  const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
 
   return (
     <div
@@ -261,55 +272,74 @@ export default function SalesDeliveryPrintDocument({
       </div>
 
       <div className="mt-auto">
-        {transferPrimaryAccount ? (
-          <div className={`mb-5 grid grid-cols-[1fr_180px] gap-4 ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}>
-            <div className="space-y-1">
-              <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
-              <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
-              <p className="font-mono text-sm text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
-              {transferPrimaryAccount.promptPayId ? (
-                <p className="text-gray-500">
-                  PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
-                </p>
-              ) : (
-                <p className="text-gray-500">ยังไม่ได้ตั้ง PromptPay ID จึงแสดงเฉพาะข้อมูลบัญชีสำหรับโอน</p>
-              )}
-              <p className="text-gray-500">
-                ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">{fmtNum(qrAmount)}</span>
-              </p>
-            </div>
-            <div className="flex items-center justify-center">
-              {promptPayQrDataUrl ? (
-                <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={180} height={180} />
-              ) : (
-                <div
-                  className={`flex h-[180px] w-[180px] items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
-                >
-                  QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
+        {transferPrimaryAccount || sale.paymentType === "CASH_SALE" || hasPrintNotice ? (
+          <div
+            className={`mb-5 grid gap-4 ${hasPrintNotice && hasPrintSupportBlock ? "grid-cols-[minmax(0,7fr)_minmax(0,3fr)]" : "grid-cols-1"}`}
+          >
+            <div>
+              {transferPrimaryAccount ? (
+                <div className={`grid grid-cols-[1fr_180px] gap-4 ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}>
+                  <div className="space-y-1">
+                    <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
+                    <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
+                    <p className="font-mono text-sm text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
+                    {transferPrimaryAccount.promptPayId ? (
+                      <p className="text-gray-500">
+                        PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
+                      </p>
+                    ) : (
+                      <p className="text-gray-500">ยังไม่ได้ตั้ง PromptPay ID จึงแสดงเฉพาะข้อมูลบัญชีสำหรับโอน</p>
+                    )}
+                    <p className="text-gray-500">
+                      ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">{fmtNum(qrAmount)}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    {promptPayQrDataUrl ? (
+                      <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={180} height={180} />
+                    ) : (
+                      <div
+                        className={`flex h-[180px] w-[180px] items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
+                      >
+                        QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
-        ) : null}
+              ) : null}
 
-        {sale.paymentType === "CASH_SALE" ? (
-          <div className={`mb-5 ${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
-            <div className="flex items-center gap-6">
-              <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
-              {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
-                <span key={key} className="flex items-center gap-1.5">
-                  <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
-                    {sale.paymentMethod === key ? "✓" : ""}
-                  </span>
-                  {label}
-                </span>
-              ))}
+              {sale.paymentType === "CASH_SALE" ? (
+                <div className={`${transferPrimaryAccount ? "mt-4" : ""} ${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
+                  <div className="flex items-center gap-6">
+                    <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
+                    {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
+                      <span key={key} className="flex items-center gap-1.5">
+                        <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
+                          {sale.paymentMethod === key ? "✓" : ""}
+                        </span>
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                  {sale.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
+                    <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
+                      <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
+                      <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
+                      <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
-            {sale.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
-              <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
-                <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
-                <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
-                <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+
+            {hasPrintNotice ? (
+              <div className={`${PRINT_SECTION_BORDER_CLASS} p-3`}>
+                <p className="mb-2 text-center text-xs font-semibold text-gray-900">โปรดทราบ</p>
+                <ol className="space-y-1 pl-4 text-[11px] leading-snug text-gray-700">
+                  {printNoticeLines.map((line, index) => (
+                    <li key={`${index}-${line}`}>{line}</li>
+                  ))}
+                </ol>
               </div>
             ) : null}
           </div>

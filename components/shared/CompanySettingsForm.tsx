@@ -290,6 +290,24 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+        <h2 className="mb-1 font-kanit font-semibold text-gray-800">โปรดทราบในฟอร์มพิมพ์</h2>
+        <p className="mb-4 text-xs text-gray-400">ใช้กับใบแจ้งหนี้ / ใบส่งของ และใบเสร็จรับเงิน โดยระบบรับไม่เกิน 5 บรรทัด</p>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label className={labelClass}>รายละเอียดโปรดทราบ</label>
+            <textarea
+              name="print_notice_text"
+              defaultValue={config.printNoticeText}
+              rows={5}
+              className={inputClass}
+              placeholder={"1. เก็บเอกสารนี้ไว้เป็นหลักฐาน\n2. ตรวจสอบสินค้าและจำนวนก่อนรับของ\n3. ติดต่อร้านเมื่อพบความผิดปกติ"}
+            />
+            <p className="mt-1 text-xs text-gray-400">บรรทัดว่างจะไม่ถูกนำไปแสดงในฟอร์มพิมพ์</p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3">
         <button type="submit" disabled={isPending || !canManage} className="flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60">
           <Save size={16} />
