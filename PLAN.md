@@ -2836,7 +2836,7 @@ npm run db:restore backup-{timestamp}.json
 
 - [x] Keep `lib/line-daily-summary.ts` business totals unchanged so the summary content still matches the agreed mapping
 - [x] Add DB-backed runtime settings for `enabled`, `sendTime`, `targetMode`, and last successful scheduled send markers
-- [x] Change cron strategy from fixed once-per-day timing to frequent polling plus DB time check before send
+- [x] Change cron strategy for flexible scheduling, then scope the deployed Hobby-compatible cron back to once per day while still honoring DB guards and duplicate protection
 - [x] Add a `Test Send` action on `/admin/reports/line-daily-summary`
 - [x] Add a dedicated table for LINE recipients captured from webhook events
 - [x] Add a dedicated table for `User -> LINE recipient` mapping so admin targeting is explicit and auditable
@@ -2857,3 +2857,4 @@ npm run db:restore backup-{timestamp}.json
 - [x] Do not remove the existing env-recipient delivery path
 - [x] Do not auto-link LINE recipients to system users heuristically; mapping must be explicit
 - [x] Do not send scheduled messages twice for the same day when a dispatch lock already exists
+- [x] Keep the deployed cron compatible with Vercel Hobby limits (no more than once per day)

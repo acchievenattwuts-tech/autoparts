@@ -86,7 +86,7 @@ export default function LineDailySummaryManager(props: {
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">ตั้งเวลาส่งจากในระบบ</h3>
           <p className="text-sm text-gray-500">
-            Cron จะวิ่งถี่เป็นรอบ ๆ และ route จะเช็กเวลาที่ตั้งไว้ใน DB ก่อนส่งจริง พร้อมกันส่งซ้ำด้วย dispatch log
+            สำหรับแผน Hobby ระบบจะมี cron วันละครั้งช่วงเย็น และ route จะเช็กเวลาที่ตั้งไว้ใน DB ก่อนส่งจริง ถ้าตั้งเวลาเกินรอบ cron ของวันนั้น ระบบจะข้ามไปส่งในวันถัดไป
           </p>
         </div>
 
