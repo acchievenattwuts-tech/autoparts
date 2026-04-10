@@ -16,6 +16,7 @@ const TABS = [
   { label: "Transfer History", href: "/admin/reports/cash-bank-transfers" },
   { label: "Adjustment History", href: "/admin/reports/cash-bank-adjustments" },
   { label: "สรุปภาพรวม", href: "/admin/reports/summary" },
+  { label: "LINE สรุปรายวัน", href: "/admin/reports/line-daily-summary" },
 ];
 
 export default function ReportTabNav() {

@@ -2633,3 +2633,197 @@ npm run db:restore backup-{timestamp}.json
 - [x] Re-verify single-document print from `/admin/sales/[id]`
 - [x] Re-verify bulk delivery print from `/admin/delivery/print`
 - [x] Verify `npm run build`
+
+## Roadmap Update (2026-04-11 LINE OA Daily Closing Summary Mapping)
+
+> Scope for this round: define the first production-ready daily summary payload for `LINE Official Account + Messaging API` only. Keep the round limited to summary content, data mapping, scheduling target, and implementation checklist. Do not introduce webhook payment matching, per-event push spam, chatbot flows, or customer-facing LINE features in this round.
+
+> Reporting rule: keep the summary focused on owner/internal use once per day in the evening. The message must separate `ยอดขายวันนี้` from `เงินรับเข้าวันนี้` so cash-sale money and debt-collection money are never mixed under the same meaning.
+
+### Summary payload (v1)
+
+```text
+สรุปงานประจำวัน DD/MM/YYYY
+
+ยอดขายวันนี้
+- ขายรวม X บาท
+- ขายสด X บาท
+- ขายเชื่อ X บาท
+
+เงินรับเข้าวันนี้
+- จากการขายสด X บาท
+- จากการรับชำระหนี้ X บาท
+- รวมเงินเข้า X บาท
+
+แยกตามช่องทางรับเงิน
+- เงินสด X บาท
+- เงินโอน X บาท
+
+ยอดค้าง
+- ลูกหนี้ค้างรับ X บาท
+- COD ค้างรับเงิน X บาท
+- เจ้าหนี้ค้างจ่าย X บาท
+
+งานจัดส่ง
+- รอจัดส่ง X รายการ
+- กำลังจัดส่ง X รายการ
+- ส่งสำเร็จวันนี้ X รายการ
+
+สต๊อก
+- ต่ำกว่าขั้นต่ำ X รายการ
+- ของหมด X รายการ
+- lot ใกล้หมดอายุ X lot
+- lot หมดอายุค้างสต๊อก X lot
+
+เคลม/เอกสารผิดปกติ
+- เคลมค้างดำเนินการ X รายการ
+- เอกสารถูกยกเลิกวันนี้ X รายการ
+- ปรับสต๊อกวันนี้ X เอกสาร
+
+สรุปเพิ่มเติม
+- ค่าใช้จ่ายวันนี้ X บาท
+- เงินโอนระหว่างบัญชีวันนี้ X บาท
+```
+
+### Data mapping checklist
+
+- [ ] `ยอดขายวันนี้ > ขายรวม`
+  Mapping: sum `Sale.netAmount`
+  Filter: `Sale.status = ACTIVE` และ `saleDate` อยู่ในวันรายงาน
+
+- [ ] `ยอดขายวันนี้ > ขายสด`
+  Mapping: sum `Sale.netAmount`
+  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
+
+- [ ] `ยอดขายวันนี้ > ขายเชื่อ`
+  Mapping: sum `Sale.netAmount`
+  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, และ `saleDate` อยู่ในวันรายงาน
+
+- [ ] `เงินรับเข้าวันนี้ > จากการขายสด`
+  Mapping: sum `Sale.netAmount`
+  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
+  Note: รอบแรกยึดตามเอกสารขายสดที่สร้างในวันนั้นเท่านั้น และไม่ดึง `Receipt` มาปนในบรรทัดนี้
+
+- [ ] `เงินรับเข้าวันนี้ > จากการรับชำระหนี้`
+  Mapping: sum `Receipt.totalAmount`
+  Filter: `Receipt.status = ACTIVE` และ `receiptDate` อยู่ในวันรายงาน
+  Note: เป็นเงินที่รับจริงจากการเก็บหนี้/รับชำระภายหลัง จะแยกความหมายจากยอดขายใหม่
+
+- [ ] `เงินรับเข้าวันนี้ > รวมเงินเข้า`
+  Mapping: (`cash-sale receipts by Sale`) + (`Receipt.totalAmount`)
+  Formula v1: `sum(Sale.netAmount where CASH_SALE, ACTIVE, saleDate in day)` + `sum(Receipt.totalAmount where ACTIVE, receiptDate in day)`
+
+- [ ] `แยกตามช่องทางรับเงิน > เงินสด`
+  Mapping: `Sale.netAmount` + `Receipt.totalAmount`
+  Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = CASH`, `saleDate` อยู่ในวันรายงาน
+  Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = CASH`, `receiptDate` อยู่ในวันรายงาน
+
+- [ ] `แยกตามช่องทางรับเงิน > เงินโอน`
+  Mapping: `Sale.netAmount` + `Receipt.totalAmount`
+  Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = TRANSFER`, `saleDate` อยู่ในวันรายงาน
+  Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = TRANSFER`, `receiptDate` อยู่ในวันรายงาน
+
+- [ ] `ยอดค้าง > ลูกหนี้ค้างรับ`
+  Mapping: sum `Sale.amountRemain`
+  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = PICKUP`
+  Note: ยึดตาม dashboard logic ปัจจุบันเพื่อไม่ปน COD
+
+- [ ] `ยอดค้าง > COD ค้างรับเงิน`
+  Mapping: sum `Sale.amountRemain`
+  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus != DELIVERED`
+  Note: ยึดตาม dashboard logic ปัจจุบันในรอบแรก
+
+- [ ] `ยอดค้าง > เจ้าหนี้ค้างจ่าย`
+  Mapping: sum `Purchase.amountRemain`
+  Filter: `Purchase.status = ACTIVE`, `Purchase.purchaseType = CREDIT_PURCHASE`, `Purchase.amountRemain > 0`
+
+- [ ] `งานจัดส่ง > รอจัดส่ง`
+  Mapping: count `Sale.id`
+  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = PENDING`
+
+- [ ] `งานจัดส่ง > กำลังจัดส่ง`
+  Mapping: count `Sale.id`
+  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = OUT_FOR_DELIVERY`
+
+- [ ] `งานจัดส่ง > ส่งสำเร็จวันนี้`
+  Mapping v1: count `Sale.id`
+  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = DELIVERED`, และ `Sale.updatedAt` อยู่ในวันรายงาน
+  Note: รอบแรกใช้ `updatedAt` เป็น proxy จนกว่าจะมี dedicated delivered timestamp
+
+- [ ] `สต๊อก > ต่ำกว่าขั้นต่ำ`
+  Mapping: count `Product.id`
+  Filter: `Product.isActive = true`, `Product.stock > 0`, `Product.stock <= Product.minStock`
+
+- [ ] `สต๊อก > ของหมด`
+  Mapping: count `Product.id`
+  Filter: `Product.isActive = true`, `Product.stock <= 0`
+  Note: ระบบปัจจุบันยอมให้ stock ติดลบได้ ให้รวมค่าติดลบในบรรทัดนี้ด้วย
+
+- [ ] `สต๊อก > lot ใกล้หมดอายุ`
+  Mapping: count lot จาก `ProductLot`
+  Join/Filter: `ProductLot.expDate != null`, `ProductLot.expDate` อยู่ภายในช่วงเตือน, และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
+  Default window v1: ภายใน 30 วันนับจากวันรายงาน
+
+- [ ] `สต๊อก > lot หมดอายุค้างสต๊อก`
+  Mapping: count lot จาก `ProductLot`
+  Join/Filter: `ProductLot.expDate < วันรายงาน` และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
+
+- [ ] `เคลม/เอกสารผิดปกติ > เคลมค้างดำเนินการ`
+  Mapping: count `WarrantyClaim.id`
+  Filter: `WarrantyClaim.status in (DRAFT, SENT_TO_SUPPLIER)`
+
+- [ ] `เคลม/เอกสารผิดปกติ > เอกสารถูกยกเลิกวันนี้`
+  Mapping: sum counts across document headers
+  Sources v1:
+  `Sale.cancelledAt`, `Purchase.cancelledAt`, `Receipt.cancelledAt`, `CreditNote.cancelledAt`, `PurchaseReturn.cancelledAt`, `Expense.cancelledAt`, `Adjustment.cancelledAt`, `CashBankTransfer.cancelledAt`, `CashBankAdjustment.cancelledAt`
+  Filter: cancelled timestamp อยู่ในวันรายงาน และ status = `CANCELLED` ถ้ามี field status
+
+- [ ] `เคลม/เอกสารผิดปกติ > ปรับสต๊อกวันนี้`
+  Mapping: count `Adjustment.id`
+  Filter: `Adjustment.status = ACTIVE` และ `adjustDate` อยู่ในวันรายงาน
+
+- [ ] `สรุปเพิ่มเติม > ค่าใช้จ่ายวันนี้`
+  Mapping: sum `Expense.netAmount`
+  Filter: `Expense.status = ACTIVE` และ `expenseDate` อยู่ในวันรายงาน
+
+- [ ] `สรุปเพิ่มเติม > เงินโอนระหว่างบัญชีวันนี้`
+  Mapping: sum `CashBankTransfer.amount`
+  Filter: `CashBankTransfer.status = ACTIVE` และ `transferDate` อยู่ในวันรายงาน
+
+### Implementation checklist
+
+- [ ] Add a shared server-side summary builder for one business day, for example `lib/line-daily-summary.ts`
+- [ ] Normalize the report day to Bangkok business date boundaries before querying `saleDate`, `receiptDate`, `expenseDate`, and other document dates
+- [ ] Reuse the current dashboard split between normal AR and COD so the LINE summary stays consistent with admin numbers
+- [ ] Keep `ยอดขายวันนี้` and `เงินรับเข้าวันนี้` as separate sections in code, tests, and final LINE message text
+- [ ] Implement aggregate queries with `status = ACTIVE` guards to exclude cancelled documents from every money total
+- [ ] For lot metrics, reuse the same `ProductLot` + `LotBalance` pairing rule already used by the expiry report so only on-hand lots are counted
+- [ ] For `ส่งสำเร็จวันนี้`, document the temporary `updatedAt` proxy clearly in code comments and roadmap notes
+- [ ] Add unit-level formatter helpers for Thai currency and Thai date text used by the LINE payload
+- [ ] Add message renderer that omits optional rows cleanly when values are `0` only if the owner confirms a compact mode later; default v1 should show all agreed rows
+- [ ] Add one dry-run/admin preview path before enabling scheduled send, so the owner can verify wording and numbers against the admin UI
+- [ ] Schedule the first run as once per day in the evening after operations close
+- [ ] Keep this round owner-facing only; do not add per-staff targeting, alert subscriptions, or per-role templates yet
+
+### Out of scope for this round
+
+- [ ] No per-event push for every sale / receipt / shipment
+- [ ] No webhook, bank callback, slip OCR, or payment auto-reconciliation
+- [ ] No customer-facing LINE messaging
+- [ ] No chatbot / LINE rich menu flow changes
+- [ ] No attempt to infer true delivery completion time beyond the current data available in `Sale`
+
+### Completion update (2026-04-11)
+
+- [x] Added shared server-side summary builder at `lib/line-daily-summary.ts`
+- [x] Implemented Bangkok business-day normalization and Thai formatter helpers in the LINE summary path
+- [x] Kept `ยอดขายวันนี้` separate from `เงินรับเข้าวันนี้` in both data model and rendered LINE text
+- [x] Reused the current dashboard split between normal AR and COD to keep summary numbers aligned with admin screens
+- [x] Implemented aggregate queries with `status = ACTIVE` guards for all money totals in the summary
+- [x] Reused the `ProductLot` + `LotBalance` pairing rule so near-expiry / expired lot counts only include on-hand stock
+- [x] Kept `ส่งสำเร็จวันนี้` on the agreed temporary `Sale.updatedAt` proxy and documented that constraint in the roadmap and code
+- [x] Added owner-facing admin preview page at `/admin/reports/line-daily-summary`
+- [x] Added scheduled-send route at `/api/internal/line-daily-summary`
+- [x] Added LINE Messaging API delivery helper with env-based recipient configuration
+- [x] Added first-pass daily evening schedule in `vercel.json` at `19:30 Asia/Bangkok` (`12:30 UTC`)
+- [x] Kept this round owner-facing only and out of scope from webhook/slip-OCR/chatbot/customer messaging flows
