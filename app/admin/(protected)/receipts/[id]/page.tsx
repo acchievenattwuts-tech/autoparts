@@ -1,20 +1,22 @@
-﻿export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import PrintButton from "./PrintButton";
+
+import ReceiptSettlementPrintDocument from "@/app/admin/_components/ReceiptSettlementPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
-import { PaymentMethod } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { PaymentMethod } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import PrintButton from "./PrintButton";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
-  CASH:     "เน€เธเธดเธเธชเธ”",
-  TRANSFER: "เนเธญเธเน€เธเธดเธ",
-  CREDIT:   "เน€เธเธฃเธ”เธดเธ•",
+  CASH: "เงินสด",
+  TRANSFER: "โอนเงิน",
+  CREDIT: "เครดิต",
 };
 
 const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -29,10 +31,10 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
       include: {
         customer: true,
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
-        user:     { select: { name: true, signatureUrl: true } },
+        user: { select: { name: true, signatureUrl: true } },
         items: {
           include: {
-            sale:       { select: { saleNo: true, saleDate: true, netAmount: true } },
+            sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
             creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },
           },
         },
@@ -61,11 +63,6 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
   const receiptSignatureUrl = receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null;
-  const receiptDateText = new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
   const receivedTransferAccount =
     receipt.paymentMethod === PaymentMethod.TRANSFER
       ? receipt.cashBankAccount ?? primaryTransferAccount
@@ -82,55 +79,66 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         }
       `}</style>
 
-      {/* Admin view (no-print) */}
       <div className="no-print">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 mb-6">
+        <div className="mb-6 flex items-center gap-2">
           <Link
             href="/admin/receipts"
-            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
           >
-            <ChevronLeft size={16} /> เนเธเน€เธชเธฃเนเธเธฃเธฑเธเน€เธเธดเธ
+            <ChevronLeft size={16} /> ใบเสร็จรับเงิน
           </Link>
           <span className="text-gray-300">/</span>
           <span className="text-sm font-medium text-gray-700">{receipt.receiptNo}</span>
         </div>
 
-        {/* Summary card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
+        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
             <div className="flex items-center gap-3">
-              <h1 className="font-kanit text-xl font-bold text-gray-900">เธชเธฃเธธเธเธเนเธญเธกเธนเธฅเนเธเน€เธชเธฃเนเธ</h1>
+              <h1 className="font-kanit text-xl font-bold text-gray-900">สรุปข้อมูลใบเสร็จ</h1>
               {receipt.status === "CANCELLED" ? (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">เธขเธเน€เธฅเธดเธเนเธฅเนเธง</span>
+                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                  ยกเลิกแล้ว
+                </span>
               ) : (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">เนเธเนเธเธฒเธ</span>
+                <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  ใช้งาน
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              {receipt.status === "ACTIVE" && canUpdate && (
-                <Link href={`/admin/receipts/${id}/edit`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] rounded-lg transition-colors">
-                  <Pencil size={14} /> เนเธเนเนเธ
+              {receipt.status === "ACTIVE" && canUpdate ? (
+                <Link
+                  href={`/admin/receipts/${id}/edit`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                >
+                  <Pencil size={14} /> แก้ไข
                 </Link>
-              )}
+              ) : null}
               <PrintButton />
             </div>
           </div>
-          <Suspense fallback={null}><AutoPrint /></Suspense>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+
+          <Suspense fallback={null}>
+            <AutoPrint />
+          </Suspense>
+
+          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <div>
-              <p className="text-gray-500 mb-1">เน€เธฅเธเธ—เธตเนเนเธเน€เธชเธฃเนเธ</p>
+              <p className="mb-1 text-gray-500">เลขที่ใบเสร็จ</p>
               <p className="font-mono font-semibold text-[#1e3a5f]">{receipt.receiptNo}</p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">เธงเธฑเธเธ—เธตเน</p>
+              <p className="mb-1 text-gray-500">วันที่</p>
               <p className="font-medium text-gray-900">
-                {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })}
               </p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">เธฅเธนเธเธเนเธฒ</p>
+              <p className="mb-1 text-gray-500">ลูกค้า</p>
               {receipt.customer ? (
                 <Link
                   href={`/admin/customers/${receipt.customer.id}`}
@@ -143,73 +151,99 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               )}
             </div>
             <div>
-              <p className="text-gray-500 mb-1">เธเนเธญเธเธ—เธฒเธเธเธณเธฃเธฐ</p>
+              <p className="mb-1 text-gray-500">ช่องทางชำระ</p>
               <p className="font-medium text-gray-900">{paymentMethodLabel[receipt.paymentMethod]}</p>
             </div>
             {receivedTransferAccount ? (
               <div>
-                <p className="text-gray-500 mb-1">บัญชีรับโอน</p>
-                <p className="font-medium text-gray-900">{receivedTransferAccount.bankName ?? receivedTransferAccount.name}</p>
+                <p className="mb-1 text-gray-500">บัญชีรับโอน</p>
+                <p className="font-medium text-gray-900">
+                  {receivedTransferAccount.bankName ?? receivedTransferAccount.name}
+                </p>
                 <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo ?? "-"}</p>
               </div>
             ) : null}
             <div>
-              <p className="text-gray-500 mb-1">เธขเธญเธ”เธฃเธฑเธเธเธณเธฃเธฐเธฃเธงเธก</p>
-              <p className="font-kanit font-bold text-lg text-[#1e3a5f]">
-                {Number(receipt.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} เธเธฒเธ—
+              <p className="mb-1 text-gray-500">ยอดรับชำระรวม</p>
+              <p className="font-kanit text-lg font-bold text-[#1e3a5f]">
+                {Number(receipt.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
               </p>
             </div>
             <div>
-              <p className="text-gray-500 mb-1">เธเธนเนเธเธฑเธเธ—เธถเธ</p>
+              <p className="mb-1 text-gray-500">ผู้บันทึก</p>
               <p className="font-medium text-gray-900">{receipt.user?.name ?? "-"}</p>
             </div>
-            {receipt.note && (
+            {receipt.note ? (
               <div className="col-span-2 md:col-span-3">
-                <p className="text-gray-500 mb-1">เธซเธกเธฒเธขเน€เธซเธ•เธธ</p>
+                <p className="mb-1 text-gray-500">หมายเหตุ</p>
                 <p className="font-medium text-gray-900">{receipt.note}</p>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* Items table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden no-print">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">เธฃเธฒเธขเธเธฒเธฃเธเธณเธฃเธฐ</h2>
+        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm no-print">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการชำระ</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">เน€เธฅเธเธ—เธตเนเนเธเธเธฒเธข</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">เธงเธฑเธเธ—เธตเนเธเธฒเธข</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">เธขเธญเธ”เนเธเธเธฒเธข</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">เธขเธญเธ”เธ—เธตเนเธเธณเธฃเธฐ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">เลขที่ใบขาย</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">วันที่ใบขาย</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดใบขาย</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดที่ชำระ</th>
                 </tr>
               </thead>
               <tbody>
                 {receipt.items.map((item) => {
-                  const isCN   = !!item.cnId;
-                  const docNo  = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
+                  const isCreditNote = Boolean(item.cnId);
+                  const docNo = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
                   const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate;
-                  const docAmt  = item.sale?.netAmount ?? item.creditNote?.totalAmount;
+                  const docAmount = item.sale?.netAmount ?? item.creditNote?.totalAmount;
+
                   return (
-                    <tr key={item.id} className={`border-t border-gray-50 ${isCN ? "bg-emerald-50/30" : ""}`}>
-                      <td className={`py-3 px-4 font-mono font-medium ${isCN ? "text-emerald-700" : "text-[#1e3a5f]"}`}>
+                    <tr
+                      key={item.id}
+                      className={`border-t border-gray-50 ${isCreditNote ? "bg-emerald-50/30" : ""}`}
+                    >
+                      <td
+                        className={`px-4 py-3 font-mono font-medium ${
+                          isCreditNote ? "text-emerald-700" : "text-[#1e3a5f]"
+                        }`}
+                      >
                         {item.saleId ? (
-                          <Link href={`/admin/sales/${item.saleId}`} className="hover:underline">{docNo}</Link>
+                          <Link href={`/admin/sales/${item.saleId}`} className="hover:underline">
+                            {docNo}
+                          </Link>
                         ) : (
-                          <span>{docNo} <span className="text-xs font-normal text-emerald-600">(เน€เธเธฃเธ”เธดเธ• CN)</span></span>
+                          <span>
+                            {docNo} <span className="text-xs font-normal text-emerald-600">(เครดิต CN)</span>
+                          </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-gray-600">
-                        {docDate ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }) : "-"}
+                      <td className="px-4 py-3 text-gray-600">
+                        {docDate
+                          ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })
+                          : "-"}
                       </td>
-                      <td className="py-3 px-4 text-right text-gray-800">
-                        {docAmt != null ? Number(docAmt).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : "-"}
+                      <td className="px-4 py-3 text-right text-gray-800">
+                        {docAmount != null
+                          ? Number(docAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
+                          : "-"}
                       </td>
-                      <td className={`py-3 px-4 text-right font-medium ${isCN ? "text-emerald-700" : "text-gray-900"}`}>
-                        {isCN ? "โ’" : ""}{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      <td
+                        className={`px-4 py-3 text-right font-medium ${
+                          isCreditNote ? "text-emerald-700" : "text-gray-900"
+                        }`}
+                      >
+                        {isCreditNote ? "-" : ""}
+                        {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
                   );
@@ -220,146 +254,20 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         </div>
       </div>
 
-      {/* Print area */}
-      <div id="receipt" className="bg-white p-8 max-w-2xl mx-auto">
-        {/* Shop header */}
-        <div className="text-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">
-            {cfg.shopName ?? "เธฃเนเธฒเธเธญเธฐเนเธซเธฅเนเธฃเธ–เธขเธเธ•เน"}
-          </h2>
-          {cfg.shopAddress && (
-            <p className="text-sm text-gray-600 mt-1">{cfg.shopAddress}</p>
-          )}
-          {cfg.shopPhone && (
-            <p className="text-sm text-gray-600">เนเธ—เธฃ: {cfg.shopPhone}</p>
-          )}
-          {cfg.shopTaxId && (
-            <p className="text-sm text-gray-600">เน€เธฅเธเธเธฃเธฐเธเธณเธ•เธฑเธงเธเธนเนเน€เธชเธตเธขเธ เธฒเธฉเธต: {cfg.shopTaxId}</p>
-          )}
-        </div>
-
-        <div className="text-center mb-6">
-          <h3 className="text-lg font-bold border-t border-b border-gray-300 py-2 inline-block px-8">
-            เนเธเน€เธชเธฃเนเธเธฃเธฑเธเน€เธเธดเธ (เธฃเธฑเธเธเธณเธฃเธฐเธซเธเธตเน)
-          </h3>
-        </div>
-
-        {/* Receipt info */}
-        <div className="grid grid-cols-2 gap-x-4 mb-4 text-sm">
-          <div>
-            <span className="text-gray-600">เน€เธฅเธเธ—เธตเน: </span>
-            <span className="font-semibold">{receipt.receiptNo}</span>
-          </div>
-          <div className="text-right">
-            <span className="text-gray-600">เธงเธฑเธเธ—เธตเน: </span>
-            <span className="font-semibold">
-              {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-600">เธฅเธนเธเธเนเธฒ: </span>
-            <span className="font-semibold">{customerDisplay}</span>
-          </div>
-          <div className="text-right">
-            <span className="text-gray-600">เธเนเธญเธเธ—เธฒเธ: </span>
-            <span className="font-semibold">{paymentMethodLabel[receipt.paymentMethod]}</span>
-          </div>
-        </div>
-
-        {receivedTransferAccount ? (
-          <div className="mb-4 border border-gray-300 p-3 text-sm">
-            <p className="font-medium text-gray-900">บัญชีรับโอน</p>
-            <p className="text-gray-700">{receivedTransferAccount.bankName ?? receivedTransferAccount.name}</p>
-            <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo ?? "-"}</p>
-          </div>
-        ) : null}
-
-        {/* Items */}
-        <table className="w-full text-sm mb-4 border-collapse">
-          <thead>
-            <tr className="border-t border-b border-gray-300">
-              <th className="text-left py-2 font-medium text-gray-700">เน€เธฅเธเธ—เธตเนเนเธเธเธฒเธข</th>
-              <th className="text-left py-2 font-medium text-gray-700">เธงเธฑเธเธ—เธตเนเธเธฒเธข</th>
-              <th className="text-right py-2 font-medium text-gray-700">เธขเธญเธ”เนเธเธเธฒเธข</th>
-              <th className="text-right py-2 font-medium text-gray-700">เธขเธญเธ”เธ—เธตเนเธเธณเธฃเธฐ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receipt.items.map((item) => {
-              const isCN   = !!item.cnId;
-              const docNo  = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
-              const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate;
-              const docAmt  = item.sale?.netAmount ?? item.creditNote?.totalAmount;
-              return (
-                <tr key={item.id} className="border-b border-gray-100">
-                  <td className="py-1.5 font-mono text-gray-800">
-                    {docNo}{isCN ? " (เน€เธเธฃเธ”เธดเธ•)" : ""}
-                  </td>
-                  <td className="py-1.5 text-gray-700">
-                    {docDate ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }) : "-"}
-                  </td>
-                  <td className="py-1.5 text-right text-gray-800">
-                    {docAmt != null ? Number(docAmt).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : "-"}
-                  </td>
-                  <td className="py-1.5 text-right font-medium text-gray-900">
-                    {isCN ? "โ’" : ""}{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Total */}
-        <div className="flex justify-end mb-6">
-          <div className="w-56 space-y-1 text-sm">
-            <div className="flex justify-between border-t border-gray-300 pt-1 font-bold text-gray-900">
-              <span>เธขเธญเธ”เธฃเธฑเธเธเธณเธฃเธฐเธฃเธงเธก</span>
-              <span className="text-[#1e3a5f] text-base">
-                {Number(receipt.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {receipt.note && (
-          <div className="text-sm text-gray-600 mb-4">
-            <span className="font-medium">เธซเธกเธฒเธขเน€เธซเธ•เธธ: </span>{receipt.note}
-          </div>
-        )}
-
-        <div className="mb-6 grid grid-cols-2 gap-8 text-sm">
-          <div className="text-center">
-            <p className="mb-2 text-gray-600">เธเธนเนเธฃเธฑเธเน€เธเธดเธ</p>
-            <div className="flex h-24 items-end justify-center border-b border-gray-300 px-4">
-              {receiptSignatureUrl ? (
-                <img
-                  src={receiptSignatureUrl}
-                  alt={`เธฅเธฒเธขเน€เธเนเธ ${signerDisplayName}`}
-                  className="max-h-[72px] w-auto object-contain"
-                />
-              ) : null}
-            </div>
-            <p className="mt-2 font-medium text-gray-900">{signerDisplayName}</p>
-            <p className="mt-1 text-gray-400">วันที่ {receiptDateText}</p>
-          </div>
-
-          <div className="text-center">
-            <p className="mb-2 text-gray-600">เธเธนเนเธเธณเธฃเธฐเน€เธเธดเธ</p>
-            <div className="h-24 border-b border-gray-300" />
-            <p className="mt-2 font-medium text-gray-900">&nbsp;</p>
-            <p className="mt-1 text-gray-400">วันที่ {receiptDateText}</p>
-          </div>
-        </div>
-
-        <div className="text-center text-sm text-gray-500 border-t border-gray-200 pt-4">
-          เธเธญเธเธเธธเธ“เธ—เธตเนเนเธเนเธเธฃเธดเธเธฒเธฃ
-        </div>
-      </div>
+      <ReceiptSettlementPrintDocument
+        receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
+        shopConfig={{
+          shopName: cfg.shopName,
+          shopAddress: cfg.shopAddress,
+          shopPhone: cfg.shopPhone,
+          shopTaxId: cfg.shopTaxId,
+        }}
+        signerDisplayName={signerDisplayName}
+        receivedTransferAccount={receivedTransferAccount}
+        rootId="receipt"
+      />
     </>
   );
 };
 
 export default ReceiptDetailPage;
-
-
