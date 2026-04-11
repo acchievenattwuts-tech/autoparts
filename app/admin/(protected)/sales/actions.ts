@@ -116,6 +116,26 @@ const saleSchema = z.object({
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+function validateDeliveryFields(input: {
+  fulfillmentType: FulfillmentType;
+  shippingAddress?: string | null;
+  shippingMethod: ShippingMethod;
+}): string | null {
+  if (input.fulfillmentType !== FulfillmentType.DELIVERY) {
+    return null;
+  }
+
+  if (!input.shippingAddress?.trim()) {
+    return "กรุณาระบุที่อยู่จัดส่ง";
+  }
+
+  if (input.shippingMethod === ShippingMethod.NONE) {
+    return "กรุณาเลือกประเภทขนส่ง";
+  }
+
+  return null;
+}
+
 async function resolveSalePaymentMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   accountId: string | undefined,
@@ -294,6 +314,14 @@ export async function createSale(
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  const deliveryValidationError = validateDeliveryFields({
+    fulfillmentType,
+    shippingAddress,
+    shippingMethod,
+  });
+  if (deliveryValidationError) {
+    return { error: deliveryValidationError };
+  }
   if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
@@ -629,6 +657,14 @@ export async function updateSale(
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
+  const deliveryValidationError = validateDeliveryFields({
+    fulfillmentType,
+    shippingAddress,
+    shippingMethod,
+  });
+  if (deliveryValidationError) {
+    return { error: deliveryValidationError };
+  }
   if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }

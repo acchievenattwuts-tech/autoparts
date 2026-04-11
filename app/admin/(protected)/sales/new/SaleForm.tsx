@@ -356,6 +356,10 @@ const SaleForm = ({
       return;
     }
 
+    if (fulfillmentType === "DELIVERY" && shippingMethod === "NONE") {
+      setError("กรุณาเลือกประเภทขนส่ง");
+      return;
+    }
     if (paymentType === "CASH_SALE" && !cashBankAccountId) {
       setError("กรุณาเลือกบัญชีรับเงิน");
       return;
