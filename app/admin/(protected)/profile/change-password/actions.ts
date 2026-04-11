@@ -2,14 +2,13 @@
 
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { unstable_update } from "@/auth";
 import { db } from "@/lib/db";
 import { getRequiredSession } from "@/lib/require-auth";
 
 const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "กรุณากรอกรหัสผ่านปัจจุบัน"),
-  newPassword: z.string().min(8, "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร").max(100),
+    newPassword: z.string().min(8, "รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร").max(100),
     confirmPassword: z.string().min(1, "กรุณายืนยันรหัสผ่านใหม่"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
@@ -19,7 +18,7 @@ const changePasswordSchema = z
 
 export async function changeOwnPassword(
   formData: FormData
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; requireReLogin?: boolean; error?: string }> {
   let session;
   try {
     session = await getRequiredSession();
@@ -54,22 +53,17 @@ export async function changeOwnPassword(
       return { error: "รหัสผ่านปัจจุบันไม่ถูกต้อง" };
     }
 
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
     await db.user.update({
       where: { id: session.user.id },
       data: {
-        password: await bcrypt.hash(newPassword, 12),
+        password: hashedPassword,
         mustChangePassword: false,
       },
     });
 
-    await unstable_update({
-      user: {
-        ...session.user,
-        mustChangePassword: false,
-      },
-    });
-
-    return { success: true };
+    return { success: true, requireReLogin: true };
   } catch (error) {
     console.error("[changeOwnPassword]", error);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

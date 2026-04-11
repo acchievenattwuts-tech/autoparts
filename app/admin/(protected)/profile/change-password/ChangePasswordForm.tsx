@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CheckCircle } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { changeOwnPassword } from "./actions";
 
 const inputCls =
@@ -18,7 +19,8 @@ const ChangePasswordForm = () => {
     setError("");
     setSuccess("");
 
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
 
     startTransition(async () => {
       const result = await changeOwnPassword(formData);
@@ -27,8 +29,14 @@ const ChangePasswordForm = () => {
         return;
       }
 
-      e.currentTarget.reset();
-      setSuccess("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว");
+      form.reset();
+      setSuccess("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบอีกครั้ง");
+
+      if (result.requireReLogin) {
+        window.setTimeout(() => {
+          signOut({ callbackUrl: "/admin/login" });
+        }, 800);
+      }
     });
   };
 
