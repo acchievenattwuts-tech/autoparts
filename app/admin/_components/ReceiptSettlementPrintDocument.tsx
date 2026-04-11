@@ -60,6 +60,9 @@ const PRINT_TABLE_CELL_CLASS = `border ${PRINT_BODY_BORDER_CLASS} px-1.5 py-1.5`
 const PRINT_SECTION_BORDER_CLASS = `border ${PRINT_BODY_BORDER_CLASS}`;
 const PRINT_SECTION_BOTTOM_BORDER_CLASS = `border-b ${PRINT_BODY_BORDER_CLASS}`;
 const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLASS}`;
+const RECEIPT_SUMMARY_GRID_STYLE = {
+  gridTemplateColumns: "10rem 7rem minmax(0,1fr) minmax(0,1fr)",
+} as const;
 
 const fmtDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
@@ -196,13 +199,13 @@ export default function ReceiptSettlementPrintDocument({
         </tbody>
       </table>
 
-      <div className="mb-4 grid grid-cols-[minmax(0,1fr)_260px] text-xs">
-        <div className={`border-x border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
+      <div className="mb-4 grid text-xs" style={RECEIPT_SUMMARY_GRID_STYLE}>
+        <div className={`col-span-2 border-x border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
           <p className="mb-1 text-gray-400">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
         </div>
-        <div className={`border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
-          <div className={`flex justify-between ${PRINT_SECTION_TOP_BORDER_CLASS} pt-1 font-bold text-gray-900`}>
+        <div className={`col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
+          <div className="flex justify-between font-bold text-gray-900">
             <span>ยอดรับชำระรวม</span>
             <span className="text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</span>
           </div>
@@ -212,7 +215,7 @@ export default function ReceiptSettlementPrintDocument({
       <div className="mt-auto">
         {hasSupportBlock || hasPrintNotice ? (
           <div
-            className={`mb-5 grid gap-4 ${hasSupportBlock && hasPrintNotice ? "grid-cols-[minmax(0,7fr)_minmax(0,3fr)]" : "grid-cols-1"}`}
+            className={`mb-5 grid gap-4 ${hasSupportBlock && hasPrintNotice ? "grid-cols-[minmax(0,6fr)_minmax(0,4fr)]" : "grid-cols-1"}`}
           >
             {hasSupportBlock ? (
               <div className={`${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
