@@ -1,9 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import type { NextRequest } from "next/server";
-import { LineDailySummaryDispatchKind } from "@/lib/generated/prisma";
+import { LineDailySummaryDispatchKind, LineDailySummaryDispatchStatus } from "@/lib/generated/prisma";
 import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
-import { deliverLineDailySummary } from "@/lib/line-daily-summary-delivery";
+import {
+  deliverLineDailySummary,
+  logLineDailySummaryDispatchAttempt,
+} from "@/lib/line-daily-summary-delivery";
 import {
   getLineDailySummarySettings,
   shouldSendLineDailySummaryNow,
@@ -55,10 +58,20 @@ export async function GET(request: NextRequest) {
 
   const scheduleCheck = shouldSendLineDailySummaryNow(settings, new Date());
   if (!scheduleCheck.ok) {
+    const reportDayKey = resolveBangkokDayKey();
+    await logLineDailySummaryDispatchAttempt({
+      reportDayKey,
+      dispatchKind: LineDailySummaryDispatchKind.SCHEDULED,
+      status: LineDailySummaryDispatchStatus.SKIPPED,
+      targetMode: settings.targetMode,
+      errorMessage: scheduleCheck.reason,
+    });
+
     return Response.json({
       ok: true,
       skipped: true,
       reason: scheduleCheck.reason,
+      reportDayKey,
       settings,
     });
   }

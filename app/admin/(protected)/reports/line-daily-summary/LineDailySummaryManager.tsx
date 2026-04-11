@@ -38,6 +38,7 @@ type DispatchRow = {
   targetMode: string;
   recipientCount: number;
   sentCount: number;
+  errorMessage: string | null;
   createdAt: string;
 };
 
@@ -58,6 +59,75 @@ function formatDateTime(value: string | null) {
   });
 }
 
+function getDispatchKindLabel(value: string) {
+  if (value === "SCHEDULED") return "อัตโนมัติ";
+  if (value === "TEST") return "ทดสอบ";
+  return value;
+}
+
+function getDispatchReasonLabel(value: string | null) {
+  if (!value) return null;
+
+  if (value === "ALREADY_SENT" || value === "ALREADY_DISPATCHED") {
+    return "ข้ามเพราะส่งแล้ววันนี้";
+  }
+
+  if (value === "DISABLED") {
+    return "ข้ามเพราะปิดใช้งาน";
+  }
+
+  if (value === "TOO_EARLY") {
+    return "ข้ามเพราะยังไม่ถึงเวลาส่ง";
+  }
+
+  if (value.startsWith("CONFIG_INCOMPLETE:")) {
+    const missing = value.replace("CONFIG_INCOMPLETE:", "").trim();
+    return missing ? `ตั้งค่าไม่ครบ: ${missing}` : "ตั้งค่าการส่งไม่ครบ";
+  }
+
+  return value;
+}
+
+function getDispatchStatusLabel(dispatch: DispatchRow) {
+  if (dispatch.status === "SENT") return "ส่งแล้ว";
+  if (dispatch.status === "PROCESSING") return "กำลังส่ง";
+  if (dispatch.status === "SKIPPED") {
+    return getDispatchReasonLabel(dispatch.errorMessage) ?? "ข้ามการส่ง";
+  }
+  if (dispatch.status === "FAILED") {
+    return getDispatchReasonLabel(dispatch.errorMessage) ?? "ส่งไม่สำเร็จ";
+  }
+
+  return dispatch.status;
+}
+
+function getLatestScheduleStatusLabel(params: {
+  settings: {
+    enabled: boolean;
+    lastSentDayKey: string | null;
+  };
+  reportDayKey: string;
+  recentDispatches: DispatchRow[];
+}) {
+  const latestScheduled = params.recentDispatches.find(
+    (dispatch) => dispatch.dispatchKind === "SCHEDULED"
+  );
+
+  if (!params.settings.enabled) {
+    return "ปิดใช้งาน";
+  }
+
+  if (latestScheduled && latestScheduled.reportDayKey === params.reportDayKey) {
+    return getDispatchStatusLabel(latestScheduled);
+  }
+
+  if (params.settings.lastSentDayKey === params.reportDayKey) {
+    return "ส่งแล้ว";
+  }
+
+  return "รอรอบส่งวันนี้";
+}
+
 export default function LineDailySummaryManager(props: {
   reportDayKey: string;
   settings: {
@@ -72,13 +142,25 @@ export default function LineDailySummaryManager(props: {
   otherRecipients: RecipientRow[];
   recentDispatches: DispatchRow[];
 }) {
-  const { reportDayKey, settings, adminUsers, availableUserRecipients, otherRecipients, recentDispatches } = props;
+  const {
+    reportDayKey,
+    settings,
+    adminUsers,
+    availableUserRecipients,
+    otherRecipients,
+    recentDispatches,
+  } = props;
   const [settingsMessage, setSettingsMessage] = useState("");
   const [testMessage, setTestMessage] = useState("");
   const [mappingMessage, setMappingMessage] = useState("");
   const [settingsPending, startSettingsTransition] = useTransition();
   const [testPending, startTestTransition] = useTransition();
   const [mappingPending, startMappingTransition] = useTransition();
+  const latestScheduleStatus = getLatestScheduleStatusLabel({
+    settings,
+    reportDayKey,
+    recentDispatches,
+  });
 
   return (
     <div className="space-y-4">
@@ -86,7 +168,8 @@ export default function LineDailySummaryManager(props: {
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">ตั้งเวลาส่งจากในระบบ</h3>
           <p className="text-sm text-gray-500">
-            สำหรับแผน Hobby ระบบจะส่งสรุปรายวันตามรอบ cron คงที่ทุกวันเวลา 19:30 น. (Asia/Bangkok) โดยหน้า admin จะแสดงข้อมูลให้รับทราบแทนการให้ตั้งเวลาเอง
+            สำหรับแผน Hobby ระบบจะส่งสรุปรายวันตามรอบ cron คงที่ทุกวันเวลา 19:30 น.
+            (Asia/Bangkok) โดยหน้า admin จะแสดงข้อมูลให้รับทราบแทนการให้ตั้งเวลาเอง
           </p>
         </div>
 
@@ -137,7 +220,7 @@ export default function LineDailySummaryManager(props: {
         <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-3">
           <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
           <p>รอบส่งประจำ: 19:30 น. ทุกวัน</p>
-          <p>ส่งล่าสุด: {settings.lastSentDayKey ?? "-"} ({formatDateTime(settings.lastSentAt)})</p>
+          <p>ส่งล่าสุด: {latestScheduleStatus} ({formatDateTime(settings.lastSentAt)})</p>
         </div>
 
         {settingsMessage && <p className="mt-3 text-sm text-[#1e3a5f]">{settingsMessage}</p>}
@@ -199,7 +282,8 @@ export default function LineDailySummaryManager(props: {
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">ผูก LINE กับ ADMIN</h3>
           <p className="text-sm text-gray-500">
-            webhook จะเก็บ `userId/groupId/roomId` อัตโนมัติ ส่วนการส่งหา ADMIN จะใช้เฉพาะ recipient แบบ `USER` ที่ผูกกับผู้ใช้ admin แล้ว
+            webhook จะเก็บ userId/groupId/roomId อัตโนมัติ ส่วนการส่งหา ADMIN จะใช้เฉพาะ recipient แบบ
+            USER ที่ผูกกับผู้ใช้ admin แล้ว
           </p>
         </div>
 
@@ -235,7 +319,8 @@ export default function LineDailySummaryManager(props: {
                   </option>
                   {availableUserRecipients.map((recipient) => (
                     <option key={recipient.id} value={recipient.id}>
-                      {(recipient.displayName ?? recipient.lineId) + (recipient.linkedUserName ? ` (ผูกกับ ${recipient.linkedUserName})` : "")}
+                      {(recipient.displayName ?? recipient.lineId) +
+                        (recipient.linkedUserName ? ` (ผูกกับ ${recipient.linkedUserName})` : "")}
                     </option>
                   ))}
                 </select>
@@ -341,7 +426,10 @@ export default function LineDailySummaryManager(props: {
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5">
-        <h3 className="font-kanit text-lg font-semibold text-gray-900">ประวัติการส่งล่าสุด</h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900">ประวัติการส่งล่าสุด</h3>
+          <p className="text-xs text-gray-500">แสดง 10 รายการล่าสุด</p>
+        </div>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left text-gray-500">
@@ -356,11 +444,21 @@ export default function LineDailySummaryManager(props: {
             </thead>
             <tbody>
               {recentDispatches.map((dispatch) => (
-                <tr key={dispatch.id} className="border-t border-gray-100">
+                <tr key={dispatch.id} className="border-t border-gray-100 align-top">
                   <td className="px-3 py-2 text-gray-700">{dispatch.reportDayKey}</td>
-                  <td className="px-3 py-2 text-gray-600">{dispatch.dispatchKind}</td>
-                  <td className="px-3 py-2 text-gray-600">{dispatch.status}</td>
-                  <td className="px-3 py-2 text-gray-600">{targetModeLabels[dispatch.targetMode as LineDailySummaryTargetMode] ?? dispatch.targetMode}</td>
+                  <td className="px-3 py-2 text-gray-600">{getDispatchKindLabel(dispatch.dispatchKind)}</td>
+                  <td className="px-3 py-2 text-gray-600">
+                    <div className="space-y-1">
+                      <p>{getDispatchStatusLabel(dispatch)}</p>
+                      {dispatch.errorMessage && (
+                        <p className="text-xs text-gray-400">{dispatch.errorMessage}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-gray-600">
+                    {targetModeLabels[dispatch.targetMode as LineDailySummaryTargetMode] ??
+                      dispatch.targetMode}
+                  </td>
                   <td className="px-3 py-2 text-gray-600">
                     {dispatch.sentCount}/{dispatch.recipientCount}
                   </td>

@@ -11,6 +11,18 @@ type DeliverParams = {
   triggeredByUserId?: string | null;
 };
 
+type LogDispatchAttemptParams = {
+  reportDayKey: string;
+  dispatchKind: LineDailySummaryDispatchKind;
+  status: LineDailySummaryDispatchStatus;
+  targetMode: LineDailySummaryTargetMode;
+  recipientIds?: string[];
+  sentCount?: number;
+  errorMessage?: string | null;
+  triggeredByUserId?: string | null;
+  sentAt?: Date | null;
+};
+
 export type DeliverLineDailySummaryResult =
   | {
       ok: true;
@@ -39,6 +51,37 @@ function isUniqueConstraintError(error: unknown) {
   );
 }
 
+export async function logLineDailySummaryDispatchAttempt(
+  params: LogDispatchAttemptParams
+) {
+  const {
+    reportDayKey,
+    dispatchKind,
+    status,
+    targetMode,
+    recipientIds = [],
+    sentCount = 0,
+    errorMessage,
+    triggeredByUserId,
+    sentAt,
+  } = params;
+
+  await db.lineDailySummaryDispatch.create({
+    data: {
+      reportDayKey,
+      dispatchKind,
+      status,
+      targetMode,
+      recipientCount: recipientIds.length,
+      sentCount,
+      recipientSnapshot: recipientIds.length > 0 ? recipientIds.join(",") : null,
+      errorMessage: errorMessage?.slice(0, 1000) ?? null,
+      triggeredByUserId: triggeredByUserId ?? null,
+      sentAt: sentAt ?? null,
+    },
+  });
+}
+
 export async function deliverLineDailySummary(
   params: DeliverParams
 ): Promise<DeliverLineDailySummaryResult> {
@@ -50,6 +93,16 @@ export async function deliverLineDailySummary(
   const recipientIds = resolvedRecipients.recipientIds;
 
   if (!config.channelAccessToken || missingDeliveryEnv.length > 0 || recipientIds.length === 0) {
+    await logLineDailySummaryDispatchAttempt({
+      reportDayKey,
+      dispatchKind,
+      status: LineDailySummaryDispatchStatus.FAILED,
+      targetMode,
+      recipientIds,
+      errorMessage: `CONFIG_INCOMPLETE:${[...new Set(missingDeliveryEnv)].join(",")}`,
+      triggeredByUserId,
+    });
+
     return {
       ok: false,
       status: "FAILED",
@@ -86,6 +139,16 @@ export async function deliverLineDailySummary(
       dispatchId = dispatch.id;
     } catch (error) {
       if (isUniqueConstraintError(error)) {
+        await logLineDailySummaryDispatchAttempt({
+          reportDayKey,
+          dispatchKind,
+          status: LineDailySummaryDispatchStatus.SKIPPED,
+          targetMode,
+          recipientIds,
+          errorMessage: "ALREADY_DISPATCHED",
+          triggeredByUserId,
+        });
+
         return {
           ok: false,
           status: "SKIPPED",

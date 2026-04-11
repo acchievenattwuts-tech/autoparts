@@ -161,6 +161,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         targetMode: true,
         recipientCount: true,
         sentCount: true,
+        errorMessage: true,
         createdAt: true,
       },
     }),
