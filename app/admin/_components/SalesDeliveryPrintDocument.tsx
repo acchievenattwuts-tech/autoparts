@@ -130,6 +130,7 @@ export default function SalesDeliveryPrintDocument({
   const customerName = sale.customer?.name ?? sale.customerName ?? "-";
   const customerPhone = sale.customer?.phone ?? sale.customerPhone ?? null;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
+  const documentDateText = fmtDate(sale.saleDate);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
@@ -406,13 +407,13 @@ export default function SalesDeliveryPrintDocument({
               </div>
               <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับเงิน</div>
               <div className="px-4 pb-1 text-gray-700">{signerDisplayName}</div>
-              <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
+              <div className="px-4 pb-2 text-gray-400">วันที่ {documentDateText}</div>
             </div>
             <div>
               <div className="h-16" />
               <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับของ</div>
               <div className="px-4 pb-1 text-gray-700">&nbsp;</div>
-              <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
+              <div className="px-4 pb-2 text-gray-400">วันที่ {documentDateText}</div>
             </div>
           </div>
         )}

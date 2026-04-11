@@ -9,7 +9,6 @@ import PrintButton from "./PrintButton";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { getPrimaryTransferAccount } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -24,7 +23,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const canUpdate = hasPermissionAccess(role, permissions, "receipts.update");
   const { id } = await params;
 
-  const [receipt, contents, primaryTransferAccount] = await Promise.all([
+  const [receipt, contents, primaryTransferAccount] = await db.$transaction([
     db.receipt.findUnique({
       where: { id },
       include: {
@@ -42,7 +41,18 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
     db.siteContent.findMany({
       where: { key: { in: ["shopName", "shopPhone", "shopAddress", "shopTaxId"] } },
     }),
-    getPrimaryTransferAccount(),
+    db.cashBankAccount.findFirst({
+      where: {
+        type: "BANK",
+        isActive: true,
+        isPrimaryTransferAccount: true,
+      },
+      select: {
+        name: true,
+        bankName: true,
+        accountNo: true,
+      },
+    }),
   ]);
 
   if (!receipt) notFound();
@@ -51,6 +61,11 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
   const receiptSignatureUrl = receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null;
+  const receiptDateText = new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
   const receivedTransferAccount =
     receipt.paymentMethod === PaymentMethod.TRANSFER
       ? receipt.cashBankAccount ?? primaryTransferAccount
@@ -326,12 +341,14 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               ) : null}
             </div>
             <p className="mt-2 font-medium text-gray-900">{signerDisplayName}</p>
+            <p className="mt-1 text-gray-400">วันที่ {receiptDateText}</p>
           </div>
 
           <div className="text-center">
             <p className="mb-2 text-gray-600">เธเธนเนเธเธณเธฃเธฐเน€เธเธดเธ</p>
             <div className="h-24 border-b border-gray-300" />
             <p className="mt-2 font-medium text-gray-900">&nbsp;</p>
+            <p className="mt-1 text-gray-400">วันที่ {receiptDateText}</p>
           </div>
         </div>
 

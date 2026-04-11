@@ -7,9 +7,44 @@ import SalesDeliveryPrintDocument from "@/app/admin/_components/SalesDeliveryPri
 import AutoPrint from "@/components/shared/AutoPrint";
 import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
-import { buildPromptPayQrDataUrl, getPrimaryTransferAccount, getTransferDocumentState } from "@/lib/payment-qr";
+import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { requirePermission } from "@/lib/require-auth";
-import { getSiteConfig } from "@/lib/site-config";
+import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+
+const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
+  const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
+
+  return {
+    shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
+    shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
+    shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
+    shopPhone: map["shop_phone"] ?? defaultSiteConfig.shopPhone,
+    shopPhoneSecondary: map["shop_phone_secondary"] ?? defaultSiteConfig.shopPhoneSecondary,
+    shopEmail: map["shop_email"] ?? defaultSiteConfig.shopEmail,
+    shopLineId: map["shop_line_id"] ?? defaultSiteConfig.shopLineId,
+    shopLineUrl: map["shop_line_url"] ?? defaultSiteConfig.shopLineUrl,
+    shopLogoUrl: map["shop_logo_url"] ?? defaultSiteConfig.shopLogoUrl,
+    shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultSiteConfig.shopGoogleMapUrl,
+    shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultSiteConfig.shopGoogleMapEmbedUrl,
+    shopBusinessHours: map["shop_business_hours"] ?? defaultSiteConfig.shopBusinessHours,
+    shopHolidayNote: map["shop_holiday_note"] ?? defaultSiteConfig.shopHolidayNote,
+    shopContactNote: map["shop_contact_note"] ?? defaultSiteConfig.shopContactNote,
+    heroTitle: map["hero_title"] ?? defaultSiteConfig.heroTitle,
+    heroSubtitle: map["hero_subtitle"] ?? defaultSiteConfig.heroSubtitle,
+    shopWebsiteUrl: map["shop_website_url"] ?? defaultSiteConfig.shopWebsiteUrl,
+    shopFacebookUrl: map["shop_facebook_url"] ?? defaultSiteConfig.shopFacebookUrl,
+    shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
+    shopTiktokUrl: map["shop_tiktok_url"] ?? defaultSiteConfig.shopTiktokUrl,
+    shopTiktokEnabled: map["shop_tiktok_enabled"] === "true",
+    shopShopeeUrl: map["shop_shopee_url"] ?? defaultSiteConfig.shopShopeeUrl,
+    shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
+    shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
+    shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
+    printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+    vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
+    vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
+  };
+};
 
 const DeliveryPrintPage = async ({
   searchParams,
@@ -24,7 +59,7 @@ const DeliveryPrintPage = async ({
   const idList = ids.split(",").filter(Boolean).slice(0, 100);
   if (idList.length === 0) notFound();
 
-  const [sales, shopConfig, primaryTransferAccount] = await Promise.all([
+  const [sales, siteContents, primaryTransferAccount] = await db.$transaction([
     db.sale.findMany({
       where: { id: { in: idList }, fulfillmentType: "DELIVERY", status: "ACTIVE" },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
@@ -62,11 +97,25 @@ const DeliveryPrintPage = async ({
         },
       },
     }),
-    getSiteConfig(),
-    getPrimaryTransferAccount(),
+    db.siteContent.findMany(),
+    db.cashBankAccount.findFirst({
+      where: {
+        type: "BANK",
+        isActive: true,
+        isPrimaryTransferAccount: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        bankName: true,
+        accountNo: true,
+        promptPayId: true,
+      },
+    }),
   ]);
 
   if (sales.length === 0) notFound();
+  const shopConfig = mapSiteConfig(siteContents);
 
   return (
     <>

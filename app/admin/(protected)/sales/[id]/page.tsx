@@ -1,7 +1,7 @@
 ﻿export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import { getSiteConfig } from "@/lib/site-config";
+import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -15,6 +15,41 @@ import { buildPromptPayQrDataUrl, getPrimaryTransferAccount, getTransferDocument
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import PrintButton from "./PrintButton";
+
+const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
+  const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
+
+  return {
+    shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
+    shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
+    shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
+    shopPhone: map["shop_phone"] ?? defaultSiteConfig.shopPhone,
+    shopPhoneSecondary: map["shop_phone_secondary"] ?? defaultSiteConfig.shopPhoneSecondary,
+    shopEmail: map["shop_email"] ?? defaultSiteConfig.shopEmail,
+    shopLineId: map["shop_line_id"] ?? defaultSiteConfig.shopLineId,
+    shopLineUrl: map["shop_line_url"] ?? defaultSiteConfig.shopLineUrl,
+    shopLogoUrl: map["shop_logo_url"] ?? defaultSiteConfig.shopLogoUrl,
+    shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultSiteConfig.shopGoogleMapUrl,
+    shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultSiteConfig.shopGoogleMapEmbedUrl,
+    shopBusinessHours: map["shop_business_hours"] ?? defaultSiteConfig.shopBusinessHours,
+    shopHolidayNote: map["shop_holiday_note"] ?? defaultSiteConfig.shopHolidayNote,
+    shopContactNote: map["shop_contact_note"] ?? defaultSiteConfig.shopContactNote,
+    heroTitle: map["hero_title"] ?? defaultSiteConfig.heroTitle,
+    heroSubtitle: map["hero_subtitle"] ?? defaultSiteConfig.heroSubtitle,
+    shopWebsiteUrl: map["shop_website_url"] ?? defaultSiteConfig.shopWebsiteUrl,
+    shopFacebookUrl: map["shop_facebook_url"] ?? defaultSiteConfig.shopFacebookUrl,
+    shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
+    shopTiktokUrl: map["shop_tiktok_url"] ?? defaultSiteConfig.shopTiktokUrl,
+    shopTiktokEnabled: map["shop_tiktok_enabled"] === "true",
+    shopShopeeUrl: map["shop_shopee_url"] ?? defaultSiteConfig.shopShopeeUrl,
+    shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
+    shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
+    shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
+    printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+    vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
+    vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
+  };
+};
 
 const paymentMethodLabel: Record<string, string> = {
   CASH: "เงินสด",
@@ -68,7 +103,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
 
-  const [sale, cfg, primaryTransferAccount] = await Promise.all([
+  const [sale, siteContents, primaryTransferAccount] = await db.$transaction([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -83,11 +118,25 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       },
     }),
-    getSiteConfig(),
-    getPrimaryTransferAccount(),
+    db.siteContent.findMany(),
+    db.cashBankAccount.findFirst({
+      where: {
+        type: "BANK",
+        isActive: true,
+        isPrimaryTransferAccount: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        bankName: true,
+        accountNo: true,
+        promptPayId: true,
+      },
+    }),
   ]);
 
   if (!sale) notFound();
+  const cfg = mapSiteConfig(siteContents);
 
   const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
