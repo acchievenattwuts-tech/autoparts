@@ -78,7 +78,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             lotItems: { select: { lotNo: true, qty: true } },
           },
         },
-        user: { select: { name: true } },
+        user: { select: { name: true, signatureUrl: true } },
         customer: { select: { id: true, name: true, phone: true, address: true } },
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       },
@@ -91,6 +91,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
   const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
+  const signerSignatureUrl = sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null;
   const transferDocumentState = getTransferDocumentState({
     paymentType: sale.paymentType,
     netAmount: Number(sale.netAmount),
@@ -267,7 +268,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       </div>
 
       <SalesDeliveryPrintDocument
-        sale={sale}
+        sale={{ ...sale, signerSignatureUrl }}
         shopConfig={cfg}
         dueDate={dueDate}
         signerDisplayName={signerDisplayName}

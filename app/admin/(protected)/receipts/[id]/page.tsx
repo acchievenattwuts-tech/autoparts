@@ -31,7 +31,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
       include: {
         customer: true,
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
-        user:     { select: { name: true } },
+        user:     { select: { name: true, signatureUrl: true } },
         items: {
           include: {
             sale:       { select: { saleNo: true, saleDate: true, netAmount: true } },
@@ -51,6 +51,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const cfg = Object.fromEntries(contents.map((c) => [c.key, c.value]));
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
+  const receiptSignatureUrl = receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null;
   const receivedTransferAccount =
     receipt.paymentMethod === PaymentMethod.TRANSFER
       ? receipt.cashBankAccount ?? primaryTransferAccount
@@ -317,9 +318,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <div className="text-center">
             <p className="mb-2 text-gray-600">เธเธนเนเธฃเธฑเธเน€เธเธดเธ</p>
             <div className="flex h-24 items-end justify-center border-b border-gray-300 px-4">
-              {receipt.signerSignatureUrl ? (
+              {receiptSignatureUrl ? (
                 <Image
-                  src={receipt.signerSignatureUrl}
+                  src={receiptSignatureUrl}
                   alt={`เธฅเธฒเธขเน€เธเนเธ ${signerDisplayName}`}
                   width={180}
                   height={72}
