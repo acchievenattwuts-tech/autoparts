@@ -204,10 +204,10 @@ export default function ReceiptSettlementPrintDocument({
           <p className="mb-1 text-gray-400">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
         </div>
-        <div className={`col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
-          <div className="flex justify-between font-bold text-gray-900">
-            <span>ยอดรับชำระรวม</span>
-            <span className="text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</span>
+        <div className={`col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS}`}>
+          <div className="grid grid-cols-2 text-xs">
+            <div className={`border-r ${PRINT_BODY_BORDER_CLASS} p-2 font-bold text-gray-900`}>ยอดรับชำระรวม</div>
+            <div className="p-2 text-right font-bold text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</div>
           </div>
         </div>
       </div>
