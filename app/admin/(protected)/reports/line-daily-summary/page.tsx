@@ -309,31 +309,15 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
           <div className="flex flex-col gap-1">
             <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่งจริง</h3>
             <p className="text-sm text-gray-500">
-              preview นี้แสดงทั้งข้อความสั้นและ Flex Message ชุดเดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
+              preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
             </p>
           </div>
 
           <div className="mt-4 rounded-[28px] border border-emerald-100 bg-[radial-gradient(circle_at_top,_#f0fdf4,_#dcfce7_40%,_#bbf7d0_100%)] p-4 md:p-5">
-            <div className="mx-auto max-w-3xl space-y-4">
+            <div className="mx-auto max-w-3xl">
               <div className="mb-1 flex items-center justify-between text-xs font-medium text-emerald-900/80">
                 <span>LINE OA preview</span>
                 <span>{summary.reportDateLabel}</span>
-              </div>
-
-              <div className="rounded-[22px] rounded-tl-md border border-white/90 bg-white px-5 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 font-semibold text-white">
-                    OA
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Daily Closing Summary</p>
-                    <p className="text-xs text-slate-500">ข้อความที่ผู้รับจะเห็นใน LINE</p>
-                  </div>
-                </div>
-
-                <pre className="whitespace-pre-wrap break-words bg-transparent font-sans text-[15px] leading-8 text-slate-900">
-                  {summary.message}
-                </pre>
               </div>
 
               <div className="rounded-[24px] border border-white/90 bg-slate-50 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
@@ -345,6 +329,14 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
                       <p className="text-xs text-emerald-100">ยอดขายรวม</p>
                       <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.salesTotal)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                      <p className="text-xs text-emerald-100">ขายเงินสด</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.cashSales)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                      <p className="text-xs text-emerald-100">ขายเงินเชื่อ</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.creditSales)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
                       <p className="text-xs text-emerald-100">รายการต้องติดตาม</p>
