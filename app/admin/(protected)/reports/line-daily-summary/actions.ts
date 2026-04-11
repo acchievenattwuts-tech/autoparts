@@ -124,8 +124,24 @@ export async function linkAdminLineRecipientAction(formData: FormData) {
     select: { id: true, type: true },
   });
 
+  const user = await db.user.findUnique({
+    where: { id: parsed.data.userId },
+    select: {
+      id: true,
+      appRole: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
   if (!recipient || recipient.type !== "USER") {
     return { error: "ผูกได้เฉพาะ LINE userId เท่านั้น" };
+  }
+
+  if (!user || user.appRole?.name !== "ADMIN") {
+    return { error: "ผูก LINE ได้เฉพาะผู้ใช้ที่มีบทบาทการใช้งาน ADMIN" };
   }
 
   await db.userLineRecipient.deleteMany({

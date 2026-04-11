@@ -62,7 +62,14 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     Promise.resolve(getLineDailySummaryConfig()),
     getLineDailySummarySettings().then((value) => resolveConfiguredLineRecipients(value.targetMode)),
     db.user.findMany({
-      where: { role: "ADMIN", isActive: true },
+      where: {
+        isActive: true,
+        appRole: {
+          is: {
+            name: "ADMIN",
+          },
+        },
+      },
       select: {
         id: true,
         name: true,

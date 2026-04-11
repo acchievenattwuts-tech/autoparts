@@ -80,8 +80,12 @@ export async function resolveLineDailySummaryRecipientIds(targetMode: LineDailyS
   if (targetMode === LineDailySummaryTargetMode.ADMIN_USERS) {
     const adminUsers = await db.user.findMany({
       where: {
-        role: "ADMIN",
         isActive: true,
+        appRole: {
+          is: {
+            name: "ADMIN",
+          },
+        },
         lineRecipientLinks: {
           some: {
             recipient: {
