@@ -625,6 +625,237 @@ function renderLineDailySummaryMessage(summary: {
   ].join("\n");
 }
 
+function buildLineDailySummaryFlexMessageV2(summary: {
+  reportDateLabel: string;
+  money: MoneySection;
+  counts: CountSection;
+}): LineFlexMessage {
+  const { reportDateLabel, money, counts } = summary;
+  const followUpCount =
+    counts.pendingDelivery +
+    counts.lowStockCount +
+    counts.outOfStockCount +
+    counts.openClaimCount +
+    counts.cancelledDocumentCount;
+
+  return {
+    type: "flex",
+    altText: `สรุปงานประจำวันที่ ${reportDateLabel}`,
+    contents: {
+      type: "bubble",
+      size: "giga",
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "lg",
+        backgroundColor: "#F8FAFC",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "16px",
+            cornerRadius: "20px",
+            background: {
+              type: "linearGradient",
+              angle: "0deg",
+              startColor: "#16A34A",
+              endColor: "#0F766E",
+            },
+            contents: [
+              {
+                type: "text",
+                text: "SME Daily Closing",
+                size: "xs",
+                color: "#DCFCE7",
+                weight: "bold",
+              },
+              {
+                type: "text",
+                text: `🌈 สรุปงานประจำวันที่ ${reportDateLabel}`,
+                margin: "md",
+                size: "xl",
+                color: "#FFFFFF",
+                weight: "bold",
+                wrap: true,
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                margin: "lg",
+                spacing: "md",
+                contents: [
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    cornerRadius: "14px",
+                    paddingAll: "12px",
+                    backgroundColor: "#FFFFFF1A",
+                    flex: 1,
+                    contents: [
+                      {
+                        type: "text",
+                        text: "ยอดขายรวม",
+                        size: "xs",
+                        color: "#DCFCE7",
+                      },
+                      {
+                        type: "text",
+                        text: `฿${formatMoney(money.salesTotal)}`,
+                        margin: "sm",
+                        size: "lg",
+                        color: "#FFFFFF",
+                        weight: "bold",
+                        wrap: true,
+                      },
+                    ],
+                  },
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    cornerRadius: "14px",
+                    paddingAll: "12px",
+                    backgroundColor: "#FFFFFF1A",
+                    flex: 1,
+                    contents: [
+                      {
+                        type: "text",
+                        text: "รายการต้องติดตาม",
+                        size: "xs",
+                        color: "#DCFCE7",
+                      },
+                      {
+                        type: "text",
+                        text: formatCount(followUpCount),
+                        margin: "sm",
+                        size: "lg",
+                        color: "#FFFFFF",
+                        weight: "bold",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
+                text: "🧾 รายละเอียดการขาย",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows([
+                  { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}` },
+                  { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}` },
+                  { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}` },
+                ]),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
+                text: "💸 เงินเข้าและยอดค้าง",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows([
+                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
+                  { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
+                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
+                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
+                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}` },
+                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}` },
+                ]),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
+                text: "🚚 งานค้างและความเสี่ยง",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows([
+                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ` },
+                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ` },
+                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ` },
+                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ` },
+                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot` },
+                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ` },
+                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ` },
+                ]),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "14px",
+            cornerRadius: "16px",
+            backgroundColor: "#E0F2FE",
+            contents: [
+              {
+                type: "text",
+                text: "✨ ปิดท้ายวันนี้",
+                size: "sm",
+                color: "#0369A1",
+                weight: "bold",
+              },
+              {
+                type: "text",
+                text: `ค่าใช้จ่ายวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                margin: "sm",
+                size: "sm",
+                color: "#0F172A",
+                wrap: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineDailySummary> {
   const reportDayKey = resolveBangkokDayKey(dayKeyInput);
   const { start, end } = getBangkokDayRange(reportDayKey);
@@ -860,7 +1091,7 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     money,
     counts,
   });
-  const flexMessage = buildLineDailySummaryFlexMessage({
+  const flexMessage = buildLineDailySummaryFlexMessageV2({
     reportDateLabel,
     money,
     counts,

@@ -331,14 +331,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                       <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.salesTotal)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">ขายเงินสด</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.cashSales)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">ขายเงินเชื่อ</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.creditSales)}</p>
-                    </div>
-                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
                       <p className="text-xs text-emerald-100">รายการต้องติดตาม</p>
                       <p className="mt-1 font-kanit text-2xl font-bold">{followUpCount}</p>
                     </div>
@@ -346,6 +338,15 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                 </div>
 
                 <div className="mt-4 space-y-3">
+                  <FlexPreviewSection
+                    title="🧾 รายละเอียดการขาย"
+                    items={[
+                      { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` },
+                      { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` },
+                      { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` },
+                    ]}
+                  />
+
                   <FlexPreviewSection
                     title="💸 เงินเข้าและยอดค้าง"
                     items={[
