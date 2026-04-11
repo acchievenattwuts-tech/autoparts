@@ -4,6 +4,7 @@ import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { resolveLineDailySummaryRecipientIds } from "@/lib/line-recipient";
 
 const LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push";
+const LINE_PROFILE_API_URL = "https://api.line.me/v2/bot/profile";
 const LINE_PUSH_MAX_ATTEMPTS = 3;
 const LINE_PUSH_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
@@ -18,6 +19,12 @@ export type LineDailySummaryConfig = {
 export type LinePushResult = {
   sentCount: number;
   recipientIds: string[];
+};
+
+export type LineUserProfile = {
+  displayName: string | null;
+  pictureUrl: string | null;
+  statusMessage: string | null;
 };
 
 type LinePushAttemptFailure = {
@@ -73,6 +80,40 @@ export function getLineDailySummaryConfig(): LineDailySummaryConfig {
     cronSecret,
     envRecipientIds,
     missingDeliveryEnv,
+  };
+}
+
+export async function fetchLineUserProfile(params: {
+  channelAccessToken: string;
+  userId: string;
+}): Promise<LineUserProfile | null> {
+  const { channelAccessToken, userId } = params;
+
+  const response = await fetch(`${LINE_PROFILE_API_URL}/${encodeURIComponent(userId)}`, {
+    headers: {
+      Authorization: `Bearer ${channelAccessToken}`,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
+    throw new Error(`LINE profile lookup failed (${response.status}): ${body}`);
+  }
+
+  const payload = (await response.json()) as {
+    displayName?: string;
+    pictureUrl?: string;
+    statusMessage?: string;
+  };
+
+  return {
+    displayName: payload.displayName?.trim() || null,
+    pictureUrl: payload.pictureUrl?.trim() || null,
+    statusMessage: payload.statusMessage?.trim() || null,
   };
 }
 

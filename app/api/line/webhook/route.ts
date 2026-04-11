@@ -1,6 +1,10 @@
 export const dynamic = "force-dynamic";
 
-import { getLineDailySummaryConfig, verifyLineWebhookSignature } from "@/lib/line-messaging";
+import {
+  fetchLineUserProfile,
+  getLineDailySummaryConfig,
+  verifyLineWebhookSignature,
+} from "@/lib/line-messaging";
 import { upsertLineRecipientFromWebhook } from "@/lib/line-recipient";
 
 type LineWebhookEvent = {
@@ -44,11 +48,29 @@ export async function POST(request: Request) {
       continue;
     }
 
+    let displayName: string | null = null;
+    if (source.userId && config.channelAccessToken) {
+      try {
+        const profile = await fetchLineUserProfile({
+          channelAccessToken: config.channelAccessToken,
+          userId: source.userId,
+        });
+        displayName = profile?.displayName ?? null;
+      } catch (error) {
+        console.warn(
+          `[line-webhook] profile lookup failed for ${source.userId}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
+    }
+
     const saved = await upsertLineRecipientFromWebhook({
       userId: source.userId ?? null,
       groupId: source.groupId ?? null,
       roomId: source.roomId ?? null,
       eventType: event.type ?? null,
+      displayName,
     });
 
     if (saved.length > 0) {

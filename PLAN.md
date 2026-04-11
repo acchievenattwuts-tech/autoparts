@@ -2889,3 +2889,26 @@ npm run db:restore backup-{timestamp}.json
 - [x] Do not add queue workers, background daemons, or multi-cron retry loops on Hobby
 - [x] Do not auto-resend forever; cap retries inside a single request at 3 attempts
 - [x] Keep retry behavior inside the LINE delivery helper so webhook/admin/scheduled entry points stay simple
+
+## Roadmap Update (2026-04-11 LINE Recipient Identity + Lightweight Retention UI)
+
+> Scope for this round: improve recipient identification and admin usability without deleting any historical webhook data. Keep the delivery model unchanged, but enrich `USER` recipients with LINE profile names and hide stale webhook recipients in the UI by default.
+
+### Checklist
+
+- [x] Fetch `displayName` from LINE Profile API for webhook events that contain a `userId`
+- [x] Keep webhook processing resilient by falling back to raw `userId` when LINE profile lookup fails
+- [x] Store fetched `displayName` on `LineRecipient` for `USER` recipients only
+- [x] Leave `GROUP` / `ROOM` handling unchanged and do not attempt unsupported profile lookups for them
+- [x] Keep all webhook recipients in the database; do not delete old rows in this round
+- [x] Add a lightweight 90-day visibility filter in the admin recipient UI instead of deleting old data
+- [x] Keep mapped recipients visible even when their last webhook activity is older than 90 days
+- [x] Apply the same 90-day visibility rule to the admin recipient picker so old, unused IDs do not clutter the dropdown
+- [x] Keep the 90-day filter and the webhook recipient list in the same admin card for easy operator understanding
+- [x] Verify `npm run build`
+
+### Guard rails
+
+- [x] Do not introduce automatic cleanup jobs or archival schema in this round
+- [x] Do not require LINE profile lookup success for webhook persistence
+- [x] Do not hide recipients that are already linked to an admin user

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { LineDailySummaryTargetMode, LineRecipientType } from "@/lib/generated/prisma";
 import {
   linkAdminLineRecipientAction,
@@ -44,6 +44,7 @@ type DispatchRow = {
 
 const inputCls =
   "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+const RECIPIENTS_PER_PAGE = 10;
 
 const targetModeLabels: Record<LineDailySummaryTargetMode, string> = {
   ENV_IDS: "ส่งตาม LINE_DAILY_SUMMARY_TO_IDS",
@@ -128,6 +129,19 @@ function getLatestScheduleStatusLabel(params: {
   return "รอรอบส่งวันนี้";
 }
 
+function isRecipientVisibleWithin90Days(recipient: RecipientRow) {
+  if (recipient.linkedUserName) {
+    return true;
+  }
+
+  if (!recipient.lastWebhookAt) {
+    return false;
+  }
+
+  const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  return new Date(recipient.lastWebhookAt).getTime() >= ninetyDaysAgo;
+}
+
 export default function LineDailySummaryManager(props: {
   reportDayKey: string;
   settings: {
@@ -156,11 +170,43 @@ export default function LineDailySummaryManager(props: {
   const [settingsPending, startSettingsTransition] = useTransition();
   const [testPending, startTestTransition] = useTransition();
   const [mappingPending, startMappingTransition] = useTransition();
+  const [showOlderRecipients, setShowOlderRecipients] = useState(false);
+  const [recipientPage, setRecipientPage] = useState(1);
+
   const latestScheduleStatus = getLatestScheduleStatusLabel({
     settings,
     reportDayKey,
     recentDispatches,
   });
+
+  const visibleUserRecipients = useMemo(
+    () =>
+      showOlderRecipients
+        ? availableUserRecipients
+        : availableUserRecipients.filter(isRecipientVisibleWithin90Days),
+    [availableUserRecipients, showOlderRecipients]
+  );
+
+  const hiddenRecipientCount = Math.max(
+    availableUserRecipients.length - visibleUserRecipients.length,
+    0
+  );
+  const recipientPageCount = Math.max(
+    1,
+    Math.ceil(visibleUserRecipients.length / RECIPIENTS_PER_PAGE)
+  );
+  const paginatedUserRecipients = useMemo(() => {
+    const start = (recipientPage - 1) * RECIPIENTS_PER_PAGE;
+    return visibleUserRecipients.slice(start, start + RECIPIENTS_PER_PAGE);
+  }, [recipientPage, visibleUserRecipients]);
+
+  useEffect(() => {
+    setRecipientPage(1);
+  }, [showOlderRecipients]);
+
+  useEffect(() => {
+    setRecipientPage((current) => Math.min(current, recipientPageCount));
+  }, [recipientPageCount]);
 
   return (
     <div className="space-y-4">
@@ -189,7 +235,11 @@ export default function LineDailySummaryManager(props: {
 
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             เปิดใช้งาน
-            <select name="enabled" defaultValue={settings.enabled ? "true" : "false"} className={inputCls}>
+            <select
+              name="enabled"
+              defaultValue={settings.enabled ? "true" : "false"}
+              className={inputCls}
+            >
               <option value="true">เปิด</option>
               <option value="false">ปิด</option>
             </select>
@@ -204,7 +254,9 @@ export default function LineDailySummaryManager(props: {
             ปลายทางหลัก
             <select name="targetMode" defaultValue={settings.targetMode} className={inputCls}>
               <option value={LineDailySummaryTargetMode.ENV_IDS}>{targetModeLabels.ENV_IDS}</option>
-              <option value={LineDailySummaryTargetMode.ADMIN_USERS}>{targetModeLabels.ADMIN_USERS}</option>
+              <option value={LineDailySummaryTargetMode.ADMIN_USERS}>
+                {targetModeLabels.ADMIN_USERS}
+              </option>
             </select>
           </label>
 
@@ -263,7 +315,9 @@ export default function LineDailySummaryManager(props: {
             ปลายทางที่ใช้ทดสอบ
             <select name="targetMode" defaultValue={settings.targetMode} className={inputCls}>
               <option value={LineDailySummaryTargetMode.ENV_IDS}>{targetModeLabels.ENV_IDS}</option>
-              <option value={LineDailySummaryTargetMode.ADMIN_USERS}>{targetModeLabels.ADMIN_USERS}</option>
+              <option value={LineDailySummaryTargetMode.ADMIN_USERS}>
+                {targetModeLabels.ADMIN_USERS}
+              </option>
             </select>
           </label>
           <button
@@ -317,7 +371,7 @@ export default function LineDailySummaryManager(props: {
                   <option value="" disabled>
                     เลือก LINE userId
                   </option>
-                  {availableUserRecipients.map((recipient) => (
+                  {visibleUserRecipients.map((recipient) => (
                     <option key={recipient.id} value={recipient.id}>
                       {(recipient.displayName ?? recipient.lineId) +
                         (recipient.linkedUserName ? ` (ผูกกับ ${recipient.linkedUserName})` : "")}
@@ -359,7 +413,32 @@ export default function LineDailySummaryManager(props: {
 
       <section className="grid gap-4 xl:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">Recipient จาก webhook</h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="font-kanit text-lg font-semibold text-gray-900">Recipient จาก webhook</h3>
+              <p className="text-sm text-gray-500">
+                ซ่อนรายการที่ยังไม่ผูกและไม่มี webhook ใหม่เกิน 90 วันโดยค่าเริ่มต้น แต่ยังไม่ลบข้อมูลออกจากระบบ
+              </p>
+            </div>
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={showOlderRecipients}
+                onChange={(event) => setShowOlderRecipients(event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
+              />
+              แสดงรายการเก่าเกิน 90 วัน
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+            <span>แสดงอยู่ {visibleUserRecipients.length} รายการ</span>
+            {hiddenRecipientCount > 0 && <span>ซ่อนอยู่ {hiddenRecipientCount} รายการ</span>}
+            {visibleUserRecipients.length > 0 && (
+              <span>
+                หน้า {recipientPage}/{recipientPageCount}
+              </span>
+            )}
+          </div>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-left text-gray-500">
@@ -371,7 +450,7 @@ export default function LineDailySummaryManager(props: {
                 </tr>
               </thead>
               <tbody>
-                {availableUserRecipients.map((recipient) => (
+                {paginatedUserRecipients.map((recipient) => (
                   <tr key={recipient.id} className="border-t border-gray-100">
                     <td className="px-3 py-2 text-gray-700">{recipient.displayName ?? recipient.lineId}</td>
                     <td className="px-3 py-2 text-gray-600">{recipient.type}</td>
@@ -379,16 +458,46 @@ export default function LineDailySummaryManager(props: {
                     <td className="px-3 py-2 text-gray-600">{formatDateTime(recipient.lastWebhookAt)}</td>
                   </tr>
                 ))}
-                {availableUserRecipients.length === 0 && (
+                {visibleUserRecipients.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
-                      ยังไม่มี LINE userId จาก webhook
+                      {availableUserRecipients.length === 0
+                        ? "ยังไม่มี LINE userId จาก webhook"
+                        : "ไม่มีรายการที่ตรงเงื่อนไขการแสดงผลตอนนี้"}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          {visibleUserRecipients.length > RECIPIENTS_PER_PAGE && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">แสดงทีละ {RECIPIENTS_PER_PAGE} รายการต่อหน้า</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRecipientPage((current) => Math.max(1, current - 1))}
+                  disabled={recipientPage === 1}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ก่อนหน้า
+                </button>
+                <span className="text-sm text-gray-600">
+                  หน้า {recipientPage} / {recipientPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRecipientPage((current) => Math.min(recipientPageCount, current + 1))
+                  }
+                  disabled={recipientPage === recipientPageCount}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ถัดไป
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-5">

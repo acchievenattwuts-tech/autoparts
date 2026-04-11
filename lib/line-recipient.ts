@@ -48,6 +48,7 @@ export async function upsertLineRecipientFromWebhook(input: {
   groupId?: string | null;
   roomId?: string | null;
   eventType?: string | null;
+  displayName?: string | null;
 }) {
   const resolved = inferRecipientType(input);
   if (resolved.length === 0) {
@@ -61,6 +62,7 @@ export async function upsertLineRecipientFromWebhook(input: {
         update: {
           type: item.type,
           status: LineRecipientStatus.ACTIVE,
+          displayName: item.type === LineRecipientType.USER ? input.displayName ?? undefined : undefined,
           sourceName: input.eventType ?? item.sourceName,
           lastWebhookAt: new Date(),
         },
@@ -68,6 +70,7 @@ export async function upsertLineRecipientFromWebhook(input: {
           lineId: item.lineId,
           type: item.type,
           status: LineRecipientStatus.ACTIVE,
+          displayName: item.type === LineRecipientType.USER ? input.displayName ?? null : null,
           sourceName: input.eventType ?? item.sourceName,
           lastWebhookAt: new Date(),
         },
