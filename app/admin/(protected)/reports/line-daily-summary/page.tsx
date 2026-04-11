@@ -341,7 +341,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                   <FlexPreviewSection
                     title="🧾 รายละเอียดการขาย"
                     items={[
-                      { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` },
                       { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` },
                       { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` },
                     ]}
