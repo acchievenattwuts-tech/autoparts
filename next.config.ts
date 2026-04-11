@@ -56,6 +56,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   experimental: {
+    cpus: 1,
     serverActions: {
       // Keep server action payloads tight to protect upload performance.
       bodySizeLimit: "3mb",

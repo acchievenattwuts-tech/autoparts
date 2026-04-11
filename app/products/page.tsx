@@ -3,7 +3,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 
 const ProductsPage = async () => {
   const [config, filterData, landingPageData] = await Promise.all([
-    getSiteConfig(),
+    getPublicSiteConfig(),
     getStorefrontProductFilters(),
     getStorefrontProductsLandingPageData(),
   ]);

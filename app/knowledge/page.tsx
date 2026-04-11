@@ -8,11 +8,11 @@ import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
-import { getSiteConfig } from "@/lib/site-config";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
   const title = `คลังความรู้ | ${config.shopName}`;
   const description =
     "รวมบทความความรู้เกี่ยวกับอะไหล่แอร์รถยนต์ หม้อน้ำรถยนต์ วิธีเลือกซื้อ วิธีค้นหาสินค้าบนเว็บไซต์ และคำแนะนำสำหรับลูกค้าที่กำลังหาอะไหล่แอร์รถยนต์ในนครสวรรค์";
@@ -39,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const KnowledgePage = async () => {
-  const config = await getSiteConfig();
+  const config = await getPublicSiteConfig();
   const featuredArticle = knowledgeArticles[0];
   const categories = Array.from(new Set(knowledgeArticles.map((article) => article.category)));
   const groupedArticles = categories.map((category) => ({
