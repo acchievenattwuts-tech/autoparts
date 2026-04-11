@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -17,6 +18,41 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   CASH: "เงินสด",
   TRANSFER: "โอนเงิน",
   CREDIT: "เครดิต",
+};
+
+const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
+  const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
+
+  return {
+    shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
+    shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
+    shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
+    shopPhone: map["shop_phone"] ?? defaultSiteConfig.shopPhone,
+    shopPhoneSecondary: map["shop_phone_secondary"] ?? defaultSiteConfig.shopPhoneSecondary,
+    shopEmail: map["shop_email"] ?? defaultSiteConfig.shopEmail,
+    shopLineId: map["shop_line_id"] ?? defaultSiteConfig.shopLineId,
+    shopLineUrl: map["shop_line_url"] ?? defaultSiteConfig.shopLineUrl,
+    shopLogoUrl: map["shop_logo_url"] ?? defaultSiteConfig.shopLogoUrl,
+    shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultSiteConfig.shopGoogleMapUrl,
+    shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultSiteConfig.shopGoogleMapEmbedUrl,
+    shopBusinessHours: map["shop_business_hours"] ?? defaultSiteConfig.shopBusinessHours,
+    shopHolidayNote: map["shop_holiday_note"] ?? defaultSiteConfig.shopHolidayNote,
+    shopContactNote: map["shop_contact_note"] ?? defaultSiteConfig.shopContactNote,
+    heroTitle: map["hero_title"] ?? defaultSiteConfig.heroTitle,
+    heroSubtitle: map["hero_subtitle"] ?? defaultSiteConfig.heroSubtitle,
+    shopWebsiteUrl: map["shop_website_url"] ?? defaultSiteConfig.shopWebsiteUrl,
+    shopFacebookUrl: map["shop_facebook_url"] ?? defaultSiteConfig.shopFacebookUrl,
+    shopFacebookEnabled: map["shop_facebook_enabled"] === "true",
+    shopTiktokUrl: map["shop_tiktok_url"] ?? defaultSiteConfig.shopTiktokUrl,
+    shopTiktokEnabled: map["shop_tiktok_enabled"] === "true",
+    shopShopeeUrl: map["shop_shopee_url"] ?? defaultSiteConfig.shopShopeeUrl,
+    shopShopeeEnabled: map["shop_shopee_enabled"] === "true",
+    shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
+    shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
+    printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+    vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
+    vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
+  };
 };
 
 const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -40,9 +76,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         },
       },
     }),
-    db.siteContent.findMany({
-      where: { key: { in: ["shopName", "shopPhone", "shopAddress", "shopTaxId"] } },
-    }),
+    db.siteContent.findMany(),
     db.cashBankAccount.findFirst({
       where: {
         type: "BANK",
@@ -59,7 +93,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
 
   if (!receipt) notFound();
 
-  const cfg = Object.fromEntries(contents.map((c) => [c.key, c.value]));
+  const cfg = mapSiteConfig(contents);
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
   const receiptSignatureUrl = receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null;
@@ -71,11 +105,25 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   return (
     <>
       <style>{`
+        @page { margin: 0; }
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
-          #receipt { position: absolute; left: 0; top: 0; width: 100%; }
+          #receipt, #receipt * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+          }
           .no-print { display: none !important; }
+          .receipt-footer { margin-top: auto; }
         }
       `}</style>
 
@@ -260,7 +308,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           shopName: cfg.shopName,
           shopAddress: cfg.shopAddress,
           shopPhone: cfg.shopPhone,
-          shopTaxId: cfg.shopTaxId,
+          shopWebsiteUrl: cfg.shopWebsiteUrl,
+          shopLineId: cfg.shopLineId,
+          printNoticeText: cfg.printNoticeText,
         }}
         signerDisplayName={signerDisplayName}
         receivedTransferAccount={receivedTransferAccount}

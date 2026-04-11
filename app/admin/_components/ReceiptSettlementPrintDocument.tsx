@@ -43,13 +43,14 @@ type ReceiptSettlementShopConfig = {
   shopName?: string | null;
   shopAddress?: string | null;
   shopPhone?: string | null;
-  shopTaxId?: string | null;
+  shopWebsiteUrl?: string | null;
+  shopLineId?: string | null;
+  printNoticeText?: string | null;
 };
 
-const PAYMENT_PRINT_LABELS: { key: "CASH" | "TRANSFER" | "CREDIT"; label: string }[] = [
+const PAYMENT_PRINT_LABELS: { key: "CASH" | "TRANSFER"; label: string }[] = [
   { key: "CASH", label: "เงินสด" },
   { key: "TRANSFER", label: "เงินโอน" },
-  { key: "CREDIT", label: "เครดิต" },
 ];
 
 const PRINT_HEADER_BORDER_CLASS = "border-gray-400";
@@ -70,6 +71,13 @@ const fmtDate = (d: Date | string) =>
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const getPrintNoticeLines = (text?: string | null) =>
+  (text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
 export default function ReceiptSettlementPrintDocument({
   receipt,
   shopConfig,
@@ -88,24 +96,30 @@ export default function ReceiptSettlementPrintDocument({
   const customerName = receipt.customer?.name ?? receipt.customerName ?? "-";
   const customerPhone = receipt.customer?.phone ?? null;
   const receiptDateText = fmtDate(receipt.receiptDate);
+  const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
+  const hasPrintNotice = printNoticeLines.length > 0;
+  const hasSupportBlock = receipt.paymentMethod === "CASH" || receipt.paymentMethod === "TRANSFER" || Boolean(receivedTransferAccount);
 
   return (
     <div
       id={rootId}
-      className={rootClassName ?? "mx-auto bg-white p-8 text-[13px] leading-snug"}
-      style={{ maxWidth: "900px" }}
+      className={rootClassName ?? "mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug"}
     >
       <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
         <div className="space-y-0.5 text-xs text-gray-600">
           {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
           {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
           {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
-          {shopConfig.shopTaxId ? <p>เลขประจำตัวผู้เสียภาษี: {shopConfig.shopTaxId}</p> : null}
+          {shopConfig.shopWebsiteUrl || shopConfig.shopLineId ? (
+            <p>
+              {[shopConfig.shopWebsiteUrl, shopConfig.shopLineId ? `Line: ${shopConfig.shopLineId}` : null]
+                .filter(Boolean)
+                .join("  |  ")}
+            </p>
+          ) : null}
         </div>
         <div className="text-right">
-          <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>
-            ใบเสร็จรับเงิน
-          </p>
+          <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>ใบเสร็จรับเงิน</p>
           <p className="mt-1 text-xs text-gray-400">หน้า 1/1</p>
         </div>
       </div>
@@ -142,10 +156,6 @@ export default function ReceiptSettlementPrintDocument({
               <tr>
                 <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">วันที่เอกสาร</td>
                 <td>{receiptDateText}</td>
-              </tr>
-              <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">ช่องทางชำระ</td>
-                <td>{PAYMENT_PRINT_LABELS.find((item) => item.key === receipt.paymentMethod)?.label ?? "-"}</td>
               </tr>
             </tbody>
           </table>
@@ -199,49 +209,70 @@ export default function ReceiptSettlementPrintDocument({
         </div>
       </div>
 
-      <div className="mb-5">
-        <div className={`${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
-          <div className="flex items-center gap-6">
-            <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
-            {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
-              <span key={key} className="flex items-center gap-1.5">
-                <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
-                  {receipt.paymentMethod === key ? "✓" : ""}
-                </span>
-                {label}
-              </span>
-            ))}
-          </div>
-          {receivedTransferAccount ? (
-            <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
-              <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
-              <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
-              <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <div className="mt-auto">
+        {hasSupportBlock || hasPrintNotice ? (
+          <div
+            className={`mb-5 grid gap-4 ${hasSupportBlock && hasPrintNotice ? "grid-cols-[minmax(0,7fr)_minmax(0,3fr)]" : "grid-cols-1"}`}
+          >
+            {hasSupportBlock ? (
+              <div className={`${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
+                <div className="flex items-center gap-6">
+                  <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
+                  {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
+                    <span key={key} className="flex items-center gap-1.5">
+                      <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
+                        {receipt.paymentMethod === key ? "✓" : ""}
+                      </span>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                {receipt.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
+                  <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
+                    <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
+                    <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
+                    <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
-      <div className={`grid grid-cols-2 gap-0 ${PRINT_SECTION_BORDER_CLASS} text-center text-xs`}>
-        <div className={`border-r ${PRINT_BODY_BORDER_CLASS}`}>
-          <div className="flex h-16 items-end justify-center px-4">
-            {receipt.signerSignatureUrl ? (
-              <img
-                src={receipt.signerSignatureUrl}
-                alt={`ลายเซ็น ${signerDisplayName}`}
-                className="max-h-[64px] w-auto object-contain"
-              />
+            {hasPrintNotice ? (
+              <div className={`${PRINT_SECTION_BORDER_CLASS} p-3`}>
+                <p className="mb-2 text-center text-xs font-semibold text-gray-900">โปรดทราบ</p>
+                <ol className="space-y-1 pl-4 text-[11px] leading-snug text-gray-700">
+                  {printNoticeLines.map((line, index) => (
+                    <li key={`${index}-${line}`}>{line}</li>
+                  ))}
+                </ol>
+              </div>
             ) : null}
           </div>
-          <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับเงิน</div>
-          <div className="px-4 pb-1 text-gray-700">{signerDisplayName}</div>
-          <div className="px-4 pb-2 text-gray-400">วันที่ {receiptDateText}</div>
-        </div>
-        <div>
-          <div className="h-16" />
-          <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้ชำระเงิน</div>
-          <div className="px-4 pb-1 text-gray-700">&nbsp;</div>
-          <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
+        ) : null}
+
+        <div className="receipt-footer">
+          <div className={`grid grid-cols-2 gap-0 ${PRINT_SECTION_BORDER_CLASS} text-center text-xs`}>
+            <div className={`border-r ${PRINT_BODY_BORDER_CLASS}`}>
+              <div className="flex h-16 items-end justify-center px-4">
+                {receipt.signerSignatureUrl ? (
+                  <img
+                    src={receipt.signerSignatureUrl}
+                    alt={`ลายเซ็น ${signerDisplayName}`}
+                    className="max-h-[64px] w-auto object-contain"
+                  />
+                ) : null}
+              </div>
+              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับเงิน</div>
+              <div className="px-4 pb-1 text-gray-700">{signerDisplayName}</div>
+              <div className="px-4 pb-2 text-gray-400">วันที่ {receiptDateText}</div>
+            </div>
+            <div>
+              <div className="h-16" />
+              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้ชำระเงิน</div>
+              <div className="px-4 pb-1 text-gray-700">&nbsp;</div>
+              <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
