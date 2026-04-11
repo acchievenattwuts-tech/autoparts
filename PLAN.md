@@ -2858,3 +2858,34 @@ npm run db:restore backup-{timestamp}.json
 - [x] Do not auto-link LINE recipients to system users heuristically; mapping must be explicit
 - [x] Do not send scheduled messages twice for the same day when a dispatch lock already exists
 - [x] Keep the deployed cron compatible with Vercel Hobby limits (no more than once per day)
+
+## Roadmap Update (2026-04-11 LINE OA Delivery Hardening + UX Completion)
+
+> Scope for this round: keep the existing owner-facing LINE summary logic intact, but harden delivery visibility, scheduled-send diagnostics, preview/send parity, Flex-card delivery, and retry behavior so production support is easier on Vercel Hobby.
+
+### Checklist
+
+- [x] Keep the daily summary business totals unchanged while improving delivery behavior only
+- [x] Move LINE summary send payload from mixed text+card to Flex card only so preview and real send stay aligned
+- [x] Add preview parity so the admin preview matches the actual Flex payload sent to LINE
+- [x] Refine the card layout for SME readability, including a dedicated `รายละเอียดการขาย` card
+- [x] Move `ขายสด` / `ขายเชื่อ` into the dedicated sales-detail card and keep `ยอดขายรวม` only in the header card
+- [x] Switch ADMIN recipient mapping to use `บทบาทการใช้งาน` (`appRole`) instead of `Legacy Role`
+- [x] Add readable admin status text for scheduled delivery such as `ส่งแล้ว`, `ข้ามเพราะส่งแล้ววันนี้`, `ปิดใช้งาน`, and `รอรอบส่งวันนี้`
+- [x] Record `SKIPPED` scheduled attempts in the dispatch history so cron behavior is auditable even when no LINE push occurs
+- [x] Record configuration-related `FAILED` attempts even when LINE push could not start because recipients/env were incomplete
+- [x] Keep recent dispatch history limited to the latest 10 rows in the admin UI
+- [x] Add human-readable status/reason rendering in dispatch history for `SENT`, `FAILED`, and `SKIPPED`
+- [x] Add LINE push retry behavior with a short backoff strategy on retryable failures
+- [x] Limit LINE push retries to a maximum of 3 attempts per recipient
+- [x] Retry only on transient cases (`429`, `5xx`, and network failure), not on permanent request errors
+- [x] Emit Vercel/server logs for each LINE push attempt so operators can see which retry round failed or recovered
+- [x] Include final attempt summary in the thrown LINE push error when delivery still fails after retries
+- [x] Verify `npm run build`
+
+### Guard rails
+
+- [x] Do not change the agreed daily summary data mapping or accounting semantics
+- [x] Do not add queue workers, background daemons, or multi-cron retry loops on Hobby
+- [x] Do not auto-resend forever; cap retries inside a single request at 3 attempts
+- [x] Keep retry behavior inside the LINE delivery helper so webhook/admin/scheduled entry points stay simple

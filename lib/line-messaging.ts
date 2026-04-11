@@ -4,6 +4,8 @@ import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { resolveLineDailySummaryRecipientIds } from "@/lib/line-recipient";
 
 const LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push";
+const LINE_PUSH_MAX_ATTEMPTS = 3;
+const LINE_PUSH_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 export type LineDailySummaryConfig = {
   channelAccessToken: string | null;
@@ -16,6 +18,13 @@ export type LineDailySummaryConfig = {
 export type LinePushResult = {
   sentCount: number;
   recipientIds: string[];
+};
+
+type LinePushAttemptFailure = {
+  attempt: number;
+  status: number | null;
+  body: string;
+  retryable: boolean;
 };
 
 export type ResolvedLineRecipients = {
@@ -65,6 +74,118 @@ export function getLineDailySummaryConfig(): LineDailySummaryConfig {
     envRecipientIds,
     missingDeliveryEnv,
   };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getRetryDelayMs(attempt: number) {
+  return attempt * 500;
+}
+
+function summarizeAttemptFailures(failures: LinePushAttemptFailure[]) {
+  return failures
+    .map((failure) => {
+      const statusText = failure.status === null ? "network" : `${failure.status}`;
+      return `attempt ${failure.attempt} (${statusText}): ${failure.body}`;
+    })
+    .join(" | ");
+}
+
+function isRetryableFetchStatus(status: number) {
+  return LINE_PUSH_RETRYABLE_STATUS_CODES.has(status);
+}
+
+async function pushLineMessageWithRetry(params: {
+  channelAccessToken: string;
+  recipientId: string;
+  messages: LinePushMessage[];
+}) {
+  const { channelAccessToken, recipientId, messages } = params;
+  const failures: LinePushAttemptFailure[] = [];
+
+  for (let attempt = 1; attempt <= LINE_PUSH_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      console.info(
+        `[line-daily-summary] push attempt ${attempt}/${LINE_PUSH_MAX_ATTEMPTS} -> ${recipientId}`
+      );
+
+      const response = await fetch(LINE_PUSH_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${channelAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: recipientId,
+          messages,
+        }),
+      });
+
+      if (response.ok) {
+        if (attempt > 1) {
+          console.info(
+            `[line-daily-summary] push recovered on attempt ${attempt}/${LINE_PUSH_MAX_ATTEMPTS} -> ${recipientId}`
+          );
+        }
+        return;
+      }
+
+      const body = (await response.text()).slice(0, 300);
+      const retryable = isRetryableFetchStatus(response.status);
+      failures.push({
+        attempt,
+        status: response.status,
+        body,
+        retryable,
+      });
+
+      console.warn(
+        `[line-daily-summary] push failed on attempt ${attempt}/${LINE_PUSH_MAX_ATTEMPTS} -> ${recipientId} (status ${response.status}, retryable=${retryable})`
+      );
+
+      if (!retryable || attempt === LINE_PUSH_MAX_ATTEMPTS) {
+        throw new Error(
+          `LINE push failed after ${attempt} attempt(s): ${summarizeAttemptFailures(failures)}`
+        );
+      }
+
+      const delayMs = getRetryDelayMs(attempt);
+      console.info(
+        `[line-daily-summary] retrying in ${delayMs}ms -> ${recipientId}`
+      );
+      await sleep(delayMs);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("LINE push failed after")) {
+        throw error;
+      }
+
+      const body = error instanceof Error ? error.message.slice(0, 300) : "Unknown network error";
+      failures.push({
+        attempt,
+        status: null,
+        body,
+        retryable: true,
+      });
+
+      console.warn(
+        `[line-daily-summary] network failure on attempt ${attempt}/${LINE_PUSH_MAX_ATTEMPTS} -> ${recipientId}`
+      );
+
+      if (attempt === LINE_PUSH_MAX_ATTEMPTS) {
+        throw new Error(
+          `LINE push failed after ${attempt} attempt(s): ${summarizeAttemptFailures(failures)}`
+        );
+      }
+
+      const delayMs = getRetryDelayMs(attempt);
+      console.info(
+        `[line-daily-summary] retrying in ${delayMs}ms after network failure -> ${recipientId}`
+      );
+      await sleep(delayMs);
+    }
+  }
 }
 
 export async function resolveConfiguredLineRecipients(
@@ -129,22 +250,11 @@ export async function pushLineMessages(params: {
   const { channelAccessToken, recipientIds, messages } = params;
 
   for (const recipientId of recipientIds) {
-    const response = await fetch(LINE_PUSH_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${channelAccessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to: recipientId,
-        messages,
-      }),
+    await pushLineMessageWithRetry({
+      channelAccessToken,
+      recipientId,
+      messages,
     });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`LINE push failed (${response.status}): ${body.slice(0, 300)}`);
-    }
   }
 
   return {
