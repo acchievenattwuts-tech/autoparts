@@ -413,7 +413,7 @@ export default function SalesDeliveryPrintDocument({
               <div className="h-16" />
               <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับของ</div>
               <div className="px-4 pb-1 text-gray-700">&nbsp;</div>
-              <div className="px-4 pb-2 text-gray-400">วันที่ {documentDateText}</div>
+              <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
             </div>
           </div>
         )}
