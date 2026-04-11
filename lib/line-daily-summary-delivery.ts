@@ -2,7 +2,7 @@ import { Prisma, LineDailySummaryDispatchKind, LineDailySummaryDispatchStatus, L
 import { db } from "@/lib/db";
 import { buildLineDailySummary } from "@/lib/line-daily-summary";
 import { markLineDailySummarySent } from "@/lib/line-daily-summary-settings";
-import { getLineDailySummaryConfig, pushLineTextMessage, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
+import { getLineDailySummaryConfig, pushLineMessages, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 
 type DeliverParams = {
   reportDayKey: string;
@@ -115,10 +115,10 @@ export async function deliverLineDailySummary(
   }
 
   try {
-    const result = await pushLineTextMessage({
+    const result = await pushLineMessages({
       channelAccessToken: config.channelAccessToken,
       recipientIds,
-      text: summary.message,
+      messages: summary.messages,
     });
 
     const sentAt = new Date();

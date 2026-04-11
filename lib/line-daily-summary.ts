@@ -35,6 +35,19 @@ type CountSection = {
   stockAdjustmentCount: number;
 };
 
+export type LineTextMessage = {
+  type: "text";
+  text: string;
+};
+
+export type LineFlexMessage = {
+  type: "flex";
+  altText: string;
+  contents: Record<string, unknown>;
+};
+
+export type LinePushMessage = LineTextMessage | LineFlexMessage;
+
 export type LineDailySummary = {
   reportDayKey: string;
   reportDateLabel: string;
@@ -46,6 +59,8 @@ export type LineDailySummary = {
   money: MoneySection;
   counts: CountSection;
   message: string;
+  messages: LinePushMessage[];
+  flexMessage: LineFlexMessage;
 };
 
 function toNumber(value: unknown): number {
@@ -92,6 +107,298 @@ function formatMoney(value: number) {
 
 function formatCount(value: number) {
   return value.toLocaleString("th-TH");
+}
+
+function renderEmojiLineDailySummaryMessage(summary: {
+  reportDateLabel: string;
+  money: MoneySection;
+  counts: CountSection;
+}) {
+  const { reportDateLabel, money, counts } = summary;
+
+  return [
+    `🌈 สรุปงานประจำวันที่ ${reportDateLabel}`,
+    "",
+    "💰 ยอดขายวันนี้",
+    `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
+    `- ขายสด ${formatMoney(money.cashSales)} บาท`,
+    `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
+    "",
+    "🏦 เงินรับเข้าวันนี้",
+    `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
+    `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
+    `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
+    "",
+    "💸 แยกตามช่องทางรับเงิน",
+    `- เงินสด ${formatMoney(money.cashChannelTotal)} บาท`,
+    `- เงินโอน ${formatMoney(money.transferChannelTotal)} บาท`,
+    "",
+    "📌 ยอดค้าง",
+    `- ลูกหนี้ค้างรับ ${formatMoney(money.arOutstanding)} บาท`,
+    `- COD ค้างรับเงิน ${formatMoney(money.codOutstanding)} บาท`,
+    `- เจ้าหนี้ค้างจ่าย ${formatMoney(money.apOutstanding)} บาท`,
+    "",
+    "🚚 งานจัดส่ง",
+    `- รอจัดส่ง ${formatCount(counts.pendingDelivery)} รายการ`,
+    `- กำลังจัดส่ง ${formatCount(counts.outForDelivery)} รายการ`,
+    `- ส่งสำเร็จวันนี้ ${formatCount(counts.deliveredToday)} รายการ`,
+    "",
+    "📦 สต๊อก",
+    `- ต่ำกว่าขั้นต่ำ ${formatCount(counts.lowStockCount)} รายการ`,
+    `- ของหมด ${formatCount(counts.outOfStockCount)} รายการ`,
+    `- lot ใกล้หมดอายุ ${formatCount(counts.expiringLotCount)} lot`,
+    `- lot หมดอายุค้างสต๊อก ${formatCount(counts.expiredLotCount)} lot`,
+    "",
+    "🛠️ เคลม/เอกสารผิดปกติ",
+    `- เคลมค้างดำเนินการ ${formatCount(counts.openClaimCount)} รายการ`,
+    `- เอกสารถูกยกเลิกวันนี้ ${formatCount(counts.cancelledDocumentCount)} รายการ`,
+    `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
+    "",
+    "✨ สรุปเพิ่มเติม",
+    `- ค่าใช้จ่ายวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
+  ].join("\n");
+}
+
+function buildSummaryFactRows(items: Array<{ label: string; value: string }>) {
+  return items.flatMap((item, index) => [
+    {
+      type: "box",
+      layout: "baseline",
+      spacing: "md",
+      contents: [
+        {
+          type: "text",
+          text: item.label,
+          size: "sm",
+          color: "#64748B",
+          flex: 4,
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: item.value,
+          size: "sm",
+          color: "#0F172A",
+          weight: "bold",
+          flex: 5,
+          wrap: true,
+          align: "end",
+        },
+      ],
+    },
+    ...(index === items.length - 1
+      ? []
+      : [
+          {
+            type: "separator",
+            margin: "md",
+            color: "#E2E8F0",
+          },
+        ]),
+  ]);
+}
+
+function buildLineDailySummaryFlexMessage(summary: {
+  reportDateLabel: string;
+  money: MoneySection;
+  counts: CountSection;
+}): LineFlexMessage {
+  const { reportDateLabel, money, counts } = summary;
+  const followUpCount =
+    counts.pendingDelivery +
+    counts.lowStockCount +
+    counts.outOfStockCount +
+    counts.openClaimCount +
+    counts.cancelledDocumentCount;
+
+  return {
+    type: "flex",
+    altText: `สรุปงานประจำวันที่ ${reportDateLabel}`,
+    contents: {
+      type: "bubble",
+      size: "giga",
+      body: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "20px",
+        spacing: "lg",
+        backgroundColor: "#F8FAFC",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "16px",
+            cornerRadius: "20px",
+            background: {
+              type: "linearGradient",
+              angle: "0deg",
+              startColor: "#16A34A",
+              endColor: "#0F766E",
+            },
+            contents: [
+              {
+                type: "text",
+                text: "SME Daily Closing",
+                size: "xs",
+                color: "#DCFCE7",
+                weight: "bold",
+              },
+              {
+                type: "text",
+                text: `🌈 สรุปงานประจำวันที่ ${reportDateLabel}`,
+                margin: "md",
+                size: "xl",
+                color: "#FFFFFF",
+                weight: "bold",
+                wrap: true,
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                margin: "lg",
+                spacing: "md",
+                contents: [
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    cornerRadius: "14px",
+                    paddingAll: "12px",
+                    backgroundColor: "#FFFFFF1A",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "ยอดขายรวม",
+                        size: "xs",
+                        color: "#DCFCE7",
+                      },
+                      {
+                        type: "text",
+                        text: `฿${formatMoney(money.salesTotal)}`,
+                        margin: "sm",
+                        size: "lg",
+                        color: "#FFFFFF",
+                        weight: "bold",
+                        wrap: true,
+                      },
+                    ],
+                  },
+                  {
+                    type: "box",
+                    layout: "vertical",
+                    cornerRadius: "14px",
+                    paddingAll: "12px",
+                    backgroundColor: "#FFFFFF1A",
+                    contents: [
+                      {
+                        type: "text",
+                        text: "รายการต้องติดตาม",
+                        size: "xs",
+                        color: "#DCFCE7",
+                      },
+                      {
+                        type: "text",
+                        text: formatCount(followUpCount),
+                        margin: "sm",
+                        size: "lg",
+                        color: "#FFFFFF",
+                        weight: "bold",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
+                text: "💸 เงินเข้าและยอดค้าง",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows([
+                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
+                  { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
+                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
+                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
+                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}` },
+                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}` },
+                ]),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
+                text: "🚚 งานค้างและความเสี่ยง",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows([
+                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ` },
+                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ` },
+                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ` },
+                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ` },
+                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot` },
+                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ` },
+                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ` },
+                ]),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "14px",
+            cornerRadius: "16px",
+            backgroundColor: "#E0F2FE",
+            contents: [
+              {
+                type: "text",
+                text: "✨ ปิดท้ายวันนี้",
+                size: "sm",
+                color: "#0369A1",
+                weight: "bold",
+              },
+              {
+                type: "text",
+                text: `ค่าใช้จ่ายวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                margin: "sm",
+                size: "sm",
+                color: "#0F172A",
+                wrap: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
 }
 
 function renderFriendlyLineDailySummaryMessage(summary: {
@@ -482,6 +789,17 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     stockAdjustmentCount: adjustmentCount,
   };
 
+  const message = renderEmojiLineDailySummaryMessage({
+    reportDateLabel,
+    money,
+    counts,
+  });
+  const flexMessage = buildLineDailySummaryFlexMessage({
+    reportDateLabel,
+    money,
+    counts,
+  });
+
   return {
     reportDayKey,
     reportDateLabel,
@@ -489,10 +807,14 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     range: { start, end },
     money,
     counts,
-    message: renderFriendlyLineDailySummaryMessage({
-      reportDateLabel,
-      money,
-      counts,
-    }),
+    message,
+    messages: [
+      {
+        type: "text",
+        text: message,
+      },
+      flexMessage,
+    ],
+    flexMessage,
   };
 }

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { LineDailySummaryTargetMode, LineRecipientType } from "@/lib/generated/prisma";
+import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { resolveLineDailySummaryRecipientIds } from "@/lib/line-recipient";
 
 const LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push";
@@ -120,12 +121,12 @@ export function verifyLineWebhookSignature(params: {
   );
 }
 
-export async function pushLineTextMessage(params: {
+export async function pushLineMessages(params: {
   channelAccessToken: string;
   recipientIds: string[];
-  text: string;
+  messages: LinePushMessage[];
 }): Promise<LinePushResult> {
-  const { channelAccessToken, recipientIds, text } = params;
+  const { channelAccessToken, recipientIds, messages } = params;
 
   for (const recipientId of recipientIds) {
     const response = await fetch(LINE_PUSH_API_URL, {
@@ -136,12 +137,7 @@ export async function pushLineTextMessage(params: {
       },
       body: JSON.stringify({
         to: recipientId,
-        messages: [
-          {
-            type: "text",
-            text,
-          },
-        ],
+        messages,
       }),
     });
 

@@ -58,6 +58,31 @@ function PreviewMetric({
   );
 }
 
+function FlexPreviewSection({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <p className="text-sm font-semibold text-slate-900">{title}</p>
+      <div className="mt-3 space-y-2">
+        {items.map((item) => (
+          <div
+            key={`${title}-${item.label}`}
+            className="flex items-start justify-between gap-4 border-b border-slate-100 pb-2 text-sm last:border-b-0 last:pb-0"
+          >
+            <span className="text-slate-500">{item.label}</span>
+            <span className="text-right font-semibold text-slate-900">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function LineDailySummaryPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
@@ -165,6 +190,12 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
       linkedUserName: recipient.userLinks[0]?.user.name ?? null,
     }));
+  const followUpCount =
+    summary.counts.pendingDelivery +
+    summary.counts.lowStockCount +
+    summary.counts.outOfStockCount +
+    summary.counts.openClaimCount +
+    summary.counts.cancelledDocumentCount;
 
   return (
     <div className="space-y-4">
@@ -278,13 +309,13 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
           <div className="flex flex-col gap-1">
             <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่งจริง</h3>
             <p className="text-sm text-gray-500">
-              preview นี้ใช้ข้อความเดียวกับที่ระบบส่งจริงทุกตัวอักษร สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
+              preview นี้แสดงทั้งข้อความสั้นและ Flex Message ชุดเดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
             </p>
           </div>
 
           <div className="mt-4 rounded-[28px] border border-emerald-100 bg-[radial-gradient(circle_at_top,_#f0fdf4,_#dcfce7_40%,_#bbf7d0_100%)] p-4 md:p-5">
-            <div className="mx-auto max-w-3xl">
-              <div className="mb-3 flex items-center justify-between text-xs font-medium text-emerald-900/80">
+            <div className="mx-auto max-w-3xl space-y-4">
+              <div className="mb-1 flex items-center justify-between text-xs font-medium text-emerald-900/80">
                 <span>LINE OA preview</span>
                 <span>{summary.reportDateLabel}</span>
               </div>
@@ -303,6 +334,58 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                 <pre className="whitespace-pre-wrap break-words bg-transparent font-sans text-[15px] leading-8 text-slate-900">
                   {summary.message}
                 </pre>
+              </div>
+
+              <div className="rounded-[24px] border border-white/90 bg-slate-50 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                <div className="rounded-[24px] bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 p-5 text-white">
+                  <p className="text-xs font-semibold tracking-wide text-emerald-100">SME Daily Closing</p>
+                  <h4 className="mt-2 font-kanit text-2xl font-bold">🌈 สรุปงานประจำวันที่ {summary.reportDateLabel}</h4>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                      <p className="text-xs text-emerald-100">ยอดขายรวม</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.salesTotal)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                      <p className="text-xs text-emerald-100">รายการต้องติดตาม</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">{followUpCount}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <FlexPreviewSection
+                    title="💸 เงินเข้าและยอดค้าง"
+                    items={[
+                      { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` },
+                      { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}` },
+                      { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}` },
+                      { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}` },
+                      { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}` },
+                      { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` },
+                    ]}
+                  />
+
+                  <FlexPreviewSection
+                    title="🚚 งานค้างและความเสี่ยง"
+                    items={[
+                      { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` },
+                      { label: "กำลังจัดส่ง", value: `${summary.counts.outForDelivery} รายการ` },
+                      { label: "สต๊อกต่ำขั้นต่ำ", value: `${summary.counts.lowStockCount} รายการ` },
+                      { label: "ของหมด", value: `${summary.counts.outOfStockCount} รายการ` },
+                      { label: "lot ใกล้หมดอายุ", value: `${summary.counts.expiringLotCount} lot` },
+                      { label: "เคลมค้าง", value: `${summary.counts.openClaimCount} รายการ` },
+                      { label: "เอกสารถูกยกเลิก", value: `${summary.counts.cancelledDocumentCount} รายการ` },
+                    ]}
+                  />
+
+                  <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
+                    <p className="font-semibold">✨ ปิดท้ายวันนี้</p>
+                    <p className="mt-1">
+                      ค่าใช้จ่ายวันนี้ ฿{fmtMoney(summary.money.expensesToday)} • เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
