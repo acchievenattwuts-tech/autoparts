@@ -94,6 +94,8 @@ const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLASS}`;
 const PRINT_GRID_COLUMN_STYLE = {
   gridTemplateColumns: "1.75rem 6rem minmax(0,1fr) 3rem 3rem 6rem 6rem",
 } as const;
+const PRINT_PROMPTPAY_CARD_SIZE = 140;
+const PRINT_PROMPTPAY_QR_SIZE = 88;
 
 const getPrintNoticeLines = (text?: string | null) =>
   (text ?? "")
@@ -130,6 +132,7 @@ export default function SalesDeliveryPrintDocument({
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
+  const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
 
   return (
     <div
@@ -296,10 +299,43 @@ export default function SalesDeliveryPrintDocument({
                   </div>
                   <div className="flex items-center justify-center">
                     {promptPayQrDataUrl ? (
-                      <Image src={promptPayQrDataUrl} alt={`PromptPay QR ${sale.saleNo}`} width={140} height={140} />
+                      shouldUsePromptPayCard ? (
+                        <div
+                          className="overflow-hidden rounded-md border border-gray-400 bg-white"
+                          style={{ width: PRINT_PROMPTPAY_CARD_SIZE }}
+                        >
+                          <div className="flex items-center gap-1 bg-[#1f4e78] px-2 py-1.5 text-white">
+                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-white/70">
+                              <span className="block h-2.5 w-2.5 rounded-[2px] border border-white/80" />
+                            </span>
+                            <div className="leading-none">
+                              <div className="text-[8px] font-semibold tracking-[0.12em]">THAI QR</div>
+                              <div className="text-[10px] font-bold tracking-[0.08em]">PAYMENT</div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-center px-2 py-2">
+                            <div className="mb-1 text-center text-[8px] font-medium text-gray-500">สแกนเพื่อชำระเงิน</div>
+                            <Image
+                              src={promptPayQrDataUrl}
+                              alt={`PromptPay QR ${sale.saleNo}`}
+                              width={PRINT_PROMPTPAY_QR_SIZE}
+                              height={PRINT_PROMPTPAY_QR_SIZE}
+                            />
+                            <div className="mt-1 text-center text-[8px] text-gray-500">{fmtNum(qrAmount)} บาท</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <Image
+                          src={promptPayQrDataUrl}
+                          alt={`PromptPay QR ${sale.saleNo}`}
+                          width={PRINT_PROMPTPAY_CARD_SIZE}
+                          height={PRINT_PROMPTPAY_CARD_SIZE}
+                        />
+                      )
                     ) : (
                       <div
-                        className={`flex h-[140px] w-[140px] items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
+                        className={`flex items-center justify-center border border-dashed ${PRINT_BODY_BORDER_CLASS} p-4 text-center text-[11px] text-gray-400`}
+                        style={{ height: PRINT_PROMPTPAY_CARD_SIZE, width: PRINT_PROMPTPAY_CARD_SIZE }}
                       >
                         QR จะแสดงเมื่อบัญชีหลักรับโอนมี PromptPay ID
                       </div>
