@@ -1,7 +1,6 @@
 ﻿export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -319,11 +318,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             <p className="mb-2 text-gray-600">เธเธนเนเธฃเธฑเธเน€เธเธดเธ</p>
             <div className="flex h-24 items-end justify-center border-b border-gray-300 px-4">
               {receiptSignatureUrl ? (
-                <Image
+                <img
                   src={receiptSignatureUrl}
                   alt={`เธฅเธฒเธขเน€เธเนเธ ${signerDisplayName}`}
-                  width={180}
-                  height={72}
                   className="max-h-[72px] w-auto object-contain"
                 />
               ) : null}
