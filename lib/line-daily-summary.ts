@@ -94,6 +94,57 @@ function formatCount(value: number) {
   return value.toLocaleString("th-TH");
 }
 
+function renderFriendlyLineDailySummaryMessage(summary: {
+  reportDateLabel: string;
+  money: MoneySection;
+  counts: CountSection;
+}) {
+  const { reportDateLabel, money, counts } = summary;
+
+  return [
+    `สรุปงานประจำวันที่ ${reportDateLabel}`,
+    "",
+    "ยอดขายวันนี้",
+    `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
+    `- ขายสด ${formatMoney(money.cashSales)} บาท`,
+    `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
+    "",
+    "เงินรับเข้าวันนี้",
+    `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
+    `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
+    `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
+    "",
+    "แยกตามช่องทางรับเงิน",
+    `- เงินสด ${formatMoney(money.cashChannelTotal)} บาท`,
+    `- เงินโอน ${formatMoney(money.transferChannelTotal)} บาท`,
+    "",
+    "ยอดค้าง",
+    `- ลูกหนี้ค้างรับ ${formatMoney(money.arOutstanding)} บาท`,
+    `- COD ค้างรับเงิน ${formatMoney(money.codOutstanding)} บาท`,
+    `- เจ้าหนี้ค้างจ่าย ${formatMoney(money.apOutstanding)} บาท`,
+    "",
+    "งานจัดส่ง",
+    `- รอจัดส่ง ${formatCount(counts.pendingDelivery)} รายการ`,
+    `- กำลังจัดส่ง ${formatCount(counts.outForDelivery)} รายการ`,
+    `- ส่งสำเร็จวันนี้ ${formatCount(counts.deliveredToday)} รายการ`,
+    "",
+    "สต๊อก",
+    `- ต่ำกว่าขั้นต่ำ ${formatCount(counts.lowStockCount)} รายการ`,
+    `- ของหมด ${formatCount(counts.outOfStockCount)} รายการ`,
+    `- lot ใกล้หมดอายุ ${formatCount(counts.expiringLotCount)} lot`,
+    `- lot หมดอายุค้างสต๊อก ${formatCount(counts.expiredLotCount)} lot`,
+    "",
+    "เคลม/เอกสารผิดปกติ",
+    `- เคลมค้างดำเนินการ ${formatCount(counts.openClaimCount)} รายการ`,
+    `- เอกสารถูกยกเลิกวันนี้ ${formatCount(counts.cancelledDocumentCount)} รายการ`,
+    `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
+    "",
+    "สรุปเพิ่มเติม",
+    `- ค่าใช้จ่ายวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
+  ].join("\n");
+}
+
 async function getLotExpiryCounts(reportStart: Date, reportEnd: Date) {
   const threshold = new Date(reportEnd.getTime() + 30 * DAY_MS);
 
@@ -438,7 +489,7 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     range: { start, end },
     money,
     counts,
-    message: renderLineDailySummaryMessage({
+    message: renderFriendlyLineDailySummaryMessage({
       reportDateLabel,
       money,
       counts,

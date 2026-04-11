@@ -43,6 +43,21 @@ function fmtMoney(value: number) {
   });
 }
 
+function PreviewMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-1 font-kanit text-lg font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
 export default async function LineDailySummaryPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
@@ -157,7 +172,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         <div>
           <h2 className="font-kanit text-2xl font-bold text-gray-900">LINE OA Daily Summary</h2>
           <p className="text-sm text-gray-500">
-            Preview ข้อความสรุปรายวัน พร้อมตั้งเวลาในระบบ, Test Send, webhook recipient capture และ mapping สำหรับส่งหา ADMIN
+            preview ข้อความสรุปรายวัน พร้อม test send, webhook recipient capture และการผูกผู้รับแบบ ADMIN
           </p>
         </div>
 
@@ -204,7 +219,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">สถานะการส่งปัจจุบัน</h3>
           <p className="text-sm text-gray-500">
-            หน้า admin นี้ยังคง preview ข้อความเดิมไว้เหมือนเดิม แต่เพิ่ม scheduler setting และ admin-targeting เป็น layer ใหม่ด้านบน
+            หน้านี้ใช้ข้อความ preview เดียวกับข้อความที่ระบบส่งจริง และยังคงใช้ logic คำนวณเดิมทั้งหมด
           </p>
         </div>
 
@@ -260,40 +275,64 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่ง</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            วันที่รายงาน {summary.reportDateLabel} ({summary.reportDayKey})
-          </p>
-          <pre className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-950 p-4 text-sm leading-6 text-slate-100">
-            {summary.message}
-          </pre>
+          <div className="flex flex-col gap-1">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่งจริง</h3>
+            <p className="text-sm text-gray-500">
+              preview นี้ใช้ข้อความเดียวกับที่ระบบส่งจริงทุกตัวอักษร สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-[28px] border border-emerald-100 bg-[radial-gradient(circle_at_top,_#f0fdf4,_#dcfce7_40%,_#bbf7d0_100%)] p-4 md:p-5">
+            <div className="mx-auto max-w-3xl">
+              <div className="mb-3 flex items-center justify-between text-xs font-medium text-emerald-900/80">
+                <span>LINE OA preview</span>
+                <span>{summary.reportDateLabel}</span>
+              </div>
+
+              <div className="rounded-[22px] rounded-tl-md border border-white/90 bg-white px-5 py-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 font-semibold text-white">
+                    OA
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Daily Closing Summary</p>
+                    <p className="text-xs text-slate-500">ข้อความที่ผู้รับจะเห็นใน LINE</p>
+                  </div>
+                </div>
+
+                <pre className="whitespace-pre-wrap break-words bg-transparent font-sans text-[15px] leading-8 text-slate-900">
+                  {summary.message}
+                </pre>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-4">
           <section className="rounded-2xl border border-gray-200 bg-white p-5">
             <h3 className="font-kanit text-lg font-semibold text-gray-900">ตัวเลขหลัก</h3>
-            <div className="mt-3 space-y-2 text-sm text-gray-700">
-              <p>ขายสด: ฿{fmtMoney(summary.money.cashSales)}</p>
-              <p>ขายเชื่อ: ฿{fmtMoney(summary.money.creditSales)}</p>
-              <p>รับชำระหนี้: ฿{fmtMoney(summary.money.cashInFromReceipts)}</p>
-              <p>เงินสด: ฿{fmtMoney(summary.money.cashChannelTotal)}</p>
-              <p>เงินโอน: ฿{fmtMoney(summary.money.transferChannelTotal)}</p>
-              <p>เจ้าหนี้ค้างจ่าย: ฿{fmtMoney(summary.money.apOutstanding)}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <PreviewMetric label="ขายสด" value={`฿${fmtMoney(summary.money.cashSales)}`} />
+              <PreviewMetric label="ขายเชื่อ" value={`฿${fmtMoney(summary.money.creditSales)}`} />
+              <PreviewMetric label="รับชำระหนี้" value={`฿${fmtMoney(summary.money.cashInFromReceipts)}`} />
+              <PreviewMetric label="เงินสด" value={`฿${fmtMoney(summary.money.cashChannelTotal)}`} />
+              <PreviewMetric label="เงินโอน" value={`฿${fmtMoney(summary.money.transferChannelTotal)}`} />
+              <PreviewMetric label="เจ้าหนี้ค้างจ่าย" value={`฿${fmtMoney(summary.money.apOutstanding)}`} />
             </div>
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-5">
             <h3 className="font-kanit text-lg font-semibold text-gray-900">งานค้าง/ความเสี่ยง</h3>
-            <div className="mt-3 space-y-2 text-sm text-gray-700">
-              <p>รอจัดส่ง: {summary.counts.pendingDelivery} รายการ</p>
-              <p>กำลังจัดส่ง: {summary.counts.outForDelivery} รายการ</p>
-              <p>ส่งสำเร็จวันนี้: {summary.counts.deliveredToday} รายการ</p>
-              <p>ต่ำกว่าขั้นต่ำ: {summary.counts.lowStockCount} รายการ</p>
-              <p>ของหมด: {summary.counts.outOfStockCount} รายการ</p>
-              <p>lot ใกล้หมดอายุ: {summary.counts.expiringLotCount} lot</p>
-              <p>lot หมดอายุค้างสต๊อก: {summary.counts.expiredLotCount} lot</p>
-              <p>เคลมค้างดำเนินการ: {summary.counts.openClaimCount} รายการ</p>
-              <p>เอกสารถูกยกเลิกวันนี้: {summary.counts.cancelledDocumentCount} รายการ</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <PreviewMetric label="รอจัดส่ง" value={`${summary.counts.pendingDelivery} รายการ`} />
+              <PreviewMetric label="กำลังจัดส่ง" value={`${summary.counts.outForDelivery} รายการ`} />
+              <PreviewMetric label="ส่งสำเร็จวันนี้" value={`${summary.counts.deliveredToday} รายการ`} />
+              <PreviewMetric label="ต่ำกว่าขั้นต่ำ" value={`${summary.counts.lowStockCount} รายการ`} />
+              <PreviewMetric label="ของหมด" value={`${summary.counts.outOfStockCount} รายการ`} />
+              <PreviewMetric label="lot ใกล้หมดอายุ" value={`${summary.counts.expiringLotCount} lot`} />
+              <PreviewMetric label="lot หมดอายุค้างสต๊อก" value={`${summary.counts.expiredLotCount} lot`} />
+              <PreviewMetric label="เคลมค้างดำเนินการ" value={`${summary.counts.openClaimCount} รายการ`} />
+              <PreviewMetric label="เอกสารถูกยกเลิกวันนี้" value={`${summary.counts.cancelledDocumentCount} รายการ`} />
             </div>
           </section>
         </div>
