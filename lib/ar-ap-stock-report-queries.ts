@@ -68,6 +68,7 @@ export type ARAPStockFilters = {
   toStr: string;
   hasFilter: boolean;
   customerId?: string;
+  arMode?: "ALL" | "NORMAL" | "COD";
   supplierId?: string;
   categoryId?: string;
   search?: string;
@@ -86,8 +87,12 @@ export function parseARAPStockFilters(
     to: endOfDay(to),
     fromStr: params.from ?? from.toISOString().slice(0, 10),
     toStr: params.to ?? today.toISOString().slice(0, 10),
-    hasFilter: !!(params.from || params.to || params.customerId || params.supplierId || params.categoryId || params.search || params.showAll),
+    hasFilter: !!(params.from || params.to || params.customerId || params.arMode || params.supplierId || params.categoryId || params.search || params.showAll),
     customerId: params.customerId || undefined,
+    arMode:
+      params.arMode === "NORMAL" || params.arMode === "COD"
+        ? params.arMode
+        : "ALL",
     supplierId: params.supplierId || undefined,
     categoryId: params.categoryId || undefined,
     search: params.search || undefined,
@@ -102,18 +107,38 @@ export type ARRow = {
   saleNo: string;
   saleDate: Date;
   customerName: string | null;
-  customer: { name: string } | null;
+  customerPhone: string | null;
+  customer: { name: string; phone: string | null } | null;
   totalAmount: number;
   amountRemain: number;
   creditTerm: number | null;
 };
 
 export async function queryARRows(filters: ARAPStockFilters): Promise<ARRow[]> {
+  const arModeWhere =
+    filters.arMode === "COD"
+      ? {
+          paymentType: "CREDIT_SALE" as const,
+          fulfillmentType: "DELIVERY" as const,
+          shippingStatus: { not: "DELIVERED" as const },
+        }
+      : filters.arMode === "NORMAL"
+        ? {
+            paymentType: "CREDIT_SALE" as const,
+            NOT: {
+              fulfillmentType: "DELIVERY" as const,
+              shippingStatus: { not: "DELIVERED" as const },
+            },
+          }
+        : {
+            paymentType: "CREDIT_SALE" as const,
+          };
+
   const rows = await db.sale.findMany({
     where: {
-      paymentType: "CREDIT_SALE",
       status: "ACTIVE",
       amountRemain: { gt: 0 },
+      ...arModeWhere,
       ...(filters.customerId ? { customerId: filters.customerId } : {}),
       saleDate: {
         gte: filters.from,
@@ -127,8 +152,9 @@ export async function queryARRows(filters: ARAPStockFilters): Promise<ARRow[]> {
       saleNo: true,
       saleDate: true,
       customerName: true,
-      customer: { select: { name: true } },
-      totalAmount: true,
+      customerPhone: true,
+      customer: { select: { name: true, phone: true } },
+      netAmount: true,
       amountRemain: true,
       creditTerm: true,
     },
@@ -136,7 +162,7 @@ export async function queryARRows(filters: ARAPStockFilters): Promise<ARRow[]> {
 
   return rows.map((r) => ({
     ...r,
-    totalAmount: Number(r.totalAmount),
+    totalAmount: Number(r.netAmount),
     amountRemain: Number(r.amountRemain),
   }));
 }

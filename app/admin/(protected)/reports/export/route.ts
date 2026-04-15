@@ -51,6 +51,7 @@ export async function GET(request: Request) {
     paymentMethod: searchParams.get("paymentMethod") ?? undefined,
     docType: searchParams.get("docType") ?? undefined,
     customerId: searchParams.get("customerId") ?? undefined,
+    arMode: searchParams.get("arMode") ?? undefined,
     supplierId: searchParams.get("supplierId") ?? undefined,
     categoryId: searchParams.get("categoryId") ?? undefined,
     search: searchParams.get("search") ?? undefined,

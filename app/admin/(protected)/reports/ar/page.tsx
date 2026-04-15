@@ -34,6 +34,7 @@ function buildQuery(filters: ARAPStockFilters, customerId: string | undefined): 
   params.set("from", filters.fromStr);
   params.set("to", filters.toStr);
   if (customerId) params.set("customerId", customerId);
+  if (filters.arMode && filters.arMode !== "ALL") params.set("arMode", filters.arMode);
   return params.toString();
 }
 
@@ -61,7 +62,7 @@ export default async function ARReportPage({ searchParams }: PageProps) {
       <div>
         <h1 className="font-kanit text-2xl font-bold text-gray-900">ลูกหนี้ค้างชำระ (AR)</h1>
         <p className="text-sm text-gray-500">
-          รายการขายเชื่อที่ยังค้างชำระ — เลือกช่วงวันที่หรือลูกค้าก่อนแสดงข้อมูล
+          รายการขายเชื่อที่ยังค้างชำระ สามารถกรองเฉพาะลูกหนี้ COD ได้
         </p>
       </div>
 
@@ -99,6 +100,18 @@ export default async function ARReportPage({ searchParams }: PageProps) {
             ))}
           </select>
         </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+          ประเภทลูกหนี้
+          <select
+            name="arMode"
+            defaultValue={filters.arMode ?? "ALL"}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="ALL">ทั้งหมด</option>
+            <option value="NORMAL">ลูกหนี้ทั่วไป</option>
+            <option value="COD">ลูกหนี้ COD</option>
+          </select>
+        </label>
         <button
           type="submit"
           className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
@@ -131,7 +144,7 @@ export default async function ARReportPage({ searchParams }: PageProps) {
 
       {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด “แสดงรายการ” เพื่อดูข้อมูล</p>
         </div>
       ) : (
         <>
@@ -158,6 +171,7 @@ export default async function ARReportPage({ searchParams }: PageProps) {
                     <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
                     <th className="px-3 py-2.5 text-left font-medium">วันที่ขาย</th>
                     <th className="px-3 py-2.5 text-left font-medium">ลูกค้า</th>
+                    <th className="px-3 py-2.5 text-left font-medium">เบอร์โทร</th>
                     <th className="px-3 py-2.5 text-right font-medium">ยอดขาย</th>
                     <th className="px-3 py-2.5 text-right font-medium">ค้างชำระ</th>
                     <th className="px-3 py-2.5 text-right font-medium">เครดิต (วัน)</th>
@@ -167,7 +181,7 @@ export default async function ARReportPage({ searchParams }: PageProps) {
                 <tbody className="divide-y divide-gray-100">
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                         ไม่พบลูกหนี้ค้างชำระตามเงื่อนไขที่เลือก
                       </td>
                     </tr>
@@ -176,15 +190,12 @@ export default async function ARReportPage({ searchParams }: PageProps) {
                       <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.saleNo}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.saleDate)}</td>
-                        <td className="px-3 py-2 text-gray-800">
-                          {row.customer?.name ?? row.customerName ?? "-"}
+                        <td className="px-3 py-2 text-gray-800">{row.customer?.name ?? row.customerName ?? "-"}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">
+                          {row.customer?.phone ?? row.customerPhone ?? "-"}
                         </td>
-                        <td className="px-3 py-2 text-right text-gray-700">
-                          {formatCurrency(row.totalAmount)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium text-rose-700">
-                          {formatCurrency(row.amountRemain)}
-                        </td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(row.totalAmount)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-rose-700">{formatCurrency(row.amountRemain)}</td>
                         <td className="px-3 py-2 text-right text-gray-500">
                           {row.creditTerm != null ? `${row.creditTerm} วัน` : "-"}
                         </td>
