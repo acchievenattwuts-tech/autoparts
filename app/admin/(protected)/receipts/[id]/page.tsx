@@ -305,12 +305,13 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
       <ReceiptSettlementPrintDocument
         receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
         shopConfig={{
-          shopName: cfg.shopName,
-          shopAddress: cfg.shopAddress,
-          shopPhone: cfg.shopPhone,
-          shopWebsiteUrl: cfg.shopWebsiteUrl,
-          shopLineId: cfg.shopLineId,
-          printNoticeText: cfg.printNoticeText,
+        shopName: cfg.shopName,
+        shopAddress: cfg.shopAddress,
+        shopPhone: cfg.shopPhone,
+        shopLogoUrl: cfg.shopLogoUrl,
+        shopWebsiteUrl: cfg.shopWebsiteUrl,
+        shopLineId: cfg.shopLineId,
+        printNoticeText: cfg.printNoticeText,
         }}
         signerDisplayName={signerDisplayName}
         receivedTransferAccount={receivedTransferAccount}

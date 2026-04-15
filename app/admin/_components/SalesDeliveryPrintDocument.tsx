@@ -51,6 +51,7 @@ type SalePrintShopConfig = {
   shopName?: string | null;
   shopAddress?: string | null;
   shopPhone?: string | null;
+  shopLogoUrl?: string | null;
   shopWebsiteUrl?: string | null;
   shopLineId?: string | null;
   printNoticeText?: string | null;
@@ -83,6 +84,65 @@ const fmtDate = (d: Date | string) =>
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"] as const;
+const THAI_POSITIONS = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"] as const;
+
+function convertThaiIntegerPart(value: number): string {
+  if (value === 0) return THAI_DIGITS[0];
+
+  let result = "";
+  const digits = String(value);
+
+  for (let i = 0; i < digits.length; i += 1) {
+    const digit = Number(digits[i]);
+    if (digit === 0) continue;
+
+    const position = digits.length - i - 1;
+
+    if (position >= 6) {
+      const millions = Math.floor(value / 1_000_000);
+      const remainder = value % 1_000_000;
+      return `${convertThaiIntegerPart(millions)}ล้าน${remainder > 0 ? convertThaiIntegerPart(remainder) : ""}`;
+    }
+
+    if (position === 0 && digit === 1 && digits.length > 1) {
+      result += "เอ็ด";
+      continue;
+    }
+
+    if (position === 1) {
+      if (digit === 1) {
+        result += "สิบ";
+        continue;
+      }
+
+      if (digit === 2) {
+        result += "ยี่สิบ";
+        continue;
+      }
+    }
+
+    result += `${THAI_DIGITS[digit]}${THAI_POSITIONS[position]}`;
+  }
+
+  return result;
+}
+
+function formatThaiBahtText(value: number): string {
+  if (!Number.isFinite(value)) return "";
+
+  const normalized = Math.round(value * 100) / 100;
+  const baht = Math.floor(normalized);
+  const satang = Math.round((normalized - baht) * 100);
+  const bahtText = `${convertThaiIntegerPart(baht)}บาท`;
+
+  if (satang === 0) {
+    return `${bahtText}ถ้วน`;
+  }
+
+  return `${bahtText}${convertThaiIntegerPart(satang)}สตางค์`;
+}
 
 const PRINT_HEADER_BORDER_CLASS = "border-gray-400";
 const PRINT_BODY_BORDER_CLASS = "border-gray-300";
@@ -131,6 +191,7 @@ export default function SalesDeliveryPrintDocument({
   const customerPhone = sale.customer?.phone ?? sale.customerPhone ?? null;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const documentDateText = fmtDate(sale.saleDate);
+  const netAmountInWords = formatThaiBahtText(Number(sale.netAmount));
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
@@ -142,17 +203,24 @@ export default function SalesDeliveryPrintDocument({
       style={{ maxWidth: "900px" }}
     >
       <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
-        <div className="space-y-0.5 text-xs text-gray-600">
-          {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
-          {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
-          {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
-          {shopConfig.shopWebsiteUrl || shopConfig.shopLineId ? (
-            <p>
-              {[shopConfig.shopWebsiteUrl, shopConfig.shopLineId ? `Line: ${shopConfig.shopLineId}` : null]
-                .filter(Boolean)
-                .join("  |  ")}
-            </p>
+        <div className="flex items-start gap-3">
+          {shopConfig.shopLogoUrl ? (
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden">
+              <Image src={shopConfig.shopLogoUrl} alt="Shop logo" fill className="object-contain" sizes="56px" />
+            </div>
           ) : null}
+          <div className="space-y-0.5 text-xs text-gray-600">
+            {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
+            {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
+            {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
+            {shopConfig.shopWebsiteUrl || shopConfig.shopLineId ? (
+              <p>
+                {[shopConfig.shopWebsiteUrl, shopConfig.shopLineId ? `Line: ${shopConfig.shopLineId}` : null]
+                  .filter(Boolean)
+                  .join("  |  ")}
+              </p>
+            ) : null}
+          </div>
         </div>
         <div className="text-right">
           <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>
@@ -272,6 +340,7 @@ export default function SalesDeliveryPrintDocument({
             <span>ยอดสุทธิ</span>
             <span className="text-[#1e3a5f]">{fmtNum(Number(sale.netAmount))}</span>
           </div>
+          <div className="pt-1 text-right text-[11px] text-gray-500">({netAmountInWords})</div>
         </div>
       </div>
 

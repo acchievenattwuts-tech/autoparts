@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 type NumericLike = number | string | { toString(): string };
 
 type ReceiptSettlementItem = {
@@ -43,6 +45,7 @@ type ReceiptSettlementShopConfig = {
   shopName?: string | null;
   shopAddress?: string | null;
   shopPhone?: string | null;
+  shopLogoUrl?: string | null;
   shopWebsiteUrl?: string | null;
   shopLineId?: string | null;
   printNoticeText?: string | null;
@@ -63,6 +66,7 @@ const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLASS}`;
 const RECEIPT_SUMMARY_GRID_STYLE = {
   gridTemplateColumns: "10rem 7rem minmax(0,1fr) minmax(0,1fr)",
 } as const;
+const RECEIPT_FIXED_COLUMN_WIDTHS = ["10rem", "7rem"] as const;
 
 const fmtDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
@@ -73,6 +77,65 @@ const fmtDate = (d: Date | string) =>
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"] as const;
+const THAI_POSITIONS = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"] as const;
+
+function convertThaiIntegerPart(value: number): string {
+  if (value === 0) return THAI_DIGITS[0];
+
+  let result = "";
+  const digits = String(value);
+
+  for (let i = 0; i < digits.length; i += 1) {
+    const digit = Number(digits[i]);
+    if (digit === 0) continue;
+
+    const position = digits.length - i - 1;
+
+    if (position >= 6) {
+      const millions = Math.floor(value / 1_000_000);
+      const remainder = value % 1_000_000;
+      return `${convertThaiIntegerPart(millions)}ล้าน${remainder > 0 ? convertThaiIntegerPart(remainder) : ""}`;
+    }
+
+    if (position === 0 && digit === 1 && digits.length > 1) {
+      result += "เอ็ด";
+      continue;
+    }
+
+    if (position === 1) {
+      if (digit === 1) {
+        result += "สิบ";
+        continue;
+      }
+
+      if (digit === 2) {
+        result += "ยี่สิบ";
+        continue;
+      }
+    }
+
+    result += `${THAI_DIGITS[digit]}${THAI_POSITIONS[position]}`;
+  }
+
+  return result;
+}
+
+function formatThaiBahtText(value: number): string {
+  if (!Number.isFinite(value)) return "";
+
+  const normalized = Math.round(value * 100) / 100;
+  const baht = Math.floor(normalized);
+  const satang = Math.round((normalized - baht) * 100);
+  const bahtText = `${convertThaiIntegerPart(baht)}บาท`;
+
+  if (satang === 0) {
+    return `${bahtText}ถ้วน`;
+  }
+
+  return `${bahtText}${convertThaiIntegerPart(satang)}สตางค์`;
+}
 
 const getPrintNoticeLines = (text?: string | null) =>
   (text ?? "")
@@ -99,6 +162,7 @@ export default function ReceiptSettlementPrintDocument({
   const customerName = receipt.customer?.name ?? receipt.customerName ?? "-";
   const customerPhone = receipt.customer?.phone ?? null;
   const receiptDateText = fmtDate(receipt.receiptDate);
+  const totalAmountInWords = formatThaiBahtText(Number(receipt.totalAmount));
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasSupportBlock = receipt.paymentMethod === "CASH" || receipt.paymentMethod === "TRANSFER" || Boolean(receivedTransferAccount);
@@ -109,7 +173,13 @@ export default function ReceiptSettlementPrintDocument({
       className={rootClassName ?? "mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug"}
     >
       <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
-        <div className="space-y-0.5 text-xs text-gray-600">
+        <div className="flex items-start gap-3">
+          {shopConfig.shopLogoUrl ? (
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden">
+              <Image src={shopConfig.shopLogoUrl} alt="Shop logo" fill className="object-contain" sizes="56px" />
+            </div>
+          ) : null}
+          <div className="space-y-0.5 text-xs text-gray-600">
           {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
           {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
           {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
@@ -120,6 +190,7 @@ export default function ReceiptSettlementPrintDocument({
                 .join("  |  ")}
             </p>
           ) : null}
+          </div>
         </div>
         <div className="text-right">
           <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>ใบเสร็จรับเงิน</p>
@@ -165,7 +236,13 @@ export default function ReceiptSettlementPrintDocument({
         </div>
       </div>
 
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full table-fixed border-collapse text-xs">
+        <colgroup>
+          <col style={{ width: RECEIPT_FIXED_COLUMN_WIDTHS[0] }} />
+          <col style={{ width: RECEIPT_FIXED_COLUMN_WIDTHS[1] }} />
+          <col />
+          <col />
+        </colgroup>
         <thead>
           <tr className="bg-gray-100 text-gray-700">
             <th className={`w-40 ${PRINT_HEADER_CELL_CLASS} text-left`}>เลขที่เอกสารอ้างอิง</th>
@@ -200,14 +277,18 @@ export default function ReceiptSettlementPrintDocument({
       </table>
 
       <div className="mb-4 grid text-xs" style={RECEIPT_SUMMARY_GRID_STYLE}>
-        <div className={`col-span-2 border-x border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
+        <div className={`col-span-2 border-b border-l ${PRINT_BODY_BORDER_CLASS} p-2`}>
           <p className="mb-1 text-gray-400">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
         </div>
-        <div className={`col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS}`}>
-          <div className="grid grid-cols-2 text-xs">
-            <div className={`border-r ${PRINT_BODY_BORDER_CLASS} p-2 font-bold text-gray-900`}>ยอดรับชำระรวม</div>
-            <div className="p-2 text-right font-bold text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</div>
+        <div className={`relative col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2 pb-1`}>
+          <div className={`pointer-events-none absolute inset-y-0 left-1/2 border-r ${PRINT_BODY_BORDER_CLASS}`} />
+          <div className="flex h-full flex-col justify-end gap-1 pl-[calc(50%+0.5rem)] text-xs">
+            <div className="flex items-end justify-between gap-3">
+              <div className="font-bold text-gray-900">ยอดรับชำระรวม</div>
+              <div className="text-right font-bold text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</div>
+            </div>
+            <div className="text-right text-[11px] text-gray-500">({totalAmountInWords})</div>
           </div>
         </div>
       </div>
