@@ -2,7 +2,7 @@ export const revalidate = 3600;
 
 import type { Metadata } from "next";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
-import Hero from "@/components/shared/Hero";
+import HeroShowcase from "@/components/shared/HeroShowcase";
 import ProductCategories from "@/components/shared/ProductCategories";
 import WhyUs from "@/components/shared/WhyUs";
 import FeaturedProducts from "@/components/shared/FeaturedProducts";
@@ -56,7 +56,7 @@ const Home = async () => {
         shopPhone={config.shopPhone}
       />
       <main>
-        <Hero
+        <HeroShowcase
           lineUrl={config.shopLineUrl}
           shopPhone={config.shopPhone}
           shopName={config.shopName}
