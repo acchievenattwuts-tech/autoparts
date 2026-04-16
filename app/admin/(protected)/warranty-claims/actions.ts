@@ -47,6 +47,10 @@ const closeClaimReceivedLotSchema = z.object({
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
+const RETURN_DOC_SUFFIX = "-C";
+const RECEIVE_DOC_SUFFIX = "-R";
+const SEND_DOC_SUFFIX = "-S";
+
 async function getAvgCost(tx: TxClient, productId: string): Promise<number> {
   const product = await tx.product.findUnique({
     where: { id: productId },
@@ -57,9 +61,35 @@ async function getAvgCost(tx: TxClient, productId: string): Promise<number> {
 
 async function getClaimReplacementLots(
   tx: TxClient,
-  productId: string
+  productId: string,
 ): Promise<LotAvailableJSON[]> {
   return getLotAvailability(tx, productId);
+}
+
+async function getReceivedLotSnapshot(
+  tx: TxClient,
+  claimNo: string,
+): Promise<{ lotNo: string; unitCostBase: number } | null> {
+  const receiveRow = await tx.stockCard.findFirst({
+    where: { docNo: `${claimNo}${RECEIVE_DOC_SUFFIX}`, source: "CLAIM_RECV_IN" },
+    select: {
+      lotMovements: {
+        select: {
+          lotNo: true,
+          unitCost: true,
+          qtyIn: true,
+        },
+      },
+    },
+  });
+
+  const receivedLot = receiveRow?.lotMovements.find((lot) => Number(lot.qtyIn) > 0);
+  if (!receivedLot) return null;
+
+  return {
+    lotNo: receivedLot.lotNo,
+    unitCostBase: Number(receivedLot.unitCost),
+  };
 }
 
 function normalizeOptionalDate(value?: string): Date | null {
@@ -73,7 +103,7 @@ function normalizeOptionalString(value?: string): string | undefined {
 }
 
 export async function createClaim(
-  formData: FormData
+  formData: FormData,
 ): Promise<{ claimNo?: string; error?: string }> {
   try {
     await requirePermission("warranty_claims.create");
@@ -166,42 +196,42 @@ export async function createClaim(
         },
       });
 
-      if (data.claimType === ClaimType.REPLACE_NOW || data.claimType === ClaimType.CUSTOMER_WAIT) {
-        const returnStockCardId = await writeStockCard(tx, {
-          productId: warranty.productId,
-          docNo: claimNo,
-          docDate: claimDate,
-          source: "CLAIM_RETURN_IN",
-          qtyIn: 1,
-          qtyOut: 0,
-          priceIn: avgCost,
-          detail: `รับคืนสินค้าเคลม ${claimNo}`,
-          referenceId: claim.id,
+      const returnStockCardId = await writeStockCard(tx, {
+        productId: warranty.productId,
+        docNo: claimNo,
+        docDate: claimDate,
+        source: "CLAIM_RETURN_IN",
+        qtyIn: 1,
+        qtyOut: 0,
+        priceIn: avgCost,
+        detail: `รับคืนสินค้าเคลม ${claimNo}`,
+        referenceId: claim.id,
+      });
+
+      if (warranty.product.isLotControl && warranty.lotNo) {
+        await writeClaimLot(tx, claim.id, warranty.productId, {
+          lotNo: warranty.lotNo,
+          qtyInBase: 1,
+          unitCostBase: avgCost,
+          mfgDate: null,
+          expDate: null,
+          direction: "in",
         });
 
-        if (warranty.product.isLotControl && warranty.lotNo) {
-          await writeClaimLot(tx, claim.id, warranty.productId, {
-            lotNo: warranty.lotNo,
-            qtyInBase: 1,
-            unitCostBase: avgCost,
-            mfgDate: null,
-            expDate: null,
-            direction: "in",
-          });
-
-          await writeStockMovementLots(
-            tx,
-            returnStockCardId,
-            [{
+        await writeStockMovementLots(
+          tx,
+          returnStockCardId,
+          [
+            {
               lotNo: warranty.lotNo,
               qtyInBase: 1,
               unitCostBase: avgCost,
               mfgDate: null,
               expDate: null,
-            }],
-            "in"
-          );
-        }
+            },
+          ],
+          "in",
+        );
       }
 
       if (data.claimType === ClaimType.REPLACE_NOW) {
@@ -230,14 +260,16 @@ export async function createClaim(
           await writeStockMovementLots(
             tx,
             replaceStockCardId,
-            [{
-              lotNo: replacementLot.lotNo,
-              qtyInBase: 1,
-              unitCostBase: replacementLot.unitCost,
-              mfgDate: null,
-              expDate: null,
-            }],
-            "out"
+            [
+              {
+                lotNo: replacementLot.lotNo,
+                qtyInBase: 1,
+                unitCostBase: replacementLot.unitCost,
+                mfgDate: null,
+                expDate: null,
+              },
+            ],
+            "out",
           );
         }
       }
@@ -253,7 +285,7 @@ export async function createClaim(
 
 export async function updateClaim(
   id: string,
-  formData: FormData
+  formData: FormData,
 ): Promise<{ error?: string }> {
   try {
     await requirePermission("warranty_claims.update");
@@ -303,7 +335,7 @@ export async function updateClaim(
 
 export async function sendClaimToSupplier(
   id: string,
-  sentAt: string
+  sentAt: string,
 ): Promise<{ error?: string }> {
   try {
     await requirePermission("warranty_claims.update");
@@ -329,7 +361,7 @@ export async function sendClaimToSupplier(
   if (claim.status !== WarrantyClaimStatus.DRAFT) return { error: "สถานะไม่อนุญาตให้ส่งเคลม" };
 
   const sentDate = new Date(sentAt);
-  const docNo = `${claim.claimNo}-S`;
+  const docNo = `${claim.claimNo}${SEND_DOC_SUFFIX}`;
 
   try {
     await dbTx(async (tx) => {
@@ -365,14 +397,16 @@ export async function sendClaimToSupplier(
         await writeStockMovementLots(
           tx,
           stockCardId,
-          [{
-            lotNo: claim.warranty.lotNo,
-            qtyInBase: 1,
-            unitCostBase: avgCost,
-            mfgDate: null,
-            expDate: null,
-          }],
-          "out"
+          [
+            {
+              lotNo: claim.warranty.lotNo,
+              qtyInBase: 1,
+              unitCostBase: avgCost,
+              mfgDate: null,
+              expDate: null,
+            },
+          ],
+          "out",
         );
       }
     });
@@ -393,7 +427,7 @@ export async function closeClaim(
   note?: string,
   receivedLotNo?: string,
   receivedMfgDate?: string,
-  receivedExpDate?: string
+  receivedExpDate?: string,
 ): Promise<{ error?: string }> {
   try {
     await requirePermission("warranty_claims.update");
@@ -419,7 +453,6 @@ export async function closeClaim(
       status: true,
       warranty: {
         select: {
-          lotNo: true,
           productId: true,
           product: { select: { isLotControl: true } },
         },
@@ -432,7 +465,7 @@ export async function closeClaim(
   }
 
   const resolvedDate = new Date(resolvedAt);
-  const docNo = `${claim.claimNo}-R`;
+  const docNo = `${claim.claimNo}${RECEIVE_DOC_SUFFIX}`;
   const receivedLotNoValue = normalizeOptionalString(receivedLotParsed.data.receivedLotNo);
   const receivedMfg = normalizeOptionalDate(receivedLotParsed.data.receivedMfgDate);
   const receivedExp = normalizeOptionalDate(receivedLotParsed.data.receivedExpDate);
@@ -451,6 +484,7 @@ export async function closeClaim(
           status: WarrantyClaimStatus.CLOSED,
           outcome: parsedOutcome.data,
           resolvedAt: resolvedDate,
+          returnedAt: null,
           note: note || undefined,
         },
       });
@@ -481,54 +515,117 @@ export async function closeClaim(
           await writeStockMovementLots(
             tx,
             stockCardId,
-            [{
-              lotNo: receivedLotNoValue,
-              qtyInBase: 1,
-              unitCostBase: avgCost,
-              mfgDate: receivedMfg,
-              expDate: receivedExp,
-            }],
-            "in"
-          );
-        }
-
-        if (claim.claimType === ClaimType.CUSTOMER_WAIT) {
-          const replaceStockCardId = await writeStockCard(tx, {
-            productId: claim.warranty.productId,
-            docNo,
-            docDate: resolvedDate,
-            source: "CLAIM_REPLACE_OUT",
-            qtyIn: 0,
-            qtyOut: 1,
-            priceIn: 0,
-            detail: `ส่งสินค้าให้ลูกค้าที่รอเคลม ${claim.claimNo}`,
-            referenceId: id,
-          });
-
-          if (claim.warranty.product.isLotControl && receivedLotNoValue) {
-            await writeClaimLot(tx, id, claim.warranty.productId, {
-              lotNo: receivedLotNoValue,
-              qtyInBase: 1,
-              unitCostBase: avgCost,
-              mfgDate: receivedMfg,
-              expDate: receivedExp,
-              direction: "out",
-            });
-
-            await writeStockMovementLots(
-              tx,
-              replaceStockCardId,
-              [{
+            [
+              {
                 lotNo: receivedLotNoValue,
                 qtyInBase: 1,
                 unitCostBase: avgCost,
                 mfgDate: receivedMfg,
                 expDate: receivedExp,
-              }],
-              "out"
-            );
-          }
+              },
+            ],
+            "in",
+          );
         }
+      }
+    });
+
+    revalidatePath("/admin/warranty-claims");
+    revalidatePath(`/admin/warranty-claims/${id}`);
+    return {};
+  } catch (error) {
+    if (error instanceof Error && error.message) return { error: error.message };
+    return { error: "เกิดข้อผิดพลาด" };
+  }
+}
+
+export async function returnClaimToCustomer(
+  id: string,
+  returnedAt: string,
+): Promise<{ error?: string }> {
+  try {
+    await requirePermission("warranty_claims.update");
+  } catch {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  const claim = await db.warrantyClaim.findUnique({
+    where: { id },
+    select: {
+      claimNo: true,
+      claimType: true,
+      status: true,
+      outcome: true,
+      warranty: {
+        select: {
+          productId: true,
+          product: { select: { isLotControl: true } },
+        },
+      },
+    },
+  });
+  if (!claim) return { error: "ไม่พบใบเคลม" };
+  if (claim.claimType !== ClaimType.CUSTOMER_WAIT) {
+    return { error: "สถานะส่งคืนลูกค้าใช้ได้เฉพาะเคลมแบบลูกค้ารอเคลม" };
+  }
+  if (claim.status !== WarrantyClaimStatus.CLOSED || claim.outcome !== ClaimOutcome.RECEIVED) {
+    return { error: "ต้องปิดเคลมแบบได้รับสินค้าคืนก่อนจึงจะส่งคืนลูกค้าได้" };
+  }
+
+  const returnedDate = new Date(returnedAt);
+  const docNo = `${claim.claimNo}${RETURN_DOC_SUFFIX}`;
+
+  try {
+    await dbTx(async (tx) => {
+      await tx.warrantyClaim.update({
+        where: { id },
+        data: {
+          status: WarrantyClaimStatus.RETURNED_TO_CUSTOMER,
+          returnedAt: returnedDate,
+        },
+      });
+
+      const stockCardId = await writeStockCard(tx, {
+        productId: claim.warranty.productId,
+        docNo,
+        docDate: returnedDate,
+        source: "CLAIM_REPLACE_OUT",
+        qtyIn: 0,
+        qtyOut: 1,
+        priceIn: 0,
+        detail: `ส่งคืนลูกค้าหลังเคลม ${claim.claimNo}`,
+        referenceId: id,
+      });
+
+      if (claim.warranty.product.isLotControl) {
+        const receivedLot = await getReceivedLotSnapshot(tx, claim.claimNo);
+        if (!receivedLot) {
+          throw new Error("ไม่พบ Lot ที่รับกลับจากซัพพลายเออร์สำหรับส่งคืนลูกค้า");
+        }
+
+        await writeClaimLot(tx, id, claim.warranty.productId, {
+          lotNo: receivedLot.lotNo,
+          qtyInBase: 1,
+          unitCostBase: receivedLot.unitCostBase,
+          mfgDate: null,
+          expDate: null,
+          direction: "out",
+        });
+
+        await writeStockMovementLots(
+          tx,
+          stockCardId,
+          [
+            {
+              lotNo: receivedLot.lotNo,
+              qtyInBase: 1,
+              unitCostBase: receivedLot.unitCostBase,
+              mfgDate: null,
+              expDate: null,
+            },
+          ],
+          "out",
+        );
       }
     });
 
@@ -554,21 +651,40 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
       claimNo: true,
       status: true,
       outcome: true,
+      claimType: true,
       warranty: { select: { productId: true } },
     },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
-  if (claim.status !== WarrantyClaimStatus.CLOSED) {
-    return { error: "สามารถย้อนกลับได้เฉพาะสถานะปิดเคลม" };
-  }
 
   try {
     await dbTx(async (tx) => {
+      if (claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER) {
+        await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
+          docNos: [`${claim.claimNo}${RETURN_DOC_SUFFIX}`],
+        });
+        await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RETURN_DOC_SUFFIX}` } });
+        await recalculateStockCard(tx, claim.warranty.productId);
+
+        await tx.warrantyClaim.update({
+          where: { id },
+          data: {
+            status: WarrantyClaimStatus.CLOSED,
+            returnedAt: null,
+          },
+        });
+        return;
+      }
+
+      if (claim.status !== WarrantyClaimStatus.CLOSED) {
+        throw new Error("สามารถย้อนกลับได้เฉพาะสถานะปิดเคลมหรือส่งคืนลูกค้า");
+      }
+
       if (claim.outcome === ClaimOutcome.RECEIVED) {
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
-          docNos: [`${claim.claimNo}-R`],
+          docNos: [`${claim.claimNo}${RECEIVE_DOC_SUFFIX}`],
         });
-        await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}-R` } });
+        await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RECEIVE_DOC_SUFFIX}` } });
         await recalculateStockCard(tx, claim.warranty.productId);
       }
 
@@ -578,6 +694,7 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
           status: WarrantyClaimStatus.SENT_TO_SUPPLIER,
           outcome: null,
           resolvedAt: null,
+          returnedAt: null,
         },
       });
     });
@@ -585,13 +702,14 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
 }
 
 export async function cancelClaimAction(
-  formData: FormData
+  formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
   const id = formData.get("claimId") as string;
   const result = await cancelClaim(id);
@@ -626,13 +744,14 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
 
       await tx.warrantyClaim.update({
         where: { id },
-        data: { status: WarrantyClaimStatus.CANCELLED },
+        data: { status: WarrantyClaimStatus.CANCELLED, returnedAt: null },
       });
 
       await tx.stockCard.deleteMany({ where: { referenceId: id } });
       await tx.stockCard.deleteMany({ where: { docNo: claim.claimNo } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}-S` } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}-R` } });
+      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${SEND_DOC_SUFFIX}` } });
+      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RECEIVE_DOC_SUFFIX}` } });
+      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RETURN_DOC_SUFFIX}` } });
       await tx.stockCard.deleteMany({ where: { docNo: `${id}-SENT` } });
       await tx.stockCard.deleteMany({ where: { docNo: `${id}-RECV` } });
 

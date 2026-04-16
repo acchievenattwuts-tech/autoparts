@@ -4,26 +4,43 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import CancelDocButton from "@/components/shared/CancelDocButton";
-import { cancelClaimAction, closeClaim, reopenClaim, sendClaimToSupplier } from "../actions";
+import {
+  cancelClaimAction,
+  closeClaim,
+  reopenClaim,
+  returnClaimToCustomer,
+  sendClaimToSupplier,
+} from "../actions";
 
 interface Props {
   claimId: string;
   claimNo: string;
   currentStatus: string;
+  claimType: string;
+  outcome: string | null;
   isLotControl: boolean;
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
+const inputCls =
+  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm bg-white";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
-const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: Props) => {
+const ClaimStatusActions = ({
+  claimId,
+  claimNo,
+  currentStatus,
+  claimType,
+  outcome,
+  isLotControl,
+}: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
   const [sentDate, setSentDate] = useState(new Date().toISOString().slice(0, 10));
   const [resolvedDate, setResolvedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [outcome, setOutcome] = useState<"RECEIVED" | "NO_RESOLUTION">("RECEIVED");
+  const [returnedDate, setReturnedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [closeOutcome, setCloseOutcome] = useState<"RECEIVED" | "NO_RESOLUTION">("RECEIVED");
   const [closeNote, setCloseNote] = useState("");
   const [receivedLotNo, setReceivedLotNo] = useState("");
   const [receivedMfgDate, setReceivedMfgDate] = useState("");
@@ -46,12 +63,12 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
     startTransition(async () => {
       const res = await closeClaim(
         claimId,
-        outcome,
+        closeOutcome,
         resolvedDate,
         closeNote,
         receivedLotNo,
         receivedMfgDate,
-        receivedExpDate
+        receivedExpDate,
       );
       if (res.error) {
         setError(res.error);
@@ -60,6 +77,35 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
       router.refresh();
     });
   };
+
+  const handleReturnToCustomer = () => {
+    setError("");
+    startTransition(async () => {
+      const res = await returnClaimToCustomer(claimId, returnedDate);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const handleReopen = (message: string) => {
+    if (!confirm(message)) return;
+
+    setError("");
+    startTransition(async () => {
+      const res = await reopenClaim(claimId);
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+    });
+  };
+
+  const canReturnToCustomer =
+    currentStatus === "CLOSED" && claimType === "CUSTOMER_WAIT" && outcome === "RECEIVED";
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-5">
@@ -89,42 +135,6 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
         </div>
       )}
 
-      {currentStatus === "CLOSED" && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">ย้อนกลับสถานะ</h3>
-          <button
-            onClick={() => {
-              if (!confirm("ย้อนกลับเป็นสถานะ [ส่งซัพพลายเออร์แล้ว] ? หากเคยรับสินค้ากลับแล้ว ระบบจะย้อน Lot และ Stock ให้")) return;
-              setError("");
-              startTransition(async () => {
-                const res = await reopenClaim(claimId);
-                if (res.error) {
-                  setError(res.error);
-                  return;
-                }
-                router.refresh();
-              });
-            }}
-            disabled={isPending}
-            className="w-full px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 border border-amber-200"
-          >
-            {isPending ? "กำลังดำเนินการ..." : "ย้อนกลับเป็น ส่งซัพพลายเออร์แล้ว"}
-          </button>
-        </div>
-      )}
-
-      {currentStatus !== "CANCELLED" && (
-        <div className="pt-2 border-t border-gray-100 flex justify-center">
-          <CancelDocButton
-            docId={claimId}
-            docNo={claimNo}
-            idFieldName="claimId"
-            cancelAction={cancelClaimAction}
-            onSuccess={() => router.push("/admin/warranty-claims")}
-          />
-        </div>
-      )}
-
       {currentStatus === "SENT_TO_SUPPLIER" && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">ปิดเคลม</h3>
@@ -140,9 +150,9 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
           <div>
             <label className={labelCls}>ผลลัพธ์</label>
             <select
-              value={outcome}
-              onChange={(e) => setOutcome(e.target.value as "RECEIVED" | "NO_RESOLUTION")}
-              className={`${inputCls} bg-white`}
+              value={closeOutcome}
+              onChange={(e) => setCloseOutcome(e.target.value as "RECEIVED" | "NO_RESOLUTION")}
+              className={inputCls}
             >
               <option value="RECEIVED">ได้รับสินค้าคืน (+1 stock)</option>
               <option value="NO_RESOLUTION">ไม่ได้รับการแก้ไข</option>
@@ -159,7 +169,7 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
               className={inputCls}
             />
           </div>
-          {outcome === "RECEIVED" && isLotControl && (
+          {closeOutcome === "RECEIVED" && isLotControl && (
             <>
               <div>
                 <label className={labelCls}>Lot ที่รับกลับ</label>
@@ -201,9 +211,78 @@ const ClaimStatusActions = ({ claimId, claimNo, currentStatus, isLotControl }: P
           >
             {isPending ? "กำลังบันทึก..." : "ปิดเคลม"}
           </button>
-          {outcome === "RECEIVED" && (
-            <p className="text-xs text-gray-400">Stock จะเพิ่ม 1 ชิ้นเมื่อปิดเคลมแบบได้รับสินค้าคืน</p>
+          {closeOutcome === "RECEIVED" && (
+            <p className="text-xs text-gray-400">
+              ปิดเคลมจะรับของกลับเข้า Stock ก่อน กรณีลูกค้ารอเคลมจะยังไม่ตัด Stock จนกว่าจะอัปเดตสถานะส่งคืนลูกค้า
+            </p>
           )}
+        </div>
+      )}
+
+      {canReturnToCustomer && (
+        <div className="space-y-3 border-t border-gray-100 pt-5">
+          <h3 className="text-sm font-semibold text-gray-700">ส่งคืนลูกค้า</h3>
+          <div>
+            <label className={labelCls}>วันที่ส่งคืนลูกค้า</label>
+            <input
+              type="date"
+              value={returnedDate}
+              onChange={(e) => setReturnedDate(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <button
+            onClick={handleReturnToCustomer}
+            disabled={isPending}
+            className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isPending ? "กำลังบันทึก..." : "ยืนยันส่งคืนลูกค้า"}
+          </button>
+          <p className="text-xs text-gray-400">ระบบจะตัด Stock 1 ชิ้นเมื่ออัปเดตสถานะนี้</p>
+        </div>
+      )}
+
+      {currentStatus === "CLOSED" && (
+        <div className="space-y-3 border-t border-gray-100 pt-5">
+          <h3 className="text-sm font-semibold text-gray-700">ย้อนกลับสถานะ</h3>
+          <button
+            onClick={() =>
+              handleReopen(
+                "ย้อนกลับเป็นสถานะ [ส่งซัพพลายเออร์แล้ว] ? หากเคยรับสินค้ากลับแล้ว ระบบจะย้อน Stock และ Lot ของการปิดเคลมให้",
+              )
+            }
+            disabled={isPending}
+            className="w-full px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 border border-amber-200"
+          >
+            {isPending ? "กำลังดำเนินการ..." : "ย้อนกลับเป็น ส่งซัพพลายเออร์แล้ว"}
+          </button>
+        </div>
+      )}
+
+      {currentStatus === "RETURNED_TO_CUSTOMER" && (
+        <div className="space-y-3 border-t border-gray-100 pt-5">
+          <h3 className="text-sm font-semibold text-gray-700">ย้อนกลับสถานะ</h3>
+          <button
+            onClick={() =>
+              handleReopen("ย้อนกลับเป็นสถานะ [ปิดเคลม] ? ระบบจะคืน Stock และ Lot ของการส่งคืนลูกค้าให้")
+            }
+            disabled={isPending}
+            className="w-full px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 border border-amber-200"
+          >
+            {isPending ? "กำลังดำเนินการ..." : "ย้อนกลับเป็น ปิดเคลม"}
+          </button>
+        </div>
+      )}
+
+      {currentStatus !== "CANCELLED" && (
+        <div className="pt-2 border-t border-gray-100 flex justify-center">
+          <CancelDocButton
+            docId={claimId}
+            docNo={claimNo}
+            idFieldName="claimId"
+            cancelAction={cancelClaimAction}
+            onSuccess={() => router.push("/admin/warranty-claims")}
+          />
         </div>
       )}
     </div>
