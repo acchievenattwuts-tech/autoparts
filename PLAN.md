@@ -2990,12 +2990,19 @@ npm run db:restore backup-{timestamp}.json
 
 #### 4. Approval process decisions
 
-- [ ] Decide who is allowed to approve Facebook posts in the first version
-- [ ] Decide whether v1 uses one approver only or allows multiple approvers
-- [ ] Decide whether `no approval = no publish` is mandatory for every scheduled post
-- [ ] Decide whether some post categories can use `Approve & Post Now` while others must always schedule
-- [ ] Decide whether the AI is allowed to choose the publish time automatically or whether humans always choose the time
+- [x] Decide who is allowed to approve Facebook posts in the first version
+- [x] Decide whether v1 uses one approver only or allows multiple approvers
+- [x] Decide whether `no approval = no publish` is mandatory for every scheduled post
+- [x] Decide whether some post categories can use `Approve & Post Now` while others must always schedule
+- [x] Decide whether the AI is allowed to choose the publish time automatically or whether humans always choose the time
 - [ ] Decide what minimum information must be shown in the LINE notification, for example caption preview, cover image preview, publish time, and page name
+
+Approved decisions for v1:
+- Any user who already has content approval permission (`content.manage`) can act as an approver
+- Every post must be approved before it can be published
+- `Approve & Post Now` is allowed for every post
+- Humans choose the publish time themselves; AI does not auto-pick the final publish time in v1
+- Scheduled publish timing must respect the current `QStash` free-tier constraints, especially the maximum delay window supported by that plan
 
 #### 5. Production verification after code is ready
 
@@ -3146,3 +3153,22 @@ npm run db:restore backup-{timestamp}.json
 - [ ] Do not bypass the existing content approval workflow for recurring campaigns
 - [ ] Do not create infinite recurring jobs without a visible next-run / last-run state in admin
 - [ ] Do not let one failed recurring run block every future run without a visible error state and recovery action
+
+## Roadmap Update (2026-04-16 SEO Intent Hub for "อะไหล่แอร์รถยนต์")
+
+> Scope for this round: strengthen ranking potential and AI-answer extractability for the core storefront intent `อะไหล่แอร์รถยนต์` without creating competing keyword-stuffed pages. Reuse the homepage and `/products` as the primary public hubs.
+
+### Checklist
+
+- [x] Tighten homepage metadata so the core intent `อะไหล่แอร์รถยนต์` is expressed explicitly in the title and description
+- [x] Add an answer-first homepage section for `อะไหล่แอร์รถยนต์` with factual short-form explanations and internal links to key public hubs
+- [x] Strengthen `/products` as the indexable hub for `อะไหล่แอร์รถยนต์` through metadata, visible copy, and clearer intent framing
+- [x] Add `CollectionPage` structured data to `/products` so the listing hub is easier to interpret as a collection surface
+- [x] Improve `llms.txt` with short, extractable guidance for the core `อะไหล่แอร์รถยนต์` intent
+- [x] Verify `npm run build`
+
+### Guard rails
+
+- [x] Do not promise first-page rankings or guaranteed AI citations
+- [x] Do not create duplicate public URLs that compete with the homepage and `/products` for the same keyword intent
+- [x] Keep all SEO/AEO wording grounded in the real shop workflow: search on site first, then confirm with the shop before ordering

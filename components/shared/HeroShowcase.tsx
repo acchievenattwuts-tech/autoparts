@@ -31,7 +31,10 @@ const HeroShowcase = ({
         <div className="w-full">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#3d5f92]/12 bg-white/86 px-4 py-1.5 shadow-sm backdrop-blur">
-              <span className="h-2 w-2 rounded-full bg-[#f97316]" />
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e]/70" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#22c55e]" />
+              </span>
               <span className="text-sm font-medium text-[#305182]">เช็กความตรงรุ่นก่อนสั่งทุกครั้ง</span>
             </div>
 
