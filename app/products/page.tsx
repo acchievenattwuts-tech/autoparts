@@ -1,4 +1,4 @@
-﻿export const revalidate = 300;
+export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { Suspense } from "react";
@@ -9,10 +9,12 @@ import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
+import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductFilterBar from "./ProductFilterBar";
 import ProductFilterBarFallback from "./ProductFilterBarFallback";
 import ProductsHero from "./ProductsHero";
 import { absoluteUrl } from "@/lib/seo";
+import { getProductPath } from "@/lib/product-slug";
 import {
   getStorefrontProductFilters,
   getStorefrontProductsLandingPageData,
@@ -21,9 +23,9 @@ import {
 const PRODUCTS_PER_PAGE = 24;
 
 export const metadata: Metadata = {
-  title: "สินค้าทั้งหมด | ศรีวรรณ อะไหล่แอร์",
+  title: "อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด",
   description:
-    "รวมสินค้าอะไหล่แอร์ คอมเพรสเซอร์ หม้อน้ำ แผงคอนเดนเซอร์ และสินค้าในร้านศรีวรรณ อะไหล่แอร์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
+    "รวมอะไหล่แอร์รถยนต์ คอมเพรสเซอร์ คอมแอร์ แผงคอนเดนเซอร์ หม้อน้ำ และสินค้าที่เกี่ยวข้อง พร้อมค้นหาและกรองสินค้าได้รวดเร็วก่อนส่งข้อมูลให้ร้านเช็กความตรงรุ่น",
   alternates: {
     canonical: absoluteUrl("/products"),
   },
@@ -33,9 +35,9 @@ export const metadata: Metadata = {
   },
   openGraph: {
     url: absoluteUrl("/products"),
-    title: "สินค้าทั้งหมด | ศรีวรรณ อะไหล่แอร์",
+    title: "อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด",
     description:
-      "รวมสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์ พร้อมค้นหาและกรองสินค้าได้รวดเร็ว",
+      "รวมอะไหล่แอร์รถยนต์และสินค้าที่เกี่ยวข้อง พร้อมค้นหาและกรองสินค้าได้รวดเร็วก่อนเช็กกับร้าน",
   },
 };
 
@@ -143,6 +145,21 @@ const ProductsPage = async () => {
           { name: "หน้าแรก", item: absoluteUrl("/") },
           { name: "สินค้าทั้งหมด", item: absoluteUrl("/products") },
         ]}
+      />
+      <CollectionPageJsonLd
+        name="อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด"
+        description="หน้ารวมอะไหล่แอร์รถยนต์และสินค้าที่เกี่ยวข้องสำหรับใช้ค้นหาและส่งข้อมูลให้ร้านเช็กความตรงรุ่นก่อนสั่งซื้อ"
+        url={absoluteUrl("/products")}
+        itemListElements={products.slice(0, 12).map((product) => ({
+          name: product.name,
+          url: absoluteUrl(
+            getProductPath({
+              category: product.category,
+              product,
+            }),
+          ),
+          image: product.imageUrl ?? undefined,
+        }))}
       />
     </>
   );
