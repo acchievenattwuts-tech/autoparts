@@ -5,12 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierCode } from "@/lib/entity-code";
+import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
 
 const supplierSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อผู้จำหน่าย").max(200),
   contactName: z.string().max(100).optional(),
   phone: z.string().max(20).optional(),
   address: z.string().max(500).optional(),
+  taxId: z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
 });
 
 export const createSupplier = async (formData: FormData): Promise<{ error?: string }> => {
@@ -25,6 +27,7 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
     contactName: formData.get("contactName") || undefined,
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
+    taxId: normalizeOptionalTaxId(formData.get("taxId")),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -38,6 +41,7 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
         contactName: parsed.data.contactName ?? null,
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
+        taxId: parsed.data.taxId ?? null,
       },
     });
     revalidatePath("/admin/master/suppliers");
@@ -66,6 +70,7 @@ export const updateSupplier = async (
     contactName: formData.get("contactName") || undefined,
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
+    taxId: normalizeOptionalTaxId(formData.get("taxId")),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -77,6 +82,7 @@ export const updateSupplier = async (
         contactName: parsed.data.contactName ?? null,
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
+        taxId: parsed.data.taxId ?? null,
         isActive: true,
       },
     });

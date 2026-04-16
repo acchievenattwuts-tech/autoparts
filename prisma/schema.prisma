@@ -280,6 +280,7 @@ model Supplier {
   contactName       String?
   phone             String?
   address           String?
+  taxId             String?
   createdAt         DateTime         @default(now())
   code              String?          @unique
   isActive          Boolean          @default(true)

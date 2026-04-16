@@ -3,29 +3,31 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
+import TaxIdInput from "@/components/shared/TaxIdInput";
 import { createCustomer, updateCustomer } from "./actions";
 
 interface CustomerFormProps {
   customer?: {
-    id:              string;
-    code:            string | null;
-    name:            string;
-    phone:           string | null;
-    address:         string | null;
+    id: string;
+    code: string | null;
+    name: string;
+    phone: string | null;
+    address: string | null;
     shippingAddress: string | null;
-    taxId:           string | null;
-    note:            string | null;
-    creditTerm:      number | null;
+    taxId: string | null;
+    note: string | null;
+    creditTerm: number | null;
   };
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
+const inputCls =
+  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const CustomerForm = ({ customer }: CustomerFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [error,   setError]   = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const isEdit = Boolean(customer);
@@ -60,7 +62,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* รหัสลูกค้า */}
           {customer?.code && (
             <div>
               <label className={labelCls}>รหัสลูกค้า</label>
@@ -70,7 +71,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             </div>
           )}
 
-          {/* ชื่อลูกค้า */}
           <div>
             <label className={labelCls}>
               ชื่อลูกค้า <span className="text-red-500">*</span>
@@ -86,7 +86,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             />
           </div>
 
-          {/* เบอร์โทร */}
           <div>
             <label className={labelCls}>เบอร์โทร</label>
             <input
@@ -99,7 +98,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             />
           </div>
 
-          {/* Credit Term */}
           <div>
             <label className={labelCls}>เครดิต (วัน)</label>
             <input
@@ -116,23 +114,21 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               className={inputCls}
               placeholder="0 = เงินสด"
             />
-            <p className="mt-1 text-xs text-gray-400">จำนวนวันเครดิตสำหรับลูกค้า (ว่างไว้ = ไม่กำหนด)</p>
+            <p className="mt-1 text-xs text-gray-400">
+              จำนวนวันเครดิตสำหรับลูกค้า (ว่างไว้ = ไม่กำหนด)
+            </p>
           </div>
 
-          {/* เลขผู้เสียภาษี */}
           <div>
             <label className={labelCls}>เลขผู้เสียภาษี</label>
-            <input
-              type="text"
+            <TaxIdInput
               name="taxId"
-              maxLength={20}
               defaultValue={customer?.taxId ?? ""}
               className={inputCls}
               placeholder="13 หลัก"
             />
           </div>
 
-          {/* ที่อยู่ */}
           <div className="md:col-span-2">
             <label className={labelCls}>ที่อยู่</label>
             <textarea
@@ -145,7 +141,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             />
           </div>
 
-          {/* ที่อยู่จัดส่ง */}
           <div className="md:col-span-2">
             <label className={labelCls}>ที่อยู่จัดส่ง</label>
             <textarea
@@ -158,7 +153,6 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             />
           </div>
 
-          {/* หมายเหตุ */}
           <div className="md:col-span-2">
             <label className={labelCls}>หมายเหตุ</label>
             <textarea
@@ -194,13 +188,26 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           {isPending ? (
             <span className="inline-flex items-center gap-2">
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
               กำลังบันทึก...
             </span>
+          ) : isEdit ? (
+            "บันทึกการแก้ไข"
           ) : (
-            isEdit ? "บันทึกการแก้ไข" : "เพิ่มลูกค้า"
+            "เพิ่มลูกค้า"
           )}
         </button>
       </div>

@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { Plus, Pencil, X, Check } from "lucide-react";
 import { createSupplier, updateSupplier, toggleSupplier } from "./actions";
 import { Supplier } from "@/lib/generated/prisma";
+import TaxIdInput from "@/components/shared/TaxIdInput";
 
 interface SuppliersClientProps {
   suppliers: Supplier[];
@@ -17,6 +18,7 @@ interface SupplierFormFields {
   contactName: string;
   phone: string;
   address: string;
+  taxId: string;
 }
 
 const emptyFields: SupplierFormFields = {
@@ -24,6 +26,7 @@ const emptyFields: SupplierFormFields = {
   contactName: "",
   phone: "",
   address: "",
+  taxId: "",
 };
 
 const SupplierFormRow = ({
@@ -40,7 +43,7 @@ const SupplierFormRow = ({
   isPending: boolean;
 }) => (
   <form action={onSubmit}>
-    <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-600">
           ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
@@ -81,6 +84,15 @@ const SupplierFormRow = ({
           name="address"
           defaultValue={defaultValues.address}
           placeholder="ที่อยู่"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">เลขผู้เสียภาษี</label>
+        <TaxIdInput
+          name="taxId"
+          defaultValue={defaultValues.taxId}
+          placeholder="13 หลัก"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
         />
       </div>
@@ -151,7 +163,7 @@ const EditableRow = ({
   if (isEditing && canUpdate) {
     return (
       <tr className="border-b border-gray-100 bg-blue-50">
-        <td colSpan={7} className="px-4 py-4">
+        <td colSpan={8} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
           <SupplierFormRow
             onSubmit={handleUpdate}
@@ -161,6 +173,7 @@ const EditableRow = ({
               contactName: supplier.contactName ?? "",
               phone: supplier.phone ?? "",
               address: supplier.address ?? "",
+              taxId: supplier.taxId ?? "",
             }}
             submitLabel="บันทึกการแก้ไข"
             isPending={isPending}
@@ -188,6 +201,7 @@ const EditableRow = ({
       <td className="px-4 py-3 font-medium text-gray-800">{supplier.name}</td>
       <td className="px-4 py-3 text-gray-600">{supplier.contactName ?? "-"}</td>
       <td className="px-4 py-3 text-gray-600">{supplier.phone ?? "-"}</td>
+      <td className="px-4 py-3 text-gray-600">{supplier.taxId ?? "-"}</td>
       <td className="max-w-xs truncate px-4 py-3 text-gray-600">{supplier.address ?? "-"}</td>
       <td className="px-4 py-3">
         {supplier.isActive ? (
@@ -229,6 +243,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
+  const [createFormVersion, setCreateFormVersion] = useState(0);
 
   const handleCreate = (formData: FormData) => {
     setError("");
@@ -238,6 +253,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
         setError(result.error);
       } else {
         formRef.current?.reset();
+        setCreateFormVersion((current) => current + 1);
       }
     });
   };
@@ -252,8 +268,8 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
               <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
-          <form ref={formRef} action={handleCreate}>
-            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <form key={createFormVersion} ref={formRef} action={handleCreate}>
+            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">
                   ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
@@ -293,6 +309,14 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
                 />
               </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">เลขผู้เสียภาษี</label>
+                <TaxIdInput
+                  name="taxId"
+                  placeholder="13 หลัก"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                />
+              </div>
             </div>
             <button
               type="submit"
@@ -321,6 +345,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อผู้จำหน่าย</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อผู้ติดต่อ</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">เบอร์โทรศัพท์</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">เลขผู้เสียภาษี</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">ที่อยู่</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>

@@ -5,13 +5,14 @@ import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateCustomerCode } from "@/lib/entity-code";
+import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
 
 const customerSchema = z.object({
   name:            z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
   phone:           z.string().max(20).optional(),
   address:         z.string().max(300).optional(),
   shippingAddress: z.string().max(500).optional(),
-  taxId:           z.string().max(20).optional(),
+  taxId:           z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
   note:            z.string().max(500).optional(),
   creditTerm:      z.coerce.number().int().min(0).max(365).optional(),
 });
@@ -27,7 +28,7 @@ export async function createCustomer(
     phone:           formData.get("phone")           || undefined,
     address:         formData.get("address")         || undefined,
     shippingAddress: formData.get("shippingAddress") || undefined,
-    taxId:           formData.get("taxId")           || undefined,
+    taxId:           normalizeOptionalTaxId(formData.get("taxId")),
     note:            formData.get("note")            || undefined,
     creditTerm:      formData.get("creditTerm")      || undefined,
   });
@@ -69,7 +70,7 @@ export async function updateCustomer(
     phone:           formData.get("phone")           || undefined,
     address:         formData.get("address")         || undefined,
     shippingAddress: formData.get("shippingAddress") || undefined,
-    taxId:           formData.get("taxId")           || undefined,
+    taxId:           normalizeOptionalTaxId(formData.get("taxId")),
     note:            formData.get("note")            || undefined,
     creditTerm:      formData.get("creditTerm")      || undefined,
   });
