@@ -11,7 +11,6 @@ const LINE_PUSH_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 export type LineDailySummaryConfig = {
   channelAccessToken: string | null;
   channelSecret: string | null;
-  cronSecret: string | null;
   envRecipientIds: string[];
   missingDeliveryEnv: string[];
 };
@@ -63,7 +62,6 @@ function parseRecipientIds(value: string | undefined): string[] {
 export function getLineDailySummaryConfig(): LineDailySummaryConfig {
   const channelAccessToken = normalizeEnv(process.env.LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN);
   const channelSecret = normalizeEnv(process.env.LINE_MESSAGING_API_CHANNEL_SECRET);
-  const cronSecret = normalizeEnv(process.env.CRON_SECRET);
   const envRecipientIds = parseRecipientIds(
     process.env.LINE_DAILY_SUMMARY_TO_IDS ?? process.env.LINE_DAILY_SUMMARY_TO
   );
@@ -77,7 +75,6 @@ export function getLineDailySummaryConfig(): LineDailySummaryConfig {
   return {
     channelAccessToken,
     channelSecret,
-    cronSecret,
     envRecipientIds,
     missingDeliveryEnv,
   };

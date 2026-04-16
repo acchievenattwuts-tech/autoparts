@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LineRecipientType } from "@/lib/generated/prisma";
 import LineDailySummaryManager from "@/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager";
 import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
+import { getLineDailySummaryQStashStatus } from "@/lib/line-daily-summary-qstash";
 import { getLineDailySummarySettings } from "@/lib/line-daily-summary-settings";
 import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 import { requirePermission } from "@/lib/require-auth";
@@ -92,6 +93,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     summary,
     settings,
     lineConfig,
+    qstashStatus,
     resolvedRecipients,
     adminUsers,
     recipients,
@@ -100,6 +102,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     buildLineDailySummary(reportDayKey),
     getLineDailySummarySettings(),
     Promise.resolve(getLineDailySummaryConfig()),
+    Promise.resolve(getLineDailySummaryQStashStatus()),
     getLineDailySummarySettings().then((value) => resolveConfiguredLineRecipients(value.targetMode)),
     db.user.findMany({
       where: {
@@ -167,7 +170,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     }),
   ]);
 
-  const missingCronSecret = !lineConfig.cronSecret;
   const totalRiskItems = summary.counts.lowStockCount + summary.counts.outOfStockCount;
   const availableUserRecipients = recipients
     .filter((recipient) => recipient.type === LineRecipientType.USER)
@@ -272,9 +274,14 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
             tone={lineConfig.channelSecret ? "default" : "warn"}
           />
           <StatCard
-            title="Cron Secret"
-            value={missingCronSecret ? "ยังไม่ตั้งค่า" : "พร้อมใช้งาน"}
-            tone={missingCronSecret ? "warn" : "default"}
+            title="QStash"
+            value={qstashStatus.ready ? "พร้อมใช้งาน" : "ยังตั้งค่าไม่ครบ"}
+            tone={qstashStatus.ready ? "default" : "warn"}
+          />
+          <StatCard
+            title="APP_BASE_URL"
+            value={qstashStatus.appBaseUrlReady ? "พร้อมใช้งาน" : "ยังไม่ตั้งค่า"}
+            tone={qstashStatus.appBaseUrlReady ? "default" : "warn"}
           />
         </div>
 

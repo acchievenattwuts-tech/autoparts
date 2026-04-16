@@ -69,8 +69,10 @@ function getDispatchKindLabel(value: string) {
 function getDispatchReasonLabel(value: string | null) {
   if (!value) return null;
 
-  if (value === "CRON_INVOKED") {
-    return "cron เรียกเข้ามาแล้ว กำลังประมวลผล";
+  if (value === "QSTASH_INVOKED" || value === "CRON_INVOKED") {
+    return value === "QSTASH_INVOKED"
+      ? "QStash เรียกเข้ามาแล้ว กำลังประมวลผล"
+      : "cron เรียกเข้ามาแล้ว กำลังประมวลผล";
   }
 
   if (value.startsWith("UNHANDLED_EXCEPTION:")) {
@@ -227,8 +229,8 @@ export default function LineDailySummaryManager(props: {
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900">ตั้งเวลาส่งจากในระบบ</h3>
           <p className="text-sm text-gray-500">
-            สำหรับแผน Hobby ระบบจะส่งสรุปรายวันตามรอบ cron คงที่ทุกวันเวลา 19:30 น.
-            (Asia/Bangkok) โดยหน้า admin จะแสดงข้อมูลให้รับทราบแทนการให้ตั้งเวลาเอง
+            ระบบจะซิงก์เวลาในหน้านี้ไปยัง QStash โดยแปลงจากเวลาไทย (Asia/Bangkok)
+            ไปเป็น schedule รายวันให้อัตโนมัติ
           </p>
         </div>
 
@@ -244,8 +246,6 @@ export default function LineDailySummaryManager(props: {
             });
           }}
         >
-          <input type="hidden" name="sendTime" value="19:30" />
-
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             เปิดใช้งาน
             <select
@@ -258,10 +258,16 @@ export default function LineDailySummaryManager(props: {
             </select>
           </label>
 
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            <p className="font-medium">เวลาส่งคงที่</p>
-            <p className="mt-1">ระบบจะส่งทุกวันเวลา 19:30 น. ตามเวลาไทย</p>
-          </div>
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            เวลาส่งตามเวลาไทย
+            <input
+              type="time"
+              name="sendTime"
+              defaultValue={settings.sendTime}
+              className={inputCls}
+              step={60}
+            />
+          </label>
 
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             ปลายทางหลัก
@@ -282,11 +288,11 @@ export default function LineDailySummaryManager(props: {
           </button>
         </form>
 
-        <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-3">
-          <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
-          <p>รอบส่งประจำ: 19:30 น. ทุกวัน</p>
-          <p>ส่งล่าสุด: {latestScheduleStatus} ({formatDateTime(settings.lastSentAt)})</p>
-        </div>
+          <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-3">
+            <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
+            <p>รอบส่งประจำ: {settings.sendTime} น. ทุกวัน</p>
+            <p>ส่งล่าสุด: {latestScheduleStatus} ({formatDateTime(settings.lastSentAt)})</p>
+          </div>
 
         {settingsMessage && <p className="mt-3 text-sm text-[#1e3a5f]">{settingsMessage}</p>}
       </section>

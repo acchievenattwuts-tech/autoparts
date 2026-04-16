@@ -2828,7 +2828,7 @@ npm run db:restore backup-{timestamp}.json
 - [x] Added owner-facing admin preview page at `/admin/reports/line-daily-summary`
 - [x] Added scheduled-send route at `/api/internal/line-daily-summary`
 - [x] Added LINE Messaging API delivery helper with env-based recipient configuration
-- [x] Added first-pass daily evening schedule in `vercel.json` at `19:30 Asia/Bangkok` (`12:30 UTC`)
+- [x] Added first-pass daily evening scheduler for the LINE summary route
 - [x] Kept this round owner-facing only and out of scope from webhook/slip-OCR/chatbot/customer messaging flows
 
 ## Roadmap Update (2026-04-11 LINE OA Admin Targeting + Scheduler Settings)
@@ -2839,7 +2839,7 @@ npm run db:restore backup-{timestamp}.json
 
 - [x] Keep `lib/line-daily-summary.ts` business totals unchanged so the summary content still matches the agreed mapping
 - [x] Add DB-backed runtime settings for `enabled`, `sendTime`, `targetMode`, and last successful scheduled send markers
-- [x] Change cron strategy for flexible scheduling, then scope the deployed Hobby-compatible cron back to once per day while still honoring DB guards and duplicate protection
+- [x] Keep DB-backed scheduling settings and duplicate protection while allowing the trigger layer to evolve independently
 - [x] Add a `Test Send` action on `/admin/reports/line-daily-summary`
 - [x] Add a dedicated table for LINE recipients captured from webhook events
 - [x] Add a dedicated table for `User -> LINE recipient` mapping so admin targeting is explicit and auditable
@@ -2860,7 +2860,30 @@ npm run db:restore backup-{timestamp}.json
 - [x] Do not remove the existing env-recipient delivery path
 - [x] Do not auto-link LINE recipients to system users heuristically; mapping must be explicit
 - [x] Do not send scheduled messages twice for the same day when a dispatch lock already exists
-- [x] Keep the deployed cron compatible with Vercel Hobby limits (no more than once per day)
+- [x] Keep only one active scheduler for the LINE summary at a time
+
+## Roadmap Update (2026-04-16 LINE OA Daily Summary QStash Migration)
+
+> Scope for this round: replace the Vercel Cron trigger with Upstash QStash for the LINE daily summary, keep the summary payload and delivery logic unchanged, and allow the owner to edit Bangkok send time from the existing admin page with minimal schema impact.
+
+### Checklist
+
+- [x] Reuse the existing LINE summary builder, recipient resolution, and LINE delivery logic without changing money/stock/accounting semantics
+- [x] Replace the Vercel Cron trigger with a QStash-signed route invocation for `/api/internal/line-daily-summary`
+- [x] Verify scheduler requests with QStash signing keys instead of `CRON_SECRET`
+- [x] Keep the admin-owned `enabled` + `sendTime` settings in DB and sync them directly to QStash from the same server action
+- [x] Use a stable QStash `scheduleId` so changing time from admin updates the same daily schedule without adding a new Prisma field
+- [x] Convert Bangkok `sendTime` to the daily UTC cron expression required by QStash
+- [x] Remove the old `vercel.json` cron configuration so only the QStash scheduler remains
+- [x] Update runtime readiness and admin copy from Vercel Cron wording to QStash wording
+- [x] Keep the runtime `shouldSendLineDailySummaryNow()` guard in place as duplicate/early-send protection
+
+### Minimal-change implementation notes
+
+- No new Prisma model or schema field is needed for the LINE daily summary schedule
+- The QStash schedule is stored under the fixed id `line-daily-summary`
+- Disabling the feature deletes the QStash schedule; enabling or changing the time recreates/updates the same schedule id
+- The system still stores the owner-selected Bangkok time in DB and only converts it to UTC when syncing the QStash cron
 
 ## Roadmap Update (2026-04-11 LINE OA Delivery Hardening + UX Completion)
 

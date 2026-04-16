@@ -6,7 +6,7 @@ import {
   LineDailySummaryDispatchStatus,
   LineDailySummaryTargetMode,
 } from "@/lib/generated/prisma";
-import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
+import { resolveBangkokDayKey } from "@/lib/line-daily-summary";
 import {
   deliverLineDailySummary,
 } from "@/lib/line-daily-summary-delivery";
@@ -14,55 +14,45 @@ import {
   getLineDailySummarySettings,
   shouldSendLineDailySummaryNow,
 } from "@/lib/line-daily-summary-settings";
-import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
+import {
+  getLineDailySummaryQStashStatus,
+  verifyLineDailySummaryQStashSignature,
+} from "@/lib/line-daily-summary-qstash";
 import { db } from "@/lib/db";
 
 function unauthorizedResponse() {
   return Response.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
 }
 
-function formatCronErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown cron error";
+function formatSchedulerErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "Unknown scheduler error";
   return `UNHANDLED_EXCEPTION:${message}`.slice(0, 1000);
 }
 
-export async function GET(request: NextRequest) {
-  const config = getLineDailySummaryConfig();
+async function handleScheduledSummary(request: NextRequest) {
+  const qstashStatus = getLineDailySummaryQStashStatus();
 
-  if (!config.cronSecret) {
+  if (!qstashStatus.ready) {
     return Response.json(
-      { ok: false, error: "CRON_SECRET is not configured" },
+      { ok: false, error: "QSTASH is not configured" },
       { status: 503 }
     );
   }
 
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${config.cronSecret}`) {
+  const signature = request.headers.get("upstash-signature");
+  if (!signature) {
     return unauthorizedResponse();
   }
 
-  const { searchParams } = new URL(request.url);
-  const dryRun = searchParams.get("dryRun") === "1";
-  const forcedReportDayKey = searchParams.get("date");
+  const rawBody = await request.text();
+  const isValidSignature = await verifyLineDailySummaryQStashSignature({
+    signature,
+    body: rawBody,
+    url: request.url,
+  }).catch(() => false);
 
-  if (dryRun) {
-    const settings = await getLineDailySummarySettings();
-    const reportDayKey = resolveBangkokDayKey(forcedReportDayKey ?? undefined);
-    const [summary, recipients] = await Promise.all([
-      buildLineDailySummary(reportDayKey),
-      resolveConfiguredLineRecipients(settings.targetMode),
-    ]);
-
-    return Response.json({
-      ok: true,
-      dryRun: true,
-      reportDayKey: summary.reportDayKey,
-      settings,
-      recipientCount: recipients.recipientIds.length,
-      recipients: recipients.recipientIds,
-      missingDeliveryEnv: [...config.missingDeliveryEnv, ...recipients.missingDeliveryEnv],
-      message: summary.message,
-    });
+  if (!isValidSignature) {
+    return unauthorizedResponse();
   }
 
   const reportDayKey = resolveBangkokDayKey();
@@ -88,7 +78,7 @@ export async function GET(request: NextRequest) {
         dispatchKind: LineDailySummaryDispatchKind.SCHEDULED,
         status: LineDailySummaryDispatchStatus.PROCESSING,
         targetMode: settings.targetMode ?? LineDailySummaryTargetMode.ENV_IDS,
-        errorMessage: "CRON_INVOKED",
+        errorMessage: "QSTASH_INVOKED",
       },
     });
     dispatchId = dispatch.id;
@@ -97,7 +87,7 @@ export async function GET(request: NextRequest) {
       where: { id: dispatchId },
       data: {
         targetMode: settings.targetMode,
-        errorMessage: "CRON_INVOKED",
+        errorMessage: "QSTASH_INVOKED",
       },
     });
 
@@ -161,19 +151,30 @@ export async function GET(request: NextRequest) {
           where: { id: dispatchId },
           data: {
             status: LineDailySummaryDispatchStatus.FAILED,
-            errorMessage: formatCronErrorMessage(error),
+            errorMessage: formatSchedulerErrorMessage(error),
           },
         })
         .catch(() => undefined);
     }
 
     return Response.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "Unknown cron error",
-        reportDayKey,
-      },
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown scheduler error",
+          reportDayKey,
+        },
       { status: 500 }
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  return handleScheduledSummary(request);
+}
+
+export async function GET() {
+  return Response.json(
+    { ok: false, error: "METHOD_NOT_ALLOWED" },
+    { status: 405 }
+  );
 }

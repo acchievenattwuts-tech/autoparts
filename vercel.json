@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/api/internal/line-daily-summary",
-      "schedule": "30 12 * * *"
-    }
-  ]
-}

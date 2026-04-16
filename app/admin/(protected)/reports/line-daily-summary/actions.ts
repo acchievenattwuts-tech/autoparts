@@ -5,6 +5,7 @@ import { z } from "zod";
 import { LineDailySummaryDispatchKind, LineDailySummaryTargetMode } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { deliverLineDailySummary } from "@/lib/line-daily-summary-delivery";
+import { syncLineDailySummaryQStashSchedule } from "@/lib/line-daily-summary-qstash";
 import {
   isValidLineSummarySendTime,
   updateLineDailySummarySettings,
@@ -51,6 +52,26 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
 
   if (!isValidLineSummarySendTime(parsed.data.sendTime)) {
     return { error: "เวลาส่งต้องอยู่ในรูปแบบ HH:mm" };
+  }
+
+  try {
+    await syncLineDailySummaryQStashSchedule({
+      enabled: parsed.data.enabled === "true",
+      sendTime: parsed.data.sendTime,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "QSTASH_SYNC_FAILED";
+
+    if (message.startsWith("QSTASH_CONFIG_INCOMPLETE:")) {
+      const missing = message.replace("QSTASH_CONFIG_INCOMPLETE:", "").trim();
+      return { error: `QStash ยังตั้งค่าไม่ครบ: ${missing}` };
+    }
+
+    if (message === "APP_BASE_URL_NOT_CONFIGURED") {
+      return { error: "ยังไม่ได้ตั้งค่า APP_BASE_URL สำหรับสร้างปลายทาง QStash" };
+    }
+
+    return { error: "ไม่สามารถซิงก์ตารางเวลาส่งกับ QStash ได้" };
   }
 
   await updateLineDailySummarySettings({
