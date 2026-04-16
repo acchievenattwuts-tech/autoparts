@@ -61,6 +61,7 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "QSTASH_SYNC_FAILED";
+    console.error("[line-daily-summary] failed to sync QStash schedule", error);
 
     if (message.startsWith("QSTASH_CONFIG_INCOMPLETE:")) {
       const missing = message.replace("QSTASH_CONFIG_INCOMPLETE:", "").trim();
@@ -71,7 +72,7 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
       return { error: "ยังไม่ได้ตั้งค่า APP_BASE_URL สำหรับสร้างปลายทาง QStash" };
     }
 
-    return { error: "ไม่สามารถซิงก์ตารางเวลาส่งกับ QStash ได้" };
+    return { error: `ไม่สามารถซิงก์ตารางเวลาส่งกับ QStash ได้: ${message}` };
   }
 
   await updateLineDailySummarySettings({
