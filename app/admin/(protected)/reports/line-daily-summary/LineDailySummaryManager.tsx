@@ -69,6 +69,19 @@ function getDispatchKindLabel(value: string) {
 function getDispatchReasonLabel(value: string | null) {
   if (!value) return null;
 
+  if (value === "CRON_INVOKED") {
+    return "cron เรียกเข้ามาแล้ว กำลังประมวลผล";
+  }
+
+  if (value.startsWith("UNHANDLED_EXCEPTION:")) {
+    return `เกิดข้อผิดพลาดก่อนส่งจริง: ${value.replace("UNHANDLED_EXCEPTION:", "").trim()}`;
+  }
+
+  if (value.startsWith("SUMMARY_QUERY_FAILED:")) {
+    const detail = value.replace("SUMMARY_QUERY_FAILED:", "").trim();
+    return `ดึงข้อมูลสรุปรายวันไม่สำเร็จ: ${detail}`;
+  }
+
   if (value === "ALREADY_SENT" || value === "ALREADY_DISPATCHED") {
     return "ข้ามเพราะส่งแล้ววันนี้";
   }
