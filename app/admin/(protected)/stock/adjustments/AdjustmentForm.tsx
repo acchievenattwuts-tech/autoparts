@@ -5,7 +5,12 @@ import { createAdjustment, fetchAdjustmentProductLots } from "./actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
-import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
+import {
+  validateLotRows,
+  autoAllocateLots,
+  type LotSubRow,
+  type LotAvailableJSON,
+} from "@/lib/lot-control-client";
 
 interface ProductOption {
   id: string;
@@ -13,6 +18,8 @@ interface ProductOption {
   name: string;
   description?: string | null;
   stock: number;
+  costPrice: number;
+  salePrice: number;
   isLotControl: boolean;
   requireExpiryDate: boolean;
   lotIssueMethod: string;
@@ -26,17 +33,30 @@ interface AdjItem {
   productId: string;
   unitName: string;
   qty: number;
+  price: number;
   type: "ADJUST_IN" | "ADJUST_OUT";
   reason: string;
   lotItems: LotSubRow[];
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
+const inputCls =
+  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const emptyItem = (): AdjItem => ({
-  productId: "", unitName: "", qty: 1, type: "ADJUST_IN", reason: "", lotItems: [],
+  productId: "",
+  unitName: "",
+  qty: 1,
+  price: 0,
+  type: "ADJUST_IN",
+  reason: "",
+  lotItems: [],
 });
+
+const getDefaultPrice = (
+  product: ProductOption | undefined,
+  type: "ADJUST_IN" | "ADJUST_OUT",
+) => (product ? (type === "ADJUST_IN" ? product.costPrice : product.salePrice) : 0);
 
 const AdjustmentForm = ({
   products,
@@ -46,11 +66,11 @@ const AdjustmentForm = ({
   canCreate: boolean;
 }) => {
   const [isPending, startTransition] = useTransition();
-  const [error, setError]     = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [items, setItems]     = useState<AdjItem[]>([emptyItem()]);
+  const [items, setItems] = useState<AdjItem[]>([emptyItem()]);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>({});
-  const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
+  const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -70,120 +90,203 @@ const AdjustmentForm = ({
         const updated = { ...item, [field]: value };
 
         if (field === "productId") {
-          const prod = products.find((p) => p.id === String(value));
+          const product = products.find((p) => p.id === String(value));
           updated.unitName = "";
+          updated.price = getDefaultPrice(product, updated.type);
           updated.lotItems = [];
-          setAvailableLots((prev) => { const n = { ...prev }; delete n[i]; return n; });
-          if (prod?.isLotControl) {
-            updated.lotItems = [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }];
-            if (updated.type === "ADJUST_OUT") loadLots(i, prod.id, prod.lotIssueMethod);
+          setAvailableLots((prevLots) => {
+            const next = { ...prevLots };
+            delete next[i];
+            return next;
+          });
+
+          if (product?.isLotControl) {
+            updated.lotItems = [
+              {
+                lotNo: "",
+                qty: updated.qty,
+                unitCost: updated.price,
+                mfgDate: "",
+                expDate: "",
+              },
+            ];
+            if (updated.type === "ADJUST_OUT") loadLots(i, product.id, product.lotIssueMethod);
           }
         }
 
         if (field === "type") {
-          const prod = products.find((p) => p.id === updated.productId);
-          if (prod?.isLotControl) {
-            updated.lotItems = [{ lotNo: "", qty: updated.qty, unitCost: 0, mfgDate: "", expDate: "" }];
-            setAvailableLots((prev) => { const n = { ...prev }; delete n[i]; return n; });
-            if (String(value) === "ADJUST_OUT") loadLots(i, prod.id, prod.lotIssueMethod);
+          const product = products.find((p) => p.id === updated.productId);
+          const nextType = String(value) as "ADJUST_IN" | "ADJUST_OUT";
+          updated.price = getDefaultPrice(product, nextType);
+
+          if (product?.isLotControl) {
+            updated.lotItems = [
+              {
+                lotNo: "",
+                qty: updated.qty,
+                unitCost: updated.price,
+                mfgDate: "",
+                expDate: "",
+              },
+            ];
+            setAvailableLots((prevLots) => {
+              const next = { ...prevLots };
+              delete next[i];
+              return next;
+            });
+            if (nextType === "ADJUST_OUT") loadLots(i, product.id, product.lotIssueMethod);
           }
         }
 
         if (field === "qty" && updated.productId) {
-          const prod = products.find((p) => p.id === updated.productId);
-          if (prod?.isLotControl && updated.lotItems.length === 1) {
+          const product = products.find((p) => p.id === updated.productId);
+          if (product?.isLotControl && updated.lotItems.length === 1) {
             updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
           }
         }
 
+        if (field === "price" && updated.productId) {
+          const product = products.find((p) => p.id === updated.productId);
+          if (product?.isLotControl && updated.type === "ADJUST_IN" && updated.lotItems.length === 1) {
+            updated.lotItems = [{ ...updated.lotItems[0], unitCost: Number(value) }];
+          }
+        }
+
         return updated;
-      })
+      }),
     );
   };
 
-  // Lot handlers for ADJUST_OUT (dropdown select like SaleForm)
   const handleLotSelect = (itemIdx: number, lotIdx: number, lotNo: string) => {
     const item = items[itemIdx];
-    const prod = products.find((p) => p.id === item.productId);
-    const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    const av = (availableLots[itemIdx] ?? []).find((l) => l.lotNo === lotNo);
-    const usedQty = item.lotItems.reduce((s, l, li) => li !== lotIdx ? s + l.qty : s, 0);
-    const remaining = Math.max(0, item.qty - usedQty);
-    const availInUnit = av ? Math.round((av.qtyOnHand / scale) * 10000) / 10000 : 0;
-    setItems((prev) => prev.map((it, idx) => {
-      if (idx !== itemIdx) return it;
-      return {
-        ...it,
-        lotItems: it.lotItems.map((l, li) =>
-          li !== lotIdx ? l : {
-            lotNo,
-            qty: av ? Math.min(availInUnit, remaining) : 0,
-            unitCost: av ? av.unitCost * scale : 0,
-            mfgDate: av?.mfgDate ?? "",
-            expDate: av?.expDate ?? "",
-          }
-        ),
-      };
-    }));
+    const product = products.find((p) => p.id === item.productId);
+    const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+    const availableLot = (availableLots[itemIdx] ?? []).find((lot) => lot.lotNo === lotNo);
+    const usedQty = item.lotItems.reduce((sum, lot, rowIdx) => (rowIdx !== lotIdx ? sum + lot.qty : sum), 0);
+    const remainingQty = Math.max(0, item.qty - usedQty);
+    const availableQty = availableLot ? Math.round((availableLot.qtyOnHand / scale) * 10000) / 10000 : 0;
+
+    setItems((prev) =>
+      prev.map((current, idx) => {
+        if (idx !== itemIdx) return current;
+        return {
+          ...current,
+          lotItems: current.lotItems.map((lot, rowIdx) =>
+            rowIdx !== lotIdx
+              ? lot
+              : {
+                  lotNo,
+                  qty: availableLot ? Math.min(availableQty, remainingQty) : 0,
+                  unitCost: availableLot ? availableLot.unitCost * scale : 0,
+                  mfgDate: availableLot?.mfgDate ?? "",
+                  expDate: availableLot?.expDate ?? "",
+                },
+          ),
+        };
+      }),
+    );
   };
 
   const handleAutoAllocate = async (itemIdx: number) => {
     const item = items[itemIdx];
-    const prod = products.find((p) => p.id === item.productId);
-    if (!prod?.isLotControl) return;
-    const scale = prod.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+    const product = products.find((p) => p.id === item.productId);
+    if (!product?.isLotControl) return;
+
+    const scale = product.units.find((u) => u.name === item.unitName)?.scale ?? 1;
     let available = availableLots[itemIdx];
     if (!available) {
-      const result = await fetchAdjustmentProductLots(item.productId, prod.lotIssueMethod);
+      const result = await fetchAdjustmentProductLots(item.productId, product.lotIssueMethod);
       if ("error" in result) return;
       available = result;
       setAvailableLots((prev) => ({ ...prev, [itemIdx]: available }));
     }
+
     const allocated = autoAllocateLots(available, item.qty, scale);
-    setItems((prev) => prev.map((it, idx) => idx !== itemIdx ? it : { ...it, lotItems: allocated }));
+    setItems((prev) =>
+      prev.map((current, idx) => (idx !== itemIdx ? current : { ...current, lotItems: allocated })),
+    );
   };
 
   const addLotRow = (itemIdx: number) => {
-    setItems((prev) => prev.map((item, idx) => {
-      if (idx !== itemIdx) return item;
-      return { ...item, lotItems: [...item.lotItems, { lotNo: "", qty: 0, unitCost: 0, mfgDate: "", expDate: "" }] };
-    }));
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        return {
+          ...item,
+          lotItems: [
+            ...item.lotItems,
+            {
+              lotNo: "",
+              qty: 0,
+              unitCost: item.type === "ADJUST_IN" ? item.price : 0,
+              mfgDate: "",
+              expDate: "",
+            },
+          ],
+        };
+      }),
+    );
   };
 
   const removeLotRow = (itemIdx: number, lotIdx: number) => {
-    setItems((prev) => prev.map((item, idx) => {
-      if (idx !== itemIdx) return item;
-      return { ...item, lotItems: item.lotItems.filter((_, li) => li !== lotIdx) };
-    }));
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        return { ...item, lotItems: item.lotItems.filter((_, rowIdx) => rowIdx !== lotIdx) };
+      }),
+    );
   };
 
   const updateLotRow = (itemIdx: number, lotIdx: number, field: keyof LotSubRow, value: string | number) => {
-    setItems((prev) => prev.map((item, idx) => {
-      if (idx !== itemIdx) return item;
-      return {
-        ...item,
-        lotItems: item.lotItems.map((lot, li) =>
-          li === lotIdx ? { ...lot, [field]: value } : lot
-        ),
-      };
-    }));
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        return {
+          ...item,
+          lotItems: item.lotItems.map((lot, rowIdx) =>
+            rowIdx === lotIdx ? { ...lot, [field]: value } : lot,
+          ),
+        };
+      }),
+    );
   };
 
-  const getUnits = (productId: string) =>
-    products.find((p) => p.id === productId)?.units ?? [];
+  const getUnits = (productId: string) => products.find((p) => p.id === productId)?.units ?? [];
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError(""); setSuccess("");
+    setError("");
+    setSuccess("");
 
     for (const item of items) {
-      if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
-      if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
-      if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
-      const prod = products.find((p) => p.id === item.productId);
-      if (prod?.isLotControl && item.lotItems.length > 0) {
-        const lotErr = validateLotRows(item.lotItems, item.qty, item.type === "ADJUST_IN" && prod.requireExpiryDate);
-        if (lotErr) { setError(lotErr); return; }
+      if (!item.productId) {
+        setError("กรุณาเลือกสินค้าทุกรายการ");
+        return;
+      }
+      if (!item.unitName) {
+        setError("กรุณาเลือกหน่วยนับทุกรายการ");
+        return;
+      }
+      if (item.qty <= 0) {
+        setError("จำนวนต้องมากกว่า 0");
+        return;
+      }
+      if (item.price < 0) {
+        setError("ราคาต้องไม่น้อยกว่า 0");
+        return;
+      }
+
+      const product = products.find((p) => p.id === item.productId);
+      if (product?.isLotControl && item.lotItems.length > 0) {
+        const lotError = validateLotRows(
+          item.lotItems,
+          item.qty,
+          item.type === "ADJUST_IN" && product.requireExpiryDate,
+        );
+        if (lotError) {
+          setError(lotError);
+          return;
+        }
       }
     }
 
@@ -192,13 +295,15 @@ const AdjustmentForm = ({
 
     startTransition(async () => {
       const result = await createAdjustment(formData);
-      if (result.error) setError(result.error);
-      else {
-        setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${result.adjustNo}`);
-        setItems([emptyItem()]);
-        setAvailableLots({});
-        (e.target as HTMLFormElement).reset();
+      if (result.error) {
+        setError(result.error);
+        return;
       }
+
+      setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${result.adjustNo}`);
+      setItems([emptyItem()]);
+      setAvailableLots({});
+      (e.target as HTMLFormElement).reset();
     });
   };
 
@@ -206,27 +311,41 @@ const AdjustmentForm = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-5">บันทึกปรับสต็อก</h2>
+      <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-5">บันทึกปรับสต๊อก</h2>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className={labelCls}>วันที่เอกสาร <span className="text-red-500">*</span></label>
-            <input type="date" name="adjustDate" required
+            <label className={labelCls}>
+              วันที่เอกสาร <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              name="adjustDate"
+              required
               defaultValue={new Date().toISOString().slice(0, 10)}
-              className={inputCls} />
+              className={`${inputCls} bg-white`}
+            />
           </div>
           <div>
             <label className={labelCls}>หมายเหตุ</label>
-            <input type="text" name="note" maxLength={500} className={inputCls} placeholder="หมายเหตุเอกสาร" />
+            <input
+              type="text"
+              name="note"
+              maxLength={500}
+              className={`${inputCls} bg-white`}
+              placeholder="หมายเหตุเอกสาร"
+            />
           </div>
         </div>
 
-        {/* Items */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-medium text-gray-700">รายการสินค้า</p>
-            <button type="button" onClick={addItem}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors">
+            <button
+              type="button"
+              onClick={addItem}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+            >
               <Plus size={14} /> เพิ่มรายการ
             </button>
           </div>
@@ -234,14 +353,14 @@ const AdjustmentForm = ({
           <div className="space-y-3">
             {items.map((item, i) => {
               const units = getUnits(item.productId);
-              const prod = products.find((p) => p.id === item.productId);
-              const isLot = prod?.isLotControl ?? false;
-              const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
+              const product = products.find((p) => p.id === item.productId);
+              const isLotControl = product?.isLotControl ?? false;
+              const totalLotQty = item.lotItems.reduce((sum, lot) => sum + lot.qty, 0);
 
               return (
-                <div key={i} className="p-3 bg-gray-50 rounded-lg space-y-2">
+                <div key={i} className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
                   <div className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-3">
+                    <div className="col-span-12 md:col-span-3">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">สินค้า</p>}
                       <ProductSearchSelect
                         products={products}
@@ -249,55 +368,84 @@ const AdjustmentForm = ({
                         onChange={(id) => updateItem(i, "productId", id)}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-6 md:col-span-2">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">หน่วย</p>}
-                      <select value={item.unitName}
+                      <select
+                        value={item.unitName}
                         onChange={(e) => updateItem(i, "unitName", e.target.value)}
                         disabled={!item.productId}
-                        className={`${inputCls} bg-white`}>
+                        className={`${inputCls} bg-white`}
+                      >
                         <option value="">-- โปรดระบุ --</option>
-                        {units.map((u) => (
-                          <option key={u.name} value={u.name}>{u.name}</option>
+                        {units.map((unit) => (
+                          <option key={unit.name} value={unit.name}>
+                            {unit.name}
+                          </option>
                         ))}
                       </select>
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-6 md:col-span-2">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน</p>}
-                      <AdminNumberInput value={item.qty} min={0.0001} step={0.0001}
+                      <AdminNumberInput
+                        value={item.qty}
+                        min={0.0001}
+                        step={0.0001}
                         onValueChange={(value) => updateItem(i, "qty", value)}
-                        className={inputCls} />
+                        className={`${inputCls} bg-white`}
+                      />
                     </div>
-                    <div className="col-span-2">
+                    <div className="col-span-6 md:col-span-2">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">ประเภท</p>}
-                      <select value={item.type}
+                      <select
+                        value={item.type}
                         onChange={(e) => updateItem(i, "type", e.target.value as "ADJUST_IN" | "ADJUST_OUT")}
-                        className={`${inputCls} bg-white`}>
+                        className={`${inputCls} bg-white`}
+                      >
                         <option value="ADJUST_IN">เพิ่ม (+)</option>
                         <option value="ADJUST_OUT">ลด (-)</option>
                       </select>
                     </div>
-                    <div className="col-span-2">
-                      {i === 0 && <p className="text-xs text-gray-500 mb-1">เหตุผล</p>}
-                      <input type="text" value={item.reason}
-                        onChange={(e) => updateItem(i, "reason", e.target.value)}
-                        maxLength={200} placeholder="เหตุผล" className={inputCls} />
+                    <div className="col-span-6 md:col-span-2">
+                      {i === 0 && <p className="text-xs text-gray-500 mb-1">ราคา/หน่วย</p>}
+                      <AdminNumberInput
+                        value={item.price}
+                        min={0}
+                        step={0.01}
+                        onValueChange={(value) => updateItem(i, "price", value)}
+                        className={`${inputCls} bg-white`}
+                      />
                     </div>
-                    <div className="col-span-1 flex justify-center pb-0.5">
+                    <div className="col-span-10 md:col-span-2">
+                      {i === 0 && <p className="text-xs text-gray-500 mb-1">เหตุผล</p>}
+                      <input
+                        type="text"
+                        value={item.reason}
+                        onChange={(e) => updateItem(i, "reason", e.target.value)}
+                        maxLength={200}
+                        placeholder="เหตุผล"
+                        className={`${inputCls} bg-white`}
+                      />
+                    </div>
+                    <div className="col-span-2 md:col-span-1 flex justify-center pb-0.5">
                       {items.length > 1 && (
-                        <button type="button" onClick={() => removeItem(i)}
-                          className="text-red-400 hover:text-red-600 transition-colors p-1">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(i)}
+                          className="text-red-400 hover:text-red-600 transition-colors p-1"
+                        >
                           <Trash2 size={15} />
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {/* Lot Control Section */}
-                  {isLot && item.lotItems.length > 0 && (
+                  {isLotControl && item.lotItems.length > 0 && (
                     <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-2 ml-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">Lot Control</span>
+                          <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">
+                            Lot Control
+                          </span>
                           <span className={`text-xs ${totalLotQty > 0 ? "text-amber-700" : "text-gray-400"}`}>
                             Lot รวม: {totalLotQty} | ต้องการ: {item.qty}
                           </span>
@@ -305,59 +453,100 @@ const AdjustmentForm = ({
                         <div className="flex items-center gap-2">
                           {item.type === "ADJUST_OUT" && (
                             <>
-                              <button type="button" onClick={() => handleAutoAllocate(i)}
-                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors">
+                              <button
+                                type="button"
+                                onClick={() => handleAutoAllocate(i)}
+                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                              >
                                 <Zap size={11} /> Auto จัดสรร
                               </button>
-                              {lotsLoading[i] && <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>}
+                              {lotsLoading[i] && (
+                                <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>
+                              )}
                             </>
                           )}
-                          <button type="button" onClick={() => addLotRow(i)}
-                            className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-0.5 rounded transition-colors">
+                          <button
+                            type="button"
+                            onClick={() => addLotRow(i)}
+                            className="inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-0.5 rounded transition-colors"
+                          >
                             <Plus size={11} /> เพิ่ม Lot
                           </button>
                         </div>
                       </div>
 
-                      {/* ADJUST_IN: manual input like BfForm */}
                       {item.type === "ADJUST_IN" && (
                         <div className="space-y-1.5">
                           {item.lotItems.map((lot, li) => (
                             <div key={li} className="grid grid-cols-12 gap-2 items-end">
-                              <div className="col-span-2">
-                                {li === 0 && <p className="text-xs text-gray-500 mb-1">Lot No <span className="text-red-500">*</span></p>}
-                                <input type="text" value={lot.lotNo}
+                              <div className="col-span-12 md:col-span-2">
+                                {li === 0 && (
+                                  <p className="text-xs text-gray-500 mb-1">
+                                    Lot No <span className="text-red-500">*</span>
+                                  </p>
+                                )}
+                                <input
+                                  type="text"
+                                  value={lot.lotNo}
                                   onChange={(e) => updateLotRow(i, li, "lotNo", e.target.value)}
-                                  className={inputCls} placeholder="LOT-001" />
+                                  className={`${inputCls} bg-white`}
+                                  placeholder="LOT-001"
+                                />
                               </div>
-                              <div className="col-span-2">
-                                {li === 0 && <p className="text-xs text-gray-500 mb-1">จำนวน <span className="text-red-500">*</span></p>}
-                                <AdminNumberInput value={lot.qty} min={0.0001} step={0.0001}
+                              <div className="col-span-6 md:col-span-2">
+                                {li === 0 && (
+                                  <p className="text-xs text-gray-500 mb-1">
+                                    จำนวน <span className="text-red-500">*</span>
+                                  </p>
+                                )}
+                                <AdminNumberInput
+                                  value={lot.qty}
+                                  min={0.0001}
+                                  step={0.0001}
                                   onValueChange={(value) => updateLotRow(i, li, "qty", value)}
-                                  className={inputCls} />
+                                  className={`${inputCls} bg-white`}
+                                />
                               </div>
-                              <div className="col-span-2">
+                              <div className="col-span-6 md:col-span-2">
                                 {li === 0 && <p className="text-xs text-gray-500 mb-1">ต้นทุน/หน่วย</p>}
-                                <AdminNumberInput value={lot.unitCost} min={0} step={0.01}
+                                <AdminNumberInput
+                                  value={lot.unitCost}
+                                  min={0}
+                                  step={0.01}
                                   onValueChange={(value) => updateLotRow(i, li, "unitCost", value)}
-                                  className={inputCls} />
+                                  className={`${inputCls} bg-white`}
+                                />
                               </div>
-                              <div className="col-span-2">
+                              <div className="col-span-6 md:col-span-2">
                                 {li === 0 && <p className="text-xs text-gray-500 mb-1">วันผลิต</p>}
-                                <input type="date" value={lot.mfgDate}
+                                <input
+                                  type="date"
+                                  value={lot.mfgDate}
                                   onChange={(e) => updateLotRow(i, li, "mfgDate", e.target.value)}
-                                  className={inputCls} />
+                                  className={`${inputCls} bg-white`}
+                                />
                               </div>
-                              <div className="col-span-2">
-                                {li === 0 && <p className="text-xs text-gray-500 mb-1">วันหมดอายุ{prod?.requireExpiryDate && <span className="text-red-500"> *</span>}</p>}
-                                <input type="date" value={lot.expDate}
+                              <div className="col-span-6 md:col-span-2">
+                                {li === 0 && (
+                                  <p className="text-xs text-gray-500 mb-1">
+                                    วันหมดอายุ
+                                    {product?.requireExpiryDate && <span className="text-red-500"> *</span>}
+                                  </p>
+                                )}
+                                <input
+                                  type="date"
+                                  value={lot.expDate}
                                   onChange={(e) => updateLotRow(i, li, "expDate", e.target.value)}
-                                  className={inputCls} />
+                                  className={`${inputCls} bg-white`}
+                                />
                               </div>
-                              <div className="col-span-2 flex items-center gap-2">
+                              <div className="col-span-12 md:col-span-2 flex items-center gap-2">
                                 {item.lotItems.length > 1 && (
-                                  <button type="button" onClick={() => removeLotRow(i, li)}
-                                    className="text-red-400 hover:text-red-600 transition-colors p-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLotRow(i, li)}
+                                    className="text-red-400 hover:text-red-600 transition-colors p-1"
+                                  >
                                     <Trash2 size={14} />
                                   </button>
                                 )}
@@ -367,17 +556,23 @@ const AdjustmentForm = ({
                         </div>
                       )}
 
-                      {/* ADJUST_OUT: dropdown selection like SaleForm */}
                       {item.type === "ADJUST_OUT" && (
                         <div className="space-y-1.5">
                           {item.lotItems.map((lot, li) => {
-                            const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-                            const selectedLotNos = item.lotItems.filter((_, lj) => lj !== li).map((l) => l.lotNo);
+                            const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+                            const selectedLotNos = item.lotItems
+                              .filter((_, rowIdx) => rowIdx !== li)
+                              .map((row) => row.lotNo);
                             const lotOptions = (availableLots[i] ?? []).filter(
-                              (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
+                              (availableLot) =>
+                                availableLot.lotNo === lot.lotNo || !selectedLotNos.includes(availableLot.lotNo),
                             );
+
                             return (
-                              <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
+                              <div
+                                key={li}
+                                className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5"
+                              >
                                 <div className="flex-1 min-w-0">
                                   <select
                                     value={lot.lotNo}
@@ -386,16 +581,23 @@ const AdjustmentForm = ({
                                   >
                                     <option value="">-- เลือก Lot --</option>
                                     {lotOptions.length === 0 && lot.lotNo === "" && (
-                                      <option disabled value="">ไม่มี Lot คงเหลือ</option>
+                                      <option disabled value="">
+                                        ไม่มี Lot คงเหลือ
+                                      </option>
                                     )}
-                                    {lotOptions.map((av) => {
-                                      const qtyInUnit = Math.round((av.qtyOnHand / scale) * 10000) / 10000;
-                                      const expStr = av.expDate
-                                        ? new Date(av.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })
+                                    {lotOptions.map((availableLot) => {
+                                      const qtyInUnit = Math.round((availableLot.qtyOnHand / scale) * 10000) / 10000;
+                                      const expLabel = availableLot.expDate
+                                        ? new Date(availableLot.expDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                                            day: "2-digit",
+                                            month: "2-digit",
+                                            year: "numeric",
+                                          })
                                         : "ไม่มี EXP";
+
                                       return (
-                                        <option key={av.lotNo} value={av.lotNo}>
-                                          {av.lotNo} | EXP {expStr} | คงเหลือ {qtyInUnit} {item.unitName}
+                                        <option key={availableLot.lotNo} value={availableLot.lotNo}>
+                                          {availableLot.lotNo} | EXP {expLabel} | คงเหลือ {qtyInUnit} {item.unitName}
                                         </option>
                                       );
                                     })}
@@ -404,20 +606,29 @@ const AdjustmentForm = ({
                                 <div className="w-24 shrink-0">
                                   <AdminNumberInput
                                     value={lot.qty}
-                                    min={0.0001} step={0.0001}
+                                    min={0.0001}
+                                    step={0.0001}
                                     onValueChange={(value) => updateLotRow(i, li, "qty", value)}
-                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
+                                    className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right bg-white"
                                     placeholder="จำนวน"
                                   />
                                 </div>
                                 {lot.expDate && (
                                   <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
-                                    EXP {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                    EXP{" "}
+                                    {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                    })}
                                   </span>
                                 )}
                                 {item.lotItems.length > 1 && (
-                                  <button type="button" onClick={() => removeLotRow(i, li)}
-                                    className="text-red-400 hover:text-red-600 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLotRow(i, li)}
+                                    className="text-red-400 hover:text-red-600 shrink-0"
+                                  >
                                     <Trash2 size={13} />
                                   </button>
                                 )}
@@ -442,9 +653,12 @@ const AdjustmentForm = ({
         )}
 
         <div className="flex justify-end">
-          <button type="submit" disabled={isPending}
-            className="px-6 py-2.5 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60">
-            {isPending ? "กำลังบันทึก..." : "บันทึกการปรับสต็อก"}
+          <button
+            type="submit"
+            disabled={isPending}
+            className="px-6 py-2.5 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+          >
+            {isPending ? "กำลังบันทึก..." : "บันทึกการปรับสต๊อก"}
           </button>
         </div>
       </form>

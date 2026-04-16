@@ -60,6 +60,11 @@ const ClaimStatusActions = ({
 
   const handleClose = () => {
     setError("");
+    if (closeOutcome === "RECEIVED" && isLotControl && !receivedLotNo.trim()) {
+      setError("กรุณาระบุ Lot ที่รับกลับจากซัพพลายเออร์");
+      return;
+    }
+
     startTransition(async () => {
       const res = await closeClaim(
         claimId,
@@ -172,7 +177,9 @@ const ClaimStatusActions = ({
           {closeOutcome === "RECEIVED" && isLotControl && (
             <>
               <div>
-                <label className={labelCls}>Lot ที่รับกลับ</label>
+                <label className={labelCls}>
+                  Lot ที่รับกลับ <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={receivedLotNo}
@@ -180,7 +187,9 @@ const ClaimStatusActions = ({
                   maxLength={100}
                   placeholder="ระบุ Lot No"
                   className={inputCls}
+                  aria-required="true"
                 />
+                <p className="mt-1 text-xs text-red-500">สินค้าที่ควบคุม Lot ต้องระบุ Lot ตอนปิดเคลม</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
