@@ -1,4 +1,4 @@
-"use server";
+﻿"use server";
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -9,25 +9,39 @@ import {
   ContentPostStatus,
   ContentScheduledJobStatus,
 } from "@/lib/generated/prisma";
-import { db } from "@/lib/db";
 import { ensureAccessControlSetup } from "@/lib/access-control";
-import { requirePermission } from "@/lib/require-auth";
-import { generateContentDraftIdeas } from "@/lib/content-ai";
 import { getContentConfig } from "@/lib/content-config";
 import { publishFacebookPagePost } from "@/lib/content-facebook";
 import { getContentApproverUsers, sendContentWorkflowNotification } from "@/lib/content-line";
+import { getQStashClient } from "@/lib/content-qstash";
 import {
   createContentAuditLog,
   createScheduledPublishJob,
   getContentPostById,
   hasActiveContentPublishJob,
 } from "@/lib/content-repository";
-import { getQStashClient } from "@/lib/content-qstash";
 import { parseBangkokDateTimeLocal } from "@/lib/content-utils";
+import { db } from "@/lib/db";
+import { generateContentDraftIdeas, suggestContentTopics } from "@/lib/content-ai";
+import { requirePermission } from "@/lib/require-auth";
+
+const INVALID_FORM_ERROR = "ข้อมูลที่ส่งมาไม่ถูกต้อง";
 
 const generateDraftSchema = z.object({
-  topic: z.string().min(3, "กรุณาระบุหัวข้ออย่างน้อย 3 ตัวอักษร").max(200),
+  topic: z.string().min(3, "กรุณากรอกหัวข้ออย่างน้อย 3 ตัวอักษร").max(200),
+  businessType: z.string().max(200).optional(),
   audience: z.string().max(200).optional(),
+  goal: z.string().max(100).optional(),
+  seasonOrFestival: z.string().max(200).optional(),
+  callToAction: z.string().max(200).optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+const suggestTopicsSchema = z.object({
+  businessType: z.string().max(200).optional(),
+  audience: z.string().max(200).optional(),
+  goal: z.string().max(100).optional(),
+  seasonOrFestival: z.string().max(200).optional(),
   callToAction: z.string().max(200).optional(),
   notes: z.string().max(1000).optional(),
 });
@@ -35,7 +49,7 @@ const generateDraftSchema = z.object({
 const updateDraftSchema = z.object({
   id: z.string().min(1),
   title: z.string().max(200).optional(),
-  caption: z.string().min(10, "แคปชันต้องมีอย่างน้อย 10 ตัวอักษร").max(5000),
+  caption: z.string().min(10, "กรุณากรอกข้อความโพสต์อย่างน้อย 10 ตัวอักษร").max(5000),
   imageUrl: z.string().url("URL รูปภาพไม่ถูกต้อง").max(500).optional().or(z.literal("")),
   linkUrl: z.string().url("URL ลิงก์ไม่ถูกต้อง").max(500).optional().or(z.literal("")),
   scheduledAt: z.string().optional(),
@@ -71,6 +85,73 @@ function revalidateContentPaths(id?: string) {
   if (id) {
     revalidatePath(`/admin/content/${id}`);
   }
+}
+
+function getFirstIssueMessage(
+  parsed:
+    | { success: true }
+    | {
+        success: false;
+        error: { issues: Array<{ message?: string }> };
+      }
+) {
+  return parsed.success ? null : parsed.error.issues[0]?.message ?? INVALID_FORM_ERROR;
+}
+
+async function listRecentContentTopicHistory() {
+  const posts = await db.contentPost.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 12,
+    select: {
+      title: true,
+      caption: true,
+    },
+  });
+
+  return posts.map((post) => {
+    const title = post.title?.trim();
+    const preview = post.caption.replace(/\s+/g, " ").trim().slice(0, 120);
+    return title ? `${title} - ${preview}` : preview;
+  });
+}
+
+async function createDraftVariants(params: {
+  drafts: Array<{ title: string; caption: string }>;
+  topic: string;
+  createdByUserId: string;
+  facebookPageId: string;
+  draftSource: string;
+}) {
+  const variantGroupId = randomUUID();
+
+  await db.$transaction(async (tx) => {
+    for (const [index, draft] of params.drafts.entries()) {
+      const post = await tx.contentPost.create({
+        data: {
+          channel: "FACEBOOK_PAGE",
+          title: draft.title,
+          caption: draft.caption,
+          status: ContentPostStatus.DRAFT,
+          facebookPageId: params.facebookPageId,
+          draftSource: params.draftSource,
+          timezone: "Asia/Bangkok",
+          variantGroupId,
+          variantNo: index + 1,
+          isSelectedVariant: index === 0,
+          createdByUserId: params.createdByUserId,
+        },
+      });
+
+      await tx.contentAuditLog.create({
+        data: {
+          postId: post.id,
+          actorUserId: params.createdByUserId,
+          action: "DRAFT_CREATED",
+          detail: `สร้าง draft แบบที่ ${index + 1} จากหัวข้อ ${params.topic}`,
+        },
+      });
+    }
+  });
 }
 
 async function enqueuePublishJob(params: {
@@ -165,7 +246,7 @@ async function publishNow(postId: string, actorUserId: string) {
     postId,
     actorUserId,
     action: "PUBLISH_SUCCEEDED",
-    detail: `โพสต์ไป Facebook สำเร็จ (${metaPostId})`,
+    detail: `โพสต์ขึ้น Facebook สำเร็จ (${metaPostId})`,
     notificationType: ContentNotificationType.POST_PUBLISHED,
   });
 
@@ -176,8 +257,8 @@ async function publishNow(postId: string, actorUserId: string) {
       recipientUserIds: [
         ...new Set([post.createdByUserId, post.approvedByUserId].filter((value): value is string => !!value)),
       ],
-      heading: "โพสต์ Facebook ถูกเผยแพร่แล้ว",
-      detail: "ระบบโพสต์ไปยัง Facebook Page สำเร็จ",
+      heading: "โพสต์ Facebook สำเร็จแล้ว",
+      detail: "ระบบโพสต์เนื้อหานี้ขึ้น Facebook Page เรียบร้อยแล้ว",
       appBaseUrl: config.appBaseUrl,
     }).catch((error) => {
       console.warn("[content] publish success notification failed", error);
@@ -192,18 +273,21 @@ export async function generateContentDraftsAction(formData: FormData) {
   try {
     session = await requirePermission("content.create");
   } catch {
-    return { error: "ไม่มีสิทธิ์สร้าง draft คอนเทนต์" };
+    return { error: "คุณไม่มีสิทธิ์สร้าง draft เนื้อหา" };
   }
 
   const parsed = generateDraftSchema.safeParse({
     topic: formData.get("topic"),
+    businessType: formData.get("businessType") || undefined,
     audience: formData.get("audience") || undefined,
+    goal: formData.get("goal") || undefined,
+    seasonOrFestival: formData.get("seasonOrFestival") || undefined,
     callToAction: formData.get("callToAction") || undefined,
     notes: formData.get("notes") || undefined,
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const config = getContentConfig();
@@ -212,44 +296,137 @@ export async function generateContentDraftsAction(formData: FormData) {
   }
 
   try {
-    const drafts = await generateContentDraftIdeas(parsed.data);
-    const variantGroupId = randomUUID();
-
-    await db.$transaction(async (tx) => {
-      for (const [index, draft] of drafts.entries()) {
-        const post = await tx.contentPost.create({
-          data: {
-            channel: "FACEBOOK_PAGE",
-            title: draft.title,
-            caption: draft.caption,
-            status: ContentPostStatus.DRAFT,
-            facebookPageId: config.facebookPageId!,
-            draftSource: config.openAiApiKey ? "AI_OPENAI" : "TEMPLATE_FALLBACK",
-            timezone: "Asia/Bangkok",
-            variantGroupId,
-            variantNo: index + 1,
-            isSelectedVariant: index === 0,
-            createdByUserId: session.user.id,
-          },
-        });
-
-        await tx.contentAuditLog.create({
-          data: {
-            postId: post.id,
-            actorUserId: session.user.id,
-            action: "DRAFT_CREATED",
-            detail: `สร้าง draft ตัวเลือกที่ ${index + 1} จากหัวข้อ ${parsed.data.topic}`,
-          },
-        });
-      }
+    const recentPosts = await listRecentContentTopicHistory();
+    const drafts = await generateContentDraftIdeas({
+      ...parsed.data,
+      recentPosts,
     });
+
+    await createDraftVariants({
+      drafts,
+      topic: parsed.data.topic,
+      createdByUserId: session.user.id,
+      facebookPageId: config.facebookPageId,
+      draftSource: config.openAiApiKey ? "AI_OPENAI" : "TEMPLATE_FALLBACK",
+    });
+
+    revalidateContentPaths();
+    return { success: true };
   } catch (error) {
     console.error("[generateContentDraftsAction]", error);
     return { error: "สร้าง draft ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
   }
+}
 
-  revalidateContentPaths();
-  return { success: true };
+export async function suggestContentTopicsAction(formData: FormData) {
+  await ensureAccessControlSetup();
+
+  try {
+    await requirePermission("content.create");
+  } catch {
+    return { error: "คุณไม่มีสิทธิ์ให้ AI คิดหัวข้อโพสต์" };
+  }
+
+  const parsed = suggestTopicsSchema.safeParse({
+    businessType: formData.get("businessType") || undefined,
+    audience: formData.get("audience") || undefined,
+    goal: formData.get("goal") || undefined,
+    seasonOrFestival: formData.get("seasonOrFestival") || undefined,
+    callToAction: formData.get("callToAction") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
+  }
+
+  try {
+    const recentPosts = await listRecentContentTopicHistory();
+    const topics = await suggestContentTopics({
+      businessType: parsed.data.businessType,
+      audience: parsed.data.audience,
+      goal: parsed.data.goal,
+      seasonOrFestival: parsed.data.seasonOrFestival,
+      notes: parsed.data.notes,
+      recentPosts,
+    });
+
+    return { success: true, topics };
+  } catch (error) {
+    console.error("[suggestContentTopicsAction]", error);
+    return { error: "AI คิดหัวข้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function autoGenerateTopicAndDraftsAction(formData: FormData) {
+  await ensureAccessControlSetup();
+
+  let session;
+  try {
+    session = await requirePermission("content.create");
+  } catch {
+    return { error: "คุณไม่มีสิทธิ์สร้าง draft เนื้อหา" };
+  }
+
+  const parsed = suggestTopicsSchema.safeParse({
+    businessType: formData.get("businessType") || undefined,
+    audience: formData.get("audience") || undefined,
+    goal: formData.get("goal") || undefined,
+    seasonOrFestival: formData.get("seasonOrFestival") || undefined,
+    callToAction: formData.get("callToAction") || undefined,
+    notes: formData.get("notes") || undefined,
+  });
+
+  if (!parsed.success) {
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
+  }
+
+  const config = getContentConfig();
+  if (!config.facebookPageId) {
+    return { error: "ยังไม่ได้ตั้งค่า FACEBOOK_PAGE_ID" };
+  }
+
+  try {
+    const recentPosts = await listRecentContentTopicHistory();
+    const topics = await suggestContentTopics({
+      businessType: parsed.data.businessType,
+      audience: parsed.data.audience,
+      goal: parsed.data.goal,
+      seasonOrFestival: parsed.data.seasonOrFestival,
+      notes: parsed.data.notes,
+      recentPosts,
+    });
+
+    const selectedTopic = topics[0]?.topic?.trim();
+    if (!selectedTopic) {
+      return { error: "AI ยังไม่สามารถเลือกหัวข้อที่เหมาะสมได้" };
+    }
+
+    const drafts = await generateContentDraftIdeas({
+      topic: selectedTopic,
+      businessType: parsed.data.businessType,
+      audience: parsed.data.audience,
+      goal: parsed.data.goal,
+      seasonOrFestival: parsed.data.seasonOrFestival,
+      callToAction: parsed.data.callToAction,
+      notes: parsed.data.notes,
+      recentPosts,
+    });
+
+    await createDraftVariants({
+      drafts,
+      topic: selectedTopic,
+      createdByUserId: session.user.id,
+      facebookPageId: config.facebookPageId,
+      draftSource: config.openAiApiKey ? "AI_OPENAI" : "TEMPLATE_FALLBACK",
+    });
+
+    revalidateContentPaths();
+    return { success: true, selectedTopic, topics };
+  } catch (error) {
+    console.error("[autoGenerateTopicAndDraftsAction]", error);
+    return { error: "AI คิดหัวข้อและสร้าง draft ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
 }
 
 export async function updateContentDraftAction(formData: FormData) {
@@ -257,7 +434,7 @@ export async function updateContentDraftAction(formData: FormData) {
   try {
     session = await requirePermission("content.update");
   } catch {
-    return { error: "ไม่มีสิทธิ์แก้ไข draft คอนเทนต์" };
+    return { error: "คุณไม่มีสิทธิ์แก้ไข draft เนื้อหา" };
   }
 
   const parsed = updateDraftSchema.safeParse({
@@ -270,17 +447,19 @@ export async function updateContentDraftAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
-  }
-
-  const scheduledPublishReadinessError = getScheduledPublishReadinessError();
-  if (scheduledPublishReadinessError) {
-    return { error: scheduledPublishReadinessError };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const scheduledAt = parseBangkokDateTimeLocal(parsed.data.scheduledAt);
   if (parsed.data.scheduledAt && !scheduledAt) {
-    return { error: "วันเวลาโพสต์ไม่ถูกต้อง" };
+    return { error: "เวลาโพสต์ไม่ถูกต้อง" };
+  }
+
+  if (parsed.data.scheduledAt) {
+    const readinessError = getScheduledPublishReadinessError();
+    if (readinessError) {
+      return { error: readinessError };
+    }
   }
 
   try {
@@ -299,7 +478,7 @@ export async function updateContentDraftAction(formData: FormData) {
       postId: parsed.data.id,
       actorUserId: session.user.id,
       action: "DRAFT_UPDATED",
-      detail: "แก้ไขข้อมูล draft",
+      detail: "แก้ไขรายละเอียด draft",
     });
   } catch (error) {
     console.error("[updateContentDraftAction]", error);
@@ -315,12 +494,12 @@ export async function selectContentVariantAction(formData: FormData) {
   try {
     session = await requirePermission("content.update");
   } catch {
-    return { error: "ไม่มีสิทธิ์เลือก draft ที่จะใช้งาน" };
+    return { error: "คุณไม่มีสิทธิ์เลือก draft ที่จะใช้งาน" };
   }
 
   const postId = String(formData.get("postId") || "").trim();
   if (!postId) {
-    return { error: "ไม่พบโพสต์ที่ต้องการเลือก" };
+    return { error: "ไม่พบ draft ที่ต้องการเลือก" };
   }
 
   const post = await db.contentPost.findUnique({
@@ -354,7 +533,7 @@ export async function selectContentVariantAction(formData: FormData) {
       postId,
       actorUserId: session.user.id,
       action: "VARIANT_SELECTED",
-      detail: "เลือก draft นี้เป็นตัวหลักของชุด",
+      detail: "เลือก draft นี้เป็นตัวหลักสำหรับส่งอนุมัติและโพสต์จริง",
     });
   } catch (error) {
     console.error("[selectContentVariantAction]", error);
@@ -370,7 +549,7 @@ export async function requestContentApprovalAction(formData: FormData) {
   try {
     session = await requirePermission("content.update");
   } catch {
-    return { error: "ไม่มีสิทธิ์ส่งขออนุมัติ" };
+    return { error: "คุณไม่มีสิทธิ์ส่งโพสต์เข้าอนุมัติ" };
   }
 
   const parsed = requestApprovalSchema.safeParse({
@@ -379,7 +558,7 @@ export async function requestContentApprovalAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const config = getContentConfig();
@@ -406,7 +585,7 @@ export async function requestContentApprovalAction(formData: FormData) {
 
   const approvers = await getContentApproverUsers();
   if (!approvers.some((user) => user.id === parsed.data.approverUserId)) {
-    return { error: "ผู้อนุมัติยังไม่ได้ผูก LINE user ที่ใช้งานได้" };
+    return { error: "ผู้อนุมัติคนนี้ยังไม่ได้ผูก LINE หรือไม่มีสิทธิ์อนุมัติเนื้อหา" };
   }
 
   try {
@@ -456,7 +635,7 @@ export async function requestContentApprovalAction(formData: FormData) {
       postId: parsed.data.postId,
       actorUserId: session.user.id,
       action: "APPROVAL_REQUESTED",
-      detail: `ส่งขออนุมัติไปยังผู้ใช้ ${parsed.data.approverUserId}`,
+      detail: `ส่งคำขออนุมัติไปยังผู้ใช้ ${parsed.data.approverUserId}`,
       notificationType: ContentNotificationType.APPROVAL_REQUESTED,
     });
 
@@ -464,7 +643,7 @@ export async function requestContentApprovalAction(formData: FormData) {
       post,
       recipientUserIds: [parsed.data.approverUserId],
       heading: "มีโพสต์ Facebook รออนุมัติ",
-      detail: "กรุณาเปิดหน้าอนุมัติเพื่อตรวจเนื้อหาและกำหนดการโพสต์",
+      detail: "กรุณาตรวจสอบเนื้อหา เลือกเวลาโพสต์ หรืออนุมัติโพสต์ทันทีจากหน้าอนุมัติ",
       appBaseUrl: config.appBaseUrl,
     });
   } catch (error) {
@@ -481,7 +660,7 @@ export async function approveAndScheduleContentAction(formData: FormData) {
   try {
     session = await requirePermission("content.manage");
   } catch {
-    return { error: "ไม่มีสิทธิ์อนุมัติคอนเทนต์" };
+    return { error: "คุณไม่มีสิทธิ์อนุมัติและตั้งเวลาโพสต์" };
   }
 
   const parsed = approvalDecisionSchema.safeParse({
@@ -490,7 +669,7 @@ export async function approveAndScheduleContentAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const scheduledPublishReadinessError = getScheduledPublishReadinessError();
@@ -500,7 +679,7 @@ export async function approveAndScheduleContentAction(formData: FormData) {
 
   const scheduledAt = parseBangkokDateTimeLocal(parsed.data.scheduledAt);
   if (!scheduledAt) {
-    return { error: "กรุณาระบุเวลาโพสต์แบบ schedule" };
+    return { error: "กรุณาเลือกเวลาโพสต์ก่อนกด schedule" };
   }
   if (scheduledAt.getTime() <= Date.now()) {
     return { error: "เวลาโพสต์ต้องมากกว่าปัจจุบัน" };
@@ -557,7 +736,7 @@ export async function approveAndScheduleContentAction(formData: FormData) {
       postId: parsed.data.postId,
       actorUserId: session.user.id,
       action: "POST_SCHEDULED",
-      detail: `อนุมัติและตั้งเวลาโพสต์ ${scheduledAt.toISOString()}`,
+      detail: `อนุมัติและตั้งเวลาโพสต์ไว้ที่ ${scheduledAt.toISOString()}`,
       notificationType: ContentNotificationType.POST_SCHEDULED,
     });
 
@@ -566,8 +745,8 @@ export async function approveAndScheduleContentAction(formData: FormData) {
       await sendContentWorkflowNotification({
         post,
         recipientUserIds: [...new Set([post.createdByUserId, session.user.id])],
-        heading: "โพสต์ Facebook ถูกอนุมัติและตั้งเวลาแล้ว",
-        detail: "ระบบบันทึก schedule เรียบร้อยและจะส่งไป Facebook ตามเวลาที่กำหนด",
+        heading: "โพสต์ Facebook ถูกตั้งเวลาแล้ว",
+        detail: "ระบบบันทึกเวลาโพสต์เรียบร้อยแล้ว และจะส่งขึ้น Facebook ตามเวลาที่กำหนด",
         appBaseUrl: notificationConfig.appBaseUrl,
       }).catch((notificationError) => {
         console.warn("[content] schedule notification failed", notificationError);
@@ -587,7 +766,7 @@ export async function approveAndPublishNowAction(formData: FormData) {
   try {
     session = await requirePermission("content.manage");
   } catch {
-    return { error: "ไม่มีสิทธิ์โพสต์คอนเทนต์" };
+    return { error: "คุณไม่มีสิทธิ์อนุมัติและโพสต์ทันที" };
   }
 
   const parsed = approvalDecisionSchema.safeParse({
@@ -595,7 +774,7 @@ export async function approveAndPublishNowAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const immediatePublishReadinessError = getImmediatePublishReadinessError();
@@ -630,7 +809,7 @@ export async function requestRevisionContentAction(formData: FormData) {
   try {
     session = await requirePermission("content.manage");
   } catch {
-    return { error: "ไม่มีสิทธิ์ตีกลับ draft" };
+    return { error: "คุณไม่มีสิทธิ์ตีกลับ draft" };
   }
 
   const parsed = revisionSchema.safeParse({
@@ -639,7 +818,7 @@ export async function requestRevisionContentAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const post = await db.contentPost.findUnique({
@@ -684,7 +863,7 @@ export async function requestRevisionContentAction(formData: FormData) {
       postId: parsed.data.postId,
       actorUserId: session.user.id,
       action: "REVISION_REQUESTED",
-      detail: parsed.data.decisionNote?.trim() || "ตีกลับให้แก้ไข draft",
+      detail: parsed.data.decisionNote?.trim() || "ขอให้แก้ไข draft ก่อนส่งอนุมัติอีกครั้ง",
       notificationType: ContentNotificationType.REVISION_REQUESTED,
     });
 
@@ -693,8 +872,10 @@ export async function requestRevisionContentAction(formData: FormData) {
       await sendContentWorkflowNotification({
         post,
         recipientUserIds: [post.createdByUserId],
-        heading: "โพสต์ Facebook ถูกตีกลับให้แก้ไข",
-        detail: parsed.data.decisionNote?.trim() || "กรุณาเปิดโพสต์แล้วแก้ไขก่อนส่งอนุมัติใหม่",
+        heading: "โพสต์ Facebook ถูกขอให้แก้ไข",
+        detail:
+          parsed.data.decisionNote?.trim() ||
+          "ผู้อนุมัติขอให้แก้ไขรายละเอียดของโพสต์ก่อนส่งเข้าคิวอนุมัติอีกครั้ง",
         appBaseUrl: config.appBaseUrl,
       }).catch((error) => {
         console.warn("[content] revision notification failed", error);
@@ -714,7 +895,7 @@ export async function cancelContentPostAction(formData: FormData) {
   try {
     session = await requirePermission("content.update");
   } catch {
-    return { error: "ไม่มีสิทธิ์ยกเลิกโพสต์" };
+    return { error: "คุณไม่มีสิทธิ์ยกเลิกโพสต์" };
   }
 
   const parsed = cancelSchema.safeParse({
@@ -722,7 +903,7 @@ export async function cancelContentPostAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: "ข้อมูลไม่ถูกต้อง" };
+    return { error: INVALID_FORM_ERROR };
   }
 
   try {
@@ -764,7 +945,7 @@ export async function cancelContentPostAction(formData: FormData) {
       postId: parsed.data.postId,
       actorUserId: session.user.id,
       action: "POST_CANCELLED",
-      detail: "ยกเลิกโพสต์",
+      detail: "ยกเลิกโพสต์นี้แล้ว",
     });
   } catch (error) {
     console.error("[cancelContentPostAction]", error);
@@ -780,7 +961,7 @@ export async function retryFailedScheduledPublishAction(formData: FormData) {
   try {
     session = await requirePermission("content.manage");
   } catch {
-    return { error: "ไม่มีสิทธิ์ requeue งานโพสต์" };
+    return { error: "คุณไม่มีสิทธิ์ requeue งานโพสต์" };
   }
 
   const parsed = retryScheduleSchema.safeParse({
@@ -789,7 +970,7 @@ export async function retryFailedScheduledPublishAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: getFirstIssueMessage(parsed) ?? INVALID_FORM_ERROR };
   }
 
   const scheduledPublishReadinessError = getScheduledPublishReadinessError();
@@ -854,7 +1035,7 @@ export async function retryFailedScheduledPublishAction(formData: FormData) {
       postId: parsed.data.postId,
       actorUserId: session.user.id,
       action: "PUBLISH_REQUEUED",
-      detail: `requeue publish job ใหม่สำหรับ ${runAt.toISOString()}`,
+      detail: `สั่ง requeue งานโพสต์ใหม่สำหรับเวลา ${runAt.toISOString()}`,
       notificationType: ContentNotificationType.POST_SCHEDULED,
     });
   } catch (error) {

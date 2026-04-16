@@ -8,7 +8,11 @@ import type {
   ContentPostStatus,
   ContentScheduledJobStatus,
 } from "@/lib/generated/prisma";
-import { generateContentDraftsAction } from "@/app/admin/(protected)/content/actions";
+import {
+  autoGenerateTopicAndDraftsAction,
+  generateContentDraftsAction,
+  suggestContentTopicsAction,
+} from "@/app/admin/(protected)/content/actions";
 import { formatThaiDateTime, truncateText } from "@/lib/content-utils";
 
 type ContentListRow = {
@@ -46,6 +50,13 @@ type RuntimeStatus = {
   approverCount: number;
 };
 
+type TopicSuggestion = {
+  topic: string;
+  angle: string;
+};
+
+const goalOptions = ["ขาย", "ให้ความรู้", "โปรโมชัน", "ปิดการขาย"] as const;
+
 const inputCls =
   "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
 
@@ -60,6 +71,16 @@ export default function ContentManager({
   runtimeStatus: RuntimeStatus;
 }) {
   const [message, setMessage] = useState("");
+  const [topicSuggestions, setTopicSuggestions] = useState<TopicSuggestion[]>([]);
+  const [formValues, setFormValues] = useState({
+    topic: "",
+    businessType: "อะไหล่แอร์รถยนต์",
+    audience: "",
+    goal: "ขาย",
+    seasonOrFestival: "",
+    callToAction: "",
+    notes: "",
+  });
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const statusTone = (ready: boolean) =>
@@ -67,11 +88,34 @@ export default function ContentManager({
       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
       : "border-amber-200 bg-amber-50 text-amber-900";
 
+  const updateField = (name: keyof typeof formValues, value: string) => {
+    setFormValues((current) => ({ ...current, [name]: value }));
+  };
+
+  const buildFormData = (includeTopic: boolean) => {
+    const formData = new FormData();
+    if (includeTopic) {
+      formData.set("topic", formValues.topic);
+    }
+    formData.set("businessType", formValues.businessType);
+    formData.set("audience", formValues.audience);
+    formData.set("goal", formValues.goal);
+    formData.set("seasonOrFestival", formValues.seasonOrFestival);
+    formData.set("callToAction", formValues.callToAction);
+    formData.set("notes", formValues.notes);
+    return formData;
+  };
+
+  const resetTopicState = () => {
+    setFormValues((current) => ({ ...current, topic: "" }));
+    setTopicSuggestions([]);
+  };
+
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">สถานะพร้อมใช้งานของระบบโพสต์</h2>
+          <h2 className="font-kanit text-lg font-semibold text-gray-900">สถานะพร้อมใช้งานของระบบโพส</h2>
           <p className="text-sm text-gray-500">
             ใช้เช็กความพร้อมก่อน generate, approve, schedule และ auto post บน production
           </p>
@@ -114,16 +158,16 @@ export default function ContentManager({
           !runtimeStatus.appBaseUrlReady ||
           runtimeStatus.approverCount === 0) && (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            ยังมี config บางส่วนไม่ครบ จึงอาจ generate draft ได้แต่ยัง schedule หรือโพสต์จริงไม่ได้ครบทุก flow
+            ยังมี config บางส่วนไม่ครบ จึงอาจ generate draft ได้แต่ยัง schedule หรือโพสจริงไม่ได้ครบทุก flow
           </div>
         )}
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">สร้าง draft ครั้งละ 3 โพส</h2>
+          <h2 className="font-kanit text-lg font-semibold text-gray-900">สร้างหัวข้อและ draft ด้วย AI</h2>
           <p className="text-sm text-gray-500">
-            ระบบจะสร้างตัวเลือกโพสต์ 3 แบบตามหัวข้อเดียวกัน เพื่อให้เลือกตัวที่เหมาะก่อนแก้ไขและส่งอนุมัติ
+            รองรับ 2 แบบ: ให้ AI เสนอหัวข้อก่อนแล้วค่อยสร้าง draft 3 แบบ หรือให้ AI คิดหัวข้อและสร้าง draft 3 แบบทันที โดยไม่ใช้ web search
           </p>
         </div>
 
@@ -131,55 +175,176 @@ export default function ContentManager({
           className="mt-4 grid gap-3 lg:grid-cols-2"
           onSubmit={(event) => {
             event.preventDefault();
-            const formData = new FormData(event.currentTarget);
             setMessage("");
             startTransition(async () => {
-              const result = await generateContentDraftsAction(formData);
+              const result = await generateContentDraftsAction(buildFormData(true));
               setMessage(result.success ? "สร้าง draft 3 ตัวเลือกสำเร็จ" : result.error ?? "สร้าง draft ไม่สำเร็จ");
               if (result.success) {
-                event.currentTarget.reset();
+                resetTopicState();
                 router.refresh();
               }
             });
           }}
         >
-          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
-            หัวข้อโพสต์
-            <input name="topic" required className={inputCls} placeholder="เช่น โปรเช็กรถแอร์ไม่เย็นก่อนสงกรานต์" />
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            ประเภทธุรกิจ/สินค้า
+            <input
+              name="businessType"
+              className={inputCls}
+              value={formValues.businessType}
+              onChange={(event) => updateField("businessType", event.target.value)}
+              placeholder="เช่น อะไหล่แอร์รถยนต์"
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm text-gray-700">
-            กลุ่มเป้าหมาย
-            <input name="audience" className={inputCls} placeholder="เช่น เจ้าของรถเก๋งและอู่ซ่อมรถ" />
+            กลุ่มลูกค้า
+            <input
+              name="audience"
+              className={inputCls}
+              value={formValues.audience}
+              onChange={(event) => updateField("audience", event.target.value)}
+              placeholder="เช่น เจ้าของรถเก๋งและอู่ซ่อมรถ"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            เป้าหมายโพส
+            <select
+              name="goal"
+              className={inputCls}
+              value={formValues.goal}
+              onChange={(event) => updateField("goal", event.target.value)}
+            >
+              {goalOptions.map((goal) => (
+                <option key={goal} value={goal}>
+                  {goal}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            ช่วงเวลา/เทศกาล
+            <input
+              name="seasonOrFestival"
+              className={inputCls}
+              value={formValues.seasonOrFestival}
+              onChange={(event) => updateField("seasonOrFestival", event.target.value)}
+              placeholder="เช่น หน้าร้อน, สงกรานต์, เปิดเทอม"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
+            หัวข้อโพส
+            <input
+              name="topic"
+              required
+              className={inputCls}
+              value={formValues.topic}
+              onChange={(event) => updateField("topic", event.target.value)}
+              placeholder="เช่น โปรเช็กรถแอร์ไม่เย็นก่อนสงกรานต์"
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm text-gray-700">
             Call to action
-            <input name="callToAction" className={inputCls} placeholder="เช่น ทักแชทพร้อมแจ้งรุ่นรถได้เลย" />
+            <input
+              name="callToAction"
+              className={inputCls}
+              value={formValues.callToAction}
+              onChange={(event) => updateField("callToAction", event.target.value)}
+              placeholder="เช่น ทักแชทพร้อมแจ้งรุ่นรถได้เลย"
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
             หมายเหตุเพิ่มเติม
             <textarea
               name="notes"
               className={textareaCls}
-              placeholder="เช่น เน้นว่างานนี้เหมาะกับลูกค้าที่ต้องการของพร้อมใช้ และอยากเช็กความเข้ากันได้ก่อนสั่ง"
+              value={formValues.notes}
+              onChange={(event) => updateField("notes", event.target.value)}
+              placeholder="เช่น เน้นว่าร้านช่วยเช็กรุ่นให้ก่อนสั่ง และต้องการสื่อสารแบบเข้าใจง่าย"
             />
           </label>
-          <div className="lg:col-span-2 flex items-center gap-3">
+          <div className="lg:col-span-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={pending}
+              className="rounded-lg border border-[#1e3a5f] px-4 py-2 text-sm font-medium text-[#1e3a5f] hover:bg-[#eef4fb] disabled:opacity-60"
+              onClick={() => {
+                setMessage("");
+                startTransition(async () => {
+                  const result = await suggestContentTopicsAction(buildFormData(false));
+                  if (result.success) {
+                    setTopicSuggestions(result.topics ?? []);
+                    setMessage("AI เสนอหัวข้อให้แล้ว เลือก 1 หัวข้อแล้วค่อยสร้าง draft 3 แบบ");
+                  } else {
+                    setTopicSuggestions([]);
+                    setMessage(result.error ?? "AI คิดหัวข้อไม่สำเร็จ");
+                  }
+                });
+              }}
+            >
+              ให้ AI คิดหัวข้อ
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              onClick={() => {
+                setMessage("");
+                startTransition(async () => {
+                  const result = await autoGenerateTopicAndDraftsAction(buildFormData(false));
+                  if (result.success) {
+                    setTopicSuggestions(result.topics ?? []);
+                    if (result.selectedTopic) {
+                      updateField("topic", result.selectedTopic);
+                    }
+                    setMessage(`AI เลือกหัวข้อ \"${result.selectedTopic}\" และสร้าง draft 3 แบบสำเร็จ`);
+                    router.refresh();
+                  } else {
+                    setMessage(result.error ?? "AI คิดหัวข้อและสร้าง draft ไม่สำเร็จ");
+                  }
+                });
+              }}
+            >
+              ให้ AI คิดหัวข้อ + ร่าง draft เลย
+            </button>
             <button
               type="submit"
               disabled={pending}
               className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60"
             >
-              {pending ? "กำลังสร้าง..." : "สร้าง draft 3 แบบ"}
+              {pending ? "กำลังประมวลผล..." : "สร้าง draft 3 แบบจากหัวข้อ"}
             </button>
             {message && <p className="text-sm text-[#1e3a5f]">{message}</p>}
           </div>
         </form>
+
+        {topicSuggestions.length > 0 && (
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {topicSuggestions.map((suggestion, index) => (
+              <button
+                key={`${suggestion.topic}-${index}`}
+                type="button"
+                className={`rounded-xl border p-4 text-left transition ${
+                  formValues.topic === suggestion.topic
+                    ? "border-[#1e3a5f] bg-[#eef4fb]"
+                    : "border-gray-200 bg-gray-50 hover:border-[#1e3a5f]"
+                }`}
+                onClick={() => updateField("topic", suggestion.topic)}
+              >
+                <p className="font-kanit text-base font-semibold text-gray-900">{suggestion.topic}</p>
+                <p className="mt-1 text-sm text-gray-600">{suggestion.angle}</p>
+                <p className="mt-2 text-xs text-[#1e3a5f]">
+                  {formValues.topic === suggestion.topic ? "เลือกหัวข้อนี้แล้ว" : "กดเพื่อใช้หัวข้อนี้"}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-kanit text-lg font-semibold text-gray-900">รายการโพสต์ล่าสุด</h2>
+            <h2 className="font-kanit text-lg font-semibold text-gray-900">รายการโพสล่าสุด</h2>
             <p className="text-sm text-gray-500">แสดง draft ล่าสุดและสถานะ approval/schedule/post</p>
           </div>
           <Link
@@ -198,7 +363,7 @@ export default function ContentManager({
                 <th className="px-3 py-2 font-medium">สถานะ</th>
                 <th className="px-3 py-2 font-medium">ผู้สร้าง</th>
                 <th className="px-3 py-2 font-medium">ผู้อนุมัติ</th>
-                <th className="px-3 py-2 font-medium">เวลาโพสต์</th>
+                <th className="px-3 py-2 font-medium">เวลาโพส</th>
                 <th className="px-3 py-2 font-medium">จัดการ</th>
               </tr>
             </thead>
@@ -211,7 +376,7 @@ export default function ContentManager({
                     <td className="px-3 py-2 text-gray-700">
                       <div className="space-y-1">
                         <p className="font-medium">
-                          {post.title || `ตัวเลือกโพสต์ ${post.variantNo ?? "-"}`}
+                          {post.title || `ตัวเลือกโพส ${post.variantNo ?? "-"}`}
                           {post.variantNo ? ` · แบบที่ ${post.variantNo}` : ""}
                           {post.isSelectedVariant ? " · เลือกใช้งาน" : ""}
                         </p>
