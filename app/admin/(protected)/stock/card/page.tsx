@@ -77,9 +77,9 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
     reportUnitName: true,
     units: {
       select: { name: true, scale: true, isBase: true },
-      orderBy: [{ isBase: "desc" }, { scale: "asc" }],
+      orderBy: [{ isBase: "desc" as "desc" }, { scale: "asc" as "asc" }],
     },
-  } as const;
+  };
 
   const [selectedProductById, filteredProducts, filteredProductCount] = await Promise.all([
     productId
