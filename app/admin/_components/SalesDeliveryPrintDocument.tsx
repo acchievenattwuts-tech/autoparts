@@ -195,6 +195,7 @@ export default function SalesDeliveryPrintDocument({
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
+  const transferSlipLineId = shopConfig.shopLineId?.trim() || null;
 
   return (
     <div
@@ -366,6 +367,12 @@ export default function SalesDeliveryPrintDocument({
                     <p className="text-gray-500">
                       ยอดสำหรับสแกน/โอน: <span className="font-semibold text-gray-900">{fmtNum(qrAmount)}</span>
                     </p>
+                    <div className={`mt-2 rounded border ${PRINT_BODY_BORDER_CLASS} bg-gray-50 px-2.5 py-2 text-[11px] leading-snug text-gray-700`}>
+                      กรุณาส่งหลักฐานสลิปการโอนเงินมาที่{" "}
+                      <span className="font-semibold text-gray-900">
+                        Line ID : {transferSlipLineId ?? "-"}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center justify-center">
                     {promptPayQrDataUrl ? (
