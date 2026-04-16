@@ -279,6 +279,11 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
             tone={qstashStatus.ready ? "default" : "warn"}
           />
           <StatCard
+            title="QSTASH_URL"
+            value={qstashStatus.qstashUrlReady ? "พร้อมใช้งาน" : "ยังไม่ตั้งค่า"}
+            tone={qstashStatus.qstashUrlReady ? "default" : "warn"}
+          />
+          <StatCard
             title="APP_BASE_URL"
             value={qstashStatus.appBaseUrlReady ? "พร้อมใช้งาน" : "ยังไม่ตั้งค่า"}
             tone={qstashStatus.appBaseUrlReady ? "default" : "warn"}

@@ -72,6 +72,10 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
       return { error: "ยังไม่ได้ตั้งค่า APP_BASE_URL สำหรับสร้างปลายทาง QStash" };
     }
 
+    if (message === "QSTASH_URL_NOT_CONFIGURED") {
+      return { error: "ยังไม่ได้ตั้งค่า QSTASH_URL ของ region ที่ใช้งาน" };
+    }
+
     return { error: `ไม่สามารถซิงก์ตารางเวลาส่งกับ QStash ได้: ${message}` };
   }
 

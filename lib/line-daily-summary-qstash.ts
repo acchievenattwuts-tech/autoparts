@@ -13,6 +13,7 @@ export function getLineDailySummaryQStashStatus() {
   return {
     ready: config.ready,
     appBaseUrlReady: Boolean(config.appBaseUrl),
+    qstashUrlReady: Boolean(config.qstashUrl),
     qstashTokenReady: Boolean(config.qstashToken),
     qstashSigningKeysReady: Boolean(config.qstashCurrentSigningKey && config.qstashNextSigningKey),
   };
@@ -42,10 +43,11 @@ export function getLineDailySummaryQStashCron(sendTime: string) {
 }
 
 function getQStashMissingConfig() {
-  const { appBaseUrl, qstashToken, qstashCurrentSigningKey, qstashNextSigningKey } = getQStashConfig();
+  const { appBaseUrl, qstashUrl, qstashToken, qstashCurrentSigningKey, qstashNextSigningKey } = getQStashConfig();
   const missing: string[] = [];
 
   if (!appBaseUrl) missing.push("APP_BASE_URL");
+  if (!qstashUrl) missing.push("QSTASH_URL");
   if (!qstashToken) missing.push("QSTASH_TOKEN");
   if (!qstashCurrentSigningKey) missing.push("QSTASH_CURRENT_SIGNING_KEY");
   if (!qstashNextSigningKey) missing.push("QSTASH_NEXT_SIGNING_KEY");

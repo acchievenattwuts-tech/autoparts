@@ -11,6 +11,7 @@ export function getContentConfig() {
 
   const openAiApiKey = normalizeEnv(process.env.OPENAI_API_KEY);
   const openAiModel = normalizeEnv(process.env.OPENAI_MODEL) ?? "gpt-5.4-mini";
+  const qstashUrl = normalizeEnv(process.env.QSTASH_URL);
   const qstashToken = normalizeEnv(process.env.QSTASH_TOKEN);
   const qstashCurrentSigningKey = normalizeEnv(process.env.QSTASH_CURRENT_SIGNING_KEY);
   const qstashNextSigningKey = normalizeEnv(process.env.QSTASH_NEXT_SIGNING_KEY);
@@ -21,6 +22,7 @@ export function getContentConfig() {
     appBaseUrl,
     openAiApiKey,
     openAiModel,
+    qstashUrl,
     qstashToken,
     qstashCurrentSigningKey,
     qstashNextSigningKey,
@@ -36,7 +38,7 @@ export function getContentRuntimeStatus() {
     appBaseUrlReady: Boolean(config.appBaseUrl),
     openAiReady: Boolean(config.openAiApiKey),
     qstashReady: Boolean(
-      config.qstashToken && config.qstashCurrentSigningKey && config.qstashNextSigningKey
+      config.qstashUrl && config.qstashToken && config.qstashCurrentSigningKey && config.qstashNextSigningKey
     ),
     facebookReady: Boolean(config.facebookPageId && config.facebookPageAccessToken),
     appBaseUrl: config.appBaseUrl,

@@ -6,20 +6,30 @@ export function getQStashConfig() {
 
   return {
     appBaseUrl: config.appBaseUrl,
+    qstashUrl: config.qstashUrl,
     qstashToken: config.qstashToken,
     qstashCurrentSigningKey: config.qstashCurrentSigningKey,
     qstashNextSigningKey: config.qstashNextSigningKey,
-    ready: Boolean(config.appBaseUrl && config.qstashToken && config.qstashCurrentSigningKey && config.qstashNextSigningKey),
+    ready: Boolean(
+      config.appBaseUrl &&
+      config.qstashUrl &&
+      config.qstashToken &&
+      config.qstashCurrentSigningKey &&
+      config.qstashNextSigningKey
+    ),
   };
 }
 
 export function getQStashClient() {
-  const { qstashToken } = getQStashConfig();
+  const { qstashUrl, qstashToken } = getQStashConfig();
+  if (!qstashUrl) {
+    throw new Error("QSTASH_URL_NOT_CONFIGURED");
+  }
   if (!qstashToken) {
     throw new Error("QSTASH_TOKEN_NOT_CONFIGURED");
   }
 
-  return new Client({ token: qstashToken });
+  return new Client({ baseUrl: qstashUrl, token: qstashToken });
 }
 
 export function getQStashReceiver() {
