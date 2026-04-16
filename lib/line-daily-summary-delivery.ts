@@ -9,6 +9,7 @@ type DeliverParams = {
   dispatchKind: LineDailySummaryDispatchKind;
   targetMode: LineDailySummaryTargetMode;
   triggeredByUserId?: string | null;
+  existingDispatchId?: string | null;
 };
 
 type LogDispatchAttemptParams = {
@@ -85,7 +86,7 @@ export async function logLineDailySummaryDispatchAttempt(
 export async function deliverLineDailySummary(
   params: DeliverParams
 ): Promise<DeliverLineDailySummaryResult> {
-  const { reportDayKey, dispatchKind, targetMode, triggeredByUserId } = params;
+  const { reportDayKey, dispatchKind, targetMode, triggeredByUserId, existingDispatchId } = params;
   const summary = await buildLineDailySummary(reportDayKey);
   const config = getLineDailySummaryConfig();
   const resolvedRecipients = await resolveConfiguredLineRecipients(targetMode);
@@ -93,15 +94,29 @@ export async function deliverLineDailySummary(
   const recipientIds = resolvedRecipients.recipientIds;
 
   if (!config.channelAccessToken || missingDeliveryEnv.length > 0 || recipientIds.length === 0) {
-    await logLineDailySummaryDispatchAttempt({
-      reportDayKey,
-      dispatchKind,
-      status: LineDailySummaryDispatchStatus.FAILED,
-      targetMode,
-      recipientIds,
-      errorMessage: `CONFIG_INCOMPLETE:${[...new Set(missingDeliveryEnv)].join(",")}`,
-      triggeredByUserId,
-    });
+    if (existingDispatchId) {
+      await db.lineDailySummaryDispatch.update({
+        where: { id: existingDispatchId },
+        data: {
+          status: LineDailySummaryDispatchStatus.FAILED,
+          targetMode,
+          recipientCount: recipientIds.length,
+          recipientSnapshot: recipientIds.length > 0 ? recipientIds.join(",") : null,
+          errorMessage: `CONFIG_INCOMPLETE:${[...new Set(missingDeliveryEnv)].join(",")}`.slice(0, 1000),
+          triggeredByUserId: triggeredByUserId ?? null,
+        },
+      });
+    } else {
+      await logLineDailySummaryDispatchAttempt({
+        reportDayKey,
+        dispatchKind,
+        status: LineDailySummaryDispatchStatus.FAILED,
+        targetMode,
+        recipientIds,
+        errorMessage: `CONFIG_INCOMPLETE:${[...new Set(missingDeliveryEnv)].join(",")}`,
+        triggeredByUserId,
+      });
+    }
 
     return {
       ok: false,
@@ -120,9 +135,50 @@ export async function deliverLineDailySummary(
       ? `scheduled:${reportDayKey}`
       : null;
 
-  let dispatchId: string | null = null;
+  let dispatchId: string | null = existingDispatchId ?? null;
 
-  if (dispatchKey) {
+  if (dispatchId) {
+    try {
+      await db.lineDailySummaryDispatch.update({
+        where: { id: dispatchId },
+        data: {
+          dispatchKey: dispatchKey ?? undefined,
+          status: LineDailySummaryDispatchStatus.PROCESSING,
+          targetMode,
+          recipientCount: recipientIds.length,
+          recipientSnapshot: recipientIds.join(","),
+          errorMessage: null,
+          triggeredByUserId: triggeredByUserId ?? null,
+        },
+      });
+    } catch (error) {
+      if (dispatchKey && isUniqueConstraintError(error)) {
+        await db.lineDailySummaryDispatch.update({
+          where: { id: dispatchId },
+          data: {
+            status: LineDailySummaryDispatchStatus.SKIPPED,
+            targetMode,
+            recipientCount: recipientIds.length,
+            recipientSnapshot: recipientIds.join(","),
+            errorMessage: "ALREADY_DISPATCHED",
+            triggeredByUserId: triggeredByUserId ?? null,
+          },
+        });
+
+        return {
+          ok: false,
+          status: "SKIPPED",
+          reportDayKey,
+          targetMode,
+          reason: "ALREADY_DISPATCHED",
+          recipientIds,
+          message: summary.message,
+        };
+      }
+
+      throw error;
+    }
+  } else if (dispatchKey) {
     try {
       const dispatch = await db.lineDailySummaryDispatch.create({
         data: {

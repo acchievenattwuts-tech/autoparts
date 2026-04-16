@@ -80,6 +80,15 @@ export function resolveBangkokDayKey(value?: string): string {
   return isValidDayKey(value) ? value : getBangkokDayKey();
 }
 
+async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>): Promise<T> {
+  try {
+    return await runner();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown summary query error";
+    throw new Error(`SUMMARY_QUERY_FAILED:${stepName}:${message}`);
+  }
+}
+
 function getBangkokDayRange(dayKey: string) {
   const start = new Date(`${dayKey}T00:00:00${BANGKOK_TZ_OFFSET}`);
   const end = new Date(start.getTime() + DAY_MS - 1);
@@ -521,37 +530,41 @@ function renderFriendlyLineDailySummaryMessage(summary: {
 async function getLotExpiryCounts(reportStart: Date, reportEnd: Date) {
   const threshold = new Date(reportEnd.getTime() + 30 * DAY_MS);
 
-  const productLots = await db.productLot.findMany({
-    where: {
-      expDate: {
-        not: null,
-        lte: threshold,
+  const productLots = await runSummaryStep("lotCounts.productLots", () =>
+    db.productLot.findMany({
+      where: {
+        expDate: {
+          not: null,
+          lte: threshold,
+        },
       },
-    },
-    select: {
-      productId: true,
-      lotNo: true,
-      expDate: true,
-    },
-  });
+      select: {
+        productId: true,
+        lotNo: true,
+        expDate: true,
+      },
+    })
+  );
 
   if (productLots.length === 0) {
     return { expiringLotCount: 0, expiredLotCount: 0 };
   }
 
-  const lotBalances = await db.lotBalance.findMany({
-    where: {
-      qtyOnHand: { gt: 0 },
-      OR: productLots.map((lot) => ({
-        productId: lot.productId,
-        lotNo: lot.lotNo,
-      })),
-    },
-    select: {
-      productId: true,
-      lotNo: true,
-    },
-  });
+  const lotBalances = await runSummaryStep("lotCounts.lotBalances", () =>
+    db.lotBalance.findMany({
+      where: {
+        qtyOnHand: { gt: 0 },
+        OR: productLots.map((lot) => ({
+          productId: lot.productId,
+          lotNo: lot.lotNo,
+        })),
+      },
+      select: {
+        productId: true,
+        lotNo: true,
+      },
+    })
+  );
 
   const activeLotKeys = new Set(lotBalances.map((lot) => `${lot.productId}:${lot.lotNo}`));
 
@@ -1116,38 +1129,38 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     cancelledCounts,
     lotCounts,
   ] = await Promise.all([
-    getSiteConfig(),
-    db.sale.aggregate({
+    runSummaryStep("siteConfig", () => getSiteConfig()),
+    runSummaryStep("money.salesTotal", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
         saleDate: { gte: start, lte: end },
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.cashSales", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
         paymentType: "CASH_SALE",
         saleDate: { gte: start, lte: end },
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.creditSales", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
         paymentType: "CREDIT_SALE",
         saleDate: { gte: start, lte: end },
       },
-    }),
-    db.receipt.aggregate({
+    })),
+    runSummaryStep("money.receiptTotal", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
         status: "ACTIVE",
         receiptDate: { gte: start, lte: end },
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.cashSaleCash", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
@@ -1155,8 +1168,8 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
         paymentMethod: "CASH",
         saleDate: { gte: start, lte: end },
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.cashSaleTransfer", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
@@ -1164,32 +1177,32 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
         paymentMethod: "TRANSFER",
         saleDate: { gte: start, lte: end },
       },
-    }),
-    db.receipt.aggregate({
+    })),
+    runSummaryStep("money.receiptCash", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
         status: "ACTIVE",
         paymentMethod: "CASH",
         receiptDate: { gte: start, lte: end },
       },
-    }),
-    db.receipt.aggregate({
+    })),
+    runSummaryStep("money.receiptTransfer", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
         status: "ACTIVE",
         paymentMethod: "TRANSFER",
         receiptDate: { gte: start, lte: end },
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.arOutstanding", () => db.sale.aggregate({
       _sum: { amountRemain: true },
       where: {
         status: "ACTIVE",
         paymentType: "CREDIT_SALE",
         fulfillmentType: "PICKUP",
       },
-    }),
-    db.sale.aggregate({
+    })),
+    runSummaryStep("money.codOutstanding", () => db.sale.aggregate({
       _sum: { amountRemain: true },
       where: {
         status: "ACTIVE",
@@ -1197,75 +1210,76 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
         fulfillmentType: "DELIVERY",
         shippingStatus: { not: "DELIVERED" },
       },
-    }),
-    db.purchase.aggregate({
+    })),
+    runSummaryStep("money.apOutstanding", () => db.purchase.aggregate({
       _sum: { amountRemain: true },
       where: {
         status: "ACTIVE",
         purchaseType: "CREDIT_PURCHASE",
         amountRemain: { gt: 0 },
       },
-    }),
-    db.sale.count({
+    })),
+    runSummaryStep("counts.pendingDelivery", () => db.sale.count({
       where: {
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "PENDING",
       },
-    }),
-    db.sale.count({
+    })),
+    runSummaryStep("counts.outForDelivery", () => db.sale.count({
       where: {
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "OUT_FOR_DELIVERY",
       },
-    }),
-    db.sale.count({
+    })),
+    runSummaryStep("counts.deliveredToday", () => db.sale.count({
       where: {
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "DELIVERED",
         updatedAt: { gte: start, lte: end },
       },
-    }),
-    db.product.count({
+    })),
+    runSummaryStep("counts.lowStockCount", () => db.product.count({
       where: {
         isActive: true,
         stock: { gt: 0, lte: db.product.fields.minStock },
       },
     }).catch(() => 0),
-    db.product.count({
+    ),
+    runSummaryStep("counts.outOfStockCount", () => db.product.count({
       where: {
         isActive: true,
         stock: { lte: 0 },
       },
-    }),
-    db.warrantyClaim.count({
+    })),
+    runSummaryStep("counts.openClaimCount", () => db.warrantyClaim.count({
       where: {
         status: { in: ["DRAFT", "SENT_TO_SUPPLIER"] },
       },
-    }),
-    db.adjustment.count({
+    })),
+    runSummaryStep("counts.adjustmentCount", () => db.adjustment.count({
       where: {
         status: "ACTIVE",
         adjustDate: { gte: start, lte: end },
       },
-    }),
-    db.expense.aggregate({
+    })),
+    runSummaryStep("money.expensesToday", () => db.expense.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
         expenseDate: { gte: start, lte: end },
       },
-    }),
-    db.cashBankTransfer.aggregate({
+    })),
+    runSummaryStep("money.transfersToday", () => db.cashBankTransfer.aggregate({
       _sum: { amount: true },
       where: {
         status: "ACTIVE",
         transferDate: { gte: start, lte: end },
       },
-    }),
-    Promise.all([
+    })),
+    runSummaryStep("counts.cancelledCounts", () => Promise.all([
       db.sale.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.purchase.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.receipt.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
@@ -1279,8 +1293,8 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
       db.cashBankAdjustment.count({
         where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
       }),
-    ]),
-    getLotExpiryCounts(start, end),
+    ])),
+    runSummaryStep("counts.lotCounts", () => getLotExpiryCounts(start, end)),
   ]);
 
   const money: MoneySection = {
