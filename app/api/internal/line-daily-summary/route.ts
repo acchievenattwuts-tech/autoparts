@@ -69,18 +69,30 @@ export async function GET(request: NextRequest) {
   let dispatchId: string | null = null;
 
   try {
+    const settings = await getLineDailySummarySettings();
+    const scheduleCheck = shouldSendLineDailySummaryNow(settings, new Date());
+
+    if (!scheduleCheck.ok && scheduleCheck.reason === "TOO_EARLY") {
+      return Response.json({
+        ok: true,
+        skipped: true,
+        reason: scheduleCheck.reason,
+        reportDayKey,
+        settings,
+      });
+    }
+
     const dispatch = await db.lineDailySummaryDispatch.create({
       data: {
         reportDayKey,
         dispatchKind: LineDailySummaryDispatchKind.SCHEDULED,
         status: LineDailySummaryDispatchStatus.PROCESSING,
-        targetMode: LineDailySummaryTargetMode.ENV_IDS,
+        targetMode: settings.targetMode ?? LineDailySummaryTargetMode.ENV_IDS,
         errorMessage: "CRON_INVOKED",
       },
     });
     dispatchId = dispatch.id;
 
-    const settings = await getLineDailySummarySettings();
     await db.lineDailySummaryDispatch.update({
       where: { id: dispatchId },
       data: {
@@ -89,7 +101,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const scheduleCheck = shouldSendLineDailySummaryNow(settings, new Date());
     if (!scheduleCheck.ok) {
       await db.lineDailySummaryDispatch.update({
         where: { id: dispatchId },
