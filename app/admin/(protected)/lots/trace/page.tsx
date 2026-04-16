@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 
-import { db } from "@/lib/db";
-import { buildProductSearchWhere } from "@/lib/product-search";
-import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Activity } from "lucide-react";
+import { db } from "@/lib/db";
+import { buildProductSearchWhere } from "@/lib/product-search";
+import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
+import { requirePermission } from "@/lib/require-auth";
 
 interface PageProps {
   searchParams: Promise<{ productId?: string; q?: string }>;
@@ -36,10 +37,13 @@ const sourceBadge: Record<MovementSource, string> = {
   CREDIT_NOTE: "bg-teal-100 text-teal-700",
 };
 
-const fmt = (n: number) =>
-  n === 0
+const fmt = (value: number) =>
+  value === 0
     ? "-"
-    : n.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+    : value.toLocaleString("th-TH", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4,
+      });
 
 export default async function LotMovementPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
@@ -51,8 +55,9 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
     id: true,
     code: true,
     name: true,
-    saleUnitName: true,
     stock: true,
+    reportUnitName: true,
+    units: { select: { name: true, scale: true, isBase: true } },
   } as const;
 
   const [selectedProductById, filteredProducts, filteredProductCount] = await Promise.all([
@@ -81,7 +86,13 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
       ? filteredProducts[0]
       : null;
 
-  // Fetch lot data for selected product
+  const reportUnit = selectedProduct
+    ? resolveReportUnit({
+        reportUnitName: selectedProduct.reportUnitName,
+        units: selectedProduct.units,
+      })
+    : null;
+
   type LotEntry = {
     pl: { productId: string; lotNo: string; expDate: Date | null; mfgDate: Date | null };
     movements: LotMovement[];
@@ -220,156 +231,155 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
         lotBalances.map((balance) => [balance.lotNo, Number(balance.qtyOnHand)]),
       );
 
-      lotData = productLots.map((pl): LotEntry => ({
-        pl,
-        movements: (movementMap.get(pl.lotNo) ?? []).sort((a, b) => a.date.getTime() - b.date.getTime()),
-        balance: balanceMap.get(pl.lotNo) ?? 0,
+      lotData = productLots.map((productLot): LotEntry => ({
+        pl: productLot,
+        movements: (movementMap.get(productLot.lotNo) ?? []).sort(
+          (a, b) => a.date.getTime() - b.date.getTime(),
+        ),
+        balance: balanceMap.get(productLot.lotNo) ?? 0,
       }));
     }
 
-    // Show only lots with any movement or positive balance
-    lotData = lotData.filter((d) => d.movements.length > 0 || d.balance > 0);
+    lotData = lotData.filter((item) => item.movements.length > 0 || item.balance > 0);
   }
 
   return (
     <div>
-      {/* Product selector — same style as Stock Card MAVG */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <form method="GET" className="flex gap-3 flex-wrap">
+      <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <form method="GET" className="flex flex-wrap gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
-          <div className="flex-1 min-w-48">
+          <div className="min-w-48 flex-1">
             <input
               type="text"
               name="q"
               defaultValue={q ?? ""}
               placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อค้นหา..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
           </button>
           {(q || productId) && (
             <Link
               href="/admin/lots/trace"
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"
+              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
             >
               ล้าง
             </Link>
           )}
         </form>
 
-        {/* Search results list */}
         {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
-          <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+          <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
               <p className="text-xs text-gray-500">
-                พบ{" "}
-                <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span>{" "}
-                — คลิกเพื่อเลือกสินค้า
+                พบ <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span>
+                {" "}คลิกเพื่อเลือกสินค้า
               </p>
             </div>
-            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
-              {filteredProducts.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/admin/lots/trace?productId=${p.id}&q=${encodeURIComponent(normalizedQuery)}`}
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
-                  >
-                    <div>
-                      <span className="font-mono text-xs text-gray-500 mr-2">[{p.code}]</span>
-                      <span className="text-sm text-gray-800">{p.name}</span>
-                    </div>
-                    <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
-                      คงเหลือ {fmt(Number(p.stock))} {p.saleUnitName}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto">
+              {filteredProducts.map((product) => {
+                const unit = resolveReportUnit({
+                  reportUnitName: product.reportUnitName,
+                  units: product.units,
+                });
+                return (
+                  <li key={product.id}>
+                    <Link
+                      href={`/admin/lots/trace?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}`}
+                      className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
+                    >
+                      <div>
+                        <span className="mr-2 font-mono text-xs text-gray-500">[{product.code}]</span>
+                        <span className="text-sm text-gray-800">{product.name}</span>
+                      </div>
+                      <span className="ml-4 whitespace-nowrap text-xs text-gray-400">
+                        คงเหลือ {fmt(toReportUnitQty(Number(product.stock), unit.scale))} {unit.unitName}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
 
         {normalizedQuery && !selectedProduct && filteredProducts.length === 0 && (
-          <p className="mt-3 text-sm text-gray-400">
-            ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;
-          </p>
+          <p className="mt-3 text-sm text-gray-400">ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;</p>
         )}
       </div>
 
-      {selectedProduct && (
+      {selectedProduct && reportUnit && (
         <>
-          {/* Product info */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-            <p className="font-semibold text-gray-900 text-lg">
+          <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <p className="text-lg font-semibold text-gray-900">
               [{selectedProduct.code}] {selectedProduct.name}
             </p>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="mt-0.5 text-sm text-gray-500">
               พบ <span className="font-medium text-gray-800">{lotData.length} Lot</span>
-              {" | "}สต็อกรวม:{" "}
+              {" | "}Stock รวม:{" "}
               <span className="font-medium text-gray-800">
-                {fmt(Number(selectedProduct.stock))} {selectedProduct.saleUnitName}
+                {fmt(toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale))}{" "}
+                {reportUnit.unitName}
               </span>
             </p>
           </div>
 
           {lotData.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-              <p className="text-gray-400 text-sm">ไม่พบข้อมูล Lot สำหรับสินค้านี้</p>
+            <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+              <p className="text-sm text-gray-400">ไม่พบข้อมูล Lot สำหรับสินค้านี้</p>
             </div>
           ) : (
             <div className="space-y-4">
               {lotData.map(({ pl, movements, balance }) => {
-                // Compute running balance — cancelled rows don't affect balance
                 let running = 0;
-                const rows = movements.map((m) => {
-                  if (!m.isCancelled) {
-                    running += m.direction === "in" ? m.qty : -m.qty;
+                const rows = movements.map((movement) => {
+                  if (!movement.isCancelled) {
+                    running += movement.direction === "in" ? movement.qty : -movement.qty;
                   }
-                  return { ...m, runningBalance: m.isCancelled ? null : running };
+                  return {
+                    ...movement,
+                    runningBalance: movement.isCancelled ? null : running,
+                  };
                 });
 
                 const totalIn = movements
-                  .filter((m) => !m.isCancelled && m.direction === "in")
-                  .reduce((s, m) => s + m.qty, 0);
+                  .filter((movement) => !movement.isCancelled && movement.direction === "in")
+                  .reduce((sum, movement) => sum + movement.qty, 0);
                 const totalOut = movements
-                  .filter((m) => !m.isCancelled && m.direction === "out")
-                  .reduce((s, m) => s + m.qty, 0);
+                  .filter((movement) => !movement.isCancelled && movement.direction === "out")
+                  .reduce((sum, movement) => sum + movement.qty, 0);
 
                 return (
                   <div
                     key={`${pl.productId}-${pl.lotNo}`}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+                    className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
                   >
-                    {/* Lot header */}
-                    <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 bg-gray-50 px-5 py-3">
                       <div>
                         <p className="font-semibold text-gray-900">
-                          Lot:{" "}
-                          <span className="font-mono text-[#1e3a5f]">{pl.lotNo}</span>
+                          Lot: <span className="font-mono text-[#1e3a5f]">{pl.lotNo}</span>
                         </p>
-                        <div className="flex flex-wrap gap-4 mt-0.5 text-xs text-gray-500">
+                        <div className="mt-0.5 flex flex-wrap gap-4 text-xs text-gray-500">
+                          <span>หน่วยนับ: {reportUnit.unitName}</span>
                           {pl.mfgDate && (
-                            <span>
-                              MFG: {pl.mfgDate.toLocaleDateString("th-TH-u-ca-gregory")}
-                            </span>
+                            <span>MFG: {pl.mfgDate.toLocaleDateString("th-TH-u-ca-gregory")}</span>
                           )}
                           {pl.expDate && (
-                            <span>
-                              EXP: {pl.expDate.toLocaleDateString("th-TH-u-ca-gregory")}
-                            </span>
+                            <span>EXP: {pl.expDate.toLocaleDateString("th-TH-u-ca-gregory")}</span>
                           )}
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-gray-500">คงเหลือปัจจุบัน</p>
-                        <p className="font-bold text-gray-900 text-lg">
-                          {fmt(balance)}{" "}
+                        <p className="text-lg font-bold text-gray-900">
+                          {fmt(toReportUnitQty(balance, reportUnit.scale))}{" "}
                           <span className="text-sm font-normal text-gray-500">
-                            {selectedProduct.saleUnitName}
+                            {reportUnit.unitName}
                           </span>
                         </p>
                       </div>
@@ -384,101 +394,76 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50">
                             <tr>
-                              <th className="py-2.5 px-3 text-left font-medium text-gray-600 w-8">
-                                #
-                              </th>
-                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
-                                วันที่
-                              </th>
-                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
-                                เลขที่เอกสาร
-                              </th>
-                              <th className="py-2.5 px-3 text-left font-medium text-gray-600">
-                                ประเภท
-                              </th>
-                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
-                                จำนวนเข้า
-                                <span className="block text-xs font-normal text-gray-400">
-                                  ({selectedProduct.saleUnitName})
-                                </span>
-                              </th>
-                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
-                                จำนวนออก
-                                <span className="block text-xs font-normal text-gray-400">
-                                  ({selectedProduct.saleUnitName})
-                                </span>
-                              </th>
-                              <th className="py-2.5 px-3 text-right font-medium text-gray-600">
-                                คงเหลือ
-                                <span className="block text-xs font-normal text-gray-400">
-                                  ({selectedProduct.saleUnitName})
-                                </span>
-                              </th>
-                              <th className="py-2.5 px-3 text-center font-medium text-gray-600">
-                                สถานะ
-                              </th>
+                              <th className="w-8 px-3 py-2.5 text-left font-medium text-gray-600">#</th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-600">วันที่</th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-600">เลขที่เอกสาร</th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-600">ประเภท</th>
+                              <th className="px-3 py-2.5 text-left font-medium text-gray-600">หน่วยนับ</th>
+                              <th className="px-3 py-2.5 text-right font-medium text-gray-600">จำนวนเข้า</th>
+                              <th className="px-3 py-2.5 text-right font-medium text-gray-600">จำนวนออก</th>
+                              <th className="px-3 py-2.5 text-right font-medium text-gray-600">คงเหลือ</th>
+                              <th className="px-3 py-2.5 text-center font-medium text-gray-600">สถานะ</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {rows.map((m, idx) => (
+                            {rows.map((movement, index) => (
                               <tr
-                                key={idx}
+                                key={index}
                                 className={`border-t border-gray-50 transition-colors ${
-                                  m.isCancelled
-                                    ? "opacity-50"
-                                    : "hover:bg-gray-50"
+                                  movement.isCancelled ? "opacity-50" : "hover:bg-gray-50"
                                 }`}
                               >
-                                <td className="py-2.5 px-3 text-gray-400 text-xs">{idx + 1}</td>
-                                <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                  {m.date.toLocaleDateString("th-TH-u-ca-gregory", {
+                                <td className="px-3 py-2.5 text-xs text-gray-400">{index + 1}</td>
+                                <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                                  {movement.date.toLocaleDateString("th-TH-u-ca-gregory", {
                                     day: "2-digit",
                                     month: "2-digit",
                                     year: "numeric",
                                   })}
                                 </td>
-                                <td className="py-2.5 px-3">
+                                <td className="px-3 py-2.5">
                                   <Link
-                                    href={m.docLink}
+                                    href={movement.docLink}
                                     className={`font-mono text-xs hover:underline ${
-                                      m.isCancelled
+                                      movement.isCancelled
                                         ? "text-gray-400 line-through"
                                         : "text-[#1e3a5f]"
                                     }`}
                                   >
-                                    {m.docNo}
+                                    {movement.docNo}
                                   </Link>
                                 </td>
-                                <td className="py-2.5 px-3">
+                                <td className="px-3 py-2.5">
                                   <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sourceBadge[m.source]}`}
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${sourceBadge[movement.source]}`}
                                   >
-                                    {sourceLabel[m.source]}
+                                    {sourceLabel[movement.source]}
                                   </span>
                                 </td>
-                                <td className="py-2.5 px-3 text-right text-green-700 font-medium">
-                                  {m.direction === "in" ? (
-                                    fmt(m.qty)
+                                <td className="px-3 py-2.5 text-gray-500">{reportUnit.unitName}</td>
+                                <td className="px-3 py-2.5 text-right font-medium text-green-700">
+                                  {movement.direction === "in" ? (
+                                    fmt(toReportUnitQty(movement.qty, reportUnit.scale))
                                   ) : (
                                     <span className="text-gray-300">-</span>
                                   )}
                                 </td>
-                                <td className="py-2.5 px-3 text-right text-red-600 font-medium">
-                                  {m.direction === "out" ? (
-                                    fmt(m.qty)
+                                <td className="px-3 py-2.5 text-right font-medium text-red-600">
+                                  {movement.direction === "out" ? (
+                                    fmt(toReportUnitQty(movement.qty, reportUnit.scale))
                                   ) : (
                                     <span className="text-gray-300">-</span>
                                   )}
                                 </td>
-                                <td className="py-2.5 px-3 text-right font-semibold text-gray-900">
-                                  {m.runningBalance !== null ? (
-                                    fmt(m.runningBalance)
+                                <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                                  {movement.runningBalance !== null ? (
+                                    fmt(toReportUnitQty(movement.runningBalance, reportUnit.scale))
                                   ) : (
                                     <span className="text-gray-300">-</span>
                                   )}
                                 </td>
-                                <td className="py-2.5 px-3 text-center">
-                                  {m.isCancelled ? (
+                                <td className="px-3 py-2.5 text-center">
+                                  {movement.isCancelled ? (
                                     <span className="text-xs text-red-500">ยกเลิก</span>
                                   ) : (
                                     <span className="text-xs text-green-600">ปกติ</span>
@@ -487,25 +472,19 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                          <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                             <tr>
-                              <td
-                                colSpan={4}
-                                className="py-2.5 px-3 text-right text-xs font-semibold text-gray-600"
-                              >
+                              <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600">
                                 รวมทั้งหมด
                               </td>
-                              <td className="py-2.5 px-3 text-right font-bold text-green-700">
-                                {fmt(totalIn)}
+                              <td className="px-3 py-2.5 text-right font-bold text-green-700">
+                                {fmt(toReportUnitQty(totalIn, reportUnit.scale))}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-bold text-red-600">
-                                {fmt(totalOut)}
+                              <td className="px-3 py-2.5 text-right font-bold text-red-600">
+                                {fmt(toReportUnitQty(totalOut, reportUnit.scale))}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-bold text-gray-900">
-                                {fmt(balance)}
-                                <span className="ml-1 text-xs font-normal text-gray-500">
-                                  {selectedProduct.saleUnitName}
-                                </span>
+                              <td className="px-3 py-2.5 text-right font-bold text-gray-900">
+                                {fmt(toReportUnitQty(balance, reportUnit.scale))}
                               </td>
                               <td />
                             </tr>
@@ -522,9 +501,9 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
       )}
 
       {!selectedProduct && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
-          <Activity size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">
+        <div className="rounded-xl border border-gray-100 bg-white p-16 text-center shadow-sm">
+          <Activity size={40} className="mx-auto mb-3 text-gray-200" />
+          <p className="text-sm text-gray-400">
             ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดูความเคลื่อนไหว Lot
           </p>
         </div>

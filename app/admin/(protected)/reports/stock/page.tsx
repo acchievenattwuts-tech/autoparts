@@ -29,6 +29,7 @@ function formatQty(value: number): string {
 
 export default async function StockReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
+
   const params = await searchParams;
   const filters = parseARAPStockFilters(params);
 
@@ -40,7 +41,8 @@ export default async function StockReportPage({ searchParams }: PageProps) {
     filters.hasFilter ? queryStockRows(filters) : Promise.resolve([]),
   ]);
 
-  const totalValue = products.reduce((sum, p) => sum + p.stockValue, 0);
+  const totalValue = products.reduce((sum, product) => sum + product.stockValue, 0);
+  const zeroStockCount = products.filter((product) => product.stock === 0).length;
   const exportQuery = new URLSearchParams({
     ...(params.categoryId ? { categoryId: params.categoryId } : {}),
     ...(params.search ? { search: params.search } : {}),
@@ -51,13 +53,16 @@ export default async function StockReportPage({ searchParams }: PageProps) {
     <div className="space-y-4">
       <div>
         <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock คงเหลือ</h1>
-        <p className="text-sm text-gray-500">ยอดสินค้าคงเหลือ ณ ปัจจุบัน พร้อมต้นทุนเฉลี่ยและมูลค่าสต็อก</p>
+        <p className="text-sm text-gray-500">
+          ยอดสินค้าคงเหลือปัจจุบันตามหน่วยนับรายงาน พร้อมต้นทุนเฉลี่ยและมูลค่าสต็อก
+        </p>
       </div>
 
       <form
         method="GET"
         className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
       >
+        <input type="hidden" name="submitted" value="1" />
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           ค้นหาสินค้า
           <input
@@ -65,7 +70,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             name="search"
             defaultValue={params.search ?? ""}
             placeholder="ชื่อหรือรหัสสินค้า"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="h-9 w-[20rem] rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring md:w-[28rem]"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
@@ -76,9 +81,9 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">ทุกหมวดหมู่</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
               </option>
             ))}
           </select>
@@ -123,11 +128,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
         </div>
       </form>
 
-      {!filters.hasFilter ? (
-        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-          <p className="text-gray-400">เลือกเงื่อนไขแล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
-        </div>
-      ) : (
+      {filters.hasFilter ? (
         <>
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -136,12 +137,14 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             </div>
             <div className="rounded-xl border border-gray-100 bg-[#1e3a5f]/5 p-4 shadow-sm">
               <p className="text-xs text-gray-600">มูลค่าสต็อกรวม</p>
-              <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">฿{formatCurrency(totalValue)}</p>
+              <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
+                ฿{formatCurrency(totalValue)}
+              </p>
             </div>
             <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
               <p className="text-xs text-amber-700">สินค้าสต็อก 0</p>
               <p className="font-kanit text-2xl font-bold text-amber-700">
-                {products.filter((p) => p.stock === 0).length}
+                {zeroStockCount}
               </p>
             </div>
           </div>
@@ -154,7 +157,8 @@ export default async function StockReportPage({ searchParams }: PageProps) {
                     <th className="px-3 py-2.5 text-left font-medium">รหัส</th>
                     <th className="px-3 py-2.5 text-left font-medium">ชื่อสินค้า</th>
                     <th className="px-3 py-2.5 text-left font-medium">หมวดหมู่</th>
-                    <th className="px-3 py-2.5 text-right font-medium">สต็อก (base)</th>
+                    <th className="px-3 py-2.5 text-left font-medium">หน่วยนับ</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Stock คงเหลือ</th>
                     <th className="px-3 py-2.5 text-right font-medium">ต้นทุนเฉลี่ย</th>
                     <th className="px-3 py-2.5 text-right font-medium">มูลค่า</th>
                   </tr>
@@ -162,37 +166,46 @@ export default async function StockReportPage({ searchParams }: PageProps) {
                 <tbody className="divide-y divide-gray-100">
                   {products.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                      <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
                         ไม่พบสินค้าตามเงื่อนไขที่เลือก
                       </td>
                     </tr>
                   ) : (
-                    products.map((p) => {
-                      const isLow = p.minStock != null && p.stock <= p.minStock;
+                    products.map((product) => {
+                      const isLow =
+                        product.minStock != null && product.stock <= product.minStock;
                       return (
-                        <tr key={p.id} className={`hover:bg-gray-50 ${isLow ? "bg-rose-50/40" : ""}`}>
+                        <tr
+                          key={product.id}
+                          className={`hover:bg-gray-50 ${isLow ? "bg-rose-50/40" : ""}`}
+                        >
                           <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">
-                            <Link href={`/admin/products/${p.id}`} className="hover:underline">
-                              {p.code}
+                            <Link href={`/admin/products/${product.id}`} className="hover:underline">
+                              {product.code}
                             </Link>
                           </td>
                           <td className="px-3 py-2 text-gray-800">
-                            {p.name}
+                            {product.name}
                             {isLow && (
                               <span className="ml-2 rounded-full bg-rose-100 px-1.5 py-0.5 text-xs text-rose-700">
                                 ใกล้ขั้นต่ำ
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-gray-500">{p.categoryName}</td>
-                          <td className={`px-3 py-2 text-right font-medium ${p.stock === 0 ? "text-gray-400" : "text-gray-900"}`}>
-                            {formatQty(p.stock)}
+                          <td className="px-3 py-2 text-gray-500">{product.categoryName}</td>
+                          <td className="px-3 py-2 text-gray-500">{product.unitName}</td>
+                          <td
+                            className={`px-3 py-2 text-right font-medium ${
+                              product.stock === 0 ? "text-gray-400" : "text-gray-900"
+                            }`}
+                          >
+                            {formatQty(product.stock)}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-600">
-                            {formatCurrency(p.avgCost)}
+                            {formatCurrency(product.avgCost)}
                           </td>
                           <td className="px-3 py-2 text-right font-medium text-[#1e3a5f]">
-                            {formatCurrency(p.stockValue)}
+                            {formatCurrency(product.stockValue)}
                           </td>
                         </tr>
                       );
@@ -203,6 +216,13 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             </div>
           </div>
         </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-12 text-center shadow-sm">
+          <p className="font-medium text-gray-700">ยังไม่ได้แสดงข้อมูล</p>
+          <p className="mt-1 text-sm text-gray-500">
+            ระบุคำค้นหา หมวดหมู่ หรือเลือก รวมสินค้าสต็อก 0 แล้วกดแสดงรายการ
+          </p>
+        </div>
       )}
     </div>
   );

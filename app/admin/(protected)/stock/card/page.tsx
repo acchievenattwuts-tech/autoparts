@@ -1,57 +1,71 @@
 export const dynamic = "force-dynamic";
 
-import { db } from "@/lib/db";
-import { buildProductSearchWhere } from "@/lib/product-search";
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
-import RecalculateButton from "./RecalculateButton";
+import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { buildProductSearchWhere } from "@/lib/product-search";
+import { resolveReportUnit, toReportUnitPrice, toReportUnitQty } from "@/lib/report-unit";
+import {
+  getSessionPermissionContext,
+  requirePermission,
+} from "@/lib/require-auth";
+import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
-  searchParams: Promise<{ productId?: string; unitName?: string; q?: string }>;
+  searchParams: Promise<{ productId?: string; q?: string }>;
 }
 
 const sourceLabel: Record<string, string> = {
-  BF:               "ยอดยกมา",
-  PURCHASE:         "ซื้อเข้า",
-  SALE:             "ขายออก",
-  RETURN_IN:        "รับคืน",
-  RETURN_OUT:       "คืนซัพพลายเออร์",
-  ADJUST_IN:        "ปรับเพิ่ม",
-  ADJUST_OUT:       "ปรับลด",
-  CLAIM_RETURN_IN:  "รับคืนเคลม",
-  CLAIM_REPLACE_OUT:"ส่งทดแทนเคลม",
-  CLAIM_SEND_OUT:   "ส่งเคลมซัพพลายเออร์",
-  CLAIM_RECV_IN:    "รับคืนจากซัพพลายเออร์",
+  BF: "ยอดยกมา",
+  PURCHASE: "ซื้อเข้า",
+  SALE: "ขายออก",
+  RETURN_IN: "รับคืน",
+  RETURN_OUT: "คืนซัพพลายเออร์",
+  ADJUST_IN: "ปรับเพิ่ม",
+  ADJUST_OUT: "ปรับลด",
+  CLAIM_RETURN_IN: "รับคืนเคลม",
+  CLAIM_REPLACE_OUT: "ส่งทดแทนเคลม",
+  CLAIM_SEND_OUT: "ส่งเคลมซัพพลายเออร์",
+  CLAIM_RECV_IN: "รับคืนจากซัพพลายเออร์",
 };
 
 const sourceBadge: Record<string, string> = {
-  BF:               "bg-blue-100 text-blue-700",
-  PURCHASE:         "bg-green-100 text-green-700",
-  SALE:             "bg-orange-100 text-orange-700",
-  RETURN_IN:        "bg-teal-100 text-teal-700",
-  RETURN_OUT:       "bg-yellow-100 text-yellow-700",
-  ADJUST_IN:        "bg-purple-100 text-purple-700",
-  ADJUST_OUT:       "bg-red-100 text-red-700",
-  CLAIM_RETURN_IN:  "bg-rose-100 text-rose-700",
-  CLAIM_REPLACE_OUT:"bg-rose-100 text-rose-700",
-  CLAIM_SEND_OUT:   "bg-pink-100 text-pink-700",
-  CLAIM_RECV_IN:    "bg-pink-100 text-pink-700",
+  BF: "bg-blue-100 text-blue-700",
+  PURCHASE: "bg-green-100 text-green-700",
+  SALE: "bg-orange-100 text-orange-700",
+  RETURN_IN: "bg-teal-100 text-teal-700",
+  RETURN_OUT: "bg-yellow-100 text-yellow-700",
+  ADJUST_IN: "bg-purple-100 text-purple-700",
+  ADJUST_OUT: "bg-red-100 text-red-700",
+  CLAIM_RETURN_IN: "bg-rose-100 text-rose-700",
+  CLAIM_REPLACE_OUT: "bg-rose-100 text-rose-700",
+  CLAIM_SEND_OUT: "bg-pink-100 text-pink-700",
+  CLAIM_RECV_IN: "bg-pink-100 text-pink-700",
 };
 
-const fmt = (n: number, digits = 4) =>
-  n === 0 ? "-" : n.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: digits });
+const fmtQty = (value: number) =>
+  value === 0
+    ? "-"
+    : value.toLocaleString("th-TH", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4,
+      });
 
-const fmtPrice = (n: number) =>
-  n === 0 ? "-" : n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const fmtPrice = (value: number) =>
+  value === 0
+    ? "-"
+    : value.toLocaleString("th-TH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      });
 
-const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
+export default async function StockCardPage({ searchParams }: StockCardPageProps) {
   await requirePermission("stock.card.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
 
-  const { productId, unitName, q } = await searchParams;
+  const { productId, q } = await searchParams;
   const normalizedQuery = q?.trim() ?? "";
   const productSearchWhere = buildProductSearchWhere(normalizedQuery);
   const productSelect = {
@@ -61,7 +75,10 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
     stock: true,
     avgCost: true,
     reportUnitName: true,
-    units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+    units: {
+      select: { name: true, scale: true, isBase: true },
+      orderBy: [{ isBase: "desc" }, { scale: "asc" }],
+    },
   } as const;
 
   const [selectedProductById, filteredProducts, filteredProductCount] = await Promise.all([
@@ -84,22 +101,19 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       : Promise.resolve(0),
   ]);
 
-  // Determine selected product: from productId param, or first match if only 1 result
   const selectedProduct = productId
     ? selectedProductById
     : normalizedQuery && filteredProductCount === 1
       ? filteredProducts[0]
       : null;
 
-  // Determine display unit scale
-  const selectedUnit = selectedProduct
-    ? (unitName
-        ? selectedProduct.units.find((u) => u.name === unitName)
-        : selectedProduct.units.find((u) => u.isBase)) ?? selectedProduct.units[0]
+  const reportUnit = selectedProduct
+    ? resolveReportUnit({
+        reportUnitName: selectedProduct.reportUnitName,
+        units: selectedProduct.units,
+      })
     : null;
-  const scale = selectedUnit ? Number(selectedUnit.scale) : 1;
 
-  // Fetch stock cards for selected product
   const cards = selectedProduct
     ? await db.stockCard.findMany({
         where: { productId: selectedProduct.id },
@@ -119,9 +133,16 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       })
     : [];
 
+  const reportStock = selectedProduct && reportUnit
+    ? toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale)
+    : 0;
+  const reportAvgCost = selectedProduct && reportUnit
+    ? toReportUnitPrice(Number(selectedProduct.avgCost), reportUnit.scale)
+    : 0;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ClipboardList size={22} className="text-[#1e3a5f]" />
           <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
@@ -129,61 +150,65 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
         {canManage ? <RecalculateButton /> : null}
       </div>
 
-      {/* Product selector */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <form method="GET" className="flex gap-3 flex-wrap">
+      <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+        <form method="GET" className="flex flex-wrap gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
-          {unitName && <input type="hidden" name="unitName" value={unitName} />}
-          <div className="flex-1 min-w-48">
+          <div className="min-w-48 flex-1">
             <input
               type="text"
               name="q"
               defaultValue={q ?? ""}
               placeholder="พิมพ์รหัสหรือชื่อสินค้าเพื่อค้นหา..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
           </button>
           {(q || productId) && (
             <Link
               href="/admin/stock/card"
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-medium rounded-lg transition-colors"
+              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
             >
               ล้าง
             </Link>
           )}
         </form>
 
-        {/* Search results list */}
         {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
-          <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+          <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
               <p className="text-xs text-gray-500">
-                พบ <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span> — คลิกเพื่อเลือกสินค้า
+                พบ <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span>
+                {" "}คลิกเพื่อเลือกสินค้า
               </p>
             </div>
-            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
-              {filteredProducts.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    href={`/admin/stock/card?productId=${p.id}&q=${encodeURIComponent(normalizedQuery)}`}
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-blue-50 transition-colors"
-                  >
-                    <div>
-                      <span className="font-mono text-xs text-gray-500 mr-2">[{p.code}]</span>
-                      <span className="text-sm text-gray-800">{p.name}</span>
-                    </div>
-                    <span className="text-xs text-gray-400 ml-4 whitespace-nowrap">
-                      คงเหลือ {fmt(Number(p.stock))} {p.reportUnitName}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+            <ul className="max-h-64 divide-y divide-gray-100 overflow-y-auto">
+              {filteredProducts.map((product) => {
+                const unit = resolveReportUnit({
+                  reportUnitName: product.reportUnitName,
+                  units: product.units,
+                });
+                return (
+                  <li key={product.id}>
+                    <Link
+                      href={`/admin/stock/card?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}`}
+                      className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
+                    >
+                      <div>
+                        <span className="mr-2 font-mono text-xs text-gray-500">[{product.code}]</span>
+                        <span className="text-sm text-gray-800">{product.name}</span>
+                      </div>
+                      <span className="ml-4 whitespace-nowrap text-xs text-gray-400">
+                        คงเหลือ {fmtQty(toReportUnitQty(Number(product.stock), unit.scale))} {unit.unitName}
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -193,63 +218,40 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
         )}
       </div>
 
-      {selectedProduct && (
+      {selectedProduct && reportUnit && (
         <>
-          {/* Product info + unit selector */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="font-kanit font-semibold text-gray-900 text-lg">
+                <p className="font-kanit text-lg font-semibold text-gray-900">
                   [{selectedProduct.code}] {selectedProduct.name}
                 </p>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  สต็อกปัจจุบัน:{" "}
+                <p className="mt-0.5 text-sm text-gray-500">
+                  Stock คงเหลือ:{" "}
                   <span className="font-medium text-gray-800">
-                    {fmt(Number(selectedProduct.stock) / scale)} {selectedUnit?.name ?? selectedProduct.reportUnitName}
+                    {fmtQty(reportStock)} {reportUnit.unitName}
                   </span>
-                  {" | "}ต้นทุนเฉลี่ย/หน่วยหลัก:{" "}
+                  {" | "}ต้นทุนเฉลี่ย/หน่วยรายงาน:{" "}
                   <span className="font-medium text-gray-800">
-                    {fmtPrice(Number(selectedProduct.avgCost))} บาท
+                    {fmtPrice(reportAvgCost)} บาท
                   </span>
                 </p>
               </div>
-              {/* Unit tabs */}
-              {selectedProduct.units.length > 1 && (
-                <div className="flex gap-2">
-                  <span className="text-xs text-gray-500 self-center">แสดงหน่วย:</span>
-                  {selectedProduct.units.map((u) => (
-                    <Link
-                      key={u.name}
-                      href={`/admin/stock/card?productId=${selectedProduct.id}&unitName=${u.name}${normalizedQuery ? `&q=${encodeURIComponent(normalizedQuery)}` : ""}`}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        (selectedUnit?.name ?? "") === u.name
-                          ? "bg-[#1e3a5f] text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {u.name}
-                    </Link>
-                  ))}
-                </div>
-              )}
+              <div className="rounded-lg bg-[#1e3a5f]/5 px-3 py-2 text-xs text-[#1e3a5f]">
+                หน่วยนับรายงาน: <span className="font-semibold">{reportUnit.unitName}</span>
+              </div>
             </div>
           </div>
 
-          {/* Stock card table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
               <p className="text-sm text-gray-500">
                 ทั้งหมด <span className="font-medium text-gray-700">{cards.length} รายการ</span>
-                {selectedUnit && scale !== 1 && (
-                  <span className="ml-2 text-xs text-blue-600">
-                    (แสดงในหน่วย: {selectedUnit.name}, scale = {scale})
-                  </span>
-                )}
               </p>
             </div>
 
             {cards.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 text-sm">
+              <div className="py-12 text-center text-sm text-gray-400">
                 ยังไม่มีการเคลื่อนไหวสต็อกของสินค้านี้
               </div>
             ) : (
@@ -257,105 +259,107 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="text-left py-3 px-3 font-medium text-gray-600 w-8">#</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-600">วันที่</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-600">เลขที่</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-600">แหล่งที่มา</th>
-                      <th className="text-left py-3 px-3 font-medium text-gray-600">รายละเอียด</th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        จำนวนเข้า
-                        <span className="block text-xs font-normal text-gray-400">({selectedUnit?.name ?? "หน่วยหลัก"})</span>
-                      </th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        จำนวนออก
-                        <span className="block text-xs font-normal text-gray-400">({selectedUnit?.name ?? "หน่วยหลัก"})</span>
-                      </th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        คงเหลือ
-                        <span className="block text-xs font-normal text-gray-400">({selectedUnit?.name ?? "หน่วยหลัก"})</span>
-                      </th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        ราคาทุน/หน่วย
-                        <span className="block text-xs font-normal text-gray-400">(หน่วยหลัก)</span>
-                      </th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        avgCost
-                        <span className="block text-xs font-normal text-gray-400">(หน่วยหลัก)</span>
-                      </th>
-                      <th className="text-right py-3 px-3 font-medium text-gray-600">
-                        มูลค่าคงเหลือ
-                        <span className="block text-xs font-normal text-gray-400">(คงเหลือ × avgCost)</span>
-                      </th>
+                      <th className="w-8 px-3 py-3 text-left font-medium text-gray-600">#</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600">วันที่</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600">เลขที่</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600">แหล่งที่มา</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600">รายละเอียด</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600">หน่วยนับ</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">จำนวนเข้า</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">จำนวนออก</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">คงเหลือ</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">ราคาเข้า/หน่วย</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">avgCost/หน่วย</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600">มูลค่าคงเหลือ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cards.map((card, idx) => {
-                      const qIn   = Number(card.qtyIn)  / scale;
-                      const qOut  = Number(card.qtyOut) / scale;
-                      const qBal  = Number(card.qtyBalance) / scale;
-                      const pIn   = Number(card.priceIn);
-                      const pBal  = Number(card.priceBalance);
-                      // มูลค่าคงเหลือ = qtyBalance (base unit) × avgCost (base unit)
-                      const totalValue = Number(card.qtyBalance) * pBal;
+                    {cards.map((card, index) => {
+                      const qtyIn = toReportUnitQty(Number(card.qtyIn), reportUnit.scale);
+                      const qtyOut = toReportUnitQty(Number(card.qtyOut), reportUnit.scale);
+                      const qtyBalance = toReportUnitQty(
+                        Number(card.qtyBalance),
+                        reportUnit.scale,
+                      );
+                      const priceIn = toReportUnitPrice(Number(card.priceIn), reportUnit.scale);
+                      const priceBalance = toReportUnitPrice(
+                        Number(card.priceBalance),
+                        reportUnit.scale,
+                      );
+                      const totalValue = qtyBalance * priceBalance;
 
                       return (
-                        <tr key={card.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                          <td className="py-2.5 px-3 text-gray-400 text-xs">{idx + 1}</td>
-                          <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                            {new Date(card.docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        <tr key={card.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50">
+                          <td className="px-3 py-2.5 text-xs text-gray-400">{index + 1}</td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                            {new Date(card.docDate).toLocaleDateString("th-TH-u-ca-gregory", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-xs text-[#1e3a5f]">{card.docNo}</td>
-                          <td className="py-2.5 px-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sourceBadge[card.source] ?? "bg-gray-100 text-gray-600"}`}>
+                          <td className="px-3 py-2.5 font-mono text-xs text-[#1e3a5f]">
+                            {card.docNo}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                sourceBadge[card.source] ?? "bg-gray-100 text-gray-600"
+                              }`}
+                            >
                               {sourceLabel[card.source] ?? card.source}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3 text-gray-500 text-xs max-w-40 truncate">
-                            {card.detail ?? "-"}
+                          <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500">
+                            <span className="line-clamp-2">{card.detail ?? "-"}</span>
                           </td>
-                          <td className="py-2.5 px-3 text-right text-green-700 font-medium">
-                            {qIn > 0 ? fmt(qIn) : <span className="text-gray-300">-</span>}
+                          <td className="px-3 py-2.5 text-gray-500">{reportUnit.unitName}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-green-700">
+                            {qtyIn > 0 ? fmtQty(qtyIn) : <span className="text-gray-300">-</span>}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-red-600 font-medium">
-                            {qOut > 0 ? fmt(qOut) : <span className="text-gray-300">-</span>}
+                          <td className="px-3 py-2.5 text-right font-medium text-red-600">
+                            {qtyOut > 0 ? fmtQty(qtyOut) : <span className="text-gray-300">-</span>}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-semibold text-gray-900">
-                            {fmt(qBal)}
+                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                            {fmtQty(qtyBalance)}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-gray-600">
-                            {pIn > 0 ? fmtPrice(pIn) : <span className="text-gray-300">-</span>}
+                          <td className="px-3 py-2.5 text-right text-gray-600">
+                            {priceIn > 0 ? fmtPrice(priceIn) : <span className="text-gray-300">-</span>}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-[#1e3a5f] font-medium">
-                            {fmtPrice(pBal)}
+                          <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f]">
+                            {fmtPrice(priceBalance)}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-gray-700 font-medium">
+                          <td className="px-3 py-2.5 text-right font-medium text-gray-700">
                             {totalValue > 0
-                              ? totalValue.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                              : <span className="text-gray-300">-</span>}
+                              ? totalValue.toLocaleString("th-TH", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })
+                              : "-"}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
-                  {/* Summary row */}
-                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                  <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                     <tr>
-                      <td colSpan={7} className="py-3 px-3 text-right text-sm font-semibold text-gray-700">
-                        สต็อกคงเหลือล่าสุด
+                      <td colSpan={8} className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
+                        Stock คงเหลือล่าสุด
                       </td>
-                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                        {fmt(Number(selectedProduct.stock) / scale)}
-                        <span className="ml-1 text-xs font-normal text-gray-500">{selectedUnit?.name ?? selectedProduct.reportUnitName}</span>
+                      <td className="px-3 py-3 text-right font-bold text-gray-900">
+                        {fmtQty(reportStock)}
                       </td>
-                      <td className="py-3 px-3 text-right text-sm font-semibold text-gray-700">avgCost</td>
-                      <td className="py-3 px-3 text-right font-bold text-[#1e3a5f]">
-                        {fmtPrice(Number(selectedProduct.avgCost))}
-                        <span className="ml-1 text-xs font-normal text-gray-500">บาท/หน่วยหลัก</span>
+                      <td className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
+                        ต้นทุนเฉลี่ย
                       </td>
-                      <td className="py-3 px-3 text-right font-bold text-gray-900">
-                        {(Number(selectedProduct.stock) * Number(selectedProduct.avgCost))
-                          .toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="ml-1 text-xs font-normal text-gray-500">บาท</span>
+                      <td className="px-3 py-3 text-right font-bold text-[#1e3a5f]">
+                        {fmtPrice(reportAvgCost)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-bold text-gray-900">
+                        {(reportStock * reportAvgCost).toLocaleString("th-TH", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </td>
                     </tr>
                   </tfoot>
@@ -367,13 +371,13 @@ const StockCardPage = async ({ searchParams }: StockCardPageProps) => {
       )}
 
       {!selectedProduct && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-16 text-center">
-          <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดู Stock Card MAVG</p>
+        <div className="rounded-xl border border-gray-100 bg-white p-16 text-center shadow-sm">
+          <ClipboardList size={40} className="mx-auto mb-3 text-gray-200" />
+          <p className="text-sm text-gray-400">
+            ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดู Stock Card MAVG
+          </p>
         </div>
       )}
     </div>
   );
-};
-
-export default StockCardPage;
+}

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
+import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 
 interface PageProps {
@@ -8,30 +9,30 @@ interface PageProps {
 }
 
 const DAYS_OPTIONS = [
-  { value: "7",   label: "7 วัน" },
-  { value: "30",  label: "30 วัน" },
-  { value: "60",  label: "60 วัน" },
-  { value: "90",  label: "90 วัน" },
+  { value: "7", label: "7 วัน" },
+  { value: "30", label: "30 วัน" },
+  { value: "60", label: "60 วัน" },
+  { value: "90", label: "90 วัน" },
   { value: "180", label: "180 วัน" },
   { value: "all", label: "ทั้งหมด (มีวันหมดอายุ)" },
 ];
 
 function rowBg(daysUntil: number): string {
-  if (daysUntil < 0)   return "bg-red-50";
+  if (daysUntil < 0) return "bg-red-50";
   if (daysUntil <= 30) return "bg-orange-50";
   if (daysUntil <= 90) return "bg-yellow-50";
   return "";
 }
 
 function badgeClass(daysUntil: number): string {
-  if (daysUntil < 0)   return "bg-red-100 text-red-700";
+  if (daysUntil < 0) return "bg-red-100 text-red-700";
   if (daysUntil <= 30) return "bg-orange-100 text-orange-700";
   if (daysUntil <= 90) return "bg-yellow-100 text-yellow-700";
   return "bg-green-100 text-green-700";
 }
 
 function badgeLabel(daysUntil: number): string {
-  if (daysUntil < 0)   return `หมดอายุแล้ว ${Math.abs(daysUntil)} วัน`;
+  if (daysUntil < 0) return `หมดอายุแล้ว ${Math.abs(daysUntil)} วัน`;
   if (daysUntil === 0) return "หมดอายุวันนี้";
   return `อีก ${daysUntil} วัน`;
 }
@@ -44,17 +45,15 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Build date filter
   const thresholdDate =
     days === "all"
       ? undefined
       : (() => {
-          const d = new Date(today);
-          d.setDate(d.getDate() + parseInt(days, 10));
-          return d;
+          const date = new Date(today);
+          date.setDate(date.getDate() + parseInt(days, 10));
+          return date;
         })();
 
-  // Fetch ProductLots with expDate set, within range
   const productLots = await db.productLot.findMany({
     where: {
       expDate: {
@@ -63,14 +62,23 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
       },
     },
     include: {
-      product: { select: { name: true, code: true, saleUnitName: true } },
+      product: {
+        select: {
+          name: true,
+          code: true,
+          reportUnitName: true,
+          units: { select: { name: true, scale: true, isBase: true } },
+        },
+      },
     },
     orderBy: { expDate: "asc" },
     take: 300,
   });
 
-  // Fetch LotBalance for each lot
-  const keys = productLots.map((pl) => ({ productId: pl.productId, lotNo: pl.lotNo }));
+  const keys = productLots.map((productLot) => ({
+    productId: productLot.productId,
+    lotNo: productLot.lotNo,
+  }));
   const lotBalances =
     keys.length > 0
       ? await db.lotBalance.findMany({
@@ -78,22 +86,40 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
           select: { productId: true, lotNo: true, qtyOnHand: true },
         })
       : [];
-  const lbMap = new Map(lotBalances.map((lb) => [`${lb.productId}:${lb.lotNo}`, lb]));
+  const lotBalanceMap = new Map(
+    lotBalances.map((lotBalance) => [
+      `${lotBalance.productId}:${lotBalance.lotNo}`,
+      Number(lotBalance.qtyOnHand),
+    ]),
+  );
 
-  // Build rows (only lots with qtyOnHand > 0)
   const rows = productLots
-    .map((pl) => {
-      const balance = lbMap.get(`${pl.productId}:${pl.lotNo}`);
-      const expDate = pl.expDate!;
-      const daysUntil = Math.ceil((expDate.getTime() - today.getTime()) / 86_400_000);
-      return { pl, balance, daysUntil };
+    .map((productLot) => {
+      const balance = lotBalanceMap.get(`${productLot.productId}:${productLot.lotNo}`);
+      if (balance == null || balance <= 0) {
+        return null;
+      }
+
+      const reportUnit = resolveReportUnit({
+        reportUnitName: productLot.product.reportUnitName,
+        units: productLot.product.units,
+      });
+      const daysUntil = Math.ceil(
+        (productLot.expDate!.getTime() - today.getTime()) / 86_400_000,
+      );
+
+      return {
+        productLot,
+        daysUntil,
+        unitName: reportUnit.unitName,
+        qtyOnHand: toReportUnitQty(balance, reportUnit.scale),
+      };
     })
-    .filter((r) => r.balance);
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 
   return (
     <div className="space-y-4">
-      {/* Filter bar */}
-      <form method="GET" className="flex flex-wrap gap-3 items-end">
+      <form method="GET" className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted-foreground">แสดง lot หมดอายุภายใน</label>
           <select
@@ -101,9 +127,9 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
             defaultValue={days}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
-            {DAYS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+            {DAYS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -121,7 +147,6 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
         {rows.length >= 300 ? " (จำกัด 300 รายการ)" : ""}
       </p>
 
-      {/* Legend */}
       <div className="flex flex-wrap gap-3 text-xs">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-full bg-red-400" /> หมดอายุแล้ว
@@ -137,16 +162,15 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
         </span>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl shadow-sm border border-gray-100 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-3 text-left font-medium">รหัสสินค้า</th>
               <th className="px-4 py-3 text-left font-medium">ชื่อสินค้า</th>
               <th className="px-4 py-3 text-left font-medium">Lot No</th>
+              <th className="px-4 py-3 text-left font-medium">หน่วยนับ</th>
               <th className="px-4 py-3 text-right font-medium">คงเหลือ</th>
-              <th className="px-4 py-3 text-left font-medium">หน่วย</th>
               <th className="px-4 py-3 text-left font-medium">วันหมดอายุ</th>
               <th className="px-4 py-3 text-center font-medium">สถานะ</th>
             </tr>
@@ -159,23 +183,23 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
                 </td>
               </tr>
             )}
-            {rows.map(({ pl, balance, daysUntil }) => (
+            {rows.map(({ productLot, qtyOnHand, unitName, daysUntil }) => (
               <tr
-                key={`${pl.productId}-${pl.lotNo}`}
-                className={`hover:brightness-95 transition-colors ${rowBg(daysUntil)}`}
+                key={`${productLot.productId}-${productLot.lotNo}`}
+                className={`transition-colors hover:brightness-95 ${rowBg(daysUntil)}`}
               >
-                <td className="px-4 py-2.5 font-mono text-xs">{pl.product.code}</td>
-                <td className="px-4 py-2.5">{pl.product.name}</td>
-                <td className="px-4 py-2.5 font-mono text-xs font-medium">{pl.lotNo}</td>
+                <td className="px-4 py-2.5 font-mono text-xs">{productLot.product.code}</td>
+                <td className="px-4 py-2.5">{productLot.product.name}</td>
+                <td className="px-4 py-2.5 font-mono text-xs font-medium">{productLot.lotNo}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{unitName}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
-                  {Number(balance!.qtyOnHand).toLocaleString("th-TH", {
+                  {qtyOnHand.toLocaleString("th-TH", {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 4,
                   })}
                 </td>
-                <td className="px-4 py-2.5 text-muted-foreground">{pl.product.saleUnitName}</td>
                 <td className="px-4 py-2.5 tabular-nums">
-                  {pl.expDate!.toLocaleDateString("th-TH-u-ca-gregory")}
+                  {productLot.expDate!.toLocaleDateString("th-TH-u-ca-gregory")}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <span
