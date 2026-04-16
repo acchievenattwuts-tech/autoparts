@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { unstable_cache } from "next/cache";
+import { cache } from "react";
 
 export interface SiteConfig {
   shopName: string;
@@ -103,11 +104,11 @@ export const getSiteConfig = unstable_cache(
   { tags: ["site-config"] }
 );
 
-export async function getPublicSiteConfig(): Promise<SiteConfig> {
+export const getPublicSiteConfig = cache(async (): Promise<SiteConfig> => {
   try {
     return await getSiteConfig();
   } catch (error) {
     console.warn("Falling back to default public site config", error);
     return defaultSiteConfig;
   }
-}
+});
