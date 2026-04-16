@@ -29,6 +29,8 @@ import {
   KeyRound,
   MapPin,
   Layers,
+  Megaphone,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +103,13 @@ const navItems: SidebarEntry[] = [
   {
     section: "รายงาน",
     items: [{ label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view" }],
+  },
+  {
+    section: "การตลาด",
+    items: [
+      { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view" },
+      { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view" },
+    ],
   },
   {
     section: "ระบบ",

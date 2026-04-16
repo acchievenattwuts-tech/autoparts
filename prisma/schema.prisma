@@ -35,6 +35,12 @@ model User {
   supplierPayments   SupplierPayment[]
   lineRecipientLinks UserLineRecipient[]
   lineSummaryDispatches LineDailySummaryDispatch[]
+  contentPostsCreated ContentPost[]   @relation("ContentPostCreatedBy")
+  contentPostsApproved ContentPost[]  @relation("ContentPostApprovedBy")
+  contentApprovalsRequested ContentApproval[] @relation("ContentApprovalRequestedBy")
+  contentApprovalsToReview ContentApproval[] @relation("ContentApprovalApprover")
+  contentScheduledJobsCreated ContentScheduledJob[] @relation("ContentScheduledJobCreatedBy")
+  contentAuditLogs   ContentAuditLog[] @relation("ContentAuditActor")
   appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
@@ -91,6 +97,110 @@ model LineDailySummaryDispatch {
   @@index([reportDayKey, dispatchKind])
   @@index([status, createdAt])
   @@index([triggeredByUserId])
+}
+
+model ContentPost {
+  id                    String                  @id @default(cuid())
+  channel               ContentChannel
+  title                 String?
+  caption               String
+  imageUrl              String?
+  linkUrl               String?
+  status                ContentPostStatus      @default(DRAFT)
+  scheduledAt           DateTime?
+  approvedAt            DateTime?
+  postedAt              DateTime?
+  cancelledAt           DateTime?
+  failedAt              DateTime?
+  facebookPageId        String
+  metaPostId            String?
+  lastError             String?
+  draftSource           String?
+  timezone              String                  @default("Asia/Bangkok")
+  variantGroupId        String?
+  variantNo             Int?
+  isSelectedVariant     Boolean                 @default(false)
+  createdByUserId       String
+  approvedByUserId      String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  createdByUser         User                    @relation("ContentPostCreatedBy", fields: [createdByUserId], references: [id])
+  approvedByUser        User?                   @relation("ContentPostApprovedBy", fields: [approvedByUserId], references: [id])
+  approvals             ContentApproval[]
+  scheduledJobs         ContentScheduledJob[]
+  auditLogs             ContentAuditLog[]
+
+  @@index([channel, status, scheduledAt])
+  @@index([createdByUserId, createdAt])
+  @@index([approvedByUserId])
+  @@index([facebookPageId, status])
+  @@index([postedAt])
+  @@index([variantGroupId, variantNo])
+}
+
+model ContentApproval {
+  id                String                @id @default(cuid())
+  postId            String
+  requestedByUserId String
+  approverUserId    String
+  status            ContentApprovalStatus @default(PENDING)
+  requestNote       String?
+  decisionNote      String?
+  requestedAt       DateTime              @default(now())
+  actedAt           DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  post              ContentPost           @relation(fields: [postId], references: [id], onDelete: Cascade)
+  requestedByUser   User                  @relation("ContentApprovalRequestedBy", fields: [requestedByUserId], references: [id])
+  approverUser      User                  @relation("ContentApprovalApprover", fields: [approverUserId], references: [id])
+
+  @@index([postId, status])
+  @@index([approverUserId, status, requestedAt])
+  @@index([requestedByUserId])
+}
+
+model ContentScheduledJob {
+  id              String                    @id @default(cuid())
+  postId          String
+  type            ContentScheduledJobType
+  status          ContentScheduledJobStatus @default(PENDING)
+  provider        String
+  providerMessageId String?
+  idempotencyKey  String                    @unique
+  runAt           DateTime
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  attemptCount    Int                       @default(0)
+  maxAttempts     Int                       @default(3)
+  lastError       String?
+  payloadJson     String?
+  createdByUserId String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  post            ContentPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdByUser   User?                     @relation("ContentScheduledJobCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([status, runAt])
+  @@index([postId, type, status])
+  @@index([provider, providerMessageId])
+  @@index([createdByUserId])
+}
+
+model ContentAuditLog {
+  id          String      @id @default(cuid())
+  postId      String
+  actorUserId String?
+  action      String
+  detail      String?
+  metadataJson String?
+  notificationType ContentNotificationType?
+  createdAt   DateTime    @default(now())
+  post        ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  actorUser   User?       @relation("ContentAuditActor", fields: [actorUserId], references: [id])
+
+  @@index([postId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 model LoginThrottle {
@@ -1049,6 +1159,50 @@ enum LineDailySummaryDispatchStatus {
   SENT
   FAILED
   SKIPPED
+}
+
+enum ContentChannel {
+  FACEBOOK_PAGE
+}
+
+enum ContentPostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  POSTED
+  FAILED
+  CANCELLED
+}
+
+enum ContentApprovalStatus {
+  PENDING
+  APPROVED
+  REVISION_REQUESTED
+  REJECTED
+  CANCELLED
+}
+
+enum ContentScheduledJobStatus {
+  PENDING
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ContentScheduledJobType {
+  PUBLISH_POST
+  APPROVAL_REMINDER
+}
+
+enum ContentNotificationType {
+  APPROVAL_REQUESTED
+  REVISION_REQUESTED
+  POST_SCHEDULED
+  POST_PUBLISHED
+  POST_FAILED
 }
 
 enum StockCardSource {

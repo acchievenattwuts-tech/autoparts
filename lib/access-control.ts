@@ -105,6 +105,11 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
 
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
 
+  { key: "content.view", group: "การตลาด", label: "ดูคอนเทนต์ Facebook" },
+  { key: "content.create", group: "การตลาด", label: "สร้าง draft คอนเทนต์ Facebook" },
+  { key: "content.update", group: "การตลาด", label: "แก้ไขและส่งอนุมัติคอนเทนต์ Facebook" },
+  { key: "content.manage", group: "การตลาด", label: "อนุมัติและโพสต์คอนเทนต์ Facebook" },
+
   { key: "settings.company.view", group: "ระบบ", label: "ดูตั้งค่าร้าน" },
   { key: "settings.company.manage", group: "ระบบ", label: "จัดการตั้งค่าร้าน" },
   { key: "admin.users.view", group: "ระบบ", label: "ดูผู้ใช้" },
@@ -170,6 +175,10 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "delivery.view",
   "delivery.update",
   "lot_reports.view",
+  "content.view",
+  "content.create",
+  "content.update",
+  "content.manage",
 ];
 
 const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
@@ -196,6 +205,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "cash_bank.adjustments.view",
   "reports.view",
   "delivery.view",
+  "content.view",
 ];
 
 const DEFAULT_ROLE_TEMPLATES: RoleTemplate[] = [
@@ -235,6 +245,8 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
   { prefix: "/admin/delivery", permission: "delivery.view" },
+  { prefix: "/admin/content/approval-queue", permission: "content.view" },
+  { prefix: "/admin/content", permission: "content.view" },
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
@@ -399,6 +411,9 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (pathname === "/admin/cash-bank/adjustments") return "cash_bank.adjustments.view";
   if (pathname === "/admin/warranties/new") return "warranties.create";
   if (pathname === "/admin/warranty-claims/new") return "warranty_claims.create";
+  if (pathname === "/admin/content") return "content.view";
+  if (pathname === "/admin/content/approval-queue") return "content.view";
+  if (/^\/admin\/content\/[^/]+$/.test(pathname)) return "content.view";
   if (pathname === "/admin/users/new") return "admin.users.create";
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return "admin.users.update";
   if (pathname === "/admin/roles/new") return "admin.roles.manage";

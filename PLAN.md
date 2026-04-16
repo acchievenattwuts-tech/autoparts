@@ -2912,3 +2912,237 @@ npm run db:restore backup-{timestamp}.json
 - [x] Do not introduce automatic cleanup jobs or archival schema in this round
 - [x] Do not require LINE profile lookup success for webhook persistence
 - [x] Do not hide recipients that are already linked to an admin user
+
+## Roadmap Update (2026-04-16 Facebook Content Approval + Scheduled Auto Post without Vercel Cron)
+
+> Scope for this round: extend the existing admin system and the existing LINE OA integration so the owner can run `AI draft -> LINE notify -> approve in admin -> schedule -> auto post to Facebook Page` without relying on Vercel Cron. Reuse the current LINE channel, webhook, recipient capture, and admin-to-LINE mapping already in production. Add a queue-based scheduler instead of adding more cron-driven behavior.
+
+### Architecture decision
+
+- [x] Reuse the existing LINE OA integration for approval notifications instead of creating a second LINE channel
+- [x] Keep the current LINE webhook route and recipient mapping flow as the source of truth for which admin receives notifications
+- [x] Use a delayed job / queue provider for timed publishing instead of Vercel Cron
+- [x] Keep content approval and Facebook publishing logic separate from the LINE daily summary business logic
+- [x] Keep the first production scope owner-facing/admin-facing only; do not add customer-facing messaging in this round
+
+### System implementation checklist
+
+- [x] Add DB models for content posting flow, at minimum covering `content_posts`, `content_approvals`, `scheduled_jobs`, and `content_audit_logs`
+- [x] Add post lifecycle statuses such as `draft`, `pending_approval`, `approved`, `scheduled`, `posted`, `failed`, and `cancelled`
+- [x] Generate AI draft content in batches of 3 alternatives per request so the owner can compare and choose before requesting approval
+- [x] Add admin pages for content list, approval queue, and post detail / approval action
+- [x] Add AI draft generation flow for Facebook caption/content draft creation
+- [x] Add approval actions for `approve`, `request_revision`, `cancel`, and `post_now`
+- [x] Reuse the existing LINE delivery foundation, but add new approval-notification templates for content workflow
+- [x] Add LINE notifications for at least `approval requested`, `revision requested`, `posted`, and `publish failed`
+- [x] Add a queue-backed scheduling path so `Approve & Schedule` creates a delayed publish job instead of relying on cron polling
+- [x] Add a publish endpoint/job handler that verifies queue signatures, loads the approved content row, prevents duplicate publish, and posts to Facebook
+- [x] Add publish idempotency so the same scheduled job cannot create duplicate Facebook posts
+- [x] Record success/failure details from each publish attempt in DB and audit logs
+- [x] Add a retry strategy for transient publish failures through the chosen queue provider rather than custom cron loops
+- [x] Keep all scheduling and display times normalized to `Asia/Bangkok`
+- [x] Verify `npm run build` after implementation
+- [x] Add admin-side runtime readiness visibility for `OpenAI`, `QStash`, `Facebook`, `APP_BASE_URL`, and approver mapping status
+- [x] Add admin-side `requeue failed publish` action without introducing cron-based retry loops
+- [x] Add guardrails that block schedule/post flows when required production config is missing
+- [x] Add queue/job-state guards so duplicate or already-running publish jobs are skipped safely
+
+### Reuse checklist from existing LINE system
+
+- [x] Reuse `LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN` and `LINE_MESSAGING_API_CHANNEL_SECRET`
+- [x] Reuse the existing LINE webhook route and recipient capture flow
+- [x] Reuse the existing `User -> LINE recipient` mapping UI and tables for choosing approval recipients
+- [x] Do not fork the daily summary module into a second LINE integration stack
+- [x] Add a separate content-approval notification module/template set so the summary flow and approval flow stay maintainable
+
+### Owner checklist — things to do outside the codebase
+
+#### 1. Upstash QStash setup
+
+- [ ] Create an Upstash account
+- [ ] Create a `QStash` project
+- [ ] Copy `QSTASH_TOKEN`
+- [ ] Copy `QSTASH_CURRENT_SIGNING_KEY`
+- [ ] Copy `QSTASH_NEXT_SIGNING_KEY`
+- [ ] Add the three QStash values to Vercel Project Settings -> Environment Variables
+- [ ] Add `APP_BASE_URL` for the production admin domain if it is not already set correctly
+- [ ] After env changes, redeploy or trigger a fresh deployment so the new values are available at runtime
+
+#### 2. LINE reuse verification
+
+- [ ] Confirm the existing LINE OA is still the account that should send approval notifications
+- [ ] Confirm `LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN` and `LINE_MESSAGING_API_CHANNEL_SECRET` are valid in Vercel
+- [ ] Confirm the webhook URL currently configured in LINE Developer Console points to the production route
+- [ ] Open the current LINE summary admin page and confirm the recipient list still loads correctly
+- [ ] Confirm the intended approver accounts are already linked to their LINE user IDs in the existing admin mapping UI
+- [ ] Ask each approver to add the LINE OA as a friend if they have not done so yet
+
+#### 3. Facebook / Meta setup
+
+- [ ] Create or confirm access to a Meta Developer account
+- [ ] Create a Meta app for Page publishing, or confirm an existing app can be used for this project
+- [ ] Connect the Facebook Page that will receive the auto-posted content
+- [ ] Generate a Page access token for the target page
+- [ ] Confirm the token has the permissions required for Page post publishing in the current Meta app setup
+- [ ] Add `FACEBOOK_PAGE_ID` to Vercel environment variables
+- [ ] Add `FACEBOOK_PAGE_ACCESS_TOKEN` to Vercel environment variables
+- [ ] Keep a note of which Facebook Page is production so the system does not accidentally publish to the wrong page
+
+#### 4. Approval process decisions
+
+- [ ] Decide who is allowed to approve Facebook posts in the first version
+- [ ] Decide whether v1 uses one approver only or allows multiple approvers
+- [ ] Decide whether `no approval = no publish` is mandatory for every scheduled post
+- [ ] Decide whether some post categories can use `Approve & Post Now` while others must always schedule
+- [ ] Decide whether the AI is allowed to choose the publish time automatically or whether humans always choose the time
+- [ ] Decide what minimum information must be shown in the LINE notification, for example caption preview, cover image preview, publish time, and page name
+
+#### 5. Production verification after code is ready
+
+- [ ] Create one test draft in admin
+- [ ] Confirm the approval notification arrives on LINE
+- [ ] Open the approval page from the notification link and confirm the correct post loads
+- [ ] Test `Approve & Post Now` with a safe test post first
+- [ ] Test `Approve & Schedule` with a near-future time first
+- [ ] Confirm the queued publish job runs at the expected Bangkok time
+- [ ] Confirm the Facebook post appears on the correct Page
+- [ ] Confirm the post status changes to `posted` in admin
+- [ ] Confirm a failed publish shows a readable error in admin/logs
+
+### Owner step-by-step guide for beginners
+
+#### Step 1 — Prepare QStash
+
+- [ ] Go to Upstash and sign in
+- [ ] Create a new `QStash` project
+- [ ] Open the project settings/overview screen
+- [ ] Copy the token and signing keys
+- [ ] Open Vercel -> this project -> Settings -> Environment Variables
+- [ ] Add the QStash env values one by one
+- [ ] Save the env values and redeploy the project
+
+#### Step 2 — Verify existing LINE production settings
+
+- [ ] Open Vercel env and verify the two LINE env values already exist
+- [ ] Open the LINE daily summary admin page in the system
+- [ ] Confirm recipients still appear in the recipient list
+- [ ] Confirm the approver's LINE account is linked to the correct admin user
+- [ ] If someone new will approve posts, have that person chat with the OA first so webhook capture can store the recipient
+- [ ] Link that LINE recipient to the admin user in the existing mapping UI
+
+#### Step 3 — Prepare Facebook publishing credentials
+
+- [ ] Open Meta for Developers
+- [ ] Create/select the app that will be used for publishing
+- [ ] Connect/select the target Facebook Page
+- [ ] Generate the Page token
+- [ ] Copy the Page ID and Page token
+- [ ] Add them to Vercel env
+- [ ] Redeploy after saving env changes
+
+#### Step 4 — Test the end-to-end workflow
+
+- [ ] Create a test content draft
+- [ ] Wait for the LINE approval notification
+- [ ] Open the approval link
+- [ ] Approve the draft
+- [ ] Choose either `post now` or a scheduled time
+- [ ] Confirm the post appears on Facebook
+- [ ] Confirm the system shows the correct final status
+
+### Guard rails
+
+- [ ] Do not create a second LINE OA for the same approval flow unless there is a business reason to split channels
+- [ ] Do not mix content-approval notifications into the daily summary code path
+- [ ] Do not rely on Vercel Cron for scheduled publish in this round
+- [ ] Do not allow scheduled publish to run if the content is not explicitly approved
+- [ ] Do not store Facebook credentials in source files or hard-coded config
+- [ ] Do not publish to production without first testing on a controlled post/page flow
+
+## Roadmap Update (2026-04-16 Next Scope after Approval-First Facebook Posting)
+
+> Scope for the next phase after the current approval-first posting flow is stable: extend the content system into customer-facing messaging and recurring campaign orchestration without breaking the admin-first approval flow introduced in the current round.
+
+### Phase A — Customer-facing messaging
+
+#### Goal
+
+- [ ] Add customer-targeted outbound messaging as a separate domain from admin approval notifications
+- [ ] Keep owner/admin notifications and customer messaging on separate templates, logs, consent rules, and delivery flows
+- [ ] Start with reusable audience + campaign + delivery records instead of hard-coding per-channel messaging
+
+#### Proposed DB structure
+
+- [ ] Add `CustomerAudience`
+  Stores saved recipient segments such as "customers who bought in last 90 days" or "customers with phone numbers and active status"
+- [ ] Add `CustomerAudienceMember`
+  Stores resolved recipients included in an audience snapshot when a campaign is prepared or sent
+- [ ] Add `CustomerCampaign`
+  Stores the campaign header such as objective, target channel, message type, approval requirement, and schedule mode
+- [ ] Add `CustomerCampaignMessage`
+  Stores one or more generated message variants/content assets for a campaign
+- [ ] Add `CustomerCampaignDelivery`
+  Stores actual send attempts and delivery results per recipient
+- [ ] Add `CustomerCampaignAuditLog`
+  Stores business-level actions such as draft created, approved, scheduled, started, completed, cancelled
+
+#### Proposed table details
+
+- [ ] `CustomerAudience`
+  Recommended fields: `id`, `name`, `description`, `channel`, `filterJson`, `isActive`, `createdByUserId`, `createdAt`, `updatedAt`
+- [ ] `CustomerAudienceMember`
+  Recommended fields: `id`, `audienceId`, `customerId`, `lineRecipientId`, `snapshotLabel`, `createdAt`
+- [ ] `CustomerCampaign`
+  Recommended fields: `id`, `name`, `objective`, `channel`, `status`, `audienceId`, `scheduledAt`, `approvedAt`, `createdByUserId`, `approvedByUserId`, `createdAt`, `updatedAt`
+- [ ] `CustomerCampaignMessage`
+  Recommended fields: `id`, `campaignId`, `variantNo`, `title`, `body`, `imageUrl`, `ctaLabel`, `ctaUrl`, `isSelected`, `createdAt`, `updatedAt`
+- [ ] `CustomerCampaignDelivery`
+  Recommended fields: `id`, `campaignId`, `messageId`, `customerId`, `lineRecipientId`, `status`, `provider`, `providerMessageId`, `attemptCount`, `lastError`, `sentAt`, `createdAt`, `updatedAt`
+- [ ] `CustomerCampaignAuditLog`
+  Recommended fields: `id`, `campaignId`, `actorUserId`, `action`, `detail`, `metadataJson`, `createdAt`
+
+#### Guard rails
+
+- [ ] Do not mix customer-facing messages into the admin approval notification templates
+- [ ] Do not auto-message customers until opt-in/consent rules for the chosen channel are confirmed
+- [ ] Do not assume every `Customer` has a valid LINE recipient; delivery must go only to mapped/eligible recipients
+- [ ] Do not let customer campaign sending reuse the same dispatch log semantics as owner-only summary sends without a dedicated campaign delivery table
+
+### Phase B — Recurring campaign engine
+
+#### Goal
+
+- [ ] Add recurring campaign definitions so the owner can schedule repeated content generation and approval cycles
+- [ ] Reuse the same approval-first content flow instead of building a second automation path
+- [ ] Keep recurring generation separate from actual publish execution so approval can still block publish
+
+#### Proposed DB structure
+
+- [ ] Add `RecurringCampaign`
+  Stores the recurring campaign definition/template
+- [ ] Add `RecurringCampaignRun`
+  Stores each generated occurrence/run from the recurring campaign
+- [ ] Add `RecurringCampaignTemplate`
+  Stores reusable generation prompt settings, posting defaults, and optional audience/content rules
+
+#### Proposed table details
+
+- [ ] `RecurringCampaign`
+  Recommended fields: `id`, `name`, `channel`, `status`, `scheduleType`, `scheduleExpr`, `timezone`, `templateId`, `approvalMode`, `nextRunAt`, `lastRunAt`, `createdByUserId`, `createdAt`, `updatedAt`
+- [ ] `RecurringCampaignRun`
+  Recommended fields: `id`, `campaignId`, `runKey`, `status`, `plannedAt`, `startedAt`, `finishedAt`, `generatedPostCount`, `selectedPostId`, `errorMessage`, `createdAt`, `updatedAt`
+- [ ] `RecurringCampaignTemplate`
+  Recommended fields: `id`, `name`, `objective`, `promptTemplate`, `defaultPageId`, `defaultPublishTime`, `defaultHashtagSet`, `active`, `createdByUserId`, `createdAt`, `updatedAt`
+
+#### Engine behavior checklist
+
+- [ ] Each recurring run should generate 3 draft post options by default unless the owner changes the rule later
+- [ ] A recurring run should create drafts only; it must not auto-publish without approval in the current product scope
+- [ ] The owner should be able to pick one of the generated drafts and discard the others
+- [ ] Keep a durable run record even when the AI generation fails or produces no acceptable draft
+
+#### Guard rails
+
+- [ ] Do not bypass the existing content approval workflow for recurring campaigns
+- [ ] Do not create infinite recurring jobs without a visible next-run / last-run state in admin
+- [ ] Do not let one failed recurring run block every future run without a visible error state and recovery action
