@@ -183,6 +183,8 @@ export async function fetchAdjustmentProductLots(
   productId: string,
   lotIssueMethod: string,
 ): Promise<LotAvailableJSON[] | { error: string }> {
+  const session = await requirePermission("stock.adjustments.create").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
   if (!productId) return { error: "ไม่ระบุสินค้า" };
   try {
     const lots: LotAvailableJSON[] = await getLotAvailability(db, productId);

@@ -92,7 +92,7 @@ function validateCashBankAccountInput(data: z.infer<typeof accountSchema>): stri
 }
 
 async function validatePrimaryTransferAccountAvailability(
-  tx: any,
+  tx: Parameters<Parameters<typeof dbTx>[0]>[0],
   data: z.infer<typeof accountSchema>,
   accountId?: string,
 ): Promise<string | null> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { LineDailySummaryTargetMode, LineRecipientType } from "@/lib/generated/prisma";
 import {
   linkAdminLineRecipientAction,
@@ -210,18 +210,11 @@ export default function LineDailySummaryManager(props: {
     1,
     Math.ceil(visibleUserRecipients.length / RECIPIENTS_PER_PAGE)
   );
+  const safeRecipientPage = Math.min(recipientPage, recipientPageCount);
   const paginatedUserRecipients = useMemo(() => {
-    const start = (recipientPage - 1) * RECIPIENTS_PER_PAGE;
+    const start = (safeRecipientPage - 1) * RECIPIENTS_PER_PAGE;
     return visibleUserRecipients.slice(start, start + RECIPIENTS_PER_PAGE);
-  }, [recipientPage, visibleUserRecipients]);
-
-  useEffect(() => {
-    setRecipientPage(1);
-  }, [showOlderRecipients]);
-
-  useEffect(() => {
-    setRecipientPage((current) => Math.min(current, recipientPageCount));
-  }, [recipientPageCount]);
+  }, [safeRecipientPage, visibleUserRecipients]);
 
   return (
     <div className="space-y-4">
@@ -443,7 +436,10 @@ export default function LineDailySummaryManager(props: {
               <input
                 type="checkbox"
                 checked={showOlderRecipients}
-                onChange={(event) => setShowOlderRecipients(event.target.checked)}
+                onChange={(event) => {
+                  setShowOlderRecipients(event.target.checked);
+                  setRecipientPage(1);
+                }}
                 className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
               />
               แสดงรายการเก่าเกิน 90 วัน
@@ -454,7 +450,7 @@ export default function LineDailySummaryManager(props: {
             {hiddenRecipientCount > 0 && <span>ซ่อนอยู่ {hiddenRecipientCount} รายการ</span>}
             {visibleUserRecipients.length > 0 && (
               <span>
-                หน้า {recipientPage}/{recipientPageCount}
+                หน้า {safeRecipientPage}/{recipientPageCount}
               </span>
             )}
           </div>
@@ -496,20 +492,20 @@ export default function LineDailySummaryManager(props: {
                 <button
                   type="button"
                   onClick={() => setRecipientPage((current) => Math.max(1, current - 1))}
-                  disabled={recipientPage === 1}
+                  disabled={safeRecipientPage === 1}
                   className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   ก่อนหน้า
                 </button>
                 <span className="text-sm text-gray-600">
-                  หน้า {recipientPage} / {recipientPageCount}
+                  หน้า {safeRecipientPage} / {recipientPageCount}
                 </span>
                 <button
                   type="button"
                   onClick={() =>
                     setRecipientPage((current) => Math.min(recipientPageCount, current + 1))
                   }
-                  disabled={recipientPage === recipientPageCount}
+                  disabled={safeRecipientPage === recipientPageCount}
                   className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   ถัดไป

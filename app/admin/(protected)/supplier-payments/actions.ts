@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, dbTx } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { generateSupplierPaymentNo } from "@/lib/doc-number";
 import {
   CashBankDirection,
@@ -342,7 +342,11 @@ export async function getOutstandingSupplierDocuments(
   supplierId: string,
   excludePaymentId?: string,
 ): Promise<SupplierSettlementDocumentBundle> {
-  const session = await requirePermission("supplier_payments.view").catch(() => null);
+  const session = await requireAnyPermission([
+    "supplier_payments.view",
+    "supplier_payments.create",
+    "supplier_payments.update",
+  ]).catch(() => null);
   if (!session?.user?.id || !supplierId) {
     return { purchases: [], credits: [], advances: [] };
   }

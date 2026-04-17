@@ -720,7 +720,8 @@ export async function updateCreditNote(
 export async function getSalesForCustomer(
   customerId: string
 ): Promise<{ id: string; saleNo: string; saleDate: Date; customerName: string | null }[]> {
-  if (!customerId) return [];
+  const session = await requireCreditNoteProductPermission();
+  if (!session?.user?.id || !customerId) return [];
   return db.sale.findMany({
     where: { customerId, status: "ACTIVE" },
     orderBy: { saleDate: "desc" },
@@ -741,7 +742,8 @@ export type SaleDetailResult = {
 } | null;
 
 export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
-  if (!saleId) return null;
+  const session = await requireCreditNoteProductPermission();
+  if (!session?.user?.id || !saleId) return null;
   const sale = await db.sale.findUnique({
     where: { id: saleId },
     select: {

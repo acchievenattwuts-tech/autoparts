@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import {
   getTaxIdValidationMessage,
   sanitizeTaxId,
@@ -22,36 +22,40 @@ const TaxIdInput = ({
   placeholder = "13 หลัก",
 }: TaxIdInputProps) => {
   const helperId = useId();
-  const [value, setValue] = useState(() => sanitizeTaxId(defaultValue));
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    setValue(sanitizeTaxId(defaultValue));
-    setMessage("");
-  }, [defaultValue]);
+  const sanitizedDefaultValue = useMemo(() => sanitizeTaxId(defaultValue), [defaultValue]);
+  const [messageState, setMessageState] = useState({
+    rawValue: sanitizedDefaultValue,
+    text: "",
+  });
+  const message =
+    messageState.rawValue === sanitizedDefaultValue ? messageState.text : "";
 
   const applyValidity = (nextRawValue: string, input: HTMLInputElement) => {
     const nextMessage = getTaxIdValidationMessage(nextRawValue);
     input.setCustomValidity(nextMessage);
-    setMessage(nextMessage);
+    setMessageState({
+      rawValue: sanitizeTaxId(nextRawValue),
+      text: nextMessage,
+    });
   };
 
   return (
     <div>
       <input
+        key={sanitizedDefaultValue}
         type="text"
         name={name}
         inputMode="numeric"
         autoComplete="off"
         pattern={`\\d{${TAX_ID_LENGTH}}`}
         title={TAX_ID_INVALID_MESSAGE}
-        value={value}
+        defaultValue={sanitizedDefaultValue}
         className={className}
         placeholder={placeholder}
         aria-describedby={message ? helperId : undefined}
         onChange={(e) => {
           const nextValue = sanitizeTaxId(e.target.value);
-          setValue(nextValue);
+          e.target.value = nextValue;
           applyValidity(e.target.value, e.target);
         }}
         onBlur={(e) => {

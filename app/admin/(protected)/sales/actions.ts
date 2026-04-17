@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -38,7 +38,9 @@ const saleProductOptionSelect = {
 } as const;
 
 export async function searchSaleProducts(query: string) {
-  const session = await requirePermission("sales.create").catch(() => null);
+  const session = await requireAnyPermission(["sales.create", "sales.update"]).catch(
+    () => null,
+  );
   if (!session?.user?.id) return [];
 
   const normalizedQuery = query.trim();
@@ -74,6 +76,12 @@ export async function searchSaleProducts(query: string) {
     lotIssueMethod:        product.lotIssueMethod as string,
     allowExpiredIssue:     product.allowExpiredIssue,
   }));
+}
+
+async function requireSaleLotPermission() {
+  const createSession = await requirePermission("sales.create").catch(() => null);
+  if (createSession?.user?.id) return createSession;
+  return requireAnyPermission(["sales.update", "delivery.update"]).catch(() => null);
 }
 
 const lotSubRowSchema = z.object({
@@ -898,6 +906,8 @@ export async function fetchProductLots(
   productId: string,
   lotIssueMethod: string
 ): Promise<LotAvailableJSON[] | { error: string }> {
+  const session = await requireSaleLotPermission();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
   if (!productId) return { error: "ไม่ระบุสินค้า" };
   try {
     const lots: LotAvailableJSON[] = await getLotAvailability(db, productId);

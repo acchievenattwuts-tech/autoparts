@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -79,7 +79,9 @@ export async function createWarranty(
 }
 
 export async function getSaleItems(saleId: string) {
-  const session = await requirePermission("warranties.view").catch(() => null);
+  const session = await requireAnyPermission(["warranties.view", "warranties.create"]).catch(
+    () => null,
+  );
   if (!session?.user?.id) return null;
 
   const sale = await db.sale.findUnique({

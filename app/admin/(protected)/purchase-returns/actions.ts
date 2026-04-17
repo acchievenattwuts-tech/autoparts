@@ -725,7 +725,8 @@ export async function updatePurchaseReturn(
 export async function getPurchasesForSupplier(
   supplierId: string,
 ): Promise<{ id: string; purchaseNo: string; purchaseDate: Date }[]> {
-  if (!supplierId) return [];
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id || !supplierId) return [];
 
   return db.purchase.findMany({
     where: { supplierId },
@@ -741,7 +742,8 @@ export type PurchaseDetailResult = {
 } | null;
 
 export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
-  if (!purchaseId) return null;
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id || !purchaseId) return null;
 
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
@@ -812,6 +814,8 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
 export async function fetchProductLots(
   productId: string,
 ): Promise<LotAvailableJSON[] | { error: string }> {
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
   if (!productId) return { error: "ไม่ระบุสินค้า" };
 
   try {

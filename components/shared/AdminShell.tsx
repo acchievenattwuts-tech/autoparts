@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { Menu, LogOut, AlertTriangle, UserCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import AdminSidebar from "@/components/shared/AdminSidebar";
 import TabsBar from "@/components/shared/TabsBar";
@@ -17,11 +18,27 @@ type AdminShellProps = {
 
 const AdminShell = ({ children, permissions, mustChangePassword, username }: AdminShellProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const router = useRouter();
   const clearAll = useTabStore((state) => state.clearAll);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
     clearAll();
-    signOut({ callbackUrl: "/admin/login" });
+
+    try {
+      const result = await signOut({
+        redirect: false,
+        callbackUrl: "/admin/login",
+      });
+
+      router.replace(result?.url ?? "/admin/login");
+      router.refresh();
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -63,10 +80,13 @@ const AdminShell = ({ children, permissions, mustChangePassword, username }: Adm
             )}
             <button
               onClick={handleLogout}
+              disabled={loggingOut}
               className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600"
             >
               <LogOut size={16} />
-              <span className="hidden sm:inline">ออกจากระบบ</span>
+              <span className="hidden sm:inline">
+                {loggingOut ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
+              </span>
             </button>
           </div>
         </header>

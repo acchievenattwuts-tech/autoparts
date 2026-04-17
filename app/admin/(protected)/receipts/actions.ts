@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
@@ -31,7 +31,11 @@ export interface CreditSaleItem {
 }
 
 export async function getCreditSalesForCustomer(customerId: string): Promise<CreditSaleItem[]> {
-  const session = await requirePermission("receipts.view").catch(() => null);
+  const session = await requireAnyPermission([
+    "receipts.view",
+    "receipts.create",
+    "receipts.update",
+  ]).catch(() => null);
   if (!session?.user?.id) return [];
 
   if (!customerId) return [];

@@ -1,7 +1,7 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -33,7 +33,9 @@ const purchaseProductOptionSelect = {
 } as const;
 
 export async function searchPurchaseProducts(query: string) {
-  const session = await requirePermission("purchases.create").catch(() => null);
+  const session = await requireAnyPermission(["purchases.create", "purchases.update"]).catch(
+    () => null,
+  );
   if (!session?.user?.id) return [];
 
   const normalizedQuery = query.trim();
@@ -597,5 +599,4 @@ export async function updatePurchase(
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
-
 
