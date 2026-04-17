@@ -7,7 +7,7 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import SalesDeliveryPrintDocument from "@/app/admin/_components/SalesDeliveryPrintDocument";
+import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
@@ -316,7 +316,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         </div>
       </div>
 
-      <SalesDeliveryPrintDocument
+      <SharedSalesDeliveryPrintDocument
         sale={{ ...sale, signerSignatureUrl }}
         shopConfig={cfg}
         dueDate={dueDate}

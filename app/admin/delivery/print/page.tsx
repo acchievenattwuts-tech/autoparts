@@ -3,7 +3,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 
-import SalesDeliveryPrintDocument from "@/app/admin/_components/SalesDeliveryPrintDocument";
+import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
 import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
@@ -178,7 +178,7 @@ const DeliveryPrintPage = async ({
             : null;
 
           return (
-            <SalesDeliveryPrintDocument
+            <SharedSalesDeliveryPrintDocument
               key={sale.id}
               sale={sale}
               shopConfig={shopConfig}

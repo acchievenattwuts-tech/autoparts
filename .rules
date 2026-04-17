@@ -152,6 +152,8 @@ Use the Sales page (view / add / update / cancel) as the reference structure.
 - Forms with multiple line items should submit items as JSON via `formData.set("items", JSON.stringify(items))`.
 - Display errors in user-friendly Thai — never expose stack traces or raw DB errors.
 - Success messages must always include the document number (docNo) when a document is created successfully.
+- **Print forms must use a two-layer structure** — shared print presentation primitives (page shell/header/section/signature/footer) plus document-specific content/logic. Do not duplicate a full print layout inline when the shared layer can be reused.
+- **If a shared print primitive or shared presentation line changes, update every print form that consumes it in the same round** — never leave sales / receipts / delivery / warranty claim print layouts visually out of sync after a shared change.
 
 ### Dropdown / Select Standards — SearchableSelect is Mandatory
 

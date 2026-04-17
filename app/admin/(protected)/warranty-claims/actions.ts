@@ -51,6 +51,27 @@ const RETURN_DOC_SUFFIX = "-C";
 const RECEIVE_DOC_SUFFIX = "-R";
 const SEND_DOC_SUFFIX = "-S";
 
+async function getClaimSignerSnapshot(
+  tx: TxClient,
+  userId: string,
+  signedAt: Date,
+): Promise<{
+  signerName: string | null;
+  signerSignatureUrl: string | null;
+  signedAt: Date | null;
+}> {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { name: true, signatureUrl: true },
+  });
+
+  return {
+    signerName: user?.name ?? null,
+    signerSignatureUrl: user?.signatureUrl ?? null,
+    signedAt: user?.name ? signedAt : null,
+  };
+}
+
 async function getAvgCost(tx: TxClient, productId: string): Promise<number> {
   const product = await tx.product.findUnique({
     where: { id: productId },
@@ -105,9 +126,8 @@ function normalizeOptionalString(value?: string): string | undefined {
 export async function createClaim(
   formData: FormData,
 ): Promise<{ claimNo?: string; error?: string }> {
-  try {
-    await requirePermission("warranty_claims.create");
-  } catch {
+  const session = await requirePermission("warranty_claims.create").catch(() => null);
+  if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
@@ -164,6 +184,7 @@ export async function createClaim(
   try {
     await dbTx(async (tx) => {
       const avgCost = await getAvgCost(tx, warranty.productId);
+      const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
       const replacementOptions =
         warranty.product.isLotControl && data.claimType === ClaimType.REPLACE_NOW
           ? await getClaimReplacementLots(tx, warranty.productId)
@@ -187,6 +208,9 @@ export async function createClaim(
           claimDate,
           claimType: data.claimType,
           status: WarrantyClaimStatus.DRAFT,
+          signerName: signerSnapshot.signerName,
+          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+          signedAt: signerSnapshot.signedAt,
           symptom: data.symptom,
           note: data.note,
           supplierId: data.supplierId || warranty.saleItem?.supplierId || null,

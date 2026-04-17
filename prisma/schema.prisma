@@ -590,6 +590,9 @@ model WarrantyClaim {
   claimType       ClaimType
   status          WarrantyClaimStatus @default(DRAFT)
   outcome         ClaimOutcome?
+  signerName      String?
+  signerSignatureUrl String?
+  signedAt        DateTime?
   symptom         String?
   note            String?
   supplierId      String?

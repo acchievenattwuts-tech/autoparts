@@ -7,7 +7,7 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
-import ReceiptSettlementPrintDocument from "@/app/admin/_components/ReceiptSettlementPrintDocument";
+import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentMethod } from "@/lib/generated/prisma";
@@ -302,7 +302,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         </div>
       </div>
 
-      <ReceiptSettlementPrintDocument
+      <SharedReceiptSettlementPrintDocument
         receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
         shopConfig={{
         shopName: cfg.shopName,
