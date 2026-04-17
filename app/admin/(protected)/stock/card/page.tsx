@@ -77,7 +77,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
     reportUnitName: true,
     units: {
       select: { name: true, scale: true, isBase: true },
-      orderBy: [{ isBase: "desc" }, { scale: "asc" }] as const,
+      orderBy: [{ isBase: "desc" as const }, { scale: "asc" as const }],
     },
   };
 

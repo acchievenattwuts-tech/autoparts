@@ -117,33 +117,10 @@ async function validatePrimaryTransferAccountAvailability(
   if (violation) {
     return getPrimaryTransferRuleMessage(violation, currentPrimary ?? null);
   }
+
   return null;
-
-  if (data.type !== CashBankAccountType.BANK) {
-    return "บัญชีหลักรับโอนต้องเป็นบัญชีประเภทธนาคาร";
-  }
-
-  if (!data.isActive) {
-    return "บัญชีหลักรับโอนต้องอยู่ในสถานะใช้งาน";
-  }
-
-  if (!data.promptPayId?.trim()) {
-    return "บัญชีหลักรับโอนต้องระบุ PromptPay ID เพื่อสร้าง QR สำหรับชำระเงิน";
-  }
-
-  const legacyExistingPrimary = await tx.cashBankAccount.findFirst({
-    where: {
-      isPrimaryTransferAccount: true,
-      ...(accountId ? { id: { not: accountId } } : {}),
-    },
-    select: { code: true, name: true },
-  });
-
-  if (!legacyExistingPrimary) return null;
-  const existingPrimary = legacyExistingPrimary;
-
-  return `มีบัญชีหลักรับโอนอยู่แล้ว (${existingPrimary.code} - ${existingPrimary.name}) กรุณาเอาติ๊กออกจากบัญชีเดิมก่อน`;
 }
+
 
 function getPrimaryTransferRuleMessage(
   violation: PrimaryTransferRuleCode,
