@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 export const SITE_URL = "https://www.sriwanparts.com";
+export const ROOT_CANONICAL_URL = SITE_URL;
 export const SITE_NAME = "ศรีวรรณ อะไหล่แอร์";
 export const LOCAL_SEO_KEYWORDS = [
   "อะไหล่แอร์รถยนต์",
@@ -42,12 +43,12 @@ export function buildDefaultMetadataBase(): Metadata {
     description: DEFAULT_DESCRIPTION,
     keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
-      canonical: absoluteUrl("/"),
+      canonical: ROOT_CANONICAL_URL,
     },
     openGraph: {
       type: "website",
       locale: "th_TH",
-      url: absoluteUrl("/"),
+      url: ROOT_CANONICAL_URL,
       siteName: SITE_NAME,
       title: DEFAULT_TITLE,
       description: DEFAULT_DESCRIPTION,

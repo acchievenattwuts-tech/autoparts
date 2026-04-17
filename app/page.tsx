@@ -14,7 +14,7 @@ import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
@@ -26,10 +26,10 @@ export async function generateMetadata(): Promise<Metadata> {
     description,
     keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
-      canonical: absoluteUrl("/"),
+      canonical: ROOT_CANONICAL_URL,
     },
     openGraph: {
-      url: absoluteUrl("/"),
+      url: ROOT_CANONICAL_URL,
       title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,
       description,
       images: [{ url: absoluteUrl("/opengraph-image") }],

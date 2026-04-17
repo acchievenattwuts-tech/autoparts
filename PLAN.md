@@ -3218,3 +3218,10 @@ Approved decisions for v1:
 - [x] Do not promise first-page rankings or guaranteed AI citations
 - [x] Do not create duplicate public URLs that compete with the homepage and `/products` for the same keyword intent
 - [x] Keep all SEO/AEO wording grounded in the real shop workflow: search on site first, then confirm with the shop before ordering
+
+## Roadmap Update (2026-04-17 Homepage Canonical Root Cleanup)
+
+- [x] Normalized the homepage root canonical signal to the host-form `https://www.sriwanparts.com` so app metadata and the rendered head use the same root URL shape consistently.
+- [x] Aligned the homepage `openGraph.url` with the same normalized root canonical value.
+- [x] Updated the home entry in `sitemap.xml` to use the same normalized root URL shape as the homepage canonical, reducing slash/no-slash mixed signals on `/`.
+- [x] Verified `npm run build`

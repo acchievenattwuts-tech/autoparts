@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { MetadataRoute } from "next";
 import { db } from "@/lib/db";
-import { absoluteUrl } from "@/lib/seo";
+import { ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 
@@ -57,7 +57,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   return [
     {
-      url: absoluteUrl("/"),
+      url: ROOT_CANONICAL_URL,
       lastModified: homeLastModified,
       changeFrequency: "weekly",
       priority: 1,
