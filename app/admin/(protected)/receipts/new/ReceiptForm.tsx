@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface CustomerOption {
   id: string;
@@ -52,7 +53,7 @@ interface Props {
 const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales }: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getThailandDateKey();
 
   const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
   const [receiptDate, setReceiptDate] = useState(initialData?.receiptDate ?? today);
@@ -210,7 +211,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </td>
         <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f]">{sale.saleNo}</td>
         <td className="px-3 py-2 text-gray-600">
-          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
+                          {formatDateThai(sale.saleDate, dateLocale)}
         </td>
         <td className="px-3 py-2 text-right text-gray-800">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -254,7 +255,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </td>
         <td className="px-3 py-2 font-mono font-medium text-emerald-700">{sale.saleNo}</td>
         <td className="px-3 py-2 text-gray-600">
-          {new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", dateLocale)}
+                          {formatDateThai(sale.saleDate, dateLocale)}
         </td>
         <td className="px-3 py-2 text-right text-gray-800">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}

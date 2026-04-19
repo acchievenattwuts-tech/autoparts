@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getOutstandingSupplierDocuments } from "../../actions";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import SupplierPaymentForm from "../../SupplierPaymentForm";
 import { getSupplierPaymentSupplierOptions } from "../../supplier-options";
 
@@ -65,7 +66,7 @@ const EditSupplierPaymentPage = async ({
         initialData={{
           id: payment.id,
           supplierId: payment.supplierId,
-          paymentDate: payment.paymentDate.toISOString().slice(0, 10),
+      paymentDate: formatDateOnlyForInput(payment.paymentDate),
           cashBankAccountId: payment.cashBankAccountId ?? "",
           note: payment.note ?? "",
           items: payment.items.map((item) => ({

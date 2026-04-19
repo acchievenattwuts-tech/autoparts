@@ -12,6 +12,11 @@ import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -40,8 +45,8 @@ const ReceiptsPage = async ({
   const where: Prisma.ReceiptWhereInput = {};
   if (from || to) {
     where.receiptDate = {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
   }
   if (q) {
@@ -131,7 +136,7 @@ const ReceiptsPage = async ({
                     <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(r.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                    {formatDateThai(r.receiptDate)}
                     </td>
                     <td className="py-3 px-4 text-gray-700">
                       {r.customer?.name ?? r.customerName ?? "-"}

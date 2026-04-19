@@ -12,6 +12,7 @@ import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 import PrintButton from "./PrintButton";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -178,11 +179,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             <div>
               <p className="mb-1 text-gray-500">วันที่</p>
               <p className="font-medium text-gray-900">
-                {new Date(receipt.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                })}
+                {formatDateThai(receipt.receiptDate)}
               </p>
             </div>
             <div>
@@ -273,11 +270,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {docDate
-                          ? new Date(docDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
+                          ? formatDateThai(docDate)
                           : "-"}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-800">

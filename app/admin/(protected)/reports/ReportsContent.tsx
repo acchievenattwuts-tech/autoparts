@@ -1,4 +1,5 @@
 import type { ReportsData } from "@/lib/reports";
+import { formatDateThai } from "@/lib/th-date";
 
 type ReportsContentProps = {
   data: ReportsData;
@@ -13,11 +14,7 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(value: Date): string {
-  return value.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "PURCHASE_RETURN"): string {

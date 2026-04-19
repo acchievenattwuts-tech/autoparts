@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
 import { requirePermission } from "@/lib/require-auth";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import {
   TrendingUp, AlertTriangle,
   Banknote, Users, ShoppingCart, Receipt, Globe,
@@ -178,7 +179,7 @@ const AdminDashboard = async () => {
     Number(v ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
   const fmtDate = (d: Date) =>
-    d.toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "short", year: "numeric" });
+    formatDateThai(d, { day: "2-digit", month: "short", year: "numeric" });
 
   const todayLabel = fmtDate(now);
   const monthLabel = `${fmtDate(startOfMonth)} – ${todayLabel}`;
@@ -187,19 +188,19 @@ const AdminDashboard = async () => {
   for (let i = 0; i < 30; i += 1) {
     const day = new Date(startOf30Days);
     day.setDate(startOf30Days.getDate() + i);
-    const key = day.toISOString().slice(0, 10);
+    const key = getThailandDateKey(day);
     salesByDay.set(key, 0);
   }
   for (const sale of recentSales) {
     const day = new Date(sale.saleDate);
     day.setHours(0, 0, 0, 0);
-    const key = day.toISOString().slice(0, 10);
+    const key = getThailandDateKey(day);
     salesByDay.set(key, (salesByDay.get(key) ?? 0) + Number(sale.netAmount));
   }
   const salesChartData: SalesChartDatum[] = Array.from(salesByDay.entries()).map(([key, amount]) => {
     const day = new Date(key);
     return {
-      date: day.toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit" }),
+      date: formatDateThai(day, { day: "2-digit", month: "2-digit" }),
       amount,
     };
   });
@@ -238,11 +239,7 @@ const AdminDashboard = async () => {
       return {
         productName: lot.product.name,
         lotNo: lot.lotNo,
-        expDate: lot.expDate.toLocaleDateString("th-TH-u-ca-gregory", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
+        expDate: formatDateThai(lot.expDate),
         daysLeft,
         qty: qtyOnHand,
         unit: lot.product.reportUnitName,

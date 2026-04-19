@@ -11,9 +11,10 @@ import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSale
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
-import { buildPromptPayQrDataUrl, getPrimaryTransferAccount, getTransferDocumentState } from "@/lib/payment-qr";
+import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
+import { formatDateThai } from "@/lib/th-date";
 import PrintButton from "./PrintButton";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
@@ -58,11 +59,7 @@ const paymentMethodLabel: Record<string, string> = {
 };
 
 const fmtDate = (d: Date | string) =>
-  new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  formatDateThai(d);
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

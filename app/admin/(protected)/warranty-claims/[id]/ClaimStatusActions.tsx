@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import CancelDocButton from "@/components/shared/CancelDocButton";
+import { getThailandDateKey } from "@/lib/th-date";
 import {
   cancelClaimAction,
   closeClaim,
@@ -37,9 +38,9 @@ const ClaimStatusActions = ({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
-  const [sentDate, setSentDate] = useState(new Date().toISOString().slice(0, 10));
-  const [resolvedDate, setResolvedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [returnedDate, setReturnedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sentDate, setSentDate] = useState(getThailandDateKey());
+  const [resolvedDate, setResolvedDate] = useState(getThailandDateKey());
+  const [returnedDate, setReturnedDate] = useState(getThailandDateKey());
   const [closeOutcome, setCloseOutcome] = useState<"RECEIVED" | "NO_RESOLUTION">("RECEIVED");
   const [closeNote, setCloseNote] = useState("");
   const [receivedLotNo, setReceivedLotNo] = useState("");

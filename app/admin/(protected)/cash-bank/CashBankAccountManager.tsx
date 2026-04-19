@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createCashBankAccount, seedDefaultCashBankAccounts, updateCashBankAccount } from "./actions";
+import { getThailandDateKey } from "@/lib/th-date";
 
 type AccountType = "CASH" | "BANK";
 
@@ -50,7 +51,7 @@ function emptyFormState(): FormState {
     promptPayId: "",
     isPrimaryTransferAccount: false,
     openingBalance: "0",
-    openingDate: new Date().toISOString().slice(0, 10),
+    openingDate: getThailandDateKey(),
     isActive: true,
   };
 }

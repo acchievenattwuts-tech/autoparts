@@ -10,6 +10,11 @@ import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -32,8 +37,8 @@ const PurchaseReturnsPage = async ({
   const where: Prisma.PurchaseReturnWhereInput = {};
   if (from || to) {
     where.returnDate = {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
   }
   if (q) {
@@ -121,7 +126,7 @@ const PurchaseReturnsPage = async ({
                     <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.returnNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(r.returnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                    {formatDateThai(r.returnDate)}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{r.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{r._count.items} รายการ</td>

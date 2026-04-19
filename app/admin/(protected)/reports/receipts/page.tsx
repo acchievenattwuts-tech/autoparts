@@ -11,6 +11,7 @@ import {
   statusLabel,
   type DailyReceiptRow,
 } from "@/lib/report-queries";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -21,11 +22,7 @@ function fmt(n: number) {
 }
 
 function fmtDate(d: Date) {
-  return d.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(d);
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {

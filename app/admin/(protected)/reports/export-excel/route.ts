@@ -34,6 +34,7 @@ import {
   buildAPExcel,
   buildStockExcel,
 } from "@/lib/ar-ap-stock-report-queries";
+import { formatDateThai } from "@/lib/th-date";
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -47,11 +48,7 @@ const HEADER_FONT: Partial<ExcelJS.Font> = {
 };
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(d);
 }
 
 function styleHeader(sheet: ExcelJS.Worksheet) {

@@ -3,9 +3,10 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; ready?: string }>;
 }
 
 const STATUS_OPTIONS = [
@@ -33,36 +34,39 @@ function statusLabel(days: number | null): string {
 export default async function LotBalancePage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { q = "", status = "all" } = await searchParams;
+  const { q = "", status = "all", ready = "" } = await searchParams;
   const qTrim = q.trim();
+  const shouldShowData = ready === "1";
 
-  const balances = await db.lotBalance.findMany({
-    where: {
-      qtyOnHand: { gt: 0 },
-      ...(qTrim
-        ? {
-            product: {
-              OR: [
-                { name: { contains: qTrim, mode: "insensitive" } },
-                { code: { contains: qTrim, mode: "insensitive" } },
-              ],
-            },
-          }
-        : {}),
-    },
-    include: {
-      product: {
-        select: {
-          name: true,
-          code: true,
-          reportUnitName: true,
-          units: { select: { name: true, scale: true, isBase: true } },
+  const balances = shouldShowData
+    ? await db.lotBalance.findMany({
+        where: {
+          qtyOnHand: { gt: 0 },
+          ...(qTrim
+            ? {
+                product: {
+                  OR: [
+                    { name: { contains: qTrim, mode: "insensitive" } },
+                    { code: { contains: qTrim, mode: "insensitive" } },
+                  ],
+                },
+              }
+            : {}),
         },
-      },
-    },
-    orderBy: [{ productId: "asc" }, { lotNo: "asc" }],
-    take: 300,
-  });
+        include: {
+          product: {
+            select: {
+              name: true,
+              code: true,
+              reportUnitName: true,
+              units: { select: { name: true, scale: true, isBase: true } },
+            },
+          },
+        },
+        orderBy: [{ productId: "asc" }, { lotNo: "asc" }],
+        take: 300,
+      })
+    : [];
 
   const keys = balances.map((balance) => ({ productId: balance.productId, lotNo: balance.lotNo }));
   const productLots =
@@ -86,8 +90,10 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
     const daysUntil = expDate
       ? Math.ceil((expDate.getTime() - today.getTime()) / 86_400_000)
       : null;
-    const rowStatus: RowStatus =
-      expDate === null ? "no-exp" : daysUntil! < 0 ? "expired" : daysUntil! <= 30 ? "expiring" : "ok";
+    let rowStatus: RowStatus = "no-exp";
+    if (daysUntil !== null) {
+      rowStatus = daysUntil < 0 ? "expired" : daysUntil <= 30 ? "expiring" : "ok";
+    }
     const reportUnit = resolveReportUnit({
       reportUnitName: balance.product.reportUnitName,
       units: balance.product.units,
@@ -110,6 +116,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
   return (
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="ready" value="1" />
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted-foreground">ค้นหาสินค้า</label>
           <input
@@ -142,7 +149,9 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
       </form>
 
       <p className="text-sm text-muted-foreground">
-        แสดง {filtered.length} รายการ {filtered.length >= 300 ? "(จำกัด 300 รายการ)" : ""}
+        {shouldShowData
+          ? `แสดง ${filtered.length} รายการ${filtered.length >= 300 ? " (จำกัด 300 รายการ)" : ""}`
+          : "กรอกชื่อหรือรหัสสินค้า หรือเลือกสถานะก่อน แล้วกดกรองเพื่อแสดงข้อมูล"}
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
@@ -160,7 +169,14 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {filtered.length === 0 && (
+            {!shouldShowData && (
+              <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  ยังไม่ได้แสดงข้อมูล กรุณาค้นหาหรือเลือกสถานะก่อน
+                </td>
+              </tr>
+            )}
+            {shouldShowData && filtered.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   ไม่พบข้อมูล
@@ -180,10 +196,10 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
                   })}
                 </td>
                 <td className="px-4 py-2.5 text-muted-foreground">
-                  {row.mfgDate ? row.mfgDate.toLocaleDateString("th-TH-u-ca-gregory") : "-"}
+                    {row.mfgDate ? formatDateThai(row.mfgDate) : "-"}
                 </td>
                 <td className="px-4 py-2.5">
-                  {row.expDate ? row.expDate.toLocaleDateString("th-TH-u-ca-gregory") : "-"}
+                    {row.expDate ? formatDateThai(row.expDate) : "-"}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <span

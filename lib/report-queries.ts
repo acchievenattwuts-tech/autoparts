@@ -8,19 +8,25 @@ import {
   PaymentMethod,
   PurchaseType,
 } from "@/lib/generated/prisma";
+import {
+  formatDateOnlyForInput,
+  formatDateThai,
+  getThailandDateKey,
+  getThailandMonthStartDateKey,
+  isDateOnlyString,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+} from "@/lib/th-date";
 
 // Filter helpers
 
 function parseDate(s: string | undefined, fallback: Date): Date {
-  if (!s) return fallback;
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? fallback : d;
+  if (!s || !isDateOnlyString(s)) return fallback;
+  return parseDateOnlyToDate(s);
 }
 
 function endOfDay(d: Date): Date {
-  const r = new Date(d);
-  r.setHours(23, 59, 59, 999);
-  return r;
+  return parseDateOnlyToEndOfDay(formatDateOnlyForInput(d));
 }
 
 export type ReportFilters = {
@@ -42,15 +48,15 @@ export function parseReportQueryFilters(
   params: Record<string, string | undefined>,
 ): ReportFilters {
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const firstOfMonth = parseDateOnlyToDate(getThailandMonthStartDateKey(today));
   const from = parseDate(params.from, firstOfMonth);
   const to = parseDate(params.to, today);
   const hasFilter = !!(params.from || params.to);
   return {
     from,
     to: endOfDay(to),
-    fromStr: params.from ?? from.toISOString().slice(0, 10),
-    toStr: params.to ?? today.toISOString().slice(0, 10),
+    fromStr: params.from ?? formatDateOnlyForInput(from),
+    toStr: params.to ?? getThailandDateKey(today),
     hasFilter,
     showCancelled: params.showCancelled === "1",
     accountId: params.accountId,
@@ -633,11 +639,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
 const BOM = "\uFEFF";
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(d);
 }
 
 function csvRow(cells: (string | number)[]): string {

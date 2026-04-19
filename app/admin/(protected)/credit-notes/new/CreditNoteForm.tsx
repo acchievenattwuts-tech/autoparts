@@ -9,6 +9,7 @@ import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface CustomerOption {
   id: string;
@@ -345,7 +346,7 @@ const CreditNoteForm = ({
               type="date"
               name="cnDate"
               required
-              defaultValue={initialData?.cnDate ?? new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.cnDate ?? getThailandDateKey()}
               className={inputCls}
             />
           </div>
@@ -369,11 +370,7 @@ const CreditNoteForm = ({
                 ...filteredSales.map((sale): SelectOption => ({
                   id: sale.id,
                   label: sale.saleNo,
-                  sublabel: new Date(sale.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  }),
+                  sublabel: formatDateThai(sale.saleDate),
                 })),
               ]}
               value={saleId}

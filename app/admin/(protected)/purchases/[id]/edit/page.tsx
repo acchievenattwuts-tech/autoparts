@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseForm from "../../new/PurchaseForm";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -73,15 +74,15 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         lotNo: lot.lotNo,
         qty: Number(lot.qty),
         unitCost: Number(lot.unitCost),
-        mfgDate: lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
-        expDate: lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+          mfgDate: lot.mfgDate ? formatDateOnlyForInput(lot.mfgDate) : "",
+          expDate: lot.expDate ? formatDateOnlyForInput(lot.expDate) : "",
       })),
     };
   });
 
   const initialData = {
     id,
-    purchaseDate: purchase.purchaseDate.toISOString().slice(0, 10),
+      purchaseDate: formatDateOnlyForInput(purchase.purchaseDate),
     supplierId: purchase.supplierId ?? "",
     purchaseType: purchase.purchaseType,
     cashBankAccountId: purchase.cashBankAccountId ?? "",

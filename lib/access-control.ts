@@ -240,6 +240,8 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/master", permission: "master.view" },
   { prefix: "/admin/stock/bf", permission: "stock.bf.view" },
   { prefix: "/admin/stock/adjustments", permission: "stock.adjustments.view" },
+  { prefix: "/admin/stock/card-lot", permission: "lot_reports.view" },
+  { prefix: "/admin/stock/lot", permission: "lot_reports.view" },
   { prefix: "/admin/stock/card", permission: "stock.card.view" },
   { prefix: "/admin/lots", permission: "lot_reports.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },

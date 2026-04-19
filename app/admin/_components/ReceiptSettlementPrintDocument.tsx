@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { formatDateThai } from "@/lib/th-date";
 
 type NumericLike = number | string | { toString(): string };
 
@@ -68,12 +69,7 @@ const RECEIPT_SUMMARY_GRID_STYLE = {
 } as const;
 const RECEIPT_FIXED_COLUMN_WIDTHS = ["10rem", "7rem"] as const;
 
-const fmtDate = (d: Date | string) =>
-  new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+const fmtDate = (d: Date | string) => formatDateThai(d);
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -1,10 +1,9 @@
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
+import { formatDateThai, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const BANGKOK_TZ_OFFSET = "+07:00";
-const BANGKOK_TIMEZONE = "Asia/Bangkok";
 
 type MoneySection = {
   salesTotal: number;
@@ -68,12 +67,7 @@ function toNumber(value: unknown): number {
 }
 
 function isValidDayKey(value: string | undefined): value is string {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-
-  const parsed = new Date(`${value}T00:00:00${BANGKOK_TZ_OFFSET}`);
-  return !Number.isNaN(parsed.getTime());
+  return Boolean(value && isDateOnlyString(value));
 }
 
 export function resolveBangkokDayKey(value?: string): string {
@@ -90,21 +84,13 @@ async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>): Pr
 }
 
 function getBangkokDayRange(dayKey: string) {
-  const start = new Date(`${dayKey}T00:00:00${BANGKOK_TZ_OFFSET}`);
+  const start = parseDateOnlyToDate(dayKey);
   const end = new Date(start.getTime() + DAY_MS - 1);
   return { start, end };
 }
 
 function formatThaiDate(dayKey: string) {
-  return new Date(`${dayKey}T00:00:00${BANGKOK_TZ_OFFSET}`).toLocaleDateString(
-    "th-TH-u-ca-gregory",
-    {
-      timeZone: BANGKOK_TIMEZONE,
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }
-  );
+  return formatDateThai(parseDateOnlyToDate(dayKey));
 }
 
 function formatMoney(value: number) {

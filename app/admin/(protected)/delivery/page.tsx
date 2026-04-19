@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Eye } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import { formatDateThai } from "@/lib/th-date";
 
 const DeliveryPage = async ({
   searchParams,
@@ -122,11 +123,7 @@ const DeliveryPage = async ({
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
-                      {new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day:   "2-digit",
-                        month: "2-digit",
-                        year:  "numeric",
-                      })}
+                      {formatDateThai(s.saleDate)}
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900">

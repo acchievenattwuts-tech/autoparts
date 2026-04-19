@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import TransferManager from "./TransferManager";
 
 export default async function CashBankTransfersPage() {
@@ -46,7 +47,7 @@ export default async function CashBankTransfersPage() {
         transfers={transfers.map((transfer) => ({
           id: transfer.id,
           transferNo: transfer.transferNo,
-          transferDate: transfer.transferDate.toISOString().slice(0, 10),
+          transferDate: formatDateOnlyForInput(transfer.transferDate),
           fromAccountCode: transfer.fromAccount.code,
           fromAccountName: transfer.fromAccount.name,
           toAccountCode: transfer.toAccount.code,

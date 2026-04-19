@@ -7,6 +7,7 @@ import { PaymentMethod } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 import SupplierAdvanceCancelButton from "../SupplierAdvanceCancelButton";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -97,11 +98,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
           <div>
             <p className="mb-0.5 text-gray-500">วันที่เอกสาร</p>
             <p className="font-medium text-gray-900">
-              {new Date(advance.advanceDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}
+              {formatDateThai(advance.advanceDate)}
             </p>
           </div>
           <div>
@@ -186,11 +183,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-gray-600">
-                      {new Date(item.payment.paymentDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                      {formatDateThai(item.payment.paymentDate)}
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900">
                       {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}

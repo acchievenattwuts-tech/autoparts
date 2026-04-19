@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { createPartsBrand, togglePartsBrand } from "./actions";
 import type { PartsBrand } from "@/lib/generated/prisma";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PartsBrandFormProps {
   brands: PartsBrand[];
@@ -100,11 +101,7 @@ const PartsBrandForm = ({ brands, canCreate, canCancel }: PartsBrandFormProps) =
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-500">
-                      {new Date(brand.createdAt).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                        {formatDateThai(brand.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {canCancel ? (

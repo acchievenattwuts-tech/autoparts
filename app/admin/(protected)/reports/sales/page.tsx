@@ -11,6 +11,7 @@ import {
   statusLabel,
   type SaleRow,
 } from "@/lib/report-queries";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -24,11 +25,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value: Date) {
-  return value.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 export default async function SalesReportPage({ searchParams }: PageProps) {

@@ -12,6 +12,11 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import Pagination from "@/components/shared/Pagination";
 import SearchBar from "@/components/shared/SearchBar";
 import SupplierAdvanceCancelButton from "./SupplierAdvanceCancelButton";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -40,8 +45,8 @@ const SupplierAdvancesPage = async ({
   const where: Prisma.SupplierAdvanceWhereInput = {};
   if (from || to) {
     where.advanceDate = {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
   }
   if (q) {
@@ -138,11 +143,7 @@ const SupplierAdvancesPage = async ({
                     </td>
                     <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{advance.advanceNo}</td>
                     <td className="px-4 py-3 text-gray-600">
-                      {new Date(advance.advanceDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                    {formatDateThai(advance.advanceDate)}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{advance.supplier.name}</td>
                     <td className="px-4 py-3">

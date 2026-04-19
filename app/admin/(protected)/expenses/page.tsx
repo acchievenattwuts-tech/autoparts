@@ -7,6 +7,11 @@ import CancelExpenseButton from "./CancelExpenseButton";
 import Pagination from "@/components/shared/Pagination";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -28,8 +33,8 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
 
   const dateFilter = (from || to) ? {
     expenseDate: {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     },
   } : {};
 
@@ -207,7 +212,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                         {exp.expenseNo}
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(exp.expenseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                    {formatDateThai(exp.expenseDate)}
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="space-y-0.5">

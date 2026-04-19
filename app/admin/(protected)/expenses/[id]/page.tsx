@@ -6,6 +6,7 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("expenses.view");
@@ -70,7 +71,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <div>
             <p className="text-gray-500 mb-0.5">วันที่</p>
             <p className="font-medium text-gray-900">
-              {new Date(expense.expenseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {formatDateThai(expense.expenseDate)}
             </p>
           </div>
           <div>

@@ -5,6 +5,7 @@ import { createAdjustment, fetchAdjustmentProductLots } from "./actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import {
   validateLotRows,
   autoAllocateLots,
@@ -322,7 +323,7 @@ const AdjustmentForm = ({
               type="date"
               name="adjustDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={getThailandDateKey()}
               className={`${inputCls} bg-white`}
             />
           </div>
@@ -588,11 +589,7 @@ const AdjustmentForm = ({
                                     {lotOptions.map((availableLot) => {
                                       const qtyInUnit = Math.round((availableLot.qtyOnHand / scale) * 10000) / 10000;
                                       const expLabel = availableLot.expDate
-                                        ? new Date(availableLot.expDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                                            day: "2-digit",
-                                            month: "2-digit",
-                                            year: "numeric",
-                                          })
+                                          ? formatDateThai(availableLot.expDate)
                                         : "ไม่มี EXP";
 
                                       return (
@@ -616,11 +613,7 @@ const AdjustmentForm = ({
                                 {lot.expDate && (
                                   <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
                                     EXP{" "}
-                                    {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                    })}
+                                      {formatDateThai(lot.expDate)}
                                   </span>
                                 )}
                                 {item.lotItems.length > 1 && (

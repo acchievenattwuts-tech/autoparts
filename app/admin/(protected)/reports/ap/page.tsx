@@ -9,17 +9,14 @@ import {
   queryAPData,
   type ARAPStockFilters,
 } from "@/lib/ar-ap-stock-report-queries";
+import { formatDateThai } from "@/lib/th-date";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
 };
 
 function formatDate(value: Date): string {
-  return value.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 function formatCurrency(value: number): string {

@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchases.view");
@@ -94,11 +95,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <div>
             <p className="mb-0.5 text-gray-500">วันที่ซื้อ</p>
             <p className="font-medium text-gray-900">
-              {new Date(purchase.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}
+                {formatDateThai(purchase.purchaseDate)}
             </p>
           </div>
           <div>
@@ -199,11 +196,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                                   <span className="text-gray-400">|</span>
                                   <span className="text-gray-500">EXP</span>
                                   <span className="text-gray-700">
-                                    {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                    })}
+                                {formatDateThai(lot.expDate)}
                                   </span>
                                 </>
                               )}

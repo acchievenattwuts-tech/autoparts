@@ -1,3 +1,5 @@
+import { formatDateTimeThai } from "@/lib/th-date";
+
 const BANGKOK_OFFSET = "+07:00";
 
 export function parseBangkokDateTimeLocal(value: string | null | undefined): Date | null {
@@ -21,9 +23,7 @@ export function formatThaiDateTime(value: Date | string | null | undefined): str
   if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-
-  return date.toLocaleString("th-TH", {
-    timeZone: "Asia/Bangkok",
+  return formatDateTimeThai(date, {
     dateStyle: "short",
     timeStyle: "short",
   });

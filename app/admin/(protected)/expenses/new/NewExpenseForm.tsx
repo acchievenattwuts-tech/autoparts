@@ -7,6 +7,7 @@ import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { getThailandDateKey } from "@/lib/th-date";
 
 interface ExpenseCodeOption {
   id: string;
@@ -135,7 +136,7 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
           <input
             type="date"
             name="expenseDate"
-            defaultValue={initialData?.expenseDate ?? new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.expenseDate ?? getThailandDateKey()}
             required
             className={inputCls}
           />

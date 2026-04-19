@@ -5,6 +5,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 import SupplierPaymentCancelButton from "../SupplierPaymentCancelButton";
 
 const paymentMethodLabel = {
@@ -106,11 +107,7 @@ const SupplierPaymentDetailPage = async ({
           <div className="rounded-lg bg-gray-50 p-4">
             <p className="text-sm text-gray-500">วันที่เอกสาร</p>
             <p className="mt-1 font-medium text-gray-900">
-              {new Date(payment.paymentDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-              })}
+              {formatDateThai(payment.paymentDate)}
             </p>
             <p className="mt-1 text-sm text-gray-500">ผู้บันทึก: {payment.user.name ?? "-"}</p>
           </div>
@@ -187,11 +184,7 @@ const SupplierPaymentDetailPage = async ({
                       <p className="font-mono font-medium text-[#1e3a5f]">{item.purchase?.purchaseNo ?? "-"}</p>
                       <p className="mt-1 text-sm text-gray-500">
                         {item.purchase?.purchaseDate
-                          ? new Date(item.purchase.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
+                          ? formatDateThai(item.purchase.purchaseDate)
                           : "-"}
                       </p>
                     </div>
@@ -222,11 +215,7 @@ const SupplierPaymentDetailPage = async ({
                       <p className="font-mono font-medium text-emerald-700">{item.purchaseReturn?.returnNo ?? "-"}</p>
                       <p className="mt-1 text-sm text-gray-500">
                         {item.purchaseReturn?.returnDate
-                          ? new Date(item.purchaseReturn.returnDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
+                          ? formatDateThai(item.purchaseReturn.returnDate)
                           : "-"}
                       </p>
                     </div>
@@ -257,11 +246,7 @@ const SupplierPaymentDetailPage = async ({
                       <p className="font-mono font-medium text-amber-700">{item.advance?.advanceNo ?? "-"}</p>
                       <p className="mt-1 text-sm text-gray-500">
                         {item.advance?.advanceDate
-                          ? new Date(item.advance.advanceDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
+                          ? formatDateThai(item.advance.advanceDate)
                           : "-"}
                       </p>
                     </div>

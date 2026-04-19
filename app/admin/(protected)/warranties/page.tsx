@@ -7,6 +7,7 @@ import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus } from
 import Pagination from "@/components/shared/Pagination";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -50,8 +51,8 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
 
   const dateWhere: Prisma.WarrantyWhereInput = (from || to) ? {
     startDate: {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     },
   } : {};
 
@@ -272,10 +273,10 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         {w.warrantyDays} วัน
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(w.startDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        {formatDateThai(w.startDate)}
                       </td>
                       <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                        {new Date(w.endDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                        {formatDateThai(w.endDate)}
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         {w.wStatus === "expired" && (

@@ -1,13 +1,15 @@
 export const dynamic = "force-dynamic";
 
-import { db } from "@/lib/db";
-import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
-import { hasPermissionAccess } from "@/lib/access-control";
-import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Printer } from "lucide-react";
-import ClaimStatusActions from "./ClaimStatusActions";
+import { notFound } from "next/navigation";
+
+import { hasPermissionAccess } from "@/lib/access-control";
+import { db } from "@/lib/db";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import ClaimEditPanel from "./ClaimEditPanel";
+import ClaimStatusActions from "./ClaimStatusActions";
+import { formatDateThai } from "@/lib/th-date";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -36,7 +38,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
 
   const { id } = await params;
 
-  const [claim, suppliers] = await Promise.all([
+  const [claim, suppliers, receivedStockCard] = await Promise.all([
     db.warrantyClaim.findUnique({
       where: { id },
       include: {
@@ -66,19 +68,35 @@ const ClaimDetailPage = async ({ params }: Props) => {
       orderBy: { name: "asc" },
       select: { id: true, name: true, phone: true, address: true },
     }),
+    db.stockCard.findFirst({
+      where: {
+        referenceId: id,
+        source: "CLAIM_RECV_IN",
+      },
+      select: {
+        lotMovements: {
+          select: {
+            lotNo: true,
+            qtyIn: true,
+          },
+          orderBy: { lotNo: "asc" },
+        },
+      },
+    }),
   ]);
 
   if (!claim) notFound();
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";
+  const receivedLot = receivedStockCard?.lotMovements.find((lot) => Number(lot.qtyIn) > 0) ?? null;
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-6">
+      <div className="mb-6 flex items-center gap-2">
         <Link
           href="/admin/warranty-claims"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
         >
           <ChevronLeft size={16} /> ใบเคลมทั้งหมด
         </Link>
@@ -86,19 +104,17 @@ const ClaimDetailPage = async ({ params }: Props) => {
         <span className="text-sm font-medium text-gray-700">{claim.claimNo}</span>
       </div>
 
-      <div className="flex items-start justify-between mb-6">
+      <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="font-kanit text-2xl font-bold text-gray-900">{claim.claimNo}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {new Date(claim.claimDate).toLocaleDateString("th-TH-u-ca-gregory", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-            })}
+          <p className="mt-1 text-sm text-gray-500">
+            {formatDateThai(claim.claimDate)}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex px-3 py-1.5 rounded-full text-sm font-medium border ${STATUS_COLOR[claim.status]}`}>
+          <span
+            className={`inline-flex rounded-full border px-3 py-1.5 text-sm font-medium ${STATUS_COLOR[claim.status]}`}
+          >
             {STATUS_LABEL[claim.status]}
           </span>
           {canUpdate && isEditable && (
@@ -115,137 +131,136 @@ const ClaimDetailPage = async ({ params }: Props) => {
           )}
           <Link
             href={`/admin/warranty-claims/${id}/print?print=1`}
-            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
           >
             <Printer size={14} /> พิมพ์
           </Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-kanit text-base font-semibold text-[#1e3a5f] mb-4">ข้อมูลสินค้า / ประกัน</h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 font-kanit text-base font-semibold text-[#1e3a5f]">
+              ข้อมูลสินค้า / ประกัน
+            </h2>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">สินค้า</p>
+                <p className="mb-0.5 text-xs text-gray-400">สินค้า</p>
                 <p className="font-medium text-gray-800">{claim.warranty.product.name}</p>
                 <p className="text-xs text-gray-400">[{claim.warranty.product.code}]</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ลำดับชิ้น</p>
+                <p className="mb-0.5 text-xs text-gray-400">ลำดับชิ้น</p>
                 <p className="font-medium text-gray-700">#{claim.warranty.unitSeq}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">Lot ต้นทาง</p>
+                <p className="mb-0.5 text-xs text-gray-400">Lot ต้นทาง</p>
                 <p className="font-mono text-gray-700">{claim.warranty.lotNo ?? "—"}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ใบขาย</p>
-                <Link href={`/admin/sales/${claim.warranty.sale.saleNo}`} className="font-mono text-sm text-[#1e3a5f] hover:underline">
+                <p className="mb-0.5 text-xs text-gray-400">ใบขาย</p>
+                <Link
+                  href={`/admin/sales/${claim.warranty.sale.saleNo}`}
+                  className="font-mono text-sm text-[#1e3a5f] hover:underline"
+                >
                   {claim.warranty.sale.saleNo}
                 </Link>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ลูกค้า</p>
+                <p className="mb-0.5 text-xs text-gray-400">ลูกค้า</p>
                 <p className="text-gray-700">{claim.warranty.sale.customerName ?? "—"}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ประกัน</p>
+                <p className="mb-0.5 text-xs text-gray-400">ประกัน</p>
                 <p className="text-gray-700">{claim.warranty.warrantyDays} วัน</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">วันหมดประกัน</p>
+                <p className="mb-0.5 text-xs text-gray-400">วันหมดประกัน</p>
                 <p className="text-gray-700">
-                  {new Date(claim.warranty.endDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })}
+                  {formatDateThai(claim.warranty.endDate)}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-kanit text-base font-semibold text-[#1e3a5f] mb-4">รายละเอียดการเคลม</h2>
+          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 font-kanit text-base font-semibold text-[#1e3a5f]">
+              รายละเอียดการเคลม
+            </h2>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ประเภทเคลม</p>
+                <p className="mb-0.5 text-xs text-gray-400">ประเภทเคลม</p>
                 <p className="font-medium text-gray-700">
                   {claim.claimType === "REPLACE_NOW" ? "เปลี่ยนของให้ทันที" : "ลูกค้ารอเคลม"}
                 </p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">อาการ</p>
+                <p className="mb-0.5 text-xs text-gray-400">อาการ</p>
                 <p className="text-gray-700">{claim.symptom ?? "—"}</p>
               </div>
               {claim.sentAt && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-0.5">วันที่ส่งซัพพลายเออร์</p>
+                  <p className="mb-0.5 text-xs text-gray-400">วันที่ส่งซัพพลายเออร์</p>
                   <p className="text-gray-700">
-                    {new Date(claim.sentAt).toLocaleDateString("th-TH-u-ca-gregory", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
+                    {formatDateThai(claim.sentAt)}
                   </p>
                 </div>
               )}
               {claim.resolvedAt && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-0.5">วันที่ปิดเคลม</p>
+                  <p className="mb-0.5 text-xs text-gray-400">วันที่ปิดเคลม</p>
                   <p className="text-gray-700">
-                    {new Date(claim.resolvedAt).toLocaleDateString("th-TH-u-ca-gregory", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
+                    {formatDateThai(claim.resolvedAt)}
                   </p>
                 </div>
               )}
               {claim.returnedAt && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-0.5">วันที่ส่งคืนลูกค้า</p>
+                  <p className="mb-0.5 text-xs text-gray-400">วันที่ส่งคืนลูกค้า</p>
                   <p className="text-gray-700">
-                    {new Date(claim.returnedAt).toLocaleDateString("th-TH-u-ca-gregory", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    })}
+                    {formatDateThai(claim.returnedAt)}
                   </p>
                 </div>
               )}
               {claim.outcome && (
                 <div>
-                  <p className="text-gray-400 text-xs mb-0.5">ผลลัพธ์</p>
+                  <p className="mb-0.5 text-xs text-gray-400">ผลลัพธ์</p>
                   <p className="font-medium text-gray-700">
                     {claim.outcome === "RECEIVED" ? "ได้รับสินค้าคืน" : "ไม่ได้รับการแก้ไข"}
                   </p>
                 </div>
               )}
+              {claim.warranty.product.isLotControl && receivedLot && (
+                <div>
+                  <p className="mb-0.5 text-xs text-gray-400">Lot ที่รับกลับตอนปิดเคลม</p>
+                  <p className="font-mono text-gray-700">{receivedLot.lotNo}</p>
+                </div>
+              )}
               {claim.note && (
                 <div className="col-span-2">
-                  <p className="text-gray-400 text-xs mb-0.5">หมายเหตุ</p>
+                  <p className="mb-0.5 text-xs text-gray-400">หมายเหตุ</p>
                   <p className="text-gray-700">{claim.note}</p>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-kanit text-base font-semibold text-[#1e3a5f] mb-4">ซัพพลายเออร์</h2>
+          <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-4 font-kanit text-base font-semibold text-[#1e3a5f]">
+              ซัพพลายเออร์
+            </h2>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">ชื่อ</p>
+                <p className="mb-0.5 text-xs text-gray-400">ชื่อ</p>
                 <p className="text-gray-700">{claim.supplierName ?? "—"}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs mb-0.5">เบอร์โทร</p>
+                <p className="mb-0.5 text-xs text-gray-400">เบอร์โทร</p>
                 <p className="text-gray-700">{claim.supplierPhone ?? "—"}</p>
               </div>
               <div className="col-span-2">
-                <p className="text-gray-400 text-xs mb-0.5">ที่อยู่</p>
+                <p className="mb-0.5 text-xs text-gray-400">ที่อยู่</p>
                 <p className="text-gray-700">{claim.supplierAddress ?? "—"}</p>
               </div>
             </div>

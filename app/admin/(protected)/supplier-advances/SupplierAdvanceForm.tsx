@@ -6,6 +6,7 @@ import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { createSupplierAdvance, updateSupplierAdvance } from "./actions";
+import { getThailandDateKey } from "@/lib/th-date";
 
 type SupplierOption = {
   id: string;
@@ -53,7 +54,7 @@ const SupplierAdvanceForm = ({
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [advanceDate, setAdvanceDate] = useState(
-    initialData?.advanceDate ?? new Date().toISOString().slice(0, 10),
+    initialData?.advanceDate ?? getThailandDateKey(),
   );
   const [totalAmount, setTotalAmount] = useState(initialData?.totalAmount ?? 0);
   const [note, setNote] = useState(initialData?.note ?? "");

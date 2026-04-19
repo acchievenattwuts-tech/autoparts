@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 
@@ -97,7 +98,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
 
   const initialData = {
     id,
-    cnDate:         cn.cnDate.toISOString().slice(0, 10),
+        cnDate:         formatDateOnlyForInput(cn.cnDate),
     customerId:     cn.customerId ?? "",
     customerName:   cn.customerName ?? "",
     saleId:         cn.saleId ?? "",

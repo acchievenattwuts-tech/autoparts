@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { LineDailySummaryTargetMode, LineRecipientType } from "@/lib/generated/prisma";
+import { formatDateTimeThai } from "@/lib/th-date";
 import {
   linkAdminLineRecipientAction,
   saveLineDailySummarySettingsAction,
@@ -53,8 +54,7 @@ const targetModeLabels: Record<LineDailySummaryTargetMode, string> = {
 
 function formatDateTime(value: string | null) {
   if (!value) return "-";
-
-  return new Date(value).toLocaleString("th-TH", {
+  return formatDateTimeThai(value, {
     dateStyle: "short",
     timeStyle: "short",
   });

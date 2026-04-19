@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 
@@ -67,10 +68,10 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       select: { productId: true, lotNo: true, expDate: true, mfgDate: true, unitCost: true },
     });
     for (const pl of productLots) {
-      productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? pl.expDate.toISOString().slice(0, 10) : "";
+      productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? formatDateOnlyForInput(pl.expDate) : "";
       productLotMetaMap[`${pl.productId}:${pl.lotNo}`] = {
-        expDate: pl.expDate ? pl.expDate.toISOString().slice(0, 10) : "",
-        mfgDate: pl.mfgDate ? pl.mfgDate.toISOString().slice(0, 10) : "",
+        expDate: pl.expDate ? formatDateOnlyForInput(pl.expDate) : "",
+        mfgDate: pl.mfgDate ? formatDateOnlyForInput(pl.mfgDate) : "",
         unitCost: Number(pl.unitCost),
       };
     }
@@ -158,7 +159,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const initialData = {
     id,
-    saleDate:        sale.saleDate.toISOString().slice(0, 10),
+      saleDate:        formatDateOnlyForInput(sale.saleDate),
     customerId:      sale.customerId ?? "",
     customerName:    sale.customerName ?? "",
     customerPhone:   sale.customerPhone ?? "",

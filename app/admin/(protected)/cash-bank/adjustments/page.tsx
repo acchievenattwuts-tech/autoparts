@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import AdjustmentManager from "./AdjustmentManager";
 
 export default async function CashBankAdjustmentsPage() {
@@ -48,7 +49,7 @@ export default async function CashBankAdjustmentsPage() {
         adjustments={adjustments.map((adjustment) => ({
           id: adjustment.id,
           adjustNo: adjustment.adjustNo,
-          adjustDate: adjustment.adjustDate.toISOString().slice(0, 10),
+          adjustDate: formatDateOnlyForInput(adjustment.adjustDate),
           accountId: adjustment.accountId,
           accountCode: adjustment.account.code,
           accountName: adjustment.account.name,

@@ -10,6 +10,7 @@ import {
   getSessionPermissionContext,
   requirePermission,
 } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
@@ -292,11 +293,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                         <tr key={card.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50">
                           <td className="px-3 py-2.5 text-xs text-gray-400">{index + 1}</td>
                           <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
-                            {new Date(card.docDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })}
+                    {formatDateThai(card.docDate)}
                           </td>
                           <td className="px-3 py-2.5 font-mono text-xs text-[#1e3a5f]">
                             {card.docNo}

@@ -8,6 +8,16 @@ import {
   PurchaseType,
   SalePaymentType,
 } from "@/lib/generated/prisma";
+import {
+  formatDateOnlyForInput,
+  formatDateThai,
+  getThailandDateKey,
+  getThailandMonthStartDateKey,
+  isDateOnlyString,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 type ReportRange = { from: Date; to: Date };
 
@@ -239,12 +249,6 @@ function startOfDay(date: Date): Date {
   return next;
 }
 
-function endOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next;
-}
-
 function startOfWeek(date: Date): Date {
   const next = startOfDay(date);
   const day = next.getDay();
@@ -261,7 +265,7 @@ function formatDateInput(date: Date): string {
 }
 
 function formatDateShort(date: Date): string {
-  return date.toLocaleDateString("th-TH-u-ca-gregory", {
+  return formatDateThai(date, {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -273,9 +277,8 @@ function formatMonthKey(date: Date): string {
 }
 
 function parseDateInput(value: string | undefined, fallback: Date): Date {
-  if (!value) return fallback;
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  if (!value || !isDateOnlyString(value)) return fallback;
+  return parseDateOnlyToDate(value);
 }
 
 function normalizeCode(value: string | undefined): string {
@@ -365,7 +368,7 @@ function buildSalesBuckets(
       sortDate = weekStart;
     } else {
       key = formatMonthKey(transaction.docDate);
-      label = transaction.docDate.toLocaleDateString("th-TH-u-ca-gregory", {
+      label = formatDateThai(transaction.docDate, {
         month: "long",
         year: "numeric",
       });
@@ -392,14 +395,21 @@ function buildSalesBuckets(
 
   return [...bucketMap.values()]
     .sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
-    .map(({ sortDate: _sortDate, ...bucket }) => bucket);
+    .map((bucket) => ({
+      label: bucket.label,
+      documentCount: bucket.documentCount,
+      grossSalesAmount: bucket.grossSalesAmount,
+      returnAmount: bucket.returnAmount,
+      netSaleAmount: bucket.netSaleAmount,
+      vatAmount: bucket.vatAmount,
+    }));
 }
 
 export function getDefaultReportRange(): { from: string; to: string } {
   const now = new Date();
   return {
-    from: formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1)),
-    to: formatDateInput(now),
+    from: getThailandMonthStartDateKey(now),
+    to: getThailandDateKey(now),
   };
 }
 
@@ -416,16 +426,16 @@ export function parseReportFilters(params: {
   expenseCodeTo?: string;
 }): ParsedReportFilters {
   const defaults = getDefaultReportRange();
-  const from = parseDateInput(params.from, new Date(`${defaults.from}T00:00:00`));
-  const to = parseDateInput(params.to, new Date(`${defaults.to}T00:00:00`));
-  const normalizedFrom = startOfDay(from);
-  const normalizedTo = endOfDay(to < from ? from : to);
+  const from = parseDateInput(params.from, parseDateOnlyToDate(defaults.from));
+  const to = parseDateInput(params.to, parseDateOnlyToDate(defaults.to));
+  const normalizedFrom = parseDateOnlyToStartOfDay(formatDateOnlyForInput(from));
+  const normalizedTo = parseDateOnlyToEndOfDay(formatDateOnlyForInput(to < from ? from : to));
 
   return {
     from: normalizedFrom,
     to: normalizedTo,
-    fromInput: formatDateInput(normalizedFrom),
-    toInput: formatDateInput(normalizedTo),
+    fromInput: formatDateOnlyForInput(normalizedFrom),
+    toInput: formatDateOnlyForInput(normalizedTo),
     customerCodeFrom: normalizeCode(params.customerCodeFrom),
     customerCodeTo: normalizeCode(params.customerCodeTo),
     supplierCodeFrom: normalizeCode(params.supplierCodeFrom),

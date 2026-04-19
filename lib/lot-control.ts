@@ -1,5 +1,6 @@
 import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 
 // Re-export client-safe types and pure functions
 export type { LotSubRow, LotAvailable } from "@/lib/lot-control-client";
@@ -55,8 +56,8 @@ export async function getLotAvailability(
       productLot.lotNo,
       {
         unitCost: Number(productLot.unitCost),
-        mfgDate: productLot.mfgDate ? productLot.mfgDate.toISOString().slice(0, 10) : null,
-        expDate: productLot.expDate ? productLot.expDate.toISOString().slice(0, 10) : null,
+        mfgDate: productLot.mfgDate ? formatDateOnlyForInput(productLot.mfgDate) : null,
+        expDate: productLot.expDate ? formatDateOnlyForInput(productLot.expDate) : null,
       },
     ]),
   );

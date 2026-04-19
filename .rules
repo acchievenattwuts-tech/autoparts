@@ -147,6 +147,17 @@ Use the Sales page (view / add / update / cancel) as the reference structure.
 
 ### UI/UX Decisions
 - **All dates everywhere must use Gregorian calendar (C.E.)** — use locale `"th-TH-u-ca-gregory"` instead of `"th-TH"` in every `toLocaleDateString()` call. Never use `"th-TH"` as it renders years in Buddhist Era (B.E.) which causes confusion.
+- **Date-only fields must use the Thailand date policy** — for document/business dates such as `saleDate`, `purchaseDate`, `receiptDate`, `claimDate`, `expenseDate`, `adjustDate`, `advanceDate`, `paymentDate`, and lot MFG/EXP dates:
+  - treat them as `date-only`, not as generic UTC timestamps
+  - never use `new Date().toISOString().slice(0, 10)` for `<input type="date">` defaults
+  - never serialize them with `date.toISOString().slice(0, 10)`
+  - never parse `YYYY-MM-DD` with bare `new Date(value)` or `new Date(\`${value}T00:00:00\`)`
+  - use the shared helpers in `lib/th-date.ts` instead:
+    - `getThailandDateKey()` for today/default input values
+    - `formatDateOnlyForInput()` for edit-form/date-only serialization
+    - `parseDateOnlyToDate()` / `parseDateOnlyToStartOfDay()` / `parseDateOnlyToEndOfDay()` for server/query handling
+    - `formatDateThai()` / `formatDateTimeThai()` for display
+- **Timestamp fields must stay as real instants** — fields such as `createdAt`, `updatedAt`, `sentAt`, `resolvedAt`, `returnedAt`, and other event times should continue to be stored as timestamps, with UTC-safe persistence and Thailand-aware display formatting via `formatDateTimeThai()` when shown to users.
 - Every admin page that queries the DB must export `export const dynamic = "force-dynamic"` — never omit this.
 - **Every route segment under `/app/admin/(protected)/` must have a `loading.tsx` file** — this applies to list, detail, new, and edit pages. Next.js uses Suspense-based per-segment loading; without `loading.tsx` the page shows no loading indicator during navigation.
 - Forms with multiple line items should submit items as JSON via `formData.set("items", JSON.stringify(items))`.

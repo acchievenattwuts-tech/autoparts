@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -92,7 +93,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const initialData = {
     id,
-    returnDate: ret.returnDate.toISOString().slice(0, 10),
+      returnDate: formatDateOnlyForInput(ret.returnDate),
     purchaseId: ret.purchaseId ?? "",
     supplierId: ret.supplierId ?? "",
     type: ret.type,

@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import NewExpenseForm from "../../new/NewExpenseForm";
 
 const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -35,7 +36,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const initialData = {
     id,
-    expenseDate: expense.expenseDate.toISOString().slice(0, 10),
+      expenseDate: formatDateOnlyForInput(expense.expenseDate),
     cashBankAccountId: expense.cashBankAccountId ?? "",
     vatType:     expense.vatType,
     vatRate:     Number(expense.vatRate),

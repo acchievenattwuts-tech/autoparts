@@ -23,6 +23,7 @@ import {
   writeStockMovementLots,
   type LotSubRow,
 } from "@/lib/lot-control";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
@@ -798,8 +799,8 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
             lotNo: lot.lotNo,
             qty: Number(lot.qty) / scale,
             unitCost: Number(lot.unitCost) * scale,
-            mfgDate: lot.mfgDate ? lot.mfgDate.toISOString().slice(0, 10) : "",
-            expDate: lot.expDate ? lot.expDate.toISOString().slice(0, 10) : "",
+            mfgDate: lot.mfgDate ? formatDateOnlyForInput(lot.mfgDate) : "",
+            expDate: lot.expDate ? formatDateOnlyForInput(lot.expDate) : "",
           }))
         : [],
     };

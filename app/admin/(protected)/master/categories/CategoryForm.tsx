@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { Check, Pencil, X } from "lucide-react";
 import { createCategory, toggleCategory, updateCategory } from "./actions";
 import { Category } from "@/lib/generated/prisma";
+import { formatDateThai } from "@/lib/th-date";
 
 interface CategoryFormProps {
   categories: Category[];
@@ -106,11 +107,7 @@ const EditableRow = ({
         )}
       </td>
       <td className="px-4 py-3 text-gray-500">
-        {new Date(category.createdAt).toLocaleDateString("th-TH-u-ca-gregory", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        })}
+                        {formatDateThai(category.createdAt)}
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-2">

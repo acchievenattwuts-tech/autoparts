@@ -6,6 +6,7 @@ import { createClaim } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { CheckCircle } from "lucide-react";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { getThailandDateKey } from "@/lib/th-date";
 
 interface SupplierOption {
   id:       string;
@@ -109,7 +110,7 @@ const NewClaimForm = ({
               type="date"
               name="claimDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={getThailandDateKey()}
               className={inputCls}
             />
           </div>

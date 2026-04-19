@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import NewClaimForm from "./NewClaimForm";
 import { autoAllocateLots, type LotAvailableJSON } from "@/lib/lot-control-client";
+import { formatDateThai } from "@/lib/th-date";
 
 interface Props {
   searchParams: Promise<{ warrantyId?: string }>;
@@ -129,8 +130,8 @@ const NewClaimPage = async ({ searchParams }: Props) => {
           <span>ลำดับ: <strong>#{warranty.unitSeq}</strong></span>
           <span>ใบขาย: <strong>{warranty.sale.saleNo}</strong></span>
           <span>ลูกค้า: <strong>{warranty.sale.customerName ?? "—"}</strong></span>
-          <span>เริ่ม: <strong>{new Date(warranty.startDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}</strong></span>
-          <span>หมด: <strong>{new Date(warranty.endDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}</strong></span>
+          <span>เริ่ม: <strong>{formatDateThai(warranty.startDate)}</strong></span>
+          <span>หมด: <strong>{formatDateThai(warranty.endDate)}</strong></span>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface ProductOption {
   id: string;
@@ -409,7 +410,7 @@ const SaleForm = ({
               type="date"
               name="saleDate"
               required
-              defaultValue={initialData?.saleDate ?? new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.saleDate ?? getThailandDateKey()}
               className={inputCls}
             />
           </div>
@@ -826,7 +827,7 @@ const SaleForm = ({
                                     <span className="text-gray-300">|</span>
                                     <span className="text-gray-500">EXP</span>
                                     <span className="text-gray-700">
-                                      {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                          {formatDateThai(lot.expDate)}
                                     </span>
                                   </>
                                 )}
@@ -856,7 +857,7 @@ const SaleForm = ({
                                       {lotOptions.map((av) => {
                                         const qtyInUnit = Math.round((av.qtyOnHand / scale) * 10000) / 10000;
                                         const expStr = av.expDate
-                                          ? new Date(av.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })
+                                        ? formatDateThai(av.expDate)
                                           : "ไม่มี EXP";
                                         return (
                                           <option key={av.lotNo} value={av.lotNo}>
@@ -877,7 +878,7 @@ const SaleForm = ({
                                   </div>
                                   {lot.expDate && (
                                     <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
-                                      EXP {new Date(lot.expDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                                      EXP {formatDateThai(lot.expDate)}
                                     </span>
                                   )}
                                   {item.lotItems.length > 1 && (

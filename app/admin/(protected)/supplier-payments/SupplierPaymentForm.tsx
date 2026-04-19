@@ -12,6 +12,7 @@ import {
   type SupplierSettlementDocument,
   type SupplierSettlementDocumentBundle,
 } from "./actions";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 type SupplierOption = {
   id: string;
@@ -71,7 +72,7 @@ const SupplierPaymentForm = ({
   const [success, setSuccess] = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [paymentDate, setPaymentDate] = useState(
-    initialData?.paymentDate ?? new Date().toISOString().slice(0, 10),
+    initialData?.paymentDate ?? getThailandDateKey(),
   );
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
   const [note, setNote] = useState(initialData?.note ?? "");
@@ -307,11 +308,7 @@ const SupplierPaymentForm = ({
                     </td>
                     <td className={`px-3 py-2 font-mono font-medium ${amountColor}`}>{doc.docNo}</td>
                     <td className="px-3 py-2 text-gray-600">
-                      {new Date(doc.docDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                        {formatDateThai(doc.docDate)}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-800">
                       {doc.totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}

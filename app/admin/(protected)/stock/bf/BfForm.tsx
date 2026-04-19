@@ -5,6 +5,7 @@ import { createBF } from "./actions";
 import { CheckCircle, Plus, Trash2 } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { getThailandDateKey } from "@/lib/th-date";
 
 interface ProductOption {
   id: string;
@@ -92,7 +93,7 @@ const BfForm = ({
             <div>
               <label className={labelCls}>วันที่เอกสาร <span className="text-red-500">*</span></label>
               <input type="date" name="docDate" required
-                defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={getThailandDateKey()}
                 className={inputCls} />
             </div>
             <div>

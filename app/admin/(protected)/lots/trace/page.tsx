@@ -3,15 +3,32 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Activity } from "lucide-react";
 import { db } from "@/lib/db";
+import { StockCardSource } from "@/lib/generated/prisma";
 import { buildProductSearchWhere } from "@/lib/product-search";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PageProps {
   searchParams: Promise<{ productId?: string; q?: string }>;
 }
 
-type MovementSource = "PURCHASE" | "SALE" | "PURCHASE_RETURN" | "CREDIT_NOTE";
+type MovementSource =
+  | "PURCHASE"
+  | "SALE"
+  | "PURCHASE_RETURN"
+  | "CREDIT_NOTE"
+  | "CLAIM_RETURN_IN"
+  | "CLAIM_SEND_OUT"
+  | "CLAIM_RECV_IN"
+  | "CLAIM_REPLACE_OUT";
+
+const claimMovementSources: StockCardSource[] = [
+  StockCardSource.CLAIM_RETURN_IN,
+  StockCardSource.CLAIM_SEND_OUT,
+  StockCardSource.CLAIM_RECV_IN,
+  StockCardSource.CLAIM_REPLACE_OUT,
+];
 
 interface LotMovement {
   date: Date;
@@ -28,6 +45,10 @@ const sourceLabel: Record<MovementSource, string> = {
   SALE: "ขายออก",
   PURCHASE_RETURN: "คืนซัพพลายเออร์",
   CREDIT_NOTE: "รับคืน (CN)",
+  CLAIM_RETURN_IN: "รับคืนเคลม",
+  CLAIM_SEND_OUT: "ส่งเคลมซัพพลายเออร์",
+  CLAIM_RECV_IN: "รับคืนจากซัพพลายเออร์",
+  CLAIM_REPLACE_OUT: "ส่งทดแทนเคลม",
 };
 
 const sourceBadge: Record<MovementSource, string> = {
@@ -35,6 +56,10 @@ const sourceBadge: Record<MovementSource, string> = {
   SALE: "bg-orange-100 text-orange-700",
   PURCHASE_RETURN: "bg-yellow-100 text-yellow-700",
   CREDIT_NOTE: "bg-teal-100 text-teal-700",
+  CLAIM_RETURN_IN: "bg-rose-100 text-rose-700",
+  CLAIM_SEND_OUT: "bg-pink-100 text-pink-700",
+  CLAIM_RECV_IN: "bg-pink-100 text-pink-700",
+  CLAIM_REPLACE_OUT: "bg-rose-100 text-rose-700",
 };
 
 const fmt = (value: number) =>
@@ -110,7 +135,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
     const lotNos = productLots.map((lot) => lot.lotNo);
 
     if (lotNos.length > 0) {
-      const [purchaseLots, saleLots, returnLots, cnLots, lotBalances] = await Promise.all([
+      const [purchaseLots, saleLots, returnLots, cnLots, claimMovementLots, lotBalances] = await Promise.all([
         db.purchaseItemLot.findMany({
           where: { lotNo: { in: lotNos }, purchaseItem: { productId: selectedProduct.id } },
           select: {
@@ -159,6 +184,30 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
             creditNoteItem: {
               select: {
                 creditNote: { select: { id: true, cnNo: true, cnDate: true, status: true } },
+              },
+            },
+          },
+        }),
+        db.stockMovementLot.findMany({
+          where: {
+            lotNo: { in: lotNos },
+            stockCard: {
+              productId: selectedProduct.id,
+              source: {
+                in: claimMovementSources,
+              },
+            },
+          },
+          select: {
+            lotNo: true,
+            qtyIn: true,
+            qtyOut: true,
+            stockCard: {
+              select: {
+                docDate: true,
+                docNo: true,
+                source: true,
+                referenceId: true,
               },
             },
           },
@@ -224,6 +273,45 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
           qty: Number(row.qty),
           direction: "in",
           isCancelled: row.creditNoteItem.creditNote.status === "CANCELLED",
+        });
+      }
+
+      for (const row of claimMovementLots) {
+        const qtyIn = Number(row.qtyIn);
+        const qtyOut = Number(row.qtyOut);
+        const direction = qtyIn > 0 ? "in" : "out";
+        const qty = qtyIn > 0 ? qtyIn : qtyOut;
+        let source: MovementSource;
+
+        switch (row.stockCard.source) {
+          case StockCardSource.CLAIM_RETURN_IN:
+            source = "CLAIM_RETURN_IN";
+            break;
+          case StockCardSource.CLAIM_SEND_OUT:
+            source = "CLAIM_SEND_OUT";
+            break;
+          case StockCardSource.CLAIM_RECV_IN:
+            source = "CLAIM_RECV_IN";
+            break;
+          case StockCardSource.CLAIM_REPLACE_OUT:
+            source = "CLAIM_REPLACE_OUT";
+            break;
+          default:
+            continue;
+        }
+
+        if (qty <= 0) continue;
+
+        pushMovement(row.lotNo, {
+          date: row.stockCard.docDate,
+          docNo: row.stockCard.docNo,
+          docLink: row.stockCard.referenceId
+            ? `/admin/warranty-claims/${row.stockCard.referenceId}`
+            : "/admin/warranty-claims",
+          source,
+          qty,
+          direction,
+          isCancelled: false,
         });
       }
 
@@ -367,10 +455,10 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                         <div className="mt-0.5 flex flex-wrap gap-4 text-xs text-gray-500">
                           <span>หน่วยนับ: {reportUnit.unitName}</span>
                           {pl.mfgDate && (
-                            <span>MFG: {pl.mfgDate.toLocaleDateString("th-TH-u-ca-gregory")}</span>
+                            <span>MFG: {formatDateThai(pl.mfgDate)}</span>
                           )}
                           {pl.expDate && (
-                            <span>EXP: {pl.expDate.toLocaleDateString("th-TH-u-ca-gregory")}</span>
+                            <span>EXP: {formatDateThai(pl.expDate)}</span>
                           )}
                         </div>
                       </div>
@@ -415,11 +503,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                               >
                                 <td className="px-3 py-2.5 text-xs text-gray-400">{index + 1}</td>
                                 <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
-                                  {movement.date.toLocaleDateString("th-TH-u-ca-gregory", {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                  })}
+                                  {formatDateThai(movement.date)}
                                 </td>
                                 <td className="px-3 py-2.5">
                                   <Link

@@ -9,6 +9,7 @@ import { notFound, redirect } from "next/navigation";
 import ReceiptForm from "../../new/ReceiptForm";
 import type { CreditSaleItem } from "../../actions";
 import { getReceiptCustomerOptions } from "../../customer-options";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 
 const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("receipts.update");
@@ -168,7 +169,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
     id,
     customerId:    receipt.customerId ?? "",
     customerName:  receipt.customerName ?? "",
-    receiptDate:   receipt.receiptDate.toISOString().slice(0, 10),
+      receiptDate:   formatDateOnlyForInput(receipt.receiptDate),
     paymentMethod: receipt.paymentMethod as "CASH" | "TRANSFER",
     cashBankAccountId: receipt.cashBankAccountId ?? "",
     note:          receipt.note ?? "",

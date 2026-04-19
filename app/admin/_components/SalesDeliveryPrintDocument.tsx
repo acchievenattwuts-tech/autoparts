@@ -1,4 +1,5 @@
 ﻿import Image from "next/image";
+import { formatDateThai } from "@/lib/th-date";
 
 type NumericLike = number | string | { toString(): string };
 
@@ -75,12 +76,7 @@ const PAYMENT_PRINT_LABELS: { key: string; label: string }[] = [
   { key: "TRANSFER", label: "เงินโอน" },
 ];
 
-const fmtDate = (d: Date | string) =>
-  new Date(d).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+const fmtDate = (d: Date | string) => formatDateThai(d);
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

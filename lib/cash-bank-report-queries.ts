@@ -6,6 +6,15 @@ import {
   CashBankTransferStatus,
 } from "@/lib/generated/prisma";
 import { getCashBankSourceHref, getCashBankSourceLabel } from "@/lib/cash-bank-links";
+import {
+  formatDateOnlyForInput,
+  formatDateThai,
+  getThailandDateKey,
+  getThailandMonthStartDateKey,
+  isDateOnlyString,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+} from "@/lib/th-date";
 
 type SourceFilter = CashBankSourceType | "ALL";
 type DirectionFilter = CashBankDirection | "ALL";
@@ -80,26 +89,23 @@ export type CashBankAdjustmentHistoryRow = {
 };
 
 function parseDate(value: string | undefined, fallback: Date): Date {
-  if (!value) return fallback;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  if (!value || !isDateOnlyString(value)) return fallback;
+  return parseDateOnlyToDate(value);
 }
 
 function endOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next;
+  return parseDateOnlyToEndOfDay(formatDateOnlyForInput(date));
 }
 
 export function formatCashBankDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return formatDateOnlyForInput(date);
 }
 
 export function parseCashBankReportFilters(
   params: Record<string, string | undefined>,
 ): CashBankReportFilters {
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const firstOfMonth = parseDateOnlyToDate(getThailandMonthStartDateKey(today));
   const from = parseDate(params.from, firstOfMonth);
   const to = parseDate(params.to, today);
 
@@ -118,7 +124,7 @@ export function parseCashBankReportFilters(
     from,
     to: endOfDay(to),
     fromStr: params.from ?? formatCashBankDateInput(from),
-    toStr: params.to ?? formatCashBankDateInput(today),
+    toStr: params.to ?? getThailandDateKey(today),
     hasFilter: !!(params.from || params.to),
     accountId: params.accountId?.trim() || undefined,
     fromAccountId: params.fromAccountId?.trim() || undefined,
@@ -130,11 +136,7 @@ export function parseCashBankReportFilters(
 }
 
 function fmtDate(date: Date): string {
-  return date.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(date);
 }
 
 function csvRow(values: Array<string | number>): string {

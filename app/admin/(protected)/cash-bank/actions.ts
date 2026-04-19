@@ -18,6 +18,7 @@ import {
   replaceCashBankSourceMovements,
 } from "@/lib/cash-bank";
 import { getPrimaryTransferRuleViolation, type PrimaryTransferRuleCode } from "@/lib/cash-bank-primary-transfer";
+import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 
 const parseBoolean = (value: FormDataEntryValue | null): boolean => value === "true" || value === "on";
 
@@ -84,7 +85,7 @@ function validateCashBankAccountInput(data: z.infer<typeof accountSchema>): stri
     if (!data.accountNo?.trim()) return "กรุณาระบุเลขที่บัญชีสำหรับบัญชีประเภทธนาคาร";
   }
 
-  if (Number.isNaN(new Date(data.openingDate).getTime())) {
+  if (!isDateOnlyString(data.openingDate)) {
     return "วันที่ยอดยกมาไม่ถูกต้อง";
   }
 
@@ -235,7 +236,7 @@ export async function createCashBankAccount(formData: FormData) {
           promptPayId: data.type === CashBankAccountType.BANK ? data.promptPayId || null : null,
           isPrimaryTransferAccount: data.isPrimaryTransferAccount,
           openingBalance: data.openingBalance,
-          openingDate: new Date(data.openingDate),
+          openingDate: parseDateOnlyToDate(data.openingDate),
           isActive: data.isActive,
         },
       });
@@ -291,7 +292,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
           promptPayId: data.type === CashBankAccountType.BANK ? data.promptPayId || null : null,
           isPrimaryTransferAccount: data.isPrimaryTransferAccount,
           openingBalance: data.openingBalance,
-          openingDate: new Date(data.openingDate),
+          openingDate: parseDateOnlyToDate(data.openingDate),
           isActive: data.isActive,
         },
       });
@@ -325,10 +326,10 @@ export async function createCashBankTransfer(formData: FormData) {
       return { error: "บัญชีต้นทางและปลายทางต้องไม่ซ้ำกัน" };
     }
 
-    const docDate = new Date(parsed.data.transferDate);
-    if (Number.isNaN(docDate.getTime())) {
+    if (!isDateOnlyString(parsed.data.transferDate)) {
       return { error: "วันที่โอนไม่ถูกต้อง" };
     }
+    const docDate = parseDateOnlyToDate(parsed.data.transferDate);
 
     const transferNo = await generateCashBankTransferNo(docDate);
 
@@ -422,10 +423,10 @@ export async function createCashBankAdjustment(formData: FormData) {
     });
     if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-    const docDate = new Date(parsed.data.adjustDate);
-    if (Number.isNaN(docDate.getTime())) {
+    if (!isDateOnlyString(parsed.data.adjustDate)) {
       return { error: "วันที่ปรับยอดไม่ถูกต้อง" };
     }
+    const docDate = parseDateOnlyToDate(parsed.data.adjustDate);
 
     const adjustNo = await generateCashBankAdjustmentNo(docDate);
 
@@ -477,10 +478,10 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
     });
     if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-    const docDate = new Date(parsed.data.adjustDate);
-    if (Number.isNaN(docDate.getTime())) {
+    if (!isDateOnlyString(parsed.data.adjustDate)) {
       return { error: "วันที่ปรับยอดไม่ถูกต้อง" };
     }
+    const docDate = parseDateOnlyToDate(parsed.data.adjustDate);
 
     await dbTx(async (tx) => {
       const existing = await tx.cashBankAdjustment.findUnique({

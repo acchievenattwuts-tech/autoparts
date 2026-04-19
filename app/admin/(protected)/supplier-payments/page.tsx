@@ -12,6 +12,11 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import Pagination from "@/components/shared/Pagination";
 import SearchBar from "@/components/shared/SearchBar";
 import SupplierPaymentCancelButton from "./SupplierPaymentCancelButton";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -40,8 +45,8 @@ const SupplierPaymentsPage = async ({
   const where: Prisma.SupplierPaymentWhereInput = {};
   if (from || to) {
     where.paymentDate = {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
   }
   if (q) {
@@ -141,11 +146,7 @@ const SupplierPaymentsPage = async ({
                     </td>
                     <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{payment.paymentNo}</td>
                     <td className="px-4 py-3 text-gray-600">
-                      {new Date(payment.paymentDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                    {formatDateThai(payment.paymentDate)}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{payment.supplier.name}</td>
                     <td className="px-4 py-3">

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cancelCashBankTransfer, createCashBankTransfer } from "../actions";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 type AccountOption = {
   id: string;
@@ -39,16 +40,12 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 export default function TransferManager({ accounts, transfers, canCreate, canCancel }: Props) {
   const router = useRouter();
-  const [transferDate, setTransferDate] = useState(new Date().toISOString().slice(0, 10));
+  const [transferDate, setTransferDate] = useState(getThailandDateKey());
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [amount, setAmount] = useState("");

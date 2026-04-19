@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import SupplierAdvanceForm from "../../SupplierAdvanceForm";
 
 const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -64,7 +65,7 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
         initialData={{
           id: advance.id,
           supplierId: advance.supplierId,
-          advanceDate: advance.advanceDate.toISOString().slice(0, 10),
+      advanceDate: formatDateOnlyForInput(advance.advanceDate),
           totalAmount: Number(advance.totalAmount),
           cashBankAccountId: advance.cashBankAccountId ?? "",
           note: advance.note ?? "",

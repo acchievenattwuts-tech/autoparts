@@ -1,5 +1,7 @@
 type NumericLike = number | string | { toString(): string };
 
+import { formatDateThai } from "@/lib/th-date";
+
 export type { NumericLike };
 
 export type PrintShopConfig = {
@@ -23,12 +25,7 @@ export const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLAS
 const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"] as const;
 const THAI_POSITIONS = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"] as const;
 
-export const formatPrintDate = (value: Date | string) =>
-  new Date(value).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+export const formatPrintDate = (value: Date | string) => formatDateThai(value);
 
 export const formatPrintNumber = (value: number) =>
   value.toLocaleString("th-TH", {

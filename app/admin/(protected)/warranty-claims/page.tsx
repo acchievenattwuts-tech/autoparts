@@ -9,6 +9,11 @@ import { ShieldAlert, Clock, CheckCircle2, Send, XCircle, Eye, Pencil, PackageCh
 import CancelClaimButton from "./CancelClaimButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import Pagination from "@/components/shared/Pagination";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "รอส่งเคลม",
@@ -83,8 +88,8 @@ const ClaimListPage = async ({
     fromParam || toParam
       ? {
           claimDate: {
-            ...(fromParam ? { gte: new Date(`${fromParam}T00:00:00`) } : {}),
-            ...(toParam ? { lte: new Date(`${toParam}T23:59:59.999`) } : {}),
+            ...(fromParam ? { gte: parseDateOnlyToStartOfDay(fromParam) } : {}),
+            ...(toParam ? { lte: parseDateOnlyToEndOfDay(toParam) } : {}),
           },
         }
       : {};
@@ -274,11 +279,7 @@ const ClaimListPage = async ({
                       {claim.outcome && <p className="text-xs text-gray-400 mt-0.5">{OUTCOME_LABEL[claim.outcome]}</p>}
                     </td>
                     <td className="py-2.5 px-4 text-gray-600 text-xs whitespace-nowrap">
-                      {new Date(claim.claimDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })}
+                  {formatDateThai(claim.claimDate)}
                     </td>
                     <td className="py-2.5 px-4">
                       <div className="flex items-center gap-2 justify-end">

@@ -6,6 +6,7 @@ import AdjustmentHistoryList from "./AdjustmentHistoryList";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 const AdjustmentsPage = async ({
   searchParams,
@@ -23,8 +24,8 @@ const AdjustmentsPage = async ({
 
   const adjustmentWhere = (from || to) ? {
     adjustDate: {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     },
   } : {};
 

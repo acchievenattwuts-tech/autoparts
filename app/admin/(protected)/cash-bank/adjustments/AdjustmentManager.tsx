@@ -7,6 +7,7 @@ import {
   createCashBankAdjustment,
   updateCashBankAdjustment,
 } from "../actions";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 type AccountOption = {
   id: string;
@@ -45,17 +46,13 @@ function formatCurrency(value: number): string {
 }
 
 function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 export default function AdjustmentManager({ accounts, adjustments, canCreate, canUpdate, canCancel }: Props) {
   const router = useRouter();
   const [adjustmentId, setAdjustmentId] = useState<string | null>(null);
-  const [adjustDate, setAdjustDate] = useState(new Date().toISOString().slice(0, 10));
+  const [adjustDate, setAdjustDate] = useState(getThailandDateKey());
   const [accountId, setAccountId] = useState("");
   const [direction, setDirection] = useState<"IN" | "OUT">("IN");
   const [amount, setAmount] = useState("");
@@ -77,7 +74,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
 
   const resetForm = () => {
     setAdjustmentId(null);
-    setAdjustDate(new Date().toISOString().slice(0, 10));
+    setAdjustDate(getThailandDateKey());
     setAccountId("");
     setDirection("IN");
     setAmount("");

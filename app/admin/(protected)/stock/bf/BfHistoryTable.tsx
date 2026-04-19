@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import CancelDocButton from "@/components/shared/CancelDocButton";
 import { cancelBF } from "./actions";
+import { formatDateThai } from "@/lib/th-date";
 
 interface BfDoc {
   id:              string;
@@ -60,7 +61,7 @@ const BfHistoryTable = ({
                 >
                   <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{d.docNo}</td>
                   <td className="py-3 px-4 text-gray-600">
-                    {new Date(d.docDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {formatDateThai(d.docDate)}
                   </td>
                   <td className="py-3 px-4 text-gray-700">
                     <span className="font-mono text-xs text-gray-400">[{d.product.code}]</span>{" "}

@@ -9,6 +9,7 @@ import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
+import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface ProductOption {
   id: string;
@@ -409,7 +410,7 @@ const PurchaseReturnForm = ({
               type="date"
               name="returnDate"
               required
-              defaultValue={initialData?.returnDate ?? new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.returnDate ?? getThailandDateKey()}
               className={inputCls}
             />
           </div>
@@ -434,11 +435,7 @@ const PurchaseReturnForm = ({
                   id: purchase.id,
                   label: purchase.purchaseNo,
                   sublabel: purchase.purchaseDate
-                    ? new Date(purchase.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                      })
+                    ? formatDateThai(purchase.purchaseDate)
                     : undefined,
                 })),
               ]}

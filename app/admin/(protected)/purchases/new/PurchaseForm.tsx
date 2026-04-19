@@ -10,6 +10,7 @@ import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
+import { getThailandDateKey } from "@/lib/th-date";
 
 interface ProductOption {
   id: string;
@@ -255,7 +256,7 @@ const PurchaseForm = ({
           <div>
             <label className={labelCls}>วันที่ซื้อ <span className="text-red-500">*</span></label>
             <input type="date" name="purchaseDate" required
-              defaultValue={initialData?.purchaseDate ?? new Date().toISOString().slice(0, 10)}
+              defaultValue={initialData?.purchaseDate ?? getThailandDateKey()}
               className={inputCls} />
           </div>
           <div>

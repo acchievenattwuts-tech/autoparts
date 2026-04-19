@@ -11,6 +11,11 @@ import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import {
+  formatDateThai,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 const purchaseTypeLabel: Record<PurchaseType, string> = {
@@ -44,8 +49,8 @@ const PurchasesPage = async ({
   const where: Prisma.PurchaseWhereInput = {};
   if (from || to) {
     where.purchaseDate = {
-      ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-      ...(to   ? { lte: new Date(`${to}T23:59:59.999`) } : {}),
+      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
   }
   if (q) {
@@ -133,7 +138,7 @@ const PurchasesPage = async ({
                     <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{p.purchaseNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(p.purchaseDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                    {formatDateThai(p.purchaseDate)}
                     </td>
                     <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
                     <td className="py-3 px-4 text-gray-600">

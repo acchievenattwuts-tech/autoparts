@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 interface PageProps {
   searchParams: Promise<{ days?: string }>;
@@ -199,7 +200,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
                   })}
                 </td>
                 <td className="px-4 py-2.5 tabular-nums">
-                  {productLot.expDate!.toLocaleDateString("th-TH-u-ca-gregory")}
+                    {formatDateThai(productLot.expDate!)}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <span

@@ -6,6 +6,7 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchase_returns.view");
@@ -80,7 +81,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
           <div>
             <p className="text-gray-500 mb-0.5">วันที่คืน</p>
             <p className="font-medium text-gray-900">
-              {new Date(ret.returnDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {formatDateThai(ret.returnDate)}
             </p>
           </div>
           <div>

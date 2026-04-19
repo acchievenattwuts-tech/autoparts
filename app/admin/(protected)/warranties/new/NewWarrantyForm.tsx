@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createWarranty, getSaleItems } from "../actions";
 import { Search } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { formatDateThai } from "@/lib/th-date";
 
 interface SaleOption {
   id: string;
@@ -75,7 +76,7 @@ const NewWarrantyForm = ({ recentSales }: Props) => {
             id: s.id,
             label: s.saleNo,
             sublabel: [
-              new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" }),
+              formatDateThai(s.saleDate),
               s.customerName ?? "",
             ].filter(Boolean).join(" — "),
           }))}

@@ -16,6 +16,7 @@ import {
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { requirePermission } from "@/lib/require-auth";
 import { recalculateStockCard, writeStockCard } from "@/lib/stock-card";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 
 const createClaimSchema = z.object({
   warrantyId: z.string().min(1).max(50),
@@ -115,7 +116,7 @@ async function getReceivedLotSnapshot(
 
 function normalizeOptionalDate(value?: string): Date | null {
   if (!value) return null;
-  return new Date(`${value}T00:00:00`);
+  return parseDateOnlyToDate(value);
 }
 
 function normalizeOptionalString(value?: string): string | undefined {
@@ -178,7 +179,7 @@ export async function createClaim(
     return { error: `รายการประกันนี้มีใบเคลม ${warranty.claims[0].claimNo} ค้างอยู่แล้ว` };
   }
 
-  const claimDate = new Date(data.claimDate);
+  const claimDate = parseDateOnlyToDate(data.claimDate);
   const claimNo = await generateClaimNo(claimDate);
 
   try {

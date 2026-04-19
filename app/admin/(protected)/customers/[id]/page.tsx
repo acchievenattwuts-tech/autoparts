@@ -6,6 +6,7 @@ import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
+import { formatDateThai } from "@/lib/th-date";
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
@@ -226,7 +227,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                       </Link>
                     </td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      {formatDateThai(s.saleDate)}
                     </td>
                     <td className="py-3 px-4 text-right text-gray-800">
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -271,7 +272,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                   <tr key={r.receiptNo} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(r.receiptDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      {formatDateThai(r.receiptDate)}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -319,7 +320,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600">
-                      {new Date(s.saleDate).toLocaleDateString("th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                      {formatDateThai(s.saleDate)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${saleTypeBadge[s.saleType]}`}>

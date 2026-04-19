@@ -6,6 +6,15 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { CashBankSourceType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getCashBankSourceHref, getCashBankSourceLabel } from "@/lib/cash-bank-links";
+import {
+  formatDateOnlyForInput,
+  formatDateThai,
+  getThailandDateKey,
+  getThailandMonthStartDateKey,
+  isDateOnlyString,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+} from "@/lib/th-date";
 import CashBankAccountManager, { type CashBankAccountRow } from "./CashBankAccountManager";
 
 type PageProps = {
@@ -13,15 +22,11 @@ type PageProps = {
 };
 
 function parseDate(value: string | undefined, fallback: string): string {
-  return value && !Number.isNaN(new Date(value).getTime()) ? value : fallback;
+  return value && isDateOnlyString(value) ? value : fallback;
 }
 
 function formatDate(value: Date): string {
-  return value.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatDateThai(value);
 }
 
 function formatCurrency(value: number): string {
@@ -34,9 +39,9 @@ export default async function CashBankPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const firstOfMonth = getThailandMonthStartDateKey(today);
   const fromInput = parseDate(params.from, firstOfMonth);
-  const toInput = parseDate(params.to, today.toISOString().slice(0, 10));
+  const toInput = parseDate(params.to, getThailandDateKey(today));
   const accountId = params.accountId ?? "";
   const allowedSourceTypes = new Set<string>([
     CashBankSourceType.SALE,
@@ -55,9 +60,8 @@ export default async function CashBankPage({ searchParams }: PageProps) {
       ? (params.sourceType as CashBankSourceType)
       : "ALL";
 
-  const from = new Date(fromInput);
-  const to = new Date(toInput);
-  to.setHours(23, 59, 59, 999);
+  const from = parseDateOnlyToDate(fromInput);
+  const to = parseDateOnlyToEndOfDay(toInput);
 
   const accountsRaw = await db.cashBankAccount.findMany({
     orderBy: [{ type: "asc" }, { code: "asc" }],
@@ -91,7 +95,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     promptPayId: account.promptPayId,
     isPrimaryTransferAccount: account.isPrimaryTransferAccount,
     openingBalance: Number(account.openingBalance),
-    openingDate: account.openingDate.toISOString().slice(0, 10),
+    openingDate: formatDateOnlyForInput(account.openingDate),
     isActive: account.isActive,
   }));
 
