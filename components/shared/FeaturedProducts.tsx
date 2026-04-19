@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
 import { db } from "@/lib/db";
 
-const fetchFeaturedProducts = unstable_cache(
+export const fetchHomeFeaturedProducts = unstable_cache(
   async () =>
     db.product.findMany({
       where: { isActive: true, stock: { gt: 0 } },
@@ -40,12 +40,13 @@ const fetchFeaturedProducts = unstable_cache(
 
 interface Props {
   lineUrl: string;
+  products?: Awaited<ReturnType<typeof fetchHomeFeaturedProducts>>;
 }
 
-const FeaturedProducts = async ({ lineUrl }: Props) => {
-  const products = await fetchFeaturedProducts();
+const FeaturedProducts = async ({ lineUrl, products }: Props) => {
+  const resolvedProducts = products ?? (await fetchHomeFeaturedProducts());
 
-  if (products.length === 0) return null;
+  if (resolvedProducts.length === 0) return null;
 
   return (
     <section id="products" className="bg-white py-16 sm:py-18 lg:py-20">
@@ -63,7 +64,7 @@ const FeaturedProducts = async ({ lineUrl }: Props) => {
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {products.map((product) => (
+          {resolvedProducts.map((product) => (
             <ProductCard key={product.id} product={product} lineUrl={lineUrl} />
           ))}
         </div>

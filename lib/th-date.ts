@@ -27,6 +27,10 @@ function toDate(value: DateInput): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+function hasStyleOptions(options?: Intl.DateTimeFormatOptions): boolean {
+  return Boolean(options?.dateStyle || options?.timeStyle);
+}
+
 export function isDateOnlyString(value: string | undefined): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
@@ -69,27 +73,42 @@ export function parseDateOnlyToEndOfDay(value: string): Date {
 }
 
 export function formatDateThai(value: DateInput, options?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", {
-    timeZone: THAILAND_TIME_ZONE,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    ...options,
-  }).format(toDate(value));
+  const formatterOptions = hasStyleOptions(options)
+    ? {
+        timeZone: THAILAND_TIME_ZONE,
+        ...options,
+      }
+    : {
+        timeZone: THAILAND_TIME_ZONE,
+        day: "2-digit" as const,
+        month: "2-digit" as const,
+        year: "numeric" as const,
+        ...options,
+      };
+
+  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", formatterOptions).format(toDate(value));
 }
 
 export function formatDateTimeThai(
   value: DateInput,
   options?: Intl.DateTimeFormatOptions,
 ): string {
-  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", {
-    timeZone: THAILAND_TIME_ZONE,
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    ...options,
-  }).format(toDate(value));
+  const formatterOptions = hasStyleOptions(options)
+    ? {
+        timeZone: THAILAND_TIME_ZONE,
+        hour12: false,
+        ...options,
+      }
+    : {
+        timeZone: THAILAND_TIME_ZONE,
+        day: "2-digit" as const,
+        month: "2-digit" as const,
+        year: "numeric" as const,
+        hour: "2-digit" as const,
+        minute: "2-digit" as const,
+        hour12: false,
+        ...options,
+      };
+
+  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", formatterOptions).format(toDate(value));
 }

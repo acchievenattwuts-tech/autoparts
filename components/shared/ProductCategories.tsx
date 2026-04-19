@@ -29,7 +29,7 @@ const fallbackCategories = [
   { label: "วาล์วและอุปกรณ์", desc: "อะไหล่เสริม", icon: "⚙️" },
 ];
 
-const fetchCategories = unstable_cache(
+export const fetchHomeCategories = unstable_cache(
   async () =>
     db.category.findMany({
       where: { isActive: true },
@@ -45,12 +45,18 @@ const fetchCategories = unstable_cache(
   { tags: ["storefront:categories"] },
 );
 
-const ProductCategories = async () => {
-  const categories = await fetchCategories();
+type HomeCategories = Awaited<ReturnType<typeof fetchHomeCategories>>;
+
+const ProductCategories = async ({
+  categories,
+}: {
+  categories?: HomeCategories;
+}) => {
+  const resolvedCategories = categories ?? (await fetchHomeCategories());
 
   const items =
-    categories.length > 0
-      ? categories.map((category) => ({
+    resolvedCategories.length > 0
+      ? resolvedCategories.map((category) => ({
           id: category.id,
           name: category.name,
           count: category._count.products,
