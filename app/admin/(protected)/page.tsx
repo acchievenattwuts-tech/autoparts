@@ -3,7 +3,13 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import {
+  formatDateThai,
+  getThailandDateKey,
+  getThailandMonthStartDateKey,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 import {
   TrendingUp, AlertTriangle,
   Banknote, Users, ShoppingCart, Receipt, Globe,
@@ -18,16 +24,15 @@ const AdminDashboard = async () => {
   await requirePermission("dashboard.view");
 
   const now = new Date();
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOf30Days = new Date(startOfToday);
-  startOf30Days.setDate(startOf30Days.getDate() - 29);
-  const expiryEndDate = new Date(startOfToday);
-  expiryEndDate.setDate(expiryEndDate.getDate() + 90);
-
   const bangkokToday = getBangkokDayKey(now);
-  const bangkokMonthStart = `${bangkokToday.slice(0, 8)}01`;
+  const bangkokMonthStart = getThailandMonthStartDateKey(now);
+  const bangkokStartOfToday = parseDateOnlyToStartOfDay(bangkokToday);
+  const bangkokEndOfToday = parseDateOnlyToEndOfDay(bangkokToday);
+  const bangkokStartOfMonth = parseDateOnlyToStartOfDay(bangkokMonthStart);
+  const bangkokStartOf30Days = new Date(bangkokStartOfToday);
+  bangkokStartOf30Days.setUTCDate(bangkokStartOf30Days.getUTCDate() - 29);
+  const expiryEndDate = new Date(bangkokEndOfToday);
+  expiryEndDate.setUTCDate(expiryEndDate.getUTCDate() + 90);
 
   const [
     salesTodayAgg,
@@ -52,18 +57,27 @@ const AdminDashboard = async () => {
     db.sale.aggregate({
       _count: { id: true },
       _sum: { netAmount: true },
-      where: { status: "ACTIVE", saleDate: { gte: startOfToday } },
+      where: {
+        status: "ACTIVE",
+        saleDate: { gte: bangkokStartOfToday, lte: bangkokEndOfToday },
+      },
     }),
     db.product.count({
       where: { isActive: true, stock: { lte: db.product.fields.minStock } },
     }).catch(() => 0),
     db.sale.aggregate({
       _sum: { netAmount: true },
-      where: { status: "ACTIVE", saleDate: { gte: startOfMonth } },
+      where: {
+        status: "ACTIVE",
+        saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+      },
     }),
     db.purchase.aggregate({
       _sum: { netAmount: true },
-      where: { status: "ACTIVE", purchaseDate: { gte: startOfMonth } },
+      where: {
+        status: "ACTIVE",
+        purchaseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+      },
     }),
     db.sale.aggregate({
       _sum: { amountRemain: true },
@@ -80,7 +94,10 @@ const AdminDashboard = async () => {
     }),
     db.expense.aggregate({
       _sum: { netAmount: true },
-      where: { status: "ACTIVE", expenseDate: { gte: startOfMonth } },
+      where: {
+        status: "ACTIVE",
+        expenseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+      },
     }),
     db.purchase.aggregate({
       _sum: { amountRemain: true },
@@ -113,7 +130,10 @@ const AdminDashboard = async () => {
       by: ["visitorKey"],
     }).then((rows) => rows.length),
     db.sale.findMany({
-      where: { status: "ACTIVE", saleDate: { gte: startOf30Days } },
+      where: {
+        status: "ACTIVE",
+        saleDate: { gte: bangkokStartOf30Days, lte: bangkokEndOfToday },
+      },
       select: { saleDate: true, netAmount: true },
       orderBy: { saleDate: "asc" },
     }),
@@ -121,7 +141,7 @@ const AdminDashboard = async () => {
       where: {
         sale: {
           status: "ACTIVE",
-          saleDate: { gte: startOfMonth },
+          saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
         },
       },
       select: {
@@ -148,7 +168,7 @@ const AdminDashboard = async () => {
     db.productLot.findMany({
       where: {
         expDate: {
-          gte: startOfToday,
+          gte: bangkokStartOfToday,
           lte: expiryEndDate,
         },
       },
@@ -181,24 +201,22 @@ const AdminDashboard = async () => {
   const fmtDate = (d: Date) =>
     formatDateThai(d, { day: "2-digit", month: "short", year: "numeric" });
 
-  const todayLabel = fmtDate(now);
-  const monthLabel = `${fmtDate(startOfMonth)} – ${todayLabel}`;
+  const todayLabel = fmtDate(bangkokStartOfToday);
+  const monthLabel = `${fmtDate(bangkokStartOfMonth)} – ${todayLabel}`;
 
   const salesByDay = new Map<string, number>();
   for (let i = 0; i < 30; i += 1) {
-    const day = new Date(startOf30Days);
-    day.setDate(startOf30Days.getDate() + i);
+    const day = new Date(bangkokStartOf30Days);
+    day.setUTCDate(bangkokStartOf30Days.getUTCDate() + i);
     const key = getThailandDateKey(day);
     salesByDay.set(key, 0);
   }
   for (const sale of recentSales) {
-    const day = new Date(sale.saleDate);
-    day.setHours(0, 0, 0, 0);
-    const key = getThailandDateKey(day);
+    const key = getThailandDateKey(sale.saleDate);
     salesByDay.set(key, (salesByDay.get(key) ?? 0) + Number(sale.netAmount));
   }
   const salesChartData: SalesChartDatum[] = Array.from(salesByDay.entries()).map(([key, amount]) => {
-    const day = new Date(key);
+    const day = parseDateOnlyToStartOfDay(key);
     return {
       date: formatDateThai(day, { day: "2-digit", month: "2-digit" }),
       amount,
@@ -235,7 +253,10 @@ const AdminDashboard = async () => {
     .map((lot) => {
       const qtyOnHand = lotBalanceMap.get(`${lot.productId}::${lot.lotNo}`) ?? 0;
       if (!lot.expDate || qtyOnHand <= 0) return null;
-      const daysLeft = Math.max(0, Math.ceil((lot.expDate.getTime() - startOfToday.getTime()) / msPerDay));
+      const daysLeft = Math.max(
+        0,
+        Math.ceil((lot.expDate.getTime() - bangkokStartOfToday.getTime()) / msPerDay),
+      );
       return {
         productName: lot.product.name,
         lotNo: lot.lotNo,
