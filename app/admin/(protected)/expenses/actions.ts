@@ -9,6 +9,7 @@ import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 
 const expenseItemSchema = z.object({
   expenseCodeId: z.string().min(1, "กรุณาเลือกรหัสค่าใช้จ่าย"),
@@ -88,8 +89,11 @@ export async function createExpense(
         referenceNo: expenseNo,
         note: d.note ?? null,
       }]);
+
+      await rebuildExpenseProfitFacts(tx, expense.id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     return { success: true, expenseNo };
   } catch (err) {
@@ -128,7 +132,9 @@ export async function cancelExpense(
         where: { id: expenseId },
         data:  { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
+      await rebuildExpenseProfitFacts(tx, expenseId);
     });
+    revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     return { success: true };
   } catch (err) {
@@ -210,8 +216,11 @@ export async function updateExpense(
         referenceNo: existing.expenseNo,
         note: d.note ?? null,
       }]);
+
+      await rebuildExpenseProfitFacts(tx, id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     revalidatePath(`/admin/expenses/${id}`);
     return { success: true };

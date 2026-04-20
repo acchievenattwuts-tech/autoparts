@@ -13,6 +13,7 @@ import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writ
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
 
 const creditNoteProductOptionSelect = {
   id: true,
@@ -411,8 +412,11 @@ export async function createCreditNote(
             }]
           : [],
       );
+
+      await rebuildCreditNoteProfitFacts(tx, cn.id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
     return { success: true, cnNo };
@@ -489,7 +493,9 @@ export async function cancelCreditNote(
         where: { id: cnId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: 0 },
       });
+      await rebuildCreditNoteProfitFacts(tx, cnId);
     });
+    revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     return { success: true };
   } catch (err) {
@@ -702,8 +708,11 @@ export async function updateCreditNote(
             }]
           : [],
       );
+
+      await rebuildCreditNoteProfitFacts(tx, id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath(`/admin/credit-notes/${id}`);
     revalidatePath("/admin/products");

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import {
+  ClaimType,
   CNRefundMethod,
   CNSettlementType,
   PaymentMethod,
@@ -7,6 +8,7 @@ import {
   PurchaseReturnSettlementType,
   PurchaseType,
   SalePaymentType,
+  WarrantyClaimStatus,
 } from "@/lib/generated/prisma";
 import {
   formatDateOnlyForInput,
@@ -62,6 +64,19 @@ type WarrantyRow = {
   saleNo: string;
   endDate: Date;
   daysLeft: number;
+};
+
+type OpenClaimRow = {
+  id: string;
+  claimNo: string;
+  claimDate: Date;
+  productCode: string;
+  productName: string;
+  customerName: string;
+  saleNo: string;
+  claimType: ClaimType;
+  supplierName: string;
+  status: WarrantyClaimStatus;
 };
 
 type ReceivableRow = {
@@ -188,6 +203,10 @@ export type ReportsData = {
     expiringSoonCount: number;
     expiredCount: number;
     expiringItems: WarrantyRow[];
+  };
+  openClaims: {
+    totalOpenCount: number;
+    items: OpenClaimRow[];
   };
   receivables: {
     totalOutstanding: number;
@@ -683,6 +702,32 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         },
         take: 100,
       });
+  const openClaimsPromise = db.warrantyClaim.findMany({
+        where: {
+          status: {
+            in: [WarrantyClaimStatus.DRAFT, WarrantyClaimStatus.SENT_TO_SUPPLIER],
+          },
+          ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
+          ...(productCodeRange ? { warranty: { product: { code: productCodeRange } } } : {}),
+          ...(customerCodeRange ? { warranty: { sale: { customer: { code: customerCodeRange } } } } : {}),
+        },
+        orderBy: [{ claimDate: "desc" }, { claimNo: "desc" }],
+        select: {
+          id: true,
+          claimNo: true,
+          claimDate: true,
+          claimType: true,
+          status: true,
+          supplierName: true,
+          warranty: {
+            select: {
+              product: { select: { code: true, name: true } },
+              sale: { select: { saleNo: true, customerName: true } },
+            },
+          },
+        },
+        take: 100,
+      });
   const outstandingSalesPromise = db.sale.findMany({
         where: outstandingSaleWhere,
         orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
@@ -724,11 +769,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     supplierPayments,
     products,
     warranties,
+    openClaims,
     outstandingSales,
     receipts,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise],
-    [supplierAdvancesPromise, supplierPaymentsPromise, productsPromise, warrantiesPromise],
+    [supplierAdvancesPromise, supplierPaymentsPromise, productsPromise, warrantiesPromise, openClaimsPromise],
     [outstandingSalesPromise, receiptsPromise],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -740,6 +786,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     Awaited<typeof supplierPaymentsPromise>,
     Awaited<typeof productsPromise>,
     Awaited<typeof warrantiesPromise>,
+    Awaited<typeof openClaimsPromise>,
     Awaited<typeof outstandingSalesPromise>,
     Awaited<typeof receiptsPromise>,
   ];
@@ -867,6 +914,18 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     saleNo: warranty.sale.saleNo,
     endDate: warranty.endDate,
     daysLeft: Math.ceil((startOfDay(warranty.endDate).getTime() - startOfDay(now).getTime()) / DAY_MS),
+  }));
+  const openClaimItems: OpenClaimRow[] = openClaims.map((claim) => ({
+    id: claim.id,
+    claimNo: claim.claimNo,
+    claimDate: claim.claimDate,
+    productCode: claim.warranty.product.code,
+    productName: claim.warranty.product.name,
+    customerName: claim.warranty.sale.customerName ?? "-",
+    saleNo: claim.warranty.sale.saleNo,
+    claimType: claim.claimType,
+    supplierName: claim.supplierName?.trim() || "-",
+    status: claim.status,
   }));
 
   const receivableBuckets = new Map<string, number>([
@@ -1154,6 +1213,10 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       expiringSoonCount: expiringItems.filter((item) => item.daysLeft >= 0).length,
       expiredCount: expiringItems.filter((item) => item.daysLeft < 0).length,
       expiringItems,
+    },
+    openClaims: {
+      totalOpenCount: openClaimItems.length,
+      items: openClaimItems,
     },
     receivables: {
       totalOutstanding: receivableItems.reduce((sum, item) => sum + item.amountRemain, 0),

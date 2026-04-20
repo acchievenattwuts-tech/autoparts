@@ -3238,3 +3238,112 @@ Approved decisions for v1:
 - [x] Codified the Thailand date-only vs timestamp policy in `.rules` so future changes must follow the same helper-based approach.
 - [x] Kept existing business logic intact: no stock/MAVG/document-sequence logic was changed in this rollout.
 - [x] Verified `npm run build`
+
+## Roadmap Update (2026-04-20 Summary Report Stock Follow-up)
+
+- [x] Updated the summary report `Stock` section to replace the `ประกันใกล้หมด` card with an owner-facing `เคลมค้างดำเนินการ` card.
+- [x] Kept the open-claim definition aligned with the existing roadmap and LINE daily summary rule: only `WarrantyClaim.status in (DRAFT, SENT_TO_SUPPLIER)` is treated as still in progress.
+- [x] Added open-claim fields to the summary payload so the report can show claim number/date, product, customer with sale reference, claim type, supplier name, and current status from the real claim workflow.
+- [x] Verified `npm run build`
+## Roadmap Update (2026-04-20 Summary Report Filter Separation)
+
+- [x] Removed the summary-report open-claims date filter so current open claims now ignore the selected report `from/to` range.
+- [x] Reorganized the summary-report layout so date-filtered sections and current-snapshot sections are visually separated.
+- [x] Grouped date-filtered cards under `Overview`, `Cashflow`, and `Operations`, and moved stock/open-claim monitoring into the snapshot-oriented `Stock` section.
+- [x] Verified `npm run build`
+
+## Phase ใหม่ - Profit Dashboard และ Analytical Fact Layer
+
+### Goal
+
+- [x] เพิ่ม dashboard tab ใหม่ `Profit Dashboard` และเปลี่ยน dashboard เดิมเป็น `Daily Operations`
+- [x] ให้ `Daily Operations` เป็น tab เริ่มต้นของหน้า dashboard
+- [x] สร้าง analytical layer สำหรับกำไรโดยเฉพาะผ่านตารางกลาง `fact_profit`
+- [x] คง transaction logic เดิมของระบบไว้ โดยให้ profit analytics อ่านผ่านชั้น fact ใหม่แทนการไปกระทบ stock / cash / AR/AP logic เดิม
+- [ ] ทำให้เจ้าของเห็นได้เร็วว่า วันนี้กำไรไหม, อะไรทำเงิน/ขาดทุน, และสิ้นเดือนมีแนวโน้มเหลือเท่าไร
+
+### Locked decisions
+
+- [x] ใช้ `fact_profit` แบบ table หลัก ไม่ใช้ pure database view
+- [x] ยึดต้นทุนขายจาก `SaleItem.costPrice` ซึ่งเป็น snapshot ต้นทุนเฉลี่ยตอนขาย
+- [x] แยก transaction layer ออกจาก analytical / KPI layer อย่างชัดเจน
+- [x] Profit recognition หลักใน phase นี้ใช้ 3 source แรก: `SALE`, `SALE_RETURN`, `EXPENSE`
+- [x] ไม่ย้าย logic กำไรไปผูกกับ `Receipt`, `SupplierPayment`, หรือ `CashBankMovement`
+
+### Phase 1 - Business definition lock
+
+- [ ] ล็อกนิยาม `Gross Profit`, `Net Profit`, `Profit per Unit`, `Margin %` ให้ตรงกันทั้ง dashboard และ report
+- [ ] ล็อกฐานคำนวณรายได้ว่าต้องใช้ก่อน VAT หรือรวม VAT ในแต่ละ KPI
+- [ ] ล็อกวิธีคิด `SALE_RETURN` ว่าต้อง reverse ทั้งรายได้และต้นทุนของรายการคืน
+- [ ] ล็อกความหมายของ `Profit by Invoice` กับ `Profit by Stock` ให้เป็นคนละ analytical view ชัดเจน
+- [ ] ล็อกพฤติกรรมกรณี `create / update / cancel` เอกสาร ว่า fact ต้อง rebuild จากสถานะเอกสารปัจจุบันโดยไม่กระทบ logic เดิม
+
+### Phase 2 - Schema และ analytical fact design
+
+- [x] เพิ่มตาราง `fact_profit` ใน `prisma/schema.prisma`
+- [ ] ออกแบบ grain เป็นหนึ่งแถวต่อเหตุการณ์กำไรที่ trace กลับไปยังเอกสารต้นทางและ line ต้นทางได้
+- [x] กำหนด field หลักอย่างน้อย: `businessDate`, `sourceType`, `sourceId`, `sourceLineId`, `docNo`, `statusActive`, `productId`, `customerId`, `supplierId`, `qty`, `salesAmountExVat`, `costAmount`, `grossProfit`, `expenseAmount`, `netProfitContribution`, `unitSellPrice`, `unitCostPrice`, `unitProfit`, `marginPct`, `versionNo`, `createdAt`, `updatedAt`
+- [x] เพิ่ม index ที่รองรับ dashboard query เช่น `businessDate`, `sourceType`, `productId`, `customerId`, `statusActive`
+- [x] เตรียม enum / source-type contract สำหรับ `SALE`, `SALE_RETURN`, `EXPENSE`
+
+### Phase 3 - Profit fact write service
+
+- [x] เพิ่ม service กลาง เช่น `lib/profit-fact.ts` สำหรับ upsert / rebuild / deactivate fact
+- [x] เพิ่ม service query layer เช่น `lib/profit-dashboard.ts` สำหรับ KPI, ranking, trend, alerts
+- [x] แยก logic การสร้าง fact ออกจากหน้า UI และออกจาก action แต่ละเอกสาร
+- [x] ทำให้ service รองรับ rebuild แบบทั้งเอกสารโดยไม่ต้องแก้ logic transaction เดิมซ้ำหลายจุด
+
+### Phase 4 - Transaction integration
+
+- [x] ผูก `createSale` ให้สร้าง `fact_profit` จาก `SaleItem.costPrice`
+- [x] ผูก `updateSale` ให้ rebuild fact ของ sale ใบนั้นใหม่ทั้งชุด
+- [x] ผูก `cancelSale` ให้ deactivate หรือ reverse fact ของ sale ใบนั้น
+- [x] ผูก `createCreditNote` ให้สร้าง fact ประเภท `SALE_RETURN`
+- [x] ผูก `updateCreditNote` ให้ rebuild fact ของ credit note ใบนั้น
+- [x] ผูก `cancelCreditNote` ให้ deactivate หรือ reverse fact ของ credit note ใบนั้น
+- [x] ผูก `createExpense`, `updateExpense`, `cancelExpense` ให้ sync fact สำหรับ net profit
+- [x] ระวังไม่ให้กระทบ `StockCard`, MAVG, AR/AP remain, และ cash-bank ledger logic เดิม
+
+### Phase 5 - Backfill และ reconciliation
+
+- [x] เพิ่ม script backfill เพื่อสร้าง `fact_profit` จากข้อมูลเก่า
+- [ ] เพิ่ม script / report สำหรับเทียบผลรวมจาก `fact_profit` กับ logic รายงานเดิม
+- [ ] ตรวจให้ตัวเลข Gross Profit / Net Profit ตรงกับ source-of-truth ที่คาดหวังก่อนเปิดใช้ dashboard ใหม่
+- [x] รัน `npm run build` และทดสอบ flow เอกสารสำคัญหลังผูก fact layer
+
+### Phase 6 - Dashboard tab split
+
+- [x] ปรับหน้า dashboard ให้มี tabs `Daily Operations` และ `Profit Dashboard`
+- [x] ตั้งค่า default tab เป็น `Daily Operations`
+- [x] แยก component ของ dashboard เดิมออกจาก component ของ profit dashboard ให้ดูแลง่าย
+- [ ] แยก filter ที่อิงช่วงวันที่ออกจาก snapshot/current-state blocks ให้ผู้ใช้เข้าใจได้ทันที
+
+### Phase 7 - Profit Dashboard MVP
+
+- [x] ทำ `Daily Snapshot` KPI: `ยอดขายวันนี้`, `ต้นทุนขาย`, `กำไรขั้นต้น`, `% Margin`
+- [ ] แสดงเทียบ `เมื่อวาน` หรือ `เป้า` พร้อมสีช่วยตัดสินใจ
+- [x] ทำตาราง `Money Maker / Killer` แสดงสินค้า, ยอดขาย, ต้นทุน, กำไร, `% Margin`
+- [x] ทำมุมมอง `Profit by Invoice` เพื่อ drill down กลับไปยังเอกสารขายได้
+- [ ] ทำมุมมอง `Profit by Stock` ในความหมายที่ล็อกไว้จาก business definition
+
+### Phase 8 - Trend และ owner view
+
+- [x] เพิ่มกราฟ `ยอดขายรายวัน`
+- [x] เพิ่มกราฟ `กำไรขั้นต้น`
+- [ ] เพิ่มกราฟ `% Margin`
+- [x] เพิ่ม monthly owner view: `รายได้รวม`, `ค่าใช้จ่ายรวม`, `กำไรสุทธิ`
+- [ ] แสดง `เดือนนี้ vs เดือนที่แล้ว` และ `% change`
+
+### Phase 9 - Alerts และ Profit Analysis
+
+- [x] เพิ่ม alert `Margin ต่ำกว่า threshold`
+- [x] เพิ่ม alert `สินค้าขาดทุน`
+- [x] เพิ่ม alert `ต้นทุนเฉลี่ยพุ่ง`
+- [ ] เพิ่ม profit analysis สำหรับ `ตามสินค้า`, `ตามลูกค้า`, และช่องวิเคราะห์ที่รองรับการตัดสินใจของเจ้าของ
+- [ ] รองรับ drill down จาก dashboard ไปดู transaction / invoice ที่เป็นต้นเหตุได้
+
+### Delivered slice note (2026-04-20)
+
+- [x] Added `fact_profit` schema, generated Prisma client, and pushed the schema to the live database.
+- [x] Backfilled current historical data into `fact_profit` with the initial dataset snapshot: 20 sales, 2 credit notes, and 3 expenses.
+- [x] Released the first working `Profit Dashboard` slice with daily snapshot, product ranking, trend cards, owner monthly summary, alerts, and invoice-profit view.

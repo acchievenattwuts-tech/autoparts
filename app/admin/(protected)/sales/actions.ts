@@ -14,6 +14,7 @@ import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 
 const saleProductOptionSelect = {
   id:                  true,
@@ -484,8 +485,11 @@ export async function createSale(
             }]
           : [],
       );
+
+      await rebuildSaleProfitFacts(tx, sale.id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath("/admin/products");
     return { success: true, saleNo };
@@ -575,7 +579,9 @@ export async function cancelSale(
         where: { id: saleId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: new Prisma.Decimal(0) },
       });
+      await rebuildSaleProfitFacts(tx, saleId);
     });
+    revalidatePath("/admin");
     revalidatePath("/admin/sales");
     return { success: true };
   } catch (err) {
@@ -824,8 +830,11 @@ export async function updateSale(
             }]
           : [],
       );
+
+      await rebuildSaleProfitFacts(tx, id);
     });
 
+    revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath(`/admin/sales/${id}`);
     revalidatePath("/admin/products");

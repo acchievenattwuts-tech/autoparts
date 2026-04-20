@@ -671,6 +671,47 @@ model ExpenseItem {
   expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 }
 
+model FactProfit {
+  id              String           @id @default(cuid())
+  businessDate    DateTime
+  sourceType      ProfitSourceType
+  sourceSubtype   String?
+  sourceId        String
+  sourceLineId    String?
+  sourceDocNo     String
+  referenceDocNo  String?
+  sourceStatus    DocStatus        @default(ACTIVE)
+  isActive        Boolean          @default(true)
+  versionNo       Int              @default(1)
+  productId       String?
+  productCode     String?
+  productName     String?
+  customerId      String?
+  customerName    String?
+  supplierId      String?
+  supplierName    String?
+  lineLabel       String?
+  quantity        Decimal          @default(0) @db.Decimal(12, 4)
+  salesAmount     Decimal          @default(0) @db.Decimal(10, 2)
+  costAmount      Decimal          @default(0) @db.Decimal(10, 2)
+  expenseAmount   Decimal          @default(0) @db.Decimal(10, 2)
+  grossProfit     Decimal          @default(0) @db.Decimal(10, 2)
+  netProfitAmount Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePrice   Decimal          @default(0) @db.Decimal(10, 2)
+  unitCostPrice   Decimal          @default(0) @db.Decimal(10, 2)
+  unitProfit      Decimal          @default(0) @db.Decimal(10, 2)
+  marginPct       Decimal          @default(0) @db.Decimal(7, 2)
+  supersededAt    DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([businessDate, isActive])
+  @@index([sourceType, sourceId, isActive])
+  @@index([productId, businessDate])
+  @@index([customerId, businessDate])
+  @@index([supplierId, businessDate])
+}
+
 model Adjustment {
   id          String           @id @default(cuid())
   adjustNo    String           @unique
@@ -1363,6 +1404,12 @@ enum VatType {
   NO_VAT
   EXCLUDING_VAT
   INCLUDING_VAT
+}
+
+enum ProfitSourceType {
+  SALE
+  SALE_RETURN
+  EXPENSE
 }
 
 enum LotIssueMethod {

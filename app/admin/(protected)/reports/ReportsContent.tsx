@@ -49,6 +49,18 @@ function getPaymentSourceLabel(
   }
 }
 
+function getClaimTypeLabel(claimType: string): string {
+  return claimType === "REPLACE_NOW" ? "เปลี่ยนให้ทันที" : "ลูกค้ารอเคลม";
+}
+
+function getClaimStatusLabel(status: string): string {
+  return status === "DRAFT" ? "รอส่งเคลม" : "ส่งซัพพลายเออร์แล้ว";
+}
+
+function getClaimStatusClass(status: string): string {
+  return status === "DRAFT" ? "bg-yellow-100 text-yellow-700" : "bg-blue-100 text-blue-700";
+}
+
 function SectionHeader({
   eyebrow,
   title,
@@ -67,19 +79,36 @@ function SectionHeader({
   );
 }
 
+function ScopePill({
+  label,
+  tone = "date",
+}: {
+  label: string;
+  tone?: "date" | "snapshot";
+}) {
+  const className =
+    tone === "snapshot"
+      ? "border-sky-200 bg-sky-50 text-sky-700"
+      : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${className}`}>{label}</span>;
+}
+
 function SummaryCard({
   label,
   value,
   accent = "text-[#1e3a5f]",
   hint,
+  className = "",
 }: {
   label: string;
   value: string;
   accent?: string;
   hint: string;
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-sm ${className}`}>
       <p className="text-sm text-gray-500">{label}</p>
       <p className={`mt-1 font-kanit text-2xl font-bold ${accent}`}>{value}</p>
       <p className="mt-2 text-xs text-gray-400">{hint}</p>
@@ -107,6 +136,27 @@ function TableCard({
   );
 }
 
+function ScopeSummary() {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
+        <ScopePill label="ตามช่วงวันที่รายงาน" tone="date" />
+        <p className="mt-3 font-kanit text-lg font-semibold text-emerald-950">ข้อมูลที่เปลี่ยนตามช่วงวันที่รายงาน</p>
+        <p className="mt-1 text-sm text-emerald-900">
+          ใช้กับ section Overview, Cashflow และ Operations โดยอิงช่วงวันที่และตัวกรองที่เลือก
+        </p>
+      </div>
+      <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 shadow-sm">
+        <ScopePill label="สถานะปัจจุบัน" tone="snapshot" />
+        <p className="mt-3 font-kanit text-lg font-semibold text-sky-950">ข้อมูลที่ไม่ผูกกับช่วงวันที่รายงาน</p>
+        <p className="mt-1 text-sm text-sky-900">
+          ใช้กับ section Stock เพื่อแสดงสต็อกคงเหลือ มูลค่าสต็อก และเคลมค้างตามสถานะล่าสุด
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function FilterSummary({ data }: { data: ReportsData }) {
   const filterEntries = [
     [
@@ -122,7 +172,7 @@ function FilterSummary({ data }: { data: ReportsData }) {
         : "",
     ],
     [
-      "รหัสสินค้า",
+      "สินค้า",
       data.filters.productCodeFrom || data.filters.productCodeTo
         ? `${data.filters.productCodeFrom || "-"} ถึง ${data.filters.productCodeTo || "-"}`
         : "",
@@ -135,14 +185,12 @@ function FilterSummary({ data }: { data: ReportsData }) {
     ],
   ].filter(([, value]) => value);
 
-  if (filterEntries.length === 0) return null;
-
   return (
     <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4">
-      <p className="mb-2 text-sm font-medium text-gray-600">เงื่อนไขรายงาน</p>
-      <div className="flex flex-wrap gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <ScopePill label={`ช่วงรายงาน ${data.range.from} ถึง ${data.range.to}`} tone="date" />
         {filterEntries.map(([label, value]) => (
-          <span key={label} className="rounded-full bg-white px-3 py-1 text-gray-600 shadow-sm">
+          <span key={label} className="rounded-full bg-white px-3 py-1 text-xs text-gray-600 shadow-sm">
             {label}: {value}
           </span>
         ))}
@@ -157,80 +205,89 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
   return (
     <div className={compact ? "space-y-5" : "space-y-8"}>
       <FilterSummary data={data} />
+      <ScopeSummary />
 
       <section className="space-y-4">
         <SectionHeader
           eyebrow="Overview"
           title="ภาพรวมกิจการ"
-          subtitle="สรุปยอดสำคัญของรอบรายงานในมุมขาย รับเงิน จ่ายเงิน และกำไรขาดทุน"
+          subtitle="สรุปตัวเลขสำคัญของรอบรายงานในมุมขาย รับเงิน จ่ายเงิน ลูกหนี้ และเจ้าหนี้"
         />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <SummaryCard label="ยอดขายรวม" value={`฿${formatCurrency(data.salesSummary.grossSalesAmount)}`} hint="ก่อนหักยอดคืนขาย" />
+        <div className="flex flex-wrap gap-2">
+          <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+          <SummaryCard
+            label="ยอดขายรวม"
+            value={`฿${formatCurrency(data.salesSummary.grossSalesAmount)}`}
+            hint="ก่อนหักยอดคืนขาย"
+            className="md:col-span-2 xl:col-span-3"
+          />
           <SummaryCard
             label="ยอดคืนขาย"
             value={`฿${formatCurrency(data.salesSummary.returnAmount)}`}
             accent="text-red-600"
             hint="Credit Note ประเภทคืนสินค้า"
+            className="xl:col-span-3"
           />
-          <SummaryCard label="Net Sale" value={`฿${formatCurrency(data.salesSummary.netSaleAmount)}`} hint="ยอดขายสุทธิหลังหักคืน" />
+          <SummaryCard
+            label="Net Sale"
+            value={`฿${formatCurrency(data.salesSummary.netSaleAmount)}`}
+            hint="ยอดขายสุทธิหลังหักคืน"
+            className="xl:col-span-3"
+          />
           <SummaryCard
             label="รับเงินจริง"
             value={`฿${formatCurrency(data.dailyReceipts.totalAmount)}`}
             accent="text-emerald-600"
             hint="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ"
+            className="xl:col-span-3"
           />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
           <SummaryCard
             label="จ่ายเงินจริง"
             value={`฿${formatCurrency(data.dailyPayments.totalAmount)}`}
             accent="text-rose-600"
             hint="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายซัพพลายเออร์"
-          />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <SummaryCard
-            label="กำไรสุทธิ"
-            value={`฿${formatCurrency(data.profitLoss.netProfit)}`}
-            accent={data.profitLoss.netProfit >= 0 ? "text-emerald-600" : "text-red-600"}
-            hint="หลังหักต้นทุนขายและค่าใช้จ่าย"
+            className="xl:col-span-4"
           />
           <SummaryCard
             label="ลูกหนี้คงค้าง"
             value={`฿${formatCurrency(data.receivables.totalOutstanding)}`}
             accent="text-amber-600"
             hint="ยอดค้างชำระของใบขาย active"
+            className="xl:col-span-4"
           />
           <SummaryCard
             label="คืนเงิน CN"
             value={`฿${formatCurrency(data.dailyPayments.creditNoteRefundAmount)}`}
             accent="text-orange-600"
-            hint="Credit Note ที่คืนเป็นเงินสด/โอน"
+            hint="Credit Note ที่คืนเป็นเงินสดหรือโอน"
+            className="xl:col-span-4"
           />
-          <SummaryCard
-            label="VAT คงชำระ"
-            value={`฿${formatCurrency(data.profitLoss.vatPayable)}`}
-            accent={data.profitLoss.vatPayable >= 0 ? "text-gray-900" : "text-red-600"}
-            hint="VAT ขาย - VAT ซื้อ/ค่าใช้จ่าย/คืนขาย"
-          />
-          <SummaryCard label="มูลค่าสต็อก" value={`฿${formatCurrency(data.stock.totalStockValue)}`} hint="คำนวณจาก stock on hand x avg cost" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
           <SummaryCard
             label="A/P Outstanding"
             value={`฿${formatCurrency(data.payables.purchaseOutstanding)}`}
             accent="text-rose-700"
             hint="เจ้าหนี้คงค้างจากใบซื้อเชื่อ"
+            className="xl:col-span-4"
           />
           <SummaryCard
             label="Supplier Advance Outstanding"
             value={`฿${formatCurrency(data.payables.advanceOutstanding)}`}
             accent="text-emerald-700"
             hint="เงินมัดจำซัพพลายเออร์ที่ยังไม่ถูกใช้"
+            className="xl:col-span-4"
           />
           <SummaryCard
             label="CN Credit Outstanding"
             value={`฿${formatCurrency(data.payables.purchaseReturnCreditOutstanding)}`}
             accent="text-amber-700"
             hint="เครดิตใบคืนซื้อที่ยังรอหักชำระ"
+            className="md:col-span-2 xl:col-span-4"
           />
         </div>
       </section>
@@ -239,8 +296,11 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         <SectionHeader
           eyebrow="Cashflow"
           title="รายงานรับเงินและจ่ายเงิน"
-          subtitle="เพิ่มมุมมองบัญชีเงินให้สรุปและพิมพ์แล้วเห็น source, payment method และ account ที่กระทบจริง"
+          subtitle="แสดงความเคลื่อนไหวรับเงินและจ่ายเงินตามช่วงวันที่ พร้อม source ช่องทาง และบัญชีที่กระทบจริง"
         />
+        <div className="flex flex-wrap gap-2">
+          <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
+        </div>
         <div className="grid gap-4 xl:grid-cols-2">
           <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
             <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-4">
@@ -303,7 +363,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
             </div>
           </TableCard>
 
-          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายชำระซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
+          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
             <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-xl bg-gray-50 p-3">
                 <p className="text-xs text-gray-500">รวมจ่ายเงิน</p>
@@ -377,10 +437,13 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
       <section className="space-y-4">
         <SectionHeader
           eyebrow="Operations"
-          title="ลูกหนี้ คู่ค้า และผลประกอบการ"
-          subtitle="ช่วยดูสถานะลูกหนี้ มูลค่าซื้อสุทธิ และสรุปกำไรขาดทุนในหน้าเดียว"
+          title="ลูกหนี้ คู่ค้า และลูกค้า"
+          subtitle="มุมมองการปฏิบัติการตามช่วงวันที่ โดยตัดกำไรขาดทุนออกจาก section นี้แล้ว"
         />
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="flex flex-wrap gap-2">
+          <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
+        </div>
+        <div className="grid gap-4">
           <TableCard title="ลูกหนี้คงค้าง (A/R)" subtitle="ยอดค้างชำระและอายุหนี้ของใบขาย active">
             <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
               <div className="rounded-xl bg-gray-50 p-3">
@@ -431,27 +494,6 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                   )}
                 </tbody>
               </table>
-            </div>
-          </TableCard>
-
-          <TableCard title="กำไรขาดทุน" subtitle="สรุปผลการดำเนินงานของรอบรายงาน">
-            <div className="space-y-2 p-4 text-sm">
-              {[
-                ["ยอดขายรวม", data.profitLoss.grossSales],
-                ["ยอดคืนขาย", -data.profitLoss.salesReturns],
-                ["รายได้สุทธิ", data.profitLoss.netRevenue],
-                ["ต้นทุนขาย", -data.profitLoss.costOfGoodsSold],
-                ["กำไรขั้นต้น", data.profitLoss.grossProfit],
-                ["ค่าใช้จ่าย", -data.profitLoss.expenseTotal],
-                ["กำไรสุทธิ", data.profitLoss.netProfit],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
-                  <span className="text-gray-600">{label}</span>
-                  <span className={`font-medium ${Number(value) >= 0 ? "text-gray-900" : "text-red-600"}`}>
-                    {Number(value) < 0 ? "-" : ""}฿{formatCurrency(Math.abs(Number(value)))}
-                  </span>
-                </div>
-              ))}
             </div>
           </TableCard>
         </div>
@@ -535,8 +577,39 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         <SectionHeader
           eyebrow="Stock"
           title="สต็อกและรายการติดตาม"
-          subtitle="มูลค่าสต็อก สินค้าใกล้ขั้นต่ำ และงานติดตามหลังการขาย"
+          subtitle="มุมมองสถานะปัจจุบันของมูลค่าสต็อก สินค้าใกล้ขั้นต่ำ และเคลมค้างดำเนินการ"
         />
+        <div className="flex flex-wrap gap-2">
+          <ScopePill label="section นี้ไม่อิงช่วงวันที่รายงาน" tone="snapshot" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+          <SummaryCard
+            label="มูลค่าสต็อก"
+            value={`฿${formatCurrency(data.stock.totalStockValue)}`}
+            hint="คำนวณจาก stock on hand x avg cost ล่าสุด"
+            className="xl:col-span-3"
+          />
+          <SummaryCard
+            label="จำนวนสินค้าที่ใช้งาน"
+            value={data.stock.activeProductCount.toLocaleString("th-TH")}
+            hint="นับจากสินค้า active ทั้งหมดในระบบ"
+            className="xl:col-span-3"
+          />
+          <SummaryCard
+            label="สินค้าใกล้ขั้นต่ำ"
+            value={data.stock.lowStockCount.toLocaleString("th-TH")}
+            accent="text-amber-600"
+            hint="รายการที่ stock on hand ต่ำกว่าหรือเท่าจุดขั้นต่ำ"
+            className="xl:col-span-3"
+          />
+          <SummaryCard
+            label="เคลมค้างดำเนินการ"
+            value={data.openClaims.totalOpenCount.toLocaleString("th-TH")}
+            accent="text-sky-700"
+            hint="สถานะ รอส่งเคลม และ ส่งซัพพลายเออร์แล้ว ที่ยังไม่ปิดเคลม"
+            className="xl:col-span-3"
+          />
+        </div>
         <div className="grid gap-4 xl:grid-cols-2">
           <TableCard title="สินค้าใกล้ขั้นต่ำ" subtitle="รายการที่ควรติดตามและวางแผนสั่งซื้อ">
             <div className="overflow-x-auto">
@@ -552,7 +625,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                   {data.stock.lowStockItems.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
-                        ไม่มีสินค้าใกล้ minStock
+                        ไม่มีสินค้าใกล้ขั้นต่ำ
                       </td>
                     </tr>
                   ) : (
@@ -571,9 +644,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               </table>
             </div>
           </TableCard>
-        </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
           <TableCard title="มูลค่าสต็อกสูงสุด" subtitle="สินค้าที่ถือมูลค่าในคลังสูงสุด">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -597,9 +668,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                         <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td>
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.name}</p>
-                          <p className="text-xs text-gray-400">
-                            {item.categoryName} | คงเหลือ {item.stock}
-                          </p>
+                          <p className="text-xs text-gray-400">{item.categoryName} | คงเหลือ {item.stock}</p>
                         </td>
                         <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.stockValue)}</td>
                       </tr>
@@ -609,37 +678,53 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               </table>
             </div>
           </TableCard>
+        </div>
 
-          <TableCard title="ประกันใกล้หมด" subtitle="รายการที่ควรติดตามต่อในงานบริการหลังการขาย">
+        <div className="grid gap-4">
+          <TableCard
+            title="รายการเคลมค้างดำเนินการ"
+            subtitle="แสดงเฉพาะเคลมสถานะ รอส่งเคลม และ ส่งซัพพลายเออร์แล้ว โดยไม่ผูกกับช่วงวันที่รายงาน"
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ใบขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">เลขที่เคลม / วันที่เคลม</th>
                     <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า / ใบขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ประเภทเคลม</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">ชื่อซัพ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600">สถานะ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.warranties.expiringItems.length === 0 ? (
+                  {data.openClaims.items.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
-                        ไม่มีรายการประกันใกล้หมด
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400">
+                        ไม่มีรายการเคลมที่ยังไม่ปิดเคลม
                       </td>
                     </tr>
                   ) : (
-                    data.warranties.expiringItems.slice(0, maxRows).map((item) => (
+                    data.openClaims.items.slice(0, maxRows).map((item) => (
                       <tr key={item.id} className="border-t border-gray-50">
                         <td className="px-4 py-2">
-                          <p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p>
-                          <p className="text-xs text-gray-400">{item.customerName}</p>
+                          <p className="font-mono text-xs text-[#1e3a5f]">{item.claimNo}</p>
+                          <p className="text-xs text-gray-400">{formatDate(item.claimDate)}</p>
                         </td>
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.productName}</p>
                           <p className="text-xs text-gray-400">{item.productCode}</p>
                         </td>
-                        <td className={`px-4 py-2 text-right font-medium ${item.daysLeft < 0 ? "text-red-600" : "text-amber-700"}`}>
-                          {item.daysLeft < 0 ? `หมดแล้ว ${Math.abs(item.daysLeft)} วัน` : `${item.daysLeft} วัน`}
+                        <td className="px-4 py-2">
+                          <p className="text-gray-800">{item.customerName}</p>
+                          <p className="font-mono text-xs text-gray-400">{item.saleNo}</p>
+                        </td>
+                        <td className="px-4 py-2 text-gray-600">{getClaimTypeLabel(item.claimType)}</td>
+                        <td className="px-4 py-2 text-gray-600">{item.supplierName}</td>
+                        <td className="px-4 py-2">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getClaimStatusClass(item.status)}`}>
+                            {getClaimStatusLabel(item.status)}
+                          </span>
                         </td>
                       </tr>
                     ))

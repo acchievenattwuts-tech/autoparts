@@ -15,7 +15,8 @@
     "seed": "npx tsx --env-file=.env.local prisma/seed.ts",
     "test:primary-transfer-roadmap": "tsx scripts/test-primary-transfer-roadmap.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",
-    "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts"
+    "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts",
+    "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts"
   },
   "prisma": {
     "seed": "npx tsx --env-file=.env.local prisma/seed.ts"
