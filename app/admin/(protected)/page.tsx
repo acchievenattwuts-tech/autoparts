@@ -29,6 +29,14 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
       dailyContent={<DailyOperationsDashboard />}
       profitContent={
         <ProfitDashboard
+          key={[
+            resolvedSearchParams?.profitFrom ?? "",
+            resolvedSearchParams?.profitTo ?? "",
+            resolvedSearchParams?.profitBasis ?? "",
+            resolvedSearchParams?.profitStockPage ?? "",
+            resolvedSearchParams?.profitCustomerPage ?? "",
+            resolvedSearchParams?.profitInvoicePage ?? "",
+          ].join("|")}
           profitFrom={resolvedSearchParams?.profitFrom}
           profitTo={resolvedSearchParams?.profitTo}
           profitBasis={resolvedSearchParams?.profitBasis}

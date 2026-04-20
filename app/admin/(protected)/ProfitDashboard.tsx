@@ -63,6 +63,10 @@ function getBarHeightClass(ratio: number): string {
   return "h-6";
 }
 
+function formatTrendDayLabel(dateKey: string): string {
+  return formatDateThai(parseDateOnlyToStartOfDay(dateKey));
+}
+
 function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string): string {
   if (sourceType === ProfitSourceType.SALE_RETURN) {
     return `/admin/credit-notes/${sourceId}`;
@@ -345,6 +349,10 @@ const ProfitDashboard = async ({
   const stockTotalPages = data.stockProducts.pagination.totalPages;
   const customerTotalPages = data.customerAnalysis.pagination.totalPages;
   const invoiceTotalPages = data.invoices.pagination.totalPages;
+  const hasSelectedRangeActivity =
+    Math.abs(selectedRangeSales) > 0.0001 ||
+    Math.abs(data.selectedRange.expenseAmount) > 0.0001 ||
+    Math.abs(data.selectedRange.netProfitAmount) > 0.0001;
 
   const summaryCards = [
     {
@@ -560,6 +568,9 @@ const ProfitDashboard = async ({
                   return (
                     <div key={`sales-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
                       <div
+                        title={`${formatTrendDayLabel(point.dateKey)}\nยอดขาย (${basisLabel}) ${formatMoney(
+                          salesAmount,
+                        )} บาท`}
                         className={`w-6 rounded-t-full bg-emerald-400 ${getBarHeightClass(
                           Math.abs(salesAmount) / maxTrendSales,
                         )}`}
@@ -579,6 +590,9 @@ const ProfitDashboard = async ({
                 {data.trend.map((point) => (
                   <div key={`gross-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
                     <div
+                      title={`${formatTrendDayLabel(point.dateKey)}\nกำไรขั้นต้น ${formatMoney(
+                        point.grossProfit,
+                      )} บาท`}
                       className={`w-6 rounded-t-full ${
                         point.grossProfit >= 0 ? "bg-sky-500" : "bg-rose-400"
                       } ${getBarHeightClass(Math.abs(point.grossProfit) / maxTrendGross)}`}
@@ -597,6 +611,9 @@ const ProfitDashboard = async ({
                 {data.trend.map((point) => (
                   <div key={`margin-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
                     <div
+                      title={`${formatTrendDayLabel(point.dateKey)}\n% Margin ${formatPercent(
+                        point.marginPct,
+                      )}`}
                       className={`w-6 rounded-t-full ${
                         point.marginPct >= 0 ? "bg-violet-500" : "bg-rose-400"
                       } ${getBarHeightClass(Math.abs(point.marginPct) / maxTrendMargin)}`}
@@ -605,6 +622,31 @@ const ProfitDashboard = async ({
                   </div>
                 ))}
               </div>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="font-medium text-gray-700">วิธีอ่านกราฟ:</span>
+                <span className="inline-flex items-center gap-2 text-gray-600">
+                  <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                  เขียว = ยอดขาย
+                </span>
+                <span className="inline-flex items-center gap-2 text-gray-600">
+                  <span className="h-3 w-3 rounded-full bg-sky-500" />
+                  ฟ้า = กำไรขั้นต้น
+                </span>
+                <span className="inline-flex items-center gap-2 text-gray-600">
+                  <span className="h-3 w-3 rounded-full bg-violet-500" />
+                  ม่วง = % Margin
+                </span>
+              </div>
+              <p className="mt-3 text-xs text-gray-600">
+                เอาเมาส์ชี้แต่ละแท่งเพื่อดูตัวเลขจริงของวันนั้นได้ทันที และความสูงของแท่งให้เทียบกันเฉพาะในแถวสีเดียวกันเท่านั้น
+              </p>
+              {!hasSelectedRangeActivity ? (
+                <p className="mt-2 text-xs text-amber-700">
+                  ช่วงที่เลือกยังไม่พบยอดขายหรือค่าใช้จ่ายจริงในชั้นข้อมูล `fact_profit` จึงควรได้ตัวเลขเป็นศูนย์ทั้งหมด
+                </p>
+              ) : null}
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {rangeSummaryCards.map((item) => (
