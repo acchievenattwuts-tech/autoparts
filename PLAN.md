@@ -3348,3 +3348,4 @@ Approved decisions for v1:
 - [x] Backfilled current historical data into `fact_profit` with the initial dataset snapshot: 20 sales, 2 credit notes, and 3 expenses.
 - [x] Released the first working `Profit Dashboard` slice with daily snapshot, product ranking, trend cards, owner monthly summary, alerts, and invoice-profit view.
 - [x] Added `reconcile:fact-profit` and aligned the legacy report profit logic so `CreditNote RETURN` reverses both revenue and COGS, eliminating reconciliation delta against `fact_profit`.
+- [x] Added `enable:fact-profit-rls` and enabled row level security on `public.FactProfit` to clear the security advisor warning for the new analytical table.
