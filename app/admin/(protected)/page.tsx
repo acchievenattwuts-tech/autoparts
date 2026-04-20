@@ -12,6 +12,9 @@ type AdminDashboardPageProps = {
     profitFrom?: string;
     profitTo?: string;
     profitBasis?: string;
+    profitStockPage?: string;
+    profitCustomerPage?: string;
+    profitInvoicePage?: string;
   }>;
 };
 
@@ -29,6 +32,9 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
           profitFrom={resolvedSearchParams?.profitFrom}
           profitTo={resolvedSearchParams?.profitTo}
           profitBasis={resolvedSearchParams?.profitBasis}
+          profitStockPage={resolvedSearchParams?.profitStockPage}
+          profitCustomerPage={resolvedSearchParams?.profitCustomerPage}
+          profitInvoicePage={resolvedSearchParams?.profitInvoicePage}
         />
       }
     />

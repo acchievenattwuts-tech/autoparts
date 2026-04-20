@@ -63,10 +63,24 @@ export type ProfitCustomerRow = {
   marginPct: number;
 };
 
+export type ProfitAlertSeverity = "high" | "medium" | "low";
+
 export type ProfitAlert = {
+  severity: ProfitAlertSeverity;
   kind: "low_margin" | "loss" | "cost_spike";
   title: string;
   detail: string;
+  productId: string | null;
+  productCode: string | null;
+  productName: string | null;
+  invoiceCount: number;
+};
+
+export type ProfitPagination = {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
 };
 
 type ProfitSummary = {
@@ -79,48 +93,33 @@ type ProfitSummary = {
   marginPct: number;
 };
 
+type PaginatedSection<T> = {
+  items: T[];
+  pagination: ProfitPagination;
+};
+
 export type ProfitDashboardData = {
   filters: ProfitDashboardFilters;
   today: ProfitSummary;
   yesterday: ProfitSummary;
+  selectedRange: ProfitSummary;
+  previousRange: ProfitSummary;
   trend: ProfitTrendPoint[];
   topProducts: ProfitProductRow[];
   lowProducts: ProfitProductRow[];
-  stockProducts: ProfitProductRow[];
-  customerAnalysis: ProfitCustomerRow[];
-  invoices: ProfitInvoiceRow[];
+  stockProducts: PaginatedSection<ProfitProductRow>;
+  customerAnalysis: PaginatedSection<ProfitCustomerRow>;
+  invoices: PaginatedSection<ProfitInvoiceRow>;
   alerts: ProfitAlert[];
-  monthComparison: {
-    currentMonthNetProfit: number;
-    previousMonthNetProfit: number;
-    currentMonthSalesExVat: number;
-    previousMonthSalesExVat: number;
-    currentMonthSalesIncVat: number;
-    previousMonthSalesIncVat: number;
-    currentMonthExpense: number;
-    previousMonthExpense: number;
-  };
 };
 
-type FactRow = {
-  businessDate: Date;
-  sourceType: ProfitSourceType;
-  sourceId: string;
-  sourceDocNo: string;
-  customerId: string | null;
-  customerName: string | null;
-  productId: string | null;
-  productCode: string | null;
-  productName: string | null;
-  quantity: unknown;
-  salesAmountExVat: unknown;
-  salesAmountIncVat: unknown;
-  costAmount: unknown;
-  expenseAmount: unknown;
-  grossProfit: unknown;
-  netProfitAmount: unknown;
-  unitCostPrice: unknown;
+type ProfitDashboardQueryInput = Partial<ProfitDashboardFilters> & {
+  stockPage?: number;
+  customerPage?: number;
+  invoicePage?: number;
 };
+
+const ANALYSIS_PAGE_SIZE = 10;
 
 function asNumber(value: unknown): number {
   return Number(value ?? 0);
@@ -149,16 +148,35 @@ function calcMarginPct(grossProfit: number, salesAmountExVat: number): number {
   return roundPct((grossProfit / salesAmountExVat) * 100);
 }
 
-function buildEmptySummary(): ProfitSummary {
+function parsePage(value?: number): number {
+  if (!value || !Number.isFinite(value) || value < 1) {
+    return 1;
+  }
+
+  return Math.floor(value);
+}
+
+function buildPagination(page: number, totalItems: number): ProfitPagination {
+  const totalPages = Math.max(1, Math.ceil(totalItems / ANALYSIS_PAGE_SIZE));
+
   return {
-    salesAmountExVat: 0,
-    salesAmountIncVat: 0,
-    costAmount: 0,
-    expenseAmount: 0,
-    grossProfit: 0,
-    netProfitAmount: 0,
-    marginPct: 0,
+    page: Math.min(page, totalPages),
+    pageSize: ANALYSIS_PAGE_SIZE,
+    totalItems,
+    totalPages,
   };
+}
+
+function startOfUtcDay(date: Date): Date {
+  const value = new Date(date);
+  value.setUTCHours(0, 0, 0, 0);
+  return value;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const value = new Date(date);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value;
 }
 
 async function aggregateSummary(start: Date, end: Date): Promise<ProfitSummary> {
@@ -198,12 +216,12 @@ async function aggregateSummary(start: Date, end: Date): Promise<ProfitSummary> 
   };
 }
 
-function buildTrend(rows: FactRow[], from: string, to: string): ProfitTrendPoint[] {
+async function buildTrend(from: string, to: string): Promise<ProfitTrendPoint[]> {
   const trendMap = new Map<string, ProfitTrendPoint>();
   const start = parseDateOnlyToStartOfDay(from);
   const end = parseDateOnlyToStartOfDay(to);
 
-  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+  for (let cursor = new Date(start); cursor <= end; cursor = addUtcDays(cursor, 1)) {
     const dateKey = getThailandDateKey(cursor);
     trendMap.set(dateKey, {
       dateKey,
@@ -216,212 +234,454 @@ function buildTrend(rows: FactRow[], from: string, to: string): ProfitTrendPoint
     });
   }
 
-  for (const row of rows) {
+  const grouped = await db.factProfit.groupBy({
+    by: ["businessDate"],
+    _sum: {
+      salesAmountExVat: true,
+      salesAmountIncVat: true,
+      costAmount: true,
+      grossProfit: true,
+      netProfitAmount: true,
+    },
+    where: {
+      isActive: true,
+      businessDate: {
+        gte: parseDateOnlyToStartOfDay(from),
+        lte: parseDateOnlyToEndOfDay(to),
+      },
+    },
+    orderBy: {
+      businessDate: "asc",
+    },
+  });
+
+  for (const row of grouped) {
     const dateKey = getThailandDateKey(row.businessDate);
     const entry = trendMap.get(dateKey);
     if (!entry) continue;
 
-    entry.salesAmountExVat = roundMoney(
-      entry.salesAmountExVat + asNumber(row.salesAmountExVat),
-    );
-    entry.salesAmountIncVat = roundMoney(
-      entry.salesAmountIncVat + asNumber(row.salesAmountIncVat),
-    );
-    entry.costAmount = roundMoney(entry.costAmount + asNumber(row.costAmount));
-    entry.grossProfit = roundMoney(entry.grossProfit + asNumber(row.grossProfit));
-    entry.netProfitAmount = roundMoney(
-      entry.netProfitAmount + asNumber(row.netProfitAmount),
-    );
+    entry.salesAmountExVat = asNumber(row._sum.salesAmountExVat);
+    entry.salesAmountIncVat = asNumber(row._sum.salesAmountIncVat);
+    entry.costAmount = asNumber(row._sum.costAmount);
+    entry.grossProfit = asNumber(row._sum.grossProfit);
+    entry.netProfitAmount = asNumber(row._sum.netProfitAmount);
     entry.marginPct = calcMarginPct(entry.grossProfit, entry.salesAmountExVat);
   }
 
   return Array.from(trendMap.values());
 }
 
-function buildProductRows(rows: FactRow[]): ProfitProductRow[] {
-  const productMap = new Map<string, ProfitProductRow>();
+function mapProductRow(row: {
+  productId: string | null;
+  productCode: string | null;
+  productName: string | null;
+  _sum: {
+    quantity: unknown;
+    salesAmountExVat: unknown;
+    salesAmountIncVat: unknown;
+    costAmount: unknown;
+    grossProfit: unknown;
+  };
+}): ProfitProductRow {
+  const quantity = asNumber(row._sum.quantity);
+  const salesAmountExVat = asNumber(row._sum.salesAmountExVat);
+  const salesAmountIncVat = asNumber(row._sum.salesAmountIncVat);
+  const grossProfit = asNumber(row._sum.grossProfit);
 
-  for (const row of rows) {
-    if (!row.productId || !row.productName) continue;
-    if (
-      row.sourceType !== ProfitSourceType.SALE &&
-      row.sourceType !== ProfitSourceType.SALE_RETURN
-    ) {
-      continue;
-    }
-
-    const existing = productMap.get(row.productId) ?? {
-      productId: row.productId,
-      productCode: row.productCode,
-      productName: row.productName,
-      quantity: 0,
-      salesAmountExVat: 0,
-      salesAmountIncVat: 0,
-      costAmount: 0,
-      grossProfit: 0,
-      marginPct: 0,
-      unitProfit: 0,
-    };
-
-    existing.quantity = roundMoney(existing.quantity + asNumber(row.quantity));
-    existing.salesAmountExVat = roundMoney(
-      existing.salesAmountExVat + asNumber(row.salesAmountExVat),
-    );
-    existing.salesAmountIncVat = roundMoney(
-      existing.salesAmountIncVat + asNumber(row.salesAmountIncVat),
-    );
-    existing.costAmount = roundMoney(existing.costAmount + asNumber(row.costAmount));
-    existing.grossProfit = roundMoney(existing.grossProfit + asNumber(row.grossProfit));
-    existing.marginPct = calcMarginPct(existing.grossProfit, existing.salesAmountExVat);
-    existing.unitProfit =
-      Math.abs(existing.quantity) > 0.0001
-        ? roundMoney(existing.grossProfit / Math.abs(existing.quantity))
-        : 0;
-
-    productMap.set(row.productId, existing);
-  }
-
-  return Array.from(productMap.values());
+  return {
+    productId: row.productId ?? "",
+    productCode: row.productCode ?? null,
+    productName: row.productName ?? "สินค้าไม่ระบุ",
+    quantity,
+    salesAmountExVat,
+    salesAmountIncVat,
+    costAmount: asNumber(row._sum.costAmount),
+    grossProfit,
+    marginPct: calcMarginPct(grossProfit, salesAmountExVat),
+    unitProfit: Math.abs(quantity) > 0.0001 ? roundMoney(grossProfit / Math.abs(quantity)) : 0,
+  };
 }
 
-function buildInvoiceRows(rows: FactRow[]): ProfitInvoiceRow[] {
-  const invoiceMap = new Map<string, ProfitInvoiceRow>();
+async function getProductSpotlights(
+  fromDate: Date,
+  toDate: Date,
+): Promise<{ topProducts: ProfitProductRow[]; lowProducts: ProfitProductRow[] }> {
+  const where = {
+    isActive: true,
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    businessDate: { gte: fromDate, lte: toDate },
+    productId: { not: null as string | null },
+    productName: { not: null as string | null },
+  };
 
-  for (const row of rows) {
-    if (
-      row.sourceType !== ProfitSourceType.SALE &&
-      row.sourceType !== ProfitSourceType.SALE_RETURN
-    ) {
-      continue;
-    }
+  const [topGrouped, lowGrouped] = await Promise.all([
+    db.factProfit.groupBy({
+      by: ["productId", "productCode", "productName"],
+      _sum: {
+        quantity: true,
+        salesAmountExVat: true,
+        salesAmountIncVat: true,
+        costAmount: true,
+        grossProfit: true,
+      },
+      where,
+      orderBy: [{ _sum: { grossProfit: "desc" } }, { productName: "asc" }],
+      take: 5,
+    }),
+    db.factProfit.groupBy({
+      by: ["productId", "productCode", "productName"],
+      _sum: {
+        quantity: true,
+        salesAmountExVat: true,
+        salesAmountIncVat: true,
+        costAmount: true,
+        grossProfit: true,
+      },
+      where,
+      orderBy: [{ _sum: { grossProfit: "asc" } }, { productName: "asc" }],
+      take: 5,
+    }),
+  ]);
 
-    const existing = invoiceMap.get(row.sourceId) ?? {
-      sourceId: row.sourceId,
-      sourceType: row.sourceType,
-      sourceDocNo: row.sourceDocNo,
-      businessDate: row.businessDate,
-      customerName: row.customerName,
-      salesAmountExVat: 0,
-      salesAmountIncVat: 0,
-      costAmount: 0,
-      grossProfit: 0,
-      marginPct: 0,
-    };
+  return {
+    topProducts: topGrouped.map(mapProductRow),
+    lowProducts: lowGrouped.map(mapProductRow),
+  };
+}
 
-    existing.salesAmountExVat = roundMoney(
-      existing.salesAmountExVat + asNumber(row.salesAmountExVat),
-    );
-    existing.salesAmountIncVat = roundMoney(
-      existing.salesAmountIncVat + asNumber(row.salesAmountIncVat),
-    );
-    existing.costAmount = roundMoney(existing.costAmount + asNumber(row.costAmount));
-    existing.grossProfit = roundMoney(existing.grossProfit + asNumber(row.grossProfit));
-    existing.marginPct = calcMarginPct(existing.grossProfit, existing.salesAmountExVat);
+async function getProductAnalysis(
+  fromDate: Date,
+  toDate: Date,
+  page: number,
+): Promise<PaginatedSection<ProfitProductRow>> {
+  const where = {
+    isActive: true,
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    businessDate: { gte: fromDate, lte: toDate },
+    productId: { not: null as string | null },
+    productName: { not: null as string | null },
+  };
 
-    invoiceMap.set(row.sourceId, existing);
+  const totalItems = (
+    await db.factProfit.groupBy({
+      by: ["productId", "productCode", "productName"],
+      where,
+    })
+  ).length;
+  const pagination = buildPagination(page, totalItems);
+  const grouped = await db.factProfit.groupBy({
+    by: ["productId", "productCode", "productName"],
+    _sum: {
+      quantity: true,
+      salesAmountExVat: true,
+      salesAmountIncVat: true,
+      costAmount: true,
+      grossProfit: true,
+    },
+    where,
+    orderBy: [
+      { _sum: { grossProfit: "desc" } },
+      { _sum: { quantity: "desc" } },
+      { productName: "asc" },
+    ],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize,
+  });
+
+  return {
+    items: grouped.map(mapProductRow),
+    pagination,
+  };
+}
+
+async function getAllProductAnalysis(fromDate: Date, toDate: Date): Promise<ProfitProductRow[]> {
+  const where = {
+    isActive: true,
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    businessDate: { gte: fromDate, lte: toDate },
+    productId: { not: null as string | null },
+    productName: { not: null as string | null },
+  };
+
+  const grouped = await db.factProfit.groupBy({
+    by: ["productId", "productCode", "productName"],
+    _sum: {
+      quantity: true,
+      salesAmountExVat: true,
+      salesAmountIncVat: true,
+      costAmount: true,
+      grossProfit: true,
+    },
+    where,
+    orderBy: [{ productName: "asc" }],
+  });
+
+  return grouped.map(mapProductRow);
+}
+
+function buildCustomerKey(customerId: string | null, customerName: string | null): string {
+  return customerId ?? `guest:${customerName?.trim() || "ลูกค้าไม่ระบุ"}`;
+}
+
+async function getCustomerAnalysis(
+  fromDate: Date,
+  toDate: Date,
+  page: number,
+): Promise<PaginatedSection<ProfitCustomerRow>> {
+  const where = {
+    isActive: true,
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    businessDate: { gte: fromDate, lte: toDate },
+  };
+
+  const totalItems = (
+    await db.factProfit.groupBy({
+      by: ["customerId", "customerName"],
+      where,
+    })
+  ).length;
+  const pagination = buildPagination(page, totalItems);
+  const grouped = await db.factProfit.groupBy({
+    by: ["customerId", "customerName"],
+    _sum: {
+      quantity: true,
+      salesAmountExVat: true,
+      salesAmountIncVat: true,
+      costAmount: true,
+      grossProfit: true,
+    },
+    where,
+    orderBy: [
+      { _sum: { grossProfit: "desc" } },
+      { _sum: { salesAmountExVat: "desc" } },
+      { customerName: "asc" },
+    ],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize,
+  });
+
+  const invoiceGroupRows = await db.factProfit.groupBy({
+    by: ["customerId", "customerName", "sourceId"],
+    where,
+  });
+
+  const invoiceCountMap = new Map<string, number>();
+  for (const row of invoiceGroupRows) {
+    const key = buildCustomerKey(row.customerId ?? null, row.customerName ?? null);
+    invoiceCountMap.set(key, (invoiceCountMap.get(key) ?? 0) + 1);
   }
 
-  return Array.from(invoiceMap.values()).sort(
-    (left, right) =>
-      right.grossProfit - left.grossProfit ||
-      right.businessDate.getTime() - left.businessDate.getTime(),
+  return {
+    items: grouped.map((row) => {
+      const quantity = asNumber(row._sum.quantity);
+      const salesAmountExVat = asNumber(row._sum.salesAmountExVat);
+      const grossProfit = asNumber(row._sum.grossProfit);
+
+      return {
+        customerId: row.customerId ?? null,
+        customerName: row.customerName?.trim() || "ลูกค้าไม่ระบุ",
+        invoiceCount:
+          invoiceCountMap.get(buildCustomerKey(row.customerId ?? null, row.customerName ?? null)) ??
+          0,
+        quantity,
+        salesAmountExVat,
+        salesAmountIncVat: asNumber(row._sum.salesAmountIncVat),
+        costAmount: asNumber(row._sum.costAmount),
+        grossProfit,
+        marginPct: calcMarginPct(grossProfit, salesAmountExVat),
+      };
+    }),
+    pagination,
+  };
+}
+
+async function getInvoiceAnalysis(
+  fromDate: Date,
+  toDate: Date,
+  page: number,
+): Promise<PaginatedSection<ProfitInvoiceRow>> {
+  const where = {
+    isActive: true,
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    businessDate: { gte: fromDate, lte: toDate },
+  };
+
+  const totalItems = (
+    await db.factProfit.groupBy({
+      by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
+      where,
+    })
+  ).length;
+  const pagination = buildPagination(page, totalItems);
+  const grouped = await db.factProfit.groupBy({
+    by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
+    _sum: {
+      salesAmountExVat: true,
+      salesAmountIncVat: true,
+      costAmount: true,
+      grossProfit: true,
+    },
+    where,
+    orderBy: [{ _sum: { grossProfit: "desc" } }, { businessDate: "desc" }],
+    skip: (pagination.page - 1) * pagination.pageSize,
+    take: pagination.pageSize,
+  });
+
+  return {
+    items: grouped.map((row) => {
+      const salesAmountExVat = asNumber(row._sum.salesAmountExVat);
+      const grossProfit = asNumber(row._sum.grossProfit);
+
+      return {
+        sourceId: row.sourceId,
+        sourceType: row.sourceType,
+        sourceDocNo: row.sourceDocNo,
+        businessDate: row.businessDate,
+        customerName: row.customerName ?? null,
+        salesAmountExVat,
+        salesAmountIncVat: asNumber(row._sum.salesAmountIncVat),
+        costAmount: asNumber(row._sum.costAmount),
+        grossProfit,
+        marginPct: calcMarginPct(grossProfit, salesAmountExVat),
+      };
+    }),
+    pagination,
+  };
+}
+
+function buildProductInvoiceCountMap(
+  rows: Array<{ productId: string | null; sourceId: string }>,
+): Map<string, number> {
+  const sourceIdsByProduct = new Map<string, Set<string>>();
+
+  for (const row of rows) {
+    if (!row.productId) continue;
+    const sourceIds = sourceIdsByProduct.get(row.productId) ?? new Set<string>();
+    sourceIds.add(row.sourceId);
+    sourceIdsByProduct.set(row.productId, sourceIds);
+  }
+
+  return new Map(
+    Array.from(sourceIdsByProduct.entries()).map(([productId, sourceIds]) => [
+      productId,
+      sourceIds.size,
+    ]),
   );
 }
 
-function buildCustomerRows(rows: FactRow[]): ProfitCustomerRow[] {
-  const customerMap = new Map<string, ProfitCustomerRow & { sourceIds: Set<string> }>();
-
-  for (const row of rows) {
-    if (
-      row.sourceType !== ProfitSourceType.SALE &&
-      row.sourceType !== ProfitSourceType.SALE_RETURN
-    ) {
-      continue;
-    }
-
-    const customerKey =
-      row.customerId ?? `guest:${(row.customerName ?? "ลูกค้าไม่ระบุ").trim() || "ลูกค้าไม่ระบุ"}`;
-    const customerName = row.customerName?.trim() || "ลูกค้าไม่ระบุ";
-
-    const existing = customerMap.get(customerKey) ?? {
-      customerId: row.customerId ?? null,
-      customerName,
-      invoiceCount: 0,
-      quantity: 0,
-      salesAmountExVat: 0,
-      salesAmountIncVat: 0,
-      costAmount: 0,
-      grossProfit: 0,
-      marginPct: 0,
-      sourceIds: new Set<string>(),
-    };
-
-    existing.quantity = roundMoney(existing.quantity + asNumber(row.quantity));
-    existing.salesAmountExVat = roundMoney(
-      existing.salesAmountExVat + asNumber(row.salesAmountExVat),
-    );
-    existing.salesAmountIncVat = roundMoney(
-      existing.salesAmountIncVat + asNumber(row.salesAmountIncVat),
-    );
-    existing.costAmount = roundMoney(existing.costAmount + asNumber(row.costAmount));
-    existing.grossProfit = roundMoney(existing.grossProfit + asNumber(row.grossProfit));
-    existing.sourceIds.add(row.sourceId);
-    existing.invoiceCount = existing.sourceIds.size;
-    existing.marginPct = calcMarginPct(existing.grossProfit, existing.salesAmountExVat);
-
-    customerMap.set(customerKey, existing);
-  }
-
-  return Array.from(customerMap.values()).map(({ sourceIds: _sourceIds, ...row }) => row);
+function getSeverityRank(severity: ProfitAlertSeverity): number {
+  if (severity === "high") return 3;
+  if (severity === "medium") return 2;
+  return 1;
 }
 
-function buildAlerts(rows: FactRow[], productRows: ProfitProductRow[]): ProfitAlert[] {
-  const alerts: ProfitAlert[] = [];
+async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]> {
+  const products = await getAllProductAnalysis(fromDate, toDate);
+  const alertCandidates: Array<ProfitAlert & { score: number }> = [];
 
-  for (const product of productRows) {
-    if (product.salesAmountExVat > 0 && product.marginPct > 0 && product.marginPct < 20) {
-      alerts.push({
-        kind: "low_margin",
-        title: `${product.productName} มาร์จิ้นต่ำ`,
-        detail: `มาร์จิ้น ${product.marginPct.toFixed(2)}% ในช่วงวิเคราะห์`,
+  const invoiceRows = await db.factProfit.groupBy({
+    by: ["productId", "sourceId"],
+    where: {
+      isActive: true,
+      sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+      businessDate: { gte: fromDate, lte: toDate },
+      productId: { not: null },
+    },
+  });
+  const invoiceCountMap = buildProductInvoiceCountMap(invoiceRows);
+
+  for (const product of products) {
+    const invoiceCount = invoiceCountMap.get(product.productId) ?? 0;
+
+    if (product.grossProfit < 0) {
+      const lossAmount = Math.abs(product.grossProfit);
+      const severity: ProfitAlertSeverity =
+        lossAmount >= 1000 || product.marginPct <= -10
+          ? "high"
+          : lossAmount >= 250 || product.marginPct < 0
+            ? "medium"
+            : "low";
+
+      alertCandidates.push({
+        severity,
+        kind: "loss",
+        title: `${product.productName} ขาดทุน`,
+        detail: `กำไรขั้นต้นติดลบ ${lossAmount.toLocaleString("th-TH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} บาท และ margin ${product.marginPct.toFixed(2)}% ในช่วงวิเคราะห์`,
+        productId: product.productId,
+        productCode: product.productCode,
+        productName: product.productName,
+        invoiceCount,
+        score: lossAmount,
       });
     }
 
-    if (product.grossProfit < 0) {
-      alerts.push({
-        kind: "loss",
-        title: `${product.productName} ขาดทุน`,
-        detail: `กำไรขั้นต้น ${product.grossProfit.toLocaleString("th-TH", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })} บาท`,
+    if (product.salesAmountExVat > 0 && product.marginPct > 0 && product.marginPct < 20) {
+      const severity: ProfitAlertSeverity =
+        product.marginPct < 5 ? "high" : product.marginPct < 12 ? "medium" : "low";
+
+      alertCandidates.push({
+        severity,
+        kind: "low_margin",
+        title: `${product.productName} มาร์จิ้นต่ำ`,
+        detail: `Margin เหลือ ${product.marginPct.toFixed(2)}% จากยอดขายก่อน VAT ${product.salesAmountExVat.toLocaleString(
+          "th-TH",
+          {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        )} บาท`,
+        productId: product.productId,
+        productCode: product.productCode,
+        productName: product.productName,
+        invoiceCount,
+        score: 100 - product.marginPct,
       });
     }
   }
 
   const todayKey = getThailandDateKey();
+  const todayStart = parseDateOnlyToStartOfDay(todayKey);
+  const recentBoundary = addUtcDays(todayStart, -6);
+  const previousBoundary = addUtcDays(recentBoundary, -7);
+  const recentRows = await db.factProfit.findMany({
+    where: {
+      isActive: true,
+      sourceType: ProfitSourceType.SALE,
+      businessDate: {
+        gte: previousBoundary,
+        lte: toDate > todayStart ? parseDateOnlyToEndOfDay(todayKey) : toDate,
+      },
+      productId: { not: null },
+      productName: { not: null },
+    },
+    select: {
+      productId: true,
+      productName: true,
+      businessDate: true,
+      quantity: true,
+      unitCostPrice: true,
+    },
+  });
+
   const recentCostMap = new Map<string, { recentQty: number; recentCost: number }>();
   const previousCostMap = new Map<string, { previousQty: number; previousCost: number }>();
-  const todayStart = parseDateOnlyToStartOfDay(todayKey);
-  const recentBoundary = new Date(todayStart);
-  recentBoundary.setUTCDate(recentBoundary.getUTCDate() - 6);
-  const previousBoundary = new Date(recentBoundary);
-  previousBoundary.setUTCDate(previousBoundary.getUTCDate() - 7);
 
-  for (const row of rows) {
-    if (row.sourceType !== ProfitSourceType.SALE || !row.productId || !row.productName) continue;
+  for (const row of recentRows) {
+    if (!row.productId || !row.productName) continue;
 
-    const businessTime = row.businessDate.getTime();
     const quantity = Math.abs(asNumber(row.quantity));
     const unitCost = asNumber(row.unitCostPrice);
     if (quantity <= 0) continue;
 
-    if (businessTime >= recentBoundary.getTime()) {
+    if (row.businessDate.getTime() >= recentBoundary.getTime()) {
       const existing = recentCostMap.get(row.productId) ?? { recentQty: 0, recentCost: 0 };
       existing.recentQty += quantity;
       existing.recentCost += quantity * unitCost;
       recentCostMap.set(row.productId, existing);
-    } else if (businessTime >= previousBoundary.getTime()) {
+    } else {
       const existing = previousCostMap.get(row.productId) ?? {
         previousQty: 0,
         previousCost: 0,
@@ -432,138 +692,113 @@ function buildAlerts(rows: FactRow[], productRows: ProfitProductRow[]): ProfitAl
     }
   }
 
-  for (const product of productRows) {
+  for (const product of products) {
     const recent = recentCostMap.get(product.productId);
     const previous = previousCostMap.get(product.productId);
     if (!recent || !previous || previous.previousQty <= 0 || recent.recentQty <= 0) continue;
 
     const recentAvg = recent.recentCost / recent.recentQty;
     const previousAvg = previous.previousCost / previous.previousQty;
-    if (recentAvg > previousAvg * 1.15) {
-      alerts.push({
-        kind: "cost_spike",
-        title: `${product.productName} ต้นทุนเฉลี่ยพุ่ง`,
-        detail: `ต้นทุนเฉลี่ยล่าสุด ${recentAvg.toFixed(2)} บาท สูงกว่าช่วงก่อน ${(
-          ((recentAvg - previousAvg) / previousAvg) *
-          100
-        ).toFixed(2)}%`,
-      });
-    }
+    const increasePct = ((recentAvg - previousAvg) / previousAvg) * 100;
+    if (increasePct <= 15) continue;
+
+    const severity: ProfitAlertSeverity =
+      increasePct >= 40 ? "high" : increasePct >= 25 ? "medium" : "low";
+
+    alertCandidates.push({
+      severity,
+      kind: "cost_spike",
+      title: `${product.productName} ต้นทุนเฉลี่ยพุ่ง`,
+      detail: `ต้นทุนเฉลี่ยล่าสุด ${recentAvg.toFixed(2)} บาท สูงกว่าช่วงก่อน ${increasePct.toFixed(
+        2,
+      )}%`,
+      productId: product.productId,
+      productCode: product.productCode,
+      productName: product.productName,
+      invoiceCount: invoiceCountMap.get(product.productId) ?? 0,
+      score: increasePct,
+    });
   }
 
-  return alerts.slice(0, 8);
+  return alertCandidates
+    .sort((left, right) => {
+      const severityDelta = getSeverityRank(right.severity) - getSeverityRank(left.severity);
+      if (severityDelta !== 0) return severityDelta;
+
+      const scoreDelta = right.score - left.score;
+      if (scoreDelta !== 0) return scoreDelta;
+
+      return (left.productName ?? "").localeCompare(right.productName ?? "", "th");
+    })
+    .slice(0, 12)
+    .map(({ score: _score, ...alert }) => alert);
 }
 
 export async function getProfitDashboardData(
-  filters?: Partial<ProfitDashboardFilters>,
+  input?: ProfitDashboardQueryInput,
 ): Promise<ProfitDashboardData> {
   const todayKey = getThailandDateKey();
   const defaultFrom = getThailandMonthStartDateKey();
-  const from = filters?.from && filters.from.length > 0 ? filters.from : defaultFrom;
-  const to = filters?.to && filters.to.length > 0 ? filters.to : todayKey;
-  const basis = filters?.basis === "inc_vat" ? "inc_vat" : "ex_vat";
+  const from = input?.from && input.from.length > 0 ? input.from : defaultFrom;
+  const to = input?.to && input.to.length > 0 ? input.to : todayKey;
+  const basis = input?.basis === "inc_vat" ? "inc_vat" : "ex_vat";
+  const stockPage = parsePage(input?.stockPage);
+  const customerPage = parsePage(input?.customerPage);
+  const invoicePage = parsePage(input?.invoicePage);
   const fromDate = parseDateOnlyToStartOfDay(from);
   const toDate = parseDateOnlyToEndOfDay(to);
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
   const todayEnd = parseDateOnlyToEndOfDay(todayKey);
-  const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
-  const yesterdayEnd = new Date(todayEnd);
-  yesterdayEnd.setUTCDate(yesterdayEnd.getUTCDate() - 1);
-  const currentMonthStart = parseDateOnlyToStartOfDay(getThailandMonthStartDateKey());
-  const previousMonthEnd = new Date(currentMonthStart);
-  previousMonthEnd.setUTCMilliseconds(previousMonthEnd.getUTCMilliseconds() - 1);
-  const previousMonthDateKey = getThailandDateKey(previousMonthEnd);
-  const previousMonthStart = parseDateOnlyToStartOfDay(
-    getThailandMonthStartDateKey(previousMonthEnd),
-  );
+  const yesterdayStart = addUtcDays(todayStart, -1);
+  const yesterdayEnd = parseDateOnlyToEndOfDay(getThailandDateKey(yesterdayStart));
+  const currentRangeStart = startOfUtcDay(fromDate);
+  const currentRangeEnd = parseDateOnlyToEndOfDay(to);
+  const rangeDays =
+    Math.floor(
+      (startOfUtcDay(parseDateOnlyToStartOfDay(to)).getTime() - currentRangeStart.getTime()) /
+        (1000 * 60 * 60 * 24),
+    ) + 1;
+  const previousRangeEndDay = addUtcDays(currentRangeStart, -1);
+  const previousRangeStartDay = addUtcDays(currentRangeStart, -rangeDays);
+  const previousRangeStart = parseDateOnlyToStartOfDay(getThailandDateKey(previousRangeStartDay));
+  const previousRangeEnd = parseDateOnlyToEndOfDay(getThailandDateKey(previousRangeEndDay));
 
-  const [today, yesterday, currentMonth, previousMonth, rows] = await Promise.all([
-    aggregateSummary(todayStart, todayEnd),
-    aggregateSummary(yesterdayStart, yesterdayEnd),
-    aggregateSummary(currentMonthStart, todayEnd),
-    aggregateSummary(previousMonthStart, parseDateOnlyToEndOfDay(previousMonthDateKey)),
-    db.factProfit.findMany({
-      where: {
-        isActive: true,
-        businessDate: {
-          gte: fromDate,
-          lte: toDate,
-        },
-      },
-      orderBy: [{ businessDate: "asc" }, { sourceDocNo: "asc" }],
-      select: {
-        businessDate: true,
-        sourceType: true,
-        sourceId: true,
-        sourceDocNo: true,
-        customerId: true,
-        customerName: true,
-        productId: true,
-        productCode: true,
-        productName: true,
-        quantity: true,
-        salesAmountExVat: true,
-        salesAmountIncVat: true,
-        costAmount: true,
-        expenseAmount: true,
-        grossProfit: true,
-        netProfitAmount: true,
-        unitCostPrice: true,
-      },
-    }),
-  ]);
-
-  const trend = buildTrend(rows, from, to);
-  const productRows = buildProductRows(rows);
-  const topProducts = [...productRows]
-    .sort(
-      (left, right) =>
-        right.grossProfit - left.grossProfit || right.salesAmountExVat - left.salesAmountExVat,
-    )
-    .slice(0, 8);
-  const lowProducts = [...productRows]
-    .sort((left, right) => left.grossProfit - right.grossProfit || left.marginPct - right.marginPct)
-    .slice(0, 8);
-  const stockProducts = [...productRows]
-    .sort(
-      (left, right) =>
-        right.grossProfit - left.grossProfit ||
-        right.quantity - left.quantity ||
-        left.productName.localeCompare(right.productName),
-    )
-    .slice(0, 12);
-  const customerAnalysis = buildCustomerRows(rows)
-    .sort(
-      (left, right) =>
-        right.grossProfit - left.grossProfit ||
-        right.salesAmountExVat - left.salesAmountExVat ||
-        left.customerName.localeCompare(right.customerName),
-    )
-    .slice(0, 12);
-  const invoices = buildInvoiceRows(rows).slice(0, 12);
-  const alerts = buildAlerts(rows, productRows);
-
-  return {
-    filters: { from, to, basis },
-    today: today ?? buildEmptySummary(),
-    yesterday: yesterday ?? buildEmptySummary(),
+  const [
+    today,
+    yesterday,
+    selectedRange,
+    previousRange,
     trend,
-    topProducts,
-    lowProducts,
+    productSpotlights,
     stockProducts,
     customerAnalysis,
     invoices,
     alerts,
-    monthComparison: {
-      currentMonthNetProfit: currentMonth.netProfitAmount,
-      previousMonthNetProfit: previousMonth.netProfitAmount,
-      currentMonthSalesExVat: currentMonth.salesAmountExVat,
-      previousMonthSalesExVat: previousMonth.salesAmountExVat,
-      currentMonthSalesIncVat: currentMonth.salesAmountIncVat,
-      previousMonthSalesIncVat: previousMonth.salesAmountIncVat,
-      currentMonthExpense: currentMonth.expenseAmount,
-      previousMonthExpense: previousMonth.expenseAmount,
-    },
+  ] = await Promise.all([
+    aggregateSummary(todayStart, todayEnd),
+    aggregateSummary(yesterdayStart, yesterdayEnd),
+    aggregateSummary(currentRangeStart, currentRangeEnd),
+    aggregateSummary(previousRangeStart, previousRangeEnd),
+    buildTrend(from, to),
+    getProductSpotlights(fromDate, toDate),
+    getProductAnalysis(fromDate, toDate, stockPage),
+    getCustomerAnalysis(fromDate, toDate, customerPage),
+    getInvoiceAnalysis(fromDate, toDate, invoicePage),
+    buildAlerts(fromDate, toDate),
+  ]);
+
+  return {
+    filters: { from, to, basis },
+    today,
+    yesterday,
+    selectedRange,
+    previousRange,
+    trend,
+    topProducts: productSpotlights.topProducts,
+    lowProducts: productSpotlights.lowProducts,
+    stockProducts,
+    customerAnalysis,
+    invoices,
+    alerts,
   };
 }
