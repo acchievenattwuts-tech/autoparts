@@ -61,7 +61,17 @@ const paymentTypeBadge: Record<SalePaymentType, string> = {
 const SalesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ paymentType?: string; q?: string; page?: string; from?: string; to?: string; shippingStatus?: string; fulfillmentType?: string }>;
+  searchParams: Promise<{
+    paymentType?: string;
+    q?: string;
+    page?: string;
+    from?: string;
+    to?: string;
+    shippingStatus?: string;
+    fulfillmentType?: string;
+    customerId?: string;
+    productId?: string;
+  }>;
 }) => {
   await requirePermission("sales.view");
   const { role, permissions } = await getSessionPermissionContext();
@@ -73,6 +83,8 @@ const SalesPage = async ({
   const paymentTypeFilter  = params.paymentType;
   const shippingStatusFilter = params.shippingStatus;
   const fulfillmentTypeFilter = params.fulfillmentType;
+  const customerId = params.customerId;
+  const productId = params.productId;
   const q = params.q;
   const pageNum = Math.max(1, parseInt(params.page ?? "1", 10));
   const from = params.from ?? "";
@@ -88,6 +100,12 @@ const SalesPage = async ({
   if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
     where.paymentType = paymentTypeFilter as SalePaymentType;
   }
+  if (customerId) {
+    where.customerId = customerId;
+  }
+  if (productId) {
+    where.items = { some: { productId } };
+  }
   if (shippingStatusFilter && fulfillmentTypeFilter === "DELIVERY") {
     where.fulfillmentType = "DELIVERY";
     where.shippingStatus  = shippingStatusFilter as ShippingStatus;
@@ -102,7 +120,7 @@ const SalesPage = async ({
 
   const whereClause = Object.keys(where).length > 0 ? where : undefined;
 
-  const [sales, totalCount] = await Promise.all([
+  const [sales, totalCount, selectedCustomer, selectedProduct] = await Promise.all([
     db.sale.findMany({
       where: whereClause,
       orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
@@ -114,6 +132,18 @@ const SalesPage = async ({
       },
     }),
     db.sale.count({ where: whereClause }),
+    customerId
+      ? db.customer.findUnique({
+          where: { id: customerId },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve(null),
+    productId
+      ? db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -125,6 +155,8 @@ const SalesPage = async ({
   if (to)                   paginationParams.to             = to;
   if (shippingStatusFilter) paginationParams.shippingStatus = shippingStatusFilter;
   if (fulfillmentTypeFilter) paginationParams.fulfillmentType = fulfillmentTypeFilter;
+  if (customerId)           paginationParams.customerId      = customerId;
+  if (productId)            paginationParams.productId       = productId;
 
   return (
     <div>
@@ -150,6 +182,28 @@ const SalesPage = async ({
 
       {q && (
         <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
+      )}
+
+      {(selectedCustomer || selectedProduct) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <span className="font-medium">Filter-ready drilldown:</span>
+          {selectedCustomer ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-900">
+              ลูกค้า: {selectedCustomer.name} {selectedCustomer.code ? `(${selectedCustomer.code})` : ""}
+            </span>
+          ) : null}
+          {selectedProduct ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-900">
+              สินค้า: {selectedProduct.name} {selectedProduct.code ? `(${selectedProduct.code})` : ""}
+            </span>
+          ) : null}
+          <Link
+            href="/admin/sales"
+            className="ml-auto text-xs font-medium text-sky-700 underline-offset-2 hover:underline"
+          >
+            ล้าง filter drilldown
+          </Link>
+        </div>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

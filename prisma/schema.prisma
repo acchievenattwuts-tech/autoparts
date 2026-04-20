@@ -692,11 +692,15 @@ model FactProfit {
   supplierName    String?
   lineLabel       String?
   quantity        Decimal          @default(0) @db.Decimal(12, 4)
+  salesAmountExVat Decimal         @default(0) @db.Decimal(10, 2)
+  salesAmountIncVat Decimal        @default(0) @db.Decimal(10, 2)
   salesAmount     Decimal          @default(0) @db.Decimal(10, 2)
   costAmount      Decimal          @default(0) @db.Decimal(10, 2)
   expenseAmount   Decimal          @default(0) @db.Decimal(10, 2)
   grossProfit     Decimal          @default(0) @db.Decimal(10, 2)
   netProfitAmount Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePriceExVat Decimal       @default(0) @db.Decimal(10, 2)
+  unitSalePriceIncVat Decimal      @default(0) @db.Decimal(10, 2)
   unitSalePrice   Decimal          @default(0) @db.Decimal(10, 2)
   unitCostPrice   Decimal          @default(0) @db.Decimal(10, 2)
   unitProfit      Decimal          @default(0) @db.Decimal(10, 2)

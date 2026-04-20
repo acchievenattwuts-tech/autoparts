@@ -11,6 +11,7 @@ type AdminDashboardPageProps = {
     tab?: string;
     profitFrom?: string;
     profitTo?: string;
+    profitBasis?: string;
   }>;
 };
 
@@ -27,6 +28,7 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
         <ProfitDashboard
           profitFrom={resolvedSearchParams?.profitFrom}
           profitTo={resolvedSearchParams?.profitTo}
+          profitBasis={resolvedSearchParams?.profitBasis}
         />
       }
     />

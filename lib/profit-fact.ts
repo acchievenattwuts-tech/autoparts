@@ -22,11 +22,15 @@ type FactProfitRowInput = {
   supplierName?: string | null;
   lineLabel?: string | null;
   quantity: number;
+  salesAmountExVat: number;
+  salesAmountIncVat: number;
   salesAmount: number;
   costAmount: number;
   expenseAmount: number;
   grossProfit: number;
   netProfitAmount: number;
+  unitSalePriceExVat: number;
+  unitSalePriceIncVat: number;
   unitSalePrice: number;
   unitCostPrice: number;
   unitProfit: number;
@@ -159,11 +163,15 @@ async function createFactProfitRows(
         supplierName: row.supplierName ?? null,
         lineLabel: row.lineLabel ?? null,
         quantity: toQtyDecimal(row.quantity),
+        salesAmountExVat: toDecimal(row.salesAmountExVat),
+        salesAmountIncVat: toDecimal(row.salesAmountIncVat),
         salesAmount: toDecimal(row.salesAmount),
         costAmount: toDecimal(row.costAmount),
         expenseAmount: toDecimal(row.expenseAmount),
         grossProfit: toDecimal(row.grossProfit),
         netProfitAmount: toDecimal(row.netProfitAmount),
+        unitSalePriceExVat: toDecimal(row.unitSalePriceExVat),
+        unitSalePriceIncVat: toDecimal(row.unitSalePriceIncVat),
         unitSalePrice: toDecimal(row.unitSalePrice),
         unitCostPrice: toDecimal(row.unitCostPrice),
         unitProfit: toDecimal(row.unitProfit),
@@ -203,6 +211,8 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       status: true,
       customerId: true,
       customerName: true,
+      subtotalAmount: true,
+      vatAmount: true,
       customer: { select: { name: true } },
       netAmount: true,
       items: {
@@ -236,17 +246,23 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE, saleId);
-  const totalRevenue = Number(sale.netAmount);
+  const totalRevenueExVat = roundMoney(Number(sale.subtotalAmount));
+  const totalRevenueIncVat = roundMoney(Number(sale.netAmount));
   const itemWeights = sale.items.map((item) => Number(item.totalAmount));
-  const allocatedRevenue = allocateByWeights(totalRevenue, itemWeights);
+  const allocatedRevenueExVat = allocateByWeights(totalRevenueExVat, itemWeights);
+  const allocatedRevenueIncVat = allocateByWeights(totalRevenueIncVat, itemWeights);
   const customerName = sale.customer?.name ?? sale.customerName ?? null;
 
   const rows: FactProfitRowInput[] = sale.items.map((item, index) => {
     const quantity = roundQty(Number(item.quantity));
-    const salesAmount = roundMoney(allocatedRevenue[index] ?? 0);
+    const salesAmountExVat = roundMoney(allocatedRevenueExVat[index] ?? 0);
+    const salesAmountIncVat = roundMoney(allocatedRevenueIncVat[index] ?? 0);
+    const salesAmount = salesAmountExVat;
     const costAmount = roundMoney(quantity * Number(item.costPrice));
-    const grossProfit = roundMoney(salesAmount - costAmount);
-    const unitSalePrice = calcUnitPrice(salesAmount, quantity);
+    const grossProfit = roundMoney(salesAmountExVat - costAmount);
+    const unitSalePriceExVat = calcUnitPrice(salesAmountExVat, quantity);
+    const unitSalePriceIncVat = calcUnitPrice(salesAmountIncVat, quantity);
+    const unitSalePrice = unitSalePriceExVat;
     const unitCostPrice = roundMoney(Number(item.costPrice));
     const unitProfit =
       Math.abs(quantity) > 0.0001 ? roundMoney(grossProfit / Math.abs(quantity)) : 0;
@@ -268,11 +284,15 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       supplierName: item.supplierName ?? null,
       lineLabel: item.product.name,
       quantity,
+      salesAmountExVat,
+      salesAmountIncVat,
       salesAmount,
       costAmount,
       expenseAmount: 0,
       grossProfit,
       netProfitAmount: grossProfit,
+      unitSalePriceExVat,
+      unitSalePriceIncVat,
       unitSalePrice,
       unitCostPrice,
       unitProfit,
@@ -297,6 +317,7 @@ export async function rebuildCreditNoteProfitFacts(
       type: true,
       saleId: true,
       totalAmount: true,
+      subtotalAmount: true,
       customerId: true,
       customerName: true,
       sale: {
@@ -345,9 +366,11 @@ export async function rebuildCreditNoteProfitFacts(
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE_RETURN, creditNoteId);
-  const totalRevenue = Number(creditNote.totalAmount);
+  const totalRevenueExVat = roundMoney(Number(creditNote.subtotalAmount));
+  const totalRevenueIncVat = roundMoney(Number(creditNote.totalAmount));
   const itemWeights = creditNote.items.map((item) => Number(item.amount));
-  const allocatedRevenue = allocateByWeights(totalRevenue, itemWeights);
+  const allocatedRevenueExVat = allocateByWeights(totalRevenueExVat, itemWeights);
+  const allocatedRevenueIncVat = allocateByWeights(totalRevenueIncVat, itemWeights);
   const saleCostMap = buildWeightedSaleCostMap(
     (creditNote.sale?.items ?? []).map((item) => ({
       productId: item.productId,
@@ -360,7 +383,9 @@ export async function rebuildCreditNoteProfitFacts(
   const rows: FactProfitRowInput[] = creditNote.items.map((item, index) => {
     const quantityAbs = roundQty(Number(item.qty));
     const quantity = roundQty(-quantityAbs);
-    const salesAmount = roundMoney(-(allocatedRevenue[index] ?? 0));
+    const salesAmountExVat = roundMoney(-(allocatedRevenueExVat[index] ?? 0));
+    const salesAmountIncVat = roundMoney(-(allocatedRevenueIncVat[index] ?? 0));
+    const salesAmount = salesAmountExVat;
     const resolvedCost =
       creditNote.type === CreditNoteType.RETURN
         ? saleCostMap.get(item.productId ?? "") ?? roundMoney(Number(item.product?.avgCost ?? 0))
@@ -369,8 +394,10 @@ export async function rebuildCreditNoteProfitFacts(
       creditNote.type === CreditNoteType.RETURN
         ? roundMoney(-(quantityAbs * resolvedCost))
         : 0;
-    const grossProfit = roundMoney(salesAmount - costAmount);
-    const unitSalePrice = calcUnitPrice(salesAmount, quantity);
+    const grossProfit = roundMoney(salesAmountExVat - costAmount);
+    const unitSalePriceExVat = calcUnitPrice(salesAmountExVat, quantity);
+    const unitSalePriceIncVat = calcUnitPrice(salesAmountIncVat, quantity);
+    const unitSalePrice = unitSalePriceExVat;
     const unitCostPrice = roundMoney(resolvedCost);
     const unitProfit =
       Math.abs(quantity) > 0.0001 ? roundMoney(grossProfit / Math.abs(quantity)) : 0;
@@ -392,11 +419,15 @@ export async function rebuildCreditNoteProfitFacts(
       customerName,
       lineLabel: item.product?.name ?? null,
       quantity,
+      salesAmountExVat,
+      salesAmountIncVat,
       salesAmount,
       costAmount,
       expenseAmount: 0,
       grossProfit,
       netProfitAmount: grossProfit,
+      unitSalePriceExVat,
+      unitSalePriceIncVat,
       unitSalePrice,
       unitCostPrice,
       unitProfit,
@@ -468,11 +499,15 @@ export async function rebuildExpenseProfitFacts(
       supplierName: null,
       lineLabel,
       quantity: 0,
+      salesAmountExVat: 0,
+      salesAmountIncVat: 0,
       salesAmount: 0,
       costAmount: 0,
       expenseAmount,
       grossProfit: 0,
       netProfitAmount: roundMoney(-expenseAmount),
+      unitSalePriceExVat: 0,
+      unitSalePriceIncVat: 0,
       unitSalePrice: 0,
       unitCostPrice: 0,
       unitProfit: 0,

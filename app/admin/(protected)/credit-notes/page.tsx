@@ -38,7 +38,14 @@ const settlementTypeBadge: Record<CNSettlementType, string> = {
 const CreditNotesPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    page?: string;
+    from?: string;
+    to?: string;
+    customerId?: string;
+    productId?: string;
+  }>;
 }) => {
   await requirePermission("credit_notes.view");
   const { role, permissions } = await getSessionPermissionContext();
@@ -46,7 +53,7 @@ const CreditNotesPage = async ({
   const canUpdate = hasPermissionAccess(role, permissions, "credit_notes.update");
   const canCancel = hasPermissionAccess(role, permissions, "credit_notes.cancel");
 
-  const { q, page, from: fromParam, to: toParam } = await searchParams;
+  const { q, page, from: fromParam, to: toParam, customerId, productId } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
   const to   = toParam   ?? "";
@@ -57,6 +64,12 @@ const CreditNotesPage = async ({
       ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
       ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
     };
+  }
+  if (customerId) {
+    where.customerId = customerId;
+  }
+  if (productId) {
+    where.items = { some: { productId } };
   }
   if (q) {
     where.OR = [
@@ -69,7 +82,7 @@ const CreditNotesPage = async ({
 
   const whereClause = Object.keys(where).length > 0 ? where : undefined;
 
-  const [creditNotes, totalCount] = await Promise.all([
+  const [creditNotes, totalCount, selectedCustomer, selectedProduct] = await Promise.all([
     db.creditNote.findMany({
       where: whereClause,
       orderBy: [{ cnDate: "desc" }, { cnNo: "desc" }],
@@ -89,6 +102,18 @@ const CreditNotesPage = async ({
       },
     }),
     db.creditNote.count({ where: whereClause }),
+    customerId
+      ? db.customer.findUnique({
+          where: { id: customerId },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve(null),
+    productId
+      ? db.product.findUnique({
+          where: { id: productId },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
@@ -97,6 +122,8 @@ const CreditNotesPage = async ({
   if (q)    paginationParams.q    = q;
   if (from) paginationParams.from = from;
   if (to)   paginationParams.to   = to;
+  if (customerId) paginationParams.customerId = customerId;
+  if (productId) paginationParams.productId = productId;
 
   return (
     <div>
@@ -119,6 +146,28 @@ const CreditNotesPage = async ({
 
       {q && (
         <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
+      )}
+
+      {(selectedCustomer || selectedProduct) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <span className="font-medium">Filter-ready drilldown:</span>
+          {selectedCustomer ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-900">
+              ลูกค้า: {selectedCustomer.name} {selectedCustomer.code ? `(${selectedCustomer.code})` : ""}
+            </span>
+          ) : null}
+          {selectedProduct ? (
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-sky-900">
+              สินค้า: {selectedProduct.name} {selectedProduct.code ? `(${selectedProduct.code})` : ""}
+            </span>
+          ) : null}
+          <Link
+            href="/admin/credit-notes"
+            className="ml-auto text-xs font-medium text-sky-700 underline-offset-2 hover:underline"
+          >
+            ล้าง filter drilldown
+          </Link>
+        </div>
       )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

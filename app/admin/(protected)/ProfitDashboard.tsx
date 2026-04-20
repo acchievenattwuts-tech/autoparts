@@ -9,13 +9,20 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import Link from "next/link";
 
-import { getProfitDashboardData } from "@/lib/profit-dashboard";
+import {
+  getProfitDashboardData,
+  getRevenueAmountByBasis,
+  type ProfitRevenueBasis,
+} from "@/lib/profit-dashboard";
+import { ProfitSourceType } from "@/lib/generated/prisma";
 import { formatDateThai, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 type ProfitDashboardProps = {
   profitFrom?: string;
   profitTo?: string;
+  profitBasis?: string;
 };
 
 function formatMoney(value: number): string {
@@ -53,39 +60,148 @@ function getBarHeightClass(ratio: number): string {
   return "h-6";
 }
 
-const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) => {
-  const data = await getProfitDashboardData({ from: profitFrom, to: profitTo });
+function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string): string {
+  if (sourceType === ProfitSourceType.SALE_RETURN) {
+    return `/admin/credit-notes/${sourceId}`;
+  }
+
+  return `/admin/sales/${sourceId}`;
+}
+
+function buildCustomerHref(customerId: string | null): string | null {
+  if (!customerId) {
+    return null;
+  }
+
+  return `/admin/customers/${customerId}`;
+}
+
+function buildSalesDrilldownHref(options: {
+  from: string;
+  to: string;
+  customerId?: string | null;
+  productId?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    from: options.from,
+    to: options.to,
+  });
+
+  if (options.customerId) {
+    params.set("customerId", options.customerId);
+  }
+  if (options.productId) {
+    params.set("productId", options.productId);
+  }
+
+  return `/admin/sales?${params.toString()}`;
+}
+
+function buildCreditNoteDrilldownHref(options: {
+  from: string;
+  to: string;
+  customerId?: string | null;
+  productId?: string | null;
+}): string {
+  const params = new URLSearchParams({
+    from: options.from,
+    to: options.to,
+  });
+
+  if (options.customerId) {
+    params.set("customerId", options.customerId);
+  }
+  if (options.productId) {
+    params.set("productId", options.productId);
+  }
+
+  return `/admin/credit-notes?${params.toString()}`;
+}
+
+function getBasisLabel(basis: ProfitRevenueBasis): string {
+  return basis === "inc_vat" ? "รวม VAT" : "ก่อน VAT";
+}
+
+const ProfitDashboard = async ({
+  profitFrom,
+  profitTo,
+  profitBasis,
+}: ProfitDashboardProps) => {
+  const data = await getProfitDashboardData({
+    from: profitFrom,
+    to: profitTo,
+    basis: profitBasis === "inc_vat" ? "inc_vat" : "ex_vat",
+  });
+  const basis = data.filters.basis;
+  const basisLabel = getBasisLabel(basis);
+  const todaySales = getRevenueAmountByBasis(
+    {
+      exVat: data.today.salesAmountExVat,
+      incVat: data.today.salesAmountIncVat,
+    },
+    basis,
+  );
+  const yesterdaySales = getRevenueAmountByBasis(
+    {
+      exVat: data.yesterday.salesAmountExVat,
+      incVat: data.yesterday.salesAmountIncVat,
+    },
+    basis,
+  );
+  const currentMonthSales = getRevenueAmountByBasis(
+    {
+      exVat: data.monthComparison.currentMonthSalesExVat,
+      incVat: data.monthComparison.currentMonthSalesIncVat,
+    },
+    basis,
+  );
+  const previousMonthSales = getRevenueAmountByBasis(
+    {
+      exVat: data.monthComparison.previousMonthSalesExVat,
+      incVat: data.monthComparison.previousMonthSalesIncVat,
+    },
+    basis,
+  );
   const todayGrossDelta = data.today.grossProfit - data.yesterday.grossProfit;
   const todayMarginDelta = data.today.marginPct - data.yesterday.marginPct;
   const monthNetDelta = calcChange(
     data.monthComparison.currentMonthNetProfit,
     data.monthComparison.previousMonthNetProfit,
   );
-  const monthSalesDelta = calcChange(
-    data.monthComparison.currentMonthSales,
-    data.monthComparison.previousMonthSales,
-  );
+  const monthSalesDelta = calcChange(currentMonthSales, previousMonthSales);
   const monthExpenseDelta = calcChange(
     data.monthComparison.currentMonthExpense,
     data.monthComparison.previousMonthExpense,
   );
-  const maxTrendSales = Math.max(...data.trend.map((item) => Math.abs(item.salesAmount)), 1);
+  const maxTrendSales = Math.max(
+    ...data.trend.map((item) =>
+      Math.abs(
+        getRevenueAmountByBasis(
+          {
+            exVat: item.salesAmountExVat,
+            incVat: item.salesAmountIncVat,
+          },
+          basis,
+        ),
+      ),
+    ),
+    1,
+  );
   const maxTrendGross = Math.max(...data.trend.map((item) => Math.abs(item.grossProfit)), 1);
+  const maxTrendMargin = Math.max(...data.trend.map((item) => Math.abs(item.marginPct)), 1);
 
   const summaryCards = [
     {
-      label: "ยอดขายวันนี้",
-      value: `${formatMoney(data.today.salesAmount)} บาท`,
-      helper: `เทียบเมื่อวาน ${data.yesterday.salesAmount >= 0 ? "+" : ""}${formatMoney(
-        data.today.salesAmount - data.yesterday.salesAmount,
-      )} บาท`,
-      tone: data.today.salesAmount >= data.yesterday.salesAmount ? "emerald" : "rose",
+      label: `ยอดขายวันนี้ (${basisLabel})`,
+      value: `${formatMoney(todaySales)} บาท`,
+      helper: `เทียบเมื่อวาน ${yesterdaySales >= 0 ? "+" : ""}${formatMoney(todaySales - yesterdaySales)} บาท`,
+      tone: todaySales >= yesterdaySales ? "emerald" : "rose",
       icon: Banknote,
     },
     {
       label: "ต้นทุนขายวันนี้",
       value: `${formatMoney(data.today.costAmount)} บาท`,
-      helper: `อิงต้นทุน snapshot ตอนขายจริง`,
+      helper: "อิงต้นทุน snapshot ตอนขายจริง",
       tone: "amber",
       icon: Package,
     },
@@ -116,41 +232,62 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summaryCards.map((card) => {
-          const toneClass =
-            card.tone === "emerald"
-              ? "bg-emerald-50 text-emerald-600"
-              : card.tone === "rose"
-                ? "bg-rose-50 text-rose-600"
-                : "bg-amber-50 text-amber-600";
+      <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm">
+        <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+              Snapshot Today
+            </p>
+            <h2 className="font-kanit text-xl font-semibold text-gray-900">
+              มุมมองวันนี้แบบไม่ติด filter
+            </h2>
+            <p className="text-xs text-gray-500">
+              การ์ดชุดนี้ยึดตามวันนี้เสมอ เพื่อให้เห็นภาพกำไรของวันทันที
+            </p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 text-sm text-gray-600">
+            <p className="font-medium text-gray-900">ฐานอ้างอิงของการ์ดชุดนี้</p>
+            <p>ยอดขายสลับได้ระหว่าง ก่อน VAT / รวม VAT</p>
+            <p>กำไรและ % Margin ยึดก่อน VAT เสมอ</p>
+          </div>
+        </div>
 
-          return (
-            <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-gray-500">{card.label}</p>
-                  <p className="font-kanit text-xl font-semibold text-gray-900">{card.value}</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card) => {
+            const toneClass =
+              card.tone === "emerald"
+                ? "bg-emerald-50 text-emerald-600"
+                : card.tone === "rose"
+                  ? "bg-rose-50 text-rose-600"
+                  : "bg-amber-50 text-amber-600";
+
+            return (
+              <div key={card.label} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-gray-500">{card.label}</p>
+                    <p className="font-kanit text-xl font-semibold text-gray-900">{card.value}</p>
+                  </div>
+                  <div className={`rounded-xl p-2 ${toneClass}`}>
+                    <card.icon size={18} />
+                  </div>
                 </div>
-                <div className={`rounded-xl p-2 ${toneClass}`}>
-                  <card.icon size={18} />
-                </div>
+                <p className="text-xs text-gray-400">{card.helper}</p>
               </div>
-              <p className="text-xs text-gray-400">{card.helper}</p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900">ช่วงวิเคราะห์กำไร</p>
             <p className="text-xs text-gray-500">
-              ส่วนล่างของ dashboard จะอิงช่วงวันที่นี้ ส่วน Daily Snapshot ด้านบนยังคงแสดงตามวันนี้
+              ส่วนล่างของ dashboard จะอิงช่วงวันที่นี้ ส่วน Snapshot ด้านบนยังคงแสดงตามวันนี้
             </p>
           </div>
-          <form className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <form className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <input type="hidden" name="tab" value="profit" />
             <label className="space-y-1 text-sm text-gray-600">
               <span>จากวันที่</span>
@@ -170,6 +307,17 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
                 className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none ring-0"
               />
             </label>
+            <label className="space-y-1 text-sm text-gray-600">
+              <span>มุมมองยอดขาย</span>
+              <select
+                name="profitBasis"
+                defaultValue={basis}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none ring-0"
+              >
+                <option value="ex_vat">ก่อน VAT</option>
+                <option value="inc_vat">รวม VAT</option>
+              </select>
+            </label>
             <button
               type="submit"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white"
@@ -178,6 +326,29 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
               อัปเดตช่วงวิเคราะห์
             </button>
           </form>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-600 sm:grid-cols-4">
+          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ช่วงวิเคราะห์</p>
+            <p className="mt-1 font-medium text-gray-900">
+              {formatDateThai(parseDateOnlyToStartOfDay(data.filters.from))} -{" "}
+              {formatDateThai(parseDateOnlyToStartOfDay(data.filters.to))}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">มุมมองยอดขาย</p>
+            <p className="mt-1 text-gray-900">{basisLabel}</p>
+          </div>
+          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ชั้นข้อมูล</p>
+            <p className="mt-1 text-gray-900">อ่านจาก `fact_profit` และรวม SALE, SALE_RETURN, EXPENSE</p>
+          </div>
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Helper</p>
+            <p className="mt-1">
+              dropdown นี้เปลี่ยนเฉพาะยอดขายและตาราง/กราฟที่อิงยอดขาย ส่วนกำไรและ % Margin ยังใช้ฐานก่อน VAT
+            </p>
+          </div>
         </div>
       </section>
 
@@ -196,20 +367,30 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
           <div className="space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
-                <span>ยอดขายรายวัน</span>
+                <span>ยอดขายรายวัน ({basisLabel})</span>
                 <span>สูงสุด {formatMoney(maxTrendSales)} บาท</span>
               </div>
               <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
-                {data.trend.map((point) => (
-                  <div key={`sales-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
-                    <div
-                      className={`w-6 rounded-t-full bg-emerald-400 ${getBarHeightClass(
-                        Math.abs(point.salesAmount) / maxTrendSales,
-                      )}`}
-                    />
-                    <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
-                  </div>
-                ))}
+                {data.trend.map((point) => {
+                  const salesAmount = getRevenueAmountByBasis(
+                    {
+                      exVat: point.salesAmountExVat,
+                      incVat: point.salesAmountIncVat,
+                    },
+                    basis,
+                  );
+
+                  return (
+                    <div key={`sales-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
+                      <div
+                        className={`w-6 rounded-t-full bg-emerald-400 ${getBarHeightClass(
+                          Math.abs(salesAmount) / maxTrendSales,
+                        )}`}
+                      />
+                      <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -230,13 +411,31 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
                 ))}
               </div>
             </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
+                <span>% Margin รายวัน</span>
+                <span>ค่าสูงสุด {formatPercent(maxTrendMargin)}</span>
+              </div>
+              <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
+                {data.trend.map((point) => (
+                  <div key={`margin-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
+                    <div
+                      className={`w-6 rounded-t-full ${
+                        point.marginPct >= 0 ? "bg-violet-500" : "bg-rose-400"
+                      } ${getBarHeightClass(Math.abs(point.marginPct) / maxTrendMargin)}`}
+                    />
+                    <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {[
                 {
-                  label: "รายได้รวม",
-                  value: `${formatMoney(data.monthComparison.currentMonthSales)} บาท`,
+                  label: `รายได้รวม (${basisLabel})`,
+                  value: `${formatMoney(currentMonthSales)} บาท`,
                   helper: `${monthSalesDelta >= 0 ? "+" : ""}${formatPercent(monthSalesDelta)} เทียบเดือนก่อน`,
-                  positive: data.monthComparison.currentMonthSales >= data.monthComparison.previousMonthSales,
+                  positive: currentMonthSales >= previousMonthSales,
                 },
                 {
                   label: "ค่าใช้จ่ายรวม",
@@ -271,6 +470,9 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
             </div>
             <TrendingDown className="text-gray-400" size={18} />
           </div>
+          <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+            Alert ด้าน margin และกำไรคำนวณบนฐานก่อน VAT เพื่อให้เทียบธุรกิจจริงได้ตรงเสมอ
+          </div>
           <div className="space-y-3">
             {data.alerts.length === 0 ? (
               <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700">
@@ -297,12 +499,15 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
             </div>
             <ArrowUpRight className="text-emerald-500" size={18} />
           </div>
+          <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+            คอลัมน์ยอดขายสลับตาม dropdown แต่กำไรและ % Margin ใช้ฐานก่อน VAT
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="text-left text-xs text-gray-500">
                 <tr className="border-b border-gray-100">
                   <th className="pb-3">สินค้า</th>
-                  <th className="pb-3 text-right">ยอดขาย</th>
+                  <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
                   <th className="pb-3 text-right">ต้นทุน</th>
                   <th className="pb-3 text-right">กำไร</th>
                   <th className="pb-3 text-right">% Margin</th>
@@ -314,8 +519,40 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
                     <td className="py-3">
                       <p className="font-medium text-gray-900">{row.productName}</p>
                       <p className="text-xs text-gray-400">{row.productCode ?? "-"}</p>
+                      <div className="mt-1 flex gap-3 text-xs">
+                        <Link
+                          href={buildSalesDrilldownHref({
+                            from: data.filters.from,
+                            to: data.filters.to,
+                            productId: row.productId,
+                          })}
+                          className="text-sky-700 underline-offset-2 hover:underline"
+                        >
+                          ดูบิลขาย
+                        </Link>
+                        <Link
+                          href={buildCreditNoteDrilldownHref({
+                            from: data.filters.from,
+                            to: data.filters.to,
+                            productId: row.productId,
+                          })}
+                          className="text-sky-700 underline-offset-2 hover:underline"
+                        >
+                          ดูบิลคืน
+                        </Link>
+                      </div>
                     </td>
-                    <td className="py-3 text-right">{formatMoney(row.salesAmount)}</td>
+                    <td className="py-3 text-right">
+                      {formatMoney(
+                        getRevenueAmountByBasis(
+                          {
+                            exVat: row.salesAmountExVat,
+                            incVat: row.salesAmountIncVat,
+                          },
+                          basis,
+                        ),
+                      )}
+                    </td>
                     <td className="py-3 text-right">{formatMoney(row.costAmount)}</td>
                     <td className="py-3 text-right font-medium text-emerald-600">{formatMoney(row.grossProfit)}</td>
                     <td className="py-3 text-right">{formatPercent(row.marginPct)}</td>
@@ -339,7 +576,7 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
               <thead className="text-left text-xs text-gray-500">
                 <tr className="border-b border-gray-100">
                   <th className="pb-3">สินค้า</th>
-                  <th className="pb-3 text-right">ยอดขาย</th>
+                  <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
                   <th className="pb-3 text-right">กำไร</th>
                   <th className="pb-3 text-right">กำไร/หน่วย</th>
                   <th className="pb-3 text-right">% Margin</th>
@@ -351,8 +588,40 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
                     <td className="py-3">
                       <p className="font-medium text-gray-900">{row.productName}</p>
                       <p className="text-xs text-gray-400">{row.productCode ?? "-"}</p>
+                      <div className="mt-1 flex gap-3 text-xs">
+                        <Link
+                          href={buildSalesDrilldownHref({
+                            from: data.filters.from,
+                            to: data.filters.to,
+                            productId: row.productId,
+                          })}
+                          className="text-sky-700 underline-offset-2 hover:underline"
+                        >
+                          ดูบิลขาย
+                        </Link>
+                        <Link
+                          href={buildCreditNoteDrilldownHref({
+                            from: data.filters.from,
+                            to: data.filters.to,
+                            productId: row.productId,
+                          })}
+                          className="text-sky-700 underline-offset-2 hover:underline"
+                        >
+                          ดูบิลคืน
+                        </Link>
+                      </div>
                     </td>
-                    <td className="py-3 text-right">{formatMoney(row.salesAmount)}</td>
+                    <td className="py-3 text-right">
+                      {formatMoney(
+                        getRevenueAmountByBasis(
+                          {
+                            exVat: row.salesAmountExVat,
+                            incVat: row.salesAmountIncVat,
+                          },
+                          basis,
+                        ),
+                      )}
+                    </td>
                     <td className={`py-3 text-right font-medium ${row.grossProfit >= 0 ? "text-amber-600" : "text-rose-600"}`}>
                       {formatMoney(row.grossProfit)}
                     </td>
@@ -369,10 +638,194 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
+            <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Stock</h2>
+            <p className="text-xs text-gray-500">
+              มุมมองกำไรรวมแยกตามสินค้า จากยอดขายและคืนขายที่เกิดขึ้นจริงในช่วงวิเคราะห์
+            </p>
+          </div>
+          <Package className="text-gray-400" size={18} />
+        </div>
+        <div className="mb-3 rounded-2xl bg-sky-50 p-4 text-xs text-sky-900">
+          นิยามรอบนี้: `Profit by Stock` หมายถึงกำไรรวมแยกตามสินค้า ไม่ใช่กำไรระดับ lot หรือ stock movement
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-xs text-gray-500">
+              <tr className="border-b border-gray-100">
+                <th className="pb-3">สินค้า</th>
+                <th className="pb-3 text-right">จำนวนขายสุทธิ</th>
+                <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
+                <th className="pb-3 text-right">ต้นทุน</th>
+                <th className="pb-3 text-right">กำไร</th>
+                <th className="pb-3 text-right">กำไร/หน่วย</th>
+                <th className="pb-3 text-right">% Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.stockProducts.map((row) => (
+                <tr key={`stock-${row.productId}`} className="border-b border-gray-50">
+                  <td className="py-3">
+                    <p className="font-medium text-gray-900">{row.productName}</p>
+                    <p className="text-xs text-gray-400">{row.productCode ?? "-"}</p>
+                    <div className="mt-1 flex gap-3 text-xs">
+                      <Link
+                        href={buildSalesDrilldownHref({
+                          from: data.filters.from,
+                          to: data.filters.to,
+                          productId: row.productId,
+                        })}
+                        className="text-sky-700 underline-offset-2 hover:underline"
+                      >
+                        เปิดหน้าขาย
+                      </Link>
+                      <Link
+                        href={buildCreditNoteDrilldownHref({
+                          from: data.filters.from,
+                          to: data.filters.to,
+                          productId: row.productId,
+                        })}
+                        className="text-sky-700 underline-offset-2 hover:underline"
+                      >
+                        เปิดหน้าคืนขาย
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="py-3 text-right">{row.quantity.toLocaleString("th-TH", { maximumFractionDigits: 4 })}</td>
+                  <td className="py-3 text-right">
+                    {formatMoney(
+                      getRevenueAmountByBasis(
+                        {
+                          exVat: row.salesAmountExVat,
+                          incVat: row.salesAmountIncVat,
+                        },
+                        basis,
+                      ),
+                    )}
+                  </td>
+                  <td className="py-3 text-right">{formatMoney(row.costAmount)}</td>
+                  <td className={`py-3 text-right font-medium ${row.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                    {formatMoney(row.grossProfit)}
+                  </td>
+                  <td className="py-3 text-right">{formatMoney(row.unitProfit)}</td>
+                  <td className="py-3 text-right">{formatPercent(row.marginPct)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Customer</h2>
+            <p className="text-xs text-gray-500">
+              ดูว่าลูกค้ากลุ่มไหนช่วยทำกำไรสูง และใครที่มาร์จิ้นบางจนควรทบทวนราคา/ส่วนลด
+            </p>
+          </div>
+          <ArrowUpRight className="text-sky-500" size={18} />
+        </div>
+        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+          ยอดขายสลับตาม dropdown ส่วนกำไรและ % Margin ใช้ฐานก่อน VAT และกดชื่อลูกค้าเพื่อ drill down ไปดูประวัติลูกค้าได้
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-left text-xs text-gray-500">
+              <tr className="border-b border-gray-100">
+                <th className="pb-3">ลูกค้า</th>
+                <th className="pb-3 text-right">จำนวนบิล</th>
+                <th className="pb-3 text-right">จำนวนขายสุทธิ</th>
+                <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
+                <th className="pb-3 text-right">ต้นทุน</th>
+                <th className="pb-3 text-right">กำไร</th>
+                <th className="pb-3 text-right">% Margin</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.customerAnalysis.map((row) => {
+                const customerHref = buildCustomerHref(row.customerId);
+
+                return (
+                  <tr key={`${row.customerId ?? row.customerName}-customer-profit`} className="border-b border-gray-50">
+                    <td className="py-3">
+                      {customerHref ? (
+                        <Link
+                          href={customerHref}
+                          className="font-medium text-sky-700 underline-offset-2 hover:underline"
+                        >
+                          {row.customerName}
+                        </Link>
+                      ) : (
+                        <p className="font-medium text-gray-900">{row.customerName}</p>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        {row.customerId ? "ดูลูกค้ารายนี้ต่อได้" : "ลูกค้าที่ไม่มี master record"}
+                      </p>
+                      {row.customerId ? (
+                        <div className="mt-1 flex gap-3 text-xs">
+                          <Link
+                            href={buildSalesDrilldownHref({
+                              from: data.filters.from,
+                              to: data.filters.to,
+                              customerId: row.customerId,
+                            })}
+                            className="text-sky-700 underline-offset-2 hover:underline"
+                          >
+                            ดูบิลขาย
+                          </Link>
+                          <Link
+                            href={buildCreditNoteDrilldownHref({
+                              from: data.filters.from,
+                              to: data.filters.to,
+                              customerId: row.customerId,
+                            })}
+                            className="text-sky-700 underline-offset-2 hover:underline"
+                          >
+                            ดูบิลคืน
+                          </Link>
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-3 text-right">{row.invoiceCount.toLocaleString("th-TH")}</td>
+                    <td className="py-3 text-right">
+                      {row.quantity.toLocaleString("th-TH", { maximumFractionDigits: 4 })}
+                    </td>
+                    <td className="py-3 text-right">
+                      {formatMoney(
+                        getRevenueAmountByBasis(
+                          {
+                            exVat: row.salesAmountExVat,
+                            incVat: row.salesAmountIncVat,
+                          },
+                          basis,
+                        ),
+                      )}
+                    </td>
+                    <td className="py-3 text-right">{formatMoney(row.costAmount)}</td>
+                    <td className={`py-3 text-right font-medium ${row.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                      {formatMoney(row.grossProfit)}
+                    </td>
+                    <td className="py-3 text-right">{formatPercent(row.marginPct)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
             <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Invoice</h2>
-            <p className="text-xs text-gray-500">Drill down กลับไปดูเอกสารที่ทำเงินหรือทำให้กำไรหาย</p>
+            <p className="text-xs text-gray-500">
+              Drill down กลับไปดูเอกสารที่ทำเงินหรือทำให้กำไรหาย
+            </p>
           </div>
           <ReceiptText className="text-gray-400" size={18} />
+        </div>
+        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+          ยอดขายในตารางนี้สลับตาม dropdown ส่วนกำไรและ % Margin ยังใช้ฐานก่อน VAT เสมอ
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -381,7 +834,7 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
                 <th className="pb-3">เลขที่เอกสาร</th>
                 <th className="pb-3">วันที่</th>
                 <th className="pb-3">ลูกค้า</th>
-                <th className="pb-3 text-right">ยอดขาย</th>
+                <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
                 <th className="pb-3 text-right">ต้นทุน</th>
                 <th className="pb-3 text-right">กำไร</th>
                 <th className="pb-3 text-right">% Margin</th>
@@ -390,10 +843,30 @@ const ProfitDashboard = async ({ profitFrom, profitTo }: ProfitDashboardProps) =
             <tbody>
               {data.invoices.map((row) => (
                 <tr key={row.sourceId} className="border-b border-gray-50">
-                  <td className="py-3 font-medium text-gray-900">{row.sourceDocNo}</td>
+                  <td className="py-3">
+                    <Link
+                      href={buildInvoiceHref(row.sourceType, row.sourceId)}
+                      className="font-medium text-sky-700 underline-offset-2 hover:underline"
+                    >
+                      {row.sourceDocNo}
+                    </Link>
+                    <p className="text-xs text-gray-400">
+                      {row.sourceType === ProfitSourceType.SALE ? "Sale" : "Credit Note Return"}
+                    </p>
+                  </td>
                   <td className="py-3 text-gray-500">{formatDateThai(row.businessDate)}</td>
                   <td className="py-3 text-gray-500">{row.customerName ?? "-"}</td>
-                  <td className="py-3 text-right">{formatMoney(row.salesAmount)}</td>
+                  <td className="py-3 text-right">
+                    {formatMoney(
+                      getRevenueAmountByBasis(
+                        {
+                          exVat: row.salesAmountExVat,
+                          incVat: row.salesAmountIncVat,
+                        },
+                        basis,
+                      ),
+                    )}
+                  </td>
                   <td className="py-3 text-right">{formatMoney(row.costAmount)}</td>
                   <td className={`py-3 text-right font-medium ${row.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                     {formatMoney(row.grossProfit)}

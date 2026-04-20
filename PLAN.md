@@ -3269,14 +3269,17 @@ Approved decisions for v1:
 - [x] แยก transaction layer ออกจาก analytical / KPI layer อย่างชัดเจน
 - [x] Profit recognition หลักใน phase นี้ใช้ 3 source แรก: `SALE`, `SALE_RETURN`, `EXPENSE`
 - [x] ไม่ย้าย logic กำไรไปผูกกับ `Receipt`, `SupplierPayment`, หรือ `CashBankMovement`
+- [x] Profit Dashboard รองรับ revenue display basis แบบ dropdown `ก่อน VAT` / `รวม VAT` โดย default เป็น `ก่อน VAT`
+- [x] แบบแสดงผล `รวม VAT` เปลี่ยนเฉพาะยอดขายและ view ที่อิงยอดขาย ส่วน `Gross Profit`, `Net Profit`, และ `Margin %` ยังคำนวณบนฐาน `ก่อน VAT`
+- [x] `Profit by Stock` ใน phase นี้หมายถึงกำไรรวมแยกตามสินค้า (aggregate by product จาก `fact_profit`) ไม่ใช่ lot-level / stock-movement profit
 
 ### Phase 1 - Business definition lock
 
-- [ ] ล็อกนิยาม `Gross Profit`, `Net Profit`, `Profit per Unit`, `Margin %` ให้ตรงกันทั้ง dashboard และ report
-- [ ] ล็อกฐานคำนวณรายได้ว่าต้องใช้ก่อน VAT หรือรวม VAT ในแต่ละ KPI
-- [ ] ล็อกวิธีคิด `SALE_RETURN` ว่าต้อง reverse ทั้งรายได้และต้นทุนของรายการคืน
-- [ ] ล็อกความหมายของ `Profit by Invoice` กับ `Profit by Stock` ให้เป็นคนละ analytical view ชัดเจน
-- [ ] ล็อกพฤติกรรมกรณี `create / update / cancel` เอกสาร ว่า fact ต้อง rebuild จากสถานะเอกสารปัจจุบันโดยไม่กระทบ logic เดิม
+- [x] ล็อกนิยาม `Gross Profit`, `Net Profit`, `Profit per Unit`, `Margin %` ให้ตรงกันทั้ง dashboard และ report
+- [x] ล็อกฐานคำนวณรายได้ว่าต้องใช้ก่อน VAT หรือรวม VAT ในแต่ละ KPI
+- [x] ล็อกวิธีคิด `SALE_RETURN` ว่าต้อง reverse ทั้งรายได้และต้นทุนของรายการคืน
+- [x] ล็อกความหมายของ `Profit by Invoice` กับ `Profit by Stock` ให้เป็นคนละ analytical view ชัดเจน
+- [x] ล็อกพฤติกรรมกรณี `create / update / cancel` เอกสาร ว่า fact ต้อง rebuild จากสถานะเอกสารปัจจุบันโดยไม่กระทบ logic เดิม
 
 ### Phase 2 - Schema และ analytical fact design
 
@@ -3316,31 +3319,31 @@ Approved decisions for v1:
 - [x] ปรับหน้า dashboard ให้มี tabs `Daily Operations` และ `Profit Dashboard`
 - [x] ตั้งค่า default tab เป็น `Daily Operations`
 - [x] แยก component ของ dashboard เดิมออกจาก component ของ profit dashboard ให้ดูแลง่าย
-- [ ] แยก filter ที่อิงช่วงวันที่ออกจาก snapshot/current-state blocks ให้ผู้ใช้เข้าใจได้ทันที
+- [x] แยก filter ที่อิงช่วงวันที่ออกจาก snapshot/current-state blocks ให้ผู้ใช้เข้าใจได้ทันที
 
 ### Phase 7 - Profit Dashboard MVP
 
 - [x] ทำ `Daily Snapshot` KPI: `ยอดขายวันนี้`, `ต้นทุนขาย`, `กำไรขั้นต้น`, `% Margin`
-- [ ] แสดงเทียบ `เมื่อวาน` หรือ `เป้า` พร้อมสีช่วยตัดสินใจ
+- [x] แสดงเทียบ `เมื่อวาน` หรือ `เป้า` พร้อมสีช่วยตัดสินใจ
 - [x] ทำตาราง `Money Maker / Killer` แสดงสินค้า, ยอดขาย, ต้นทุน, กำไร, `% Margin`
 - [x] ทำมุมมอง `Profit by Invoice` เพื่อ drill down กลับไปยังเอกสารขายได้
-- [ ] ทำมุมมอง `Profit by Stock` ในความหมายที่ล็อกไว้จาก business definition
+- [x] ทำมุมมอง `Profit by Stock` ในความหมายที่ล็อกไว้จาก business definition
 
 ### Phase 8 - Trend และ owner view
 
 - [x] เพิ่มกราฟ `ยอดขายรายวัน`
 - [x] เพิ่มกราฟ `กำไรขั้นต้น`
-- [ ] เพิ่มกราฟ `% Margin`
+- [x] เพิ่มกราฟ `% Margin`
 - [x] เพิ่ม monthly owner view: `รายได้รวม`, `ค่าใช้จ่ายรวม`, `กำไรสุทธิ`
-- [ ] แสดง `เดือนนี้ vs เดือนที่แล้ว` และ `% change`
+- [x] แสดง `เดือนนี้ vs เดือนที่แล้ว` และ `% change`
 
 ### Phase 9 - Alerts และ Profit Analysis
 
 - [x] เพิ่ม alert `Margin ต่ำกว่า threshold`
 - [x] เพิ่ม alert `สินค้าขาดทุน`
 - [x] เพิ่ม alert `ต้นทุนเฉลี่ยพุ่ง`
-- [ ] เพิ่ม profit analysis สำหรับ `ตามสินค้า`, `ตามลูกค้า`, และช่องวิเคราะห์ที่รองรับการตัดสินใจของเจ้าของ
-- [ ] รองรับ drill down จาก dashboard ไปดู transaction / invoice ที่เป็นต้นเหตุได้
+- [x] เพิ่ม profit analysis สำหรับ `ตามสินค้า`, `ตามลูกค้า`, และช่องวิเคราะห์ที่รองรับการตัดสินใจของเจ้าของ
+- [x] รองรับ drill down จาก dashboard ไปดู transaction / invoice ที่เป็นต้นเหตุได้
 
 ### Delivered slice note (2026-04-20)
 
@@ -3349,3 +3352,7 @@ Approved decisions for v1:
 - [x] Released the first working `Profit Dashboard` slice with daily snapshot, product ranking, trend cards, owner monthly summary, alerts, and invoice-profit view.
 - [x] Added `reconcile:fact-profit` and aligned the legacy report profit logic so `CreditNote RETURN` reverses both revenue and COGS, eliminating reconciliation delta against `fact_profit`.
 - [x] Added `enable:fact-profit-rls` and enabled row level security on `public.FactProfit` to clear the security advisor warning for the new analytical table.
+- [x] Clarified the dashboard split between today snapshot vs filtered analysis, added the `% Margin` trend chart, and linked `Profit by Invoice` rows back to sale / credit-note documents for faster drill down.
+- [x] Expanded `fact_profit` to persist both `ก่อน VAT` and `รวม VAT` revenue fields, added a revenue-basis dropdown to Profit Dashboard, and backfilled / reconciled production with zero delta against the legacy report.
+- [x] Added `Profit by Stock` as product-aggregated profit analysis, added `Profit by Customer`, and enabled drilldown from the dashboard to customer detail and source sale / credit-note documents.
+- [x] Added filter-ready drilldown from Profit Dashboard to `/admin/sales` and `/admin/credit-notes` using `customerId` / `productId` plus the same date range, so owners can jump from summary rows into the causal document list in one click.
