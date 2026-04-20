@@ -3307,8 +3307,8 @@ Approved decisions for v1:
 ### Phase 5 - Backfill และ reconciliation
 
 - [x] เพิ่ม script backfill เพื่อสร้าง `fact_profit` จากข้อมูลเก่า
-- [ ] เพิ่ม script / report สำหรับเทียบผลรวมจาก `fact_profit` กับ logic รายงานเดิม
-- [ ] ตรวจให้ตัวเลข Gross Profit / Net Profit ตรงกับ source-of-truth ที่คาดหวังก่อนเปิดใช้ dashboard ใหม่
+- [x] เพิ่ม script / report สำหรับเทียบผลรวมจาก `fact_profit` กับ logic รายงานเดิม
+- [x] ตรวจให้ตัวเลข Gross Profit / Net Profit ตรงกับ source-of-truth ที่คาดหวังก่อนเปิดใช้ dashboard ใหม่
 - [x] รัน `npm run build` และทดสอบ flow เอกสารสำคัญหลังผูก fact layer
 
 ### Phase 6 - Dashboard tab split
@@ -3347,3 +3347,4 @@ Approved decisions for v1:
 - [x] Added `fact_profit` schema, generated Prisma client, and pushed the schema to the live database.
 - [x] Backfilled current historical data into `fact_profit` with the initial dataset snapshot: 20 sales, 2 credit notes, and 3 expenses.
 - [x] Released the first working `Profit Dashboard` slice with daily snapshot, product ranking, trend cards, owner monthly summary, alerts, and invoice-profit view.
+- [x] Added `reconcile:fact-profit` and aligned the legacy report profit logic so `CreditNote RETURN` reverses both revenue and COGS, eliminating reconciliation delta against `fact_profit`.

@@ -204,7 +204,7 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       customerId: true,
       customerName: true,
       customer: { select: { name: true } },
-      subtotalAmount: true,
+      netAmount: true,
       items: {
         select: {
           id: true,
@@ -212,7 +212,7 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
           quantity: true,
           salePrice: true,
           costPrice: true,
-          subtotalAmount: true,
+          totalAmount: true,
           supplierId: true,
           supplierName: true,
           product: {
@@ -236,8 +236,8 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE, saleId);
-  const totalRevenue = Number(sale.subtotalAmount);
-  const itemWeights = sale.items.map((item) => Number(item.subtotalAmount));
+  const totalRevenue = Number(sale.netAmount);
+  const itemWeights = sale.items.map((item) => Number(item.totalAmount));
   const allocatedRevenue = allocateByWeights(totalRevenue, itemWeights);
   const customerName = sale.customer?.name ?? sale.customerName ?? null;
 
@@ -296,7 +296,7 @@ export async function rebuildCreditNoteProfitFacts(
       status: true,
       type: true,
       saleId: true,
-      subtotalAmount: true,
+      totalAmount: true,
       customerId: true,
       customerName: true,
       sale: {
@@ -317,7 +317,7 @@ export async function rebuildCreditNoteProfitFacts(
           id: true,
           productId: true,
           qty: true,
-          subtotalAmount: true,
+          amount: true,
           unitPrice: true,
           product: {
             select: {
@@ -336,13 +336,17 @@ export async function rebuildCreditNoteProfitFacts(
   }
 
   await deactivateCurrentFacts(tx, ProfitSourceType.SALE_RETURN, creditNoteId);
-  if (creditNote.status !== DocStatus.ACTIVE || creditNote.items.length === 0) {
+  if (
+    creditNote.status !== DocStatus.ACTIVE ||
+    creditNote.type !== CreditNoteType.RETURN ||
+    creditNote.items.length === 0
+  ) {
     return;
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE_RETURN, creditNoteId);
-  const totalRevenue = Number(creditNote.subtotalAmount);
-  const itemWeights = creditNote.items.map((item) => Number(item.subtotalAmount));
+  const totalRevenue = Number(creditNote.totalAmount);
+  const itemWeights = creditNote.items.map((item) => Number(item.amount));
   const allocatedRevenue = allocateByWeights(totalRevenue, itemWeights);
   const saleCostMap = buildWeightedSaleCostMap(
     (creditNote.sale?.items ?? []).map((item) => ({

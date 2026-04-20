@@ -320,6 +320,26 @@ async function runQueryBatches(batches: Array<Array<Promise<unknown>>>) {
   return results;
 }
 
+function buildWeightedSaleCostMap(
+  saleItems: Array<{ productId: string; quantity: number; costPrice: number }>
+): Map<string, number> {
+  const totals = new Map<string, { qty: number; cost: number }>();
+
+  for (const item of saleItems) {
+    const existing = totals.get(item.productId) ?? { qty: 0, cost: 0 };
+    existing.qty += item.quantity;
+    existing.cost += item.quantity * item.costPrice;
+    totals.set(item.productId, existing);
+  }
+
+  return new Map(
+    Array.from(totals.entries()).map(([productId, value]) => [
+      productId,
+      value.qty > 0 ? value.cost / value.qty : 0,
+    ]),
+  );
+}
+
 function getPaymentMethodLabel(method: PaymentMethod | null | undefined): string {
   switch (method) {
     case PaymentMethod.CASH:
@@ -585,6 +605,29 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           refundMethod: true,
           cashBankAccount: { select: { name: true } },
           customer: { select: { code: true, name: true } },
+          sale: {
+            select: {
+              items: {
+                select: {
+                  productId: true,
+                  quantity: true,
+                  costPrice: true,
+                },
+              },
+            },
+          },
+          items: {
+            select: {
+              productId: true,
+              qty: true,
+              amount: true,
+              product: {
+                select: {
+                  avgCost: true,
+                },
+              },
+            },
+          },
         },
       });
   const purchasesPromise = db.purchase.findMany({
@@ -806,19 +849,34 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     note: sale.note ?? "",
     cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0),
   }));
-  const normalizedCreditNotes = creditNotes.map((creditNote) => ({
-    id: creditNote.id,
-    cnNo: creditNote.cnNo,
-    cnDate: creditNote.cnDate,
-    customerCode: creditNote.customer?.code ?? "",
-    customerName: creditNote.customer?.name ?? (creditNote.customerName?.trim() || "ลูกค้าทั่วไป"),
-    returnAmount: toNumber(creditNote.totalAmount),
-    vatAmount: toNumber(creditNote.vatAmount),
-    settlementType: creditNote.settlementType,
-    refundMethod: creditNote.refundMethod,
-    accountName: creditNote.cashBankAccount?.name ?? "-",
-    note: creditNote.note ?? "",
-  }));
+  const normalizedCreditNotes = creditNotes.map((creditNote) => {
+    const saleCostMap = buildWeightedSaleCostMap(
+      (creditNote.sale?.items ?? []).map((saleItem) => ({
+        productId: saleItem.productId,
+        quantity: Number(saleItem.quantity),
+        costPrice: toNumber(saleItem.costPrice),
+      }))
+    );
+
+    return {
+      id: creditNote.id,
+      cnNo: creditNote.cnNo,
+      cnDate: creditNote.cnDate,
+      customerCode: creditNote.customer?.code ?? "",
+      customerName: creditNote.customer?.name ?? (creditNote.customerName?.trim() || "ลูกค้าทั่วไป"),
+      returnAmount: toNumber(creditNote.totalAmount),
+      vatAmount: toNumber(creditNote.vatAmount),
+      settlementType: creditNote.settlementType,
+      refundMethod: creditNote.refundMethod,
+      accountName: creditNote.cashBankAccount?.name ?? "-",
+      note: creditNote.note ?? "",
+      cogsReversal: creditNote.items.reduce((sum, item) => {
+        const resolvedCost =
+          saleCostMap.get(item.productId ?? "") ?? toNumber(item.product?.avgCost);
+        return sum + toNumber(item.qty) * resolvedCost;
+      }, 0),
+    };
+  });
   const normalizedPurchaseReturns = purchaseReturns.map((purchaseReturn) => ({
     id: purchaseReturn.id,
     returnNo: purchaseReturn.returnNo,
@@ -875,7 +933,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
 
   const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0);
   const totalInvoices = normalizedSales.length;
-  const costOfGoodsSold = normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0);
+  const creditNoteCostReversal = normalizedCreditNotes.reduce(
+    (sum, creditNote) => sum + creditNote.cogsReversal,
+    0,
+  );
+  const costOfGoodsSold =
+    normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal;
   const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0);
   const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmount, 0);
   const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0);
