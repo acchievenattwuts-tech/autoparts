@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanel";
 import {
   getProfitDashboardData,
   getRevenueAmountByBasis,
@@ -50,22 +51,6 @@ function calcChange(current: number, previous: number): number {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function getBarHeightClass(ratio: number): string {
-  if (ratio >= 0.9) return "h-32";
-  if (ratio >= 0.8) return "h-28";
-  if (ratio >= 0.7) return "h-24";
-  if (ratio >= 0.6) return "h-20";
-  if (ratio >= 0.5) return "h-16";
-  if (ratio >= 0.4) return "h-14";
-  if (ratio >= 0.3) return "h-12";
-  if (ratio >= 0.2) return "h-10";
-  if (ratio >= 0.1) return "h-8";
-  return "h-6";
-}
-
-function formatTrendDayLabel(dateKey: string): string {
-  return formatDateThai(parseDateOnlyToStartOfDay(dateKey));
-}
 
 function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string): string {
   if (sourceType === ProfitSourceType.SALE_RETURN) {
@@ -327,25 +312,20 @@ const ProfitDashboard = async ({
     data.selectedRange.expenseAmount,
     data.previousRange.expenseAmount,
   );
-  const maxTrendSalesRaw = Math.max(
-    ...data.trend.map((item) =>
-      Math.abs(
-        getRevenueAmountByBasis(
-          {
-            exVat: item.salesAmountExVat,
-            incVat: item.salesAmountIncVat,
-          },
-          basis,
-        ),
-      ),
+  const trendChartData = data.trend.map((point) => ({
+    dateKey: point.dateKey,
+    shortLabel: point.dateKey.slice(5),
+    fullLabel: formatDateThai(parseDateOnlyToStartOfDay(point.dateKey)),
+    salesAmount: getRevenueAmountByBasis(
+      {
+        exVat: point.salesAmountExVat,
+        incVat: point.salesAmountIncVat,
+      },
+      basis,
     ),
-    0,
-  );
-  const maxTrendGrossRaw = Math.max(...data.trend.map((item) => Math.abs(item.grossProfit)), 0);
-  const maxTrendMarginRaw = Math.max(...data.trend.map((item) => Math.abs(item.marginPct)), 0);
-  const maxTrendSales = Math.max(maxTrendSalesRaw, 1);
-  const maxTrendGross = Math.max(maxTrendGrossRaw, 1);
-  const maxTrendMargin = Math.max(maxTrendMarginRaw, 1);
+    grossProfit: point.grossProfit,
+    marginPct: point.marginPct,
+  }));
   const currentStockPage = data.stockProducts.pagination.page;
   const currentCustomerPage = data.customerAnalysis.pagination.page;
   const currentInvoicePage = data.invoices.pagination.page;
@@ -553,104 +533,11 @@ const ProfitDashboard = async ({
             <CalendarDays className="text-gray-400" size={18} />
           </div>
           <div className="space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
-                <span>ยอดขายรายวัน ({basisLabel})</span>
-                <span>สูงสุด {formatMoney(maxTrendSalesRaw)} บาท</span>
-              </div>
-              <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
-                {data.trend.map((point) => {
-                  const salesAmount = getRevenueAmountByBasis(
-                    {
-                      exVat: point.salesAmountExVat,
-                      incVat: point.salesAmountIncVat,
-                    },
-                    basis,
-                  );
-
-                  return (
-                    <div key={`sales-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
-                      <div
-                        title={`${formatTrendDayLabel(point.dateKey)}\nยอดขาย (${basisLabel}) ${formatMoney(
-                          salesAmount,
-                        )} บาท`}
-                        className={`w-6 rounded-t-full bg-emerald-400 ${getBarHeightClass(
-                          Math.abs(salesAmount) / maxTrendSales,
-                        )}`}
-                      />
-                      <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
-                <span>กำไรขั้นต้นรายวัน</span>
-                <span>สูงสุด {formatMoney(maxTrendGrossRaw)} บาท</span>
-              </div>
-              <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
-                {data.trend.map((point) => (
-                  <div key={`gross-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
-                    <div
-                      title={`${formatTrendDayLabel(point.dateKey)}\nกำไรขั้นต้น ${formatMoney(
-                        point.grossProfit,
-                      )} บาท`}
-                      className={`w-6 rounded-t-full ${
-                        point.grossProfit >= 0 ? "bg-sky-500" : "bg-rose-400"
-                      } ${getBarHeightClass(Math.abs(point.grossProfit) / maxTrendGross)}`}
-                    />
-                    <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
-                <span>% Margin รายวัน</span>
-                <span>ค่าสูงสุด {formatPercent(maxTrendMarginRaw)}</span>
-              </div>
-              <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
-                {data.trend.map((point) => (
-                  <div key={`margin-${point.dateKey}`} className="flex min-w-8 flex-col items-center gap-2">
-                    <div
-                      title={`${formatTrendDayLabel(point.dateKey)}\n% Margin ${formatPercent(
-                        point.marginPct,
-                      )}`}
-                      className={`w-6 rounded-t-full ${
-                        point.marginPct >= 0 ? "bg-violet-500" : "bg-rose-400"
-                      } ${getBarHeightClass(Math.abs(point.marginPct) / maxTrendMargin)}`}
-                    />
-                    <span className="text-[10px] text-gray-400">{point.dateKey.slice(5)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <span className="font-medium text-gray-700">วิธีอ่านกราฟ:</span>
-                <span className="inline-flex items-center gap-2 text-gray-600">
-                  <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                  เขียว = ยอดขาย
-                </span>
-                <span className="inline-flex items-center gap-2 text-gray-600">
-                  <span className="h-3 w-3 rounded-full bg-sky-500" />
-                  ฟ้า = กำไรขั้นต้น
-                </span>
-                <span className="inline-flex items-center gap-2 text-gray-600">
-                  <span className="h-3 w-3 rounded-full bg-violet-500" />
-                  ม่วง = % Margin
-                </span>
-              </div>
-              <p className="mt-3 text-xs text-gray-600">
-                เอาเมาส์ชี้แต่ละแท่งเพื่อดูตัวเลขจริงของวันนั้นได้ทันที และความสูงของแท่งให้เทียบกันเฉพาะในแถวสีเดียวกันเท่านั้น
-              </p>
-              {!hasSelectedRangeActivity ? (
-                <p className="mt-2 text-xs text-amber-700">
-                  ช่วงที่เลือกยังไม่พบยอดขายหรือค่าใช้จ่ายจริงในชั้นข้อมูล `fact_profit` จึงควรได้ตัวเลขเป็นศูนย์ทั้งหมด
-                </p>
-              ) : null}
-            </div>
+            <ProfitTrendPanel
+              basisLabel={basisLabel}
+              data={trendChartData}
+              hasSelectedRangeActivity={hasSelectedRangeActivity}
+            />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {rangeSummaryCards.map((item) => (
                 <div key={item.label} className="rounded-2xl bg-gray-50 p-4">
@@ -1206,3 +1093,4 @@ const ProfitDashboard = async ({
 };
 
 export default ProfitDashboard;
+
