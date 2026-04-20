@@ -72,6 +72,13 @@ export function parseDateOnlyToEndOfDay(value: string): Date {
   return new Date(`${value}T23:59:59.999${THAILAND_UTC_OFFSET}`);
 }
 
+export function addThailandDays(value: DateInput, days: number): Date {
+  const date = toDate(value);
+  const shifted = new Date(date);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted;
+}
+
 export function formatDateThai(value: DateInput, options?: Intl.DateTimeFormatOptions): string {
   const formatterOptions = hasStyleOptions(options)
     ? {

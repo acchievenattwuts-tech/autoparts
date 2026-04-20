@@ -327,7 +327,7 @@ const ProfitDashboard = async ({
     data.selectedRange.expenseAmount,
     data.previousRange.expenseAmount,
   );
-  const maxTrendSales = Math.max(
+  const maxTrendSalesRaw = Math.max(
     ...data.trend.map((item) =>
       Math.abs(
         getRevenueAmountByBasis(
@@ -339,10 +339,13 @@ const ProfitDashboard = async ({
         ),
       ),
     ),
-    1,
+    0,
   );
-  const maxTrendGross = Math.max(...data.trend.map((item) => Math.abs(item.grossProfit)), 1);
-  const maxTrendMargin = Math.max(...data.trend.map((item) => Math.abs(item.marginPct)), 1);
+  const maxTrendGrossRaw = Math.max(...data.trend.map((item) => Math.abs(item.grossProfit)), 0);
+  const maxTrendMarginRaw = Math.max(...data.trend.map((item) => Math.abs(item.marginPct)), 0);
+  const maxTrendSales = Math.max(maxTrendSalesRaw, 1);
+  const maxTrendGross = Math.max(maxTrendGrossRaw, 1);
+  const maxTrendMargin = Math.max(maxTrendMarginRaw, 1);
   const currentStockPage = data.stockProducts.pagination.page;
   const currentCustomerPage = data.customerAnalysis.pagination.page;
   const currentInvoicePage = data.invoices.pagination.page;
@@ -553,7 +556,7 @@ const ProfitDashboard = async ({
             <div>
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
                 <span>ยอดขายรายวัน ({basisLabel})</span>
-                <span>สูงสุด {formatMoney(maxTrendSales)} บาท</span>
+                <span>สูงสุด {formatMoney(maxTrendSalesRaw)} บาท</span>
               </div>
               <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
                 {data.trend.map((point) => {
@@ -584,7 +587,7 @@ const ProfitDashboard = async ({
             <div>
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
                 <span>กำไรขั้นต้นรายวัน</span>
-                <span>สูงสุด {formatMoney(maxTrendGross)} บาท</span>
+                <span>สูงสุด {formatMoney(maxTrendGrossRaw)} บาท</span>
               </div>
               <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
                 {data.trend.map((point) => (
@@ -605,7 +608,7 @@ const ProfitDashboard = async ({
             <div>
               <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
                 <span>% Margin รายวัน</span>
-                <span>ค่าสูงสุด {formatPercent(maxTrendMargin)}</span>
+                <span>ค่าสูงสุด {formatPercent(maxTrendMarginRaw)}</span>
               </div>
               <div className="flex h-36 items-end gap-2 overflow-x-auto pb-2">
                 {data.trend.map((point) => (

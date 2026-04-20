@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import {
+  addThailandDays,
   getThailandDateKey,
   getThailandMonthStartDateKey,
   parseDateOnlyToEndOfDay,
@@ -167,18 +168,6 @@ function buildPagination(page: number, totalItems: number): ProfitPagination {
   };
 }
 
-function startOfUtcDay(date: Date): Date {
-  const value = new Date(date);
-  value.setUTCHours(0, 0, 0, 0);
-  return value;
-}
-
-function addUtcDays(date: Date, days: number): Date {
-  const value = new Date(date);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value;
-}
-
 async function aggregateSummary(start: Date, end: Date): Promise<ProfitSummary> {
   const aggregate = await db.factProfit.aggregate({
     _sum: {
@@ -221,7 +210,7 @@ async function buildTrend(from: string, to: string): Promise<ProfitTrendPoint[]>
   const start = parseDateOnlyToStartOfDay(from);
   const end = parseDateOnlyToStartOfDay(to);
 
-  for (let cursor = new Date(start); cursor <= end; cursor = addUtcDays(cursor, 1)) {
+  for (let cursor = new Date(start); cursor <= end; cursor = addThailandDays(cursor, 1)) {
     const dateKey = getThailandDateKey(cursor);
     trendMap.set(dateKey, {
       dateKey,
@@ -644,8 +633,8 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
 
   const todayKey = getThailandDateKey();
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
-  const recentBoundary = addUtcDays(todayStart, -6);
-  const previousBoundary = addUtcDays(recentBoundary, -7);
+  const recentBoundary = addThailandDays(todayStart, -6);
+  const previousBoundary = addThailandDays(recentBoundary, -7);
   const recentRows = await db.factProfit.findMany({
     where: {
       isActive: true,
@@ -749,17 +738,17 @@ export async function getProfitDashboardData(
   const toDate = parseDateOnlyToEndOfDay(to);
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
   const todayEnd = parseDateOnlyToEndOfDay(todayKey);
-  const yesterdayStart = addUtcDays(todayStart, -1);
+  const yesterdayStart = addThailandDays(todayStart, -1);
   const yesterdayEnd = parseDateOnlyToEndOfDay(getThailandDateKey(yesterdayStart));
-  const currentRangeStart = startOfUtcDay(fromDate);
-  const currentRangeEnd = parseDateOnlyToEndOfDay(to);
+  const currentRangeStart = fromDate;
+  const currentRangeEnd = toDate;
+  const currentRangeEndDay = parseDateOnlyToStartOfDay(to);
   const rangeDays =
     Math.floor(
-      (startOfUtcDay(parseDateOnlyToStartOfDay(to)).getTime() - currentRangeStart.getTime()) /
-        (1000 * 60 * 60 * 24),
+      (currentRangeEndDay.getTime() - currentRangeStart.getTime()) / (1000 * 60 * 60 * 24),
     ) + 1;
-  const previousRangeEndDay = addUtcDays(currentRangeStart, -1);
-  const previousRangeStartDay = addUtcDays(currentRangeStart, -rangeDays);
+  const previousRangeEndDay = addThailandDays(currentRangeStart, -1);
+  const previousRangeStartDay = addThailandDays(currentRangeStart, -rangeDays);
   const previousRangeStart = parseDateOnlyToStartOfDay(getThailandDateKey(previousRangeStartDay));
   const previousRangeEnd = parseDateOnlyToEndOfDay(getThailandDateKey(previousRangeEndDay));
 
