@@ -28,17 +28,28 @@ function StatCard({
   return (
     <div
       className={`rounded-xl border p-4 ${
-        tone === "warn" ? "border-amber-200 bg-amber-50" : "border-gray-200 bg-white"
+        tone === "warn"
+          ? "border-amber-200 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-500/15"
+          : "border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950/80"
       }`}
     >
-      <p className="text-xs font-medium text-gray-500">{title}</p>
-      <p className="mt-1 font-kanit text-xl font-bold text-gray-900">{value}</p>
+      <p className="text-xs font-medium text-gray-500 dark:text-slate-400">{title}</p>
+      <p className="mt-1 font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
     </div>
   );
 }
 
 function fmtMoney(value: number) {
   return value.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtPercent(value: number) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return safeValue.toLocaleString("th-TH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -52,9 +63,9 @@ function PreviewMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 font-kanit text-lg font-semibold text-slate-900">{value}</p>
+    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/5">
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-1 font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">{value}</p>
     </div>
   );
 }
@@ -268,20 +279,20 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="font-kanit text-2xl font-bold text-gray-900">LINE OA Daily Summary</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">LINE OA Daily Summary</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             preview ข้อความสรุปรายวัน พร้อม test send, webhook recipient capture และการผูกผู้รับแบบ ADMIN
           </p>
         </div>
 
         <form method="GET" className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+          <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
             วันที่รายงาน
             <input
               type="date"
               name="date"
               defaultValue={reportDayKey}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:border-white/10 dark:bg-slate-950/80 dark:text-slate-100"
             />
           </label>
           <button
@@ -292,7 +303,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
           </button>
           <Link
             href="/admin/reports/line-daily-summary"
-            className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
+            className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
           >
             ล้าง
           </Link>
@@ -313,10 +324,10 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         />
       </div>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">สถานะการส่งปัจจุบัน</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">สถานะการส่งปัจจุบัน</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             หน้านี้ใช้ข้อความ preview เดียวกับข้อความที่ระบบส่งจริง และยังคงใช้ logic คำนวณเดิมทั้งหมด
           </p>
         </div>
@@ -355,7 +366,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         </div>
 
         {(lineConfig.missingDeliveryEnv.length > 0 || resolvedRecipients.missingDeliveryEnv.length > 0) && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-100">
             <p className="font-medium">รายการที่ยังต้องเตรียมก่อนส่งจริง</p>
             <p className="mt-1">
               {[...lineConfig.missingDeliveryEnv, ...resolvedRecipients.missingDeliveryEnv].join(", ")}
@@ -382,23 +393,23 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       />
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
           <div className="flex flex-col gap-1">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่งจริง</h3>
-            <p className="text-sm text-gray-500">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ข้อความ LINE ที่จะส่งจริง</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">
               preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
               {settings.compactMode ? " โดยเปิด compact mode ซ่อนแถวค่า 0" : " โดยแสดงครบทุกแถวตามค่าเดิม"}
             </p>
           </div>
 
-          <div className="mt-4 rounded-[28px] border border-emerald-100 bg-[radial-gradient(circle_at_top,_#f0fdf4,_#dcfce7_40%,_#bbf7d0_100%)] p-4 md:p-5">
+          <div className="line-preview-root mt-4 rounded-[28px] border border-gray-200 bg-white p-4 shadow-sm md:p-5">
             <div className="mx-auto max-w-3xl">
-              <div className="mb-1 flex items-center justify-between text-xs font-medium text-emerald-900/80">
+              <div className="mb-3 flex items-center justify-between text-xs font-medium text-slate-600">
                 <span>LINE OA preview</span>
                 <span>{summary.reportDateLabel}</span>
               </div>
 
-              <div className="rounded-[24px] border border-white/90 bg-slate-50 p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+              <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
                 <div className="rounded-[24px] bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 p-5 text-white">
                   <p className="text-xs font-semibold tracking-wide text-emerald-100">SME Daily Closing</p>
                   <h4 className="mt-2 font-kanit text-2xl font-bold">🌈 สรุปงานประจำวันที่ {summary.reportDateLabel}</h4>
@@ -407,10 +418,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
                       <p className="text-xs text-emerald-100">กำไรขั้นต้นวันนี้</p>
                       <p className="mt-1 font-kanit text-2xl font-bold">
-                        ฿{fmtMoney(summary.money.grossProfitToday)}({summary.money.grossMarginPctToday.toLocaleString("th-TH", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}%)
+                        ฿{fmtMoney(summary.money.grossProfitToday)}({fmtPercent(summary.money.grossMarginPctToday)}%)
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
@@ -449,8 +457,8 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         </div>
 
         <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ตัวเลขหลัก</h3>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ตัวเลขหลัก</h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <PreviewMetric label="ขายสด" value={`฿${fmtMoney(summary.money.cashSales)}`} />
               <PreviewMetric label="ขายเชื่อ" value={`฿${fmtMoney(summary.money.creditSales)}`} />
@@ -461,8 +469,8 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">งานค้าง/ความเสี่ยง</h3>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">งานค้าง/ความเสี่ยง</h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <PreviewMetric label="รอจัดส่ง" value={`${summary.counts.pendingDelivery} รายการ`} />
               <PreviewMetric label="กำลังจัดส่ง" value={`${summary.counts.outForDelivery} รายการ`} />

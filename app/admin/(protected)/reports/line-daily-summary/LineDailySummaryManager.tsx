@@ -44,7 +44,7 @@ type DispatchRow = {
 };
 
 const inputCls =
-  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950/80 dark:text-slate-100";
 const RECIPIENTS_PER_PAGE = 10;
 
 const targetModeLabels: Record<LineDailySummaryTargetMode, string> = {
@@ -219,10 +219,10 @@ export default function LineDailySummaryManager(props: {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">ตั้งเวลาส่งจากในระบบ</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ตั้งเวลาส่งจากในระบบ</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             ระบบจะซิงก์เวลาในหน้านี้ไปยัง QStash โดยแปลงจากเวลาไทย (Asia/Bangkok)
             ไปเป็น schedule รายวันให้อัตโนมัติ
           </p>
@@ -240,7 +240,7 @@ export default function LineDailySummaryManager(props: {
             });
           }}
         >
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             เปิดใช้งาน
             <select
               name="enabled"
@@ -252,7 +252,7 @@ export default function LineDailySummaryManager(props: {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             เวลาส่งตามเวลาไทย
             <input
               type="time"
@@ -263,7 +263,7 @@ export default function LineDailySummaryManager(props: {
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             ปลายทางหลัก
             <select name="targetMode" defaultValue={settings.targetMode} className={inputCls}>
               <option value={LineDailySummaryTargetMode.ENV_IDS}>{targetModeLabels.ENV_IDS}</option>
@@ -273,7 +273,7 @@ export default function LineDailySummaryManager(props: {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             รูปแบบข้อความ
             <select
               name="compactMode"
@@ -294,20 +294,20 @@ export default function LineDailySummaryManager(props: {
           </button>
         </form>
 
-          <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-4">
+          <div className="mt-3 grid gap-3 text-sm text-gray-600 dark:text-slate-400 md:grid-cols-4">
             <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
             <p>รอบส่งประจำ: {settings.sendTime} น. ทุกวัน</p>
             <p>รูปแบบข้อความ: {settings.compactMode ? "Compact mode" : "แสดงครบทุกแถว"}</p>
             <p>ส่งล่าสุด: {latestScheduleStatus} ({formatDateTime(settings.lastSentAt)})</p>
           </div>
 
-        {settingsMessage && <p className="mt-3 text-sm text-[#1e3a5f]">{settingsMessage}</p>}
+        {settingsMessage && <p className="mt-3 text-sm text-[#1e3a5f] dark:text-sky-300">{settingsMessage}</p>}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">Test Send</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">Test Send</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             ส่งข้อความจริงจากหน้า admin โดยยึดวันที่ preview และ target mode ที่เลือก
           </p>
         </div>
@@ -333,11 +333,16 @@ export default function LineDailySummaryManager(props: {
           }}
         >
           <input type="hidden" name="date" value={reportDayKey} />
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             วันที่ข้อความ
-            <input type="date" value={reportDayKey} readOnly className={`${inputCls} bg-gray-50`} />
+            <input
+              type="date"
+              value={reportDayKey}
+              readOnly
+              className={`${inputCls} bg-gray-50 dark:bg-slate-900/80`}
+            />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             ปลายทางที่ใช้ทดสอบ
             <select name="targetMode" defaultValue={settings.targetMode} className={inputCls}>
               <option value={LineDailySummaryTargetMode.ENV_IDS}>{targetModeLabels.ENV_IDS}</option>
@@ -355,13 +360,13 @@ export default function LineDailySummaryManager(props: {
           </button>
         </form>
 
-        {testMessage && <p className="mt-3 text-sm text-emerald-700">{testMessage}</p>}
+        {testMessage && <p className="mt-3 text-sm text-emerald-700 dark:text-emerald-300">{testMessage}</p>}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">ผูก LINE กับ ADMIN</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ผูก LINE กับ ADMIN</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             webhook จะเก็บ userId/groupId/roomId อัตโนมัติ ส่วนการส่งหา ADMIN จะใช้เฉพาะ recipient แบบ
             USER ที่ผูกกับผู้ใช้ admin แล้ว
           </p>
@@ -371,7 +376,7 @@ export default function LineDailySummaryManager(props: {
           {adminUsers.map((user) => (
             <form
               key={user.id}
-              className="grid gap-3 rounded-xl border border-gray-200 p-4 lg:grid-cols-[1.2fr_1.4fr_auto_auto]"
+              className="grid gap-3 rounded-xl border border-gray-200 p-4 dark:border-white/10 lg:grid-cols-[1.2fr_1.4fr_auto_auto]"
               onSubmit={(event) => {
                 event.preventDefault();
                 const formData = new FormData(event.currentTarget);
@@ -384,14 +389,14 @@ export default function LineDailySummaryManager(props: {
             >
               <input type="hidden" name="userId" value={user.id} />
               <div>
-                <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                <p className="text-xs text-gray-500">{user.email}</p>
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{user.name}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400">{user.email}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                   ผูกอยู่: {user.lineRecipient?.displayName ?? user.lineRecipient?.lineId ?? "-"}
                 </p>
               </div>
 
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                 LINE userId ที่จะใช้ส่ง
                 <select name="recipientId" defaultValue={user.lineRecipient?.id ?? ""} className={inputCls}>
                   <option value="" disabled>
@@ -426,7 +431,7 @@ export default function LineDailySummaryManager(props: {
                     setMappingMessage(result.success ? "ยกเลิกการผูกสำเร็จ" : result.error ?? "ยกเลิกการผูกไม่สำเร็จ");
                   });
                 }}
-                className="h-10 rounded-lg bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-60"
+                className="h-10 rounded-lg bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-60 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15"
               >
                 ยกเลิก
               </button>
@@ -434,19 +439,19 @@ export default function LineDailySummaryManager(props: {
           ))}
         </div>
 
-        {mappingMessage && <p className="mt-3 text-sm text-[#1e3a5f]">{mappingMessage}</p>}
+        {mappingMessage && <p className="mt-3 text-sm text-[#1e3a5f] dark:text-sky-300">{mappingMessage}</p>}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h3 className="font-kanit text-lg font-semibold text-gray-900">Recipient จาก webhook</h3>
-              <p className="text-sm text-gray-500">
+              <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">Recipient จาก webhook</h3>
+              <p className="text-sm text-gray-500 dark:text-slate-400">
                 ซ่อนรายการที่ยังไม่ผูกและไม่มี webhook ใหม่เกิน 90 วันโดยค่าเริ่มต้น แต่ยังไม่ลบข้อมูลออกจากระบบ
               </p>
             </div>
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={showOlderRecipients}
@@ -454,12 +459,12 @@ export default function LineDailySummaryManager(props: {
                   setShowOlderRecipients(event.target.checked);
                   setRecipientPage(1);
                 }}
-                className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
+                className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900"
               />
               แสดงรายการเก่าเกิน 90 วัน
             </label>
           </div>
-          <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-slate-400">
             <span>แสดงอยู่ {visibleUserRecipients.length} รายการ</span>
             {hiddenRecipientCount > 0 && <span>ซ่อนอยู่ {hiddenRecipientCount} รายการ</span>}
             {visibleUserRecipients.length > 0 && (
@@ -470,7 +475,7 @@ export default function LineDailySummaryManager(props: {
           </div>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500">
+              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-white/5 dark:text-slate-400">
                 <tr>
                   <th className="px-3 py-2 font-medium">LINE ID</th>
                   <th className="px-3 py-2 font-medium">ประเภท</th>
@@ -480,16 +485,16 @@ export default function LineDailySummaryManager(props: {
               </thead>
               <tbody>
                 {paginatedUserRecipients.map((recipient) => (
-                  <tr key={recipient.id} className="border-t border-gray-100">
-                    <td className="px-3 py-2 text-gray-700">{recipient.displayName ?? recipient.lineId}</td>
-                    <td className="px-3 py-2 text-gray-600">{recipient.type}</td>
-                    <td className="px-3 py-2 text-gray-600">{recipient.linkedUserName ?? "-"}</td>
-                    <td className="px-3 py-2 text-gray-600">{formatDateTime(recipient.lastWebhookAt)}</td>
+                  <tr key={recipient.id} className="border-t border-gray-100 dark:border-white/10">
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-200">{recipient.displayName ?? recipient.lineId}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{recipient.type}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{recipient.linkedUserName ?? "-"}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{formatDateTime(recipient.lastWebhookAt)}</td>
                   </tr>
                 ))}
                 {visibleUserRecipients.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                    <td colSpan={4} className="px-3 py-4 text-center text-gray-500 dark:text-slate-400">
                       {availableUserRecipients.length === 0
                         ? "ยังไม่มี LINE userId จาก webhook"
                         : "ไม่มีรายการที่ตรงเงื่อนไขการแสดงผลตอนนี้"}
@@ -501,17 +506,17 @@ export default function LineDailySummaryManager(props: {
           </div>
           {visibleUserRecipients.length > RECIPIENTS_PER_PAGE && (
             <div className="mt-4 flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-500">แสดงทีละ {RECIPIENTS_PER_PAGE} รายการต่อหน้า</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">แสดงทีละ {RECIPIENTS_PER_PAGE} รายการต่อหน้า</p>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setRecipientPage((current) => Math.max(1, current - 1))}
                   disabled={safeRecipientPage === 1}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                 >
                   ก่อนหน้า
                 </button>
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 dark:text-slate-400">
                   หน้า {safeRecipientPage} / {recipientPageCount}
                 </span>
                 <button
@@ -520,7 +525,7 @@ export default function LineDailySummaryManager(props: {
                     setRecipientPage((current) => Math.min(recipientPageCount, current + 1))
                   }
                   disabled={safeRecipientPage === recipientPageCount}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
                 >
                   ถัดไป
                 </button>
@@ -529,11 +534,11 @@ export default function LineDailySummaryManager(props: {
           )}
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">Group / Room ที่เก็บได้</h3>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">Group / Room ที่เก็บได้</h3>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500">
+              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-white/5 dark:text-slate-400">
                 <tr>
                   <th className="px-3 py-2 font-medium">LINE ID</th>
                   <th className="px-3 py-2 font-medium">ประเภท</th>
@@ -543,16 +548,16 @@ export default function LineDailySummaryManager(props: {
               </thead>
               <tbody>
                 {otherRecipients.map((recipient) => (
-                  <tr key={recipient.id} className="border-t border-gray-100">
-                    <td className="px-3 py-2 text-gray-700">{recipient.lineId}</td>
-                    <td className="px-3 py-2 text-gray-600">{recipient.type}</td>
-                    <td className="px-3 py-2 text-gray-600">{recipient.sourceName ?? "-"}</td>
-                    <td className="px-3 py-2 text-gray-600">{formatDateTime(recipient.lastWebhookAt)}</td>
+                  <tr key={recipient.id} className="border-t border-gray-100 dark:border-white/10">
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-200">{recipient.lineId}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{recipient.type}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{recipient.sourceName ?? "-"}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{formatDateTime(recipient.lastWebhookAt)}</td>
                   </tr>
                 ))}
                 {otherRecipients.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                    <td colSpan={4} className="px-3 py-4 text-center text-gray-500 dark:text-slate-400">
                       ยังไม่มี groupId / roomId ที่ webhook เก็บมา
                     </td>
                   </tr>
@@ -563,14 +568,14 @@ export default function LineDailySummaryManager(props: {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">ประวัติการส่งล่าสุด</h3>
-          <p className="text-xs text-gray-500">แสดง 10 รายการล่าสุด</p>
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ประวัติการส่งล่าสุด</h3>
+          <p className="text-xs text-gray-500 dark:text-slate-400">แสดง 10 รายการล่าสุด</p>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-500">
+            <thead className="bg-gray-50 text-left text-gray-500 dark:bg-white/5 dark:text-slate-400">
               <tr>
                 <th className="px-3 py-2 font-medium">วันรายงาน</th>
                 <th className="px-3 py-2 font-medium">ประเภท</th>
@@ -582,30 +587,30 @@ export default function LineDailySummaryManager(props: {
             </thead>
             <tbody>
               {recentDispatches.map((dispatch) => (
-                <tr key={dispatch.id} className="border-t border-gray-100 align-top">
-                  <td className="px-3 py-2 text-gray-700">{dispatch.reportDayKey}</td>
-                  <td className="px-3 py-2 text-gray-600">{getDispatchKindLabel(dispatch.dispatchKind)}</td>
-                  <td className="px-3 py-2 text-gray-600">
+                <tr key={dispatch.id} className="border-t border-gray-100 align-top dark:border-white/10">
+                  <td className="px-3 py-2 text-gray-700 dark:text-slate-200">{dispatch.reportDayKey}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{getDispatchKindLabel(dispatch.dispatchKind)}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                     <div className="space-y-1">
                       <p>{getDispatchStatusLabel(dispatch)}</p>
                       {dispatch.errorMessage && (
-                        <p className="text-xs text-gray-400">{dispatch.errorMessage}</p>
+                          <p className="text-xs text-gray-400 dark:text-slate-500">{dispatch.errorMessage}</p>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-gray-600">
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                     {targetModeLabels[dispatch.targetMode as LineDailySummaryTargetMode] ??
                       dispatch.targetMode}
                   </td>
-                  <td className="px-3 py-2 text-gray-600">
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                     {dispatch.sentCount}/{dispatch.recipientCount}
                   </td>
-                  <td className="px-3 py-2 text-gray-600">{formatDateTime(dispatch.createdAt)}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{formatDateTime(dispatch.createdAt)}</td>
                 </tr>
               ))}
               {recentDispatches.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                  <td colSpan={6} className="px-3 py-4 text-center text-gray-500 dark:text-slate-400">
                     ยังไม่มีประวัติการส่ง
                   </td>
                 </tr>
