@@ -99,6 +99,75 @@ const purchaseSchema = z.object({
   items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+type PurchaseTxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+type PurchaseItemInput = z.infer<typeof purchaseItemSchema>;
+
+type PurchaseProductSnapshot = {
+  isLotControl: boolean;
+  requireExpiryDate: boolean;
+};
+
+const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
+
+async function preloadPurchaseDependencies(
+  tx: PurchaseTxClient,
+  items: PurchaseItemInput[],
+): Promise<{
+  unitMap: Map<string, { scale: number }>;
+  productMap: Map<string, PurchaseProductSnapshot>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const uniquePairs = [
+    ...new Map(items.map((item) => [getPurchaseUnitKey(item.productId, item.unitName), item])).values(),
+  ];
+
+  const [units, products] = await Promise.all([
+    uniquePairs.length === 0
+      ? Promise.resolve([])
+      : tx.productUnit.findMany({
+          where: {
+            OR: uniquePairs.map((item) => ({
+              productId: item.productId,
+              name: item.unitName,
+            })),
+          },
+          select: {
+            productId: true,
+            name: true,
+            scale: true,
+          },
+        }),
+    productIds.length === 0
+      ? Promise.resolve([])
+      : tx.product.findMany({
+          where: { id: { in: productIds } },
+          select: {
+            id: true,
+            isLotControl: true,
+            requireExpiryDate: true,
+          },
+        }),
+  ]);
+
+  return {
+    unitMap: new Map(
+      units.map((unit) => [
+        getPurchaseUnitKey(unit.productId, unit.name),
+        { scale: Number(unit.scale) },
+      ]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        {
+          isLotControl: product.isLotControl,
+          requireExpiryDate: product.requireExpiryDate,
+        },
+      ]),
+    ),
+  };
+}
+
 async function resolvePurchasePaymentMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   purchaseType: PurchaseType,
@@ -182,6 +251,7 @@ export async function createPurchase(
         purchaseType,
         resolvedCashBankAccountId,
       );
+      const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
 
       // 1. Create Purchase header
       const purchase = await tx.purchase.create({
@@ -212,12 +282,12 @@ export async function createPurchase(
       // 2. Process each line item
       for (const item of validItems) {
         // Get unit scale
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
+        const product = productMap.get(item.productId);
+        if (!product) throw new Error("ไม่พบสินค้า");
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale       = Number(unit.scale);
+        const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;  // convert to base unit cost
         const lcPerBase   = item.landedCost / scale;  // landed cost per base unit
@@ -240,7 +310,7 @@ export async function createPurchase(
         });
 
         // 3. Write StockCard with MAVG
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       purchaseNo,
           docDate:     new Date(purchaseDate),
@@ -254,12 +324,7 @@ export async function createPurchase(
         });
 
         // 4. Lot Control - only if product has isLotControl=true
-        if (item.lotItems.length > 0) {
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { isLotControl: true, requireExpiryDate: true },
-          });
-          if (product?.isLotControl) {
+        if (item.lotItems.length > 0 && product?.isLotControl) {
             // Validate lot rows (server-side)
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
@@ -274,14 +339,7 @@ export async function createPurchase(
             }));
 
             await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
-
-            // Get the StockCard row just created (referenceId = purchaseItem.id)
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: purchaseItem.id, source: "PURCHASE" },
-              select: { id: true },
-            });
-            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
-          }
+            await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
         }
       }
 
@@ -505,14 +563,16 @@ export async function updatePurchase(
         },
       });
 
+      const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
+
       // 3. Re-create items + stock cards
       for (const item of validItems) {
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
+        const product = productMap.get(item.productId);
+        if (!product) throw new Error("ไม่พบสินค้า");
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale       = Number(unit.scale);
+        const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;
         const lcPerBase   = item.landedCost / scale;
@@ -532,7 +592,7 @@ export async function updatePurchase(
           },
         });
 
-        await writeStockCard(tx, {
+        const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.purchaseNo,
           docDate:     new Date(purchaseDate),
@@ -544,13 +604,7 @@ export async function updatePurchase(
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         });
-
-        if (item.lotItems.length > 0) {
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { isLotControl: true, requireExpiryDate: true },
-          });
-          if (product?.isLotControl) {
+        if (item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
 
@@ -563,13 +617,7 @@ export async function updatePurchase(
             }));
 
             await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
-
-            const sc = await tx.stockCard.findFirst({
-              where: { referenceId: purchaseItem.id, source: "PURCHASE" },
-              select: { id: true },
-            });
-            if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
-          }
+            await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
         }
       }
 

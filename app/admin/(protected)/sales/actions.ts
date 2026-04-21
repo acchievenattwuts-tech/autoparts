@@ -125,6 +125,75 @@ const saleSchema = z.object({
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+type SaleTxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+type SaleItemInput = z.infer<typeof saleItemSchema>;
+
+type SaleProductSnapshot = {
+  avgCost: Prisma.Decimal;
+  isLotControl: boolean;
+};
+
+const getSaleUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
+
+async function preloadSaleDependencies(
+  tx: SaleTxClient,
+  items: SaleItemInput[],
+): Promise<{
+  unitMap: Map<string, { scale: number }>;
+  productMap: Map<string, SaleProductSnapshot>;
+}> {
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const uniquePairs = [
+    ...new Map(items.map((item) => [getSaleUnitKey(item.productId, item.unitName), item])).values(),
+  ];
+
+  const [units, products] = await Promise.all([
+    uniquePairs.length === 0
+      ? Promise.resolve([])
+      : tx.productUnit.findMany({
+          where: {
+            OR: uniquePairs.map((item) => ({
+              productId: item.productId,
+              name: item.unitName,
+            })),
+          },
+          select: {
+            productId: true,
+            name: true,
+            scale: true,
+          },
+        }),
+    productIds.length === 0
+      ? Promise.resolve([])
+      : tx.product.findMany({
+          where: { id: { in: productIds } },
+          select: {
+            id: true,
+            avgCost: true,
+            isLotControl: true,
+          },
+        }),
+  ]);
+
+  return {
+    unitMap: new Map(
+      units.map((unit) => [
+        getSaleUnitKey(unit.productId, unit.name),
+        { scale: Number(unit.scale) },
+      ]),
+    ),
+    productMap: new Map(
+      products.map((product) => [
+        product.id,
+        {
+          avgCost: product.avgCost,
+          isLotControl: product.isLotControl,
+        },
+      ]),
+    ),
+  };
+}
+
 function validateDeliveryFields(input: {
   fulfillmentType: FulfillmentType;
   shippingAddress?: string | null;
@@ -227,7 +296,7 @@ function buildWarrantyLotSequence(lots: LotSubRow[]): string[] {
 }
 
 async function createWarrantySnapshots(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  tx: SaleTxClient,
   input: {
     saleId: string;
     saleItemId: string;
@@ -246,21 +315,18 @@ async function createWarrantySnapshots(
 
   const unitCount = Math.min(Math.ceil(input.itemQty), 999);
   const lotSequence = buildWarrantyLotSequence(input.lotItems);
-
-  for (let seq = 1; seq <= unitCount; seq += 1) {
-    await tx.warranty.create({
-      data: {
-        saleId: input.saleId,
-        saleItemId: input.saleItemId,
-        productId: input.productId,
-        warrantyDays: input.warrantyDays,
-        startDate,
-        endDate,
-        unitSeq: seq,
-        lotNo: lotSequence[seq - 1] ?? null,
-      },
-    });
-  }
+  await tx.warranty.createMany({
+    data: Array.from({ length: unitCount }, (_, index) => ({
+      saleId: input.saleId,
+      saleItemId: input.saleItemId,
+      productId: input.productId,
+      warrantyDays: input.warrantyDays,
+      startDate,
+      endDate,
+      unitSeq: index + 1,
+      lotNo: lotSequence[index] ?? null,
+    })),
+  });
 }
 
 export async function createSale(
@@ -348,6 +414,7 @@ export async function createSale(
         resolvedCashBankAccountId,
       );
       const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
+      const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -385,21 +452,15 @@ export async function createSale(
       // 2. Process each line item
       for (const item of validItems) {
         // Get unit scale
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
+        const product = productMap.get(item.productId);
+        if (!product) throw new Error("ไม่พบสินค้า");
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale      = Number(unit.scale);
+        const scale      = unit.scale;
         const qtyInBase  = item.qty * scale;
 
-        // Get current product avgCost for COGS
-        const prod = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { avgCost: true },
-        });
-        if (!prod) throw new Error("ไม่พบสินค้า");
-        const costPerBase = Number(prod.avgCost);
+        const costPerBase = Number(product.avgCost);
 
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
@@ -435,12 +496,7 @@ export async function createSale(
         });
 
         // Lot Control - only if product has isLotControl=true
-        if (item.lotItems.length > 0) {
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { isLotControl: true },
-          });
-          if (product?.isLotControl) {
+        if (item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
             if (lotErr) throw new Error(lotErr);
 
@@ -456,7 +512,6 @@ export async function createSale(
             await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
 
             await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
-          }
         }
 
         await createWarrantySnapshots(tx, {
@@ -745,19 +800,18 @@ export async function updateSale(
           creditTerm:      creditTerm      ?? null,
         },
       });
+      const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
 
       // 3. Re-create items + stock cards + warranties
       for (const item of validItems) {
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
+        const product = productMap.get(item.productId);
+        if (!product) throw new Error("ไม่พบสินค้า");
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale     = Number(unit.scale);
+        const scale     = unit.scale;
         const qtyInBase = item.qty * scale;
-        const prod = await tx.product.findUnique({ where: { id: item.productId }, select: { avgCost: true } });
-        if (!prod) throw new Error("ไม่พบสินค้า");
-        const costPerBase  = Number(prod.avgCost);
+        const costPerBase  = Number(product.avgCost);
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
@@ -777,12 +831,7 @@ export async function updateSale(
           referenceId: saleItem.id,
         });
 
-        if (item.lotItems.length > 0) {
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { isLotControl: true },
-          });
-          if (product?.isLotControl) {
+        if (item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
             if (lotErr) throw new Error(lotErr);
 
@@ -798,7 +847,6 @@ export async function updateSale(
             await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
 
             await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
-          }
         }
 
         await createWarrantySnapshots(tx, {
