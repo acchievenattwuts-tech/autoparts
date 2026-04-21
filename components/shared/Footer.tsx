@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
+import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
 
 interface FooterProps {
   config?: Partial<SiteConfig>;
@@ -68,7 +69,7 @@ const Footer = ({ config }: FooterProps) => {
               {facebookEnabled && facebookUrl && <a href={facebookUrl} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1877F2] transition-opacity hover:opacity-80" aria-label="Facebook"><svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg></a>}
               {tiktokEnabled && tiktokUrl && <a href={tiktokUrl} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg bg-black transition-opacity hover:opacity-80" aria-label="TikTok"><svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.2 8.2 0 0 0 4.78 1.52V6.74a4.85 4.85 0 0 1-1.01-.05z" /></svg></a>}
               {shopeeEnabled && shopeeUrl && <a href={shopeeUrl} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#EE4D2D] transition-opacity hover:opacity-80" aria-label="Shopee"><svg viewBox="0 0 24 24" className="h-5 w-5 fill-white"><path d="M12 1a5.33 5.33 0 0 0-5.33 5.33H4.5L3 22h18L19.5 6.33h-2.17A5.33 5.33 0 0 0 12 1zm0 1.67a3.67 3.67 0 0 1 3.67 3.66H8.33A3.67 3.67 0 0 1 12 2.67zM9.5 11a1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5A1.5 1.5 0 0 1 8 12.5 1.5 1.5 0 0 1 9.5 11zm5 0a1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5 1.5 1.5 0 0 1-1.5-1.5A1.5 1.5 0 0 1 14.5 11z" /></svg></a>}
-              {lazadaEnabled && lazadaUrl && <a href={lazadaUrl} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0F146D] transition-opacity hover:opacity-80" aria-label="Lazada"><svg viewBox="0 0 32 32" className="h-5 w-5 fill-white"><path d="M16 2C8.268 2 2 8.268 2 16s6.268 14 14 14 14-6.268 14-14S23.732 2 16 2zm5.5 20h-11v-2h4.5V12h-4.5v-2h11v2h-4v8h4v2z" /></svg></a>}
+              {lazadaEnabled && lazadaUrl && <a href={lazadaUrl} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg bg-white transition-opacity hover:opacity-80" aria-label="Lazada"><LazadaLogoIcon className="h-5 w-5" /></a>}
             </div>
           </div>
 
