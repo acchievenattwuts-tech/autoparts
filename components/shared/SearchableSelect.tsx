@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
+import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 
 export interface SelectOption {
   id: string;
@@ -40,10 +41,12 @@ const SearchableSelect = ({
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const [remoteResults, setRemoteResults] = useState<SelectOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const adminTheme = useOptionalAdminTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isDark = adminTheme?.isDark ?? false;
   const selected = selectedOption ?? options.find((option) => option.id === value) ?? null;
   const trimmedQuery = query.trim();
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
@@ -151,32 +154,62 @@ const SearchableSelect = ({
     };
   }, [open]);
 
+  const dropdownClassName = isDark
+    ? "fixed z-[9999] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 shadow-2xl backdrop-blur"
+    : "fixed z-[9999] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl";
+  const dropdownSearchWrapClassName = isDark
+    ? "border-b border-slate-800/80 bg-slate-950/90 p-2"
+    : "border-b border-gray-100 p-2";
+  const dropdownInputClassName = isDark
+    ? "w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400/20"
+    : "w-full rounded-md border border-gray-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20";
+  const dropdownMessageClassName = isDark
+    ? "px-4 py-3 text-center text-sm text-slate-400"
+    : "px-4 py-3 text-center text-sm text-gray-400";
+  const selectedOptionClassName = isDark
+    ? "bg-sky-500/15 text-sky-200 hover:bg-sky-500/20"
+    : "bg-blue-50 text-[#1e3a5f]";
+  const defaultOptionClassName = isDark
+    ? "text-slate-200 hover:bg-slate-900"
+    : "text-gray-800 hover:bg-blue-50";
+  const triggerClassName = isDark
+    ? open
+      ? "border-sky-400/70 bg-slate-950 text-slate-100 ring-2 ring-sky-400/20"
+      : value
+        ? "border-slate-700 bg-slate-950 text-slate-100 hover:border-slate-600"
+        : "border-orange-500/30 bg-orange-500/10 text-orange-200 hover:border-orange-400/45"
+    : open
+      ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
+      : value
+        ? "border-gray-300 hover:border-gray-400 bg-white"
+        : "border-orange-300 hover:border-orange-400 bg-orange-50/30";
+
   const dropdown = open
     ? createPortal(
         <div
           ref={dropdownRef}
           style={{ top: coords.top, left: coords.left, width: coords.width }}
-          className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
+          className={dropdownClassName}
         >
-          <div className="p-2 border-b border-gray-100">
+          <div className={dropdownSearchWrapClassName}>
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="พิมพ์เพื่อค้นหา..."
-              className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20"
+              className={dropdownInputClassName}
             />
           </div>
           <div className="max-h-56 overflow-y-auto overscroll-contain">
             {searchOptions && !isQueryReady ? (
-              <p className="px-4 py-3 text-sm text-gray-400 text-center">
+              <p className={dropdownMessageClassName}>
                 พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
               </p>
             ) : isLoading ? (
-              <p className="px-4 py-3 text-sm text-gray-400 text-center">กำลังโหลด...</p>
+              <p className={dropdownMessageClassName}>กำลังโหลด...</p>
             ) : filtered.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบรายการ</p>
+              <p className={dropdownMessageClassName}>ไม่พบรายการ</p>
             ) : (
               filtered.map((option) => (
                 <button
@@ -184,13 +217,15 @@ const SearchableSelect = ({
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(option)}
-                  className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-blue-50 ${
-                    option.id === value ? "bg-blue-50 text-[#1e3a5f]" : "text-gray-800"
+                  className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
+                    option.id === value ? selectedOptionClassName : defaultOptionClassName
                   }`}
                 >
                   <span className="font-medium">{option.label}</span>
                   {option.sublabel && (
-                    <span className="block text-xs text-gray-400 mt-0.5">{option.sublabel}</span>
+                    <span className={`mt-0.5 block text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                      {option.sublabel}
+                    </span>
                   )}
                 </button>
               ))
@@ -207,27 +242,38 @@ const SearchableSelect = ({
         role="combobox"
         aria-expanded={open}
         onClick={handleOpen}
-        className={`flex items-center w-full px-3 py-2 border rounded-lg text-sm cursor-pointer select-none transition-colors ${
-          open
-            ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
-            : value
-              ? "border-gray-300 hover:border-gray-400 bg-white"
-              : "border-orange-300 hover:border-orange-400 bg-orange-50/30"
+        className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${
+          triggerClassName
         } ${disabled ? "opacity-70 cursor-not-allowed" : ""}`}
       >
         {open ? (
-          <span className="flex-1 text-gray-400 text-sm">{selected?.label ?? placeholder}</span>
+          <span className={`flex-1 text-sm ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+            {selected?.label ?? placeholder}
+          </span>
         ) : selected ? (
           <>
-            <span className="flex-1 truncate text-gray-800">{selected.label}</span>
+            <span className={`flex-1 truncate ${isDark ? "text-slate-100" : "text-gray-800"}`}>
+              {selected.label}
+            </span>
             {!disabled && (
-              <X size={14} className="ml-1 text-gray-400 hover:text-gray-600 flex-shrink-0" onClick={handleClear} />
+              <X
+                size={14}
+                className={`ml-1 shrink-0 ${isDark ? "text-slate-500 hover:text-slate-300" : "text-gray-400 hover:text-gray-600"}`}
+                onClick={handleClear}
+              />
             )}
           </>
         ) : (
-          <span className="flex-1 text-orange-400 font-medium">{placeholder}</span>
+          <span className={`flex-1 font-medium ${isDark ? "text-orange-200" : "text-orange-400"}`}>
+            {placeholder}
+          </span>
         )}
-        {!open && <ChevronDown size={16} className="ml-1 text-gray-400 flex-shrink-0" />}
+        {!open && (
+          <ChevronDown
+            size={16}
+            className={`ml-1 shrink-0 ${isDark ? "text-slate-500" : "text-gray-400"}`}
+          />
+        )}
       </div>
       {dropdown}
     </div>

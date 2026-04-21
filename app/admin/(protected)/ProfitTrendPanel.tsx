@@ -14,6 +14,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { useAdminTheme } from "@/components/shared/AdminThemeProvider";
+
 type ProfitTrendPanelDatum = {
   dateKey: string;
   shortLabel: string;
@@ -81,14 +83,23 @@ function TrendTooltip({
   label?: string;
   formatter: (value: number) => string;
 }) {
+  const { isDark } = useAdminTheme();
+
   if (!active || !payload || payload.length === 0) {
     return null;
   }
 
+  const surfaceColor = isDark ? "#0f172a" : "#ffffff";
+  const borderColor = isDark ? "rgba(148, 163, 184, 0.24)" : "#e5e7eb";
+  const textColor = isDark ? "#e5e7eb" : "#374151";
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg">
-      <p className="font-medium text-gray-900">{label}</p>
-      <p className="mt-1 text-gray-600">{formatter(Number(payload[0]?.value ?? 0))}</p>
+    <div
+      className="rounded-xl border px-3 py-2 text-xs shadow-lg"
+      style={{ backgroundColor: surfaceColor, borderColor, color: textColor }}
+    >
+      <p className="font-medium">{label}</p>
+      <p className="mt-1">{formatter(Number(payload[0]?.value ?? 0))}</p>
     </div>
   );
 }
@@ -99,6 +110,40 @@ export default function ProfitTrendPanel({
   hasSelectedRangeActivity,
 }: ProfitTrendPanelProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const { isDark } = useAdminTheme();
+  const chartColors = isDark
+    ? {
+        activeDotFill: "#020617",
+        areaFill: "rgba(56, 189, 248, 0.24)",
+        areaStroke: "#67e8f9",
+        axis: "#a5b4c7",
+        barCursor: "rgba(52, 211, 153, 0.14)",
+        barFill: "#6ee7b7",
+        grid: "rgba(148, 163, 184, 0.18)",
+        legendMargin: "#cbd5e1",
+        marginLine: "#c084fc",
+        marginReference: "rgba(251, 191, 36, 0.85)",
+        reference: "rgba(148, 163, 184, 0.38)",
+        surface: "#0f172a",
+        text: "#e5e7eb",
+        tooltipBorder: "rgba(148, 163, 184, 0.28)",
+      }
+    : {
+        activeDotFill: "#ffffff",
+        areaFill: "#bae6fd",
+        areaStroke: "#0ea5e9",
+        axis: "#94a3b8",
+        barCursor: "#ecfdf5",
+        barFill: "#10b981",
+        grid: "#eef2f7",
+        legendMargin: "#8b5cf6",
+        marginLine: "#8b5cf6",
+        marginReference: "#f59e0b",
+        reference: "#cbd5e1",
+        surface: "#ffffff",
+        text: "#374151",
+        tooltipBorder: "#e5e7eb",
+      };
 
   const onChartMouseMove = (state: unknown) => {
     const nextIndex = resolveActiveIndex(state);
@@ -121,7 +166,7 @@ export default function ProfitTrendPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-950/70">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
           Trend Focus
         </p>
@@ -142,29 +187,29 @@ export default function ProfitTrendPanel({
             <span>ยอดขายรายวัน ({basisLabel})</span>
             <span>แท่งสีเขียว = ปริมาณยอดขายของแต่ละวัน</span>
           </div>
-          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3">
+          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3 dark:border-white/10 dark:bg-slate-950/80">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart {...sharedChartProps}>
-                <CartesianGrid stroke="#eef2f7" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="shortLabel"
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   tickFormatter={formatCompactNumber}
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                   width={40}
                 />
                 <Tooltip
-                  cursor={{ fill: "#ecfdf5" }}
+                  cursor={{ fill: chartColors.barCursor }}
                   content={<TrendTooltip formatter={(value) => `${formatMoney(value)} บาท`} />}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ""}
                 />
-                <Bar dataKey="salesAmount" fill="#10b981" radius={[10, 10, 3, 3]} maxBarSize={28} />
+                <Bar dataKey="salesAmount" fill={chartColors.barFill} radius={[10, 10, 3, 3]} maxBarSize={28} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -175,38 +220,38 @@ export default function ProfitTrendPanel({
             <span>กำไรขั้นต้นรายวัน</span>
             <span>พื้นที่สีฟ้า = เห็นจังหวะกำไรขึ้นลงได้ชัดกว่าการใช้แท่งแบบเดิม</span>
           </div>
-          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3">
+          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3 dark:border-white/10 dark:bg-slate-950/80">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart {...sharedChartProps}>
-                <CartesianGrid stroke="#eef2f7" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="shortLabel"
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   tickFormatter={formatCompactNumber}
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                   width={40}
                 />
-                <ReferenceLine y={0} stroke="#cbd5e1" strokeDasharray="4 4" />
+                <ReferenceLine y={0} stroke={chartColors.reference} strokeDasharray="4 4" />
                 <Tooltip
-                  cursor={{ stroke: "#0ea5e9", strokeDasharray: "4 4" }}
+                  cursor={{ stroke: chartColors.areaStroke, strokeDasharray: "4 4" }}
                   content={<TrendTooltip formatter={(value) => `${formatMoney(value)} บาท`} />}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ""}
                 />
                 <Area
                   type="monotone"
                   dataKey="grossProfit"
-                  stroke="#0ea5e9"
+                  stroke={chartColors.areaStroke}
                   strokeWidth={3}
-                  fill="#bae6fd"
+                  fill={chartColors.areaFill}
                   fillOpacity={0.55}
                   dot={{ r: 0 }}
-                  activeDot={{ r: 5, stroke: "#0369a1", strokeWidth: 2, fill: "#ffffff" }}
+                  activeDot={{ r: 5, stroke: chartColors.areaStroke, strokeWidth: 2, fill: chartColors.activeDotFill }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -218,36 +263,36 @@ export default function ProfitTrendPanel({
             <span>% Margin รายวัน</span>
             <span>เส้นประสีส้ม = threshold 20% เพื่อแยกวันขายคุ้มกับวัน margin บาง</span>
           </div>
-          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3">
+          <div className="h-44 rounded-2xl border border-gray-100 bg-white px-2 py-3 dark:border-white/10 dark:bg-slate-950/80">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart {...sharedChartProps}>
-                <CartesianGrid stroke="#eef2f7" strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="shortLabel"
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   tickFormatter={(value) => `${value.toFixed(0)}%`}
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
+                  tick={{ fontSize: 11, fill: chartColors.axis }}
                   tickLine={false}
                   axisLine={false}
                   width={40}
                 />
-                <ReferenceLine y={20} stroke="#f59e0b" strokeDasharray="6 4" />
+                <ReferenceLine y={20} stroke={chartColors.marginReference} strokeDasharray="6 4" />
                 <Tooltip
-                  cursor={{ stroke: "#8b5cf6", strokeDasharray: "4 4" }}
+                  cursor={{ stroke: chartColors.marginLine, strokeDasharray: "4 4" }}
                   content={<TrendTooltip formatter={formatPercent} />}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.fullLabel ?? ""}
                 />
                 <Line
                   type="monotone"
                   dataKey="marginPct"
-                  stroke="#8b5cf6"
+                  stroke={chartColors.marginLine}
                   strokeWidth={3}
-                  dot={{ r: 3, fill: "#8b5cf6", strokeWidth: 0 }}
-                  activeDot={{ r: 5, stroke: "#5b21b6", strokeWidth: 2, fill: "#ffffff" }}
+                  dot={{ r: 3, fill: chartColors.legendMargin, strokeWidth: 0 }}
+                  activeDot={{ r: 5, stroke: chartColors.marginLine, strokeWidth: 2, fill: chartColors.activeDotFill }}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -255,7 +300,7 @@ export default function ProfitTrendPanel({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-950/70">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="font-medium text-gray-700">วิธีอ่านเร็ว:</span>
           <span className="inline-flex items-center gap-2 text-gray-600">

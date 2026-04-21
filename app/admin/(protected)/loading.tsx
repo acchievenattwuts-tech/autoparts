@@ -1,27 +1,25 @@
 const AdminLoading = () => (
-  <div className="flex items-center justify-center min-h-[60vh]">
-    <div className="flex flex-col items-center gap-3">
+  <div className="flex min-h-[60vh] items-center justify-center">
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-w-[220px] flex-col items-center gap-4 rounded-2xl border border-gray-100 bg-white/95 px-6 py-7 text-center shadow-sm dark:border-white/10 dark:bg-slate-950/80"
+    >
       <svg
-        className="animate-spin h-10 w-10 text-[#1e3a5f]"
+        className="h-10 w-10 animate-spin text-[#1e3a5f] dark:text-sky-300"
         viewBox="0 0 24 24"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
       >
-        <circle
-          className="opacity-20"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-        />
-        <path
-          className="opacity-80"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-        />
+        <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
-      <p className="text-sm text-gray-400 font-sarabun">กำลังโหลด...</p>
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-gray-700 dark:text-slate-100">กำลังโหลดข้อมูลผู้ดูแล...</p>
+        <p className="text-xs text-gray-500 dark:text-slate-400">ระบบกำลังเตรียม dashboard และข้อมูลล่าสุด</p>
+      </div>
+      <span className="sr-only">กำลังโหลด...</span>
     </div>
   </div>
 );

@@ -347,7 +347,7 @@ const DailyOperationsDashboard = async () => {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
+      <div className="max-w-3xl space-y-1">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">Daily Operations</h1>
         <p className="text-sm text-gray-500">
           สรุปภาพการขาย เงินสด ลูกหนี้ เจ้าหนี้ และสถานะสต็อกที่เจ้าของต้องติดตามทุกวัน
@@ -356,17 +356,20 @@ const DailyOperationsDashboard = async () => {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <div
+            key={card.label}
+            className="rounded-2xl border border-gray-100 bg-white/95 p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80"
+          >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-medium text-gray-500">{card.label}</p>
                 <p className="font-kanit text-xl font-semibold text-gray-900">{card.value}</p>
               </div>
-              <div className={`rounded-xl p-2 ${card.color}`}>
+              <div className={`rounded-xl border border-black/5 p-2 shadow-sm dark:border-white/10 ${card.color}`}>
                 <card.icon size={18} />
               </div>
             </div>
-            <p className="text-xs text-gray-400">{card.helper}</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">{card.helper}</p>
           </div>
         ))}
       </div>

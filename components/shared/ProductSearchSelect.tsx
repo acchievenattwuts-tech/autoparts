@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { ChevronDown, X, Search } from "lucide-react";
+
+import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 
 export interface SearchableProduct {
   id: string;
@@ -44,31 +46,35 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const [remoteResults, setRemoteResults] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const adminTheme = useOptionalAdminTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selected = selectedProduct ?? products.find((p) => p.id === value) ?? null;
+  const isDark = adminTheme?.isDark ?? false;
+  const selected = selectedProduct ?? products.find((product) => product.id === value) ?? null;
 
   const trimmedQuery = query.trim();
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
   const localResults = isQueryReady
     ? products
-        .filter((p) => {
-          const q = trimmedQuery.toLowerCase();
+        .filter((product) => {
+          const normalizedQuery = trimmedQuery.toLowerCase();
           return (
-            p.code.toLowerCase().includes(q) ||
-            p.name.toLowerCase().includes(q) ||
-            (p.description?.toLowerCase().includes(q) ?? false) ||
-            (p.brandName?.toLowerCase().includes(q) ?? false) ||
-            p.categoryName.toLowerCase().includes(q) ||
-            (p.aliases?.some((a) => a.toLowerCase().includes(q)) ?? false)
+            product.code.toLowerCase().includes(normalizedQuery) ||
+            product.name.toLowerCase().includes(normalizedQuery) ||
+            (product.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
+            (product.brandName?.toLowerCase().includes(normalizedQuery) ?? false) ||
+            product.categoryName.toLowerCase().includes(normalizedQuery) ||
+            (product.aliases?.some((alias) => alias.toLowerCase().includes(normalizedQuery)) ?? false)
           );
         })
         .slice(0, MAX_RESULTS)
     : [];
   const filtered = searchProducts
-    ? (isLoading && localResults.length > 0 ? localResults : remoteResults)
+    ? isLoading && localResults.length > 0
+      ? localResults
+      : remoteResults
     : localResults;
 
   useEffect(() => {
@@ -128,19 +134,18 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     setOpen(false);
   };
 
-  const handleClear = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleClear = (event: React.MouseEvent) => {
+    event.stopPropagation();
     onChange("");
     setQuery("");
     setOpen(false);
   };
 
-  // Close on outside click (must check both trigger and portal dropdown)
   useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
+    const onMouseDown = (event: MouseEvent) => {
       if (
-        !containerRef.current?.contains(e.target as Node) &&
-        !dropdownRef.current?.contains(e.target as Node)
+        !containerRef.current?.contains(event.target as Node) &&
+        !dropdownRef.current?.contains(event.target as Node)
       ) {
         setOpen(false);
         setQuery("");
@@ -150,10 +155,12 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  // Close on scroll or resize (dropdown is fixed, would drift otherwise)
   useEffect(() => {
     if (!open) return;
-    const close = () => { setOpen(false); setQuery(""); };
+    const close = () => {
+      setOpen(false);
+      setQuery("");
+    };
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
@@ -162,38 +169,60 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     };
   }, [open]);
 
+  const dropdownClassName = isDark
+    ? "fixed z-[9999] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 shadow-2xl backdrop-blur"
+    : "fixed z-[9999] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl";
+  const dropdownMessageClassName = isDark
+    ? "px-4 py-3 text-center text-sm text-slate-400"
+    : "px-4 py-3 text-center text-sm text-gray-400";
+  const selectedOptionClassName = isDark
+    ? "bg-sky-500/15 text-sky-200 hover:bg-sky-500/20"
+    : "bg-blue-50 text-[#1e3a5f]";
+  const defaultOptionClassName = isDark
+    ? "text-slate-200 hover:bg-slate-900"
+    : "text-gray-800 hover:bg-blue-50";
+  const triggerClassName = isDark
+    ? open
+      ? "border-sky-400/70 bg-slate-950 text-slate-100 ring-2 ring-sky-400/20"
+      : "border-slate-700 bg-slate-950 text-slate-100 hover:border-slate-600"
+    : open
+      ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
+      : "border-gray-300 hover:border-gray-400 bg-white";
+
   const dropdown = open ? (
     <div
       ref={dropdownRef}
       style={{ top: coords.top, left: coords.left, width: coords.width }}
-      className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden"
+      className={dropdownClassName}
     >
       <div className="max-h-56 overflow-y-auto overscroll-contain">
         {!isQueryReady ? (
-          <p className="px-4 py-3 text-sm text-gray-400 text-center">
+          <p className={dropdownMessageClassName}>
             พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
           </p>
         ) : isLoading && filtered.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400 text-center">กำลังโหลด...</p>
+          <p className={dropdownMessageClassName}>กำลังโหลด...</p>
         ) : filtered.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบสินค้า</p>
+          <p className={dropdownMessageClassName}>ไม่พบสินค้า</p>
         ) : (
-          filtered.map((p) => (
+          filtered.map((product) => (
             <button
-              key={p.id}
+              key={product.id}
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => handleSelect(p)}
-              className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-blue-50 ${
-                p.id === value ? "bg-blue-50 text-[#1e3a5f]" : "text-gray-800"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => handleSelect(product)}
+              className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
+                product.id === value ? selectedOptionClassName : defaultOptionClassName
               }`}
             >
-              <span className="font-mono text-xs text-gray-400">[{p.code}]</span>{" "}
-              <span className="font-medium">{p.name}</span>
-              {(p.categoryName || p.brandName) && (
-                <span className="block text-xs text-gray-400 mt-0.5 ml-0.5">
-                  {p.categoryName}
-                  {p.brandName ? ` · ${p.brandName}` : ""}
+              <span className={`font-mono text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                [{product.code}]
+              </span>{" "}
+              <span className="font-medium">{product.name}</span>
+              {(product.categoryName || product.brandName) && (
+                <span className={`mt-0.5 ml-0.5 block text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                  {product.categoryName}
+                  {product.brandName ? ` · ${product.brandName}` : ""}
                 </span>
               )}
             </button>
@@ -209,50 +238,62 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         role="combobox"
         aria-expanded={open}
         onClick={handleOpen}
-        className={`flex items-center w-full px-3 py-2 border rounded-lg text-sm cursor-pointer select-none transition-colors ${
-          open
-            ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
-            : "border-gray-300 hover:border-gray-400 bg-white"
-        } ${disabled ? "opacity-70 cursor-not-allowed" : ""}`}
+        className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${
+          triggerClassName
+        } ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
       >
         {open ? (
           <>
-            <Search size={13} className="text-gray-400 mr-1.5 shrink-0" />
+            <Search size={13} className={`mr-1.5 shrink-0 ${isDark ? "text-slate-500" : "text-gray-400"}`} />
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
+              onChange={(event) => setQuery(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
                   setOpen(false);
                   setQuery("");
                 }
               }}
-              placeholder={
-                selected ? `[${selected.code}] ${selected.name}` : "พิมพ์เพื่อค้นหา..."
-              }
-              className="flex-1 outline-none bg-transparent placeholder-gray-400 min-w-0"
+              placeholder={selected ? `[${selected.code}] ${selected.name}` : "พิมพ์เพื่อค้นหา..."}
+              className={`min-w-0 flex-1 bg-transparent outline-none ${
+                isDark ? "text-slate-100 placeholder:text-slate-500" : "placeholder-gray-400"
+              }`}
             />
           </>
         ) : (
-          <span className={`flex-1 truncate ${selected ? "text-gray-800" : "text-gray-400"}`}>
+          <span
+            className={`flex-1 truncate ${
+              selected
+                ? isDark
+                  ? "text-slate-100"
+                  : "text-gray-800"
+                : isDark
+                  ? "text-slate-400"
+                  : "text-gray-400"
+            }`}
+          >
             {selected ? `[${selected.code}] ${selected.name}` : placeholder}
           </span>
         )}
-        <div className="flex items-center gap-0.5 ml-2 shrink-0">
+        <div className="ml-2 flex shrink-0 items-center gap-0.5">
           {value && !disabled && (
             <button
               type="button"
               onClick={handleClear}
-              className="text-gray-300 hover:text-gray-500 p-0.5 rounded transition-colors"
+              className={`rounded p-0.5 transition-colors ${
+                isDark ? "text-slate-600 hover:text-slate-300" : "text-gray-300 hover:text-gray-500"
+              }`}
             >
               <X size={12} />
             </button>
           )}
           <ChevronDown
             size={14}
-            className={`text-gray-400 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+            className={`transition-transform duration-150 ${
+              open ? "rotate-180" : ""
+            } ${isDark ? "text-slate-500" : "text-gray-400"}`}
           />
         </div>
       </div>

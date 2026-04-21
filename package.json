@@ -13,6 +13,7 @@
     "codex:skill:install:all": "node scripts/install-codex-skill.mjs --all",
     "postinstall": "prisma generate",
     "seed": "npx tsx --env-file=.env.local prisma/seed.ts",
+    "test:admin-theme-regression": "tsx scripts/test-admin-theme-regression.ts",
     "test:primary-transfer-roadmap": "tsx scripts/test-primary-transfer-roadmap.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",
     "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts",

@@ -3355,4 +3355,30 @@ Approved decisions for v1:
 - [x] Refined the dashboard so `สินค้าเด่นทำกำไร` / `สินค้าเสี่ยงกำไรต่ำ` stay as compact spotlight/watchlist blocks, while `Profit by Stock`, `Profit by Customer`, and `Profit by Invoice` became paginated analysis tables to keep long result sets manageable.
 - [x] Moved analysis-table pagination into `lib/profit-dashboard.ts` so stock/customer/invoice sections page from the query layer instead of slicing fully aggregated arrays in the component.
 - [x] Replaced the filtered trend-summary cards from fixed month-comparison values to selected-range summaries plus same-length previous-range comparison, so revenue / expense / net-profit cards now change with the chosen `profitFrom` / `profitTo`.
-- [x] Expanded `Alert / จุดผิดปกติ` to scan every product in the selected range, assign `สูง / กลาง / ต่ำ` severity, sort by severity first, and expose drilldown links to the product and its causal sales / return document lists.
+
+## Roadmap Update (2026-04-21 Admin Light/Dark Theme Rollout)
+
+> Scope for this round: add a user-controlled light/dark theme switch for the protected `/admin` experience, keep the current light theme unchanged, persist each signed-in user's choice safely, and avoid any business-logic regression while tightening dark-mode coverage across shared admin surfaces.
+
+### Checklist
+
+- [x] Added a shared admin theme layer and a top-right toggle button in the protected admin shell
+- [x] Persisted the selected theme per signed-in user with a user-scoped cookie, without changing transaction/business logic
+- [x] Kept the current light mode visuals as the default/reference design
+- [x] Added a dark palette for shared admin chrome such as header, sidebar, tabs, cards, inputs, tables, alerts, overlays, and chart tooltips
+- [x] Extended dark-mode coverage into shared admin patterns and high-risk dashboard/chart surfaces so common hard-coded color utilities do not break readability
+- [x] Performed a targeted dark-mode QA pass on dashboard cards, alerts, loading state, and portal-based select dropdowns used across admin transaction forms
+- [x] Added admin-scoped semantic color mappings so success/warning/error/info badges remain legible across protected admin pages without changing business logic
+- [x] Performed a second polish pass on dashboard/chart surfaces to improve card depth, helper contrast, loading skeletons, and dark-mode chart readability
+- [x] Added a lightweight `npm run test:admin-theme-regression` source-level guard so admin theme wiring and the no-toggle login requirement are checked automatically
+- [x] Kept print pages and non-admin public pages unaffected by the admin theme work
+- [x] Verified with `npm run build`
+
+### Guard rails
+
+- [x] Did not modify stock, accounting, AR/AP, document numbering, or permission logic as part of this UI-only change
+- [x] Did not change the current light mode layout or spacing except where required to host the toggle safely
+- [x] Kept the admin login page unchanged and did not add a theme toggle there
+- [x] Kept the regression check lightweight and source-based instead of introducing a new browser-test framework in this round
+- [x] Did not let dark mode leak into public/storefront routes or print-document output
+- [x] Covered shared admin patterns first, then patched remaining dark-mode gaps deliberately

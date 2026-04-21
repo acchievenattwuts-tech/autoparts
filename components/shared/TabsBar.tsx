@@ -84,7 +84,7 @@ const TabsBar = () => {
   };
 
   return (
-    <div className="flex-shrink-0 border-b border-gray-200 bg-gray-100">
+    <div className="flex-shrink-0 border-b border-gray-200 bg-gray-100 dark:border-white/10 dark:bg-[#0d1526]">
       <div
         ref={scrollRef}
         className="flex gap-0.5 overflow-x-auto px-2 pt-1.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar]:hidden"
@@ -100,8 +100,8 @@ const TabsBar = () => {
               className={cn(
                 "group flex flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 px-3.5 py-2 text-sm transition-all",
                 isActive
-                  ? "border-gray-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(0,0,0,0.04)]"
-                  : "border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200/70 hover:text-gray-700"
+                  ? "border-gray-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(0,0,0,0.04)] dark:border-white/10 dark:bg-[#111827] dark:text-sky-200 dark:shadow-none"
+                  : "border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200/70 hover:text-gray-700 dark:bg-[#0d1526] dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-slate-200"
               )}
             >
               <span>{tab.label}</span>
@@ -110,8 +110,8 @@ const TabsBar = () => {
                 className={cn(
                   "ml-0.5 rounded-full p-0.5 transition-all",
                   isActive
-                    ? "text-gray-400 hover:bg-blue-100 hover:text-[#1e3a5f]"
-                    : "text-transparent group-hover:text-gray-400 hover:!text-gray-600 hover:bg-gray-300"
+                    ? "text-gray-400 hover:bg-blue-100 hover:text-[#1e3a5f] dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-100"
+                    : "text-transparent group-hover:text-gray-400 hover:!text-gray-600 hover:bg-gray-300 dark:group-hover:text-slate-500 dark:hover:!text-slate-200 dark:hover:bg-white/10"
                 )}
               >
                 <X size={11} />

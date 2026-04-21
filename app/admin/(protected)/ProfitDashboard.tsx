@@ -189,7 +189,7 @@ function SectionPagination({
   const visiblePages = getVisiblePages(currentPage, totalPages);
 
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/10">
       <p className="text-xs text-gray-500">
         หน้า {currentPage} จาก {totalPages}
       </p>
@@ -197,7 +197,7 @@ function SectionPagination({
         {currentPage > 1 ? (
           <Link
             href={buildHref(currentPage - 1)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
           >
             ก่อนหน้า
           </Link>
@@ -206,7 +206,7 @@ function SectionPagination({
           <>
             <Link
               href={buildHref(1)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
             >
               1
             </Link>
@@ -219,8 +219,8 @@ function SectionPagination({
             href={buildHref(page)}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
               page === currentPage
-                ? "bg-gray-900 text-white"
-                : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                ? "bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-950"
+                : "border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
             }`}
           >
             {page}
@@ -233,7 +233,7 @@ function SectionPagination({
             ) : null}
             <Link
               href={buildHref(totalPages)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
             >
               {totalPages}
             </Link>
@@ -242,7 +242,7 @@ function SectionPagination({
         {currentPage < totalPages ? (
           <Link
             href={buildHref(currentPage + 1)}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
           >
             ถัดไป
           </Link>
@@ -400,7 +400,7 @@ const ProfitDashboard = async ({
         </p>
       </div>
 
-      <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm">
+      <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm dark:border-emerald-400/20">
         <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
@@ -413,7 +413,7 @@ const ProfitDashboard = async ({
               การ์ดชุดนี้ยึดตามวันนี้เสมอ เพื่อให้เห็นภาพกำไรของวันทันที
             </p>
           </div>
-          <div className="rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 text-sm text-gray-600">
+          <div className="rounded-2xl border border-emerald-100 bg-white/80 px-4 py-3 text-sm text-gray-600 dark:border-emerald-400/20 dark:bg-slate-950/70 dark:text-slate-300">
             <p className="font-medium text-gray-900">ฐานอ้างอิงของการ์ดชุดนี้</p>
             <p>ยอดขายสลับได้ระหว่าง ก่อน VAT / รวม VAT</p>
             <p>กำไรและ % Margin ยึดก่อน VAT เสมอ</p>
@@ -430,7 +430,7 @@ const ProfitDashboard = async ({
                   : "bg-amber-50 text-amber-600";
 
             return (
-              <div key={card.label} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+              <div key={card.label} className="rounded-2xl border border-white bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-gray-500">{card.label}</p>
@@ -447,7 +447,7 @@ const ProfitDashboard = async ({
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900">ช่วงวิเคราะห์กำไร</p>
@@ -463,7 +463,7 @@ const ProfitDashboard = async ({
                 type="date"
                 name="profitFrom"
                 defaultValue={data.filters.from}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none ring-0"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-sky-300 focus:ring-2 focus:ring-sky-200/60 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400/60 dark:focus:ring-sky-400/20"
               />
             </label>
             <label className="space-y-1 text-sm text-gray-600">
@@ -472,7 +472,7 @@ const ProfitDashboard = async ({
                 type="date"
                 name="profitTo"
                 defaultValue={data.filters.to}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none ring-0"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-sky-300 focus:ring-2 focus:ring-sky-200/60 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400/60 dark:focus:ring-sky-400/20"
               />
             </label>
             <label className="space-y-1 text-sm text-gray-600">
@@ -480,7 +480,7 @@ const ProfitDashboard = async ({
               <select
                 name="profitBasis"
                 defaultValue={basis}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none ring-0"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-sky-300 focus:ring-2 focus:ring-sky-200/60 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-sky-400/60 dark:focus:ring-sky-400/20"
               >
                 <option value="ex_vat">ก่อน VAT</option>
                 <option value="inc_vat">รวม VAT</option>
@@ -488,7 +488,7 @@ const ProfitDashboard = async ({
             </label>
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-sky-400/30"
             >
               <Filter size={16} />
               อัปเดตช่วงวิเคราะห์
@@ -496,18 +496,18 @@ const ProfitDashboard = async ({
           </form>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-600 sm:grid-cols-4">
-          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+          <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ช่วงวิเคราะห์</p>
             <p className="mt-1 font-medium text-gray-900">
               {formatDateThai(parseDateOnlyToStartOfDay(data.filters.from))} -{" "}
               {formatDateThai(parseDateOnlyToStartOfDay(data.filters.to))}
             </p>
           </div>
-          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+          <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">มุมมองยอดขาย</p>
             <p className="mt-1 text-gray-900">{basisLabel}</p>
           </div>
-          <div className="rounded-2xl bg-gray-50 px-4 py-3">
+          <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ชั้นข้อมูล</p>
             <p className="mt-1 text-gray-900">อ่านจาก `fact_profit` และรวม SALE, SALE_RETURN, EXPENSE</p>
           </div>
@@ -521,7 +521,7 @@ const ProfitDashboard = async ({
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_1fr]">
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="font-kanit text-xl font-semibold text-gray-900">แนวโน้มกำไร</h2>
@@ -540,7 +540,7 @@ const ProfitDashboard = async ({
             />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {rangeSummaryCards.map((item) => (
-                <div key={item.label} className="rounded-2xl bg-gray-50 p-4">
+                <div key={item.label} className="rounded-2xl bg-gray-50 p-4 dark:bg-white/5">
                   <p className="text-xs font-medium text-gray-500">{item.label}</p>
                   <p className="mt-1 font-kanit text-xl font-semibold text-gray-900">{item.value}</p>
                   <p className={`mt-2 text-xs ${item.positive ? "text-emerald-600" : "text-rose-600"}`}>
@@ -552,7 +552,7 @@ const ProfitDashboard = async ({
           </div>
         </section>
 
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="font-kanit text-xl font-semibold text-gray-900">Alert / จุดผิดปกติ</h2>
@@ -562,7 +562,7 @@ const ProfitDashboard = async ({
             </div>
             <TrendingDown className="text-gray-400" size={18} />
           </div>
-          <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+          <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600 dark:bg-white/5 dark:text-slate-300">
             <p>Alert ชุดนี้ scan ครบทุกสินค้าที่มีรายการในช่วงวิเคราะห์ ไม่ได้ดูเฉพาะสินค้า Top/Bottom เท่านั้น</p>
             <p className="mt-1">
               กำไรและ margin ใช้ฐานก่อน VAT เสมอ และแต่ละการ์ดกดต่อไปดูสินค้า หรือเปิดชุดบิลต้นเหตุในหน้าขายและคืนสินค้าได้ทันที
@@ -570,7 +570,7 @@ const ProfitDashboard = async ({
           </div>
           <div className="space-y-3">
             {data.alerts.length === 0 ? (
-              <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700">
+              <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-200">
                 ยังไม่พบสัญญาณเตือนเด่นในช่วงวิเคราะห์
               </div>
             ) : (
@@ -602,7 +602,7 @@ const ProfitDashboard = async ({
                           >
                             ระดับ {getAlertSeverityLabel(alert.severity)}
                           </span>
-                          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-gray-600">
+                          <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:bg-slate-950/70 dark:text-slate-300">
                             {alert.kind === "loss"
                               ? "สินค้าขาดทุน"
                               : alert.kind === "low_margin"

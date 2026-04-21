@@ -163,14 +163,14 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
   const isActive = (href: string) => href === activeHref;
 
   return (
-    <div className="flex h-full w-64 flex-col bg-[#1e3a5f] text-white">
-      <div className="flex items-center justify-between border-b border-white/10 p-4">
+    <div className="flex h-full w-64 flex-col bg-[#1e3a5f] text-white dark:border-r dark:border-white/10 dark:bg-[#0f172a]">
+      <div className="flex items-center justify-between border-b border-white/10 p-4 dark:border-white/10">
         <div>
           <p className="font-kanit text-lg font-bold leading-tight">ศรีวรรณ อะไหล่แอร์</p>
-          <p className="text-xs text-blue-200">ระบบจัดการหลังบ้าน</p>
+          <p className="text-xs text-blue-200 dark:text-slate-400">ระบบจัดการหลังบ้าน</p>
         </div>
         {onClose && (
-          <button onClick={onClose} className="rounded p-1 hover:bg-white/10 lg:hidden">
+          <button onClick={onClose} className="rounded p-1 transition-colors hover:bg-white/10 lg:hidden">
             <X size={20} />
           </button>
         )}
@@ -181,7 +181,7 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
           if ("section" in item) {
             return (
               <div key={`${item.section}-${idx}`} className="pt-3">
-                <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-300">
+                <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-300 dark:text-slate-500">
                   {item.section}
                 </p>
                 {item.items.map((sub) => (
@@ -192,8 +192,8 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
                     className={cn(
                       "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                       isActive(sub.href)
-                        ? "bg-[#f97316] font-medium text-white"
-                        : "text-blue-100 hover:bg-white/10"
+                        ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
+                        : "text-blue-100 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
                     )}
                   >
                     <sub.icon size={18} />
@@ -212,8 +212,8 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 isActive(item.href)
-                  ? "bg-[#f97316] font-medium text-white"
-                  : "text-blue-100 hover:bg-white/10"
+                  ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
+                  : "text-blue-100 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
               )}
             >
               <item.icon size={18} />
