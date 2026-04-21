@@ -1027,10 +1027,17 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 layout: "vertical",
                 margin: "lg",
                 spacing: "md",
-                contents: buildSummaryFactRows([
-                  { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}` },
-                  { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}` },
-                ]),
+                contents: buildSummaryFactRows(
+                  filterSummaryFactItems(
+                    [
+                      { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}`, compactValue: money.salesTotal, keepWhenZero: true },
+                      { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}`, compactValue: money.cashSales },
+                      { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}`, compactValue: money.creditSales },
+                      { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}`, compactValue: money.costOfGoodsSoldToday },
+                    ],
+                    compactMode
+                  )
+                ),
               },
             ],
           },

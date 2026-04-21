@@ -226,6 +226,20 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       ? { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` }
       : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
+  const previewSalesItems = [
+    keepPreviewItem(settings.compactMode, summary.money.salesTotal, true)
+      ? { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.cashSales)
+      ? { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.creditSales)
+      ? { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.costOfGoodsSoldToday)
+      ? { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
   const previewRiskItems = [
     keepPreviewItem(settings.compactMode, summary.counts.pendingDelivery)
       ? { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` }
@@ -409,37 +423,17 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                 <div className="mt-4 space-y-3">
                   <FlexPreviewSection
                     title="🧾 รายละเอียดการขาย"
-                    items={[
-                      { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` },
-                      { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` },
-                      { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` },
-                      { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` },
-                    ]}
+                    items={previewSalesItems}
                   />
 
                   <FlexPreviewSection
                     title="💸 เงินเข้าและยอดค้าง"
-                    items={[
-                      { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` },
-                      { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}` },
-                      { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}` },
-                      { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}` },
-                      { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}` },
-                      { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` },
-                    ]}
+                    items={previewMoneyAndOutstandingItems}
                   />
 
                   <FlexPreviewSection
                     title="🚚 งานค้างและความเสี่ยง"
-                    items={[
-                      { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` },
-                      { label: "กำลังจัดส่ง", value: `${summary.counts.outForDelivery} รายการ` },
-                      { label: "สต๊อกต่ำขั้นต่ำ", value: `${summary.counts.lowStockCount} รายการ` },
-                      { label: "ของหมด", value: `${summary.counts.outOfStockCount} รายการ` },
-                      { label: "lot ใกล้หมดอายุ", value: `${summary.counts.expiringLotCount} lot` },
-                      { label: "เคลมค้าง", value: `${summary.counts.openClaimCount} รายการ` },
-                      { label: "เอกสารถูกยกเลิก", value: `${summary.counts.cancelledDocumentCount} รายการ` },
-                    ]}
+                    items={previewRiskItems}
                   />
 
                   <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
