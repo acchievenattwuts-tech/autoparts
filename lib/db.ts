@@ -5,19 +5,77 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+const DEFAULT_DB_POOL_MAX = 1;
+const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
+const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 15_000;
+
+let hasWarnedAboutSupabaseSessionPooler = false;
+
+const getPositiveNumber = (value: string | undefined, fallback: number, min: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(min, parsed) : fallback;
+};
+
+const isServerlessRuntime = (): boolean =>
+  Boolean(process.env.VERCEL || process.env.AWS_EXECUTION_ENV || process.env.LAMBDA_TASK_ROOT);
+
+const normalizeDatabaseUrl = (rawUrl: string | undefined): string => {
+  if (!rawUrl) {
+    throw new Error("DATABASE_URL is not set");
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  const isSupabasePoolerHost =
+    parsedUrl.hostname.endsWith(".pooler.supabase.com") || parsedUrl.hostname.endsWith(".pooler.supabase.in");
+  const shouldAutoSwitchToTransactionPool =
+    isServerlessRuntime() &&
+    isSupabasePoolerHost &&
+    parsedUrl.port === "5432" &&
+    process.env.SUPABASE_POOLER_MODE !== "session";
+
+  if (!shouldAutoSwitchToTransactionPool) {
+    return rawUrl;
+  }
+
+  parsedUrl.port = "6543";
+  if (!parsedUrl.searchParams.has("pgbouncer")) {
+    parsedUrl.searchParams.set("pgbouncer", "true");
+  }
+
+  if (!hasWarnedAboutSupabaseSessionPooler) {
+    hasWarnedAboutSupabaseSessionPooler = true;
+    console.warn(
+      "DATABASE_URL points to the Supabase session pooler (5432) in a serverless runtime. " +
+        "Prisma is automatically switching to the transaction pooler (6543) with pgbouncer=true. " +
+        "Update the production DATABASE_URL to the transaction pooler to avoid connection exhaustion.",
+    );
+  }
+
+  return parsedUrl.toString();
+};
+
 function createPrismaClient() {
-  const connectionLimit = Number(process.env.DB_POOL_MAX ?? 1);
-  const idleTimeoutMillis = Number(process.env.DB_IDLE_TIMEOUT_MS ?? 10_000);
-  const connectionTimeoutMillis = Number(process.env.DB_CONNECTION_TIMEOUT_MS ?? 15_000);
+  const connectionLimit = getPositiveNumber(process.env.DB_POOL_MAX, DEFAULT_DB_POOL_MAX, 1);
+  const idleTimeoutMillis = getPositiveNumber(process.env.DB_IDLE_TIMEOUT_MS, DEFAULT_DB_IDLE_TIMEOUT_MS, 1_000);
+  const connectionTimeoutMillis = getPositiveNumber(
+    process.env.DB_CONNECTION_TIMEOUT_MS,
+    DEFAULT_DB_CONNECTION_TIMEOUT_MS,
+    5_000,
+  );
+  const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
   // Pass PoolConfig directly to avoid type conflict between pg versions
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL,
-    max: Number.isFinite(connectionLimit) ? Math.max(1, connectionLimit) : 2,
-    idleTimeoutMillis: Number.isFinite(idleTimeoutMillis) ? Math.max(1_000, idleTimeoutMillis) : 10_000,
-    connectionTimeoutMillis: Number.isFinite(connectionTimeoutMillis)
-      ? Math.max(5_000, connectionTimeoutMillis)
-      : 15_000,
+    connectionString,
+    max: connectionLimit,
+    idleTimeoutMillis,
+    connectionTimeoutMillis,
   });
   return new PrismaClient({
     adapter,

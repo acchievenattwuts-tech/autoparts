@@ -1331,7 +1331,7 @@ for (const lot of claimLots) {
 - [x] ตรวจ TTFB และทำ static generation / revalidate ในหน้าที่ทำได้
 - [x] ลด render cost บางส่วนของ `/products` ผ่านการตัด hero image, pagination, และลด DOM complexity
 - [x] ยืนยันว่า `<Image>` สำคัญบน storefront ระบุ `fill` + `sizes` หรือขนาดที่เหมาะสม
-- [x] ปรับ static generation concurrency ให้เหมาะกับ Supabase session pool เพื่อให้ build/deploy ของ storefront เสถียรมากขึ้น
+- [x] ปรับ static generation concurrency ให้เหมาะกับ Supabase pooled connection limits เพื่อให้ build/deploy ของ storefront เสถียรมากขึ้น
 - [x] วิเคราะห์ JavaScript bundle เพิ่มด้วย `@next/bundle-analyzer` และบันทึก snapshot ไว้ที่ `docs/performance/bundle-analysis-2026-04-02.md`
 - [x] ตรวจ dependency audit ระดับ low-risk แล้ว และยืนยัน package ที่ยังต้องคงไว้ตาม source/config ปัจจุบัน
 - [ ] clean up dependency ที่ไม่ได้ใช้จริง: `shadcn` (^4.1.0) และ `tw-animate-css` (^1.4.0) — ยังไม่พร้อมลบ เพราะยังมี import ใน `app/globals.css`
@@ -1404,8 +1404,8 @@ for (const lot of claimLots) {
 
 | Variable | ใช้สำหรับ |
 |---|---|
-| `DATABASE_URL` | Supabase Session pooler (port 5432) |
-| `DIRECT_URL` | Supabase direct (สำหรับ migrate) |
+| `DATABASE_URL` | Supabase Transaction pooler (port 6543, `pgbouncer=true`) |
+| `DIRECT_URL` | Supabase direct connection (db host, for Prisma CLI / migrate) |
 | `NEXTAUTH_SECRET` | NextAuth encryption key |
 | `NEXTAUTH_URL` | URL ของเว็บ (เปลี่ยนเป็น production URL หลัง deploy) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
@@ -1569,8 +1569,13 @@ npm run db:restore backup-{timestamp}.json
 - This rollout avoids database writes and keeps performance measurement isolated from core business flows.
 
 ## Roadmap Update (2026-04-02 Phase 7 Build Stability)
-- Tuned Next.js static generation concurrency to better fit the current Supabase session pool limits during build.
+- Tuned Next.js static generation concurrency to better fit the current Supabase pooled connection limits during build.
 - This reduces the risk of prerender failures caused by too many concurrent DB reads while keeping public SEO pages prerendered.
+
+## Roadmap Update (2026-04-21 Production DB Connection Guard)
+- Added a runtime guard in `lib/db.ts` so a Supabase session-pooler `DATABASE_URL` on serverless automatically switches to the transaction pooler (`6543`) and appends `pgbouncer=true`.
+- Updated `prisma.config.ts` so Prisma CLI prefers `DIRECT_URL`, keeping migrations/admin tooling separate from pooled application traffic.
+- Corrected the documented environment contract so production app traffic uses the transaction pooler and direct connections stay reserved for CLI workflows.
 
 ## Roadmap Update (2026-04-02 Phase 7 Bundle Audit)
 - Added `@next/bundle-analyzer` and a local `npm run analyze` workflow for Windows.
