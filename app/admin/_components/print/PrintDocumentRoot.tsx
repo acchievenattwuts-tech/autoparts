@@ -15,7 +15,11 @@ const PrintDocumentRoot = ({
 }) => (
   <div
     id={rootId}
-    className={rootClassName ?? "mx-auto bg-white p-8 text-[13px] leading-snug"}
+    className={
+      rootClassName
+        ? `print-document-root ${rootClassName}`
+        : "print-document-root mx-auto bg-white p-8 text-[13px] leading-snug"
+    }
     style={rootStyle ?? DEFAULT_ROOT_STYLE}
   >
     {children}

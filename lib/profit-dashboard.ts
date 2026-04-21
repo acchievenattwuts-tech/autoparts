@@ -688,7 +688,16 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
 
     const recentAvg = recent.recentCost / recent.recentQty;
     const previousAvg = previous.previousCost / previous.previousQty;
-    const increasePct = ((recentAvg - previousAvg) / previousAvg) * 100;
+    if (!Number.isFinite(recentAvg) || !Number.isFinite(previousAvg)) continue;
+
+    const increasePct =
+      previousAvg <= 0
+        ? recentAvg > 0
+          ? 100
+          : 0
+        : ((recentAvg - previousAvg) / previousAvg) * 100;
+
+    if (!Number.isFinite(increasePct)) continue;
     if (increasePct <= 15) continue;
 
     const severity: ProfitAlertSeverity =

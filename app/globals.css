@@ -440,6 +440,136 @@ body[data-admin-theme="dark"] button:focus-visible {
   box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.18);
 }
 
+.admin-theme-root[data-admin-theme="dark"] .print-document-root,
+body[data-admin-theme="dark"] .print-document-root {
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #111827 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root :is(.bg-white, .bg-white\/95, .bg-white\/90, .bg-white\/80),
+body[data-admin-theme="dark"] .print-document-root :is(.bg-white, .bg-white\/95, .bg-white\/90, .bg-white\/80) {
+  background-color: #ffffff !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root :is(.bg-gray-50, .hover\:bg-gray-50:hover),
+body[data-admin-theme="dark"] .print-document-root :is(.bg-gray-50, .hover\:bg-gray-50:hover) {
+  background-color: #f9fafb !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root :is(.bg-gray-100, .hover\:bg-gray-100:hover, .bg-gray-200\/70, .hover\:bg-gray-200\/70:hover),
+body[data-admin-theme="dark"] .print-document-root :is(.bg-gray-100, .hover\:bg-gray-100:hover, .bg-gray-200\/70, .hover\:bg-gray-200\/70:hover) {
+  background-color: #f3f4f6 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .border-gray-100,
+body[data-admin-theme="dark"] .print-document-root .border-gray-100 {
+  border-color: #f3f4f6 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .border-gray-200,
+body[data-admin-theme="dark"] .print-document-root .border-gray-200 {
+  border-color: #e5e7eb !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .border-gray-300,
+body[data-admin-theme="dark"] .print-document-root .border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .border-gray-400,
+body[data-admin-theme="dark"] .print-document-root .border-gray-400 {
+  border-color: #9ca3af !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-900,
+body[data-admin-theme="dark"] .print-document-root .text-gray-900 {
+  color: #111827 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-800,
+body[data-admin-theme="dark"] .print-document-root .text-gray-800 {
+  color: #1f2937 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-700,
+body[data-admin-theme="dark"] .print-document-root .text-gray-700 {
+  color: #374151 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-600,
+body[data-admin-theme="dark"] .print-document-root .text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-500,
+body[data-admin-theme="dark"] .print-document-root .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-gray-400,
+body[data-admin-theme="dark"] .print-document-root .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root :is(.text-\[\#1e3a5f\], .hover\:text-\[\#1e3a5f\]:hover),
+body[data-admin-theme="dark"] .print-document-root :is(.text-\[\#1e3a5f\], .hover\:text-\[\#1e3a5f\]:hover) {
+  color: #1e3a5f !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root :is(.text-emerald-700, .text-emerald-600),
+body[data-admin-theme="dark"] .print-document-root :is(.text-emerald-700, .text-emerald-600) {
+  color: #047857 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .print-document-root .text-white,
+body[data-admin-theme="dark"] .print-document-root .text-white {
+  color: #ffffff !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root,
+body[data-admin-theme="dark"] .line-preview-root {
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root :is(.bg-white, .bg-white\/80, .bg-white\/60),
+body[data-admin-theme="dark"] .line-preview-root :is(.bg-white, .bg-white\/80, .bg-white\/60) {
+  background-color: #ffffff !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root :is(.border-gray-200, .border-slate-200),
+body[data-admin-theme="dark"] .line-preview-root :is(.border-gray-200, .border-slate-200) {
+  border-color: #e2e8f0 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root .border-slate-100,
+body[data-admin-theme="dark"] .line-preview-root .border-slate-100 {
+  border-color: #f1f5f9 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root :is(.text-gray-900, .text-slate-900),
+body[data-admin-theme="dark"] .line-preview-root :is(.text-gray-900, .text-slate-900) {
+  color: #0f172a !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root :is(.text-gray-500, .text-slate-500),
+body[data-admin-theme="dark"] .line-preview-root :is(.text-gray-500, .text-slate-500) {
+  color: #64748b !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root .text-slate-600,
+body[data-admin-theme="dark"] .line-preview-root .text-slate-600 {
+  color: #475569 !important;
+}
+
+.admin-theme-root[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100),
+body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) {
+  background-color: #e0f2fe !important;
+  --tw-ring-color: #e0f2fe !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

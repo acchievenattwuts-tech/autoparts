@@ -120,7 +120,9 @@ function formatCount(value: number) {
 }
 
 function formatPercent(value: number) {
-  return `${value.toLocaleString("th-TH", {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${safeValue.toLocaleString("th-TH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}%`;

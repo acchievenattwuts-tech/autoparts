@@ -1577,6 +1577,11 @@ npm run db:restore backup-{timestamp}.json
 - Updated `prisma.config.ts` so Prisma CLI prefers `DIRECT_URL`, keeping migrations/admin tooling separate from pooled application traffic.
 - Corrected the documented environment contract so production app traffic uses the transaction pooler and direct connections stay reserved for CLI workflows.
 
+## Roadmap Update (2026-04-21 Transaction Hot Path Audit)
+- Audited the busiest admin write paths and found repeated per-line `productUnit` / `product` lookups inside `sales` and `purchases` transactions.
+- Batched those dependency reads up front so create/update flows reuse cached unit and product snapshots inside the same transaction instead of re-querying for every line item.
+- Reused the `writeStockCard()` return value for purchase lot movements and switched sale warranty snapshot creation to `createMany()` to shorten transaction round trips without changing document, stock, or warranty logic.
+
 ## Roadmap Update (2026-04-02 Phase 7 Bundle Audit)
 - Added `@next/bundle-analyzer` and a local `npm run analyze` workflow for Windows.
 - Generated bundle analyzer reports under `.next/analyze/`.
@@ -3387,3 +3392,9 @@ Approved decisions for v1:
 - [x] Kept the regression check lightweight and source-based instead of introducing a new browser-test framework in this round
 - [x] Did not let dark mode leak into public/storefront routes or print-document output
 - [x] Covered shared admin patterns first, then patched remaining dark-mode gaps deliberately
+
+## Roadmap Update (2026-04-21 Admin Print Dark-Mode Isolation)
+
+- Hardened the shared admin print surface so sales, receipts, delivery, and warranty-claim documents stay on a light document palette even when admin dark mode is active.
+- Added a shared `print-document-root` escape hatch from admin dark-theme utility overrides so print preview and browser print keep the intended white background plus gray border/text contrast.
+- Tightened standalone print hosts (`/admin/delivery/print`, `/admin/warranty-claims/[id]/print`) so the surrounding preview page no longer inherits the dark-mode body background while reviewing documents on screen.

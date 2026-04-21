@@ -67,6 +67,10 @@ const PrintClaimPage = async ({ params, searchParams }: Props) => {
       <style>{`
         @page { margin: 0; }
         @media print {
+          body {
+            background: #ffffff !important;
+            color: #111827 !important;
+          }
           .no-print { display: none !important; }
           .claim-form, .claim-form * {
             -webkit-print-color-adjust: exact !important;
@@ -81,7 +85,10 @@ const PrintClaimPage = async ({ params, searchParams }: Props) => {
           .claim-footer { margin-top: auto; }
         }
         @media screen {
-          body { background: #f3f4f6; }
+          body {
+            background: #f3f4f6 !important;
+            color: #111827 !important;
+          }
           .claim-form {
             max-width: 900px;
             margin: 24px auto;

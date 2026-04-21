@@ -37,7 +37,9 @@ function formatMoney(value: number): string {
 }
 
 function formatPercent(value: number): string {
-  return `${value.toLocaleString("th-TH", {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
+  return `${safeValue.toLocaleString("th-TH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}%`;
@@ -582,10 +584,10 @@ const ProfitDashboard = async ({
                     key={`${alert.kind}-${alert.productId ?? index}`}
                     className={`rounded-2xl border p-4 ${
                       alert.severity === "high"
-                        ? "border-rose-200 bg-rose-50/60"
-                        : alert.severity === "medium"
-                          ? "border-amber-200 bg-amber-50/60"
-                          : "border-sky-200 bg-sky-50/60"
+                        ? "border-rose-200 bg-rose-50/60 dark:border-rose-400/30 dark:bg-rose-500/12"
+                      : alert.severity === "medium"
+                          ? "border-amber-200 bg-amber-50/60 dark:border-amber-400/30 dark:bg-amber-500/12"
+                          : "border-sky-200 bg-sky-50/60 dark:border-sky-400/30 dark:bg-sky-500/12"
                     }`}
                   >
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -594,10 +596,10 @@ const ProfitDashboard = async ({
                           <span
                             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                               alert.severity === "high"
-                                ? "bg-rose-100 text-rose-700"
+                                ? "bg-rose-100 text-rose-700 dark:bg-rose-500/18 dark:text-rose-100"
                                 : alert.severity === "medium"
-                                  ? "bg-amber-100 text-amber-700"
-                                  : "bg-sky-100 text-sky-700"
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-500/18 dark:text-amber-100"
+                                  : "bg-sky-100 text-sky-700 dark:bg-sky-500/18 dark:text-sky-100"
                             }`}
                           >
                             ระดับ {getAlertSeverityLabel(alert.severity)}
@@ -610,9 +612,9 @@ const ProfitDashboard = async ({
                                 : "ต้นทุนเฉลี่ยพุ่ง"}
                           </span>
                         </div>
-                        <p className="text-sm font-medium text-gray-900">{alert.title}</p>
-                        <p className="text-xs text-gray-500">{alert.detail}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{alert.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-300">{alert.detail}</p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">
                           {alert.productCode ? `รหัส ${alert.productCode} · ` : ""}
                           พบผลกระทบใน {alert.invoiceCount.toLocaleString("th-TH")} บิลภายในช่วงที่เลือก
                         </p>
@@ -621,7 +623,7 @@ const ProfitDashboard = async ({
                         {productHref ? (
                           <Link
                             href={productHref}
-                            className="text-sky-700 underline-offset-2 hover:underline"
+                            className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                           >
                             เปิดสินค้า
                           </Link>
@@ -633,7 +635,7 @@ const ProfitDashboard = async ({
                               to: data.filters.to,
                               productId: alert.productId,
                             })}
-                            className="text-sky-700 underline-offset-2 hover:underline"
+                            className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                           >
                             ดูบิลขายต้นเหตุ
                           </Link>
@@ -645,7 +647,7 @@ const ProfitDashboard = async ({
                               to: data.filters.to,
                               productId: alert.productId,
                             })}
-                            className="text-sky-700 underline-offset-2 hover:underline"
+                            className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                           >
                             ดูบิลคืนที่เกี่ยวข้อง
                           </Link>
