@@ -84,7 +84,7 @@ export type ProfitPagination = {
   totalPages: number;
 };
 
-type ProfitSummary = {
+export type ProfitSummary = {
   salesAmountExVat: number;
   salesAmountIncVat: number;
   costAmount: number;
@@ -168,7 +168,7 @@ function buildPagination(page: number, totalItems: number): ProfitPagination {
   };
 }
 
-async function aggregateSummary(start: Date, end: Date): Promise<ProfitSummary> {
+export async function aggregateProfitSummary(start: Date, end: Date): Promise<ProfitSummary> {
   const aggregate = await db.factProfit.aggregate({
     _sum: {
       salesAmountExVat: true,
@@ -764,10 +764,10 @@ export async function getProfitDashboardData(
     invoices,
     alerts,
   ] = await Promise.all([
-    aggregateSummary(todayStart, todayEnd),
-    aggregateSummary(yesterdayStart, yesterdayEnd),
-    aggregateSummary(currentRangeStart, currentRangeEnd),
-    aggregateSummary(previousRangeStart, previousRangeEnd),
+    aggregateProfitSummary(todayStart, todayEnd),
+    aggregateProfitSummary(yesterdayStart, yesterdayEnd),
+    aggregateProfitSummary(currentRangeStart, currentRangeEnd),
+    aggregateProfitSummary(previousRangeStart, previousRangeEnd),
     buildTrend(from, to),
     getProductSpotlights(fromDate, toDate),
     getProductAnalysis(fromDate, toDate, stockPage),

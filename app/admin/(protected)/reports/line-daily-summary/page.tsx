@@ -84,13 +84,18 @@ function FlexPreviewSection({
   );
 }
 
+function keepPreviewItem(compactMode: boolean, rawValue: number, keepWhenZero = false) {
+  if (!compactMode) return true;
+  if (keepWhenZero) return true;
+  return rawValue !== 0;
+}
+
 export default async function LineDailySummaryPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
   const reportDayKey = resolveBangkokDayKey(params.date);
 
   const [
-    summary,
     settings,
     lineConfig,
     qstashStatus,
@@ -99,7 +104,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     recipients,
     recentDispatches,
   ] = await Promise.all([
-    buildLineDailySummary(reportDayKey),
     getLineDailySummarySettings(),
     Promise.resolve(getLineDailySummaryConfig()),
     Promise.resolve(getLineDailySummaryQStashStatus()),
@@ -169,6 +173,9 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       },
     }),
   ]);
+  const summary = await buildLineDailySummary(reportDayKey, {
+    compactMode: settings.compactMode,
+  });
 
   const totalRiskItems = summary.counts.lowStockCount + summary.counts.outOfStockCount;
   const availableUserRecipients = recipients
@@ -199,6 +206,49 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
     summary.counts.outOfStockCount +
     summary.counts.openClaimCount +
     summary.counts.cancelledDocumentCount;
+  const previewMoneyAndOutstandingItems = [
+    keepPreviewItem(settings.compactMode, summary.money.cashInTotal, true)
+      ? { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.cashChannelTotal)
+      ? { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.transferChannelTotal)
+      ? { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.arOutstanding)
+      ? { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.codOutstanding)
+      ? { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.money.apOutstanding)
+      ? { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
+  const previewRiskItems = [
+    keepPreviewItem(settings.compactMode, summary.counts.pendingDelivery)
+      ? { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.outForDelivery)
+      ? { label: "กำลังจัดส่ง", value: `${summary.counts.outForDelivery} รายการ` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.lowStockCount)
+      ? { label: "สต๊อกต่ำขั้นต่ำ", value: `${summary.counts.lowStockCount} รายการ` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.outOfStockCount)
+      ? { label: "ของหมด", value: `${summary.counts.outOfStockCount} รายการ` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.expiringLotCount)
+      ? { label: "lot ใกล้หมดอายุ", value: `${summary.counts.expiringLotCount} lot` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.openClaimCount)
+      ? { label: "เคลมค้าง", value: `${summary.counts.openClaimCount} รายการ` }
+      : null,
+    keepPreviewItem(settings.compactMode, summary.counts.cancelledDocumentCount)
+      ? { label: "เอกสารถูกยกเลิก", value: `${summary.counts.cancelledDocumentCount} รายการ` }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
 
   return (
     <div className="space-y-4">
@@ -323,6 +373,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
             <h3 className="font-kanit text-lg font-semibold text-gray-900">ข้อความ LINE ที่จะส่งจริง</h3>
             <p className="text-sm text-gray-500">
               preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
+              {settings.compactMode ? " โดยเปิด compact mode ซ่อนแถวค่า 0" : " โดยแสดงครบทุกแถวตามค่าเดิม"}
             </p>
           </div>
 
@@ -340,8 +391,13 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">ยอดขายรวม</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.salesTotal)}</p>
+                      <p className="text-xs text-emerald-100">กำไรขั้นต้นวันนี้</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">
+                        ฿{fmtMoney(summary.money.grossProfitToday)}({summary.money.grossMarginPctToday.toLocaleString("th-TH", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}%)
+                      </p>
                     </div>
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
                       <p className="text-xs text-emerald-100">รายการต้องติดตาม</p>
@@ -354,8 +410,10 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                   <FlexPreviewSection
                     title="🧾 รายละเอียดการขาย"
                     items={[
+                      { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` },
                       { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` },
                       { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` },
+                      { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` },
                     ]}
                   />
 

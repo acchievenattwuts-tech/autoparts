@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
+import { aggregateProfitSummary } from "@/lib/profit-dashboard";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
 import { formatDateThai, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -9,6 +10,9 @@ type MoneySection = {
   salesTotal: number;
   cashSales: number;
   creditSales: number;
+  costOfGoodsSoldToday: number;
+  grossProfitToday: number;
+  grossMarginPctToday: number;
   cashInFromSales: number;
   cashInFromReceipts: number;
   cashInTotal: number;
@@ -62,6 +66,17 @@ export type LineDailySummary = {
   flexMessage: LineFlexMessage;
 };
 
+type SummaryFactItem = {
+  label: string;
+  value: string;
+  compactValue?: number;
+  keepWhenZero?: boolean;
+};
+
+type SummaryRenderOptions = {
+  compactMode?: boolean;
+};
+
 function toNumber(value: unknown): number {
   return Number(value ?? 0);
 }
@@ -104,6 +119,23 @@ function formatCount(value: number) {
   return value.toLocaleString("th-TH");
 }
 
+function formatPercent(value: number) {
+  return `${value.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function shouldKeepSummaryFactItem(item: SummaryFactItem, compactMode: boolean) {
+  if (!compactMode) return true;
+  if (item.keepWhenZero) return true;
+  return item.compactValue !== 0;
+}
+
+function filterSummaryFactItems(items: SummaryFactItem[], compactMode: boolean) {
+  return items.filter((item) => shouldKeepSummaryFactItem(item, compactMode));
+}
+
 function renderEmojiLineDailySummaryMessage(summary: {
   reportDateLabel: string;
   money: MoneySection;
@@ -118,6 +150,8 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
     `- ขายสด ${formatMoney(money.cashSales)} บาท`,
     `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
+    `- ต้นทุนขาย ${formatMoney(money.costOfGoodsSoldToday)} บาท`,
+    `- กำไรขั้นต้นวันนี้ ${formatMoney(money.grossProfitToday)} บาท(${formatPercent(money.grossMarginPctToday)})`,
     "",
     "🏦 เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
@@ -155,7 +189,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
   ].join("\n");
 }
 
-function buildSummaryFactRows(items: Array<{ label: string; value: string }>) {
+function buildSummaryFactRows(items: SummaryFactItem[]) {
   return items.flatMap((item, index) => [
     {
       type: "box",
@@ -476,6 +510,8 @@ function renderFriendlyLineDailySummaryMessage(summary: {
     `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
     `- ขายสด ${formatMoney(money.cashSales)} บาท`,
     `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
+    `- ต้นทุนขาย ${formatMoney(money.costOfGoodsSoldToday)} บาท`,
+    `- กำไรขั้นต้นวันนี้ ${formatMoney(money.grossProfitToday)} บาท(${formatPercent(money.grossMarginPctToday)})`,
     "",
     "เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
@@ -587,6 +623,8 @@ function renderLineDailySummaryMessage(summary: {
     `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
     `- ขายสด ${formatMoney(money.cashSales)} บาท`,
     `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
+    `- ต้นทุนขาย ${formatMoney(money.costOfGoodsSoldToday)} บาท`,
+    `- กำไรขั้นต้นวันนี้ ${formatMoney(money.grossProfitToday)} บาท(${formatPercent(money.grossMarginPctToday)})`,
     "",
     "เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
@@ -694,13 +732,13 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                     contents: [
                       {
                         type: "text",
-                        text: "ยอดขายรวม",
+                        text: "กำไรขั้นต้นวันนี้",
                         size: "xs",
                         color: "#DCFCE7",
                       },
                       {
                         type: "text",
-                        text: `฿${formatMoney(money.salesTotal)}`,
+                        text: `฿${formatMoney(money.grossProfitToday)}(${formatPercent(money.grossMarginPctToday)})`,
                         margin: "sm",
                         size: "lg",
                         color: "#FFFFFF",
@@ -760,6 +798,7 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                   { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}` },
                   { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}` },
                   { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}` },
+                  { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}` },
                 ]),
               },
             ],
@@ -859,8 +898,9 @@ function buildLineDailySummaryFlexMessageV3(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
-}): LineFlexMessage {
+}, options: SummaryRenderOptions = {}): LineFlexMessage {
   const { reportDateLabel, money, counts } = summary;
+  const compactMode = options.compactMode ?? false;
   const followUpCount =
     counts.pendingDelivery +
     counts.lowStockCount +
@@ -925,13 +965,13 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                     contents: [
                       {
                         type: "text",
-                        text: "ยอดขายรวม",
+                        text: "กำไรขั้นต้นวันนี้",
                         size: "xs",
                         color: "#DCFCE7",
                       },
                       {
                         type: "text",
-                        text: `฿${formatMoney(money.salesTotal)}`,
+                        text: `฿${formatMoney(money.grossProfitToday)}(${formatPercent(money.grossMarginPctToday)})`,
                         margin: "sm",
                         size: "lg",
                         color: "#FFFFFF",
@@ -1013,14 +1053,19 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 layout: "vertical",
                 margin: "lg",
                 spacing: "md",
-                contents: buildSummaryFactRows([
-                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
-                  { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
-                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
-                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
-                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}` },
-                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}` },
-                ]),
+                contents: buildSummaryFactRows(
+                  filterSummaryFactItems(
+                    [
+                      { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`, keepWhenZero: true },
+                      { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`, compactValue: money.cashChannelTotal },
+                      { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`, compactValue: money.transferChannelTotal },
+                      { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`, compactValue: money.arOutstanding },
+                      { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}`, compactValue: money.codOutstanding },
+                      { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}`, compactValue: money.apOutstanding },
+                    ],
+                    compactMode
+                  )
+                ),
               },
             ],
           },
@@ -1043,15 +1088,20 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 layout: "vertical",
                 margin: "lg",
                 spacing: "md",
-                contents: buildSummaryFactRows([
-                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ` },
-                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ` },
-                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ` },
-                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ` },
-                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot` },
-                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ` },
-                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ` },
-                ]),
+                contents: buildSummaryFactRows(
+                  filterSummaryFactItems(
+                    [
+                      { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ`, compactValue: counts.pendingDelivery },
+                      { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ`, compactValue: counts.outForDelivery },
+                      { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ`, compactValue: counts.lowStockCount },
+                      { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ`, compactValue: counts.outOfStockCount },
+                      { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot`, compactValue: counts.expiringLotCount },
+                      { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ`, compactValue: counts.openClaimCount },
+                      { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ`, compactValue: counts.cancelledDocumentCount },
+                    ],
+                    compactMode
+                  )
+                ),
               },
             ],
           },
@@ -1085,13 +1135,17 @@ function buildLineDailySummaryFlexMessageV3(summary: {
   };
 }
 
-export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineDailySummary> {
+export async function buildLineDailySummary(
+  dayKeyInput?: string,
+  options: SummaryRenderOptions = {}
+): Promise<LineDailySummary> {
   const reportDayKey = resolveBangkokDayKey(dayKeyInput);
   const { start, end } = getBangkokDayRange(reportDayKey);
   const reportDateLabel = formatThaiDate(reportDayKey);
 
   const [
     siteConfig,
+    profitToday,
     salesTotalAgg,
     cashSalesAgg,
     creditSalesAgg,
@@ -1116,6 +1170,7 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     lotCounts,
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
+    runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end)),
     runSummaryStep("money.salesTotal", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1224,6 +1279,7 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "DELIVERED",
+        // Temporary proxy until we store a dedicated delivered timestamp on Sale.
         updatedAt: { gte: start, lte: end },
       },
     })),
@@ -1287,6 +1343,9 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     salesTotal: toNumber(salesTotalAgg._sum.netAmount),
     cashSales: toNumber(cashSalesAgg._sum.netAmount),
     creditSales: toNumber(creditSalesAgg._sum.netAmount),
+    costOfGoodsSoldToday: profitToday.costAmount,
+    grossProfitToday: profitToday.grossProfit,
+    grossMarginPctToday: profitToday.marginPct,
     cashInFromSales: toNumber(cashSalesAgg._sum.netAmount),
     cashInFromReceipts: toNumber(receiptTotalAgg._sum.totalAmount),
     cashInTotal:
@@ -1321,11 +1380,14 @@ export async function buildLineDailySummary(dayKeyInput?: string): Promise<LineD
     money,
     counts,
   });
-  const flexMessage = buildLineDailySummaryFlexMessageV3({
-    reportDateLabel,
-    money,
-    counts,
-  });
+  const flexMessage = buildLineDailySummaryFlexMessageV3(
+    {
+      reportDateLabel,
+      money,
+      counts,
+    },
+    options
+  );
 
   return {
     reportDayKey,

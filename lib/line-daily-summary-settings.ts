@@ -8,6 +8,7 @@ const SETTING_KEYS = {
   enabled: "line_daily_summary_enabled",
   sendTime: "line_daily_summary_send_time",
   targetMode: "line_daily_summary_target_mode",
+  compactMode: "line_daily_summary_compact_mode",
   lastSentDayKey: "line_daily_summary_last_sent_day_key",
   lastSentAt: "line_daily_summary_last_sent_at",
 } as const;
@@ -16,6 +17,7 @@ export type LineDailySummarySettings = {
   enabled: boolean;
   sendTime: string;
   targetMode: LineDailySummaryTargetMode;
+  compactMode: boolean;
   lastSentDayKey: string | null;
   lastSentAt: string | null;
 };
@@ -35,6 +37,7 @@ export const defaultLineDailySummarySettings: LineDailySummarySettings = {
   enabled: true,
   sendTime: "19:30",
   targetMode: LineDailySummaryTargetMode.ENV_IDS,
+  compactMode: false,
   lastSentDayKey: null,
   lastSentAt: null,
 };
@@ -73,6 +76,10 @@ export async function getLineDailySummarySettings(): Promise<LineDailySummarySet
       ? map[SETTING_KEYS.sendTime]
       : defaultLineDailySummarySettings.sendTime,
     targetMode: normalizeTargetMode(map[SETTING_KEYS.targetMode]),
+    compactMode:
+      map[SETTING_KEYS.compactMode] === undefined
+        ? defaultLineDailySummarySettings.compactMode
+        : normalizeBoolean(map[SETTING_KEYS.compactMode]),
     lastSentDayKey: map[SETTING_KEYS.lastSentDayKey] ?? null,
     lastSentAt: map[SETTING_KEYS.lastSentAt] ?? null,
   };
@@ -82,11 +89,13 @@ export async function updateLineDailySummarySettings(input: {
   enabled: boolean;
   sendTime: string;
   targetMode: LineDailySummaryTargetMode;
+  compactMode: boolean;
 }) {
   const entries: Array<[string, string]> = [
     [SETTING_KEYS.enabled, input.enabled ? "true" : "false"],
     [SETTING_KEYS.sendTime, input.sendTime],
     [SETTING_KEYS.targetMode, input.targetMode],
+    [SETTING_KEYS.compactMode, input.compactMode ? "true" : "false"],
   ];
 
   for (const [key, value] of entries) {

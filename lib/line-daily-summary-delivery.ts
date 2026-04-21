@@ -1,7 +1,7 @@
 import { Prisma, LineDailySummaryDispatchKind, LineDailySummaryDispatchStatus, LineDailySummaryTargetMode } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { buildLineDailySummary } from "@/lib/line-daily-summary";
-import { markLineDailySummarySent } from "@/lib/line-daily-summary-settings";
+import { getLineDailySummarySettings, markLineDailySummarySent } from "@/lib/line-daily-summary-settings";
 import { getLineDailySummaryConfig, pushLineMessages, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 
 type DeliverParams = {
@@ -87,7 +87,10 @@ export async function deliverLineDailySummary(
   params: DeliverParams
 ): Promise<DeliverLineDailySummaryResult> {
   const { reportDayKey, dispatchKind, targetMode, triggeredByUserId, existingDispatchId } = params;
-  const summary = await buildLineDailySummary(reportDayKey);
+  const settings = await getLineDailySummarySettings();
+  const summary = await buildLineDailySummary(reportDayKey, {
+    compactMode: settings.compactMode,
+  });
   const config = getLineDailySummaryConfig();
   const resolvedRecipients = await resolveConfiguredLineRecipients(targetMode);
   const missingDeliveryEnv = [...config.missingDeliveryEnv, ...resolvedRecipients.missingDeliveryEnv];

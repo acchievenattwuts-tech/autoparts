@@ -163,6 +163,7 @@ export default function LineDailySummaryManager(props: {
     enabled: boolean;
     sendTime: string;
     targetMode: LineDailySummaryTargetMode;
+    compactMode: boolean;
     lastSentDayKey: string | null;
     lastSentAt: string | null;
   };
@@ -228,7 +229,7 @@ export default function LineDailySummaryManager(props: {
         </div>
 
         <form
-          className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr_auto]"
+          className="mt-4 grid gap-3 lg:grid-cols-[1fr_1.2fr_1fr_1fr_auto]"
           onSubmit={(event) => {
             event.preventDefault();
             const formData = new FormData(event.currentTarget);
@@ -272,6 +273,18 @@ export default function LineDailySummaryManager(props: {
             </select>
           </label>
 
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            รูปแบบข้อความ
+            <select
+              name="compactMode"
+              defaultValue={settings.compactMode ? "true" : "false"}
+              className={inputCls}
+            >
+              <option value="false">แสดงครบทุกแถว</option>
+              <option value="true">Compact mode ซ่อนค่า 0</option>
+            </select>
+          </label>
+
           <button
             type="submit"
             disabled={settingsPending}
@@ -281,9 +294,10 @@ export default function LineDailySummaryManager(props: {
           </button>
         </form>
 
-          <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-3">
+          <div className="mt-3 grid gap-3 text-sm text-gray-600 md:grid-cols-4">
             <p>ปลายทางปัจจุบัน: {targetModeLabels[settings.targetMode]}</p>
             <p>รอบส่งประจำ: {settings.sendTime} น. ทุกวัน</p>
+            <p>รูปแบบข้อความ: {settings.compactMode ? "Compact mode" : "แสดงครบทุกแถว"}</p>
             <p>ส่งล่าสุด: {latestScheduleStatus} ({formatDateTime(settings.lastSentAt)})</p>
           </div>
 

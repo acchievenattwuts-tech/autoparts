@@ -17,6 +17,7 @@ const settingsSchema = z.object({
   enabled: z.enum(["true", "false"]),
   sendTime: z.string(),
   targetMode: z.nativeEnum(LineDailySummaryTargetMode),
+  compactMode: z.enum(["true", "false"]),
 });
 
 const testSendSchema = z.object({
@@ -44,6 +45,7 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
     enabled: formData.get("enabled"),
     sendTime: formData.get("sendTime"),
     targetMode: formData.get("targetMode"),
+    compactMode: formData.get("compactMode"),
   });
 
   if (!parsed.success) {
@@ -83,6 +85,7 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
     enabled: parsed.data.enabled === "true",
     sendTime: parsed.data.sendTime,
     targetMode: parsed.data.targetMode,
+    compactMode: parsed.data.compactMode === "true",
   });
 
   revalidatePath("/admin/reports/line-daily-summary");
