@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";

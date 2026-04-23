@@ -1,4 +1,4 @@
-﻿export const revalidate = 300;
+export const revalidate = 300;
 
 import type { Metadata } from "next";
 // Keep search dynamic so query-driven catalog results do not go stale.

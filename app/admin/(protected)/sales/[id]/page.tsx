@@ -1,4 +1,4 @@
-﻿export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";

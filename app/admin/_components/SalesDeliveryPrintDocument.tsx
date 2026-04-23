@@ -1,4 +1,4 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import { formatDateThai } from "@/lib/th-date";
 
 type NumericLike = number | string | { toString(): string };

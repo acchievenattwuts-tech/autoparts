@@ -1,4 +1,4 @@
-﻿import { db } from "@/lib/db";
+import { db } from "@/lib/db";
 
 const globalForAccessControl = globalThis as typeof globalThis & {
   accessControlSetupPromise?: Promise<void>;

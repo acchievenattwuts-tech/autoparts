@@ -1,4 +1,4 @@
-﻿import { Clock, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
+import { Clock, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 
 interface StoreContactProps {

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRef, useState, useTransition } from "react";
 import { createPartsBrand, togglePartsBrand } from "./actions";

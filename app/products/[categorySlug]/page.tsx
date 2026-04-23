@@ -1,4 +1,4 @@
-﻿export const revalidate = 300;
+export const revalidate = 300;
 import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
 import Link from "next/link";

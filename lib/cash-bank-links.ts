@@ -1,4 +1,4 @@
-﻿import type { CashBankSourceType } from "@/lib/generated/prisma";
+import type { CashBankSourceType } from "@/lib/generated/prisma";
 
 export function getCashBankSourceHref(
   sourceType: CashBankSourceType,

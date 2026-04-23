@@ -1,4 +1,4 @@
-﻿export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic";
 
 import ExcelJS from "exceljs";
 import { requirePermission } from "@/lib/require-auth";

@@ -1,4 +1,4 @@
-﻿import { Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 const ProductsHero = () => (
   <section className="overflow-hidden bg-[#10213d]">

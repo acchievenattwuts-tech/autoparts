@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useTransition } from "react";
 import { createExpenseCode, toggleExpenseCode, updateExpenseCode } from "./actions";

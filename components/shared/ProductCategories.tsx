@@ -1,4 +1,4 @@
-﻿import { unstable_cache } from "next/cache";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
