@@ -1,12 +1,13 @@
 "use server";
 
 import { db, dbTx } from "@/lib/db";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
+import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -49,16 +50,9 @@ const productSchema = z.object({
 
 type ProductInput = z.infer<typeof productSchema>;
 
-const revalidateStorefrontProductCaches = (productId?: string) => {
-  revalidatePath("/products");
-  revalidatePath("/sitemap.xml");
-  updateTag("storefront:products");
-  updateTag("storefront-product-filters");
-  updateTag("product-search");
-
-  if (productId) {
-    updateTag(`storefront-product:${productId}`);
-  }
+const revalidateStorefrontProductCaches = async (productId?: string) => {
+  revalidatePath("/admin/products");
+  await revalidateStorefrontCaches(productId);
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -233,8 +227,7 @@ export const createProduct = async (
       }
     });
 
-    revalidatePath("/admin/products");
-    revalidateStorefrontProductCaches(createdProductId);
+    await revalidateStorefrontProductCaches(createdProductId);
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
@@ -343,9 +336,8 @@ export const updateProduct = async (
       }
     });
 
-    revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${id}/edit`);
-    revalidateStorefrontProductCaches(id);
+    await revalidateStorefrontProductCaches(id);
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
@@ -371,8 +363,7 @@ export const toggleProduct = async (
 
   try {
     await db.product.update({ where: { id }, data: { isActive } });
-    revalidatePath("/admin/products");
-    revalidateStorefrontProductCaches(id);
+    await revalidateStorefrontProductCaches(id);
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
