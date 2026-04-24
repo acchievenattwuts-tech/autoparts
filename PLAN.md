@@ -3398,3 +3398,25 @@ Approved decisions for v1:
 - Hardened the shared admin print surface so sales, receipts, delivery, and warranty-claim documents stay on a light document palette even when admin dark mode is active.
 - Added a shared `print-document-root` escape hatch from admin dark-theme utility overrides so print preview and browser print keep the intended white background plus gray border/text contrast.
 - Tightened standalone print hosts (`/admin/delivery/print`, `/admin/warranty-claims/[id]/print`) so the surrounding preview page no longer inherits the dark-mode body background while reviewing documents on screen.
+
+## Roadmap Update (2026-04-24 Fluid Active CPU Reduction)
+
+Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (MAVG, stock, AR/AP, permissions). Audit found 7 hotspots; plan executes in risk order.
+
+### Execution Checklist — Final Status
+
+- [x] **#1 Cache `getProfitDashboardData()` output** — wrapped the 9-query `Promise.all` block in `lib/profit-dashboard.ts` with `unstable_cache` (`revalidate: 60`, tag `profit-dashboard`). Kept calculation logic 100% unchanged; public signature preserved. **Decision:** used time-based revalidate only (60s) instead of fan-out tag invalidation across every mutation action — per-mutation invalidation would rebuild on every sale/stock write and defeat the CPU goal. Cache tag is exported as `PROFIT_DASHBOARD_CACHE_TAG` for future opt-in invalidation if business requires sub-60s freshness.
+- [x] **#4 Audit `revalidatePath()` scope** — reviewed all 150+ `revalidatePath` calls across `app/admin/(protected)/**/actions.ts`. Finding: all calls use Next.js default `type="page"` which invalidates only the specific route segment — no broad cascade. Calls like `revalidatePath("/admin")` mark only the dashboard page stale (not the whole subtree), and do not invalidate `unstable_cache` entries (those need `revalidateTag`). With #1 in place, the dashboard's 9-query block is protected for 60s regardless of these calls. **No changes needed** — current scoping is already narrow per Next.js semantics.
+- [x] **#5 Add `isActive` filter to carModels on storefront** — implemented. Query now filters `where: { carModel: { isActive: true, carBrand: { isActive: true } } }` in `lib/storefront-catalog.ts:39-42`. Storefront product pages now **exclude inactive car brands/models** from the displayed list. User sees fewer car models if any are marked inactive. **Impact: accuracy** (hides obsolete vehicles) + **minor CPU** (Prisma does the filter at query, not in JS).
+- [x] **#2 Paginate reports with UI** — implemented pagination for sales & purchases reports. Changed `take: 2000` → `skip/take: 100` per page. Added `countSalesRows()/countPurchaseRows()` to get total document count. Added Previous/Next buttons + "Page X of Y" display. Aggregate totals (subtotal/VAT/total) computed separately via `querySalesRowsTotals()/queryPurchaseRowsTotals()` to ensure footer shows correct grand totals across ALL matching documents. User navigates via `?page=0`, `?page=1`, etc. **Impact: CPU** — per-request only loads 100 rows + counts, not 2000.
+- [x] **#6 Batch/guard `recalculateAllStockCards()`** — reviewed: this is a manual admin-triggered action at `app/admin/(protected)/stock/card/actions.ts:8`, not invoked on any per-request code path. It does not contribute to ongoing Vercel Fluid Active CPU. Changing its transaction boundaries would risk violating .rules §8 (Stock/MAVG) for no steady-state benefit — **no changes in this round**.
+- [x] **#3 Reduce `force-dynamic` scope on reports** — audited: all report pages pull user-filtered data (date range + type filters) and display immediately. .rules §8 mandates `force-dynamic` for all query-driven admin pages. Changing to `revalidate = 3600` risks user seeing stale data after a new transaction is entered → **deferred, kept `force-dynamic`**. Mitigation: #2 pagination (100 rows/page) already reduces per-request data load vs. 2000-row fetch.
+- [ ] **#7 Debounce `/api/storefront-visit` upsert** — **skipped**. Debouncing would reduce DB hits per session but loses granular tracking (user journey becomes entry+last-only, middle pages hidden). User confusion risk is high (analytics suddenly show fewer page paths). Not worth the trade-off. Keep as-is.
+- [ ] Run `npm run build` after each round; zero TS warnings.
+
+### Constraints (per .rules)
+
+- No `any`. No raw SQL. No change to MAVG / stock logic / AR-AP clearing.
+- Keep `unstable_cache` on storefront (feedback memory).
+- Keep `export const dynamic = "force-dynamic"` on admin pages in this round.
+- Update this checklist immediately after each item lands.

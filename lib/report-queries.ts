@@ -220,7 +220,11 @@ export type PaymentRow = {
 
 // Query: Sales Register
 
-export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]> {
+export async function querySalesRows(
+  filters: ReportFilters,
+  pageSize: number = 100,
+  pageNo: number = 0,
+): Promise<SaleRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -262,11 +266,12 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
         },
       },
     orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-    take: 2000,
+    skip: pageNo * pageSize,
+    take: pageSize,
   });
 
   const rows: SaleRow[] = [];
-  let rowNo = 1;
+  let rowNo = pageNo * pageSize + 1;
   for (const sale of sales) {
     const saleSubtotal = Number(sale.subtotalAmount);
     const saleVat = Number(sale.vatAmount);
@@ -303,9 +308,58 @@ export async function querySalesRows(filters: ReportFilters): Promise<SaleRow[]>
   return rows;
 }
 
+export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
+  subtotal: number;
+  vat: number;
+  total: number;
+}> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const sales = await db.sale.findMany({
+    where: {
+      saleDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+      ...(filters.paymentType && filters.paymentType !== "ALL"
+        ? { paymentType: filters.paymentType as SalePaymentType }
+        : {}),
+      ...(filters.saleType && filters.saleType !== "ALL"
+        ? { saleType: filters.saleType as SaleType }
+        : {}),
+    },
+    select: {
+      subtotalAmount: true,
+      vatAmount: true,
+      items: {
+        select: { totalAmount: true },
+      },
+    },
+  });
+
+  let subtotal = 0;
+  let vat = 0;
+  let total = 0;
+
+  for (const sale of sales) {
+    subtotal += Number(sale.subtotalAmount);
+    vat += Number(sale.vatAmount);
+    for (const item of sale.items) {
+      total += Number(item.totalAmount);
+    }
+  }
+
+  return { subtotal, vat, total };
+}
+
 // Query: Purchase Register
 
-export async function queryPurchaseRows(filters: ReportFilters): Promise<PurchaseRow[]> {
+export async function queryPurchaseRows(
+  filters: ReportFilters,
+  pageSize: number = 100,
+  pageNo: number = 0,
+): Promise<PurchaseRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -340,11 +394,12 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
         },
       },
     orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-    take: 2000,
+    skip: pageNo * pageSize,
+    take: pageSize,
   });
 
   const rows: PurchaseRow[] = [];
-  let rowNo = 1;
+  let rowNo = pageNo * pageSize + 1;
   for (const p of purchases) {
     const pSubtotal = Number(p.subtotalAmount);
     const pVat = Number(p.vatAmount);
@@ -382,6 +437,45 @@ export async function queryPurchaseRows(filters: ReportFilters): Promise<Purchas
     }
   }
   return rows;
+}
+
+export async function queryPurchaseRowsTotals(filters: ReportFilters): Promise<{
+  subtotal: number;
+  vat: number;
+  total: number;
+}> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const purchases = await db.purchase.findMany({
+    where: {
+      purchaseDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+    },
+    select: {
+      subtotalAmount: true,
+      vatAmount: true,
+      items: {
+        select: { totalAmount: true },
+      },
+    },
+  });
+
+  let subtotal = 0;
+  let vat = 0;
+  let total = 0;
+
+  for (const p of purchases) {
+    subtotal += Number(p.subtotalAmount);
+    vat += Number(p.vatAmount);
+    for (const item of p.items) {
+      total += Number(item.totalAmount);
+    }
+  }
+
+  return { subtotal, vat, total };
 }
 
 // Query: Credit Note Register

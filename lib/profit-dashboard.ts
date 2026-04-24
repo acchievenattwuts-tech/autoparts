@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import {
@@ -7,6 +8,9 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+
+export const PROFIT_DASHBOARD_CACHE_TAG = "profit-dashboard";
+const PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS = 60;
 
 export type ProfitRevenueBasis = "ex_vat" | "inc_vat";
 
@@ -732,7 +736,7 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
     .map(({ score: _score, ...alert }) => alert);
 }
 
-export async function getProfitDashboardData(
+async function computeProfitDashboardData(
   input?: ProfitDashboardQueryInput,
 ): Promise<ProfitDashboardData> {
   const todayKey = getThailandDateKey();
@@ -799,4 +803,19 @@ export async function getProfitDashboardData(
     invoices,
     alerts,
   };
+}
+
+const cachedProfitDashboardData = unstable_cache(
+  async (input?: ProfitDashboardQueryInput) => computeProfitDashboardData(input),
+  ["profit-dashboard-data-v1"],
+  {
+    tags: [PROFIT_DASHBOARD_CACHE_TAG],
+    revalidate: PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS,
+  },
+);
+
+export async function getProfitDashboardData(
+  input?: ProfitDashboardQueryInput,
+): Promise<ProfitDashboardData> {
+  return cachedProfitDashboardData(input);
 }

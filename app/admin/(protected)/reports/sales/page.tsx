@@ -8,10 +8,13 @@ import {
   buildExportQuery,
   parseReportQueryFilters,
   querySalesRows,
+  querySalesRowsTotals,
   statusLabel,
   type SaleRow,
+  type ReportFilters,
 } from "@/lib/report-queries";
 import { formatDateThai } from "@/lib/th-date";
+import { DocStatus, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -28,23 +31,51 @@ function formatDate(value: Date) {
   return formatDateThai(value);
 }
 
+async function countSalesRows(filters: ReportFilters): Promise<number> {
+  const statusFilter: { status?: DocStatus } = filters.showCancelled
+    ? {}
+    : { status: "ACTIVE" };
+
+  const sales = await db.sale.count({
+    where: {
+      saleDate: { gte: filters.from, lte: filters.to },
+      ...statusFilter,
+      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+      ...(filters.paymentType && filters.paymentType !== "ALL"
+        ? { paymentType: filters.paymentType as any }
+        : {}),
+      ...(filters.saleType && filters.saleType !== "ALL"
+        ? { saleType: filters.saleType as any }
+        : {}),
+    },
+  });
+
+  return sales;
+}
+
 export default async function SalesReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
   const filters = parseReportQueryFilters(params);
+  const pageSize = 100;
+  const pageNo = Math.max(0, parseInt(params.page ?? "0"));
 
-  const [rows, accounts] = await Promise.all([
-    filters.hasFilter ? querySalesRows(filters) : Promise.resolve([]),
+  const [rows, totals, accounts, docCount] = await Promise.all([
+    filters.hasFilter ? querySalesRows(filters, pageSize, pageNo) : Promise.resolve([]),
+    filters.hasFilter ? querySalesRowsTotals(filters) : Promise.resolve({ subtotal: 0, vat: 0, total: 0 }),
     db.cashBankAccount.findMany({
       where: { isActive: true },
       orderBy: [{ type: "asc" }, { code: "asc" }],
       select: { id: true, code: true, name: true },
     }),
+    filters.hasFilter ? countSalesRows(filters) : Promise.resolve(0),
   ]);
 
-  const totalSubtotal = rows.reduce((sum, row) => sum + row.subtotalAmount, 0);
-  const totalVat = rows.reduce((sum, row) => sum + row.vatAmount, 0);
-  const totalAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
+  const totalSubtotal = totals.subtotal;
+  const totalVat = totals.vat;
+  const totalAmount = totals.total;
+  const totalDocs = docCount;
+  const totalPages = Math.ceil(totalDocs / pageSize);
   const exportQuery = buildExportQuery(filters);
 
   return (
@@ -160,10 +191,51 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
         </div>
       ) : (
       <>
-      <p className="text-sm text-gray-500">
-        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
-        {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
+          {totalDocs > 0 && (
+            <span className="ml-2 text-gray-600">
+              (หน้า {pageNo + 1} จาก {totalPages})
+            </span>
+          )}
+        </p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Link
+              href={`?${new URLSearchParams({
+                ...params,
+                page: Math.max(0, pageNo - 1).toString(),
+              }).toString()}`}
+              className={`inline-flex h-8 items-center rounded-md px-3 text-sm font-medium transition-colors ${
+                pageNo === 0
+                  ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+              onClick={(e) => pageNo === 0 && e.preventDefault()}
+            >
+              ← ก่อนหน้า
+            </Link>
+            <span className="px-3 text-sm font-medium text-gray-700">
+              {pageNo + 1} / {totalPages}
+            </span>
+            <Link
+              href={`?${new URLSearchParams({
+                ...params,
+                page: Math.min(totalPages - 1, pageNo + 1).toString(),
+              }).toString()}`}
+              className={`inline-flex h-8 items-center rounded-md px-3 text-sm font-medium transition-colors ${
+                pageNo >= totalPages - 1
+                  ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+              onClick={(e) => pageNo >= totalPages - 1 && e.preventDefault()}
+            >
+              ถัดไป →
+            </Link>
+          </div>
+        )}
+      </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-sm">
