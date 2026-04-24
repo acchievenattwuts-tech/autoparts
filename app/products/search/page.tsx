@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
@@ -24,12 +23,14 @@ import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
 const PRODUCTS_PER_PAGE = 24;
 
+type QueryValue = string | string[] | undefined;
+
 interface Props {
   searchParams: Promise<{
     q?: string;
     category?: string;
     brand?: string;
-    model?: string;
+    model?: QueryValue;
     page?: string;
   }>;
 }
@@ -43,6 +44,14 @@ const parsePage = (value?: string) => {
   return parsed;
 };
 
+const normalizeQueryValues = (value: QueryValue): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+
+  return value ? [value] : [];
+};
+
 const buildProductsHref = ({
   q,
   category,
@@ -53,15 +62,16 @@ const buildProductsHref = ({
   q?: string;
   category?: string;
   brand?: string;
-  model?: string;
+  model?: QueryValue;
   page?: number;
 }) => {
   const params = new URLSearchParams();
+  const models = normalizeQueryValues(model);
 
   if (q) params.set("q", q);
   if (category) params.set("category", category);
   if (brand) params.set("brand", brand);
-  if (model) params.set("model", model);
+  models.forEach((item) => params.append("model", item));
   if (page && page > 1) params.set("page", String(page));
 
   const query = params.toString();
@@ -70,9 +80,10 @@ const buildProductsHref = ({
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const { q, category, brand, model, page } = await searchParams;
+  const models = normalizeQueryValues(model);
 
   const currentPage = parsePage(page);
-  const activeFilters = [category, brand, model].filter(Boolean);
+  const activeFilters = [category, brand, models.join(", ")].filter(Boolean);
   const titleParts = ["สินค้าทั้งหมด"];
 
   if (activeFilters.length > 0) {
@@ -109,9 +120,10 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 const ProductsPage = async ({ searchParams }: Props) => {
   const { q, category, brand, model, page } = await searchParams;
+  const models = normalizeQueryValues(model);
   const config = await getSiteConfig();
   const currentPage = parsePage(page);
-  const hasSearchState = Boolean(q || category || brand || model || currentPage > 1);
+  const hasSearchState = Boolean(q || category || brand || models.length > 0 || currentPage > 1);
 
   if (!hasSearchState) {
     redirect("/products");
@@ -124,7 +136,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
     isActive: true,
     categoryName: category,
     carBrandName: brand,
-    carModelName: model,
+    carModelNames: models,
     skip,
     take: PRODUCTS_PER_PAGE,
     order: "createdAtDesc",
@@ -163,7 +175,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
   ]);
 
   const sortedProducts = sortProductsByIds(products, searchResult.ids);
-  const hasFilter = q || category || brand || model;
+  const hasFilter = q || category || brand || models.length > 0;
   const totalPages = Math.max(1, Math.ceil(searchResult.total / PRODUCTS_PER_PAGE));
   const pageStart = searchResult.total === 0 ? 0 : skip + 1;
   const pageEnd = Math.min(skip + sortedProducts.length, searchResult.total);
@@ -201,7 +213,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
                       {brand && (
                         <>
                           {brand}
-                          {model ? ` › ${model}` : ""}{" "}
+                          {models.length > 0 ? ` › ${models.join(", ")}` : ""}{" "}
                         </>
                       )}
                       {category && <>{category} </>}

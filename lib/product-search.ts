@@ -15,6 +15,7 @@ type ProductSearchInput = {
   categoryName?: string | null;
   carBrandName?: string | null;
   carModelName?: string | null;
+  carModelNames?: string[] | null;
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
@@ -39,6 +40,12 @@ type ExactSearchRow = {
 const normalizeSearchQuery = (query?: string | null): string | undefined => {
   const normalized = query?.trim();
   return normalized ? normalized : undefined;
+};
+
+const normalizeCarModelNames = (input: ProductSearchInput): string[] => {
+  const names = input.carModelNames ?? (input.carModelName ? [input.carModelName] : []);
+
+  return Array.from(new Set(names.map((item) => item.trim()).filter(Boolean)));
 };
 
 const buildContainsCondition = (
@@ -90,13 +97,15 @@ const buildProductFilterWhere = ({
   isActive,
   categoryName,
   carBrandName,
+  carModelNames,
   carModelName,
 }: Pick<
   ProductSearchInput,
-  "query" | "isActive" | "categoryName" | "carBrandName" | "carModelName"
+  "query" | "isActive" | "categoryName" | "carBrandName" | "carModelName" | "carModelNames"
 >): PrismaTypes.ProductWhereInput => {
   const where: PrismaTypes.ProductWhereInput = {};
   const searchWhere = buildProductSearchWhere(query);
+  const normalizedCarModelNames = normalizeCarModelNames({ carModelName, carModelNames });
 
   if (typeof isActive === "boolean") {
     where.isActive = isActive;
@@ -106,11 +115,11 @@ const buildProductFilterWhere = ({
     where.category = { name: categoryName };
   }
 
-  if (carBrandName && carModelName) {
+  if (carBrandName && normalizedCarModelNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
-          name: carModelName,
+          name: { in: normalizedCarModelNames },
           carBrand: { name: carBrandName },
         },
       },
@@ -120,6 +129,14 @@ const buildProductFilterWhere = ({
       some: {
         carModel: {
           carBrand: { name: carBrandName },
+        },
+      },
+    };
+  } else if (normalizedCarModelNames.length > 0) {
+    where.carModels = {
+      some: {
+        carModel: {
+          name: { in: normalizedCarModelNames },
         },
       },
     };
@@ -186,6 +203,7 @@ async function searchProductIdsV2(
   input: ProductSearchInput,
 ): Promise<ProductSearchResult> {
   const normalizedQuery = normalizeSearchQuery(input.query);
+  const normalizedCarModelNames = normalizeCarModelNames(input);
 
   if (!normalizedQuery) {
     return searchProductIdsFallback(input);
@@ -219,14 +237,14 @@ async function searchProductIdsV2(
       `
     : Prisma.empty;
 
-  const carModelClause = input.carModelName
+  const carModelClause = normalizedCarModelNames.length > 0
     ? Prisma.sql`
         AND EXISTS (
           SELECT 1
           FROM "ProductCarModel" pcm
           INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
           WHERE pcm."productId" = psd.product_id
-            AND cm.name = ${input.carModelName}
+            AND cm.name IN (${Prisma.join(normalizedCarModelNames)})
         )
       `
     : Prisma.empty;
@@ -337,7 +355,7 @@ export async function searchProductIds(
     isActive: input.isActive ?? null,
     categoryName: input.categoryName ?? "",
     carBrandName: input.carBrandName ?? "",
-    carModelName: input.carModelName ?? "",
+    carModelNames: normalizeCarModelNames(input),
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",

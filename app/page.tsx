@@ -10,6 +10,7 @@ import WhyUs from "@/components/shared/WhyUs";
 import FeaturedProducts, { fetchHomeFeaturedProducts } from "@/components/shared/FeaturedProducts";
 import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
+import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
@@ -70,21 +71,33 @@ const Home = async () => {
         shopPhone={config.shopPhone}
       />
       <main>
-        <HeroShowcase
-          lineUrl={config.shopLineUrl}
-          shopPhone={config.shopPhone}
-          shopName={config.shopName}
-        />
-        <ProductCategories categories={categories} />
-        <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
-        <SeoIntentSection />
-        <WhyUs />
-        <LineCTA
-          lineId={config.shopLineId}
-          lineUrl={config.shopLineUrl}
-          shopPhone={config.shopPhone}
-          shopName={config.shopName}
-        />
+        <ScrollReveal>
+          <HeroShowcase
+            lineUrl={config.shopLineUrl}
+            shopPhone={config.shopPhone}
+            shopName={config.shopName}
+          />
+        </ScrollReveal>
+        <ScrollReveal delay={80}>
+          <ProductCategories categories={categories} />
+        </ScrollReveal>
+        <ScrollReveal delay={120}>
+          <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
+        </ScrollReveal>
+        <ScrollReveal delay={160}>
+          <SeoIntentSection />
+        </ScrollReveal>
+        <ScrollReveal delay={200}>
+          <WhyUs />
+        </ScrollReveal>
+        <ScrollReveal delay={240}>
+          <LineCTA
+            lineId={config.shopLineId}
+            lineUrl={config.shopLineUrl}
+            shopPhone={config.shopPhone}
+            shopName={config.shopName}
+          />
+        </ScrollReveal>
       </main>
       <Footer config={config} />
       <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
