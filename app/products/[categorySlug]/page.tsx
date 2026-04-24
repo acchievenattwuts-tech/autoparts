@@ -10,6 +10,9 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
+import ScrollReveal from "@/components/shared/ScrollReveal";
+import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
+import CharRise from "@/components/shared/CharRise";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
@@ -127,13 +130,30 @@ const CategoryPage = async ({ params }: Props) => {
           </div>
         </section>
 
-        <section className="overflow-hidden bg-[#10213d]">
-          <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
+        <section className="relative overflow-hidden bg-[#10213d]">
+          <AuroraBackdrop
+            blobs={[
+              {
+                color: "#f97316",
+                position: "-left-24 -top-24",
+                size: "h-[320px] w-[320px] sm:h-[420px] sm:w-[420px]",
+                opacity: 22,
+              },
+              {
+                color: "#4d6fba",
+                position: "-right-20 -bottom-20",
+                size: "h-[300px] w-[300px] sm:h-[400px] sm:w-[400px]",
+                opacity: 24,
+                alt: true,
+              },
+            ]}
+          />
+          <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
               <div className="max-w-4xl">
                 <p className="text-sm font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
                 <h1 className="mt-2 font-kanit text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
-                  {category.name}
+                  <CharRise text={category.name} stagger={32} />
                 </h1>
                 <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75 sm:text-base">
                   {description}
@@ -160,8 +180,10 @@ const CategoryPage = async ({ params }: Props) => {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} lineUrl={config.shopLineUrl} />
+              {products.map((product, index) => (
+                <ScrollReveal key={product.id} delay={index * 50}>
+                  <ProductCard product={product} lineUrl={config.shopLineUrl} />
+                </ScrollReveal>
               ))}
             </div>
           )}

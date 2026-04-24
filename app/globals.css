@@ -589,3 +589,92 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
     -moz-appearance: textfield;
   }
 }
+
+/* ===== Storefront motion primitives =====
+   Scoped with `sf-` prefix. CSS-only (no runtime JS for these).
+   Respects `prefers-reduced-motion` for accessibility.
+   Tuned blur on small screens to reduce paint cost on mobile.
+*/
+
+@keyframes sf-aurora-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(28px, -24px, 0) scale(1.06); }
+  66%  { transform: translate3d(-24px, 28px, 0) scale(0.96); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes sf-shine-sweep {
+  0%   { transform: translateX(-120%) skewX(-20deg); opacity: 0; }
+  25%  { opacity: 1; }
+  100% { transform: translateX(220%) skewX(-20deg); opacity: 0; }
+}
+
+@keyframes sf-char-rise {
+  from { transform: translateY(55%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.sf-aurora-blob {
+  animation: sf-aurora-drift 22s ease-in-out infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.sf-aurora-blob--alt {
+  animation-direction: reverse;
+  animation-duration: 28s;
+}
+
+.sf-aurora-blob--slow {
+  animation-duration: 34s;
+}
+
+.sf-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.sf-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 60%
+  );
+  transform: translateX(-120%) skewX(-20deg);
+}
+
+.sf-shine:hover::after,
+.sf-shine:focus-visible::after {
+  animation: sf-shine-sweep 1.1s ease forwards;
+}
+
+.sf-char-rise {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(55%);
+  animation: sf-char-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Mobile: lighter blur for smoother painting on low-power GPUs */
+@media (max-width: 640px) {
+  .sf-aurora-blob {
+    filter: blur(56px) !important;
+  }
+}
+
+/* Respect user motion preferences (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  .sf-aurora-blob { animation: none !important; }
+  .sf-shine::after { display: none !important; }
+  .sf-char-rise {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

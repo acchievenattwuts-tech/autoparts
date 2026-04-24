@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, MessageCircleMore, Phone, ShieldCheck, Truck } from "lucide-react";
+import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
+import CharRise from "@/components/shared/CharRise";
 
 interface HeroShowcaseProps {
   lineUrl?: string;
@@ -16,6 +18,23 @@ const HeroShowcase = ({
   return (
     <section id="home" className="relative overflow-hidden bg-[#edf5ff]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(65,114,194,0.18),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_28%)]" />
+      <AuroraBackdrop
+        blobs={[
+          {
+            color: "#4d6fba",
+            position: "-left-32 -top-32",
+            size: "h-[380px] w-[380px] sm:h-[520px] sm:w-[520px]",
+            opacity: 28,
+          },
+          {
+            color: "#f97316",
+            position: "-right-24 top-40 lg:top-24",
+            size: "h-[320px] w-[320px] sm:h-[460px] sm:w-[460px]",
+            opacity: 20,
+            alt: true,
+          },
+        ]}
+      />
       <Image
         src="/hero-banner2.jpg"
         alt={shopName}
@@ -44,7 +63,7 @@ const HeroShowcase = ({
               </p>
               <div className="mt-3">
                 <h1 className="font-kanit text-4xl font-bold leading-[0.96] text-[#16345d] sm:text-5xl lg:text-6xl">
-                  {shopName}
+                  <CharRise text={shopName} stagger={28} />
                 </h1>
               </div>
               <p className="mt-5 text-lg leading-8 text-[#31507b] sm:text-xl">
@@ -61,7 +80,7 @@ const HeroShowcase = ({
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#4d6fba] px-6 py-3.5 font-semibold text-white shadow-lg shadow-[#4d6fba]/25 transition hover:-translate-y-0.5 hover:bg-[#3f5fa5]"
+                className="sf-shine inline-flex items-center justify-center gap-2 rounded-full bg-[#4d6fba] px-6 py-3.5 font-semibold text-white shadow-lg shadow-[#4d6fba]/25 transition hover:-translate-y-0.5 hover:bg-[#3f5fa5]"
               >
                 ปรึกษาทาง LINE
                 <MessageCircleMore className="h-4 w-4" />

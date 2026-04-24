@@ -1,8 +1,26 @@
 import { Search } from "lucide-react";
+import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 
 const ProductsHero = () => (
-  <section className="overflow-hidden bg-[#10213d]">
-    <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
+  <section className="relative overflow-hidden bg-[#10213d]">
+    <AuroraBackdrop
+      blobs={[
+        {
+          color: "#f97316",
+          position: "-left-24 -top-24",
+          size: "h-[280px] w-[280px] sm:h-[360px] sm:w-[360px]",
+          opacity: 22,
+        },
+        {
+          color: "#4d6fba",
+          position: "-right-20 -bottom-24",
+          size: "h-[260px] w-[260px] sm:h-[340px] sm:w-[340px]",
+          opacity: 24,
+          alt: true,
+        },
+      ]}
+    />
+    <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
         <div className="max-w-4xl">
           <div className="flex items-start gap-3">

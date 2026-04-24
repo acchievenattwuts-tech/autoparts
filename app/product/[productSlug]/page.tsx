@@ -18,6 +18,7 @@ import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductCard from "@/components/shared/ProductCard";
+import ScrollReveal from "@/components/shared/ScrollReveal";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
@@ -156,8 +157,8 @@ const ProductDetailPage = async ({ params }: Props) => {
 
         <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(340px,0.85fr)]">
-            <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-              <div className="relative aspect-[4/3] bg-gradient-to-br from-slate-100 via-slate-50 to-white">
+            <div className="group overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+              <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-100 via-slate-50 to-white">
                 {product.imageUrl ? (
                   <Image
                     src={product.imageUrl}
@@ -166,7 +167,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     sizes="(max-width: 1024px) 100vw, 50vw"
                     fetchPriority="high"
                     loading="eager"
-                    className="object-contain p-6 sm:p-10"
+                    className="object-contain p-6 transition-transform duration-700 ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none sm:p-10"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-slate-300">
@@ -219,7 +220,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
+                    className="sf-shine inline-flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
                   >
                     <MessageCircle className="h-4 w-4" />
                     สอบถามผ่าน LINE OA
@@ -410,12 +411,13 @@ const ProductDetailPage = async ({ params }: Props) => {
                 ถ้ายังต้องการเทียบหลายตัวก่อนสั่ง ลองเปิดดูสินค้าอื่นในหมวดเดียวกันแล้วส่งลิงก์หรือรหัสที่สงสัยให้ร้านช่วยเช็กต่อได้
               </p>
               <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {relatedProducts.map((relatedProduct) => (
-                  <ProductCard
-                    key={relatedProduct.id}
-                    product={relatedProduct}
-                    lineUrl={config.shopLineUrl}
-                  />
+                {relatedProducts.map((relatedProduct, index) => (
+                  <ScrollReveal key={relatedProduct.id} delay={index * 50}>
+                    <ProductCard
+                      product={relatedProduct}
+                      lineUrl={config.shopLineUrl}
+                    />
+                  </ScrollReveal>
                 ))}
               </div>
             </div>

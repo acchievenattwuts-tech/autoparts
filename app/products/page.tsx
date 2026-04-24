@@ -7,6 +7,7 @@ import { getPublicSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
+import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
@@ -98,13 +99,14 @@ const ProductsPage = async () => {
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-                    {products.map((product) => (
-                      <ProductCard
-                        key={product.id}
-                        product={product}
-                        lineUrl={config.shopLineUrl}
-                        prefetchDetail={false}
-                      />
+                    {products.map((product, index) => (
+                      <ScrollReveal key={product.id} delay={index * 40}>
+                        <ProductCard
+                          product={product}
+                          lineUrl={config.shopLineUrl}
+                          prefetchDetail={false}
+                        />
+                      </ScrollReveal>
                     ))}
                   </div>
 

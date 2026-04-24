@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
+import ScrollReveal from "@/components/shared/ScrollReveal";
 import { db } from "@/lib/db";
 
 export const fetchHomeFeaturedProducts = unstable_cache(
@@ -64,15 +65,17 @@ const FeaturedProducts = async ({ lineUrl, products }: Props) => {
         </div>
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {resolvedProducts.map((product) => (
-            <ProductCard key={product.id} product={product} lineUrl={lineUrl} />
+          {resolvedProducts.map((product, index) => (
+            <ScrollReveal key={product.id} delay={index * 60}>
+              <ProductCard product={product} lineUrl={lineUrl} />
+            </ScrollReveal>
           ))}
         </div>
 
         <div className="mt-10 text-center">
           <Link
             href="/products"
-            className="inline-flex items-center gap-2 rounded-full bg-[#1e3a5f] px-6 py-3 font-semibold text-white transition-all hover:scale-105 hover:bg-[#163055]"
+            className="sf-shine inline-flex items-center gap-2 rounded-full bg-[#1e3a5f] px-6 py-3 font-semibold text-white transition-all hover:scale-105 hover:bg-[#163055]"
           >
             ดูสินค้าทั้งหมด
             <ArrowRight className="h-4 w-4" />

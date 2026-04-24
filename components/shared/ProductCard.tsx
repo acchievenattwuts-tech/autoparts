@@ -49,14 +49,14 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
       <Link
         href={productPath}
         prefetch={prefetchDetail}
-        className="relative h-32 shrink-0 bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44"
+        className="relative h-32 shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44"
       >
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}
             alt={product.name}
             fill
-            className="object-cover"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08] motion-reduce:transform-none motion-reduce:transition-none"
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
           />
         ) : (
@@ -109,7 +109,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
               href={lineUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-2 text-[11px] font-semibold text-white transition-all hover:scale-105 hover:bg-[#05a847] sm:gap-1.5 sm:px-3 sm:text-xs"
+              className="sf-shine flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-2 text-[11px] font-semibold text-white transition-all hover:scale-105 hover:bg-[#05a847] sm:gap-1.5 sm:px-3 sm:text-xs"
             >
               <MessageCircle size={11} />
               สอบถาม
