@@ -19,6 +19,12 @@ const PartsBrandsPage = async () => {
 
   const brands = await db.partsBrand.findMany({
     orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      createdAt: true,
+    },
   });
 
   return (
@@ -27,6 +33,7 @@ const PartsBrandsPage = async () => {
       <PartsBrandForm
         brands={brands}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
+        canUpdate={hasPermissionAccess(role, permissions, "master.update")}
         canCancel={hasPermissionAccess(role, permissions, "master.cancel")}
       />
     </div>
