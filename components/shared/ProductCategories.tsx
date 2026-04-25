@@ -1,34 +1,22 @@
 import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { CategoryVisualIcon } from "@/components/shared/CategoryVisualIcon";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import { db } from "@/lib/db";
+import { inferCategoryVisual, resolveCategoryVisual } from "@/lib/category-visual-config";
+import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { getCategoryPath } from "@/lib/product-slug";
 
 const LINE_OA_URL = "https://lin.ee/18P0SqG";
 
-const CATEGORY_ICON: Record<string, string> = {
-  คอมเพรสเซอร์: "❄️",
-  หม้อน้ำ: "🌡️",
-  คอนเดนเซอร์: "🪟",
-  ท่อแอร์: "🔧",
-  ท่อ: "🔧",
-};
-
-const getIcon = (name: string) => {
-  for (const [key, icon] of Object.entries(CATEGORY_ICON)) {
-    if (name.includes(key)) return icon;
-  }
-  return "⚙️";
-};
-
 const fallbackCategories = [
-  { label: "คอมเพรสเซอร์แอร์", desc: "ทุกยี่ห้อ ทุกรุ่น", icon: "❄️" },
-  { label: "หม้อน้ำรถยนต์", desc: "ครบทุกขนาด", icon: "🌡️" },
-  { label: "แผงคอนเดนเซอร์", desc: "พร้อมส่ง", icon: "🪟" },
-  { label: "ท่อและสายแอร์", desc: "ใช้งานได้หลายรุ่น", icon: "🔧" },
-  { label: "วาล์วและอุปกรณ์", desc: "อะไหล่เสริม", icon: "⚙️" },
-];
+  { label: "คอมเพรสเซอร์แอร์", desc: "ทุกยี่ห้อ ทุกรุ่น" },
+  { label: "หม้อน้ำรถยนต์", desc: "ครบทุกขนาด" },
+  { label: "แผงคอนเดนเซอร์", desc: "พร้อมส่ง" },
+  { label: "ท่อและสายแอร์", desc: "ใช้งานได้หลายรุ่น" },
+  { label: "วาล์วและอุปกรณ์", desc: "อะไหล่เสริม" },
+] as const;
 
 export const fetchHomeCategories = unstable_cache(
   async () =>
@@ -53,7 +41,10 @@ const ProductCategories = async ({
 }: {
   categories?: HomeCategories;
 }) => {
-  const resolvedCategories = categories ?? (await fetchHomeCategories());
+  const [resolvedCategories, visualSettings] = await Promise.all([
+    categories ? Promise.resolve(categories) : fetchHomeCategories(),
+    getCategoryVisualSettings(),
+  ]);
 
   const items =
     resolvedCategories.length > 0
@@ -61,14 +52,14 @@ const ProductCategories = async ({
           id: category.id,
           name: category.name,
           count: category._count.products,
-          icon: getIcon(category.name),
+          visual: resolveCategoryVisual(category, visualSettings[category.id]),
           href: getCategoryPath(category),
         }))
       : fallbackCategories.map((category) => ({
           id: category.label,
           name: category.label,
           count: null,
-          icon: category.icon,
+          visual: inferCategoryVisual({ name: category.label }),
           href: `/products/search?q=${encodeURIComponent(category.label)}`,
           desc: category.desc,
         }));
@@ -111,9 +102,7 @@ const ProductCategories = async ({
                   prefetch
                   className="group flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[#f97316]/35 hover:shadow-md"
                 >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1e3a5f]/10 to-[#f97316]/10 text-2xl">
-                    {item.icon}
-                  </div>
+                  <CategoryVisualIcon visual={item.visual} />
 
                   <div className="min-w-0 flex-1">
                     <h3 className="line-clamp-1 text-sm font-bold text-gray-900 transition-colors group-hover:text-[#1e3a5f] sm:text-base">

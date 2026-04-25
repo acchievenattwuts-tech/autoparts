@@ -3562,3 +3562,12 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [ ] Confirm whether Shopee buyer records should create normal `Customer` rows or stay as order snapshots only
 - [ ] Confirm whether internal tracking edits should push back to Shopee, or Shopee should remain the logistics source of truth
 - [ ] Confirm the stock buffer rule for Shopee listings so internal walk-in sales do not oversell marketplace inventory
+
+## Roadmap Update (2026-04-25 Dynamic Category Icons)
+
+- [x] Replace storefront category emoji icons with Lucide SVG category icons
+- [x] Add per-category visual settings for icon, color tone, and hover motion
+- [x] Let admin choose category icon, tone, and motion from `/admin/master/categories`
+- [x] Store category visual settings in existing `SiteContent` JSON so no Prisma schema migration is required
+- [x] Keep future categories safe with automatic visual inference by name/slug and a neutral fallback icon
+- [x] Verify with `npm run build`
