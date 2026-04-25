@@ -779,7 +779,7 @@ if (item.isLotControl && item.lots?.length > 0) {
 
 #### Phase 5.5-F3 — ใบคืนซัพพลายเออร์ รองรับ Lot (ครั้งแรก) ✅ DONE
 
-**ไฟล์:** `app/admin/(protected)/purchase-returns/actions.ts`  
+**ไฟล์:** `app/admin/(protected)/purchase-returns/actions.ts`
 **Component:** `app/admin/(protected)/purchase-returns/new/PurchaseReturnForm.tsx` (และ edit)
 
 **Status update (2026-04-05):** Done. Purchase Return now accepts lot rows on create/edit, reverses lot balances on update/cancel, rewrites `PurchaseReturnItemLot` + `StockMovementLot`, and shows lot data in the detail view.
@@ -840,7 +840,7 @@ for (const lot of item.lots) {
 
 #### Phase 5.5-F4 — CN รับคืนจากลูกค้า (RETURN type) รองรับ Lot (ครั้งแรก) ✅ DONE
 
-**ไฟล์:** `app/admin/(protected)/credit-notes/actions.ts`  
+**ไฟล์:** `app/admin/(protected)/credit-notes/actions.ts`
 **Component:** `app/admin/(protected)/credit-notes/new/CreditNoteForm.tsx` (และ edit)
 
 **Status update (2026-04-05):** Done. Credit Note `RETURN` now supports lot rows with `isReturnLot`, reverses lot balances on update/cancel, rewrites `CreditNoteItemLot` + `StockMovementLot`, and shows returned lot data in the detail view.
@@ -1035,7 +1035,7 @@ for (const lot of claimLots) {
   - `CLAIM_RECV_IN`: เรียก `writeClaimLot` direction="in" ด้วย lot ที่รับมา
   - `CLAIM_REPLACE_OUT`: เรียก `writeClaimLot` direction="out" ด้วย lot ที่ส่ง
 - [x] แก้ `cancelWarrantyClaim`: เรียก `reverseClaimLotBalance`
-- [x] UI Claim Form: 
+- [x] UI Claim Form:
   - CLAIM_RETURN_IN / CLAIM_RECV_IN: input/dropdown lot (pre-fill จาก warranty.lotNo)
   - CLAIM_SEND_OUT: แสดง lot ต้นทาง (auto-fill, editable)
   - CLAIM_REPLACE_OUT: dropdown เลือก lot ที่จะส่งออก (filter LotBalance > 0, auto-select ตาม allocation logic แต่ผู้ใช้ override เองได้)
@@ -3420,3 +3420,145 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - Keep `unstable_cache` on storefront (feedback memory).
 - Keep `export const dynamic = "force-dynamic"` on admin pages in this round.
 - Update this checklist immediately after each item lands.
+
+## Roadmap Update (2026-04-25 Shopee Open Platform Integration)
+
+> Scope: add a production-ready Shopee seller integration for order import, stock sync, LINE OA owner alerts, channel-separated sales reporting, and delivery/tracking synchronization. Use Shopee Open Platform as the official integration path, with app credentials and shop authorization managed outside source control.
+
+### External dependency checklist
+
+- [ ] Register or confirm the Shopee Open Platform app for the shop account
+- [ ] Confirm production access, API permissions, and app review status before live sync
+- [ ] Collect required credentials securely: `SHOPEE_PARTNER_ID`, `SHOPEE_PARTNER_KEY`, `SHOPEE_REDIRECT_URL`, and production/test host setting
+- [ ] Complete shop authorization and store the resulting `shop_id`, `access_token`, `refresh_token`, token expiry, and permission scope in DB, not in client code
+- [ ] Confirm the callback URL matches production exactly, for example `https://www.sriwanparts.com/api/shopee/callback`
+- [ ] Decide whether Shopee push notifications are available for this app; if not, use scheduled pull sync as the reliable baseline
+- [ ] Keep test/sandbox and live credentials separated in environment variables and database rows
+
+### Locked decisions
+
+- [ ] `StockCard` remains the internal source of truth for stock quantity and moving average cost
+- [ ] Shopee stock updates must be pushed from internal stock state; never let Shopee overwrite `Product.stock` directly
+- [ ] Shopee order import must be idempotent by `shop_id + order_sn` so duplicate webhooks/polls cannot create duplicate sales
+- [ ] Separate sales channels explicitly: in-store/admin-created sales and Shopee-imported sales must be filterable in sales lists, reports, dashboard, profit analysis, and LINE summaries
+- [ ] No stock/MAVG shortcut: every Shopee sale that deducts stock must create normal `Sale`, `SaleItem`, `StockCard`, lot movement, warranty snapshot, and profit fact rows through shared services
+- [ ] Do not auto-restock cancelled/refunded Shopee orders until the returned-item business rule is confirmed; use a review queue or CN/return workflow instead
+- [ ] LINE OA alerts are owner/admin notifications only in this phase; no customer-facing LINE messages or chatbot changes
+- [ ] All Shopee tokens, raw payloads, customer data, and error logs must avoid exposing secrets or unnecessary buyer PII in UI/log output
+
+### Phase A - Foundation, credentials, and auth flow
+
+- [ ] Add `.env.example` placeholders for Shopee integration without real secrets
+- [ ] Add `lib/shopee/config.ts` for environment validation and host selection
+- [ ] Add `lib/shopee/signature.ts` for Shopee request signing with unit tests against fixed fixtures
+- [ ] Add `lib/shopee/client.ts` with typed request helpers, retry policy, timeout, and safe error mapping
+- [ ] Add admin-protected route to start Shopee shop authorization
+- [ ] Add callback route `/api/shopee/callback` to exchange authorization code for shop tokens
+- [ ] Store shop token metadata in DB with refresh expiry and last-authorized audit fields
+- [ ] Add token refresh service and scheduled refresh guard before sync jobs run
+- [ ] Add sync audit logging so every API call category can be traced without logging secrets
+
+### Phase B - Schema and channel separation
+
+- [ ] Add a sales channel model/enum so `Sale` can distinguish `STORE` vs `SHOPEE`
+- [ ] Add Shopee shop account table for shop identity, authorization state, token expiry, sync settings, and last sync cursor
+- [ ] Add Shopee product mapping table linking internal `Product`/`ProductUnit` to Shopee `item_id`, `model_id`, seller SKU, and sync direction
+- [ ] Add Shopee order import table storing `order_sn`, current Shopee status, raw payload snapshot, import status, linked `saleId`, and last error
+- [ ] Add Shopee sync job/log table for order pull, stock push, token refresh, logistics sync, and webhook processing
+- [ ] Index all lookup paths: `shopId + orderSn`, `productId`, `itemId + modelId`, `status + createdAt`, and `saleId`
+- [ ] Update permission catalog and admin route rules for a new Shopee/Marketplace admin menu
+- [ ] Run `prisma db push` and `npx prisma generate` only after schema confirmation
+
+### Phase C - Product mapping and stock sync
+
+- [ ] Build admin UI to map internal products to Shopee item/model/SKU
+- [ ] Show unmapped Shopee SKUs and unmapped internal products separately so the owner can fix data safely
+- [ ] Pull Shopee item/model stock for mapped products to compare against internal stock before enabling push mode
+- [ ] Add stock sync modes per mapping: `monitor_only`, `push_internal_to_shopee`, and `disabled`
+- [ ] Push available internal stock to Shopee after stock-affecting transactions: purchases, sales, returns, adjustments, BF, claim replacement/return flows
+- [ ] Add stock buffer setting per shop or mapping to avoid overselling, for example internal stock 5 with buffer 1 pushes 4 to Shopee
+- [ ] Add reconciliation report for internal stock vs Shopee stock with mismatch reason and last sync time
+- [ ] Alert LINE OA when stock push fails, SKU is unmapped, Shopee stock differs from internal stock beyond threshold, or token refresh blocks sync
+
+### Phase D - Shopee order import into internal sales
+
+- [ ] Implement scheduled order pull by update/create time cursor with overlap window to avoid missed orders
+- [ ] Implement Shopee push/webhook ingestion if app permission supports it, using the same idempotent importer as polling
+- [ ] Import only eligible paid/ready-to-process orders according to confirmed Shopee status mapping
+- [ ] Create or reuse a Shopee customer placeholder strategy that stores buyer/shipping snapshot without polluting normal customer master data
+- [ ] Convert Shopee order lines to internal `SaleItem` rows using product mapping; unmatched SKU goes to an exception queue instead of creating a broken sale
+- [ ] Create `Sale` with channel `SHOPEE`, fulfillment `DELIVERY`, Shopee order reference, payment/shipping snapshot, shipping fee, discount, and status mapping
+- [ ] Deduct stock through existing sale/lot flow; if lot-controlled product cannot auto-allocate, put the order in manual review before stock deduction
+- [ ] Rebuild profit fact for imported Shopee sales so Profit Dashboard can split in-store vs Shopee performance
+- [ ] Prevent duplicate import when Shopee sends the same order through both webhook and scheduled pull
+
+### Phase E - LINE OA alerts for Shopee operations
+
+- [ ] Send LINE OA alert when a new Shopee order is imported successfully, including order no, net amount, customer/shipping summary, item count, and admin link
+- [ ] Send LINE OA alert when a Shopee order cannot import because SKU is unmapped, stock is insufficient, lot selection is required, or payload validation fails
+- [ ] Send LINE OA alert for stock sync failures and repeated API failures after retry limit
+- [ ] Send LINE OA alert before Shopee token expiry or when authorization is revoked
+- [ ] Send LINE OA alert for cancellation/refund/return events that need owner review
+- [ ] Send LINE OA alert for delivery exceptions such as missing tracking number, failed logistics sync, or stale order not shipped within configured SLA
+- [ ] Reuse existing LINE recipient mapping and delivery helper; do not create a second LINE integration stack
+- [ ] Add notification throttling/deduplication so repeated sync failures do not spam LINE
+
+### Phase F - Delivery, tracking, and Shopee logistics sync
+
+- [ ] Map Shopee logistics/tracking fields to existing `Sale.shippingMethod`, `Sale.shippingStatus`, and `Sale.trackingNo`
+- [ ] Pull tracking number and package/logistics status from Shopee into Delivery Queue
+- [ ] Update internal delivery status when Shopee status changes, with an audit log entry for source `SHOPEE`
+- [ ] Decide which direction is authoritative for tracking edits: Shopee-to-system only, system-to-Shopee only, or bidirectional with conflict warnings
+- [ ] If Shopee API permission allows shipment arrangement, add an explicit admin action for arrange shipment instead of doing it silently
+- [ ] Show Shopee order/tracking link on sale detail and delivery queue rows
+- [ ] Include Shopee channel/status filters in `/admin/delivery` and delivery reports
+
+### Phase G - Returns, cancellations, refunds, and exception handling
+
+- [ ] Pull Shopee cancellation/refund/return status into a review queue
+- [ ] Define which Shopee statuses cancel an internal sale and which require manual review
+- [ ] For already-deducted stock, require explicit return/CN workflow before stock is added back
+- [ ] Link Shopee return/refund events to internal Credit Note flow when the business rule is confirmed
+- [ ] Keep reference-chain protection: do not cancel internal sale if active receipt/CN/claim dependencies make the normal cancellation invalid
+- [ ] Alert LINE OA when Shopee cancellation/refund event conflicts with internal document state
+
+### Phase H - Admin UI, reports, and owner visibility
+
+- [ ] Add `/admin/marketplace/shopee` overview with authorization status, last sync time, token health, failed jobs, and stock mismatch count
+- [ ] Add Shopee order import queue with filters: pending import, imported, failed, needs SKU mapping, needs lot selection, cancelled/refund review
+- [ ] Add Shopee product mapping screen with bulk search and validation
+- [ ] Add sales list filter for channel: all, in-store, Shopee
+- [ ] Add dashboard/profit/report split for in-store vs Shopee sales, gross profit, order count, and stock risk
+- [ ] Add daily LINE summary extension for Shopee order count, Shopee sales amount, failed import count, and stock sync failures
+- [ ] Add export/report fields for Shopee order number, shop id/name, channel, tracking no, and sync status
+
+### Phase I - Reliability, security, and rollout
+
+- [ ] Add rate-limit/backoff handling for Shopee API responses and retry only safe idempotent operations
+- [ ] Add request timeout and circuit-breaker behavior for repeated Shopee failures
+- [ ] Add QStash-backed scheduled jobs for order pull, stock reconciliation, token refresh, and retry queue processing
+- [ ] Add sync lock so the same shop cannot run overlapping order import or stock push jobs
+- [ ] Add dry-run mode for the first rollout: pull orders and compare stock without creating sales or pushing stock
+- [ ] Add a manual `Sync now` admin action with permission check and audit log
+- [ ] Add tests for signature generation, token refresh, order idempotency, stock push payload mapping, and LINE alert dedupe
+- [ ] Add operational runbook for credential renewal, failed sync recovery, unmapped SKU handling, and Shopee app review/production switch
+- [ ] Verify with `npm run build` after implementation slices
+
+### Suggested rollout order
+
+- [ ] Step 1: credential setup, auth callback, shop token storage, and read-only health page
+- [ ] Step 2: product mapping and read-only stock/order comparison
+- [ ] Step 3: import Shopee orders into an exception queue without creating `Sale`
+- [ ] Step 4: create internal `Sale` from validated Shopee orders and send LINE alert
+- [ ] Step 5: push internal stock to Shopee for mapped products after internal transactions
+- [ ] Step 6: sync tracking/status into Delivery Queue and reports
+- [ ] Step 7: enable returns/cancellations/refunds review flow and dashboard/report split
+
+### Open business decisions before implementation
+
+- [ ] Confirm whether Shopee orders should be treated as prepaid sales, COD, or mixed based on Shopee payment fields
+- [ ] Confirm when stock should be deducted: at paid order, ready-to-ship, printed label, or shipped status
+- [ ] Confirm whether lot-controlled Shopee items can auto-allocate FIFO/FEFO or must always wait for staff review
+- [ ] Confirm whether Shopee buyer records should create normal `Customer` rows or stay as order snapshots only
+- [ ] Confirm whether internal tracking edits should push back to Shopee, or Shopee should remain the logistics source of truth
+- [ ] Confirm the stock buffer rule for Shopee listings so internal walk-in sales do not oversell marketplace inventory
