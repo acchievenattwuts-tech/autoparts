@@ -3634,7 +3634,9 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Create GA4 property → get Measurement ID
   - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example` ✅
   - Implement `next/script` with `strategy="afterInteractive"` ✅ (`components/shared/GoogleAnalytics.tsx`)
-  - Set up conversion goals: LINE button click, phone click, product page view
+  - Add GA4 bootstrap queue + App Router page_view tracking ✅ (`components/shared/GoogleAnalytics.tsx`)
+  - Emit conversion candidate events: LINE/phone `qualify_lead`, product `product_page_view` ✅
+  - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view
   - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local)
 - [ ] **April 29-30** — Verify caching headers on Vercel
   - `curl -I https://sriwanparts.com` → check Cache-Control
@@ -4115,10 +4117,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] **Analytics 4 Setup** ✅ DONE (2026-04-26)
   - [x] Add `NEXT_PUBLIC_GA_ID` to `.env.example`
   - [x] `components/shared/GoogleAnalytics.tsx` — `next/script afterInteractive`, no-op if env unset
+  - [x] GA4 bootstrap queue initializes before collect events; initial `config` uses `send_page_view: false`
+  - [x] App Router page_view events emit on storefront route changes
+  - [x] Contact clicks emit `qualify_lead` with `contact_channel=line|phone`
+  - [x] Product detail pages emit `product_page_view`
   - [x] Injected into `app/layout.tsx` (root layout)
-  - [ ] Add `NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX` to `.env.local` on Vercel (owner action)
+  - [x] Production deploy contains `NEXT_PUBLIC_GA_ID=G-LLV81NHVFR` (verified 2026-04-26)
   - [ ] Verify page_view events in GA4 DebugView after deploy
-  - [ ] Set up conversion goals (LINE contact clicks)
+  - [ ] Mark/confirm GA4 key events for `qualify_lead` and `product_page_view`
 
 **Already Verified (No action needed):**
 - ✅ `next/image` used throughout
@@ -4210,13 +4216,13 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 5: Google Analytics 4 ✅ DONE (2026-04-26)
-**Code:** `components/shared/GoogleAnalytics.tsx` + `app/layout.tsx`
+**Code:** `components/shared/GoogleAnalytics.tsx` + `components/analytics/ProductPageViewReporter.tsx` + `app/layout.tsx`
 
 **Remaining owner actions:**
-- [ ] Create GA4 property at analytics.google.com → get Measurement ID `G-XXXXXXXXXX`
-- [ ] Add `NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX` to Vercel environment variables
+- [x] Create GA4 property at analytics.google.com → production Measurement ID `G-LLV81NHVFR`
+- [x] Add `NEXT_PUBLIC_GA_ID=G-LLV81NHVFR` to Vercel environment variables
 - [ ] Verify page_view events in GA4 DebugView after next deploy
-- [ ] Set up conversion goals: LINE button click, product page view
+- [ ] Mark/confirm key events: `qualify_lead` for LINE/phone clicks and `product_page_view`
 - [ ] Create dashboard: traffic source, top pages, bounce rate
 
 **Timeline:** Owner can complete in ~30 min once GA4 property is created

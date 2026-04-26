@@ -19,6 +19,7 @@ import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductCard from "@/components/shared/ProductCard";
 import ScrollReveal from "@/components/shared/ScrollReveal";
+import ProductPageViewReporter from "@/components/analytics/ProductPageViewReporter";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
@@ -135,6 +136,13 @@ const ProductDetailPage = async ({ params }: Props) => {
 
   return (
     <>
+      <ProductPageViewReporter
+        productId={product.id}
+        productName={product.name}
+        productCode={product.code}
+        categoryName={product.category.name}
+        brandName={product.brand?.name}
+      />
       <StorefrontNavbar
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}

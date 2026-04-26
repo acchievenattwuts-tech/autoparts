@@ -32,8 +32,8 @@ const securityHeaders = [
       // Allow images from self, Supabase storage, and data URIs
       "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
       "font-src 'self' data:",
-      // Allow API calls to Supabase and Google Analytics
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://www.googletagmanager.com",
+      // Allow API calls to Supabase and Google Analytics collection endpoints.
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
       // Allow trusted iframe embeds such as Google Maps on the storefront
       "frame-src 'self' https://www.google.com https://maps.google.com",
       // Allow embedding only from same origin (for iframe print from admin)
