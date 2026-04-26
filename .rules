@@ -226,7 +226,36 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
   - When generating string literals with Thai content in code, write the actual Thai characters directly — never use escape sequences (`\uXXXX`) as a substitute for readable Thai text.
   - CSV / Excel exports that target Thai users **must** include a UTF-8 BOM (`\uFEFF`) so Excel opens them correctly without manual encoding selection.
 
-## 9. Performance Standards (Nasdaq-Grade)
+## 9. SEO & Storefront Change Rules (Iron Rules)
+
+### Logic Preservation
+- **Never break existing business logic** when implementing SEO changes — metadata, schema markup, alt text, and content changes must be purely additive. Do not touch Server Actions, DB queries, stock logic, pricing, or document flows.
+- SEO changes are allowed on: `metadata` exports, JSON-LD components, `alt` props, page descriptions, `lib/seo.ts`, `components/seo/`, and static content files only.
+- If an SEO task requires touching a file that contains business logic (e.g., `writeStockCard`, `generateDocNo`, pricing), stop and ask the human first.
+
+### UI/UX Disruption Minimization
+- Every storefront/admin change must minimize visible disruption to existing users — do not move elements, change layouts, or alter information hierarchy unless the task explicitly requires it.
+- When adding SEO content (e.g., category descriptions, schema blocks) to existing pages: inject below existing content or in invisible `<head>` tags only — never replace or reorder visible content.
+- New UI elements (banners, CTAs, breadcrumbs) must not add visual clutter. When in doubt, ask the human before adding anything visible.
+- Before every storefront UI change: confirm the change does not increase Cumulative Layout Shift (CLS) — avoid inserting elements that push content down on load.
+
+### Performance Preservation
+- Every code change must maintain or improve Core Web Vitals — never merge a change that increases LCP, INP, or CLS beyond the current baseline.
+- New JSON-LD blocks must be rendered server-side (not client-side) — never use `useEffect` to inject structured data.
+- New images added for SEO (e.g., OG images, article thumbnails) must use `next/image` with explicit `width`, `height`, and `sizes` — never use bare `<img>` tags.
+- New third-party scripts (analytics, tracking) must use `next/script` with `strategy="afterInteractive"` or `"lazyOnload"` — never block the main thread.
+
+### Phased Rollout Rule
+- Follow the 2-Month SEO Rollout Plan in `PLAN.md` strictly — do not skip phases or bundle work from multiple phases into a single deployment.
+- Each phase must be deployed, verified, and monitored for at least 3-5 days before the next phase begins.
+- If a phase introduces a regression (traffic drop, CWV degradation, crawl errors), pause the next phase and investigate first.
+
+### Ask-Before-Act for SEO
+- If unsure whether an SEO change could affect page structure, load time, or existing functionality → ask first.
+- If a keyword or content change alters product pricing, availability language, or legal claims → ask first.
+- If a new article or page requires a new route segment → confirm the URL structure with the human before creating files.
+
+## 10. Performance Standards (Nasdaq-Grade)
 
 ### Goals
 - **Page load must not exceed 3 seconds** (TTFB + render) on every page, both admin and storefront.

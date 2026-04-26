@@ -54,7 +54,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}
-            alt={product.name}
+            alt={`${product.name}${product.brand ? ` ${product.brand.name}` : ""} | อะไหล่แอร์รถยนต์ ${product.category.name}`}
             fill
             className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08] motion-reduce:transform-none motion-reduce:transition-none"
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"

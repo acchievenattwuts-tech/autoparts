@@ -3571,3 +3571,994 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] Store category visual settings in existing `SiteContent` JSON so no Prisma schema migration is required
 - [x] Keep future categories safe with automatic visual inference by name/slug and a neutral fallback icon
 - [x] Verify with `npm run build`
+
+## 2-Month SEO Rollout Plan (April 26 – June 26, 2026)
+
+> **Iron Rule:** Follow phases in order. Deploy → monitor 3-5 days → next phase.
+> Never skip phases or bundle work from multiple phases in one deploy.
+> If traffic drops or CWV degrades → pause and investigate before continuing.
+
+---
+
+### 🔴 TODAY — April 26 (Sunday) [Start Now, 2-3 hours]
+
+- [x] Fix Product image alt text in `components/shared/ProductCard.tsx` ✅ DONE Apr 26
+  - Changed `alt={product.name}` → `` `${product.name}${product.brand ? ` ${product.brand.name}` : ""} | อะไหล่แอร์รถยนต์ ${product.category.name}` ``
+  - TypeScript clean — zero UI impact, zero logic change
+  - Example output: "คอมแอร์ DENSO | อะไหล่แอร์รถยนต์ คอมแอร์"
+- [x] Run PageSpeed Insights on 3 pages → record baseline ✅ DONE Apr 26
+
+  **Baseline Scores (Mobile) — Apr 26, 2026 14:12–14:15**
+  | Page | Performance | Accessibility | Best Practices | SEO |
+  |------|-------------|---------------|----------------|-----|
+  | Homepage `/` | 🟢 92 | 🟢 95 | 🟢 100 | 🟢 100 |
+  | Products `/products` | 🟡 89 | 🟢 95 | 🟢 100 | 🟢 100 |
+  | Knowledge `/knowledge` | 🟢 97 | 🟢 95 | 🟢 100 | 🟢 100 |
+
+  **Notes:**
+  - Field data: "ไม่มีข้อมูล" — traffic ยังน้อยเกินไปสำหรับ CrUX data
+  - `/products` ต่ำสุดที่ 89 — root cause identified and fixed (see below)
+  - `/knowledge` สูงสุดที่ 97 — text-heavy, fewer images
+  - SEO 100 / Best Practices 100 ทุกหน้า — infrastructure แข็งแกร่งมาก
+
+  **Diagnostics Found on /products (Apr 26):**
+  - 🔴 CLS = 0.188 (เกิน threshold 0.1) → **FIXED Apr 26**
+    - Root cause: `ProductFilterBarFallback` แสดง expanded skeleton บน mobile
+    - แต่ `ProductFilterBar` หลัง hydrate = collapsed (header only)
+    - Height mismatch ทำให้ product list ขยับลง = CLS
+    - Fix: เพิ่ม `hidden lg:block` ใน expanded section ของ fallback
+    - File: `app/products/ProductFilterBarFallback.tsx`
+  - 🟡 Render-blocking CSS: 590ms (main Next.js CSS bundle 25.2 KiB)
+    - ยาก eliminate — ปกติ Next.js behavior, ไม่แนะนำแก้ตอนนี้
+  - 🟡 Legacy JavaScript: 12 KiB (Array.prototype polyfills ไม่จำเป็น)
+    - Fix: ปรับ browserslist target ใน next.config.ts → Week 2
+  - 🟡 Unused JavaScript: 43 KiB (121 KiB bundle → 43.5 KiB saveable)
+    - Fix: ตรวจสอบ large imports + code splitting → Week 2
+  - ✅ LCP element: Hero image (500ms) — acceptable ไม่ต้องแก้ด่วน
+- [x] Audit `app/knowledge/[slug]/page.tsx` → confirm `ArticleJsonLd` is rendered on every article ✅ DONE Apr 26
+  - `ArticleJsonLd` + `BreadcrumbJsonLd` — both present and complete
+  - Metadata: title, description, canonical, OG, Twitter — all correct
+  - No changes needed
+
+**Deploy:** April 26 | **Monitor until:** April 29
+
+---
+
+### 📅 Week 1 — April 27–May 3 [Monitoring Setup, ~4 hours]
+
+- [ ] **April 27** — Verify Google Search Console property for sriwanparts.com
+  - Check Coverage report, Mobile Usability, Core Web Vitals tabs
+  - Set up email alerts for critical issues
+  - Confirm sitemap at `/sitemap.xml` is submitted and indexed
+- [ ] **April 28** — Set up Google Analytics 4
+  - Create GA4 property → get Measurement ID
+  - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example`
+  - Implement `next/script` with `strategy="afterInteractive"` — no logic change
+  - Set up conversion goals: LINE button click, phone click, product page view
+  - Verify events in GA4 DebugView
+- [ ] **April 29-30** — Verify caching headers on Vercel
+  - `curl -I https://sriwanparts.com` → check Cache-Control
+  - `curl -I https://sriwanparts.com/_next/static/` → should be `max-age=31536000`
+- [ ] **May 1-3** — Category page description audit
+  - Measure word count on all 10 category pages
+  - Record which pages have < 150 words → mark for Phase 2
+
+**Deploy:** May 1 (GA4) | **Monitor until:** May 4
+
+---
+
+### 📅 Week 2 — May 4–10 [Category Pages + Article #1-2, ~12 hours]
+
+**Category Pages (developer task):**
+- [ ] **May 4-5** — Add 150-200 word SEO descriptions to first 5 categories:
+  - Compressor (คอมแอร์), Condenser (แผงแอร์), Evaporator (ตู้แอร์)
+  - Drier/Receiver, Expansion Valve
+  - Each description: keyword-rich + common car models + no logic change
+- [ ] Add `CollectionPageJsonLd` schema to each of the 5 category pages above
+- [ ] Verify CLS score did not increase after new description blocks
+
+**Content (writing task):**
+- [ ] **May 6-7** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"
+  - 2,000 words | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
+- [ ] **May 8-10** — Article #2: "อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูก"
+  - 2,500 words | Target: "อะไหล่แอร์ของแท้เทียม" | CTA: "ติดต่อเลือก"
+
+**Deploy:** May 7 (categories), May 10 (articles) | **Monitor until:** May 14
+
+---
+
+### 📅 Week 3 — May 11–17 [Category Pages Complete + Article #3-5, ~14 hours]
+
+**Category Pages:**
+- [ ] **May 11-12** — Add descriptions to remaining 5 categories:
+  - Blower Motor, Compressor Clutch, Magnetic Clutch, Radiator, Other Parts
+  - Add `CollectionPageJsonLd` to each
+
+**Content:**
+- [ ] **May 12-13** — Article #3: "Honda Civic 2020-2024: อะไหล่แอร์ที่ต้องรู้"
+  - 1,800 words | Target: "Honda Civic ac parts" | CTA: Product grid by model
+- [ ] **May 14-15** — Article #4: "วิธีบำรุงรักษาคอมแอร์รถยนต์ - 5 ขั้นตอน"
+  - 2,500 words | Target: "บำรุงรักษาคอมแอร์" | CTA: "ติดต่อบริการ"
+- [ ] **May 16-17** — Article #5: "คอมแอร์รถยนต์ขาด: ซ่อมหรือเปลี่ยน?"
+  - 2,000 words | Target: "คอมแอร์หัก ซ่อมได้ไหม" | CTA: Product upsell
+
+**Deploy:** May 14 (categories), May 17 (articles) | **Monitor until:** May 21
+
+---
+
+### 📅 Week 4 — May 18–24 [Complete Phase 1 Articles + Review, ~14 hours]
+
+**Content:**
+- [ ] **May 18-19** — Article #6: "เสียงแอร์รถยนต์ดังผิดปกติ: สาเหตุและวิธีแก้"
+  - 1,500 words | Target: "แอร์รถยนต์ดัง" | CTA: Phone contact
+- [ ] **May 20-21** — Article #7: "แอร์รถยนต์มีกลิ่นแปลก: สาเหตุและวิธีล้าง"
+  - 1,800 words | Target: "แอร์รถยนต์มีกลิ่น" | CTA: Service mention
+
+**Phase 1 Review (May 22-24):**
+- [ ] Check GSC Performance → any new keyword impressions from Week 2-3 articles?
+- [ ] Check GA4 → top landing pages, bounce rate on new articles
+- [ ] Re-run PageSpeed Insights → compare against baseline recorded April 26
+- [ ] Fix any CLS or performance issues before continuing to Phase 2
+- [ ] Update PLAN.md with actual results
+
+**Deploy:** May 21 (articles) | **Review:** May 22-24 | **Monitor until:** May 28
+
+---
+
+### 📅 Week 5 — May 25–31 [Phase 2 Car Models — Honda + Toyota, ~14 hours]
+
+- [ ] **May 25-26** — Article #8: "คอมแอร์ Honda Accord ของแท้ vs เทียบ"
+  - 1,600 words | Target: "Honda Accord compressor"
+- [ ] **May 26-27** — Article #9: "ตู้แอร์ Honda CR-V: ราคา + ของแท้ดูยังไง"
+  - 1,500 words | Target: "Honda CRV evaporator"
+- [ ] **May 27-28** — Article #10: "อะไหล่แอร์ Toyota Altis 2019-2023: รายชื่อมาตรฐาน"
+  - 1,800 words | Target: "Toyota Altis AC parts"
+- [ ] **May 29-30** — Article #11: "แผงแอร์ Toyota Innova: ส่วนที่พังบ่อยที่สุด"
+  - 1,500 words | Target: "Toyota Innova condenser"
+- [ ] **May 31** — Add internal links: articles #8-11 → related product pages
+
+**Deploy:** May 31 | **Monitor until:** June 4
+
+---
+
+### 📅 Week 6 — June 1–7 [Phase 2 Car Models — Other Brands, ~14 hours]
+
+- [ ] **June 1-2** — Article #12: "ไดเออร์แอร์ Toyota Fortuner: สำคัญกว่าที่คิด"
+  - 1,400 words | Target: "Fortuner drier receiver"
+- [ ] **June 2-3** — Article #13: "อะไหล่แอร์ Isuzu D-Max ราคาส่ง: ของแท้จากไหน"
+  - 1,700 words | Target: "D-Max AC parts Thailand"
+- [ ] **June 3-4** — Article #14: "คอมแอร์ Mitsubishi Pajero Sport: ปัญหาทั่วไป"
+  - 1,600 words | Target: "Pajero AC compressor"
+- [ ] **June 5-6** — Article #15: "ตู้แอร์ Ford Ranger: ต้องรู้ก่อนซื้อ"
+  - 1,500 words | Target: "Ford Ranger evaporator"
+- [ ] **June 7** — Article #16: "อะไหล่แอร์ Nissan Navara: ของแท้ vs เทียบ"
+  - 1,600 words | Target: "Navara AC compressor"
+
+**Phase 2 Mini-Review (June 7):**
+- [ ] GSC → new keyword impressions from car model articles?
+- [ ] Update PLAN.md status
+
+**Deploy:** June 7 | **Monitor until:** June 11
+
+---
+
+### 📅 Week 7 — June 8–14 [Phase 3 Maintenance Guides, ~14 hours]
+
+- [ ] **June 8-9** — Article #17: "ซ่อมแซมระบบแอร์รถยนต์: สัญญาณที่ต้องตรวจ"
+  - 2,000 words | Target: "ตรวจสอบระบบแอร์"
+- [ ] **June 9-10** — Article #18: "ล้างแอร์รถยนต์วิธีถูกต้อง: ทำเองหรือส่งร้าน"
+  - 2,200 words | Target: "ล้างแอร์รถยนต์"
+- [ ] **June 11-12** — Article #19: "คอนเดนเซอร์สกปรก = แอร์เย็นหมด: ทำอย่างไร"
+  - 1,800 words | Target: "คอนเดนเซอร์สกปรก"
+- [ ] **June 13-14** — Article #20: "ไดเออร์แอร์: ส่วนที่มักลืม แต่สำคัญมาก"
+  - 1,600 words | Target: "ไดเออร์แอร์คืออะไร"
+
+**Deploy:** June 14 | **Monitor until:** June 18
+
+---
+
+### 📅 Week 8 — June 15–21 [Phase 3 Finish + Comparison + Monthly Review, ~12 hours]
+
+**Content:**
+- [ ] **June 15-16** — Article #21: "บ่อปสิการแอร์รถยนต์: เลือกที่ไหน มีข้อห้ามไหม"
+  - 1,500 words | Target: "บ่อปสิการแอร์"
+- [ ] **June 17-18** — Article #22: "ต้องเติมน้ำยาแอร์กี่ปี: เครื่องหมาย + อันตราย"
+  - 1,500 words | Target: "เติมน้ำยาแอร์กี่ปี"
+- [ ] **June 19-20** — Article #23: "คอมแอร์ DENSO vs Coolgear vs Formula: เปรียบเทียบ"
+  - 2,200 words | Target: "คอมแอร์แบรนด์ไหนดี"
+
+**Monthly SEO Review #1 (June 21):**
+- [ ] GSC → top 20 keywords by impressions + clicks
+- [ ] Compare positions before/after content rollout
+- [ ] GA4 → top 10 landing pages, avg session duration, bounce rate
+- [ ] PageSpeed Insights → final comparison vs April 26 baseline
+- [ ] Identify any keyword that gained position 1-5 → double down with more content
+- [ ] Identify any article with < 50 impressions → revisit keyword or update content
+- [ ] Update PLAN.md with actual metrics and adjustments
+
+**Deploy:** June 20 | **Full review:** June 21
+
+---
+
+### 📅 Buffer Week — June 22–26 [Cleanup + Phase 4 Planning]
+
+- [ ] Fix any issues discovered during Monthly Review
+- [ ] Update article internal links where missing
+- [ ] Prepare Phase 4 seasonal content calendar (July-August)
+- [ ] Plan local SEO landing pages (e.g., "อะไหล่แอร์ นครสวรรค์")
+- [ ] Brief plan for new car model articles (Q3)
+- [ ] Decide on next 2-month cadence
+
+---
+
+### Summary: 2-Month Plan at a Glance
+
+| Week | Dates | Tasks | Deploy Date |
+|------|-------|-------|-------------|
+| TODAY | Apr 26 | Alt text fix + CWV baseline + article audit | Apr 26 |
+| 1 | Apr 27–May 3 | GSC + GA4 setup + caching check | May 1 |
+| 2 | May 4–10 | 5 category pages + Articles #1-2 | May 10 |
+| 3 | May 11–17 | 5 category pages + Articles #3-5 | May 17 |
+| 4 | May 18–24 | Articles #6-7 + Phase 1 review | May 21 |
+| 5 | May 25–31 | Articles #8-11 (Honda + Toyota) | May 31 |
+| 6 | Jun 1–7 | Articles #12-16 (Other models) | Jun 7 |
+| 7 | Jun 8–14 | Articles #17-20 (Maintenance) | Jun 14 |
+| 8 | Jun 15–21 | Articles #21-23 + Monthly review | Jun 20 |
+| Buffer | Jun 22–26 | Fixes + Phase 4 planning | — |
+
+**Total:** 23 articles + 10 category pages + monitoring setup | **Expected traffic gain:** +1,500-2,000/month by June 26
+
+---
+
+## SEO Improvement Roadmap (sriwanparts.com)
+
+### ✅ Already Implemented (Verified in Codebase)
+
+**Priority 1 - Meta Tags & Core SEO** ✅ DONE
+- [x] Unique Title Tags + Meta Descriptions (dynamic via metadata API)
+- [x] Canonical Tags on all page types
+- [x] Viewport Meta Tag configured
+- [x] Title template: `%s | SITE_NAME`
+- [x] Structured keywords in `lib/seo.ts`
+
+**Priority 2 - Image Optimization & Alt Text** ✅ 90% DONE
+- [x] Using `next/image` (auto WebP, srcset, lazy loading)
+- [x] Alt text on key images (logos, hero, product cards)
+- [x] Supabase CDN image optimization
+- ⚠️ *Gap: Product alt text could be more descriptive (add brand + category)*
+
+**Priority 3 - Structured Data & Schema Markup** ✅ DONE
+- [x] Organization schema (OrganizationJsonLd.tsx)
+- [x] Product schema (ProductJsonLd.tsx)
+- [x] LocalBusiness schema (LocalBusinessJsonLd.tsx)
+- [x] Article schema (ArticleJsonLd.tsx)
+- [x] Breadcrumb schema (BreadcrumbJsonLd.tsx)
+- [x] FAQ schema (FaqJsonLd.tsx)
+- [x] WebSite schema (WebSiteJsonLd.tsx)
+- [x] Collection/Category schema (CollectionPageJsonLd.tsx)
+- [x] Google verification meta tag
+
+**Priority 5 - Technical SEO & Performance (Partial)** ✅ INFRASTRUCTURE DONE
+- [x] `next/image` with auto WebP (Priority 5 images)
+- [x] ISR (revalidate: 300s on product pages)
+- [x] Force-dynamic on necessary pages
+- [x] Sitemap.xml (31 pages indexed)
+- [x] Robots.txt properly configured
+- [x] HTTPS/SSL active
+- ⚠️ *Gaps: Core Web Vitals baseline not measured yet, caching headers not verified*
+
+### Priority 4 - Content & Keyword Optimization (DETAILED CHECKLIST)
+
+**Estimated effort:** 50-75 hours | **Timeline:** 2 months | **Expected traffic:** +2,300/month
+
+#### Phase 1 - Week 1-2: High-Intent Problem-Solving Articles (7 articles)
+
+- [ ] **"แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"**
+  - Target: "แอร์รถยนต์ไม่เย็น"
+  - Word count: 2,000 | Effort: 6 hours | CTA: "Line เพื่อสอบถาม"
+  - Outline: 5 causes + DIY checks + when to call pro + product recommendations
+  
+- [ ] **"เสียงแอร์รถยนต์ดังผิดปกติ? ปัญหาและแนวทางแก้"**
+  - Target: "แอร์รถยนต์ดัง"
+  - Word count: 1,500 | Effort: 5 hours | CTA: Phone contact
+  - Outline: Noise types + compressor issues + fan problems + solutions
+
+- [ ] **"แอร์รถยนต์มีกลิ่นแปลก - สาเหตุและวิธีล้าง"**
+  - Target: "แอร์รถยนต์มีกลิ่น"
+  - Word count: 1,800 | Effort: 5 hours | CTA: "ล้างแอร์" service
+  - Outline: Mold growth + cleaning methods + prevention + product recommendations
+
+- [ ] **"คอมแอร์รถยนต์ขาด = สิ้นไป? ซ่อมหรือเปลี่ยน?"**
+  - Target: "คอมแอร์หัก ซ่อมได้ไหม"
+  - Word count: 2,000 | Effort: 6 hours | CTA: Product upsell
+  - Outline: When broken compressor + repair cost vs replacement + product grid link
+
+- [ ] **"ต้องเติมน้ำยาแอร์กี่ปี? เครื่องหมาย + อันตราย"**
+  - Target: "เติมน้ำยาแอร์กี่ปี"
+  - Word count: 1,500 | Effort: 5 hours | CTA: "ติดต่อบริการ"
+  - Outline: Refrigerant types + warning signs + refill schedule + leak dangers
+
+- [ ] **"ท่อแอร์รั่ว = ปัญหา ต้องซ่อมด่วน?"**
+  - Target: "ท่อแอร์รั่ว"
+  - Word count: 1,200 | Effort: 4 hours | CTA: Product reference
+  - Outline: How to spot leaks + DIY checks + repair urgency + parts needed
+
+- [ ] **"อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูก"** (PRIORITY #2)
+  - Target: "อะไหล่แอร์ของแท้เทียม"
+  - Word count: 2,500 | Effort: 7 hours | CTA: "ติดต่อเลือก"
+  - Outline: Visual differences + packaging + serial numbers + brand verification + why it matters
+
+**Subtotal Phase 1:** 11,000 words | 38 hours | Expected traffic: +500/month
+
+---
+
+#### Phase 2 - Week 3-4: Car Model-Specific Buying Guides (8 articles)
+
+**Honda Models:**
+- [ ] **"อะไหล่แอร์ Honda Civic 2020-2024: ส่วนไหนต้องเปลี่ยน"** (PRIORITY #3)
+  - Target: "Honda Civic ac parts"
+  - Word count: 1,800 | Effort: 5 hours | CTA: Product grid by model
+  - Outline: Civic gen + compatible parts + common issues + where to buy
+
+- [ ] **"คอมแอร์ Honda Accord ของแท้ vs เทียบ - วิธีเลือก"**
+  - Target: "Honda Accord compressor"
+  - Word count: 1,600 | Effort: 5 hours | CTA: "Compare products"
+  - Outline: Accord generations + compressor specs + OEM vs aftermarket
+
+- [ ] **"ตู้แอร์ Honda CR-V ราคาเท่าไหร่ ของแท้ยังไง"**
+  - Target: "Honda CRV evaporator"
+  - Word count: 1,500 | Effort: 5 hours | CTA: Price list
+
+**Toyota Models:**
+- [ ] **"อะไหล่แอร์ Toyota Altis 2019-2023: รายชื่อมาตรฐาน"**
+  - Target: "Toyota Altis AC parts"
+  - Word count: 1,800 | Effort: 5 hours | CTA: Product grid
+  - Outline: Altis generations + complete parts list + compatibility chart
+
+- [ ] **"แผงแอร์ Toyota Innova - ส่วนที่พัง บ่อยที่สุด"**
+  - Target: "Toyota Innova condenser"
+  - Word count: 1,500 | Effort: 5 hours | CTA: Preventive maintenance tip
+  - Outline: Innova design + condenser issues + durability + alternatives
+
+- [ ] **"ไดเออร์แอร์ Toyota Fortuner: สำคัญกว่าที่คิด"**
+  - Target: "Fortuner drier receiver"
+  - Word count: 1,400 | Effort: 4 hours | CTA: Product info
+  - Outline: What drier does + why it fails + replacement cost + symptoms
+
+**Other Popular Models:**
+- [ ] **"อะไหล่แอร์ Isuzu D-Max ราคาส่ง ของแท้จากไหน"**
+  - Target: "D-Max AC parts Thailand"
+  - Word count: 1,700 | Effort: 5 hours | CTA: Wholesale pricing
+  - Outline: D-Max gen + parts compatibility + wholesale vs retail
+
+- [ ] **"คอมแอร์ Mitsubishi Pajero Sport - ปัญหาทั่วไป"**
+  - Target: "Pajero AC compressor"
+  - Word count: 1,600 | Effort: 5 hours | CTA: Problem diagnosis
+
+**Subtotal Phase 2:** 12,900 words | 40 hours | Expected traffic: +800/month
+
+---
+
+#### Phase 3 - Month 2: Maintenance & Care Guides (6 articles)
+
+- [ ] **"วิธีบำรุงรักษาคอมแอร์รถยนต์ - 5 ขั้นตอนเบื้องต้น"** (PRIORITY #4)
+  - Target: "บำรุงรักษาคอมแอร์"
+  - Word count: 2,500 | Effort: 7 hours | CTA: "ติดต่อบริการประจำ"
+  - Outline: 5 maintenance steps + DIY checks + seasonal care + professional service intervals
+
+- [ ] **"ซ่อมแซมระบบแอร์รถยนต์: สัญญาณ ต้องตรวจ"**
+  - Target: "ตรวจสอบระบบแอร์"
+  - Word count: 2,000 | Effort: 6 hours | CTA: Product grid
+  - Outline: Diagnostic checklist + parts that fail most + troubleshooting flowchart
+
+- [ ] **"ล้างแอร์รถยนต์วิธีถูกต้อง - ทำเองหรือส่งร้าน"**
+  - Target: "ล้างแอร์รถยนต์"
+  - Word count: 2,200 | Effort: 6 hours | CTA: Service mention
+  - Outline: DIY vs professional + cleaning chemicals + coil cleaning + cost comparison
+
+- [ ] **"คอนเดนเซอร์สกปรก = แอร์เย็นหมด ทำอย่างไร"**
+  - Target: "คอนเดนเซอร์สกปรก"
+  - Word count: 1,800 | Effort: 5 hours | CTA: Product upsell
+  - Outline: Why condenser clogs + cleaning methods + replacement decision
+
+- [ ] **"ไดเออร์แอร์: ส่วนที่มักลืม แต่สำคัญมาก"**
+  - Target: "ไดเออร์แอร์คืออะไร"
+  - Word count: 1,600 | Effort: 5 hours | CTA: Product info
+  - Outline: What it does + how it fails + replacement signs + cost
+
+- [ ] **"บ่อปสิการแอร์รถยนต์: ที่ไหนดี มีข้อห้ามไหม"**
+  - Target: "บ่อปสิการแอร์"
+  - Word count: 1,500 | Effort: 5 hours | CTA: Partner shops
+  - Outline: Shop selection criteria + seasonal timing + cost range + DIY vs professional
+
+**Subtotal Phase 3:** 12,600 words | 34 hours | Expected traffic: +600/month
+
+---
+
+#### Phase 4 - Month 3+: Comparison, Seasonal & Authority Content (5+ articles)
+
+**Commercial Intent / Comparison (2 articles):**
+- [ ] **"คอมแอร์ DENSO vs Coolgear vs Formula: เปรียบเทียบ"** (PRIORITY #5)
+  - Target: "คอมแอร์แบรนด์ไหนดี"
+  - Word count: 2,200 | Effort: 6 hours | CTA: Product comparison grid
+  - Outline: Brand history + quality comparison + price vs value + warranty + customer reviews
+
+- [ ] **"ราคาอะไหล่แอร์ขายส่ง vs ปลีก - ต่างกันเท่าไหร่"**
+  - Target: "อะไหล่แอร์ราคาส่ง"
+  - Word count: 1,800 | Effort: 5 hours | CTA: "เรียกราคา"
+  - Outline: Wholesale vs retail pricing + bulk discounts + quality comparison + ROI for mechanics
+
+**Seasonal (4 articles):**
+- [ ] **"เตรียมแอร์ก่อน Summer - ตรวจสอบ 5 จุด"** (Publish Mar-Apr)
+  - Target: "เตรียมแอร์ฤดูร้อน"
+  - Word count: 1,600 | Effort: 5 hours | CTA: Pre-summer check-up service
+
+- [ ] **"ขับรถช่วง Monsoon: แอร์ต้องดูแลพิเศษ"** (Publish May-Sep)
+  - Target: "ขับรถช่วง Monsoon"
+  - Word count: 1,500 | Effort: 5 hours | CTA: Humidity control tips
+
+- [ ] **"ยางรถเก่า? อะไหล่แอร์ก็แก่แล้ว - เตรียมจำหน่าย"** (Publish Jan-Mar)
+  - Target: "ยางรถเก่า"
+  - Word count: 1,400 | Effort: 4 hours | CTA: Trade-in + upgrade
+
+- [ ] **"หลังพัก + ใช้น้อย: ตรวจแอร์ให้พร้อม"** (Publish Oct-Nov)
+  - Target: "ตรวจแอร์"
+  - Word count: 1,300 | Effort: 4 hours | CTA: Check-up service
+
+**Authority / Educational (2+ articles):**
+- [ ] **"ประวัติและหลักการทำงาน AC/Refrigeration ระบบแอร์"**
+  - Target: General authority
+  - Word count: 3,000 | Effort: 8 hours | CTA: Authority + credibility
+  - Outline: History + thermodynamics + modern AC systems + innovations
+
+- [ ] **"ส่วนประกอบแอร์รถยนต์: ชื่อไทย-อังกฤษ คำศัพท์"**
+  - Target: Reference content
+  - Word count: 2,000 | Effort: 6 hours | CTA: Glossary + product reference
+  - Outline: Complete glossary + diagram + function + common abbreviations
+
+**Subtotal Phase 4:** 15,800 words | 48 hours (ongoing) | Expected traffic: +400/month (growing)
+
+---
+
+#### Supporting Activities (All Phases)
+
+**Category Page Optimization:**
+- [ ] Audit all 10 category pages for description length (currently < 150 words?)
+- [ ] Add 150-200 word SEO-optimized descriptions to each category:
+  - [ ] Compressor category
+  - [ ] Condenser category
+  - [ ] Evaporator category
+  - [ ] Drier/Receiver category
+  - [ ] Blower Motor category
+  - [ ] Expansion Valve category
+  - [ ] Compressor Clutch category
+  - [ ] Radiator category
+  - [ ] Other Parts category
+- [ ] Add `CollectionPageJsonLd` schema to category pages
+- [ ] Include "common car models that use this part" in each description
+- [ ] Add internal links from category descriptions to relevant blog articles
+
+**Internal Linking Strategy:**
+- [ ] From "แอร์ไม่เย็น" article → Link to product pages (compressor, condenser, etc.)
+- [ ] From car model articles (e.g., Honda Civic) → Link to related parts + problem articles
+- [ ] From maintenance articles → Link to relevant products
+- [ ] From comparison articles → Link to product details page with specs
+
+**Blog Publishing Setup:**
+- [ ] Create `/knowledge` category taxonomy:
+  - [ ] Problem-solving (แก้ปัญหา)
+  - [ ] Buyer's guide (การเลือกซื้อ)
+  - [ ] Maintenance (การบำรุงรักษา)
+  - [ ] Car models (รุ่นรถ)
+  - [ ] Educational (ความรู้ทั่วไป)
+- [ ] Set up article metadata template (author, publish date, featured image, estimated read time)
+- [ ] Create article outline template for consistency
+
+**Internal Linking Checklist Per Article:**
+- [ ] Link 3-5 product pages (contextual)
+- [ ] Link 2-3 related articles (natural)
+- [ ] Link to category pages where relevant
+- [ ] Add CTAs (LINE, Phone, Product grid)
+
+---
+
+#### Implementation Timeline & Ownership
+
+| Phase | Articles | Weeks | Hours | Owner | Status |
+|-------|----------|-------|-------|-------|--------|
+| Phase 1 | 7 | 1-2 | 38 | Content team | ⏳ Start now |
+| Phase 2 | 8 | 3-4 | 40 | Content team | ⏳ Start week 3 |
+| Phase 3 | 6 | Month 2 | 34 | Content team | ⏳ Start week 5 |
+| Phase 4+ | 5+ | Month 3+ | 48+ | Content team | ⏳ Ongoing |
+| Category pages | 10 | Concurrent | 10 | Developer | ⏳ Parallel |
+| JSON-LD schema | All | Concurrent | 5 | Developer | ⏳ Parallel |
+| **TOTAL** | **25+** | **2 months** | **75-85 hrs** | | |
+
+---
+
+#### Success Metrics & Monitoring
+
+- [ ] Track ranking positions for all targeted keywords (Google Search Console)
+- [ ] Monitor article traffic weekly (Google Analytics)
+- [ ] Expected results:
+  - Week 2-4: +500 organic impressions/month
+  - Week 6-8: +1,200 organic impressions/month
+  - Month 3+: +2,300 organic impressions/month + improved CTR
+- [ ] Set up Content Calendar in Google Sheet (shared with team)
+- [ ] Monthly review: Top performing articles + underperformers to revise
+
+### Priority 5 - Technical SEO & Performance (FOCUS: MEASUREMENT & MONITORING)
+
+**What's NOT done yet (Focus items):**
+
+- [ ] **Core Web Vitals Baseline Measurement** (Critical)
+  - [ ] Run PageSpeed Insights on: homepage, product page, category page, knowledge article
+  - [ ] Record baseline LCP, INP, CLS for desktop + mobile
+  - [ ] Check Google Search Console real-world Core Web Vitals data
+  - [ ] Set monitoring alerts if metrics degrade
+  - [ ] Timeline: WEEK 1 (1-2 hours)
+
+- [ ] **Caching Headers Verification** (High Priority)
+  - [ ] Verify Cache-Control headers are set in Vercel deployment
+  - [ ] Test with `curl -I https://sriwanparts.com` for cache-control response
+  - [ ] Check if static assets have 1-year cache
+  - [ ] Verify HTML pages have 1-hour cache + must-revalidate
+  - [ ] Timeline: WEEK 1 (30 minutes)
+
+- [ ] **Search Console Integration** (High Priority)
+  - [ ] Verify property is added to Google Search Console
+  - [ ] Check Coverage report (any excluded/errors?)
+  - [ ] Review Mobile Usability issues (if any)
+  - [ ] Set up email alerts for critical issues
+  - [ ] Timeline: WEEK 1 (20 minutes)
+
+- [ ] **Analytics 4 Setup** (High Priority)
+  - [ ] Add GA4 measurement ID to `.env`
+  - [ ] Implement gtag tracking (or next-google-analytics)
+  - [ ] Verify events are firing: page_view, click, form_submit
+  - [ ] Set up conversion goals (e.g., LINE contact clicks)
+  - [ ] Timeline: WEEK 1-2 (1-2 hours)
+
+**Already Verified (No action needed):**
+- ✅ `next/image` used throughout
+- ✅ ISR revalidation set (300s on products)
+- ✅ force-dynamic on necessary pages
+- ✅ Sitemap submitted to Search Console
+- ✅ Robots.txt configured correctly
+- ✅ No render-blocking CSS/JS issues (Tailwind + Next.js defaults)
+
+### Priority 6 - Monitoring & Maintenance
+
+**Setup (CRITICAL - Do First):**
+- [ ] **Google Search Console Integration** (DUPLICATE: Also in Priority 5)
+  - [ ] Confirm property is added
+  - [ ] Review Coverage, Mobile Usability, Core Web Vitals reports
+  - [ ] Set up email alerts
+
+- [ ] **Google Analytics 4 Setup** (DUPLICATE: Also in Priority 5)
+  - [ ] Add GA4 measurement ID
+  - [ ] Track user behavior, traffic sources
+  - [ ] Set up conversion goals
+
+**Ongoing Maintenance:**
+- [ ] Create monthly SEO report template (ranking keywords, impressions, CTR, traffic)
+- [ ] Monitor Search Console for crawl errors and broken links
+- [ ] Set up alerts for Core Web Vitals drops
+- [ ] Monthly check: Any new indexation issues?
+- [ ] Quarterly: Review top-performing keywords and optimize low performers
+
+## Actual SEO Gaps Found (Codebase Audit 2026-04-26)
+
+Based on codebase analysis, these are the REAL gaps to fix:
+
+### Gap 1: Product Image Alt Text Needs Improvement ⚠️
+**Current:** `alt={product.name}` (just product name)
+**Should be:** `alt={`${product.name} | ${category} ศรีวรรณ อะไหล่แอร์`}`
+
+**Action:** 
+- [ ] Update `ProductCard.tsx` alt text template
+- [ ] Update product image components to include category + brand
+- [ ] Focus on top 50 products first
+
+**File to update:** `components/shared/ProductCard.tsx`
+**Timeline:** 1 hour | **Impact:** +5% image search traffic
+
+---
+
+### Gap 2: Knowledge Article Metadata Consistency ⚠️
+**Issue:** Not verified if all article pages have ArticleJsonLd
+
+**Action:**
+- [ ] Audit `app/knowledge/[slug]/page.tsx` - verify ArticleJsonLd is used
+- [ ] Check if all articles have proper schema (author, published date, image)
+- [ ] Validate schema in Google Rich Results Test
+
+**Timeline:** 30 minutes | **Impact:** Better article ranking visibility
+
+---
+
+### Gap 3: Category Page Descriptions Are Too Short 🔴
+**Issue:** Category pages may not have descriptive intros (Priority 4 mentions 150-200 words min)
+
+**Action:**
+- [ ] Audit existing category pages for description length
+- [ ] Add SEO-optimized descriptions to each category (150-200 words)
+- [ ] Add `CollectionPageJsonLd` schema to category pages
+- [ ] Include top car models + common issues for each category
+
+**Timeline:** 2-3 hours | **Impact:** +10% ranking on category keywords
+
+---
+
+### Gap 4: Core Web Vitals Not Measured Yet 🔴
+**Issue:** No baseline measurements, no monitoring alerts
+
+**Action:**
+- [ ] Run PageSpeed Insights (desktop + mobile) on key pages:
+  1. Homepage
+  2. Product page (e.g., compressor)
+  3. Category page (e.g., products/compressor)
+  4. Knowledge article
+  5. Search results page
+- [ ] Record baseline LCP, INP, CLS in spreadsheet
+- [ ] Identify bottlenecks (hero image? JS bundle?)
+- [ ] Set up Google Search Console alerts
+
+**Timeline:** WEEK 1 (1-2 hours) | **Impact:** Prevents ranking drops, enables optimization
+
+---
+
+### Gap 5: Google Analytics 4 Not Set Up 🔴
+**Issue:** No tracking of user behavior, traffic sources, conversions
+
+**Action:**
+- [ ] Create GA4 property in Google Analytics console
+- [ ] Add measurement ID to `.env` file
+- [ ] Implement GA4 tracking script (gtag or next-google-analytics package)
+- [ ] Set up conversion goals:
+  - Contact via LINE button click
+  - Form submission (if any)
+  - Product page view
+  - Category page view
+- [ ] Verify events firing via DebugView
+- [ ] Create dashboard for: traffic source, top pages, user behavior
+
+**Timeline:** WEEK 1-2 (2-3 hours) | **Impact:** Data-driven optimization decisions
+
+---
+
+### Gap 6: No Monthly SEO Reporting 🟡
+**Issue:** No way to track SEO performance over time
+
+**Action:**
+- [ ] Create Google Sheet template:
+  - Columns: Keyword | Search Volume | Current Rank | Impressions | Clicks | CTR | Trend
+  - Data source: Google Search Console
+- [ ] Schedule monthly export + analysis
+- [ ] Track: Top keywords, keywords gaining/losing position, new keywords appearing
+
+**Timeline:** 30 minutes setup + 1 hour/month maintenance | **Impact:** Identify optimization opportunities
+
+---
+
+## Keyword Research Completed (2026-04-26)
+
+Research Date: April 26, 2026 | Status: ✅ COMPLETED
+
+### 1. Primary Keywords (High Intent, High Search Volume)
+- [x] **อะไหล่แอร์รถยนต์** → Homepage + Meta description
+- [x] **คอมแอร์รถยนต์** → Category: Compressor
+- [x] **ตู้แอร์รถยนต์** → Category: Evaporator
+- [x] **แผงแอร์รถยนต์** → Category: Condenser
+- [x] **วาล์วแอร์รถยนต์** → Category: Expansion Valve
+- [x] **ไดเออร์แอร์** → Category: Drier/Receiver Drier
+- [x] **แอร์รถยนต์ไม่เย็น ซ่อม** → Blog article (troubleshooting)
+
+### 2. Long-Tail Keywords - Honda Models
+- [x] อะไหล่แอร์ Honda Accord
+- [x] อะไหล่แอร์ Honda Civic
+- [x] คอมแอร์ Honda CR-V
+- [x] ตู้แอร์ Honda Jazz
+
+### 3. Long-Tail Keywords - Toyota Models
+- [x] อะไหล่แอร์ Toyota Fortuner
+- [x] คอมแอร์ Toyota Innova
+- [x] อะไหล่แอร์ Toyota Altis
+- [x] แผงแอร์ Toyota Camry
+
+### 4. Long-Tail Keywords - Other Popular Brands
+- [x] อะไหล่แอร์ Isuzu D-Max
+- [x] อะไหล่แอร์ Ford Ranger
+- [x] อะไหล่แอร์ Nissan Navara
+- [x] อะไหล่แอร์ Mitsubishi Pajero
+
+### 5. Question-Based Keywords (FAQ/Blog Content)
+- [x] แอร์รถยนต์ไม่เย็นเพราะอะไร → Troubleshooting guide
+- [x] ต้องเปลี่ยนแผงแอร์รถยนต์กี่ปี → Maintenance article
+- [x] วิธีบำรุงรักษาคอมแอร์รถยนต์ → DIY maintenance guide
+- [x] คัมพรสัวร์แอร์กำลังไหน → Specifications guide
+- [x] ดูแลไดเออร์แอร์อย่างไร → Maintenance article
+- [x] อะไหล่แอร์ของแท้ vs เทียบ → Buyer's guide/comparison
+
+### 6. Commercial Intent Keywords (Buyers Ready to Purchase)
+- [x] อะไหล่แอร์ราคาถูก
+- [x] บริการเปลี่ยนอะไหล่แอร์
+- [x] อะไหล่แอร์ของแท้ราคา
+- [x] อะไหล่แอร์ส่งทั่วประเทศ
+
+### 7. Local Keywords (Geographic + Product)
+- [x] อะไหล่แอร์รถยนต์ กรุงเทพ
+- [x] อะไหล่แอร์ขายส่ง นนทบุรี
+- [x] ซ่อมแอร์รถยนต์ สมุทรปราการ
+- [x] อะไหล่แอร์รถยนต์ ปทุมธานี
+- [x] อะไหล่แอร์ราคาส่ง เชียงใหม่
+
+### 8. Competitive/Brand Keywords
+- [x] อะไหล่แอร์ DENSO
+- [x] อะไหล่แอร์ Coolgear
+- [x] อะไหล่แอร์ Formula
+- [x] อะไหล่แอร์ญี่ปุ่น แท้
+- [x] อะไหล่แอร์ TIG
+
+### 9. Service-Related Keywords
+- [x] ตรวจเช็คแอร์รถยนต์
+- [x] เติมน้ำยาแอร์รถยนต์
+- [x] ล้างระบบแอร์รถยนต์
+- [x] บ่อปสิการแอร์รถยนต์
+- [x] ส่วนประกอบแอร์รถยนต์
+
+### Implementation Plan for Priority 4 (Content & Keyword Optimization)
+- [ ] **Phase 1 - Quick Wins** (Week 1-2)
+  - [ ] Update homepage meta tags with "อะไหล่แอร์ รถยนต์" keyword
+  - [ ] Create 5 category pages with optimized H1, descriptions, and internal linking
+  - [ ] Add alt text to all product images with product name + variant
+
+- [ ] **Phase 2 - Blog Content Strategy** (Week 3-4)
+  - [ ] Write 10 blog articles targeting question-based keywords:
+    1. "แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"
+    2. "เลือกอะไหล่แอร์ของแท้ vs เทียม ต่างกันอย่างไร"
+    3. "วิธีบำรุงรักษาคอมแอร์รถยนต์เบื้องต้น"
+    4. "ต้องเปลี่ยนแผงแอร์รถยนต์ทุกกี่ปี"
+    5. "คัมพรสัวร์แอร์: ส่วนประกอบหลักของระบบแอร์"
+    6. "ไดเออร์แอร์คืออะไร? ทำไมสำคัญ?"
+    7. "อะไหล่แอร์ราคาส่งและราคาปลีก ต่างกันเท่าไหร่"
+    8. "เติมน้ำยาแอร์รถยนต์ ควรทำบ่อยแค่ไหน"
+    9. "ซ่อมแอร์รถยนต์ค่าใช้จ่ายคุณควรคาดหวังเท่าไหร่"
+    10. "อะไหล่แอร์ DENSO vs Coolgear vs Formula: เปรียบเทียบ"
+
+- [ ] **Phase 3 - Car Model Landing Pages** (Week 5-6)
+  - [ ] Create pages for top 10 best-selling models in Thailand:
+    - Honda Civic, Accord, CR-V
+    - Toyota Altis, Fortuner, Innova
+    - Isuzu D-Max, Mitsubishi Pajero, Ford Ranger, Nissan Navara
+  - [ ] Each page: product recommendations, common issues, parts fit verification
+
+- [ ] **Phase 4 - Local SEO Optimization** (Week 7-8)
+  - [ ] Create city/region-specific pages:
+    - อะไหล่แอร์รถยนต์ [Bangkok, Chiang Mai, Phuket, etc.]
+  - [ ] Add local contact information and delivery coverage per location
+  - [ ] Optimize for "ของแท้", "ส่งด่วน", "ราคาส่ง" local variants
+
+### Keyword Research Sources
+- Primary research: Website structure analysis (10 product categories)
+- Market research: Competitor analysis (Patara Air, Airrodyon, SUPERPART)
+- Thailand suppliers identified: PACO, Valeo Service Thailand, Formula
+- Search behavior insight: Commercial intent + informational intent mix
+- Target customer segment: Workshop mechanics, car owners, retailers (B2B + B2C)
+
+## Technical SEO Audit Findings (2026-04-26)
+
+Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
+
+### Website Baseline Status
+
+**What's Working ✅**
+- [x] Sitemap.xml exists (31 URLs properly indexed)
+- [x] Robots.txt exists with proper configuration
+  - Allows: `/products`, `/about`, `/faq`, `/knowledge`
+  - Blocks: `/admin/`, `/api/`, `/home2`, `/home3`, `/home4`
+  - Host: https://www.sriwanparts.com
+- [x] HTTPS/SSL active
+- [x] URL structure clean (`/products`, `/about`, `/faq`)
+- [x] Contact info visible (phone, address, hours)
+- [x] Internal linking present
+
+**Critical Issues Found 🔴**
+- ❌ Meta Description missing → -20-30% CTR in search results
+- ❌ Title Tag unclear/inconsistent
+- ❌ Canonical Tags missing → Risk of duplicate content penalties
+- ❌ JSON-LD Structured Data missing → No Rich Snippets
+- ❌ Viewport Meta Tag verification needed
+- ❌ Heading Hierarchy (H1-H3) inconsistent
+- ❌ Alt Text missing on images → No image SEO, worse accessibility
+- ❌ Core Web Vitals unknown → Need baseline measurement
+
+**Medium Issues 🟡**
+- ⚠️ Heavy JavaScript rendering (Next.js Client Components)
+- ⚠️ Image optimization with query params (long URLs)
+- ⚠️ No explicit lazy loading implementation visible
+
+### Week 1-2 Implementation: Critical Fixes (High Impact)
+
+**Task 1: Meta Tags Audit & Implementation**
+- [ ] Audit current page titles (check if all pages have `<title>`)
+- [ ] Audit current meta descriptions (use DevTools/curl)
+- [ ] Create Title/Meta Description template:
+  - Format: `[Product/Category Name] | ศรีวรรณ อะไหล่แอร์`
+  - Example: `คอมแอร์รถยนต์ | ศรีวรรณ อะไหล่แอร์`
+- [ ] Implement in Next.js metadata API (app router):
+  ```typescript
+  export const metadata: Metadata = {
+    title: "อะไหล่แอร์รถยนต์ | ศรีวรรณ อะไหล่แอร์",
+    description: "ขายอะไหล่แอร์รถยนต์คุณภาพสูง ราคาส่ง ส่งด่วนทั่วประเทศ"
+  };
+  ```
+- [ ] Update for each page type:
+  - Homepage (primary keyword + brand)
+  - Category pages (category + keyword + brand)
+  - Product pages (product name + model + brand)
+  - Knowledge articles (article title + keyword)
+- [ ] Verify in production with `curl -s https://sriwanparts.com | grep -E '<title>|<meta name="description"'`
+
+**Task 2: Canonical Tags Implementation**
+- [ ] Add canonical tag to base layout or page-level metadata
+- [ ] Ensure format: `<link rel="canonical" href="https://www.sriwanparts.com/products/..."/>`
+- [ ] Prevent duplicate content from query parameters (e.g., `?utm_source=...`)
+- [ ] Test for canonical chain issues (canonical pointing to another canonical)
+
+**Task 3: JSON-LD Structured Data**
+- [ ] **Organization Schema** (homepage only)
+  ```json
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "ศรีวรรณ อะไหล่แอร์",
+    "url": "https://sriwanparts.com",
+    "telephone": "+66-...",
+    "address": {
+      "@type": "PostalAddress",
+      "addressCountry": "TH"
+    },
+    "logo": "https://sriwanparts.com/logo.png"
+  }
+  ```
+- [ ] **Product Schema** (product pages)
+  ```json
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Product Name",
+    "description": "...",
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "THB",
+      "price": "..."
+    }
+  }
+  ```
+- [ ] **LocalBusiness Schema** (if applicable)
+- [ ] Validate all schemas in [Google Rich Results Test](https://search.google.com/test/rich-results)
+
+**Task 4: Viewport & Mobile Meta Tags Verification**
+- [ ] Confirm viewport meta tag exists: `<meta name="viewport" content="width=device-width, initial-scale=1">`
+- [ ] Test mobile rendering on actual devices or emulator
+- [ ] Check for mobile usability issues in Google Search Console
+
+**Task 5: Heading Hierarchy Audit & Fix**
+- [ ] Audit current heading structure (use DevTools Elements panel)
+- [ ] Correct to: 1 × H1 per page → multiple H2s → H3s under H2s
+- [ ] Example structure:
+  ```
+  H1: Page Title / Primary Keyword
+    H2: Section 1
+      H3: Subsection 1a
+      H3: Subsection 1b
+    H2: Section 2
+      H3: Subsection 2a
+  ```
+- [ ] Verify in lighthouse audit
+
+### Week 3-4 Implementation: Alt Text & Baseline Performance
+
+**Task 6: Alt Text Implementation** (integrates with Priority 2)
+- [ ] Audit all images without alt text
+- [ ] Create alt text guidelines:
+  - Product images: `"[Product Name] [Model] [Variant]" e.g., "Honda Civic AC Compressor"`
+  - Category images: `"[Category] อะไหล่แอร์ | [Description]"`
+  - Hero images: descriptive, keyword-rich
+- [ ] Implement alt text in image component
+- [ ] Test with screen reader (NVDA, JAWS) or browser extension
+
+**Task 7: Core Web Vitals Baseline Measurement**
+- [ ] Run [PageSpeed Insights](https://pagespeed.web.dev) on:
+  - Homepage (desktop + mobile)
+  - Sample product page
+  - Sample category page
+  - Sample knowledge article
+- [ ] Record baseline for each metric:
+  - LCP (Largest Contentful Paint) — target < 2.5s
+  - INP (Interaction to Next Paint) — target < 200ms
+  - CLS (Cumulative Layout Shift) — target < 0.1
+- [ ] Document results in Excel or Google Sheet for tracking
+- [ ] Check Google Search Console → Core Web Vitals for field data (actual users)
+- [ ] Identify pages below "Good" threshold
+
+**Task 8: Image Optimization Audit** (integrates with Priority 2)
+- [ ] Review all image URLs for optimization:
+  - Check if `next/image` is used (auto WebP conversion)
+  - Check query parameters (e.g., `?url=...&w=3840&q=75`)
+  - Verify srcset generation for responsive images
+- [ ] Test image rendering on slow 4G (DevTools Throttling)
+- [ ] Measure image file sizes (target: < 100KB for typical product images)
+- [ ] Check Lighthouse "Image Elements are Missing Explicit Width and Height" warnings
+
+### Week 5-6 Implementation: Server Optimization & Crawlability
+
+**Task 9: Caching Strategy Implementation**
+- [ ] Configure `next.config.ts` cache headers:
+  ```javascript
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=3600, must-revalidate' }
+        ]
+      },
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
+        ]
+      }
+    ];
+  }
+  ```
+- [ ] Test cache headers with `curl -I https://sriwanparts.com`
+- [ ] Consider ISR for product pages that update weekly
+
+**Task 10: JavaScript & CSS Performance**
+- [ ] Audit client-side JavaScript:
+  - [ ] Identify unnecessary `'use client'` directives
+  - [ ] Check bundle size with `npm run build`
+  - [ ] Use `useTransition` for Server Action calls
+- [ ] Verify CSS is not render-blocking (Tailwind should be fine)
+- [ ] Check for unused JavaScript in production bundle
+
+**Task 11: Crawlability Verification**
+- [ ] Check Search Console → Crawl Stats for errors
+- [ ] Look for 404s, blocked resources, crawl anomalies
+- [ ] Verify CSS/JS are not blocked by robots.txt or server
+- [ ] Check sitemap.xml is discoverable at `/sitemap.xml`
+
+**Task 12: Mobile Responsiveness Testing**
+- [ ] Test on physical devices or emulators:
+  - [ ] Mobile (375px): iPhone SE, Galaxy A12
+  - [ ] Tablet (768px): iPad, Galaxy Tab
+  - [ ] Desktop (1280px+): standard monitors
+- [ ] Check touch targets ≥ 48px × 48px
+- [ ] Test navigation on mobile (readable, clickable)
+- [ ] Verify forms work on mobile
+- [ ] Test on slow 4G network (DevTools Throttling)
+
+### Success Criteria & Verification
+
+| Task | Pass Criteria | Verification Method |
+|------|--------------|-------------------|
+| Meta Tags | All pages have unique title + description | `curl -I` + browser DevTools |
+| Canonical | No duplicate content warnings in GSC | Search Console → Pages |
+| JSON-LD | 100% valid schema for all types | [Rich Results Test](https://search.google.com/test/rich-results) |
+| Viewport | Mobile-first rendering | Mobile device test + Lighthouse |
+| Heading | 1 H1 + semantic H2-H3 hierarchy | DevTools Elements panel |
+| Alt Text | All images have descriptive alt | Screen reader test + DevTools |
+| CWV LCP | < 2.5s on desktop, < 3.5s mobile | PageSpeed Insights + field data |
+| CWV INP | < 200ms on 75th percentile | PageSpeed Insights field data |
+| CWV CLS | < 0.1 (no unexpected shifts) | PageSpeed Insights + visual test |
+| Caching | Static: 1yr, HTML: 1hr, Images: 1day | HTTP headers verification |
+| Mobile UX | All pages readable, clickable, fast | Physical device testing |
+
+### Timeline & Ownership
+- **Week 1-2**: Meta tags + Canonical + JSON-LD (Owner: Developer)
+- **Week 3-4**: Alt text + CWV baseline (Owner: Content + Developer)
+- **Week 5-6**: Caching + JS optimization (Owner: DevOps/Developer)
+- **Ongoing**: Monitor in Search Console + Analytics

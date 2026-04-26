@@ -15,7 +15,7 @@ const ProductFilterBarFallback = () => (
       <span className="block h-4 w-4 rounded-full bg-slate-200/80" />
     </div>
 
-    <div className="space-y-6 px-5 py-5">
+    <div className="hidden space-y-6 px-5 py-5 lg:block">
       <section className="space-y-3">
         <div className="space-y-2">
           <div className="h-3 w-14 rounded-full bg-slate-100" />
