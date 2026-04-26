@@ -25,15 +25,15 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // Next.js requires unsafe-inline for hydration scripts
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // Next.js requires unsafe-inline for hydration scripts; Google Analytics
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
       // Allow images from self, Supabase storage, and data URIs
       "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
       "font-src 'self' data:",
-      // Allow API calls to Supabase
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in",
+      // Allow API calls to Supabase and Google Analytics
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://www.googletagmanager.com",
       // Allow trusted iframe embeds such as Google Maps on the storefront
       "frame-src 'self' https://www.google.com https://maps.google.com",
       // Allow embedding only from same origin (for iframe print from admin)
