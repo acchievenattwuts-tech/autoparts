@@ -3630,12 +3630,12 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Check Coverage report, Mobile Usability, Core Web Vitals tabs
   - Set up email alerts for critical issues
   - Confirm sitemap at `/sitemap.xml` is submitted and indexed
-- [ ] **April 28** — Set up Google Analytics 4
+- [x] **April 28** — Set up Google Analytics 4
   - Create GA4 property → get Measurement ID
-  - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example`
-  - Implement `next/script` with `strategy="afterInteractive"` — no logic change
+  - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example` ✅
+  - Implement `next/script` with `strategy="afterInteractive"` ✅ (`components/shared/GoogleAnalytics.tsx`)
   - Set up conversion goals: LINE button click, phone click, product page view
-  - Verify events in GA4 DebugView
+  - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local)
 - [ ] **April 29-30** — Verify caching headers on Vercel
   - `curl -I https://sriwanparts.com` → check Cache-Control
   - `curl -I https://sriwanparts.com/_next/static/` → should be `max-age=31536000`
@@ -4112,12 +4112,13 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - [ ] Set up email alerts for critical issues
   - [ ] Timeline: WEEK 1 (20 minutes)
 
-- [ ] **Analytics 4 Setup** (High Priority)
-  - [ ] Add GA4 measurement ID to `.env`
-  - [ ] Implement gtag tracking (or next-google-analytics)
-  - [ ] Verify events are firing: page_view, click, form_submit
-  - [ ] Set up conversion goals (e.g., LINE contact clicks)
-  - [ ] Timeline: WEEK 1-2 (1-2 hours)
+- [x] **Analytics 4 Setup** ✅ DONE (2026-04-26)
+  - [x] Add `NEXT_PUBLIC_GA_ID` to `.env.example`
+  - [x] `components/shared/GoogleAnalytics.tsx` — `next/script afterInteractive`, no-op if env unset
+  - [x] Injected into `app/layout.tsx` (root layout)
+  - [ ] Add `NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX` to `.env.local` on Vercel (owner action)
+  - [ ] Verify page_view events in GA4 DebugView after deploy
+  - [ ] Set up conversion goals (LINE contact clicks)
 
 **Already Verified (No action needed):**
 - ✅ `next/image` used throughout
@@ -4208,22 +4209,17 @@ Based on codebase analysis, these are the REAL gaps to fix:
 
 ---
 
-### Gap 5: Google Analytics 4 Not Set Up 🔴
-**Issue:** No tracking of user behavior, traffic sources, conversions
+### Gap 5: Google Analytics 4 ✅ DONE (2026-04-26)
+**Code:** `components/shared/GoogleAnalytics.tsx` + `app/layout.tsx`
 
-**Action:**
-- [ ] Create GA4 property in Google Analytics console
-- [ ] Add measurement ID to `.env` file
-- [ ] Implement GA4 tracking script (gtag or next-google-analytics package)
-- [ ] Set up conversion goals:
-  - Contact via LINE button click
-  - Form submission (if any)
-  - Product page view
-  - Category page view
-- [ ] Verify events firing via DebugView
-- [ ] Create dashboard for: traffic source, top pages, user behavior
+**Remaining owner actions:**
+- [ ] Create GA4 property at analytics.google.com → get Measurement ID `G-XXXXXXXXXX`
+- [ ] Add `NEXT_PUBLIC_GA_ID=G-XXXXXXXXXX` to Vercel environment variables
+- [ ] Verify page_view events in GA4 DebugView after next deploy
+- [ ] Set up conversion goals: LINE button click, product page view
+- [ ] Create dashboard: traffic source, top pages, bounce rate
 
-**Timeline:** WEEK 1-2 (2-3 hours) | **Impact:** Data-driven optimization decisions
+**Timeline:** Owner can complete in ~30 min once GA4 property is created
 
 ---
 

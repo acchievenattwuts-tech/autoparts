@@ -1,6 +1,7 @@
 import { Kanit, Sarabun } from "next/font/google";
 import "./globals.css";
 import { buildDefaultMetadataBase } from "@/lib/seo";
+import GoogleAnalytics from "@/components/shared/GoogleAnalytics";
 
 const kanit = Kanit({
   variable: "--font-kanit",
@@ -28,7 +29,10 @@ export default function RootLayout({
       lang="th"
       className={`${kanit.variable} ${sarabun.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col font-sarabun">{children}</body>
+      <body className="flex min-h-full flex-col font-sarabun">
+        <GoogleAnalytics />
+        {children}
+      </body>
     </html>
   );
 }
