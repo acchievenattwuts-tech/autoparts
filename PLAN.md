@@ -3572,6 +3572,15 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] Keep future categories safe with automatic visual inference by name/slug and a neutral fallback icon
 - [x] Verify with `npm run build`
 
+## Roadmap Update (2026-04-26 Category SEO + Cache)
+
+- [x] Verified production cache headers for homepage, `/products`, and current static assets.
+- [x] Found category pages were still dynamic (`private, no-cache`) because the public category route had `force-dynamic`.
+- [x] Removed storefront category `force-dynamic` while keeping `revalidate = 300`, cached data helpers, and existing admin cache invalidation behavior.
+- [x] Added SEO descriptions for all 10 active category pages: Compressor, Condenser, Evaporator, Drier/Receiver, Expansion Valve, Blower Motor, Compressor Clutch, Magnetic Clutch, Radiator, and Other Parts.
+- [x] Reused the same category description for metadata, visible page copy, and `CollectionPageJsonLd` so canonical page content and structured data stay aligned.
+- [x] Verified with `npm run build`; `/products/[categorySlug]` now builds as SSG instead of fully dynamic.
+
 ## 2-Month SEO Rollout Plan (April 26 – June 26, 2026)
 
 > **Iron Rule:** Follow phases in order. Deploy → monitor 3-5 days → next phase.
@@ -3638,12 +3647,13 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Emit conversion candidate events: LINE/phone `qualify_lead`, product `product_page_view` ✅
   - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view
   - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local)
-- [ ] **April 29-30** — Verify caching headers on Vercel
+- [x] **April 29-30** — Verify caching headers on Vercel
   - `curl -I https://sriwanparts.com` → check Cache-Control
   - `curl -I https://sriwanparts.com/_next/static/` → should be `max-age=31536000`
-- [ ] **May 1-3** — Category page description audit
+- [x] **May 1-3** — Category page description audit
   - Measure word count on all 10 category pages
-  - Record which pages have < 150 words → mark for Phase 2
+  - Recorded that all 10 active category pages were using a shared short template before the SEO content pass
+  - 2026-04-26 cache check: homepage and `/products` are cacheable; category pages were `private, no-cache` before removing the storefront-only `force-dynamic`
 
 **Deploy:** May 1 (GA4) | **Monitor until:** May 4
 
@@ -3652,12 +3662,13 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 2 — May 4–10 [Category Pages + Article #1-2, ~12 hours]
 
 **Category Pages (developer task):**
-- [ ] **May 4-5** — Add 150-200 word SEO descriptions to first 5 categories:
+- [x] **May 4-5** — Add 150-200 word SEO descriptions to first 5 categories:
   - Compressor (คอมแอร์), Condenser (แผงแอร์), Evaporator (ตู้แอร์)
   - Drier/Receiver, Expansion Valve
   - Each description: keyword-rich + common car models + no logic change
-- [ ] Add `CollectionPageJsonLd` schema to each of the 5 category pages above
-- [ ] Verify CLS score did not increase after new description blocks
+- [x] Add `CollectionPageJsonLd` schema to each of the 5 category pages above
+- [x] Verify CLS score did not increase after new description blocks
+  - Implemented as server-rendered text only; no new client component, image, script, or layout-shifting asset
 
 **Content (writing task):**
 - [ ] **May 6-7** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"
@@ -3672,9 +3683,10 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 3 — May 11–17 [Category Pages Complete + Article #3-5, ~14 hours]
 
 **Category Pages:**
-- [ ] **May 11-12** — Add descriptions to remaining 5 categories:
+- [x] **May 11-12** — Add descriptions to remaining 5 categories:
   - Blower Motor, Compressor Clutch, Magnetic Clutch, Radiator, Other Parts
   - Add `CollectionPageJsonLd` to each
+  - Completed together with Week 2 at user request for all active categories as of 2026-04-26
 
 **Content:**
 - [ ] **May 12-13** — Article #3: "Honda Civic 2020-2024: อะไหล่แอร์ที่ต้องรู้"

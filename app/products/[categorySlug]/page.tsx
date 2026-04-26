@@ -1,6 +1,5 @@
 export const revalidate = 300;
 import type { Metadata } from "next";
-export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -15,6 +14,7 @@ import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
+import { getCategorySeoDescription } from "@/lib/category-seo-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const category = await getActiveStorefrontCategoryBySlug(categorySlug);
   const canonicalPath = getCategoryPath(category);
   const title = `${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์`;
-  const description = `รวมสินค้าในหมวด ${category.name} จากร้านศรีวรรณ อะไหล่แอร์ ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ในนครสวรรค์ พร้อมค้นหาและสอบถามร้านผ่าน LINE OA ได้ทันที`;
+  const description = getCategorySeoDescription(category);
 
   return {
     title,
@@ -106,7 +106,7 @@ const CategoryPage = async ({ params }: Props) => {
   }
 
   const canonicalUrl = absoluteUrl(canonicalPath);
-  const description = `รวมสินค้าในหมวด ${category.name} สำหรับลูกค้าที่กำลังหาอะไหล่แอร์รถยนต์ หม้อน้ำรถยนต์ และอะไหล่ที่เกี่ยวข้องจากร้านในนครสวรรค์ พร้อมส่งข้อมูลให้ร้านช่วยเช็กต่อได้ทันที`;
+  const description = getCategorySeoDescription(category);
 
   return (
     <>
