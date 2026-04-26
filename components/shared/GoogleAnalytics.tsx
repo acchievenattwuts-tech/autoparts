@@ -21,14 +21,16 @@ const GoogleAnalytics = () => {
       window.dataLayer.push(args);
     }
     window.gtag = gtag;
-    gtag("js", new Date());
-    gtag("config", GA_ID);
   }, []);
 
   return (
     <Script
       src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
       strategy="afterInteractive"
+      onLoad={() => {
+        window.gtag("js", new Date());
+        window.gtag("config", GA_ID);
+      }}
     />
   );
 };
