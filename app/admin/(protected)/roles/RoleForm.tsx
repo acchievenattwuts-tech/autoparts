@@ -65,7 +65,6 @@ const MENU_LABELS: Record<string, string> = {
   "cash_bank": "บัญชีเงินสด / ธนาคาร",
   "cash_bank.transfers": "โอนเงินระหว่างบัญชี",
   "cash_bank.adjustments": "ปรับยอดเงิน",
-  "settings.company": "ตั้งค่าร้านค้า",
   "audit_log": "Audit Log",
   content: "คอนเทนต์ Facebook",
 };
