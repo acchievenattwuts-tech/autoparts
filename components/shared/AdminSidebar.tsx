@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -31,6 +31,8 @@ import {
   Megaphone,
   ListChecks,
   ScrollText,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -140,6 +142,7 @@ interface AdminSidebarProps {
 
 const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
   const pathname = usePathname();
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const canAccess = (permission?: string) =>
     !permission || permissions === undefined || permissions.includes(permission);
@@ -173,6 +176,15 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
 
   const isActive = (href: string) => href === activeHref;
 
+  const isSectionExpanded = (section: string, hasActiveItem: boolean) => expandedSections[section] ?? hasActiveItem;
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [section]: !(current[section] ?? false),
+    }));
+  };
+
   return (
     <div className="flex h-full w-64 flex-col bg-[#1e3a5f] text-white dark:border-r dark:border-white/10 dark:bg-[#0f172a]">
       <div className="flex items-center justify-between border-b border-white/10 p-4 dark:border-white/10">
@@ -190,27 +202,41 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {visibleItems.map((item, idx) => {
           if ("section" in item) {
+            const hasActiveItem = item.items.some((sub) => isActive(sub.href));
+            const showSectionItems = isSectionExpanded(item.section, hasActiveItem);
+
             return (
               <div key={`${item.section}-${idx}`} className="pt-3">
-                <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-blue-300 dark:text-slate-500">
-                  {item.section}
-                </p>
-                {item.items.map((sub) => (
-                  <Link
-                    key={sub.href}
-                    href={sub.href}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                      isActive(sub.href)
-                        ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
-                        : "text-blue-100 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
-                    )}
-                  >
-                    <sub.icon size={18} />
-                    {sub.label}
-                  </Link>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => toggleSection(item.section)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider transition-colors",
+                    hasActiveItem
+                      ? "bg-white/10 text-white dark:bg-white/8 dark:text-slate-100"
+                      : "text-blue-300 hover:bg-white/8 hover:text-white dark:text-slate-500 dark:hover:bg-white/6 dark:hover:text-slate-300"
+                  )}
+                >
+                  <span>{item.section}</span>
+                  {showSectionItems ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                {showSectionItems &&
+                  item.items.map((sub) => (
+                    <Link
+                      key={sub.href}
+                      href={sub.href}
+                      onClick={onClose}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                        isActive(sub.href)
+                          ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
+                          : "text-blue-100 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
+                      )}
+                    >
+                      <sub.icon size={18} />
+                      {sub.label}
+                    </Link>
+                  ))}
               </div>
             );
           }
