@@ -1,10 +1,17 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { dbTx } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { generateCashBankAdjustmentNo, generateCashBankTransferNo } from "@/lib/doc-number";
 import {
+  AuditAction,
   CashBankAccountType,
   CashBankAdjustmentStatus,
   CashBankDirection,
@@ -141,9 +148,66 @@ function getPrimaryTransferRuleMessage(
   }
 }
 
+async function getCashBankAccountAuditSnapshot(accountId: string) {
+  return db.cashBankAccount.findUnique({
+    where: { id: accountId },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      type: true,
+      bankName: true,
+      accountNo: true,
+      promptPayId: true,
+      isPrimaryTransferAccount: true,
+      openingBalance: true,
+      openingDate: true,
+      isActive: true,
+    },
+  });
+}
+
+async function getCashBankTransferAuditSnapshot(transferId: string) {
+  return db.cashBankTransfer.findUnique({
+    where: { id: transferId },
+    select: {
+      id: true,
+      transferNo: true,
+      transferDate: true,
+      amount: true,
+      note: true,
+      status: true,
+      cancelNote: true,
+      cancelledAt: true,
+      fromAccount: { select: { code: true, name: true } },
+      toAccount: { select: { code: true, name: true } },
+    },
+  });
+}
+
+async function getCashBankAdjustmentAuditSnapshot(adjustmentId: string) {
+  return db.cashBankAdjustment.findUnique({
+    where: { id: adjustmentId },
+    select: {
+      id: true,
+      adjustNo: true,
+      adjustDate: true,
+      direction: true,
+      amount: true,
+      reason: true,
+      note: true,
+      status: true,
+      cancelNote: true,
+      cancelledAt: true,
+      account: { select: { code: true, name: true } },
+    },
+  });
+}
+
 export async function seedDefaultCashBankAccounts() {
   try {
-    await requirePermission("cash_bank.manage");
+    const session = await requirePermission("cash_bank.manage");
+    const requestContext = await getRequestContext();
 
     const openingDate = new Date();
     openingDate.setHours(0, 0, 0, 0);
@@ -183,6 +247,16 @@ export async function seedDefaultCashBankAccounts() {
       return { created, skipped };
     });
 
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "CashBankAccountSeed",
+      entityId: "default",
+      entityRef: `created:${summary.created}`,
+      meta: summary,
+    });
+
     revalidateCashBankViews();
 
     return {
@@ -200,7 +274,9 @@ export async function seedDefaultCashBankAccounts() {
 
 export async function createCashBankAccount(formData: FormData) {
   try {
-    await requirePermission("cash_bank.manage");
+    const session = await requirePermission("cash_bank.manage");
+    const requestContext = await getRequestContext();
+    let createdAccountId = "";
 
     const parsed = accountSchema.safeParse({
       code: formData.get("code"),
@@ -226,7 +302,7 @@ export async function createCashBankAccount(formData: FormData) {
         throw new Error(primaryValidationError);
       }
 
-      await tx.cashBankAccount.create({
+      const account = await tx.cashBankAccount.create({
         data: {
           code: data.code,
           name: data.name,
@@ -240,7 +316,23 @@ export async function createCashBankAccount(formData: FormData) {
           isActive: data.isActive,
         },
       });
+      createdAccountId = account.id;
     });
+
+    const afterSnapshot = createdAccountId
+      ? await getCashBankAccountAuditSnapshot(createdAccountId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "CashBankAccount",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        after: afterSnapshot,
+      });
+    }
 
     revalidateCashBankViews();
     return { success: true };
@@ -255,7 +347,8 @@ export async function createCashBankAccount(formData: FormData) {
 
 export async function updateCashBankAccount(accountId: string, formData: FormData) {
   try {
-    await requirePermission("cash_bank.manage");
+    const session = await requirePermission("cash_bank.manage");
+    const requestContext = await getRequestContext();
 
     const parsed = accountSchema.safeParse({
       code: formData.get("code"),
@@ -275,6 +368,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
     if (validationError) return { error: validationError };
 
     const data = parsed.data;
+    const beforeSnapshot = await getCashBankAccountAuditSnapshot(accountId);
     await dbTx(async (tx) => {
       const primaryValidationError = await validatePrimaryTransferAccountAvailability(tx, data, accountId);
       if (primaryValidationError) {
@@ -299,6 +393,21 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
       await recalculateCashBankAccount(tx, accountId);
     });
 
+    const afterSnapshot = await getCashBankAccountAuditSnapshot(accountId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CashBankAccount",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
     revalidateCashBankViews();
     return { success: true };
   } catch (error) {
@@ -313,6 +422,8 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
 export async function createCashBankTransfer(formData: FormData) {
   try {
     const session = await requirePermission("cash_bank.transfers.create");
+    const requestContext = await getRequestContext();
+    let createdTransferId = "";
 
     const parsed = transferSchema.safeParse({
       transferDate: formData.get("transferDate"),
@@ -345,6 +456,7 @@ export async function createCashBankTransfer(formData: FormData) {
           userId: session.user.id!,
         },
       });
+      createdTransferId = transfer.id;
 
       await replaceCashBankSourceMovements(tx, CashBankSourceType.TRANSFER, transfer.id, [
         {
@@ -366,6 +478,21 @@ export async function createCashBankTransfer(formData: FormData) {
       ]);
     });
 
+    const afterSnapshot = createdTransferId
+      ? await getCashBankTransferAuditSnapshot(createdTransferId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "CashBankTransfer",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.transferNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidateCashBankViews();
     return { success: true };
   } catch (error) {
@@ -376,11 +503,13 @@ export async function createCashBankTransfer(formData: FormData) {
 
 export async function cancelCashBankTransfer(transferId: string, formData: FormData) {
   try {
-    await requirePermission("cash_bank.transfers.cancel");
+    const session = await requirePermission("cash_bank.transfers.cancel");
+    const requestContext = await getRequestContext();
 
     const cancelNote = String(formData.get("cancelNote") || "").trim();
     if (!cancelNote) return { error: "กรุณาระบุเหตุผลที่ยกเลิกรายการโอนเงิน" };
 
+    const beforeSnapshot = await getCashBankTransferAuditSnapshot(transferId);
     await dbTx(async (tx) => {
       const transfer = await tx.cashBankTransfer.findUnique({
         where: { id: transferId },
@@ -401,6 +530,22 @@ export async function cancelCashBankTransfer(transferId: string, formData: FormD
       });
     });
 
+    const afterSnapshot = await getCashBankTransferAuditSnapshot(transferId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "CashBankTransfer",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.transferNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote },
+      });
+    }
+
     revalidateCashBankViews();
     return { success: true };
   } catch (error) {
@@ -412,6 +557,8 @@ export async function cancelCashBankTransfer(transferId: string, formData: FormD
 export async function createCashBankAdjustment(formData: FormData) {
   try {
     const session = await requirePermission("cash_bank.adjustments.create");
+    const requestContext = await getRequestContext();
+    let createdAdjustmentId = "";
 
     const parsed = adjustmentSchema.safeParse({
       adjustDate: formData.get("adjustDate"),
@@ -443,6 +590,7 @@ export async function createCashBankAdjustment(formData: FormData) {
           userId: session.user.id!,
         },
       });
+      createdAdjustmentId = adjustment.id;
 
       await replaceCashBankSourceMovements(tx, CashBankSourceType.ADJUSTMENT, adjustment.id, [
         {
@@ -456,6 +604,21 @@ export async function createCashBankAdjustment(formData: FormData) {
       ]);
     });
 
+    const afterSnapshot = createdAdjustmentId
+      ? await getCashBankAdjustmentAuditSnapshot(createdAdjustmentId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "CashBankAdjustment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.adjustNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidateCashBankViews();
     return { success: true };
   } catch (error) {
@@ -466,7 +629,8 @@ export async function createCashBankAdjustment(formData: FormData) {
 
 export async function updateCashBankAdjustment(adjustmentId: string, formData: FormData) {
   try {
-    await requirePermission("cash_bank.adjustments.update");
+    const session = await requirePermission("cash_bank.adjustments.update");
+    const requestContext = await getRequestContext();
 
     const parsed = adjustmentSchema.safeParse({
       adjustDate: formData.get("adjustDate"),
@@ -482,6 +646,7 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
       return { error: "วันที่ปรับยอดไม่ถูกต้อง" };
     }
     const docDate = parseDateOnlyToDate(parsed.data.adjustDate);
+    const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
 
     await dbTx(async (tx) => {
       const existing = await tx.cashBankAdjustment.findUnique({
@@ -516,6 +681,21 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
       ]);
     });
 
+    const afterSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CashBankAdjustment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.adjustNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
     revalidateCashBankViews();
     return { success: true };
   } catch (error) {
@@ -526,11 +706,13 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
 
 export async function cancelCashBankAdjustment(adjustmentId: string, formData: FormData) {
   try {
-    await requirePermission("cash_bank.adjustments.cancel");
+    const session = await requirePermission("cash_bank.adjustments.cancel");
+    const requestContext = await getRequestContext();
 
     const cancelNote = String(formData.get("cancelNote") || "").trim();
     if (!cancelNote) return { error: "กรุณาระบุเหตุผลที่ยกเลิกรายการปรับยอด" };
 
+    const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
     await dbTx(async (tx) => {
       const adjustment = await tx.cashBankAdjustment.findUnique({
         where: { id: adjustmentId },
@@ -550,6 +732,22 @@ export async function cancelCashBankAdjustment(adjustmentId: string, formData: F
         },
       });
     });
+
+    const afterSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "CashBankAdjustment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.adjustNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote },
+      });
+    }
 
     revalidateCashBankViews();
     return { success: true };

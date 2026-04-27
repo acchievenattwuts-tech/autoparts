@@ -4,6 +4,13 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+  writeAuditLogTx,
+} from "@/lib/audit-log";
+import {
+  AuditAction,
   ContentApprovalStatus,
   ContentNotificationType,
   ContentPostStatus,
@@ -115,16 +122,87 @@ async function listRecentContentTopicHistory() {
   });
 }
 
+async function getContentPostAuditSnapshot(postId: string) {
+  return db.contentPost.findUnique({
+    where: { id: postId },
+    select: {
+      id: true,
+      title: true,
+      caption: true,
+      imageUrl: true,
+      linkUrl: true,
+      status: true,
+      scheduledAt: true,
+      postedAt: true,
+      approvedAt: true,
+      cancelledAt: true,
+      failedAt: true,
+      lastError: true,
+      facebookPageId: true,
+      variantGroupId: true,
+      variantNo: true,
+      isSelectedVariant: true,
+      draftSource: true,
+      metaPostId: true,
+      createdByUserId: true,
+      approvedByUserId: true,
+    },
+  });
+}
+
+async function writeContentAuditLog(params: {
+  session: Awaited<ReturnType<typeof requirePermission>> | null;
+  requestContext: Awaited<ReturnType<typeof getRequestContext>>;
+  action: AuditAction;
+  postId: string;
+  before?: unknown;
+  after?: unknown;
+  meta?: unknown;
+}) {
+  const entityRef =
+    (params.after as { title?: string | null } | undefined)?.title ??
+    (params.before as { title?: string | null } | undefined)?.title ??
+    params.postId;
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(params.session),
+    ...params.requestContext,
+    action: params.action,
+    entityType: "ContentPost",
+    entityId: params.postId,
+    entityRef,
+    before: params.before,
+    after: params.after,
+    meta: params.meta,
+  });
+}
+
 async function createDraftVariants(params: {
   drafts: Array<{ title: string; caption: string }>;
   topic: string;
   createdByUserId: string;
   facebookPageId: string;
   draftSource: string;
+  actorName?: string | null;
+  actorRole?: string | null;
+  requestContext?: Awaited<ReturnType<typeof getRequestContext>>;
 }) {
   const variantGroupId = randomUUID();
 
-  await db.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
+    const createdPosts: Array<{
+      id: string;
+      title: string | null;
+      caption: string;
+      status: ContentPostStatus;
+      variantGroupId: string | null;
+      variantNo: number | null;
+      isSelectedVariant: boolean;
+      draftSource: string | null;
+      facebookPageId: string | null;
+      createdByUserId: string | null;
+    }> = [];
+
     for (const [index, draft] of params.drafts.entries()) {
       const post = await tx.contentPost.create({
         data: {
@@ -142,6 +220,20 @@ async function createDraftVariants(params: {
         },
       });
 
+      const auditSnapshot = {
+        id: post.id,
+        title: post.title,
+        caption: post.caption,
+        status: post.status,
+        variantGroupId: post.variantGroupId,
+        variantNo: post.variantNo,
+        isSelectedVariant: post.isSelectedVariant,
+        draftSource: post.draftSource,
+        facebookPageId: post.facebookPageId,
+        createdByUserId: post.createdByUserId,
+      };
+      createdPosts.push(auditSnapshot);
+
       await tx.contentAuditLog.create({
         data: {
           postId: post.id,
@@ -150,7 +242,26 @@ async function createDraftVariants(params: {
           detail: `สร้าง draft แบบที่ ${index + 1} จากหัวข้อ ${params.topic}`,
         },
       });
+      if (params.requestContext) {
+        await writeAuditLogTx(tx, {
+          userId: params.createdByUserId,
+          userName: params.actorName ?? null,
+          userRole: params.actorRole ?? null,
+          ...params.requestContext,
+          action: AuditAction.CREATE,
+          entityType: "ContentPost",
+          entityId: post.id,
+          entityRef: post.title ?? post.id,
+          after: auditSnapshot,
+          meta: {
+            topic: params.topic,
+            variantNo: index + 1,
+          },
+        });
+      }
     }
+
+    return createdPosts;
   });
 }
 
@@ -296,6 +407,7 @@ export async function generateContentDraftsAction(formData: FormData) {
   }
 
   try {
+    const requestContext = await getRequestContext();
     const recentPosts = await listRecentContentTopicHistory();
     const drafts = await generateContentDraftIdeas({
       ...parsed.data,
@@ -308,6 +420,9 @@ export async function generateContentDraftsAction(formData: FormData) {
       createdByUserId: session.user.id,
       facebookPageId: config.facebookPageId,
       draftSource: config.openAiApiKey ? "AI_OPENAI" : "TEMPLATE_FALLBACK",
+      actorName: session.user.name ?? session.user.email ?? null,
+      actorRole: session.user.role ?? null,
+      requestContext,
     });
 
     revalidateContentPaths();
@@ -387,6 +502,7 @@ export async function autoGenerateTopicAndDraftsAction(formData: FormData) {
   }
 
   try {
+    const requestContext = await getRequestContext();
     const recentPosts = await listRecentContentTopicHistory();
     const topics = await suggestContentTopics({
       businessType: parsed.data.businessType,
@@ -419,6 +535,9 @@ export async function autoGenerateTopicAndDraftsAction(formData: FormData) {
       createdByUserId: session.user.id,
       facebookPageId: config.facebookPageId,
       draftSource: config.openAiApiKey ? "AI_OPENAI" : "TEMPLATE_FALLBACK",
+      actorName: session.user.name ?? session.user.email ?? null,
+      actorRole: session.user.role ?? null,
+      requestContext,
     });
 
     revalidateContentPaths();
@@ -485,6 +604,17 @@ export async function updateContentDraftAction(formData: FormData) {
     return { error: "บันทึก draft ไม่สำเร็จ" };
   }
 
+  const afterSnapshot = await getContentPostAuditSnapshot(parsed.data.id);
+  if (afterSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.id,
+      after: afterSnapshot,
+    });
+  }
+
   revalidateContentPaths(parsed.data.id);
   return { success: true };
 }
@@ -538,6 +668,20 @@ export async function selectContentVariantAction(formData: FormData) {
   } catch (error) {
     console.error("[selectContentVariantAction]", error);
     return { error: "เลือก draft ไม่สำเร็จ" };
+  }
+
+  const selectedSnapshot = await getContentPostAuditSnapshot(postId);
+  if (selectedSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId,
+      after: selectedSnapshot,
+      meta: {
+        variantGroupId: post.variantGroupId,
+      },
+    });
   }
 
   revalidateContentPaths(postId);
@@ -651,6 +795,20 @@ export async function requestContentApprovalAction(formData: FormData) {
     return { error: "ส่งคำขออนุมัติไม่สำเร็จ" };
   }
 
+  const approvalRequestedSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (approvalRequestedSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.postId,
+      after: approvalRequestedSnapshot,
+      meta: {
+        approverUserId: parsed.data.approverUserId,
+      },
+    });
+  }
+
   revalidateContentPaths(parsed.data.postId);
   return { success: true };
 }
@@ -757,6 +915,20 @@ export async function approveAndScheduleContentAction(formData: FormData) {
     return { error: "อนุมัติและตั้งเวลาโพสต์ไม่สำเร็จ" };
   }
 
+  const scheduledSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (scheduledSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.postId,
+      after: scheduledSnapshot,
+      meta: {
+        scheduledAt,
+      },
+    });
+  }
+
   revalidateContentPaths(parsed.data.postId);
   return { success: true };
 }
@@ -798,6 +970,20 @@ export async function approveAndPublishNowAction(formData: FormData) {
   } catch (error) {
     console.error("[approveAndPublishNowAction]", error);
     return { error: "โพสต์ทันทีไม่สำเร็จ" };
+  }
+
+  const publishedSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (publishedSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.postId,
+      after: publishedSnapshot,
+      meta: {
+        publishMode: "now",
+      },
+    });
   }
 
   revalidateContentPaths(parsed.data.postId);
@@ -886,6 +1072,20 @@ export async function requestRevisionContentAction(formData: FormData) {
     return { error: "ตีกลับ draft ไม่สำเร็จ" };
   }
 
+  const revisionSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (revisionSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.postId,
+      after: revisionSnapshot,
+      meta: {
+        decisionNote: parsed.data.decisionNote?.trim() || null,
+      },
+    });
+  }
+
   revalidateContentPaths(parsed.data.postId);
   return { success: true };
 }
@@ -950,6 +1150,17 @@ export async function cancelContentPostAction(formData: FormData) {
   } catch (error) {
     console.error("[cancelContentPostAction]", error);
     return { error: "ยกเลิกโพสต์ไม่สำเร็จ" };
+  }
+
+  const cancelledSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (cancelledSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.CANCEL,
+      postId: parsed.data.postId,
+      after: cancelledSnapshot,
+    });
   }
 
   revalidateContentPaths(parsed.data.postId);
@@ -1041,6 +1252,20 @@ export async function retryFailedScheduledPublishAction(formData: FormData) {
   } catch (error) {
     console.error("[retryFailedScheduledPublishAction]", error);
     return { error: "REQUEUE_PUBLISH_FAILED" };
+  }
+
+  const requeuedSnapshot = await getContentPostAuditSnapshot(parsed.data.postId);
+  if (requeuedSnapshot) {
+    await writeContentAuditLog({
+      session,
+      requestContext: await getRequestContext(),
+      action: AuditAction.UPDATE,
+      postId: parsed.data.postId,
+      after: requeuedSnapshot,
+      meta: {
+        runAt,
+      },
+    });
   }
 
   revalidateContentPaths(parsed.data.postId);

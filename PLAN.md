@@ -4645,12 +4645,12 @@ Implementation progress (2026-04-27, phase 1):
   - [ ] `PurchaseReturn` (`app/admin/(protected)/purchase-returns/actions.ts`)
   - [ ] `SupplierAdvance` (`app/admin/(protected)/supplier-advances/actions.ts`)
   - [ ] `SupplierPayment` (`app/admin/(protected)/supplier-payments/actions.ts`)
-  - [ ] `Expense` (`app/admin/(protected)/expenses/actions.ts`)
-  - [ ] `Adjustment` (`app/admin/(protected)/stock/adjustments/...`)
-  - [ ] `BF` (`app/admin/(protected)/stock/bf/...`)
-  - [ ] `Warranty` (`app/admin/(protected)/warranties/actions.ts`)
-  - [ ] `WarrantyClaim` (`app/admin/(protected)/warranty-claims/...`)
-  - [ ] `CashBankTransfer` + `CashBankAdjustment` (`app/admin/(protected)/cash-bank/...`)
+  - [x] `Expense` (`app/admin/(protected)/expenses/actions.ts`)
+  - [x] `Adjustment` (`app/admin/(protected)/stock/adjustments/...`)
+  - [x] `BF` (`app/admin/(protected)/stock/bf/...`)
+  - [x] `Warranty` (`app/admin/(protected)/warranties/actions.ts`)
+  - [x] `WarrantyClaim` (`app/admin/(protected)/warranty-claims/...`)
+  - [x] `CashBankTransfer` + `CashBankAdjustment` (`app/admin/(protected)/cash-bank/...`)
   - [ ] `Delivery` status update (`app/admin/(protected)/delivery/...`)
 - [ ] **Master data — เก็บ before/after เฉพาะ field สำคัญ**:
   - [ ] `Product` (โดยเฉพาะ `price`, `minStock`, `isActive`, `slug`)
@@ -4697,9 +4697,9 @@ Implementation progress (2026-04-27, phase 1):
 
 #### 1.6 Verification
 
-- [x] Phase 1 wiring complete for `login / login_failed / logout / password_change`, `users`, `roles`, `customers`, `suppliers`, `products`, `settings.company`, `sales`, `purchases`, `receipts`, `credit_notes`, `purchase_returns`, `supplier_advances`, `supplier_payments`, `expenses`, `stock.adjustments`, `stock.bf`, `stock.card.recalculate`, `warranties`, and report exports
-- [ ] Remaining audit coverage to finish in next slice: `cash-bank`, `content`, `warranty-claims`, `master/car-brands`, `master/categories`, `master/parts-brands`, `reports/line-daily-summary`
-- [ ] `npm run build` zero TS error / warning
+- [x] Phase 1 wiring complete for `login / login_failed / logout / password_change`, `users`, `roles`, `customers`, `suppliers`, `products`, `settings.company`, `sales`, `purchases`, `receipts`, `credit_notes`, `purchase_returns`, `supplier_advances`, `supplier_payments`, `expenses`, `stock.adjustments`, `stock.bf`, `stock.card.recalculate`, `warranties`, `warranty-claims`, `cash-bank`, `content`, `master/car-brands`, `master/categories`, `master/parts-brands`, `reports/line-daily-summary`, and report exports
+- [x] Current repo mutation coverage is complete for this slice; future admin mutations added after this round must include `AuditLog` wiring as part of definition of done
+- [x] `npm run build` zero TS error / warning
 - [ ] ทดสอบ flow: สร้าง sale → cancel → ดูว่า audit log มี 2 entries (CREATE + CANCEL) พร้อม before/after
 - [ ] ทดสอบ login fail 3 ครั้ง → ดู `LOGIN_FAILED` 3 entries
 - [ ] ทดสอบ filter ทุก dropdown

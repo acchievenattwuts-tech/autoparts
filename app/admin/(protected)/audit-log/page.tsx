@@ -38,6 +38,26 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function parseDateStart(value: string | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateEndExclusive(value: string | undefined): Date | null {
+  const start = parseDateStart(value);
+  if (!start) {
+    return null;
+  }
+
+  const next = new Date(start);
+  next.setDate(next.getDate() + 1);
+  return next;
+}
+
 export default async function AuditLogPage({ searchParams }: PageProps) {
   await requirePermission("audit_log.view");
 
@@ -47,6 +67,10 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
     params.action && ACTION_OPTIONS.includes(params.action as AuditAction)
       ? (params.action as AuditAction)
       : "";
+  const startDate = params.startDate?.trim() ?? "";
+  const endDate = params.endDate?.trim() ?? "";
+  const startDateValue = parseDateStart(startDate);
+  const endDateExclusive = parseDateEndExclusive(endDate);
   const isReady = params.ready === "1";
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const skip = (page - 1) * PAGE_SIZE;
@@ -62,6 +86,14 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
                 { entityRef: { contains: q, mode: "insensitive" as const } },
                 { entityId: { contains: q, mode: "insensitive" as const } },
               ],
+            }
+          : {}),
+        ...(startDateValue || endDateExclusive
+          ? {
+              createdAt: {
+                ...(startDateValue ? { gte: startDateValue } : {}),
+                ...(endDateExclusive ? { lt: endDateExclusive } : {}),
+              },
             }
           : {}),
       }
@@ -92,7 +124,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <form className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40 md:grid-cols-[minmax(0,1fr)_220px_120px]">
+      <form className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40 md:grid-cols-[minmax(0,1fr)_220px_160px_160px_120px]">
         <input type="hidden" name="ready" value="1" />
         <input
           type="text"
@@ -113,6 +145,18 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
             </option>
           ))}
         </select>
+        <input
+          type="date"
+          name="startDate"
+          defaultValue={startDate}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 focus:border-sky-400 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+        />
+        <input
+          type="date"
+          name="endDate"
+          defaultValue={endDate}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-0 focus:border-sky-400 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
+        />
         <button
           type="submit"
           className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
@@ -216,7 +260,14 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
               {page > 1 ? (
                 <Link
                   href={buildPageHref(
-                    { ...params, q, action: action || undefined, ready: "1" },
+                    {
+                      ...params,
+                      q,
+                      action: action || undefined,
+                      startDate: startDate || undefined,
+                      endDate: endDate || undefined,
+                      ready: "1",
+                    },
                     page - 1,
                   )}
                   className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-600 dark:border-white/10 dark:text-slate-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -229,7 +280,14 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
               {page < totalPages ? (
                 <Link
                   href={buildPageHref(
-                    { ...params, q, action: action || undefined, ready: "1" },
+                    {
+                      ...params,
+                      q,
+                      action: action || undefined,
+                      startDate: startDate || undefined,
+                      endDate: endDate || undefined,
+                      ready: "1",
+                    },
                     page + 1,
                   )}
                   className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-600 dark:border-white/10 dark:text-slate-200 dark:hover:border-sky-400 dark:hover:text-sky-300"

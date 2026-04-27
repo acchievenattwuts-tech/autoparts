@@ -1,11 +1,17 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db, dbTx } from "@/lib/db";
 import { generateClaimNo } from "@/lib/doc-number";
-import { ClaimOutcome, ClaimType, WarrantyClaimStatus } from "@/lib/generated/prisma";
+import { AuditAction, ClaimOutcome, ClaimType, WarrantyClaimStatus } from "@/lib/generated/prisma";
 import {
   autoAllocateLots,
   getLotAvailability,
@@ -124,6 +130,36 @@ function normalizeOptionalString(value?: string): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+async function getWarrantyClaimAuditSnapshot(id: string) {
+  return db.warrantyClaim.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      claimNo: true,
+      claimDate: true,
+      claimType: true,
+      status: true,
+      outcome: true,
+      symptom: true,
+      note: true,
+      supplierId: true,
+      supplierName: true,
+      supplierPhone: true,
+      supplierAddress: true,
+      sentAt: true,
+      resolvedAt: true,
+      returnedAt: true,
+      warranty: {
+        select: {
+          id: true,
+          lotNo: true,
+          productId: true,
+        },
+      },
+    },
+  });
+}
+
 export async function createClaim(
   formData: FormData,
 ): Promise<{ claimNo?: string; error?: string }> {
@@ -131,6 +167,9 @@ export async function createClaim(
   if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
+
+  const requestContext = await getRequestContext();
+  let createdClaimId = "";
 
   const parsed = createClaimSchema.safeParse({
     warrantyId: formData.get("warrantyId"),
@@ -220,6 +259,7 @@ export async function createClaim(
           supplierAddress: data.supplierAddress || null,
         },
       });
+      createdClaimId = claim.id;
 
       const returnStockCardId = await writeStockCard(tx, {
         productId: warranty.productId,
@@ -300,6 +340,21 @@ export async function createClaim(
       }
     });
 
+    const afterSnapshot = createdClaimId
+      ? await getWarrantyClaimAuditSnapshot(createdClaimId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "WarrantyClaim",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.claimNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidatePath("/admin/warranty-claims");
     return { claimNo };
   } catch (error) {
@@ -312,11 +367,22 @@ export async function updateClaim(
   id: string,
   formData: FormData,
 ): Promise<{ error?: string }> {
+  let session;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
+
+  const auditRequestContext = await getRequestContext();
+  void session;
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  void auditRequestContext;
+  void auditRequestContext;
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  void auditRequestContext;
 
   const claim = await db.warrantyClaim.findUnique({
     where: { id },
@@ -338,6 +404,7 @@ export async function updateClaim(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   try {
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await db.warrantyClaim.update({
       where: { id },
       data: {
@@ -349,6 +416,20 @@ export async function updateClaim(
         supplierAddress: parsed.data.supplierAddress || null,
       },
     });
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...auditRequestContext,
+        action: AuditAction.UPDATE,
+        entityType: "WarrantyClaim",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.claimNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath(`/admin/warranty-claims/${id}`);
     revalidatePath("/admin/warranty-claims");
@@ -362,8 +443,9 @@ export async function sendClaimToSupplier(
   id: string,
   sentAt: string,
 ): Promise<{ error?: string }> {
+  let session;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -389,6 +471,7 @@ export async function sendClaimToSupplier(
   const docNo = `${claim.claimNo}${SEND_DOC_SUFFIX}`;
 
   try {
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       const avgCost = await getAvgCost(tx, claim.warranty.productId);
 
@@ -435,6 +518,22 @@ export async function sendClaimToSupplier(
         );
       }
     });
+
+    const requestContext = await getRequestContext();
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "WarrantyClaim",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.claimNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);

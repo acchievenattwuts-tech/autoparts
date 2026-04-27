@@ -1,8 +1,13 @@
 "use server";
 
+import {
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { LineDailySummaryDispatchKind, LineDailySummaryTargetMode } from "@/lib/generated/prisma";
+import { AuditAction, LineDailySummaryDispatchKind, LineDailySummaryTargetMode } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { deliverLineDailySummary } from "@/lib/line-daily-summary-delivery";
 import { syncLineDailySummaryQStashSchedule } from "@/lib/line-daily-summary-qstash";
@@ -35,12 +40,12 @@ const unmapSchema = z.object({
 });
 
 export async function saveLineDailySummarySettingsAction(formData: FormData) {
-  try {
-    await requireRole("ADMIN");
-  } catch {
+  const session = await requireRole("ADMIN").catch(() => null);
+  if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์แก้ไขการตั้งค่า LINE OA" };
   }
 
+  const requestContext = await getRequestContext();
   const parsed = settingsSchema.safeParse({
     enabled: formData.get("enabled"),
     sendTime: formData.get("sendTime"),
@@ -88,18 +93,32 @@ export async function saveLineDailySummarySettingsAction(formData: FormData) {
     compactMode: parsed.data.compactMode === "true",
   });
 
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.UPDATE,
+    entityType: "LineDailySummarySettings",
+    entityId: "default",
+    entityRef: parsed.data.sendTime,
+    after: {
+      enabled: parsed.data.enabled === "true",
+      sendTime: parsed.data.sendTime,
+      targetMode: parsed.data.targetMode,
+      compactMode: parsed.data.compactMode === "true",
+    },
+  });
+
   revalidatePath("/admin/reports/line-daily-summary");
   return { success: true };
 }
 
 export async function sendLineDailySummaryTestAction(formData: FormData) {
-  let session;
-  try {
-    session = await requireRole("ADMIN");
-  } catch {
+  const session = await requireRole("ADMIN").catch(() => null);
+  if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์ส่งข้อความทดสอบ" };
   }
 
+  const requestContext = await getRequestContext();
   const parsed = testSendSchema.safeParse({
     date: formData.get("date") || undefined,
     targetMode: formData.get("targetMode"),
@@ -126,6 +145,21 @@ export async function sendLineDailySummaryTestAction(formData: FormData) {
     };
   }
 
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.UPDATE,
+    entityType: "LineDailySummaryTestSend",
+    entityId: reportDayKey,
+    entityRef: parsed.data.targetMode,
+    meta: {
+      reportDayKey,
+      targetMode: parsed.data.targetMode,
+      sentCount: result.sentCount,
+      dispatchKind: LineDailySummaryDispatchKind.TEST,
+    },
+  });
+
   return {
     success: true,
     sentCount: result.sentCount,
@@ -133,12 +167,12 @@ export async function sendLineDailySummaryTestAction(formData: FormData) {
 }
 
 export async function linkAdminLineRecipientAction(formData: FormData) {
-  try {
-    await requireRole("ADMIN");
-  } catch {
+  const session = await requireRole("ADMIN").catch(() => null);
+  if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์ผูก LINE กับผู้ใช้" };
   }
 
+  const requestContext = await getRequestContext();
   const parsed = mappingSchema.safeParse({
     userId: formData.get("userId"),
     recipientId: formData.get("recipientId"),
@@ -189,17 +223,30 @@ export async function linkAdminLineRecipientAction(formData: FormData) {
     },
   });
 
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.UPDATE,
+    entityType: "UserLineRecipient",
+    entityId: parsed.data.userId,
+    entityRef: parsed.data.recipientId,
+    after: {
+      userId: parsed.data.userId,
+      recipientId: parsed.data.recipientId,
+    },
+  });
+
   revalidatePath("/admin/reports/line-daily-summary");
   return { success: true };
 }
 
 export async function unlinkAdminLineRecipientAction(formData: FormData) {
-  try {
-    await requireRole("ADMIN");
-  } catch {
+  const session = await requireRole("ADMIN").catch(() => null);
+  if (!session?.user?.id) {
     return { error: "ไม่มีสิทธิ์ยกเลิกการผูก LINE" };
   }
 
+  const requestContext = await getRequestContext();
   const parsed = unmapSchema.safeParse({
     userId: formData.get("userId"),
   });
@@ -210,6 +257,18 @@ export async function unlinkAdminLineRecipientAction(formData: FormData) {
 
   await db.userLineRecipient.deleteMany({
     where: { userId: parsed.data.userId },
+  });
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.CANCEL,
+    entityType: "UserLineRecipient",
+    entityId: parsed.data.userId,
+    entityRef: parsed.data.userId,
+    meta: {
+      userId: parsed.data.userId,
+    },
   });
 
   revalidatePath("/admin/reports/line-daily-summary");
