@@ -27,7 +27,7 @@ interface ProductOption {
   requireExpiryDate: boolean;
 }
 
-interface SupplierOption { id: string; name: string }
+interface SupplierOption { id: string; name: string; creditTerm?: number | null }
 
 interface CashBankAccountOption {
   id: string;
@@ -58,6 +58,7 @@ interface InitialData {
   note:         string;
   vatType:      string;
   vatRate:      number;
+  creditTerm?:  number | null;
   items:        LineItem[];
 }
 
@@ -91,6 +92,16 @@ const PurchaseForm = ({
     initialData?.purchaseType ?? PurchaseType.CASH_PURCHASE,
   );
   const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [creditTerm, setCreditTerm] = useState<string>(
+    initialData?.creditTerm != null ? String(initialData.creditTerm) : "",
+  );
+  const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
+  const handleSupplierChange = (nextId: string) => {
+    setSupplierId(nextId);
+    if (initialData) return;
+    const sup = supplierMap.get(nextId);
+    if (sup && sup.creditTerm != null) setCreditTerm(String(sup.creditTerm));
+  };
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
@@ -212,6 +223,7 @@ const PurchaseForm = ({
     formData.set("supplierId", supplierId);
     formData.set("purchaseType", purchaseType);
     formData.set("cashBankAccountId", purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : "");
+    formData.set("creditTerm", purchaseType === PurchaseType.CREDIT_PURCHASE ? creditTerm : "");
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -264,7 +276,7 @@ const PurchaseForm = ({
             <SearchableSelect
               options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
               value={supplierId}
-              onChange={setSupplierId}
+              onChange={handleSupplierChange}
               placeholder="โปรดระบุผู้จำหน่าย"
             />
           </div>
@@ -338,8 +350,23 @@ const PurchaseForm = ({
               <p className="mt-1 text-xs text-gray-500">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-              ซื้อเชื่อจะยังไม่ตัดบัญชีจ่ายเงินจากใบซื้อ และยอดค้างจะไปชำระผ่านเอกสารจ่ายชำระเงินภายหลัง
+            <div className="space-y-2">
+              <div>
+                <label className={labelCls}>เครดิตเทอม (วัน)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={creditTerm}
+                  onChange={(e) => setCreditTerm(e.target.value)}
+                  placeholder="เช่น 30"
+                  className={inputCls}
+                />
+                <p className="mt-1 text-xs text-gray-500">ระบบจะดึงค่าเริ่มต้นจากผู้จำหน่าย ถ้าไม่ระบุจะถือว่าครบกำหนด ณ วันที่ซื้อ</p>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                ซื้อเชื่อจะยังไม่ตัดบัญชีจ่ายเงินจากใบซื้อ และยอดค้างจะไปชำระผ่านเอกสารจ่ายชำระเงินภายหลัง
+              </div>
             </div>
           )}
 

@@ -44,7 +44,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, creditTerm: true } }),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
@@ -91,6 +91,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     note: purchase.note ?? "",
     vatType: purchase.vatType,
     vatRate: Number(purchase.vatRate),
+    creditTerm: purchase.creditTerm,
     items: initialItems,
   };
 

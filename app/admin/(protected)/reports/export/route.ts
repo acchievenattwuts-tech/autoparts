@@ -1,5 +1,11 @@
 export const dynamic = "force-dynamic";
 
+import {
+  getAuditActorFromSession,
+  getRequestContextFromHeaders,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
@@ -32,11 +38,18 @@ import {
   buildAPCsv,
   buildStockCsv,
 } from "@/lib/ar-ap-stock-report-queries";
+import {
+  queryARRegisterRows,
+  queryAPRegisterRows,
+  buildARRegisterCsv,
+  buildAPRegisterCsv,
+} from "@/lib/ar-ap-register-queries";
 
 export async function GET(request: Request) {
-  await requirePermission("reports.view");
+  const session = await requirePermission("reports.view");
 
   const { searchParams } = new URL(request.url);
+  const requestContext = getRequestContextFromHeaders(request.headers);
 
   const type = searchParams.get("type") ?? "sales";
 
@@ -52,6 +65,7 @@ export async function GET(request: Request) {
     docType: searchParams.get("docType") ?? undefined,
     customerId: searchParams.get("customerId") ?? undefined,
     arMode: searchParams.get("arMode") ?? undefined,
+    view: searchParams.get("view") ?? undefined,
     supplierId: searchParams.get("supplierId") ?? undefined,
     categoryId: searchParams.get("categoryId") ?? undefined,
     search: searchParams.get("search") ?? undefined,
@@ -67,16 +81,28 @@ export async function GET(request: Request) {
   switch (type) {
     case "ar": {
       const arFilters = parseARAPStockFilters(params);
-      const rows = await queryARRows(arFilters);
-      csv = buildARCsv(rows);
-      fileName = `ar-report-${dateRange}.csv`;
+      if (params.view === "register") {
+        const rows = await queryARRegisterRows(arFilters);
+        csv = buildARRegisterCsv(rows);
+        fileName = `ar-register-${dateRange}.csv`;
+      } else {
+        const rows = await queryARRows(arFilters);
+        csv = buildARCsv(rows);
+        fileName = `ar-report-${dateRange}.csv`;
+      }
       break;
     }
     case "ap": {
       const apFilters = parseARAPStockFilters(params);
-      const data = await queryAPData(apFilters);
-      csv = buildAPCsv(data);
-      fileName = `ap-report-${dateRange}.csv`;
+      if (params.view === "register") {
+        const rows = await queryAPRegisterRows(apFilters);
+        csv = buildAPRegisterCsv(rows);
+        fileName = `ap-register-${dateRange}.csv`;
+      } else {
+        const data = await queryAPData(apFilters);
+        csv = buildAPCsv(data);
+        fileName = `ap-report-${dateRange}.csv`;
+      }
       break;
     }
     case "stock": {
@@ -139,6 +165,19 @@ export async function GET(request: Request) {
       break;
     }
   }
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.EXPORT,
+    entityType: "ReportExport",
+    entityRef: type,
+    meta: {
+      format: "csv",
+      fileName,
+      filters: params,
+    },
+  });
 
   return new Response(csv, {
     headers: {

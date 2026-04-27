@@ -4593,6 +4593,17 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 
 #### 1.1 Schema foundation
 
+Implementation progress (2026-04-27, phase 1):
+
+- [x] Added `AuditLog` model + `AuditAction` enum in `prisma/schema.prisma`
+- [x] Ran `prisma db push` and `npx prisma generate`
+- [x] Verified `public.AuditLog` exists on production Supabase after pushing with production `DATABASE_URL` (not local `DIRECT_URL`)
+- [x] Added `lib/audit-log.ts` with `writeAuditLog`, `writeAuditLogTx`, `diffEntity`, `redactSensitive`, and request-context helpers
+- [x] Wired auth events: `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `PASSWORD_CHANGE`
+- [x] Wired current mutation coverage: `User`, `Role`, `Customer`, `Supplier`, `Product`, `CompanySettings`, `Sale`, `Purchase`, `Receipt`, `CreditNote`, delivery status updates, and report `EXPORT` routes
+- [x] Replaced `/admin/audit-log` placeholder with a real viewer page guarded by `audit_log.view`
+- [ ] Remaining follow-up in next slice: `PurchaseReturn`, `SupplierAdvance`, `SupplierPayment`, `Expense`, stock operations, warranty flows, cash/bank transfers/adjustments, and other business-document actions
+
 - [ ] เพิ่ม model `AuditLog` ใน `prisma/schema.prisma` (fields ขั้นต่ำ):
   - [ ] `id String @id @default(cuid())`
   - [ ] `userId String?` (nullable เผื่อ system action)
@@ -4686,6 +4697,8 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 
 #### 1.6 Verification
 
+- [x] Phase 1 wiring complete for `login / login_failed / logout / password_change`, `users`, `roles`, `customers`, `suppliers`, `products`, `settings.company`, `sales`, `purchases`, `receipts`, `credit_notes`, `purchase_returns`, `supplier_advances`, `supplier_payments`, `expenses`, `stock.adjustments`, `stock.bf`, `stock.card.recalculate`, `warranties`, and report exports
+- [ ] Remaining audit coverage to finish in next slice: `cash-bank`, `content`, `warranty-claims`, `master/car-brands`, `master/categories`, `master/parts-brands`, `reports/line-daily-summary`
 - [ ] `npm run build` zero TS error / warning
 - [ ] ทดสอบ flow: สร้าง sale → cancel → ดูว่า audit log มี 2 entries (CREATE + CANCEL) พร้อม before/after
 - [ ] ทดสอบ login fail 3 ครั้ง → ดู `LOGIN_FAILED` 3 entries
@@ -4775,75 +4788,69 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 
 #### 3.1 Shared — UI dropdown pattern
 
-- [ ] กำหนด query param `view`: `outstanding` (default) | `register`
-- [ ] เพิ่ม dropdown ที่หน้า `/admin/reports/ar` และ `/admin/reports/ap` — ใช้ `<SearchableSelect>` ตาม `.rules` (option น้อย แต่ต้องสอดคล้อง pattern อื่น) **หรือ** ถ้าเป็น 2 option คงที่ใช้ native `<select>` ได้ (ระบุชัดใน checklist ด้านล่าง)
-- [ ] dropdown เปลี่ยนค่า → router push `?view=register` (preserve from/to/customerId/supplierId)
-- [ ] preserve filter อื่นเดิม (ช่วงวันที่, ลูกค้า/supplier)
+- [x] กำหนด query param `view`: `outstanding` (default) | `register`
+- [x] เพิ่ม dropdown ที่หน้า `/admin/reports/ar` และ `/admin/reports/ap` — ใช้ native `<select>` (2 option คงที่)
+- [x] dropdown เปลี่ยนค่า → submit form GET → preserve from/to/customerId/supplierId
+- [x] preserve filter อื่นเดิม (ช่วงวันที่, ลูกค้า/supplier)
+- [x] เพิ่มฟิลด์ `creditTerm Int?` ที่ `Supplier` และ `Purchase` (snapshot ตอนสร้างใบ default จาก supplier — ตามที่ owner ยืนยัน)
+- [x] เพิ่ม UI `creditTerm` ในฟอร์ม master suppliers (สร้าง/แก้ + แสดงในตาราง)
+- [x] เพิ่ม UI `creditTerm` ในฟอร์ม purchases (สร้าง/แก้ — แสดงเฉพาะตอน CREDIT_PURCHASE, default จาก supplier)
+- [ ] **Pending DB push by owner**: ต้องรัน `npx prisma db push` บนเครื่องที่มี Supabase credentials จริง (เครื่อง dev นี้มีแค่ placeholder URL)
 
 #### 3.2 AR Register
 
-- [ ] เพิ่ม type `ARRegisterRow` ใน `lib/ar-ap-stock-report-queries.ts`:
-  - [ ] field: `saleId`, `docNo`, `saleDate`, `dueDate` (= saleDate + creditTerm), `customerId`, `customerName`, `customerCode`, `paymentType`, `netAmount`, `paidAmount` (= netAmount - amountRemain), `amountRemain`, `status` (`PAID` / `PARTIAL` / `UNPAID` / `OVERDUE` / `CANCELLED`), `creditTerm`, `daysOverdue`
-- [ ] เพิ่ม `queryARRegisterRows(filters)`:
-  - [ ] รวม `Sale` ทั้งหมดในช่วงวันที่ (`saleDate` ระหว่าง from/to) — ไม่กรอง `amountRemain > 0`
-  - [ ] รองรับ filter ลูกค้า + ประเภทขาย (CASH/CREDIT) + status (active/cancelled)
-  - [ ] เรียงตาม customerId → saleDate
-  - [ ] รวม `paidAmount` จาก `netAmount - amountRemain` (สอดคล้องสูตร amountRemain เดิม — ห้ามคำนวณเงินรับใหม่)
-  - [ ] คำนวณ `daysOverdue` เฉพาะใบที่ยังค้าง: `today - dueDate` (ติดลบ = ยังไม่ครบกำหนด)
-- [ ] เพิ่ม `buildARRegisterCsv()` + `buildARRegisterExcel()` (ใช้ pattern เดียวกับ `buildARCsv` / `buildARExcel`)
-- [ ] หน้า `/admin/reports/ar/page.tsx`:
-  - [ ] อ่าน `view` จาก searchParams
-  - [ ] ถ้า `view=register` → ใช้ query+ตารางใหม่; default `view=outstanding` ใช้ของเดิม
-  - [ ] summary cards mode register:
-    - [ ] จำนวนใบในช่วง
-    - [ ] ยอดขายรวม
-    - [ ] ยอดรับชำระแล้ว
-    - [ ] ยอดคงค้าง
-    - [ ] ยอดที่เกินกำหนด (overdue)
-  - [ ] ตาราง register: docNo, วันที่, ลูกค้า, ประเภทขาย, ยอดขาย, รับแล้ว, ค้าง, ครบกำหนด, เกิน X วัน (badge สี), status, link เปิดเอกสาร
-  - [ ] รายการ cancelled แสดงเป็น italic + opacity ตาม pattern เดิม
-- [ ] อัปเดต export route:
-  - [ ] `app/admin/(protected)/reports/export/route.ts` รองรับ `?type=ar&view=register`
-  - [ ] `app/admin/(protected)/reports/export-excel/route.ts` รองรับ `?type=ar&view=register`
-- [ ] preserve `view` ใน URL ของปุ่ม CSV / Excel
+- [x] เพิ่ม type `ARRegisterRow` ใน `lib/ar-ap-register-queries.ts` (แยกไฟล์ใหม่ — ไฟล์เดิม `ar-ap-stock-report-queries.ts` มี mojibake ในส่วน AR/AP เดิมอยู่แล้ว ไม่แตะ)
+  - [x] field: `kind`, `id`, `docNo`, `docDate`, `dueDate` (= saleDate + creditTerm), `customerId`, `customerName`, `paymentType`, `netAmount`, `paidAmount`, `amountRemain`, `status`, `creditTerm`, `daysOverdue`
+- [x] เพิ่ม `queryARRegisterRows(filters)`:
+  - [x] รวม `Sale` ที่ `paymentType=CREDIT_SALE` เท่านั้น (ขายเชื่อ) — ไม่รวม CASH_SALE + ไม่กรอง `amountRemain > 0`
+  - [x] รวม `CreditNote` ที่ `settlementType=CREDIT_DEBT` (CN คืนสินค้าตั้งหนี้) — ตามที่ owner ยืนยัน
+  - [x] filter ลูกค้า, รวม CASH + CREDIT + CANCELLED
+  - [x] เรียงตาม customerName → docDate
+  - [x] `paidAmount = netAmount - amountRemain` — ห้ามคำนวณเงินรับใหม่
+  - [x] `daysOverdue = today - dueDate` (เฉพาะใบที่ยังค้าง)
+- [x] เพิ่ม `buildARRegisterCsv()` + `buildARRegisterExcel()`
+- [x] หน้า `/admin/reports/ar/page.tsx`:
+  - [x] อ่าน `view` จาก searchParams (default `outstanding`)
+  - [x] `view=register` → query+ตารางใหม่; `outstanding` → ของเดิมไม่เปลี่ยน
+  - [x] summary cards: จำนวนใบ, ยอดรวม, รับแล้ว, ค้าง, เกินกำหนด
+  - [x] ตาราง register: docNo, วันที่, ลูกค้า, ประเภท, ยอด, รับแล้ว, ค้าง, ครบกำหนด, เกิน, status badge, link
+  - [x] cancelled แสดงเป็น italic + เทา
+- [x] อัปเดต export route ทั้ง CSV + Excel รองรับ `?type=ar&view=register`
+- [x] preserve `view` ใน URL ของปุ่ม CSV / Excel
 
-#### 3.3 AP Register
+#### 3.3 AP Register — Option B (Purchase + Advance + PurchaseReturn)
 
-- [ ] เพิ่ม type `APRegisterRow` ใน `lib/ar-ap-stock-report-queries.ts`:
-  - [ ] field: `purchaseId`, `docNo`, `purchaseDate`, `dueDate`, `supplierId`, `supplierName`, `supplierCode`, `purchaseType`, `netAmount`, `paidAmount`, `amountRemain`, `status` (`PAID` / `PARTIAL` / `UNPAID` / `OVERDUE` / `CANCELLED`), `creditTerm`, `daysOverdue`
-- [ ] เพิ่ม `queryAPRegisterRows(filters)`:
-  - [ ] รวม `Purchase` ทั้งหมดในช่วงวันที่ — ไม่กรอง `amountRemain > 0`
-  - [ ] filter supplier + ประเภท (CASH/CREDIT)
-  - [ ] เรียงตาม supplierId → purchaseDate
-  - [ ] **ไม่รวม** SupplierAdvance / PurchaseReturn ใน register หลัก (คงเฉพาะ Purchase เพื่อให้ Register เน้นทะเบียนใบซื้อ — มัดจำ/CN เครดิตยังคงดูได้ใน outstanding 3 sections เดิม)
-  - [ ] หรือเลือก option B: ใส่ทั้ง Purchase + SupplierAdvance + PurchaseReturn(SUPPLIER_CREDIT) เป็น 3 sections เหมือน outstanding (ตัดสินใจร่วมกับ owner — default ทำ option A ก่อน)
-- [ ] เพิ่ม `buildAPRegisterCsv()` + `buildAPRegisterExcel()` (single sheet สำหรับ option A; 3 sheets สำหรับ option B ตาม pattern AP เดิม)
-- [ ] หน้า `/admin/reports/ap/page.tsx`:
-  - [ ] อ่าน `view` จาก searchParams + render conditional
-  - [ ] summary cards mode register: จำนวนใบ, ยอดซื้อรวม, จ่ายแล้ว, ค้าง, เกินกำหนด
-  - [ ] ตาราง register: docNo, วันที่, supplier, ประเภท, ยอดซื้อ, จ่ายแล้ว, ค้าง, ครบกำหนด, เกิน X วัน, status, link
-- [ ] อัปเดต export route รองรับ `?type=ap&view=register`
-- [ ] preserve `view` ใน URL ของปุ่ม CSV / Excel
+- [x] เพิ่ม type `APRegisterRow` ใน `lib/ar-ap-register-queries.ts`
+  - [x] field: `kind`, `id`, `docNo`, `docDate`, `dueDate`, `supplierId`, `supplierName`, `rowType`, `netAmount`, `paidAmount`, `amountRemain`, `status`, `creditTerm`, `daysOverdue`
+- [x] เพิ่ม `queryAPRegisterRows(filters)` — **Option B** (ตามที่ owner ยืนยัน):
+  - [x] `Purchase` (CREDIT_PURCHASE) ในช่วง — ไม่กรอง `amountRemain > 0`
+  - [x] `SupplierAdvance` ในช่วง
+  - [x] `PurchaseReturn` ที่ `settlementType=SUPPLIER_CREDIT` ในช่วง
+  - [x] filter supplier
+  - [x] เรียงตาม supplierName → docDate
+  - [x] dueDate ของ Purchase = purchaseDate + creditTerm (fallback 0 วัน เมื่อไม่ระบุ — ตามที่ owner ยืนยัน)
+- [x] เพิ่ม `buildAPRegisterCsv()` + `buildAPRegisterExcel()` (single unified sheet)
+- [x] หน้า `/admin/reports/ap/page.tsx`:
+  - [x] อ่าน `view` จาก searchParams + render conditional
+  - [x] summary cards mode register: จำนวนใบ, ยอดซื้อรวม, จ่ายแล้ว, คงค้าง, เกินกำหนด
+  - [x] ตาราง register: docNo, วันที่, supplier, ประเภท, ยอด, จ่ายแล้ว, คงเหลือ, ครบกำหนด, เกิน, status, link
+- [x] อัปเดต export route รองรับ `?type=ap&view=register`
+- [x] preserve `view` ใน URL ของปุ่ม CSV / Excel
 
 #### 3.4 Shared rules
 
-- [ ] ทุกวันที่บนหน้า/CSV/Excel ใช้ `formatDateThai` + `"th-TH-u-ca-gregory"` (ตาม `.rules`)
-- [ ] CSV ต้องมี BOM `﻿` (ตาม `.rules`)
-- [ ] `loading.tsx` ของ ar/ap ใช้ของเดิมได้ (ทั้ง 2 view ใช้หน้าเดียว)
-- [ ] light + dark mode QA ทั้ง 2 view (mandatory)
-- [ ] **ห้าม** สร้าง route ใหม่ `/admin/reports/ar-register` หรือ `/admin/reports/ap-register` — ใช้ `?view=register` ในหน้าเดิม
-- [ ] **ห้าม** แก้ `queryARRows` / `queryAPData` เดิม — เพิ่ม function ใหม่ข้าง ๆ
-- [ ] **ห้าม** แก้สูตร `amountRemain` — Register อ่านจาก `amountRemain` ที่มีอยู่แล้วใน DB เท่านั้น
+- [x] ทุกวันที่บนหน้า/CSV/Excel ใช้ `formatDateThai` (Gregorian)
+- [x] CSV มี BOM `﻿`
+- [x] `loading.tsx` ของ ar/ap ใช้ของเดิม (หน้าเดียวรองรับ 2 view)
+- [x] **ห้าม** สร้าง route ใหม่ — ใช้ `?view=register` ในหน้าเดิม
+- [x] **ห้าม** แก้ `queryARRows` / `queryAPData` เดิม — เพิ่ม function ใหม่ในไฟล์ใหม่ `lib/ar-ap-register-queries.ts`
+- [x] **ห้าม** แก้สูตร `amountRemain` — Register อ่านจาก field ที่มีอยู่แล้วใน DB เท่านั้น
 
 #### 3.5 Verification
 
-- [ ] `npm run build` clean
-- [ ] ทดสอบ `/admin/reports/ar` default → outstanding (พฤติกรรมเดิมต้องไม่เปลี่ยน)
-- [ ] ทดสอบ `/admin/reports/ar?view=register` → แสดง register รวม cancelled + paid
-- [ ] ทดสอบ export CSV/Excel ทั้ง 2 view ของ AR และ AP
-- [ ] ทดสอบ filter (ช่วงวันที่ + ลูกค้า/supplier) preserve เมื่อสลับ view
-- [ ] ตรวจ summary cards ตรงกับยอดในตาราง
-- [ ] light + dark mode
+- [x] TypeScript typecheck ผ่าน (มี error 2 จุดใน `roles/RoleForm.tsx` ที่ pre-existing — ไม่เกี่ยวกับงานนี้)
+- [x] **DB push completed**: รัน `npx prisma db push` ผ่าน — `Supplier.creditTerm` + `Purchase.creditTerm` sync ไป Supabase production
+- [ ] **Pending**: ทดสอบบน production data (outstanding view default, register view, export CSV/Excel AR/AP, light + dark mode, verify summary totals ตรงกับตาราง)
 
 ---
 

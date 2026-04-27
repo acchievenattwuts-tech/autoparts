@@ -41,6 +41,7 @@ model User {
   contentApprovalsToReview ContentApproval[] @relation("ContentApprovalApprover")
   contentScheduledJobsCreated ContentScheduledJob[] @relation("ContentScheduledJobCreatedBy")
   contentAuditLogs   ContentAuditLog[] @relation("ContentAuditActor")
+  auditLogs          AuditLog[]
   appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
@@ -203,6 +204,29 @@ model ContentAuditLog {
   @@index([action, createdAt])
 }
 
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  userName   String?
+  userRole   String?
+  action     AuditAction
+  entityType String
+  entityId   String?
+  entityRef  String?
+  before     Json?
+  after      Json?
+  meta       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+  user       User?       @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
 model LoginThrottle {
   key            String    @id
   failures       Int       @default(0)
@@ -281,6 +305,7 @@ model Supplier {
   phone             String?
   address           String?
   taxId             String?
+  creditTerm        Int?
   createdAt         DateTime         @default(now())
   code              String?          @unique
   isActive          Boolean          @default(true)
@@ -448,6 +473,7 @@ model Purchase {
   paymentMethod   PaymentMethod    @default(TRANSFER)
   paymentStatus   PurchasePaymentStatus @default(UNPAID)
   cashBankAccountId String?
+  creditTerm      Int?
   supplier        Supplier?        @relation(fields: [supplierId], references: [id])
   cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   user            User             @relation(fields: [userId], references: [id])
@@ -1253,6 +1279,21 @@ enum ContentNotificationType {
   POST_SCHEDULED
   POST_PUBLISHED
   POST_FAILED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  CANCEL
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_CHANGE
+  PERMISSION_CHANGE
+  ROLE_CHANGE
+  RECALCULATE
+  EXPORT
 }
 
 enum StockCardSource {

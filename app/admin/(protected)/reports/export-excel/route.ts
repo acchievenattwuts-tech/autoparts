@@ -1,6 +1,12 @@
 export const dynamic = "force-dynamic";
 
 import ExcelJS from "exceljs";
+import {
+  getAuditActorFromSession,
+  getRequestContextFromHeaders,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
@@ -34,6 +40,12 @@ import {
   buildAPExcel,
   buildStockExcel,
 } from "@/lib/ar-ap-stock-report-queries";
+import {
+  queryARRegisterRows,
+  queryAPRegisterRows,
+  buildARRegisterExcel,
+  buildAPRegisterExcel,
+} from "@/lib/ar-ap-register-queries";
 import { formatDateThai } from "@/lib/th-date";
 
 const HEADER_FILL: ExcelJS.Fill = {
@@ -425,9 +437,10 @@ async function buildCashBankAdjustmentsExcel(
 }
 
 export async function GET(request: Request) {
-  await requirePermission("reports.view");
+  const session = await requirePermission("reports.view");
 
   const { searchParams } = new URL(request.url);
+  const requestContext = getRequestContextFromHeaders(request.headers);
   const type = searchParams.get("type") ?? "sales";
 
   const params: Record<string, string | undefined> = {
@@ -442,6 +455,7 @@ export async function GET(request: Request) {
     docType: searchParams.get("docType") ?? undefined,
     customerId: searchParams.get("customerId") ?? undefined,
     arMode: searchParams.get("arMode") ?? undefined,
+    view: searchParams.get("view") ?? undefined,
     supplierId: searchParams.get("supplierId") ?? undefined,
     categoryId: searchParams.get("categoryId") ?? undefined,
     search: searchParams.get("search") ?? undefined,
@@ -457,16 +471,28 @@ export async function GET(request: Request) {
   switch (type) {
     case "ar": {
       const arFilters = parseARAPStockFilters(params);
-      const rows = await queryARRows(arFilters);
-      buffer = await buildARExcel(rows, "ลูกหนี้ค้างชำระ");
-      fileName = `ar-report-${dateRange}.xlsx`;
+      if (params.view === "register") {
+        const rows = await queryARRegisterRows(arFilters);
+        buffer = await buildARRegisterExcel(rows, "ทะเบียนลูกหนี้");
+        fileName = `ar-register-${dateRange}.xlsx`;
+      } else {
+        const rows = await queryARRows(arFilters);
+        buffer = await buildARExcel(rows, "ลูกหนี้ค้างชำระ");
+        fileName = `ar-report-${dateRange}.xlsx`;
+      }
       break;
     }
     case "ap": {
       const apFilters = parseARAPStockFilters(params);
-      const data = await queryAPData(apFilters);
-      buffer = await buildAPExcel(data, "เจ้าหนี้คงค้าง");
-      fileName = `ap-report-${dateRange}.xlsx`;
+      if (params.view === "register") {
+        const rows = await queryAPRegisterRows(apFilters);
+        buffer = await buildAPRegisterExcel(rows, "ทะเบียนเจ้าหนี้");
+        fileName = `ap-register-${dateRange}.xlsx`;
+      } else {
+        const data = await queryAPData(apFilters);
+        buffer = await buildAPExcel(data, "เจ้าหนี้คงค้าง");
+        fileName = `ap-report-${dateRange}.xlsx`;
+      }
       break;
     }
     case "stock": {
@@ -528,6 +554,19 @@ export async function GET(request: Request) {
       break;
     }
   }
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action: AuditAction.EXPORT,
+    entityType: "ReportExport",
+    entityRef: type,
+    meta: {
+      format: "xlsx",
+      fileName,
+      filters: params,
+    },
+  });
 
   return new Response(buffer, {
     headers: {

@@ -1,12 +1,24 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generatePurchaseNo } from "@/lib/doc-number";
-import { PaymentMethod, PurchasePaymentStatus, PurchaseType, VatType } from "@/lib/generated/prisma";
+import {
+  AuditAction,
+  PaymentMethod,
+  PurchasePaymentStatus,
+  PurchaseType,
+  VatType,
+} from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -96,6 +108,7 @@ const purchaseSchema = z.object({
   referenceNo:  z.string().max(100).optional(),
   vatType:      z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:      z.coerce.number().min(0).max(100).default(0),
+  creditTerm:   z.coerce.number().int().min(0).max(365).optional(),
   items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
@@ -198,6 +211,77 @@ function derivePurchasePaymentStatus(purchaseType: PurchaseType): PurchasePaymen
     : PurchasePaymentStatus.UNPAID;
 }
 
+async function getPurchaseAuditSnapshot(purchaseId: string) {
+  const purchase = await db.purchase.findUnique({
+    where: { id: purchaseId },
+    include: {
+      supplier: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          productId: true,
+          supplierId: true,
+          quantity: true,
+          costPrice: true,
+          landedCost: true,
+          totalAmount: true,
+          subtotalAmount: true,
+          product: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!purchase) return null;
+
+  return {
+    id: purchase.id,
+    purchaseNo: purchase.purchaseNo,
+    supplierId: purchase.supplierId,
+    supplierRef: purchase.supplier?.code ?? purchase.supplier?.name ?? null,
+    purchaseDate: purchase.purchaseDate,
+    purchaseType: purchase.purchaseType,
+    status: purchase.status,
+    paymentMethod: purchase.paymentMethod,
+    paymentStatus: purchase.paymentStatus,
+    cashBankAccountId: purchase.cashBankAccountId,
+    creditTerm: purchase.creditTerm,
+    totalAmount: purchase.totalAmount,
+    discount: purchase.discount,
+    subtotalAmount: purchase.subtotalAmount,
+    vatAmount: purchase.vatAmount,
+    vatType: purchase.vatType,
+    vatRate: purchase.vatRate,
+    netAmount: purchase.netAmount,
+    amountRemain: purchase.amountRemain,
+    referenceNo: purchase.referenceNo,
+    note: purchase.note,
+    cancelNote: purchase.cancelNote,
+    cancelledAt: purchase.cancelledAt,
+    items: purchase.items.map((item) => ({
+      productId: item.productId,
+      productCode: item.product.code,
+      productName: item.product.name,
+      supplierId: item.supplierId,
+      quantity: item.quantity,
+      costPrice: item.costPrice,
+      landedCost: item.landedCost,
+      totalAmount: item.totalAmount,
+      subtotalAmount: item.subtotalAmount,
+    })),
+  };
+}
+
 export async function createPurchase(
   formData: FormData
 ): Promise<{ success?: boolean; purchaseNo?: string; error?: string }> {
@@ -220,11 +304,12 @@ export async function createPurchase(
     referenceNo:  formData.get("referenceNo") || undefined,
     vatType:      (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:      formData.get("vatRate") || 0,
+    creditTerm:   formData.get("creditTerm") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
@@ -232,6 +317,8 @@ export async function createPurchase(
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
     purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
+  const resolvedCreditTerm =
+    purchaseType === PurchaseType.CREDIT_PURCHASE ? (creditTerm ?? null) : null;
 
   if (purchaseType === PurchaseType.CASH_PURCHASE && !resolvedCashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
@@ -243,8 +330,10 @@ export async function createPurchase(
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
   const purchasePrefix = purchaseType === PurchaseType.CREDIT_PURCHASE ? "RRC" : "RR";
   const purchaseNo = await generatePurchaseNo(purchasePrefix, new Date(purchaseDate));
+  let createdPurchaseId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
         tx,
@@ -276,8 +365,10 @@ export async function createPurchase(
           paymentMethod: resolvedPaymentMethod,
           paymentStatus,
           cashBankAccountId: resolvedCashBankAccountId || null,
+          creditTerm: resolvedCreditTerm,
         },
       });
+      createdPurchaseId = purchase.id;
 
       // 2. Process each line item
       for (const item of validItems) {
@@ -360,6 +451,21 @@ export async function createPurchase(
       );
     });
 
+    const afterSnapshot = createdPurchaseId
+      ? await getPurchaseAuditSnapshot(createdPurchaseId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Purchase",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.purchaseNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/products");
     return { success: true, purchaseNo };
@@ -417,6 +523,8 @@ export async function cancelPurchase(
   const affectedProductIds = [...new Set(purchase.items.map((i) => i.productId))];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getPurchaseAuditSnapshot(purchaseId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.PURCHASE, purchaseId);
       // Reverse Lot balances before deleting StockCard rows
@@ -432,6 +540,23 @@ export async function cancelPurchase(
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: new Prisma.Decimal(0) },
       });
     });
+
+    const afterSnapshot = await getPurchaseAuditSnapshot(purchaseId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Purchase",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.purchaseNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
+
     revalidatePath("/admin/purchases");
     return { success: true };
   } catch (err) {
@@ -493,17 +618,20 @@ export async function updatePurchase(
     referenceNo:  formData.get("referenceNo") || undefined,
     vatType:      (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:      formData.get("vatRate") || 0,
+    creditTerm:   formData.get("creditTerm") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const discountedTotal = Math.max(0, totalAmount - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
     purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
+  const resolvedCreditTerm =
+    purchaseType === PurchaseType.CREDIT_PURCHASE ? (creditTerm ?? null) : null;
 
   if (purchaseType === PurchaseType.CASH_PURCHASE && !resolvedCashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
@@ -516,6 +644,8 @@ export async function updatePurchase(
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getPurchaseAuditSnapshot(id);
     await dbTx(async (tx) => {
       const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
         tx,
@@ -560,6 +690,7 @@ export async function updatePurchase(
           paymentMethod: resolvedPaymentMethod,
           paymentStatus,
           cashBankAccountId: resolvedCashBankAccountId || null,
+          creditTerm: resolvedCreditTerm,
         },
       });
 
@@ -637,6 +768,21 @@ export async function updatePurchase(
           : [],
       );
     });
+
+    const afterSnapshot = await getPurchaseAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Purchase",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.purchaseNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/purchases");
     revalidatePath(`/admin/purchases/${id}`);

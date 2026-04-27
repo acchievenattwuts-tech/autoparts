@@ -19,6 +19,7 @@ interface SupplierFormFields {
   phone: string;
   address: string;
   taxId: string;
+  creditTerm: string;
 }
 
 const emptyFields: SupplierFormFields = {
@@ -27,6 +28,7 @@ const emptyFields: SupplierFormFields = {
   phone: "",
   address: "",
   taxId: "",
+  creditTerm: "",
 };
 
 const SupplierFormRow = ({
@@ -43,7 +45,7 @@ const SupplierFormRow = ({
   isPending: boolean;
 }) => (
   <form action={onSubmit}>
-    <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-600">
           ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
@@ -93,6 +95,18 @@ const SupplierFormRow = ({
           name="taxId"
           defaultValue={defaultValues.taxId}
           placeholder="13 หลัก"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">เครดิตเทอม (วัน)</label>
+        <input
+          type="number"
+          name="creditTerm"
+          min={0}
+          max={365}
+          defaultValue={defaultValues.creditTerm}
+          placeholder="เช่น 30"
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
         />
       </div>
@@ -163,7 +177,7 @@ const EditableRow = ({
   if (isEditing && canUpdate) {
     return (
       <tr className="border-b border-gray-100 bg-blue-50">
-        <td colSpan={8} className="px-4 py-4">
+        <td colSpan={9} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
           <SupplierFormRow
             onSubmit={handleUpdate}
@@ -174,6 +188,7 @@ const EditableRow = ({
               phone: supplier.phone ?? "",
               address: supplier.address ?? "",
               taxId: supplier.taxId ?? "",
+              creditTerm: supplier.creditTerm != null ? String(supplier.creditTerm) : "",
             }}
             submitLabel="บันทึกการแก้ไข"
             isPending={isPending}
@@ -202,6 +217,7 @@ const EditableRow = ({
       <td className="px-4 py-3 text-gray-600">{supplier.contactName ?? "-"}</td>
       <td className="px-4 py-3 text-gray-600">{supplier.phone ?? "-"}</td>
       <td className="px-4 py-3 text-gray-600">{supplier.taxId ?? "-"}</td>
+      <td className="px-4 py-3 text-gray-600">{supplier.creditTerm != null ? `${supplier.creditTerm} วัน` : "-"}</td>
       <td className="max-w-xs truncate px-4 py-3 text-gray-600">{supplier.address ?? "-"}</td>
       <td className="px-4 py-3">
         {supplier.isActive ? (
@@ -269,7 +285,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
             </div>
           )}
           <form key={createFormVersion} ref={formRef} action={handleCreate}>
-            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">
                   ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
@@ -317,6 +333,17 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
                 />
               </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">เครดิตเทอม (วัน)</label>
+                <input
+                  type="number"
+                  name="creditTerm"
+                  min={0}
+                  max={365}
+                  placeholder="เช่น 30"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                />
+              </div>
             </div>
             <button
               type="submit"
@@ -346,6 +373,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อผู้ติดต่อ</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">เบอร์โทรศัพท์</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">เลขผู้เสียภาษี</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">เครดิตเทอม</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">ที่อยู่</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>

@@ -9,6 +9,13 @@ import {
   queryAPData,
   type ARAPStockFilters,
 } from "@/lib/ar-ap-stock-report-queries";
+import {
+  queryAPRegisterRows,
+  summarizeAPRegister,
+  STATUS_LABELS,
+  AP_TYPE_LABELS,
+  type APRegisterRow,
+} from "@/lib/ar-ap-register-queries";
 import { formatDateThai } from "@/lib/th-date";
 
 type PageProps = {
@@ -26,34 +33,58 @@ function formatCurrency(value: number): string {
   });
 }
 
-function buildQuery(filters: ARAPStockFilters, supplierId: string | undefined): string {
+function buildQuery(
+  filters: ARAPStockFilters,
+  supplierId: string | undefined,
+  view: "outstanding" | "register",
+): string {
   const params = new URLSearchParams();
   params.set("from", filters.fromStr);
   params.set("to", filters.toStr);
   if (supplierId) params.set("supplierId", supplierId);
+  if (view === "register") params.set("view", "register");
   return params.toString();
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  PAID: "bg-emerald-100 text-emerald-700",
+  PARTIAL: "bg-amber-100 text-amber-700",
+  UNPAID: "bg-blue-100 text-blue-700",
+  OVERDUE: "bg-rose-100 text-rose-700",
+  CANCELLED: "bg-gray-200 text-gray-500",
+};
+
+function apDocLink(row: APRegisterRow): string {
+  if (row.kind === "PURCHASE") return `/admin/purchases/${row.id}`;
+  if (row.kind === "ADVANCE") return `/admin/supplier-advances/${row.id}`;
+  return `/admin/purchase-returns/${row.id}`;
 }
 
 export default async function APReportPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
   const params = await searchParams;
   const filters = parseARAPStockFilters(params);
+  const view: "outstanding" | "register" = params.view === "register" ? "register" : "outstanding";
 
-  const [suppliers, apData] = await Promise.all([
+  const [suppliers, apData, registerRows] = await Promise.all([
     db.supplier.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
       take: 500,
     }),
-    filters.hasFilter ? queryAPData(filters) : Promise.resolve({ purchases: [], advances: [], cnCredits: [] }),
+    filters.hasFilter && view === "outstanding"
+      ? queryAPData(filters)
+      : Promise.resolve({ purchases: [], advances: [], cnCredits: [] }),
+    filters.hasFilter && view === "register" ? queryAPRegisterRows(filters) : Promise.resolve([] as APRegisterRow[]),
   ]);
 
   const totalPayable = apData.purchases.reduce((sum, r) => sum + r.amountRemain, 0);
   const totalAdvance = apData.advances.reduce((sum, r) => sum + r.amountRemain, 0);
   const totalCN = apData.cnCredits.reduce((sum, r) => sum + r.amountRemain, 0);
   const netPayable = totalPayable - totalAdvance - totalCN;
-  const exportQuery = buildQuery(filters, params.supplierId);
+  const registerSummary = summarizeAPRegister(registerRows);
+  const exportQuery = buildQuery(filters, params.supplierId, view);
 
   return (
     <div className="space-y-4">
@@ -82,6 +113,17 @@ export default async function APReportPage({ searchParams }: PageProps) {
             defaultValue={filters.toStr}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+          มุมมอง
+          <select
+            name="view"
+            defaultValue={view}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="outstanding">รายงานเดิม (คงค้าง)</option>
+            <option value="register">Register (ทะเบียนเอกสาร)</option>
+          </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           ซัพพลายเออร์
@@ -131,6 +173,91 @@ export default async function APReportPage({ searchParams }: PageProps) {
       {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
           <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+        </div>
+      ) : view === "register" ? (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-5">
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">จำนวนเอกสาร</p>
+              <p className="font-kanit text-2xl font-bold text-gray-900">{registerSummary.count}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="text-xs text-gray-500">ยอดซื้อรวม</p>
+              <p className="font-kanit text-2xl font-bold text-gray-900">฿{formatCurrency(registerSummary.totalNet)}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+              <p className="text-xs text-emerald-700">จ่ายแล้ว</p>
+              <p className="font-kanit text-2xl font-bold text-emerald-700">฿{formatCurrency(registerSummary.totalPaid)}</p>
+            </div>
+            <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 shadow-sm">
+              <p className="text-xs text-rose-600">คงค้าง</p>
+              <p className="font-kanit text-2xl font-bold text-rose-700">฿{formatCurrency(registerSummary.totalRemain)}</p>
+            </div>
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
+              <p className="text-xs text-amber-700">เกินกำหนด</p>
+              <p className="font-kanit text-2xl font-bold text-amber-700">฿{formatCurrency(registerSummary.totalOverdue)}</p>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#1e3a5f] text-white">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ผู้จำหน่าย</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ประเภท</th>
+                    <th className="px-3 py-2.5 text-right font-medium">ยอด</th>
+                    <th className="px-3 py-2.5 text-right font-medium">จ่ายแล้ว</th>
+                    <th className="px-3 py-2.5 text-right font-medium">คงเหลือ</th>
+                    <th className="px-3 py-2.5 text-left font-medium">ครบกำหนด</th>
+                    <th className="px-3 py-2.5 text-right font-medium">เกิน (วัน)</th>
+                    <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
+                    <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {registerRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
+                        ไม่พบเอกสารในช่วงวันที่ที่เลือก
+                      </td>
+                    </tr>
+                  ) : (
+                    registerRows.map((row) => (
+                      <tr
+                        key={`${row.kind}:${row.id}`}
+                        className={`hover:bg-gray-50 ${row.status === "CANCELLED" ? "italic text-gray-400" : ""}`}
+                      >
+                        <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{row.docNo}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{formatDate(row.docDate)}</td>
+                        <td className="px-3 py-2 text-gray-800">{row.supplierName}</td>
+                        <td className="px-3 py-2 text-gray-600">{AP_TYPE_LABELS[row.rowType]}</td>
+                        <td className="px-3 py-2 text-right text-gray-700">{formatCurrency(row.netAmount)}</td>
+                        <td className="px-3 py-2 text-right text-emerald-700">{formatCurrency(row.paidAmount)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-rose-700">{formatCurrency(row.amountRemain)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-gray-600">{row.dueDate ? formatDate(row.dueDate) : "-"}</td>
+                        <td className="px-3 py-2 text-right text-amber-700">
+                          {row.daysOverdue != null && row.daysOverdue > 0 ? row.daysOverdue : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[row.status] ?? ""}`}>
+                            {STATUS_LABELS[row.status]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <Link href={apDocLink(row)} className="text-xs font-medium text-[#1e3a5f] hover:underline">
+                            เปิด
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">

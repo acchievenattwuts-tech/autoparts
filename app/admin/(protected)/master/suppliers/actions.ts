@@ -1,8 +1,15 @@
 "use server";
 
-import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierCode } from "@/lib/entity-code";
 import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
@@ -13,11 +20,37 @@ const supplierSchema = z.object({
   phone: z.string().max(20).optional(),
   address: z.string().max(500).optional(),
   taxId: z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
+  creditTerm: z.coerce.number().int().min(0).max(365).optional(),
 });
 
+function toAuditSupplier(supplier: {
+  id: string;
+  code: string | null;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  address: string | null;
+  taxId: string | null;
+  creditTerm: number | null;
+  isActive: boolean;
+}) {
+  return {
+    id: supplier.id,
+    code: supplier.code,
+    name: supplier.name,
+    contactName: supplier.contactName,
+    phone: supplier.phone,
+    address: supplier.address,
+    taxId: supplier.taxId,
+    creditTerm: supplier.creditTerm,
+    isActive: supplier.isActive,
+  };
+}
+
 export const createSupplier = async (formData: FormData): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("master.create");
+    session = await requirePermission("master.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -28,13 +61,15 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
     taxId: normalizeOptionalTaxId(formData.get("taxId")),
+    creditTerm: formData.get("creditTerm") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const code = await generateSupplierCode();
 
   try {
-    await db.supplier.create({
+    const requestContext = await getRequestContext();
+    const supplier = await db.supplier.create({
       data: {
         code,
         name: parsed.data.name,
@@ -42,7 +77,28 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
         taxId: parsed.data.taxId ?? null,
+        creditTerm: parsed.data.creditTerm ?? null,
       },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        taxId: true,
+        creditTerm: true,
+        isActive: true,
+      },
+    });
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "Supplier",
+      entityId: supplier.id,
+      entityRef: supplier.code ?? supplier.name,
+      after: toAuditSupplier(supplier),
     });
     revalidatePath("/admin/master/suppliers");
     return {};
@@ -55,8 +111,9 @@ export const updateSupplier = async (
   id: string,
   formData: FormData
 ): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("master.update");
+    session = await requirePermission("master.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -71,11 +128,31 @@ export const updateSupplier = async (
     phone: formData.get("phone") || undefined,
     address: formData.get("address") || undefined,
     taxId: normalizeOptionalTaxId(formData.get("taxId")),
+    creditTerm: formData.get("creditTerm") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    await db.supplier.update({
+    const requestContext = await getRequestContext();
+    const existingSupplier = await db.supplier.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        taxId: true,
+        creditTerm: true,
+        isActive: true,
+      },
+    });
+    if (!existingSupplier) {
+      return { error: "Supplier not found" };
+    }
+
+    const updatedSupplier = await db.supplier.update({
       where: { id },
       data: {
         name: parsed.data.name,
@@ -83,8 +160,35 @@ export const updateSupplier = async (
         phone: parsed.data.phone ?? null,
         address: parsed.data.address ?? null,
         taxId: parsed.data.taxId ?? null,
+        creditTerm: parsed.data.creditTerm ?? null,
         isActive: true,
       },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        taxId: true,
+        creditTerm: true,
+        isActive: true,
+      },
+    });
+    const diff = diffEntity(
+      toAuditSupplier(existingSupplier),
+      toAuditSupplier(updatedSupplier),
+    );
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.UPDATE,
+      entityType: "Supplier",
+      entityId: updatedSupplier.id,
+      entityRef: updatedSupplier.code ?? updatedSupplier.name,
+      before: diff.before,
+      after: diff.after,
     });
     revalidatePath("/admin/master/suppliers");
     return {};
@@ -94,8 +198,9 @@ export const updateSupplier = async (
 };
 
 export const toggleSupplier = async (id: string, isActive: boolean): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("master.cancel");
+    session = await requirePermission("master.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -105,7 +210,56 @@ export const toggleSupplier = async (id: string, isActive: boolean): Promise<{ e
   }
 
   try {
-    await db.supplier.update({ where: { id }, data: { isActive } });
+    const requestContext = await getRequestContext();
+    const existingSupplier = await db.supplier.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        taxId: true,
+        creditTerm: true,
+        isActive: true,
+      },
+    });
+    if (!existingSupplier) {
+      return { error: "Supplier not found" };
+    }
+
+    const updatedSupplier = await db.supplier.update({
+      where: { id },
+      data: { isActive },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        contactName: true,
+        phone: true,
+        address: true,
+        taxId: true,
+        creditTerm: true,
+        isActive: true,
+      },
+    });
+    const diff = diffEntity(
+      toAuditSupplier(existingSupplier),
+      toAuditSupplier(updatedSupplier),
+    );
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: isActive ? AuditAction.UPDATE : AuditAction.CANCEL,
+      entityType: "Supplier",
+      entityId: updatedSupplier.id,
+      entityRef: updatedSupplier.code ?? updatedSupplier.name,
+      before: diff.before,
+      after: diff.after,
+      meta: { isActive },
+    });
     revalidatePath("/admin/master/suppliers");
     return {};
   } catch {
