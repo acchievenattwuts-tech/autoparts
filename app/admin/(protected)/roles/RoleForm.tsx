@@ -101,7 +101,7 @@ const MENU_ORDER = [
   "audit_log",
 ] as const;
 
-const MENU_ORDER_INDEX = new Map(
+const MENU_ORDER_INDEX = new Map<string, number>(
   MENU_ORDER.map((key, index) => [key, index]),
 );
 
