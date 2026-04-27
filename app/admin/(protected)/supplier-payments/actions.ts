@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { generateSupplierPaymentNo } from "@/lib/doc-number";
 import {
+  AuditAction,
   CashBankDirection,
   CashBankSourceType,
   PaymentMethod,
@@ -338,6 +345,70 @@ async function recalculateAffectedDocuments(
   }
 }
 
+async function getSupplierPaymentAuditSnapshot(paymentId: string) {
+  const payment = await db.supplierPayment.findUnique({
+    where: { id: paymentId },
+    include: {
+      supplier: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          purchaseId: true,
+          purchaseReturnId: true,
+          advanceId: true,
+          paidAmount: true,
+          purchase: {
+            select: {
+              purchaseNo: true,
+            },
+          },
+          purchaseReturn: {
+            select: {
+              returnNo: true,
+            },
+          },
+          advance: {
+            select: {
+              advanceNo: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!payment) return null;
+
+  return {
+    id: payment.id,
+    paymentNo: payment.paymentNo,
+    paymentDate: payment.paymentDate,
+    status: payment.status,
+    supplierId: payment.supplierId,
+    supplierRef: payment.supplier.code ?? payment.supplier.name,
+    totalAmount: payment.totalAmount,
+    paymentMethod: payment.paymentMethod,
+    cashBankAccountId: payment.cashBankAccountId,
+    note: payment.note,
+    cancelNote: payment.cancelNote,
+    cancelledAt: payment.cancelledAt,
+    items: payment.items.map((item) => ({
+      purchaseId: item.purchaseId,
+      purchaseNo: item.purchase?.purchaseNo ?? null,
+      purchaseReturnId: item.purchaseReturnId,
+      purchaseReturnNo: item.purchaseReturn?.returnNo ?? null,
+      advanceId: item.advanceId,
+      advanceNo: item.advance?.advanceNo ?? null,
+      paidAmount: item.paidAmount,
+    })),
+  };
+}
+
 export async function getOutstandingSupplierDocuments(
   supplierId: string,
   excludePaymentId?: string,
@@ -375,8 +446,10 @@ export async function createSupplierPayment(
 
   const paymentDate = new Date(parsed.paymentDate);
   const paymentNo = await generateSupplierPaymentNo(paymentDate);
+  let createdPaymentId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const available = await getAvailableSupplierDocuments(tx, parsed.supplierId);
       const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
@@ -395,6 +468,7 @@ export async function createSupplierPayment(
           cashBankAccountId: totalCashPaid > 0 ? parsed.cashBankAccountId ?? null : null,
         },
       });
+      createdPaymentId = payment.id;
 
       await tx.supplierPaymentItem.createMany({
         data: parsed.items.map((item) => ({
@@ -425,6 +499,21 @@ export async function createSupplierPayment(
           : [],
       );
     });
+
+    const afterSnapshot = createdPaymentId
+      ? await getSupplierPaymentAuditSnapshot(createdPaymentId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "SupplierPayment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.paymentNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin/supplier-payments");
     revalidatePath("/admin/purchases");
@@ -489,6 +578,8 @@ export async function updateSupplierPayment(
   };
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSupplierPaymentAuditSnapshot(id);
     await dbTx(async (tx) => {
       const available = await getAvailableSupplierDocuments(tx, parsed.supplierId, id);
       const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
@@ -538,6 +629,21 @@ export async function updateSupplierPayment(
           : [],
       );
     });
+
+    const afterSnapshot = await getSupplierPaymentAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "SupplierPayment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.paymentNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/supplier-payments");
     revalidatePath(`/admin/supplier-payments/${id}`);
@@ -591,6 +697,8 @@ export async function cancelSupplierPayment(
   if (payment.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSupplierPaymentAuditSnapshot(payment.id);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_PAYMENT, payment.id);
       await tx.supplierPayment.update({
@@ -603,6 +711,22 @@ export async function cancelSupplierPayment(
       });
       await recalculateAffectedDocuments(tx, collectAffectedIds(payment.items));
     });
+
+    const afterSnapshot = await getSupplierPaymentAuditSnapshot(payment.id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "SupplierPayment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.paymentNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: parsed.data.cancelNote?.trim() || null },
+      });
+    }
 
     revalidatePath("/admin/supplier-payments");
     revalidatePath(`/admin/supplier-payments/${payment.id}`);

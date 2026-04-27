@@ -1,11 +1,18 @@
 "use server";
 
-import { db, dbTx } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
+import { AuditAction } from "@/lib/generated/prisma";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
@@ -54,6 +61,58 @@ const revalidateStorefrontProductCaches = async (productId?: string) => {
   revalidatePath("/admin/products");
   await revalidateStorefrontCaches(productId);
 };
+
+async function getProductAuditSnapshot(productId: string) {
+  const product = await db.product.findUnique({
+    where: { id: productId },
+    include: {
+      aliases: {
+        select: { alias: true },
+        orderBy: { alias: "asc" },
+      },
+      units: {
+        select: { name: true, scale: true, isBase: true },
+        orderBy: [{ isBase: "desc" }, { scale: "asc" }, { name: "asc" }],
+      },
+      carModels: {
+        select: { carModelId: true },
+        orderBy: { carModelId: "asc" },
+      },
+    },
+  });
+
+  if (!product) {
+    return null;
+  }
+
+  return {
+    id: product.id,
+    code: product.code,
+    slug: product.slug,
+    name: product.name,
+    categoryId: product.categoryId,
+    brandId: product.brandId,
+    preferredSupplierId: product.preferredSupplierId,
+    shelfLocation: product.shelfLocation,
+    costPrice: product.costPrice,
+    salePrice: product.salePrice,
+    minStock: product.minStock,
+    warrantyDays: product.warrantyDays,
+    saleUnitName: product.saleUnitName,
+    purchaseUnitName: product.purchaseUnitName,
+    reportUnitName: product.reportUnitName,
+    description: product.description,
+    imageUrl: product.imageUrl,
+    isLotControl: product.isLotControl,
+    requireExpiryDate: product.requireExpiryDate,
+    allowExpiredIssue: product.allowExpiredIssue,
+    lotIssueMethod: product.lotIssueMethod,
+    isActive: product.isActive,
+    aliases: product.aliases.map((item) => item.alias),
+    carModelIds: product.carModels.map((item) => item.carModelId),
+    units: product.units,
+  };
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -148,8 +207,9 @@ const parseProductFormData = (
 export const createProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("products.create");
+    session = await requirePermission("products.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -162,6 +222,7 @@ export const createProduct = async (
   let createdProductId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const existingSlugs = await tx.product.findMany({
         select: { slug: true },
@@ -227,6 +288,22 @@ export const createProduct = async (
       }
     });
 
+    const createdSnapshot = createdProductId
+      ? await getProductAuditSnapshot(createdProductId)
+      : null;
+
+    if (createdSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Product",
+        entityId: createdSnapshot.id,
+        entityRef: createdSnapshot.code,
+        after: createdSnapshot,
+      });
+    }
+
     await revalidateStorefrontProductCaches(createdProductId);
     return {};
   } catch (err) {
@@ -241,8 +318,9 @@ export const updateProduct = async (
   id: string,
   formData: FormData
 ): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("products.update");
+    session = await requirePermission("products.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -257,6 +335,9 @@ export const updateProduct = async (
   const { aliases, carModelIds, units, ...productData } = result.data;
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getProductAuditSnapshot(id);
+
     await dbTx(async (tx) => {
       const currentProduct = await tx.product.findUnique({
         where: { id },
@@ -336,6 +417,23 @@ export const updateProduct = async (
       }
     });
 
+    const afterSnapshot = await getProductAuditSnapshot(id);
+
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Product",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
     revalidatePath(`/admin/products/${id}/edit`);
     await revalidateStorefrontProductCaches(id);
     return {};
@@ -351,8 +449,9 @@ export const toggleProduct = async (
   id: string,
   isActive: boolean
 ): Promise<{ error?: string }> => {
+  let session;
   try {
-    await requirePermission("products.cancel");
+    session = await requirePermission("products.cancel");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -362,7 +461,29 @@ export const toggleProduct = async (
   }
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getProductAuditSnapshot(id);
+
     await db.product.update({ where: { id }, data: { isActive } });
+
+    const afterSnapshot = await getProductAuditSnapshot(id);
+
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: isActive ? AuditAction.UPDATE : AuditAction.CANCEL,
+        entityType: "Product",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        before: diff.before,
+        after: diff.after,
+        meta: { isActive },
+      });
+    }
+
     await revalidateStorefrontProductCaches(id);
     return {};
   } catch {

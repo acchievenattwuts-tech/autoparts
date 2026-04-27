@@ -1,6 +1,12 @@
 "use server";
 
+import {
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -18,6 +24,7 @@ export async function createWarranty(
   const session = await requirePermission("warranties.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
   const parsed = warrantySchema.safeParse({
     saleId:       formData.get("saleId"),
     saleItemId:   formData.get("saleItemId"),
@@ -57,7 +64,7 @@ export async function createWarranty(
     const endDate   = new Date(startDate);
     endDate.setDate(endDate.getDate() + d.warrantyDays);
 
-    await db.warranty.create({
+    const warranty = await db.warranty.create({
       data: {
         saleId:       derivedSaleId,
         saleItemId:   d.saleItemId,
@@ -67,6 +74,26 @@ export async function createWarranty(
         startDate,
         endDate,
         note:         d.note,
+      },
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "Warranty",
+      entityId: warranty.id,
+      entityRef: `${derivedSaleId}:${d.saleItemId}`,
+      after: {
+        id: warranty.id,
+        saleId: derivedSaleId,
+        saleItemId: d.saleItemId,
+        productId: saleItem.productId,
+        lotNo: lotNoSnapshot,
+        warrantyDays: d.warrantyDays,
+        startDate,
+        endDate,
+        note: d.note ?? null,
       },
     });
 

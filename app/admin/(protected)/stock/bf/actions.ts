@@ -4,8 +4,15 @@ import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
+import { AuditAction } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 
 const lotSubRowSchema = z.object({
@@ -26,12 +33,87 @@ const bfSchema = z.object({
   lotItems:         z.array(lotSubRowSchema).default([]),
 });
 
+async function getBalanceForwardAuditSnapshot(bfId: string) {
+  const balanceForward = await db.balanceForward.findUnique({
+    where: { id: bfId },
+    include: {
+      product: {
+        select: {
+          code: true,
+          name: true,
+          isLotControl: true,
+        },
+      },
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!balanceForward) {
+    return null;
+  }
+
+  const stockCards = await db.stockCard.findMany({
+    where: { referenceId: balanceForward.id, source: "BF" },
+    orderBy: [{ docDate: "asc" }, { sorder: "asc" }, { id: "asc" }],
+    include: {
+      lotMovements: {
+        orderBy: { id: "asc" },
+        select: {
+          lotNo: true,
+          qtyIn: true,
+          qtyOut: true,
+          unitCost: true,
+        },
+      },
+    },
+  });
+
+  return {
+    id: balanceForward.id,
+    docNo: balanceForward.docNo,
+    docDate: balanceForward.docDate,
+    status: balanceForward.status,
+    unitName: balanceForward.unitName,
+    qtyInBase: balanceForward.qtyInBase,
+    costPerBaseUnit: balanceForward.costPerBaseUnit,
+    note: balanceForward.note,
+    cancelNote: balanceForward.cancelNote,
+    cancelledAt: balanceForward.cancelledAt,
+    product: {
+      code: balanceForward.product.code,
+      name: balanceForward.product.name,
+      isLotControl: balanceForward.product.isLotControl,
+    },
+    user: balanceForward.user?.name ?? balanceForward.user?.email ?? null,
+    stockCards: stockCards.map((card) => ({
+      id: card.id,
+      qtyIn: card.qtyIn,
+      qtyOut: card.qtyOut,
+      priceIn: card.priceIn,
+      detail: card.detail,
+      lots: card.lotMovements.map((lot) => ({
+        lotNo: lot.lotNo,
+        qtyIn: lot.qtyIn,
+        qtyOut: lot.qtyOut,
+        unitCost: lot.unitCost,
+      })),
+    })),
+  };
+}
+
 export async function createBF(
   formData: FormData
 ): Promise<{ success?: boolean; docNo?: string; error?: string }> {
   const session = await requirePermission("stock.bf.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
+  let createdBalanceForwardId = "";
   let lotItems: z.infer<typeof lotSubRowSchema>[] = [];
   try {
     const raw = formData.get("lotItems");
@@ -86,6 +168,7 @@ export async function createBF(
           userId: session.user!.id!,
         },
       });
+      createdBalanceForwardId = bf.id;
 
       await writeStockCard(tx, {
         productId,
@@ -119,6 +202,20 @@ export async function createBF(
         if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
       }
     });
+    const afterSnapshot = createdBalanceForwardId
+      ? await getBalanceForwardAuditSnapshot(createdBalanceForwardId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "BalanceForward",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.docNo,
+        after: afterSnapshot,
+      });
+    }
     revalidatePath("/admin/stock/bf");
     return { success: true, docNo };
   } catch (err) {
@@ -138,6 +235,7 @@ export async function cancelBF(
   const session = await requirePermission("stock.bf.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
   const parsed = cancelBFSchema.safeParse({
     bfId:       formData.get("bfId"),
     cancelNote: formData.get("cancelNote") || undefined,
@@ -151,6 +249,7 @@ export async function cancelBF(
   if (bf.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
   try {
+    const beforeSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
     await dbTx(async (tx) => {
       // Reverse Lot balances (bf.id is used as purchaseItemId in writePurchaseLots)
       await reversePurchaseLotBalance(tx, bf.id, bf.productId);
@@ -171,6 +270,21 @@ export async function cancelBF(
         },
       });
     });
+    const afterSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "BalanceForward",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.docNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
     revalidatePath("/admin/stock/bf");
     return { success: true };
   } catch (err) {

@@ -1,11 +1,17 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
-import { PaymentMethod, Prisma } from "@/lib/generated/prisma";
+import { AuditAction, PaymentMethod, Prisma } from "@/lib/generated/prisma";
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
@@ -224,6 +230,56 @@ async function getReceiptSignerSnapshot(
   };
 }
 
+async function getReceiptAuditSnapshot(receiptId: string) {
+  const receipt = await db.receipt.findUnique({
+    where: { id: receiptId },
+    include: {
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          saleId: true,
+          cnId: true,
+          paidAmount: true,
+          sale: {
+            select: {
+              saleNo: true,
+            },
+          },
+          creditNote: {
+            select: {
+              cnNo: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!receipt) return null;
+
+  return {
+    id: receipt.id,
+    receiptNo: receipt.receiptNo,
+    receiptDate: receipt.receiptDate,
+    status: receipt.status,
+    customerId: receipt.customerId,
+    customerName: receipt.customerName,
+    totalAmount: receipt.totalAmount,
+    paymentMethod: receipt.paymentMethod,
+    cashBankAccountId: receipt.cashBankAccountId,
+    note: receipt.note,
+    cancelNote: receipt.cancelNote,
+    cancelledAt: receipt.cancelledAt,
+    items: receipt.items.map((item) => ({
+      saleId: item.saleId,
+      saleNo: item.sale?.saleNo ?? null,
+      cnId: item.cnId,
+      cnNo: item.creditNote?.cnNo ?? null,
+      paidAmount: item.paidAmount,
+    })),
+  };
+}
+
 export async function createReceipt(
   formData: FormData,
 ): Promise<{ success: boolean; receiptNo?: string; error?: string }> {
@@ -241,6 +297,7 @@ export async function createReceipt(
   try {
     const docDate   = new Date(parsed.receiptDate);
     const receiptNo = await generateReceiptNo(docDate);
+    let createdReceiptId = "";
 
     // Sale items add to total; CN items are credits that reduce the total
     const totalAmount = calculateReceiptTotalAmount(parsed.items);
@@ -250,6 +307,7 @@ export async function createReceipt(
 
     const resolvedCashBankAccountId = totalAmount > 0 ? parsed.cashBankAccountId : undefined;
     const affectedIds = collectAffectedReceiptIds(parsed.items);
+    const requestContext = await getRequestContext();
 
     await dbTx(async (tx) => {
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "");
@@ -279,6 +337,7 @@ export async function createReceipt(
           note:          parsed.note || null,
         },
       });
+      createdReceiptId = receipt.id;
 
       await tx.receiptItem.createMany({
         data: parsed.items.map((item) => ({
@@ -307,6 +366,21 @@ export async function createReceipt(
           : [],
       );
     });
+
+    const afterSnapshot = createdReceiptId
+      ? await getReceiptAuditSnapshot(createdReceiptId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Receipt",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.receiptNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin/receipts");
     revalidatePath("/admin/customers");
@@ -351,6 +425,8 @@ export async function cancelReceipt(
   const affectedCnIds   = [...new Set(receipt.items.map((i) => i.cnId).filter((id): id is string => id !== null))];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getReceiptAuditSnapshot(receiptId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
       await tx.receipt.update({
@@ -364,6 +440,23 @@ export async function cancelReceipt(
         await recalculateCNAmountRemain(tx, cnId);
       }
     });
+
+    const afterSnapshot = await getReceiptAuditSnapshot(receiptId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Receipt",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.receiptNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
+
     revalidatePath("/admin/receipts");
     return { success: true };
   } catch (err) {
@@ -416,6 +509,8 @@ export async function updateReceipt(
   };
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getReceiptAuditSnapshot(id);
     await dbTx(async (tx) => {
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "", id);
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
@@ -481,6 +576,21 @@ export async function updateReceipt(
           : [],
       );
     });
+
+    const afterSnapshot = await getReceiptAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Receipt",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.receiptNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/receipts");
     revalidatePath(`/admin/receipts/${id}`);

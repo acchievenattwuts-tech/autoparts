@@ -1,6 +1,13 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -11,12 +18,26 @@ const expenseCodeSchema = z.object({
   description: z.string().max(200).optional(),
 });
 
+async function getExpenseCodeAuditSnapshot(id: string) {
+  return db.expenseCode.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      isActive: true,
+    },
+  });
+}
+
 export async function createExpenseCode(
   formData: FormData
 ): Promise<{ success?: boolean; code?: string; error?: string }> {
   const session = await requirePermission("master.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
   const parsed = expenseCodeSchema.safeParse({
     name:        formData.get("name"),
     description: formData.get("description") || undefined,
@@ -26,7 +47,19 @@ export async function createExpenseCode(
   const code = await generateExpenseCodeCode();
 
   try {
-    await db.expenseCode.create({ data: { code, ...parsed.data } });
+    const created = await db.expenseCode.create({ data: { code, ...parsed.data } });
+    const afterSnapshot = await getExpenseCodeAuditSnapshot(created.id);
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "ExpenseCode",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        after: afterSnapshot,
+      });
+    }
     revalidatePath("/admin/master/expense-codes");
     return { success: true, code };
   } catch (err: unknown) {
@@ -42,6 +75,8 @@ export async function updateExpenseCode(
   const session = await requirePermission("master.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
+
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
     return { error: "รหัสไม่ถูกต้อง" };
   }
@@ -53,6 +88,7 @@ export async function updateExpenseCode(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   try {
+    const beforeSnapshot = await getExpenseCodeAuditSnapshot(id);
     await db.expenseCode.update({
       where: { id },
       data: {
@@ -60,6 +96,20 @@ export async function updateExpenseCode(
         description: parsed.data.description ?? null,
       },
     });
+    const afterSnapshot = await getExpenseCodeAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "ExpenseCode",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
     revalidatePath("/admin/master/expense-codes");
     return { success: true };
   } catch (err) {
@@ -75,8 +125,26 @@ export async function toggleExpenseCode(
   const session = await requirePermission("master.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
+
   try {
+    const beforeSnapshot = await getExpenseCodeAuditSnapshot(id);
     await db.expenseCode.update({ where: { id }, data: { isActive } });
+    const afterSnapshot = await getExpenseCodeAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "ExpenseCode",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.code,
+        before: diff.before,
+        after: diff.after,
+        meta: { isActive },
+      });
+    }
     revalidatePath("/admin/master/expense-codes");
     return { success: true };
   } catch (err) {

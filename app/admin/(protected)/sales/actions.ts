@@ -1,12 +1,28 @@
 "use server";
 
-import { db, dbTx } from "@/lib/db";
-import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { db, dbTx } from "@/lib/db";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateSaleNo } from "@/lib/doc-number";
-import { FulfillmentType, PaymentMethod, Prisma, SalePaymentType, SaleType, ShippingMethod, ShippingStatus, VatType } from "@/lib/generated/prisma";
+import {
+  AuditAction,
+  FulfillmentType,
+  PaymentMethod,
+  Prisma,
+  SalePaymentType,
+  SaleType,
+  ShippingMethod,
+  ShippingStatus,
+  VatType,
+} from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -134,6 +150,69 @@ type SaleProductSnapshot = {
 };
 
 const getSaleUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
+
+async function getSaleAuditSnapshot(saleId: string) {
+  const sale = await db.sale.findUnique({
+    where: { id: saleId },
+    include: {
+      items: {
+        select: {
+          productId: true,
+          quantity: true,
+          salePrice: true,
+          totalAmount: true,
+          warrantyDays: true,
+          supplierId: true,
+          supplierName: true,
+        },
+        orderBy: [{ productId: "asc" }, { id: "asc" }],
+      },
+    },
+  });
+
+  if (!sale) {
+    return null;
+  }
+
+  return {
+    id: sale.id,
+    saleNo: sale.saleNo,
+    saleDate: sale.saleDate,
+    customerId: sale.customerId,
+    customerName: sale.customerName,
+    customerPhone: sale.customerPhone,
+    saleType: sale.saleType,
+    paymentType: sale.paymentType,
+    fulfillmentType: sale.fulfillmentType,
+    status: sale.status,
+    shippingStatus: sale.shippingStatus,
+    shippingMethod: sale.shippingMethod,
+    trackingNo: sale.trackingNo,
+    shippingAddress: sale.shippingAddress,
+    shippingFee: sale.shippingFee,
+    discount: sale.discount,
+    totalAmount: sale.totalAmount,
+    subtotalAmount: sale.subtotalAmount,
+    vatAmount: sale.vatAmount,
+    netAmount: sale.netAmount,
+    amountRemain: sale.amountRemain,
+    vatType: sale.vatType,
+    vatRate: sale.vatRate,
+    paymentMethod: sale.paymentMethod,
+    cashBankAccountId: sale.cashBankAccountId,
+    note: sale.note,
+    creditTerm: sale.creditTerm,
+    items: sale.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      salePrice: item.salePrice,
+      totalAmount: item.totalAmount,
+      warrantyDays: item.warrantyDays,
+      supplierId: item.supplierId,
+      supplierName: item.supplierName,
+    })),
+  };
+}
 
 async function preloadSaleDependencies(
   tx: SaleTxClient,
@@ -406,8 +485,10 @@ export async function createSale(
   const docDate = new Date(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
+  let createdSaleId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const resolvedPaymentMethod = await resolveSalePaymentMethod(
         tx,
@@ -448,6 +529,7 @@ export async function createSale(
           creditTerm:      creditTerm      ?? null,
         },
       });
+      createdSaleId = sale.id;
 
       // 2. Process each line item
       for (const item of validItems) {
@@ -544,6 +626,21 @@ export async function createSale(
       await rebuildSaleProfitFacts(tx, sale.id);
     });
 
+    const afterSnapshot = createdSaleId
+      ? await getSaleAuditSnapshot(createdSaleId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Sale",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.saleNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath("/admin/products");
@@ -618,6 +715,8 @@ export async function cancelSale(
   const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSaleAuditSnapshot(saleId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       // Reverse Lot balances before deleting StockCard rows
@@ -636,6 +735,23 @@ export async function cancelSale(
       });
       await rebuildSaleProfitFacts(tx, saleId);
     });
+
+    const afterSnapshot = await getSaleAuditSnapshot(saleId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Sale",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.saleNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
+
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     return { success: true };
@@ -744,6 +860,8 @@ export async function updateSale(
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSaleAuditSnapshot(id);
     await dbTx(async (tx) => {
       const resolvedPaymentMethod = await resolveSalePaymentMethod(
         tx,
@@ -882,6 +1000,21 @@ export async function updateSale(
       await rebuildSaleProfitFacts(tx, id);
     });
 
+    const afterSnapshot = await getSaleAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Sale",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.saleNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath(`/admin/sales/${id}`);
@@ -912,6 +1045,7 @@ export async function updateShippingStatus(
   if (!parsed.success) return { error: "ข้อมูลไม่ถูกต้อง" };
 
   try {
+    const requestContext = await getRequestContext();
     const sale = await db.sale.findUnique({
       where: { id: saleId },
       select: {
@@ -940,6 +1074,7 @@ export async function updateShippingStatus(
       return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
     }
 
+    const beforeSnapshot = await getSaleAuditSnapshot(saleId);
     await db.sale.update({
       where: { id: saleId },
       data: {
@@ -948,6 +1083,21 @@ export async function updateShippingStatus(
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
       },
     });
+    const afterSnapshot = await getSaleAuditSnapshot(saleId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Sale",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.saleNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { source: "delivery.update" },
+      });
+    }
     revalidatePath("/admin/delivery");
     revalidatePath(`/admin/sales/${saleId}`);
     return { success: true };

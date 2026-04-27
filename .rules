@@ -80,6 +80,7 @@
 - Return generic error messages to the client — never expose stack traces or DB errors.
 - Always wrap async operations in try-catch; log errors server-side, return safe messages client-side.
 - Rate-limit sensitive endpoints (login, OTP, file upload) — use middleware or an upstream layer.
+- **Every new admin data mutation must insert an Audit Log entry** — create, update, cancel, permission change, password change, export, and special operations must write to the central `AuditLog` table. This is mandatory for all future pages and Server Actions, not optional.
 
 ### Dependencies
 - Run `npm audit` regularly and fix high/critical vulnerabilities before deploying.
@@ -144,6 +145,13 @@
 5. **Update `AdminSidebar.tsx`** — set `permission: "<key>.view"` in navItems to match the registered permission.
 
 Use the Sales page (view / add / update / cancel) as the reference structure.
+
+### Audit Log — Central Compliance Rule
+
+- `AuditLog` is append-only — never edit or delete rows from UI or normal application flows.
+- Every new admin page or API/Server Action that changes persistent data must write an `AuditLog` entry for the top-level business event.
+- At minimum, each audit entry must capture: actor, action, entityType, entityId/entityRef when available, and before/after or equivalent metadata.
+- If a new feature is added later and it saves, updates, cancels, exports, recalculates, changes permissions, or changes credentials, wiring Audit Log is part of the definition of done.
 
 ### UI/UX Decisions
 - **When changing UI/UX, update both light mode and dark mode in the same round automatically** — do not ask the human whether dark mode should also be updated. Treat this as mandatory default behavior, but apply changes carefully and keep the existing business logic, data flow, and permissions untouched.

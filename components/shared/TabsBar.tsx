@@ -4,10 +4,10 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useTabStore } from "@/hooks/useTabStore";
+import { normalizeAdminTabPath } from "@/lib/admin-tabs";
 import { cn } from "@/lib/utils";
 
 const ROUTE_LABELS: Record<string, string> = {
-  "/admin": "Today Workboard",
   "/admin/workboard": "Today Workboard",
   "/admin/dashboard": "Dashboard",
   "/admin/audit-log": "Audit Log",
@@ -50,7 +50,8 @@ const ROUTE_LABELS: Record<string, string> = {
 const SORTED_ROUTES = Object.keys(ROUTE_LABELS).sort((a, b) => b.length - a.length);
 
 function normalizePath(path: string): string {
-  return SORTED_ROUTES.find((route) => path === route || path.startsWith(`${route}/`)) ?? path;
+  const normalizedPath = normalizeAdminTabPath(path);
+  return SORTED_ROUTES.find((route) => normalizedPath === route || normalizedPath.startsWith(`${route}/`)) ?? normalizedPath;
 }
 
 const TabsBar = () => {

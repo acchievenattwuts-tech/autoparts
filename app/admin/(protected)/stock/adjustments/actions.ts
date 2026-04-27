@@ -4,8 +4,15 @@ import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateAdjNo } from "@/lib/doc-number";
+import { AuditAction } from "@/lib/generated/prisma";
 import {
   getLotAvailability,
   writeAdjustmentLots,
@@ -78,12 +85,96 @@ async function preloadAdjustmentMaps(
   };
 }
 
+async function getAdjustmentAuditSnapshot(adjustmentId: string) {
+  const adjustment = await db.adjustment.findUnique({
+    where: { id: adjustmentId },
+    include: {
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          qtyAdjust: true,
+          reason: true,
+          product: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!adjustment) {
+    return null;
+  }
+
+  const stockCards = await db.stockCard.findMany({
+    where: { referenceId: adjustment.id },
+    orderBy: [{ docDate: "asc" }, { sorder: "asc" }, { id: "asc" }],
+    include: {
+      lotMovements: {
+        orderBy: { id: "asc" },
+        select: {
+          lotNo: true,
+          qtyIn: true,
+          qtyOut: true,
+          unitCost: true,
+        },
+      },
+    },
+  });
+
+  return {
+    id: adjustment.id,
+    adjustNo: adjustment.adjustNo,
+    adjustDate: adjustment.adjustDate,
+    status: adjustment.status,
+    note: adjustment.note,
+    cancelNote: adjustment.cancelNote,
+    cancelledAt: adjustment.cancelledAt,
+    updatedAt: adjustment.updatedAt,
+    user: adjustment.user?.name ?? adjustment.user?.email ?? null,
+    items: adjustment.items.map((item) => ({
+      id: item.id,
+      productCode: item.product.code,
+      productName: item.product.name,
+      qtyAdjust: item.qtyAdjust,
+      reason: item.reason,
+    })),
+    stockCards: stockCards.map((card) => ({
+      id: card.id,
+      source: card.source,
+      qtyIn: card.qtyIn,
+      qtyOut: card.qtyOut,
+      priceIn: card.priceIn,
+      priceOut: card.priceOut,
+      detail: card.detail,
+      lots: card.lotMovements.map((lot) => ({
+        lotNo: lot.lotNo,
+        qtyIn: lot.qtyIn,
+        qtyOut: lot.qtyOut,
+        unitCost: lot.unitCost,
+      })),
+    })),
+  };
+}
+
 export async function createAdjustment(
   formData: FormData,
 ): Promise<{ success?: boolean; adjustNo?: string; error?: string }> {
   const session = await requirePermission("stock.adjustments.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
+  let createdAdjustmentId = "";
   let items: z.infer<typeof adjustItemSchema>[] = [];
   try {
     const raw = formData.get("items");
@@ -126,6 +217,7 @@ export async function createAdjustment(
         },
         include: { items: true },
       });
+      createdAdjustmentId = adjustment.id;
 
       for (let idx = 0; idx < adjustment.items.length; idx++) {
         const adjustmentItem = adjustment.items[idx];
@@ -170,6 +262,21 @@ export async function createAdjustment(
         }
       }
     });
+
+    const afterSnapshot = createdAdjustmentId
+      ? await getAdjustmentAuditSnapshot(createdAdjustmentId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Adjustment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.adjustNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin/stock/adjustments");
     return { success: true, adjustNo };
@@ -218,6 +325,7 @@ export async function cancelAdjustment(
   const session = await requirePermission("stock.adjustments.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
   const parsed = cancelAdjSchema.safeParse({
     adjustmentId: formData.get("adjustmentId"),
     cancelNote: formData.get("cancelNote") || undefined,
@@ -236,6 +344,7 @@ export async function cancelAdjustment(
   const affectedProductIds = [...new Set(adjustment.items.map((item) => item.productId))];
 
   try {
+    const beforeSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
     await dbTx(async (tx) => {
       await reverseAdjustmentLotBalance(tx, adjustment.id, affectedProductIds);
       await tx.stockCard.deleteMany({ where: { docNo: adjustment.adjustNo } });
@@ -253,6 +362,22 @@ export async function cancelAdjustment(
         },
       });
     });
+
+    const afterSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Adjustment",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.adjustNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
 
     revalidatePath("/admin/stock/adjustments");
     return { success: true };

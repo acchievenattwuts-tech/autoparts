@@ -2,7 +2,13 @@
 
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import {
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { getRequiredSession } from "@/lib/require-auth";
 
 const changePasswordSchema = z
@@ -39,9 +45,10 @@ export async function changeOwnPassword(
   const { currentPassword, newPassword } = parsed.data;
 
   try {
+    const requestContext = await getRequestContext();
     const user = await db.user.findUnique({
       where: { id: session.user.id },
-      select: { password: true },
+      select: { id: true, name: true, email: true, username: true, password: true },
     });
 
     if (!user) {
@@ -61,6 +68,16 @@ export async function changeOwnPassword(
         password: hashedPassword,
         mustChangePassword: false,
       },
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.PASSWORD_CHANGE,
+      entityType: "User",
+      entityId: user.id,
+      entityRef: user.username ?? user.email,
+      meta: { mustChangePasswordCleared: true },
     });
 
     return { success: true, requireReLogin: true };

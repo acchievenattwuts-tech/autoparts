@@ -1,7 +1,14 @@
 "use server";
 
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
 import { createClient } from "@supabase/supabase-js";
@@ -108,8 +115,9 @@ const companySchema = z.object({
 });
 
 export async function updateCompanySettings(formData: FormData) {
+  let session;
   try {
-    await requirePermission("settings.company.manage");
+    session = await requirePermission("settings.company.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -121,6 +129,19 @@ export async function updateCompanySettings(formData: FormData) {
   }
 
   try {
+    const requestContext = await getRequestContext();
+    const keys = Object.keys(parsed.data);
+    const existingEntries = await db.siteContent.findMany({
+      where: { key: { in: keys } },
+      select: { key: true, value: true },
+    });
+    const beforeState = Object.fromEntries(
+      keys.map((key) => [
+        key,
+        existingEntries.find((entry) => entry.key === key)?.value ?? null,
+      ]),
+    );
+
     const entries = Object.entries(parsed.data) as [string, string][];
     for (const [key, value] of entries) {
       await db.siteContent.upsert({
@@ -129,6 +150,18 @@ export async function updateCompanySettings(formData: FormData) {
         create: { key, value },
       });
     }
+
+    const diff = diffEntity(beforeState, parsed.data);
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.UPDATE,
+      entityType: "CompanySettings",
+      entityRef: "site-config",
+      before: diff.before,
+      after: diff.after,
+    });
   } catch (error) {
     console.error("Failed to update company settings", error);
     return { error: "บันทึกการตั้งค่าไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };

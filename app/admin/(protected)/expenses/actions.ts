@@ -4,10 +4,15 @@ import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { VatType } from "@/lib/generated/prisma";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import { AuditAction, CashBankDirection, CashBankSourceType, VatType } from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
-import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 
@@ -26,12 +31,77 @@ const expenseSchema = z.object({
   items:       z.array(expenseItemSchema).min(1, "ต้องมีรายการค่าใช้จ่ายอย่างน้อย 1 รายการ").max(50),
 });
 
+async function getExpenseAuditSnapshot(expenseId: string) {
+  const expense = await db.expense.findUnique({
+    where: { id: expenseId },
+    include: {
+      cashBankAccount: {
+        select: {
+          code: true,
+          name: true,
+          type: true,
+        },
+      },
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          description: true,
+          amount: true,
+          expenseCode: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!expense) {
+    return null;
+  }
+
+  return {
+    id: expense.id,
+    expenseNo: expense.expenseNo,
+    expenseDate: expense.expenseDate,
+    status: expense.status,
+    note: expense.note,
+    subtotalAmount: expense.subtotalAmount,
+    vatAmount: expense.vatAmount,
+    vatRate: expense.vatRate,
+    vatType: expense.vatType,
+    totalAmount: expense.totalAmount,
+    netAmount: expense.netAmount,
+    cancelNote: expense.cancelNote,
+    cancelledAt: expense.cancelledAt,
+    cashBankAccount: expense.cashBankAccount
+      ? {
+          code: expense.cashBankAccount.code,
+          name: expense.cashBankAccount.name,
+          type: expense.cashBankAccount.type,
+        }
+      : null,
+    items: expense.items.map((item) => ({
+      id: item.id,
+      code: item.expenseCode.code,
+      name: item.expenseCode.name,
+      description: item.description,
+      amount: item.amount,
+    })),
+  };
+}
+
 export async function createExpense(
   formData: FormData
 ): Promise<{ success?: boolean; expenseNo?: string; error?: string }> {
   const session = await requirePermission("expenses.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
+  let createdExpenseId = "";
   let items: z.infer<typeof expenseItemSchema>[] = [];
   try {
     const raw = formData.get("items");
@@ -80,6 +150,7 @@ export async function createExpense(
           },
         },
       });
+      createdExpenseId = expense.id;
 
       await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [{
         accountId: d.cashBankAccountId,
@@ -92,6 +163,21 @@ export async function createExpense(
 
       await rebuildExpenseProfitFacts(tx, expense.id);
     });
+
+    const afterSnapshot = createdExpenseId
+      ? await getExpenseAuditSnapshot(createdExpenseId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "Expense",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.expenseNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
@@ -113,6 +199,7 @@ export async function cancelExpense(
   const session = await requirePermission("expenses.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
+  const requestContext = await getRequestContext();
   const parsed = cancelExpenseSchema.safeParse({
     expenseId:  formData.get("expenseId"),
     cancelNote: formData.get("cancelNote") || undefined,
@@ -126,6 +213,7 @@ export async function cancelExpense(
     if (!expense)                        return { error: "ไม่พบเอกสาร" };
     if (expense.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
+    const beforeSnapshot = await getExpenseAuditSnapshot(expenseId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
       await tx.expense.update({
@@ -134,8 +222,24 @@ export async function cancelExpense(
       });
       await rebuildExpenseProfitFacts(tx, expenseId);
     });
+    const afterSnapshot = await getExpenseAuditSnapshot(expenseId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Expense",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.expenseNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
+    revalidatePath(`/admin/expenses/${expenseId}`);
     return { success: true };
   } catch (err) {
     console.error("[cancelExpense]", err);
@@ -153,6 +257,8 @@ export async function updateExpense(
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await requirePermission("expenses.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const requestContext = await getRequestContext();
 
   if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
     return { error: "รหัสเอกสารไม่ถูกต้อง" };
@@ -183,6 +289,7 @@ export async function updateExpense(
   const docDate = new Date(d.expenseDate);
 
   try {
+    const beforeSnapshot = await getExpenseAuditSnapshot(id);
     await dbTx(async (tx) => {
       await tx.expenseItem.deleteMany({ where: { expenseId: id } });
       await tx.expense.update({
@@ -219,6 +326,21 @@ export async function updateExpense(
 
       await rebuildExpenseProfitFacts(tx, id);
     });
+
+    const afterSnapshot = await getExpenseAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Expense",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.expenseNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");

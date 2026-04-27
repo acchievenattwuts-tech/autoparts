@@ -3,11 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
+import {
   ALL_MENU_PERMISSION_KEYS,
   ensureAccessControlSetup,
   type PermissionKey,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 
 const roleSchema = z.object({
@@ -22,13 +29,32 @@ function toPermissionKeys(permissionKeys: string[]): PermissionKey[] {
   );
 }
 
+function toAuditRole(role: {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  permissions: Array<{ permission: { key: string } }>;
+}) {
+  return {
+    id: role.id,
+    name: role.name,
+    description: role.description,
+    isSystem: role.isSystem,
+    permissionKeys: role.permissions
+      .map((item) => item.permission.key)
+      .sort((left, right) => left.localeCompare(right)),
+  };
+}
+
 export async function createRole(
   formData: FormData
 ): Promise<{ success?: boolean; id?: string; error?: string }> {
   await ensureAccessControlSetup();
 
+  let session;
   try {
-    await requirePermission("admin.roles.manage");
+    session = await requirePermission("admin.roles.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -56,6 +82,7 @@ export async function createRole(
   }
 
   try {
+    const requestContext = await getRequestContext();
     const permissions = await db.permission.findMany({
       where: { key: { in: permissionKeys } },
       select: { id: true },
@@ -66,7 +93,7 @@ export async function createRole(
         name: parsed.data.name.trim(),
         description: parsed.data.description?.trim() || null,
       },
-      select: { id: true },
+      select: { id: true, name: true, description: true, isSystem: true },
     });
 
     await db.appRolePermission.createMany({
@@ -75,6 +102,22 @@ export async function createRole(
         permissionId: permission.id,
       })),
       skipDuplicates: true,
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "AppRole",
+      entityId: role.id,
+      entityRef: role.name,
+      after: {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        isSystem: role.isSystem,
+        permissionKeys,
+      },
     });
 
     revalidatePath("/admin/roles");
@@ -91,8 +134,9 @@ export async function updateRole(
 ): Promise<{ success?: boolean; error?: string }> {
   await ensureAccessControlSetup();
 
+  let session;
   try {
-    await requirePermission("admin.roles.manage");
+    session = await requirePermission("admin.roles.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -120,9 +164,18 @@ export async function updateRole(
   }
 
   try {
+    const requestContext = await getRequestContext();
     const role = await db.appRole.findUnique({
       where: { id },
-      select: { isSystem: true },
+      include: {
+        permissions: {
+          include: {
+            permission: {
+              select: { key: true },
+            },
+          },
+        },
+      },
     });
 
     if (!role) {
@@ -155,6 +208,38 @@ export async function updateRole(
         skipDuplicates: true,
       });
     });
+
+    const updatedRole = await db.appRole.findUnique({
+      where: { id },
+      include: {
+        permissions: {
+          include: {
+            permission: {
+              select: { key: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (updatedRole) {
+      const beforeRole = toAuditRole(role);
+      const afterRole = toAuditRole(updatedRole);
+      const diff = diffEntity(beforeRole, afterRole);
+      const permissionChanged =
+        JSON.stringify(beforeRole.permissionKeys) !== JSON.stringify(afterRole.permissionKeys);
+
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: permissionChanged ? AuditAction.PERMISSION_CHANGE : AuditAction.ROLE_CHANGE,
+        entityType: "AppRole",
+        entityId: updatedRole.id,
+        entityRef: updatedRole.name,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/roles");
     revalidatePath(`/admin/roles/${id}/edit`);

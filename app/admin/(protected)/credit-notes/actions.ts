@@ -1,12 +1,24 @@
 "use server";
 
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateCNNo } from "@/lib/doc-number";
-import { CNRefundMethod, CNSettlementType, CreditNoteType, VatType } from "@/lib/generated/prisma";
+import {
+  AuditAction,
+  CNRefundMethod,
+  CNSettlementType,
+  CreditNoteType,
+  VatType,
+} from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
@@ -246,6 +258,77 @@ async function validateCreditNoteSourceSale(
   }
 }
 
+async function getCreditNoteAuditSnapshot(creditNoteId: string) {
+  const creditNote = await db.creditNote.findUnique({
+    where: { id: creditNoteId },
+    include: {
+      sale: {
+        select: {
+          saleNo: true,
+        },
+      },
+      customer: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          productId: true,
+          qty: true,
+          unitPrice: true,
+          amount: true,
+          subtotalAmount: true,
+          product: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!creditNote) return null;
+
+  return {
+    id: creditNote.id,
+    cnNo: creditNote.cnNo,
+    cnDate: creditNote.cnDate,
+    status: creditNote.status,
+    type: creditNote.type,
+    settlementType: creditNote.settlementType,
+    refundMethod: creditNote.refundMethod,
+    customerId: creditNote.customerId,
+    customerRef:
+      creditNote.customer?.code ?? creditNote.customer?.name ?? creditNote.customerName ?? null,
+    saleId: creditNote.saleId,
+    saleNo: creditNote.sale?.saleNo ?? null,
+    cashBankAccountId: creditNote.cashBankAccountId,
+    totalAmount: creditNote.totalAmount,
+    amountRemain: creditNote.amountRemain,
+    subtotalAmount: creditNote.subtotalAmount,
+    vatAmount: creditNote.vatAmount,
+    vatType: creditNote.vatType,
+    vatRate: creditNote.vatRate,
+    note: creditNote.note,
+    cancelNote: creditNote.cancelNote,
+    cancelledAt: creditNote.cancelledAt,
+    items: creditNote.items.map((item) => ({
+      productId: item.productId,
+      productCode: item.product?.code ?? null,
+      productName: item.product?.name ?? null,
+      qty: item.qty,
+      unitPrice: item.unitPrice,
+      amount: item.amount,
+      subtotalAmount: item.subtotalAmount,
+    })),
+  };
+}
+
 export async function createCreditNote(
   formData: FormData
 ): Promise<{ success?: boolean; cnNo?: string; error?: string }> {
@@ -288,8 +371,10 @@ export async function createCreditNote(
     settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
   const docDate = new Date(cnDate);
   const cnNo    = await generateCNNo(docDate);
+  let createdCreditNoteId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       await validateCreditNoteSourceSale(tx, saleId, customerId);
 
@@ -320,6 +405,7 @@ export async function createCreditNote(
           cnDate:         docDate,
         },
       });
+      createdCreditNoteId = cn.id;
 
       // Process each line item
       for (const item of validItems) {
@@ -416,6 +502,21 @@ export async function createCreditNote(
       await rebuildCreditNoteProfitFacts(tx, cn.id);
     });
 
+    const afterSnapshot = createdCreditNoteId
+      ? await getCreditNoteAuditSnapshot(createdCreditNoteId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "CreditNote",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.cnNo,
+        after: afterSnapshot,
+      });
+    }
+
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
@@ -470,6 +571,8 @@ export async function cancelCreditNote(
   ];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getCreditNoteAuditSnapshot(cnId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
 
@@ -495,6 +598,23 @@ export async function cancelCreditNote(
       });
       await rebuildCreditNoteProfitFacts(tx, cnId);
     });
+
+    const afterSnapshot = await getCreditNoteAuditSnapshot(cnId);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "CreditNote",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.cnNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: cancelNote ?? null },
+      });
+    }
+
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     return { success: true };
@@ -577,6 +697,8 @@ export async function updateCreditNote(
   ];
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
       await validateCreditNoteSourceSale(tx, saleId, customerId);
 
@@ -711,6 +833,21 @@ export async function updateCreditNote(
 
       await rebuildCreditNoteProfitFacts(tx, id);
     });
+
+    const afterSnapshot = await getCreditNoteAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CreditNote",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.cnNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");

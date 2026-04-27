@@ -4,8 +4,15 @@ import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { ensureAccessControlSetup } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { AuditAction } from "@/lib/generated/prisma";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 
 const ALLOWED_SIGNATURE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -40,13 +47,40 @@ const updateUserSchema = userSchema.extend({
   password: z.string().min(8, "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร").max(100).optional(),
 });
 
+function toAuditUser(user: {
+  id: string;
+  name: string;
+  username: string | null;
+  email: string;
+  role: "ADMIN" | "STAFF";
+  appRoleId: string | null;
+  mustChangePassword: boolean;
+  signatureUrl: string | null;
+  signatureUpdatedAt: Date | null;
+  isActive?: boolean;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    appRoleId: user.appRoleId,
+    mustChangePassword: user.mustChangePassword,
+    signatureUrl: user.signatureUrl,
+    signatureUpdatedAt: user.signatureUpdatedAt,
+    isActive: user.isActive,
+  };
+}
+
 export async function createUser(
   formData: FormData
 ): Promise<{ success?: boolean; id?: string; error?: string }> {
   await ensureAccessControlSetup();
 
+  let session;
   try {
-    await requirePermission("admin.users.create");
+    session = await requirePermission("admin.users.create");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -69,6 +103,7 @@ export async function createUser(
 
   try {
     const hashedPassword = await bcrypt.hash(password, 12);
+    const requestContext = await getRequestContext();
     const user = await db.user.create({
       data: {
         name,
@@ -81,7 +116,31 @@ export async function createUser(
         signatureUrl: signatureUrl || null,
         signatureUpdatedAt: signatureUrl ? new Date() : null,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        role: true,
+        appRoleId: true,
+        mustChangePassword: true,
+        signatureUrl: true,
+        signatureUpdatedAt: true,
+        isActive: true,
+      },
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "User",
+      entityId: user.id,
+      entityRef: user.username ?? user.email,
+      after: {
+        ...toAuditUser(user),
+        passwordSet: true,
+      },
     });
 
     revalidatePath("/admin/users");
@@ -98,8 +157,9 @@ export async function updateUser(
 ): Promise<{ success?: boolean; error?: string }> {
   await ensureAccessControlSetup();
 
+  let session;
   try {
-    await requirePermission("admin.users.update");
+    session = await requirePermission("admin.users.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -121,13 +181,28 @@ export async function updateUser(
   const { name, username, password, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
 
   try {
+    const requestContext = await getRequestContext();
     const existingUser = await db.user.findUnique({
       where: { id },
-      select: { signatureUrl: true },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        role: true,
+        appRoleId: true,
+        mustChangePassword: true,
+        signatureUrl: true,
+        signatureUpdatedAt: true,
+        isActive: true,
+      },
     });
+    if (!existingUser) {
+      return { error: "User not found" };
+    }
     const hasSignatureChanged = (existingUser?.signatureUrl ?? "") !== signatureUrl;
 
-    await db.user.update({
+    const updatedUser = await db.user.update({
       where: { id },
       data: {
         name,
@@ -142,6 +217,41 @@ export async function updateUser(
           : {}),
         ...(password ? { password: await bcrypt.hash(password, 12) } : {}),
       },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        role: true,
+        appRoleId: true,
+        mustChangePassword: true,
+        signatureUrl: true,
+        signatureUpdatedAt: true,
+        isActive: true,
+      },
+    });
+
+    const diff = diffEntity(
+      {
+        ...toAuditUser(existingUser),
+        passwordSet: true,
+      },
+      {
+        ...toAuditUser(updatedUser),
+        passwordChanged: Boolean(password),
+      },
+    );
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.UPDATE,
+      entityType: "User",
+      entityId: updatedUser.id,
+      entityRef: updatedUser.username ?? updatedUser.email,
+      before: diff.before,
+      after: diff.after,
+      meta: password ? { passwordChanged: true } : undefined,
     });
 
     revalidatePath("/admin/users");
@@ -157,16 +267,63 @@ export async function toggleUserActive(
   id: string,
   isActive: boolean
 ): Promise<{ success?: boolean; error?: string }> {
+  let session;
   try {
-    await requirePermission("admin.users.manage");
+    session = await requirePermission("admin.users.manage");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
   try {
-    await db.user.update({
+    const requestContext = await getRequestContext();
+    const existingUser = await db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        role: true,
+        appRoleId: true,
+        mustChangePassword: true,
+        signatureUrl: true,
+        signatureUpdatedAt: true,
+        isActive: true,
+      },
+    });
+    if (!existingUser) {
+      return { error: "User not found" };
+    }
+
+    const updatedUser = await db.user.update({
       where: { id },
       data: { isActive },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        email: true,
+        role: true,
+        appRoleId: true,
+        mustChangePassword: true,
+        signatureUrl: true,
+        signatureUpdatedAt: true,
+        isActive: true,
+      },
+    });
+
+    const diff = diffEntity(toAuditUser(existingUser), toAuditUser(updatedUser));
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: isActive ? AuditAction.UPDATE : AuditAction.CANCEL,
+      entityType: "User",
+      entityId: updatedUser.id,
+      entityRef: updatedUser.username ?? updatedUser.email,
+      before: diff.before,
+      after: diff.after,
+      meta: { isActive },
     });
     revalidatePath("/admin/users");
     return { success: true };

@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import {
+  AuditAction,
   CashBankDirection,
   CashBankSourceType,
   PurchaseReturnRefundMethod,
@@ -381,6 +388,78 @@ async function validatePurchaseReturnSourcePurchase(
   }
 }
 
+async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
+  const purchaseReturn = await db.purchaseReturn.findUnique({
+    where: { id: purchaseReturnId },
+    include: {
+      purchase: {
+        select: {
+          purchaseNo: true,
+        },
+      },
+      supplier: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+      items: {
+        orderBy: { id: "asc" },
+        select: {
+          productId: true,
+          qty: true,
+          costPrice: true,
+          amount: true,
+          subtotalAmount: true,
+          detail: true,
+          product: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!purchaseReturn) return null;
+
+  return {
+    id: purchaseReturn.id,
+    returnNo: purchaseReturn.returnNo,
+    returnDate: purchaseReturn.returnDate,
+    status: purchaseReturn.status,
+    type: purchaseReturn.type,
+    settlementType: purchaseReturn.settlementType,
+    refundMethod: purchaseReturn.refundMethod,
+    purchaseId: purchaseReturn.purchaseId,
+    purchaseNo: purchaseReturn.purchase?.purchaseNo ?? null,
+    supplierId: purchaseReturn.supplierId,
+    supplierRef: purchaseReturn.supplier?.code ?? purchaseReturn.supplier?.name ?? null,
+    cashBankAccountId: purchaseReturn.cashBankAccountId,
+    totalAmount: purchaseReturn.totalAmount,
+    amountRemain: purchaseReturn.amountRemain,
+    subtotalAmount: purchaseReturn.subtotalAmount,
+    vatAmount: purchaseReturn.vatAmount,
+    vatType: purchaseReturn.vatType,
+    vatRate: purchaseReturn.vatRate,
+    note: purchaseReturn.note,
+    cancelNote: purchaseReturn.cancelNote,
+    cancelledAt: purchaseReturn.cancelledAt,
+    items: purchaseReturn.items.map((item) => ({
+      productId: item.productId,
+      productCode: item.product?.code ?? null,
+      productName: item.product?.name ?? null,
+      qty: item.qty,
+      costPrice: item.costPrice,
+      amount: item.amount,
+      subtotalAmount: item.subtotalAmount,
+      detail: item.detail,
+    })),
+  };
+}
+
 export async function createPurchaseReturn(
   formData: FormData,
 ): Promise<{ success?: boolean; returnNo?: string; error?: string }> {
@@ -429,8 +508,10 @@ export async function createPurchaseReturn(
 
   const docDate = new Date(returnDate);
   const returnNo = await generatePurchaseReturnNo(docDate);
+  let createdPurchaseReturnId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
 
@@ -462,6 +543,7 @@ export async function createPurchaseReturn(
             settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT ? netAmount : 0,
         },
       });
+      createdPurchaseReturnId = purchaseReturn.id;
 
       await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type);
 
@@ -487,6 +569,21 @@ export async function createPurchaseReturn(
           : [],
       );
     });
+
+    const afterSnapshot = createdPurchaseReturnId
+      ? await getPurchaseReturnAuditSnapshot(createdPurchaseReturnId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "PurchaseReturn",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.returnNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath("/admin/products");
@@ -536,6 +633,8 @@ export async function cancelPurchaseReturn(
   const hadStock = ret.type === PurchaseReturnType.RETURN;
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
     await dbTx(async (tx) => {
       if (hadStock) {
         for (const item of ret.items) {
@@ -559,6 +658,22 @@ export async function cancelPurchaseReturn(
         },
       });
     });
+
+    const afterSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "PurchaseReturn",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.returnNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: parsed.data.cancelNote?.trim() || null },
+      });
+    }
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath(`/admin/purchase-returns/${ret.id}`);
@@ -646,6 +761,8 @@ export async function updatePurchaseReturn(
   const oldHadStock = existing.type === PurchaseReturnType.RETURN;
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getPurchaseReturnAuditSnapshot(id);
     await dbTx(async (tx) => {
       await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
 
@@ -710,6 +827,21 @@ export async function updatePurchaseReturn(
           : [],
       );
     });
+
+    const afterSnapshot = await getPurchaseReturnAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "PurchaseReturn",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.returnNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath(`/admin/purchase-returns/${id}`);

@@ -16,7 +16,7 @@ const AuditLogLoading = () => (
         <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
       </svg>
       <div className="space-y-1">
-        <p className="text-sm font-medium text-gray-700 dark:text-slate-100">กำลังโหลด Audit Log...</p>
+        <p className="text-sm font-medium text-gray-700 dark:text-slate-100">กำลังโหลดบันทึกการใช้งาน...</p>
       </div>
       <span className="sr-only">กำลังโหลด...</span>
     </div>

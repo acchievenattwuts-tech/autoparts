@@ -2,10 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  diffEntity,
+  getAuditActorFromSession,
+  getRequestContext,
+  safeWriteAuditLog,
+} from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierAdvanceNo } from "@/lib/doc-number";
 import {
+  AuditAction,
   CashBankDirection,
   CashBankSourceType,
   PaymentMethod,
@@ -51,6 +58,38 @@ async function getActiveSupplierPaymentRefs(advanceId: string): Promise<string[]
   return [...new Set(refs.map((item) => item.payment.paymentNo))];
 }
 
+async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
+  const advance = await db.supplierAdvance.findUnique({
+    where: { id: advanceId },
+    include: {
+      supplier: {
+        select: {
+          code: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!advance) return null;
+
+  return {
+    id: advance.id,
+    advanceNo: advance.advanceNo,
+    advanceDate: advance.advanceDate,
+    status: advance.status,
+    supplierId: advance.supplierId,
+    supplierRef: advance.supplier.code ?? advance.supplier.name,
+    totalAmount: advance.totalAmount,
+    amountRemain: advance.amountRemain,
+    paymentMethod: advance.paymentMethod,
+    cashBankAccountId: advance.cashBankAccountId,
+    note: advance.note,
+    cancelNote: advance.cancelNote,
+    cancelledAt: advance.cancelledAt,
+  };
+}
+
 export async function createSupplierAdvance(
   formData: FormData,
 ): Promise<{ success: boolean; advanceNo?: string; error?: string }> {
@@ -77,8 +116,10 @@ export async function createSupplierAdvance(
 
   const advanceDate = new Date(parsed.advanceDate);
   const advanceNo = await generateSupplierAdvanceNo(advanceDate);
+  let createdAdvanceId = "";
 
   try {
+    const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, parsed.cashBankAccountId);
 
@@ -95,6 +136,7 @@ export async function createSupplierAdvance(
           cashBankAccountId: parsed.cashBankAccountId,
         },
       });
+      createdAdvanceId = advance.id;
 
       await replaceCashBankSourceMovements(
         tx,
@@ -112,6 +154,21 @@ export async function createSupplierAdvance(
         ],
       );
     });
+
+    const afterSnapshot = createdAdvanceId
+      ? await getSupplierAdvanceAuditSnapshot(createdAdvanceId)
+      : null;
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "SupplierAdvance",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.advanceNo,
+        after: afterSnapshot,
+      });
+    }
 
     revalidatePath("/admin/supplier-advances");
     revalidatePath("/admin/cash-bank");
@@ -173,6 +230,8 @@ export async function updateSupplierAdvance(
   const advanceDate = new Date(parsed.advanceDate);
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(id);
     await dbTx(async (tx) => {
       const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, parsed.cashBankAccountId);
 
@@ -208,6 +267,21 @@ export async function updateSupplierAdvance(
         ],
       );
     });
+
+    const afterSnapshot = await getSupplierAdvanceAuditSnapshot(id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "SupplierAdvance",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.advanceNo,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
 
     revalidatePath("/admin/supplier-advances");
     revalidatePath(`/admin/supplier-advances/${id}`);
@@ -258,6 +332,8 @@ export async function cancelSupplierAdvance(
   }
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(advance.id);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_ADVANCE, advance.id);
       await tx.supplierAdvance.update({
@@ -270,6 +346,22 @@ export async function cancelSupplierAdvance(
         },
       });
     });
+
+    const afterSnapshot = await getSupplierAdvanceAuditSnapshot(advance.id);
+    if (beforeSnapshot && afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "SupplierAdvance",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.advanceNo,
+        before: diff.before,
+        after: diff.after,
+        meta: { cancelNote: parsed.data.cancelNote?.trim() || null },
+      });
+    }
 
     revalidatePath("/admin/supplier-advances");
     revalidatePath(`/admin/supplier-advances/${advance.id}`);
