@@ -4576,3 +4576,426 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - **Week 3-4**: Alt text + CWV baseline (Owner: Content + Developer)
 - **Week 5-6**: Caching + JS optimization (Owner: DevOps/Developer)
 - **Ongoing**: Monitor in Search Console + Analytics
+
+---
+
+## Roadmap Update (2026-04-27 — Audit Log + Today Workboard + AR/AP Register)
+
+> Scope รอบนี้: เพิ่ม Audit Log ระดับระบบ, หน้า Today Workboard รวมงานค้างของวัน, และเพิ่ม Register view ในรายงาน AR/AP โดยให้เลือกผ่าน dropdown ระหว่าง "รายงานเดิม (Outstanding)" กับ "Register (ทะเบียนเอกสาร)"
+>
+> Iron rule: **ห้ามเปลี่ยน business logic เดิม** ของ stock/MAVG, AR/AP amountRemain, cash/bank ledger, lot allocation, document numbering, permission. งานทั้งสามชิ้นเป็นงานเสริม (additive) เท่านั้น
+
+---
+
+### 1) Audit Log / Activity Trail
+
+> เป้าหมาย: บันทึกทุกการกระทำสำคัญในระบบ (สร้าง/แก้ไข/ยกเลิก/login/permission change) เพื่อสาวกลับได้ว่าใครทำอะไร เมื่อไหร่ และค่าก่อน/หลังคืออะไร โดยไม่กระทบ logic เดิม
+
+#### 1.1 Schema foundation
+
+- [ ] เพิ่ม model `AuditLog` ใน `prisma/schema.prisma` (fields ขั้นต่ำ):
+  - [ ] `id String @id @default(cuid())`
+  - [ ] `userId String?` (nullable เผื่อ system action)
+  - [ ] `userName String?` (snapshot ชื่อ ณ เวลาทำ — กัน user ถูกลบทีหลัง)
+  - [ ] `userRole String?` (snapshot role)
+  - [ ] `action AuditAction` (enum)
+  - [ ] `entityType String` (เช่น `Sale`, `Purchase`, `Product`, `User`, `Role`, `CashBankAccount`, ฯลฯ)
+  - [ ] `entityId String?` (ID ของ entity — nullable สำหรับ login/logout)
+  - [ ] `entityRef String?` (เช่น docNo สำหรับเอกสาร, code สำหรับ master)
+  - [ ] `before Json?` (snapshot ก่อนเปลี่ยน)
+  - [ ] `after Json?` (snapshot หลังเปลี่ยน)
+  - [ ] `meta Json?` (context เพิ่ม เช่น เหตุผลการยกเลิก, IP, userAgent)
+  - [ ] `ipAddress String?`
+  - [ ] `userAgent String?`
+  - [ ] `createdAt DateTime @default(now())`
+  - [ ] index: `[entityType, entityId]`, `[userId, createdAt]`, `[action, createdAt]`, `[createdAt]`
+- [ ] เพิ่ม enum `AuditAction`:
+  - `CREATE`, `UPDATE`, `CANCEL`, `DELETE`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `PASSWORD_CHANGE`, `PERMISSION_CHANGE`, `ROLE_CHANGE`, `RECALCULATE`, `EXPORT`
+- [ ] รัน `prisma db push` (ตาม `.rules` — ห้าม `migrate dev`)
+
+#### 1.2 Service layer
+
+- [ ] สร้างไฟล์ `lib/audit-log.ts` ที่มี API กลาง:
+  - [ ] `writeAuditLog(input)` — ใช้รับใน try/catch ของ Server Action
+  - [ ] `writeAuditLogTx(tx, input)` — เวอร์ชันใช้ใน `db.$transaction()` เพื่อให้ผูกกับเอกสารต้นทาง atomic
+  - [ ] helper `diffEntity(before, after)` — เก็บเฉพาะ field ที่เปลี่ยนจริง (กัน log บวม)
+  - [ ] helper `redactSensitive(payload)` — ตัด password, token, secret ก่อนเขียน
+  - [ ] helper `getRequestContext()` — อ่าน IP / userAgent จาก headers (ใช้ `headers()` ใน Server Action context)
+
+#### 1.3 จุดที่ต้องเรียก writeAuditLog (Hook points)
+
+> หลัก: ทุก Server Action ที่ "เปลี่ยน state ที่กระทบเงิน/สต็อก/สิทธิ" ต้อง audit
+
+- [ ] **เอกสารธุรกิจ — create/update/cancel ทุกประเภท**:
+  - [ ] `Sale` (`app/admin/(protected)/sales/actions.ts`)
+  - [ ] `CreditNote` (`app/admin/(protected)/credit-notes/actions.ts`)
+  - [ ] `Receipt` (`app/admin/(protected)/receipts/actions.ts`)
+  - [ ] `Purchase` (`app/admin/(protected)/purchases/actions.ts`)
+  - [ ] `PurchaseReturn` (`app/admin/(protected)/purchase-returns/actions.ts`)
+  - [ ] `SupplierAdvance` (`app/admin/(protected)/supplier-advances/actions.ts`)
+  - [ ] `SupplierPayment` (`app/admin/(protected)/supplier-payments/actions.ts`)
+  - [ ] `Expense` (`app/admin/(protected)/expenses/actions.ts`)
+  - [ ] `Adjustment` (`app/admin/(protected)/stock/adjustments/...`)
+  - [ ] `BF` (`app/admin/(protected)/stock/bf/...`)
+  - [ ] `Warranty` (`app/admin/(protected)/warranties/actions.ts`)
+  - [ ] `WarrantyClaim` (`app/admin/(protected)/warranty-claims/...`)
+  - [ ] `CashBankTransfer` + `CashBankAdjustment` (`app/admin/(protected)/cash-bank/...`)
+  - [ ] `Delivery` status update (`app/admin/(protected)/delivery/...`)
+- [ ] **Master data — เก็บ before/after เฉพาะ field สำคัญ**:
+  - [ ] `Product` (โดยเฉพาะ `price`, `minStock`, `isActive`, `slug`)
+  - [ ] `Customer` (`creditTerm`, `phone`, `taxId`)
+  - [ ] `Supplier`
+  - [ ] `Category`, `CarBrand`, `CarModel`, `PartsBrand`
+  - [ ] `CashBankAccount` (เปลี่ยน opening / activate-deactivate)
+  - [ ] `SiteContent` (เก็บเฉพาะ field SEO/company ที่เปลี่ยน — ไม่ต้องเก็บทั้ง JSON)
+- [ ] **Auth / Permission**:
+  - [ ] login success / login fail (ผ่าน `auth.ts` callbacks หรือ `app/admin/login/actions.ts`)
+  - [ ] logout
+  - [ ] password change (`/admin/profile`)
+  - [ ] User create / update / deactivate (`app/admin/(protected)/users/actions.ts`)
+  - [ ] Role create / update + permission matrix change (`app/admin/(protected)/roles/actions.ts`)
+- [ ] **Operations พิเศษ**:
+  - [ ] `recalculateStockCard`, `recalculateAllStockCards` — log ว่าใครรัน recalc บน product ใด
+  - [ ] `reconcile:fact-profit` script run
+  - [ ] Export ของรายงานสำคัญ (CSV/Excel) — log entityType=`Report`, action=`EXPORT`
+
+#### 1.4 หน้า Audit Log Viewer
+
+- [ ] เพิ่มเมนู `/admin/audit-log` (เห็นได้เฉพาะ role ที่มีสิทธิ — แนะนำ `OWNER` / `ADMIN` เท่านั้น)
+- [ ] ทำตาม 5-step permission rule:
+  - [ ] เพิ่ม permission key `audit_log.view` ใน `lib/access-control.ts` (`PERMISSION_CATALOG`, ไม่อยู่ใน `STAFF_*` defaults)
+  - [ ] เพิ่ม route rule `{ prefix: "/admin/audit-log", permission: "audit_log.view" }`
+  - [ ] เรียก `requirePermission("audit_log.view")` ที่ `page.tsx`
+  - [ ] (no Server Action mutating data — read-only)
+  - [ ] เพิ่มใน `AdminSidebar.tsx` พร้อม `permission: "audit_log.view"`
+- [ ] List page features:
+  - [ ] Filter: ช่วงวันที่ (default = วันนี้), ผู้ใช้, action, entityType, entityRef (docNo / code search)
+  - [ ] Pagination: 100 rows / page (ใช้ skip/take ตาม pattern `Phase 4.24 #2`)
+  - [ ] Column: เวลา (`formatDateTimeThai`), ผู้ใช้, action (badge สี), entityType, entityRef, link เปิดเอกสารต้นทางถ้าทำได้
+  - [ ] กดเข้า detail → แสดง `before` / `after` แบบ side-by-side พร้อม diff highlight
+- [ ] **ห้าม edit / delete audit log จาก UI** — เป็น append-only log
+- [ ] เพิ่ม `loading.tsx` ครบทุก segment (list + detail)
+- [ ] `export const dynamic = "force-dynamic"`
+
+#### 1.5 Retention & performance
+
+- [ ] เพิ่ม note ใน PLAN: เก็บ audit log นาน 12–24 เดือน, หลังจากนั้นย้ายลง cold storage หรือ archive table (เลื่อนเป็น phase ต่อยอด)
+- [ ] ตรวจว่า index ครบและ query หน้า list ไม่ scan ทั้งตาราง (filter วันที่ default ป้องกัน scan ใหญ่)
+- [ ] ตรวจว่า `writeAuditLog` ใน Server Action ห้าม block transaction หลัก (ใช้ try/catch ภายใน — ถ้า audit เขียนไม่ได้ ให้ log ไป server log แต่ไม่ทำให้เอกสารพัง)
+- [ ] เคารพ feedback memory: storefront cache ห้ามเอา `unstable_cache` ออก — audit log ไม่กระทบ storefront
+
+#### 1.6 Verification
+
+- [ ] `npm run build` zero TS error / warning
+- [ ] ทดสอบ flow: สร้าง sale → cancel → ดูว่า audit log มี 2 entries (CREATE + CANCEL) พร้อม before/after
+- [ ] ทดสอบ login fail 3 ครั้ง → ดู `LOGIN_FAILED` 3 entries
+- [ ] ทดสอบ filter ทุก dropdown
+- [ ] ตรวจ light + dark theme ของหน้า list และ detail (mandatory ตาม `.rules`)
+
+---
+
+### 2) Today Workboard
+
+> เป้าหมาย: หน้าเดียวที่ staff/owner เห็นทุกอย่างที่ต้อง "ทำวันนี้" — ใบขายรอจัดส่ง, COD รอรับ, supplier ครบกำหนดจ่าย, ลูกหนี้เกินเครดิต, เคลมรอ supplier ตอบ, สินค้าใกล้หมดสต็อก, lot ใกล้หมดอายุ — ลด click ลด context switch
+
+#### 2.1 Route + Permission
+
+- [ ] เพิ่ม route `/admin/workboard` (เป็นเมนูใหม่ ไม่ใช่หน้า dashboard เดิม — ไม่ทับ tabs Daily Operations / Profit Dashboard)
+- [ ] permission key ใหม่ `workboard.view` (ให้ทั้ง `STAFF_OPERATIONS` + `STAFF_VIEWER` เห็น) — หรือเลือกใช้ `dashboard.view` เดิมก็ได้ (ตัดสินใจเชิง UX ก่อนเริ่ม)
+- [ ] ครบ 5-step permission rule (route rule, requirePermission, sidebar item, ฯลฯ)
+- [ ] `loading.tsx`, `export const dynamic = "force-dynamic"`
+
+#### 2.2 Sections บนหน้า (Card-grid layout)
+
+แต่ละ section ใช้ shared card pattern เดิม (light + dark mode). ลำดับเรียงตาม urgency:
+
+- [ ] **🚚 ใบขายรอจัดส่งวันนี้** (`Sale` ที่ `fulfillmentType=DELIVERY` + ยังไม่ส่ง + `saleDate <= today`)
+  - [ ] count + list 5 รายการแรก พร้อมลิงก์ "ดูทั้งหมด → /admin/delivery"
+  - [ ] แสดง: docNo, ลูกค้า, ยอด, จำนวนรายการ, ขนส่ง (ถ้ามี)
+- [ ] **💰 COD รอรับเงิน** (`Sale.paymentType=CREDIT_SALE` + `fulfillmentType=DELIVERY` + `amountRemain > 0`)
+  - [ ] count + ยอดรวม + list 5 ใบใหญ่สุด
+  - [ ] ลิงก์ → `/admin/sales?paymentType=CREDIT_SALE&fulfillment=DELIVERY`
+- [ ] **⏰ ลูกหนี้เกินเครดิต** (`Sale.amountRemain > 0` AND `today - saleDate > Sale.creditTerm`)
+  - [ ] แยก bucket: เกิน 1–7 วัน / 8–30 วัน / 30+ วัน (3 มินิการ์ด)
+  - [ ] list ลูกหนี้ค้างนานสุด 5 ราย
+  - [ ] ลิงก์ → `/admin/reports/ar`
+- [ ] **🏢 Supplier ครบกำหนดจ่าย** (`Purchase.purchaseType=CREDIT_PURCHASE` + `amountRemain > 0` + ใกล้/เกินกำหนด — ตอนนี้ Purchase ยังไม่มี `creditTerm` ต่อใบ → fallback เป็น `Supplier.creditTerm` ถ้ามี, ถ้าไม่มีให้ใช้ default 30 วันและ note ใน PLAN ว่าควรเพิ่ม `Purchase.creditTerm` รอบถัดไป)
+  - [ ] count + ยอดรวม + list 5 ใบใหญ่/ใกล้สุด
+  - [ ] ลิงก์ → `/admin/reports/ap`
+- [ ] **🔧 เคลมรอ supplier ตอบ** (`WarrantyClaim` ที่ status รอผล supplier)
+  - [ ] count + list 5 รายการเก่าสุด
+  - [ ] ลิงก์ → `/admin/warranty-claims`
+- [ ] **📦 สินค้าใกล้/ต่ำกว่าขั้นต่ำ** (`Product.isActive=true` + `stock <= minStock`)
+  - [ ] count + list 5 ตัวที่ stock ต่ำสุด
+  - [ ] ลิงก์ → `/admin/reports/stock`
+- [ ] **⏳ Lot ใกล้หมดอายุ** (`Lot.expDate` ภายใน 30 / 60 / 90 วัน + `qtyBalance > 0`)
+  - [ ] 3 มินิการ์ดแบ่ง bucket
+  - [ ] list 5 lot ใกล้สุด
+  - [ ] ลิงก์ → `/admin/lots/expiry`
+- [ ] **🐢 Slow-moving** (option — link ไป `/admin/lots/slow-moving`, แสดง count อย่างเดียว ไม่ต้อง list)
+- [ ] **💵 เงินสด/ธนาคาร < threshold** (ใช้ `CashBankAccount.balance` ปัจจุบัน เทียบกับ threshold ใน setting — ถ้ายังไม่มี setting ให้ใช้ค่า hardcode default + note ว่าจะทำ setting page รอบถัดไป)
+  - [ ] list บัญชีที่ต่ำกว่า threshold
+  - [ ] ลิงก์ → `/admin/cash-bank`
+
+#### 2.3 Behavior + Performance
+
+- [ ] ทุก section query parallel ด้วย `Promise.all()` — ห้าม sequential
+- [ ] ใช้ `select` เฉพาะ field ที่ใช้ — ห้าม fetch ทุก field
+- [ ] count + top-5 query แยกกัน (count เร็ว, list 5 รายการเร็ว)
+- [ ] ทุก list cap ที่ `take: 5` — ห้ามดึงทั้งหมดมาแล้ว slice ใน JS
+- [ ] auto-refresh ทุก 60 วินาที (optional — ใส่ปุ่ม refresh แทนถ้ายังไม่อยาก realtime)
+- [ ] ใช้ Bangkok timezone helper เดิม (`getBangkokDayKey`, `parseDateOnlyToStartOfDay`)
+
+#### 2.4 UI/UX
+
+- [ ] Layout: 2-column desktop / 1-column mobile, sticky section title
+- [ ] แต่ละ section card มี: icon, title, count badge สี (เขียว/เหลือง/แดง ตาม severity), list, ลิงก์ "ดูทั้งหมด"
+- [ ] empty state: "ไม่มีงานค้างในหมวดนี้ ✓"
+- [ ] ครอบคลุม light + dark mode (mandatory)
+- [ ] responsive ตาม `.rules` (mobile-first)
+
+#### 2.5 Verification
+
+- [ ] `npm run build` clean
+- [ ] ทดสอบ section ที่เป็น 0 ทุกตัว (empty state แสดงถูก)
+- [ ] ทดสอบ section ที่มีข้อมูล (count + list ตรง)
+- [ ] วัด query time — total page TTFB < 1s บน production data
+- [ ] light + dark mode QA
+- [ ] mobile view (375px) ใช้งานได้
+
+---
+
+### 3) AR / AP Register View (เพิ่มใน Report เดิม)
+
+> เป้าหมาย: เพิ่ม dropdown ในรายงาน AR และ AP ให้สลับระหว่าง 2 มุมมอง:
+> - **Outstanding** (รายงานเดิม) — เฉพาะใบที่ยังค้างชำระ ณ ช่วงวันที่
+> - **Register** (ใหม่) — ทะเบียนเอกสารทุกใบในช่วงวันที่ ไม่ว่าจะชำระแล้วหรือยัง พร้อม running balance ของลูกค้า/supplier
+>
+> **ห้ามเปลี่ยน outstanding logic เดิม** — เพิ่ม mode ใหม่ข้าง ๆ เท่านั้น
+
+#### 3.1 Shared — UI dropdown pattern
+
+- [ ] กำหนด query param `view`: `outstanding` (default) | `register`
+- [ ] เพิ่ม dropdown ที่หน้า `/admin/reports/ar` และ `/admin/reports/ap` — ใช้ `<SearchableSelect>` ตาม `.rules` (option น้อย แต่ต้องสอดคล้อง pattern อื่น) **หรือ** ถ้าเป็น 2 option คงที่ใช้ native `<select>` ได้ (ระบุชัดใน checklist ด้านล่าง)
+- [ ] dropdown เปลี่ยนค่า → router push `?view=register` (preserve from/to/customerId/supplierId)
+- [ ] preserve filter อื่นเดิม (ช่วงวันที่, ลูกค้า/supplier)
+
+#### 3.2 AR Register
+
+- [ ] เพิ่ม type `ARRegisterRow` ใน `lib/ar-ap-stock-report-queries.ts`:
+  - [ ] field: `saleId`, `docNo`, `saleDate`, `dueDate` (= saleDate + creditTerm), `customerId`, `customerName`, `customerCode`, `paymentType`, `netAmount`, `paidAmount` (= netAmount - amountRemain), `amountRemain`, `status` (`PAID` / `PARTIAL` / `UNPAID` / `OVERDUE` / `CANCELLED`), `creditTerm`, `daysOverdue`
+- [ ] เพิ่ม `queryARRegisterRows(filters)`:
+  - [ ] รวม `Sale` ทั้งหมดในช่วงวันที่ (`saleDate` ระหว่าง from/to) — ไม่กรอง `amountRemain > 0`
+  - [ ] รองรับ filter ลูกค้า + ประเภทขาย (CASH/CREDIT) + status (active/cancelled)
+  - [ ] เรียงตาม customerId → saleDate
+  - [ ] รวม `paidAmount` จาก `netAmount - amountRemain` (สอดคล้องสูตร amountRemain เดิม — ห้ามคำนวณเงินรับใหม่)
+  - [ ] คำนวณ `daysOverdue` เฉพาะใบที่ยังค้าง: `today - dueDate` (ติดลบ = ยังไม่ครบกำหนด)
+- [ ] เพิ่ม `buildARRegisterCsv()` + `buildARRegisterExcel()` (ใช้ pattern เดียวกับ `buildARCsv` / `buildARExcel`)
+- [ ] หน้า `/admin/reports/ar/page.tsx`:
+  - [ ] อ่าน `view` จาก searchParams
+  - [ ] ถ้า `view=register` → ใช้ query+ตารางใหม่; default `view=outstanding` ใช้ของเดิม
+  - [ ] summary cards mode register:
+    - [ ] จำนวนใบในช่วง
+    - [ ] ยอดขายรวม
+    - [ ] ยอดรับชำระแล้ว
+    - [ ] ยอดคงค้าง
+    - [ ] ยอดที่เกินกำหนด (overdue)
+  - [ ] ตาราง register: docNo, วันที่, ลูกค้า, ประเภทขาย, ยอดขาย, รับแล้ว, ค้าง, ครบกำหนด, เกิน X วัน (badge สี), status, link เปิดเอกสาร
+  - [ ] รายการ cancelled แสดงเป็น italic + opacity ตาม pattern เดิม
+- [ ] อัปเดต export route:
+  - [ ] `app/admin/(protected)/reports/export/route.ts` รองรับ `?type=ar&view=register`
+  - [ ] `app/admin/(protected)/reports/export-excel/route.ts` รองรับ `?type=ar&view=register`
+- [ ] preserve `view` ใน URL ของปุ่ม CSV / Excel
+
+#### 3.3 AP Register
+
+- [ ] เพิ่ม type `APRegisterRow` ใน `lib/ar-ap-stock-report-queries.ts`:
+  - [ ] field: `purchaseId`, `docNo`, `purchaseDate`, `dueDate`, `supplierId`, `supplierName`, `supplierCode`, `purchaseType`, `netAmount`, `paidAmount`, `amountRemain`, `status` (`PAID` / `PARTIAL` / `UNPAID` / `OVERDUE` / `CANCELLED`), `creditTerm`, `daysOverdue`
+- [ ] เพิ่ม `queryAPRegisterRows(filters)`:
+  - [ ] รวม `Purchase` ทั้งหมดในช่วงวันที่ — ไม่กรอง `amountRemain > 0`
+  - [ ] filter supplier + ประเภท (CASH/CREDIT)
+  - [ ] เรียงตาม supplierId → purchaseDate
+  - [ ] **ไม่รวม** SupplierAdvance / PurchaseReturn ใน register หลัก (คงเฉพาะ Purchase เพื่อให้ Register เน้นทะเบียนใบซื้อ — มัดจำ/CN เครดิตยังคงดูได้ใน outstanding 3 sections เดิม)
+  - [ ] หรือเลือก option B: ใส่ทั้ง Purchase + SupplierAdvance + PurchaseReturn(SUPPLIER_CREDIT) เป็น 3 sections เหมือน outstanding (ตัดสินใจร่วมกับ owner — default ทำ option A ก่อน)
+- [ ] เพิ่ม `buildAPRegisterCsv()` + `buildAPRegisterExcel()` (single sheet สำหรับ option A; 3 sheets สำหรับ option B ตาม pattern AP เดิม)
+- [ ] หน้า `/admin/reports/ap/page.tsx`:
+  - [ ] อ่าน `view` จาก searchParams + render conditional
+  - [ ] summary cards mode register: จำนวนใบ, ยอดซื้อรวม, จ่ายแล้ว, ค้าง, เกินกำหนด
+  - [ ] ตาราง register: docNo, วันที่, supplier, ประเภท, ยอดซื้อ, จ่ายแล้ว, ค้าง, ครบกำหนด, เกิน X วัน, status, link
+- [ ] อัปเดต export route รองรับ `?type=ap&view=register`
+- [ ] preserve `view` ใน URL ของปุ่ม CSV / Excel
+
+#### 3.4 Shared rules
+
+- [ ] ทุกวันที่บนหน้า/CSV/Excel ใช้ `formatDateThai` + `"th-TH-u-ca-gregory"` (ตาม `.rules`)
+- [ ] CSV ต้องมี BOM `﻿` (ตาม `.rules`)
+- [ ] `loading.tsx` ของ ar/ap ใช้ของเดิมได้ (ทั้ง 2 view ใช้หน้าเดียว)
+- [ ] light + dark mode QA ทั้ง 2 view (mandatory)
+- [ ] **ห้าม** สร้าง route ใหม่ `/admin/reports/ar-register` หรือ `/admin/reports/ap-register` — ใช้ `?view=register` ในหน้าเดิม
+- [ ] **ห้าม** แก้ `queryARRows` / `queryAPData` เดิม — เพิ่ม function ใหม่ข้าง ๆ
+- [ ] **ห้าม** แก้สูตร `amountRemain` — Register อ่านจาก `amountRemain` ที่มีอยู่แล้วใน DB เท่านั้น
+
+#### 3.5 Verification
+
+- [ ] `npm run build` clean
+- [ ] ทดสอบ `/admin/reports/ar` default → outstanding (พฤติกรรมเดิมต้องไม่เปลี่ยน)
+- [ ] ทดสอบ `/admin/reports/ar?view=register` → แสดง register รวม cancelled + paid
+- [ ] ทดสอบ export CSV/Excel ทั้ง 2 view ของ AR และ AP
+- [ ] ทดสอบ filter (ช่วงวันที่ + ลูกค้า/supplier) preserve เมื่อสลับ view
+- [ ] ตรวจ summary cards ตรงกับยอดในตาราง
+- [ ] light + dark mode
+
+---
+
+### Cross-cutting guard rails สำหรับ 3 งานนี้
+
+- [ ] ห้ามเปลี่ยน `writeStockCard`, `recalculateStockCard`, `generateDocNo`, สูตร `amountRemain`, `recalculateCashBank*`, lot allocation
+- [ ] ทุกงานต้องผ่าน `npm run build` zero error / zero TS warning ก่อน mark ✅
+- [ ] อัปเดต `PLAN.md` checklist ทันทีหลังลงงานแต่ละย่อย (ตาม `.rules` Roadmap Maintenance Rules)
+- [ ] ทุกหน้าใหม่ต้องมี `loading.tsx` + `export const dynamic = "force-dynamic"`
+- [ ] รักษา performance budget: หน้า workboard และ audit log list ต้อง TTFB < 1s บน production data
+- [ ] ห้ามเอา `unstable_cache` ออกจาก storefront query (feedback memory)
+- [ ] Thai text ต้องบันทึก UTF-8 ไม่มี BOM ในไฟล์ source; CSV export ต้องมี `﻿` (ตาม `.rules`)
+
+---
+
+## Roadmap Update (2026-04-27 — Quick Search Global / Command Palette)
+
+> เป้าหมาย: เพิ่ม **Command Palette** เปิดด้วย `Cmd+K` (Mac) หรือ `Ctrl+K` (Windows) ให้ user ค้นเอกสาร/สินค้า/ลูกค้า/supplier และยิง action ด่วนได้จากหน้าไหนก็ได้ใน `/admin/(protected)` โดยไม่ต้องไล่เมนู
+>
+> Iron rule: **ห้ามเปลี่ยน business logic เดิม**, ต้องเคารพ permission ของ user ทุกผลลัพธ์, ใช้ search engine เดิมจาก Phase 5 (PostgreSQL full-text) — ห้ามสร้าง search backend ใหม่ขนาน
+
+---
+
+### 4.1 Tech foundation
+
+- [ ] ติดตั้ง shadcn `<Command />` component (built on `cmdk` ของ pacocoursey)
+  - [ ] รัน shadcn add command (เพิ่มเฉพาะ component นี้ ไม่ลากของอื่น)
+  - [ ] ตรวจว่า `cmdk` เข้า dependencies แบบ pinned version
+- [ ] สร้าง `hooks/useGlobalShortcut.ts`
+  - [ ] รับ key combination + handler
+  - [ ] ตรวจ platform: Mac → `metaKey`, Windows/Linux → `ctrlKey` (ใช้ `navigator.platform` หรือ `navigator.userAgent` ตรวจครั้งเดียวตอน mount)
+  - [ ] ห้าม trigger ขณะ user กำลังพิมพ์ใน `<input>`, `<textarea>`, หรือ `contentEditable` (ยกเว้นสำหรับ `Cmd+K` / `Ctrl+K` ที่ต้องเปิดได้แม้ใน input ก็ได้ — ให้ option `force: true`)
+  - [ ] cleanup listener ตอน unmount
+- [ ] สร้าง shared store เล็ก ๆ สำหรับสถานะเปิด/ปิด palette (ใช้ React context หรือ zustand เบา ๆ — เลือกแบบที่สอดคล้องกับ codebase เดิม ห้ามเพิ่ม dep ใหม่ถ้าไม่จำเป็น)
+
+### 4.2 UI component
+
+- [ ] สร้าง `components/shared/CommandPalette.tsx`
+  - [ ] modal กลางจอ (overlay + focus trap)
+  - [ ] input ด้านบน + ผลลัพธ์แบ่งกลุ่มด้านล่าง (เอกสาร / สินค้า / ลูกค้า / supplier / คำสั่งด่วน)
+  - [ ] navigate ด้วย ↑ ↓, เลือกด้วย Enter, ปิดด้วย Esc
+  - [ ] empty state เมื่อพิมพ์แล้วไม่เจอ
+  - [ ] loading state ระหว่างรอ API (skeleton หรือ spinner เบา ๆ)
+  - [ ] mode สวิตช์ด้วย prefix:
+    - [ ] (no prefix) = search ปกติ
+    - [ ] `>` = command mode (action ด่วน + navigation)
+    - [ ] `#` = (optional) ค้นเฉพาะเลขเอกสาร
+  - [ ] highlight match ใน label
+  - [ ] mobile: ปุ่ม 🔍 บน admin header เปิด palette ได้ (touch-friendly)
+  - [ ] light + dark mode (mandatory ตาม `.rules`)
+- [ ] mount palette ใน `app/admin/(protected)/layout.tsx` ให้ใช้ได้ทุกหน้า admin
+- [ ] **ห้าม** mount บน `/admin/login` หรือบน storefront
+
+### 4.3 Search API
+
+- [ ] สร้าง route `app/api/admin/quick-search/route.ts` (POST หรือ GET — เลือก GET เพื่อ cacheable)
+  - [ ] รับ `q` (query string) + `scope?` (optional filter เช่น `documents`, `products`, `customers`)
+  - [ ] **เรียก `auth()` + permission check** ก่อนทุก query — ถ้าไม่มีสิทธิ์ดู entity นั้น ต้องไม่ return ใน result
+  - [ ] query parallel ด้วย `Promise.all`:
+    - [ ] Sale (docNo + customerName) — เคารพ `sales.view`
+    - [ ] Purchase (docNo + supplierName) — เคารพ `purchases.view`
+    - [ ] CreditNote, Receipt, PurchaseReturn, SupplierAdvance, SupplierPayment, Expense, Adjustment — เคารพ permission ของแต่ละโมดูล
+    - [ ] Warranty, WarrantyClaim
+    - [ ] Product (code + name + alias) — ใช้ search engine เดิมจาก Phase 5 (`lib/product-search.ts`)
+    - [ ] Customer (code + name + phone)
+    - [ ] Supplier (code + name)
+  - [ ] **limit 5 ผลลัพธ์ต่อกลุ่ม** (`take: 5`) เพื่อให้ payload เล็กและเร็ว
+  - [ ] return JSON shape:
+    ```
+    { groups: [{ key, label, items: [{ id, label, sublabel, href, icon }] }] }
+    ```
+  - [ ] **ห้าม** ส่ง field sensitive (cost, margin) มาบน sublabel — เฉพาะข้อมูลที่ user เห็นได้อยู่แล้ว
+  - [ ] เพิ่ม rate-limit ระดับเบา (เช่น 30 req/min/user) ป้องกัน abuse — ใช้ pattern เดิมของ login rate limit หรือ middleware
+  - [ ] error handling: try/catch + return generic error message (ตาม `.rules` ห้าม leak stack trace)
+  - [ ] เคารพ feedback memory: ห้ามใส่ `unstable_cache` ที่จะทำ pool exhaustion — ใช้ short in-memory dedupe ฝั่ง client พอ
+
+### 4.4 Client behavior
+
+- [ ] debounce input 200ms ก่อนยิง API (ลด query ที่ไม่จำเป็น)
+- [ ] cache ผลลัพธ์ฝั่ง client ตามคำค้น (Map<query, result>) — clear เมื่อปิด palette
+- [ ] cancel request เก่าเมื่อ user พิมพ์ใหม่ (`AbortController`)
+- [ ] show recent items (5 ล่าสุดที่กดเข้า) ตอนเปิด palette ครั้งแรก — เก็บใน `localStorage` เฉพาะ id + label + href, ห้ามเก็บข้อมูล sensitive
+- [ ] เมื่อกด Enter ที่ผลลัพธ์ → router push ไป `href` แล้วปิด palette
+- [ ] รองรับ keyboard ครบ: ↑ ↓ Tab Enter Esc + Home/End
+
+### 4.5 Command mode (`>` prefix) — Action ด่วน
+
+- [ ] หมวด **สร้างเอกสารใหม่**:
+  - [ ] สร้างใบขายใหม่ → `/admin/sales/new`
+  - [ ] สร้างใบซื้อใหม่ → `/admin/purchases/new`
+  - [ ] สร้างใบคืนซื้อใหม่ → `/admin/purchase-returns/new`
+  - [ ] สร้าง CN ใหม่ → `/admin/credit-notes/new`
+  - [ ] สร้างใบเสร็จรับเงินใหม่ → `/admin/receipts/new`
+  - [ ] สร้างค่าใช้จ่ายใหม่ → `/admin/expenses/new`
+  - [ ] สร้างใบเคลมใหม่ → `/admin/warranty-claims/new`
+  - [ ] สร้างมัดจำซัพพลายเออร์ → `/admin/supplier-advances/new`
+  - [ ] สร้างใบจ่ายชำระซัพพลายเออร์ → `/admin/supplier-payments/new`
+- [ ] หมวด **Navigation**:
+  - [ ] ไปหน้า dashboard / workboard / รายงานสรุป / รายงาน AR / รายงาน AP / Stock card / Lot expiry / Cash-bank ledger / สินค้า / ลูกค้า / supplier
+- [ ] หมวด **Settings / Personal**:
+  - [ ] toggle dark / light mode (เรียก theme switcher เดิม)
+  - [ ] เปลี่ยนรหัสผ่าน (`/admin/profile`)
+  - [ ] ออกจากระบบ (logout action)
+- [ ] **เคารพ permission** — command ที่ user ไม่มีสิทธิ์ ต้องไม่ขึ้นในรายการ
+- [ ] รายการ command static เก็บใน `lib/quick-search-commands.ts` — readable + maintainable
+
+### 4.6 Permission integration
+
+- [ ] โหลด permission ของ session ปัจจุบันส่งให้ palette ตอน mount (ผ่าน server component → props หรือ context)
+- [ ] filter command list ตาม permission **ฝั่ง client** เพื่อ UX ทันที + filter result **ฝั่ง server** เพื่อความปลอดภัย (defense in depth)
+- [ ] ถ้า user ไม่มี permission ใด ๆ ของ entity ต้องไม่เห็นกลุ่มนั้นเลย
+
+### 4.7 UX polish
+
+- [ ] แสดง shortcut hint บน input: "Esc to close · ↑↓ to navigate · ⏎ to select"
+- [ ] platform-aware label — Mac แสดง `⌘K`, Windows/Linux แสดง `Ctrl+K`
+- [ ] แสดง shortcut tip บนปุ่ม 🔍 ของ admin header (เช่น tooltip "ค้นหา (Ctrl+K)")
+- [ ] รองรับ Thai input ครบ (composition events)
+- [ ] focus กลับไปยัง element เดิมหลังปิด palette
+- [ ] animation เปิด/ปิดเบา ๆ (fade + scale 200ms) — ห้ามทำให้ INP เกิน 200ms
+
+### 4.8 Performance
+
+- [ ] target API response < 200ms p95 บน production data
+- [ ] ใช้ `select` เฉพาะ field ที่ใช้ — ห้าม fetch ทุก field
+- [ ] ใช้ index เดิมที่มีอยู่ (Phase 5 search) — ถ้าจำเป็นต้องเพิ่ม index ใหม่ ให้ระบุชัดใน checklist และขอ confirm ก่อน push schema
+- [ ] payload กลับ < 20KB ต่อ query
+- [ ] bundle impact: `cmdk` + palette UI ต้องเป็น dynamic import (lazy load) — ห้ามใส่ใน initial admin bundle
+
+### 4.9 Verification
+
+- [ ] `npm run build` zero TS error / warning
+- [ ] ทดสอบ Mac (`Cmd+K`) + Windows (`Ctrl+K`) ทั้ง 2 platform
+- [ ] ทดสอบ Esc ปิดได้ทุก state
+- [ ] ทดสอบ keyboard navigation ครบ (↑ ↓ Tab Enter)
+- [ ] ทดสอบ search ทุกประเภท: docNo, ชื่อลูกค้าไทย, เลขโทรศัพท์, รหัสสินค้า, alias สินค้า
+- [ ] ทดสอบ command mode (`>`) ครบทุก action
+- [ ] ทดสอบ permission: login ด้วย role ต่าง ๆ → ตรวจว่าผลลัพธ์/command ที่เห็นตรงกับสิทธิ์
+- [ ] ทดสอบ mobile (touch + on-screen keyboard)
+- [ ] ทดสอบ dark mode + light mode
+- [ ] ทดสอบ rate limit (ยิง > 30 req/min ต้องโดน throttle)
+- [ ] ตรวจ INP < 200ms (ตาม `.rules` performance standard)
+- [ ] ตรวจว่าไม่มี extra bundle เข้า initial admin route (lazy load ทำงานจริง)
+
+### 4.10 Guard rails
+
+- [ ] ห้ามเปลี่ยน business logic, stock/MAVG, AR/AP, cash-bank, permission catalog
+- [ ] ห้ามเพิ่ม route ใหม่นอก `/api/admin/quick-search` สำหรับงานนี้
+- [ ] ห้าม mount palette บน storefront / login / print pages
+- [ ] ห้าม leak ข้อมูล sensitive (cost, margin, balance) ใน sublabel
+- [ ] ห้าม bypass permission แม้แต่กรณีเดียว
+- [ ] ใช้ search engine เดิมจาก Phase 5 — ห้ามสร้าง search backend ใหม่ขนาน
+- [ ] เคารพ feedback memory: ห้ามถอด `unstable_cache` ออกจาก storefront query
+- [ ] อัปเดต `PLAN.md` checklist ทันทีหลังลงงานแต่ละย่อย
+

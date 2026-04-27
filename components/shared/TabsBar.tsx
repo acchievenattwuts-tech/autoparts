@@ -7,7 +7,10 @@ import { useTabStore } from "@/hooks/useTabStore";
 import { cn } from "@/lib/utils";
 
 const ROUTE_LABELS: Record<string, string> = {
-  "/admin": "Dashboard",
+  "/admin": "Today Workboard",
+  "/admin/workboard": "Today Workboard",
+  "/admin/dashboard": "Dashboard",
+  "/admin/audit-log": "Audit Log",
   "/admin/products": "สินค้า",
   "/admin/customers": "ลูกค้า",
   "/admin/master/categories": "หมวดหมู่สินค้า",

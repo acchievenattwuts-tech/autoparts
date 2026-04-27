@@ -26,11 +26,11 @@ import {
   Users,
   FileCheck,
   Wallet,
-  KeyRound,
   MapPin,
   Layers,
   Megaphone,
   ListChecks,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,21 +50,28 @@ type SidebarEntry = NavItem | NavSection;
 
 const navItems: SidebarEntry[] = [
   {
-    label: "Dashboard",
-    href: "/admin",
-    icon: LayoutDashboard,
-    permission: "dashboard.view",
+    section: "ภาพรวม",
+    items: [
+      { label: "Today Workboard", href: "/admin/workboard", icon: ClipboardList, permission: "workboard.view" },
+      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+    ],
   },
   {
-    section: "ข้อมูลหลัก",
+    section: "ขาย & ลูกหนี้",
     items: [
-      { label: "สินค้า", href: "/admin/products", icon: Package, permission: "products.view" },
-      { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view" },
-      { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags, permission: "master.view" },
-      { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award, permission: "master.view" },
-      { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car, permission: "master.view" },
-      { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view" },
-      { label: "รหัสค่าใช้จ่าย", href: "/admin/master/expense-codes", icon: Wallet, permission: "master.view" },
+      { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view" },
+      { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view" },
+      { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view" },
+      { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view" },
+    ],
+  },
+  {
+    section: "ซื้อ & เจ้าหนี้",
+    items: [
+      { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart, permission: "purchases.view" },
+      { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view" },
+      { label: "เงินมัดจำซัพพลายเออร์", href: "/admin/supplier-advances", icon: Wallet, permission: "supplier_advances.view" },
+      { label: "จ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments", icon: FileCheck, permission: "supplier_payments.view" },
     ],
   },
   {
@@ -77,19 +84,10 @@ const navItems: SidebarEntry[] = [
     ],
   },
   {
-    section: "ระบบงาน",
+    section: "บริการหลังการขาย",
     items: [
-      { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart, permission: "purchases.view" },
-      { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view" },
-      { label: "เงินมัดจำซัพพลายเออร์", href: "/admin/supplier-advances", icon: Wallet, permission: "supplier_advances.view" },
-      { label: "จ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments", icon: FileCheck, permission: "supplier_payments.view" },
-      { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view" },
-      { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view" },
-      { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view" },
-      { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view" },
       { label: "ประกันสินค้า", href: "/admin/warranties", icon: ShieldCheck, permission: "warranties.view" },
       { label: "ใบเคลมสินค้า", href: "/admin/warranty-claims", icon: ShieldAlert, permission: "warranty_claims.view" },
-      { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt, permission: "expenses.view" },
     ],
   },
   {
@@ -98,6 +96,7 @@ const navItems: SidebarEntry[] = [
       { label: "บัญชีเงินสด / ธนาคาร", href: "/admin/cash-bank", icon: Wallet, permission: "cash_bank.view" },
       { label: "โอนเงินระหว่างบัญชี", href: "/admin/cash-bank/transfers", icon: RefreshCw, permission: "cash_bank.transfers.view" },
       { label: "ปรับยอดเงิน", href: "/admin/cash-bank/adjustments", icon: Receipt, permission: "cash_bank.adjustments.view" },
+      { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt, permission: "expenses.view" },
     ],
   },
   {
@@ -105,19 +104,31 @@ const navItems: SidebarEntry[] = [
     items: [{ label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view" }],
   },
   {
-    section: "การตลาด",
+    section: "ข้อมูลหลัก",
+    items: [
+      { label: "สินค้า", href: "/admin/products", icon: Package, permission: "products.view" },
+      { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view" },
+      { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view" },
+      { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags, permission: "master.view" },
+      { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award, permission: "master.view" },
+      { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car, permission: "master.view" },
+      { label: "รหัสค่าใช้จ่าย", href: "/admin/master/expense-codes", icon: Wallet, permission: "master.view" },
+    ],
+  },
+  {
+    section: "การตลาด & เว็บไซต์",
     items: [
       { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view" },
       { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view" },
     ],
   },
   {
-    section: "ระบบ",
+    section: "ตั้งค่าระบบ",
     items: [
       { label: "ตั้งค่าร้านค้า", href: "/admin/settings/company", icon: Settings, permission: "settings.company.view" },
       { label: "ผู้ใช้งาน", href: "/admin/users", icon: Users, permission: "admin.users.view" },
       { label: "บทบาทและสิทธิ์", href: "/admin/roles", icon: ShieldCheck, permission: "admin.roles.view" },
-      { label: "เปลี่ยนรหัสผ่าน", href: "/admin/profile/change-password", icon: KeyRound },
+      { label: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "audit_log.view" },
     ],
   },
 ];

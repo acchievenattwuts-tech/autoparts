@@ -2,17 +2,15 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { AlertTriangle, LogOut, Menu, UserCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { AlertTriangle, Menu } from "lucide-react";
 
 import AdminSidebar from "@/components/shared/AdminSidebar";
 import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
+import AdminUserMenu from "@/components/shared/AdminUserMenu";
 import TabsBar from "@/components/shared/TabsBar";
 import type { AdminTheme } from "@/lib/admin-theme";
 import { cn } from "@/lib/utils";
-import { useTabStore } from "@/hooks/useTabStore";
 
 type AdminShellProps = {
   children: ReactNode;
@@ -27,29 +25,7 @@ type AdminShellContentProps = Omit<AdminShellProps, "initialTheme" | "userId">;
 
 const AdminShellContent = ({ children, permissions, mustChangePassword, username }: AdminShellContentProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const router = useRouter();
-  const clearAll = useTabStore((state) => state.clearAll);
   const { theme } = useAdminTheme();
-
-  const handleLogout = async () => {
-    if (loggingOut) return;
-
-    setLoggingOut(true);
-    clearAll();
-
-    try {
-      const result = await signOut({
-        redirect: false,
-        callbackUrl: "/admin/login",
-      });
-
-      router.replace(result?.url ?? "/admin/login");
-      router.refresh();
-    } finally {
-      setLoggingOut(false);
-    }
-  };
 
   return (
     <div
@@ -85,24 +61,9 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
             <Menu size={20} />
           </button>
           <div className="flex-1" />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <AdminThemeToggle />
-            {username && (
-              <div className="hidden items-center gap-1.5 text-sm text-gray-600 dark:text-slate-300 sm:flex">
-                <UserCircle size={16} className="text-gray-400 dark:text-slate-500" />
-                <span>{username}</span>
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-300 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">
-                {loggingOut ? "กำลังออกจากระบบ..." : "ออกจากระบบ"}
-              </span>
-            </button>
+            <AdminUserMenu username={username} />
           </div>
         </header>
 

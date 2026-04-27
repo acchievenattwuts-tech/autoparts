@@ -12,6 +12,7 @@ type PermissionCatalogItem = {
 };
 
 export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
+  { key: "workboard.view", group: "ภาพรวม", label: "ดู Today Workboard" },
   { key: "dashboard.view", group: "ภาพรวม", label: "ดู Dashboard" },
 
   { key: "products.view", group: "ข้อมูลหลัก", label: "ดูสินค้า" },
@@ -118,6 +119,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "admin.users.manage", group: "ระบบ", label: "จัดการผู้ใช้" },
   { key: "admin.roles.view", group: "ระบบ", label: "ดูบทบาทและสิทธิ์" },
   { key: "admin.roles.manage", group: "ระบบ", label: "จัดการบทบาทและสิทธิ์" },
+  { key: "audit_log.view", group: "ระบบ", label: "ดู Audit Log" },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_CATALOG)[number]["key"];
@@ -132,6 +134,7 @@ type RoleTemplate = {
 const ALL_PERMISSION_KEYS = PERMISSION_CATALOG.map((permission) => permission.key);
 
 const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
+  "workboard.view",
   "dashboard.view",
   "customers.view",
   "customers.create",
@@ -182,6 +185,7 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
 ];
 
 const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
+  "workboard.view",
   "dashboard.view",
   "products.view",
   "customers.view",
@@ -235,6 +239,9 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/profile/change-password", permission: null },
   { prefix: "/admin/users", permission: "admin.users.view" },
   { prefix: "/admin/roles", permission: "admin.roles.view" },
+  { prefix: "/admin/audit-log", permission: "audit_log.view" },
+  { prefix: "/admin/workboard", permission: "workboard.view" },
+  { prefix: "/admin/dashboard", permission: "dashboard.view" },
   { prefix: "/admin/products", permission: "products.view" },
   { prefix: "/admin/customers", permission: "customers.view" },
   { prefix: "/admin/master", permission: "master.view" },
@@ -263,7 +270,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/cash-bank", permission: "cash_bank.view" },
   { prefix: "/admin/reports", permission: "reports.view" },
   { prefix: "/admin/settings/company", permission: "settings.company.view" },
-  { prefix: "/admin", permission: "dashboard.view" },
+  { prefix: "/admin", permission: "workboard.view" },
 ];
 
 export async function ensureAccessControlSetup(): Promise<void> {
