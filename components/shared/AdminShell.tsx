@@ -8,6 +8,7 @@ import AdminSidebar from "@/components/shared/AdminSidebar";
 import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
 import AdminUserMenu from "@/components/shared/AdminUserMenu";
+import QuickSearchLauncher from "@/components/shared/QuickSearchLauncher";
 import TabsBar from "@/components/shared/TabsBar";
 import type { AdminTheme } from "@/lib/admin-theme";
 import { cn } from "@/lib/utils";
@@ -19,11 +20,12 @@ type AdminShellProps = {
   mustChangePassword: boolean;
   userId: string;
   username?: string;
+  role: string;
 };
 
-type AdminShellContentProps = Omit<AdminShellProps, "initialTheme" | "userId">;
+type AdminShellContentProps = Omit<AdminShellProps, "initialTheme">;
 
-const AdminShellContent = ({ children, permissions, mustChangePassword, username }: AdminShellContentProps) => {
+const AdminShellContent = ({ children, permissions, mustChangePassword, username, userId, role }: AdminShellContentProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme } = useAdminTheme();
 
@@ -62,6 +64,7 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-2">
+            <QuickSearchLauncher role={role} permissions={permissions} userId={userId} />
             <AdminThemeToggle />
             <AdminUserMenu username={username} />
           </div>
@@ -88,10 +91,16 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
   );
 };
 
-const AdminShell = ({ children, initialTheme, permissions, mustChangePassword, userId, username }: AdminShellProps) => {
+const AdminShell = ({ children, initialTheme, permissions, mustChangePassword, userId, username, role }: AdminShellProps) => {
   return (
     <AdminThemeProvider initialTheme={initialTheme} userId={userId}>
-      <AdminShellContent permissions={permissions} mustChangePassword={mustChangePassword} username={username}>
+      <AdminShellContent
+        permissions={permissions}
+        mustChangePassword={mustChangePassword}
+        username={username}
+        userId={userId}
+        role={role}
+      >
         {children}
       </AdminShellContent>
     </AdminThemeProvider>

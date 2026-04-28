@@ -15,4 +15,12 @@ If a change touches any shared print primitive or any presentation line intentio
 # Admin Theme Sync Rule
 
 When changing UI/UX on any admin surface, you must review and update both light mode and dark mode in the same round automatically. Do not ask the human whether dark mode should also be updated â€” that is the default requirement. Apply theme changes carefully, preserve the existing business logic, and avoid letting one theme drift visually or behaviorally out of sync with the other.
+
+# Quick Search Sync Rule
+
+When adding, removing, renaming, regrouping, or changing access for any admin menu item or admin entrypoint, you must review and update Quick Search command coverage in the same round. The `>` command mode must stay in sync with the currently available admin menus and must continue to respect the same permission gating as the sidebar/navigation.
+
+Admin navigation and Quick Search command entries must share the same source of truth whenever possible. Do not maintain a second hand-written list of navigable admin menu commands if it can be derived from the shared navigation config.
+
+When introducing a new admin menu, admin page entrypoint, or user-facing admin workflow shortcut, add or derive its Quick Search coverage before shipping. Do not leave new functionality discoverable in the UI but missing from Quick Search.
 <!-- END:nextjs-agent-rules -->

@@ -29,6 +29,7 @@ const AdminLayout = async ({ children }: { children: ReactNode }) => {
       permissions={permissions}
       userId={session.user.id}
       username={username}
+      role={session.user.role}
     >
       {children}
     </AdminShell>

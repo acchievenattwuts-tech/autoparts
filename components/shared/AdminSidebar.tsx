@@ -1,139 +1,15 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Package,
-  Car,
-  Tags,
-  Truck,
-  ShoppingCart,
-  TrendingUp,
-  ShieldCheck,
-  ShieldAlert,
-  Receipt,
-  BarChart3,
-  Settings,
   X,
-  Award,
-  Archive,
-  RefreshCw,
-  FileX,
-  RotateCcw,
-  ClipboardList,
-  Users,
-  FileCheck,
-  Wallet,
-  MapPin,
-  Layers,
-  Megaphone,
-  ListChecks,
-  ScrollText,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { ADMIN_NAVIGATION, filterAdminNavigationByPermission } from "@/lib/admin-navigation";
 import { cn } from "@/lib/utils";
-
-type NavItem = {
-  label: string;
-  href: string;
-  icon: ComponentType<{ size?: number; className?: string }>;
-  permission?: string;
-};
-
-type NavSection = {
-  section: string;
-  items: NavItem[];
-};
-
-type SidebarEntry = NavItem | NavSection;
-
-const navItems: SidebarEntry[] = [
-  {
-    section: "ภาพรวม",
-    items: [
-      { label: "Today Workboard", href: "/admin/workboard", icon: ClipboardList, permission: "workboard.view" },
-      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
-    ],
-  },
-  {
-    section: "ขาย & ลูกหนี้",
-    items: [
-      { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view" },
-      { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view" },
-      { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view" },
-      { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view" },
-    ],
-  },
-  {
-    section: "ซื้อ & เจ้าหนี้",
-    items: [
-      { label: "ซื้อสินค้าเข้า", href: "/admin/purchases", icon: ShoppingCart, permission: "purchases.view" },
-      { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view" },
-      { label: "เงินมัดจำซัพพลายเออร์", href: "/admin/supplier-advances", icon: Wallet, permission: "supplier_advances.view" },
-      { label: "จ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments", icon: FileCheck, permission: "supplier_payments.view" },
-    ],
-  },
-  {
-    section: "สต็อก",
-    items: [
-      { label: "ยอดยกมา (BF)", href: "/admin/stock/bf", icon: Archive, permission: "stock.bf.view" },
-      { label: "ปรับสต็อก", href: "/admin/stock/adjustments", icon: RefreshCw, permission: "stock.adjustments.view" },
-      { label: "Stock Card MAVG", href: "/admin/stock/card", icon: ClipboardList, permission: "stock.card.view" },
-      { label: "Stock Card Lot", href: "/admin/lots/balance", icon: Layers, permission: "lot_reports.view" },
-    ],
-  },
-  {
-    section: "บริการหลังการขาย",
-    items: [
-      { label: "ประกันสินค้า", href: "/admin/warranties", icon: ShieldCheck, permission: "warranties.view" },
-      { label: "ใบเคลมสินค้า", href: "/admin/warranty-claims", icon: ShieldAlert, permission: "warranty_claims.view" },
-    ],
-  },
-  {
-    section: "การเงิน",
-    items: [
-      { label: "บัญชีเงินสด / ธนาคาร", href: "/admin/cash-bank", icon: Wallet, permission: "cash_bank.view" },
-      { label: "โอนเงินระหว่างบัญชี", href: "/admin/cash-bank/transfers", icon: RefreshCw, permission: "cash_bank.transfers.view" },
-      { label: "ปรับยอดเงิน", href: "/admin/cash-bank/adjustments", icon: Receipt, permission: "cash_bank.adjustments.view" },
-      { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt, permission: "expenses.view" },
-    ],
-  },
-  {
-    section: "รายงาน",
-    items: [{ label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view" }],
-  },
-  {
-    section: "ข้อมูลหลัก",
-    items: [
-      { label: "สินค้า", href: "/admin/products", icon: Package, permission: "products.view" },
-      { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view" },
-      { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view" },
-      { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags, permission: "master.view" },
-      { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award, permission: "master.view" },
-      { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car, permission: "master.view" },
-      { label: "รหัสค่าใช้จ่าย", href: "/admin/master/expense-codes", icon: Wallet, permission: "master.view" },
-    ],
-  },
-  {
-    section: "การตลาด & เว็บไซต์",
-    items: [
-      { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view" },
-      { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view" },
-    ],
-  },
-  {
-    section: "ตั้งค่าระบบ",
-    items: [
-      { label: "ตั้งค่าร้านค้า", href: "/admin/settings/company", icon: Settings, permission: "settings.company.view" },
-      { label: "ผู้ใช้งาน", href: "/admin/users", icon: Users, permission: "admin.users.view" },
-      { label: "บทบาทและสิทธิ์", href: "/admin/roles", icon: ShieldCheck, permission: "admin.roles.view" },
-      { label: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "audit_log.view" },
-    ],
-  },
-];
 
 interface AdminSidebarProps {
   permissions?: string[];
@@ -143,29 +19,8 @@ interface AdminSidebarProps {
 const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
   const pathname = usePathname();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-
-  const canAccess = (permission?: string) =>
-    !permission || permissions === undefined || permissions.includes(permission);
-
-  const visibleItems = navItems.reduce<SidebarEntry[]>((items, item) => {
-    if ("section" in item) {
-      const visibleSectionItems = item.items.filter((subItem) => canAccess(subItem.permission));
-      if (visibleSectionItems.length > 0) {
-        items.push({ ...item, items: visibleSectionItems });
-      }
-      return items;
-    }
-
-    if (canAccess(item.permission)) {
-      items.push(item);
-    }
-
-    return items;
-  }, []);
-
-  const visibleHrefs = visibleItems.flatMap((item) =>
-    "section" in item ? item.items.map((subItem) => subItem.href) : [item.href]
-  );
+  const visibleItems = filterAdminNavigationByPermission(ADMIN_NAVIGATION, permissions);
+  const visibleHrefs = visibleItems.flatMap((item) => item.items.map((subItem) => subItem.href));
 
   const activeHref =
     visibleHrefs
@@ -201,61 +56,42 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {visibleItems.map((item, idx) => {
-          if ("section" in item) {
-            const hasActiveItem = item.items.some((sub) => isActive(sub.href));
-            const showSectionItems = isSectionExpanded(item.section, hasActiveItem);
-
-            return (
-              <div key={`${item.section}-${idx}`} className="pt-3">
-                <button
-                  type="button"
-                  onClick={() => toggleSection(item.section, hasActiveItem)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold uppercase tracking-wider transition-colors",
-                    hasActiveItem
-                      ? "bg-white/10 text-white dark:bg-white/8 dark:text-slate-100"
-                      : "text-blue-200 hover:bg-white/8 hover:text-white dark:text-slate-400 dark:hover:bg-white/6 dark:hover:text-slate-300"
-                  )}
-                >
-                  <span>{item.section}</span>
-                  {showSectionItems ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-                {showSectionItems &&
-                  item.items.map((sub) => (
-                    <Link
-                      key={sub.href}
-                      href={sub.href}
-                      onClick={onClose}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors",
-                        isActive(sub.href)
-                          ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
-                          : "text-blue-50 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
-                      )}
-                    >
-                      <sub.icon size={18} />
-                      {sub.label}
-                    </Link>
-                  ))}
-              </div>
-            );
-          }
+          const hasActiveItem = item.items.some((sub) => isActive(sub.href));
+          const showSectionItems = isSectionExpanded(item.section, hasActiveItem);
 
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors",
-                isActive(item.href)
-                  ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
-                  : "text-blue-50 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
-              )}
-            >
-              <item.icon size={18} />
-              {item.label}
-            </Link>
+            <div key={`${item.section}-${idx}`} className="pt-3">
+              <button
+                type="button"
+                onClick={() => toggleSection(item.section, hasActiveItem)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-semibold uppercase tracking-wider transition-colors",
+                  hasActiveItem
+                    ? "bg-white/10 text-white dark:bg-white/8 dark:text-slate-100"
+                    : "text-blue-200 hover:bg-white/8 hover:text-white dark:text-slate-400 dark:hover:bg-white/6 dark:hover:text-slate-300"
+                )}
+              >
+                <span>{item.section}</span>
+                {showSectionItems ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {showSectionItems &&
+                item.items.map((sub) => (
+                  <Link
+                    key={sub.href}
+                    href={sub.href}
+                    onClick={onClose}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors",
+                      isActive(sub.href)
+                        ? "bg-[#f97316] font-medium text-white shadow-sm shadow-orange-950/10 dark:bg-orange-500 dark:text-slate-950"
+                        : "text-blue-50 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
+                    )}
+                  >
+                    <sub.icon size={18} />
+                    {sub.label}
+                  </Link>
+                ))}
+            </div>
           );
         })}
       </nav>

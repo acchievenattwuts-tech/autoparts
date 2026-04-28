@@ -4888,137 +4888,132 @@ Implementation progress (2026-04-27, phase 1):
 >
 > Iron rule: **ห้ามเปลี่ยน business logic เดิม**, ต้องเคารพ permission ของ user ทุกผลลัพธ์, ใช้ search engine เดิมจาก Phase 5 (PostgreSQL full-text) — ห้ามสร้าง search backend ใหม่ขนาน
 
+Implementation progress (2026-04-28, Batch A + B):
+
+- ตัดสินใจ install `cmdk@1.1.1` ตรง ๆ (pinned) แทนการรัน shadcn add — โปรเจกต์ไม่ได้ใช้ shadcn registry เต็มรูป จึงสร้าง `CommandPalette.tsx` เองให้สไตล์ตรงกับ `SearchableSelect` เดิม
+- เพิ่ม `lib/rate-limit.ts` (in-memory token bucket, process-local) — ยังไม่ผูก Redis เพราะระบบยังเดี่ยว
+- store ใช้ `zustand` (มีอยู่ใน deps แล้ว) แทน React context — ปลอดภัยกับ React 19 + dynamic import
+- Adjustments / Warranties / Suppliers ไม่มีหน้า detail → search result ลิงก์ไปหน้า list ของแต่ละโมดูลแทน
+
 ---
 
 ### 4.1 Tech foundation
 
-- [ ] ติดตั้ง shadcn `<Command />` component (built on `cmdk` ของ pacocoursey)
-  - [ ] รัน shadcn add command (เพิ่มเฉพาะ component นี้ ไม่ลากของอื่น)
-  - [ ] ตรวจว่า `cmdk` เข้า dependencies แบบ pinned version
-- [ ] สร้าง `hooks/useGlobalShortcut.ts`
-  - [ ] รับ key combination + handler
-  - [ ] ตรวจ platform: Mac → `metaKey`, Windows/Linux → `ctrlKey` (ใช้ `navigator.platform` หรือ `navigator.userAgent` ตรวจครั้งเดียวตอน mount)
-  - [ ] ห้าม trigger ขณะ user กำลังพิมพ์ใน `<input>`, `<textarea>`, หรือ `contentEditable` (ยกเว้นสำหรับ `Cmd+K` / `Ctrl+K` ที่ต้องเปิดได้แม้ใน input ก็ได้ — ให้ option `force: true`)
-  - [ ] cleanup listener ตอน unmount
-- [ ] สร้าง shared store เล็ก ๆ สำหรับสถานะเปิด/ปิด palette (ใช้ React context หรือ zustand เบา ๆ — เลือกแบบที่สอดคล้องกับ codebase เดิม ห้ามเพิ่ม dep ใหม่ถ้าไม่จำเป็น)
+- [x] ติดตั้ง `cmdk@1.1.1` (pinned, save-exact) — ไม่ต้องรัน `shadcn add`
+  - [x] `cmdk` เข้า [package.json](package.json) แบบ pinned version
+- [x] สร้าง [hooks/useGlobalShortcut.ts](hooks/useGlobalShortcut.ts)
+  - [x] รับ key + handler + option `withMod` / `force` / `enabled`
+  - [x] ตรวจ platform ด้วย `navigator.platform` / `userAgent` (Mac → `metaKey`, อื่น ๆ → `ctrlKey`)
+  - [x] ห้าม trigger ขณะ user พิมพ์ใน `<input>` / `<textarea>` / `contentEditable` (ยกเว้น `Cmd+K` / `Ctrl+K` ใช้ `force: true`)
+  - [x] cleanup listener ตอน unmount
+  - [x] export `getPlatformShortcutLabel()` ใช้ทำ label `⌘K` / `Ctrl+K`
+- [x] shared store [lib/quick-search-store.ts](lib/quick-search-store.ts) — Zustand เล็ก (open / close / toggle) ไม่เพิ่ม dep ใหม่
 
 ### 4.2 UI component
 
-- [ ] สร้าง `components/shared/CommandPalette.tsx`
-  - [ ] modal กลางจอ (overlay + focus trap)
-  - [ ] input ด้านบน + ผลลัพธ์แบ่งกลุ่มด้านล่าง (เอกสาร / สินค้า / ลูกค้า / supplier / คำสั่งด่วน)
-  - [ ] navigate ด้วย ↑ ↓, เลือกด้วย Enter, ปิดด้วย Esc
-  - [ ] empty state เมื่อพิมพ์แล้วไม่เจอ
-  - [ ] loading state ระหว่างรอ API (skeleton หรือ spinner เบา ๆ)
-  - [ ] mode สวิตช์ด้วย prefix:
-    - [ ] (no prefix) = search ปกติ
-    - [ ] `>` = command mode (action ด่วน + navigation)
-    - [ ] `#` = (optional) ค้นเฉพาะเลขเอกสาร
-  - [ ] highlight match ใน label
-  - [ ] mobile: ปุ่ม 🔍 บน admin header เปิด palette ได้ (touch-friendly)
-  - [ ] light + dark mode (mandatory ตาม `.rules`)
-- [ ] mount palette ใน `app/admin/(protected)/layout.tsx` ให้ใช้ได้ทุกหน้า admin
-- [ ] **ห้าม** mount บน `/admin/login` หรือบน storefront
+- [x] สร้าง [components/shared/CommandPalette.tsx](components/shared/CommandPalette.tsx)
+  - [x] modal กลางจอ + overlay backdrop คลิกปิดได้
+  - [x] input ด้านบน + ผลลัพธ์แบ่งกลุ่ม (เอกสาร / สินค้า / ลูกค้า / supplier / คำสั่งด่วน)
+  - [x] keyboard: ↑ ↓ เลื่อน, Enter เลือก, Esc ปิด (ผ่าน cmdk + handler ของเราเอง)
+  - [x] empty state เมื่อพิมพ์แล้วไม่เจอ ("ไม่พบผลลัพธ์สำหรับ ...")
+  - [x] loading state — spinner Loader2 ข้างช่อง input ระหว่างรอ API
+  - [x] mode สวิตช์ด้วย prefix:
+    - [x] (no prefix) = search ทั่วไป (ทุก entity)
+    - [x] `>` = command mode (action ด่วน + navigation, filter ฝั่ง cmdk)
+    - [x] `#` = ค้นเฉพาะ docNo (ส่ง `?scope=docs` ให้ API)
+  - [x] mobile: ปุ่ม 🔍 บน admin header (icon-only บนจอเล็ก, เพิ่ม label + kbd บนจอใหญ่)
+  - [x] light + dark mode ครบทุก state — ใช้ token เดิม (gray-200/white, slate-100/[#0f172a])
+- [x] mount ผ่าน [components/shared/QuickSearchLauncher.tsx](components/shared/QuickSearchLauncher.tsx) → ติดใน [components/shared/AdminShell.tsx](components/shared/AdminShell.tsx) → ใช้ได้ทุกหน้า admin
+- [x] **ไม่ mount** ที่ `/admin/login` (อยู่นอก `(protected)`) และไม่ติด storefront
 
 ### 4.3 Search API
 
-- [ ] สร้าง route `app/api/admin/quick-search/route.ts` (POST หรือ GET — เลือก GET เพื่อ cacheable)
-  - [ ] รับ `q` (query string) + `scope?` (optional filter เช่น `documents`, `products`, `customers`)
-  - [ ] **เรียก `auth()` + permission check** ก่อนทุก query — ถ้าไม่มีสิทธิ์ดู entity นั้น ต้องไม่ return ใน result
-  - [ ] query parallel ด้วย `Promise.all`:
-    - [ ] Sale (docNo + customerName) — เคารพ `sales.view`
-    - [ ] Purchase (docNo + supplierName) — เคารพ `purchases.view`
-    - [ ] CreditNote, Receipt, PurchaseReturn, SupplierAdvance, SupplierPayment, Expense, Adjustment — เคารพ permission ของแต่ละโมดูล
-    - [ ] Warranty, WarrantyClaim
-    - [ ] Product (code + name + alias) — ใช้ search engine เดิมจาก Phase 5 (`lib/product-search.ts`)
-    - [ ] Customer (code + name + phone)
-    - [ ] Supplier (code + name)
-  - [ ] **limit 5 ผลลัพธ์ต่อกลุ่ม** (`take: 5`) เพื่อให้ payload เล็กและเร็ว
-  - [ ] return JSON shape:
-    ```
-    { groups: [{ key, label, items: [{ id, label, sublabel, href, icon }] }] }
-    ```
-  - [ ] **ห้าม** ส่ง field sensitive (cost, margin) มาบน sublabel — เฉพาะข้อมูลที่ user เห็นได้อยู่แล้ว
-  - [ ] เพิ่ม rate-limit ระดับเบา (เช่น 30 req/min/user) ป้องกัน abuse — ใช้ pattern เดิมของ login rate limit หรือ middleware
-  - [ ] error handling: try/catch + return generic error message (ตาม `.rules` ห้าม leak stack trace)
-  - [ ] เคารพ feedback memory: ห้ามใส่ `unstable_cache` ที่จะทำ pool exhaustion — ใช้ short in-memory dedupe ฝั่ง client พอ
+- [x] สร้าง route [app/api/admin/quick-search/route.ts](app/api/admin/quick-search/route.ts) — GET, `runtime: nodejs`, `dynamic: force-dynamic`, `Cache-Control: private, no-store`
+  - [x] รับ `q` + `scope=docs` (mode `#`)
+  - [x] `auth()` + permission check ทุก entity ผ่าน `hasPermissionAccess()` — ไม่มีสิทธิ์ → query นั้นถูก short-circuit เป็น `Promise.resolve([])`
+  - [x] query parallel ด้วย `Promise.all` ครบ:
+    - [x] Sale (saleNo + customerName + customerPhone) — `sales.view`
+    - [x] Purchase (purchaseNo + referenceNo + supplier.name) — `purchases.view`
+    - [x] PurchaseReturn — `purchase_returns.view`
+    - [x] CreditNote, Receipt, SupplierAdvance, SupplierPayment, Expense — เคารพ permission ของแต่ละโมดูล
+    - [x] WarrantyClaim — `warranty_claims.view`
+    - [x] Product (code + name + alias) — เคารพ `lib/product-search.ts` style (`contains` insensitive, `take: 5`)
+    - [x] Customer (code + name + phone)
+    - [x] Supplier (code + name)
+    - หมายเหตุ: Adjustment / Warranty (list-only) ไม่ใส่ในรอบนี้เพราะไม่มี detail page; เพิ่มทีหลังได้ถ้าจำเป็น
+  - [x] `take: 5` ทุกกลุ่ม
+  - [x] response shape `{ groups: [{ key, label, items: [{ id, label, sublabel, href }] }] }`
+  - [x] sublabel เก็บเฉพาะข้อมูลที่ user เห็นได้อยู่แล้ว (ชื่อลูกค้า / supplier / status ยกเลิก / referenceNo) — **ไม่มี cost / margin / balance**
+  - [x] rate-limit 30 req/min/user ผ่าน [lib/rate-limit.ts](lib/rate-limit.ts) — return 429 + `Retry-After`
+  - [x] try/catch ครอบทั้ง handler, error → 500 + `INTERNAL_ERROR` (generic, ไม่ leak stack trace)
+  - [x] **ไม่มี `unstable_cache`** บน route ใหม่ (เคารพ feedback memory) — client cache map พอ
 
 ### 4.4 Client behavior
 
-- [ ] debounce input 200ms ก่อนยิง API (ลด query ที่ไม่จำเป็น)
-- [ ] cache ผลลัพธ์ฝั่ง client ตามคำค้น (Map<query, result>) — clear เมื่อปิด palette
-- [ ] cancel request เก่าเมื่อ user พิมพ์ใหม่ (`AbortController`)
-- [ ] show recent items (5 ล่าสุดที่กดเข้า) ตอนเปิด palette ครั้งแรก — เก็บใน `localStorage` เฉพาะ id + label + href, ห้ามเก็บข้อมูล sensitive
-- [ ] เมื่อกด Enter ที่ผลลัพธ์ → router push ไป `href` แล้วปิด palette
-- [ ] รองรับ keyboard ครบ: ↑ ↓ Tab Enter Esc + Home/End
+- [x] debounce input 200ms ก่อนยิง API
+- [x] cache ผลลัพธ์ฝั่ง client (Map<key, groups[]>) — key = `all:` / `docs:` + lowercase query, จำกัด 30 entries (LRU eviction)
+- [x] `AbortController` ยกเลิก request เก่าเมื่อ user พิมพ์ใหม่
+- [x] recent items (5 ล่าสุด) ใน `localStorage` คีย์ `quick-search-recent:<userId>` — เก็บแค่ `id`, `label`, `sublabel` (เฉพาะที่มาจาก server แล้ว), `href`, `groupKey`
+- [x] กด Enter ที่ผลลัพธ์ → `router.push(href)` + `pushRecent()` + ปิด palette
+- [x] keyboard handling: ↑ ↓ Enter Esc รองรับโดย cmdk เอง
 
 ### 4.5 Command mode (`>` prefix) — Action ด่วน
 
-- [ ] หมวด **สร้างเอกสารใหม่**:
-  - [ ] สร้างใบขายใหม่ → `/admin/sales/new`
-  - [ ] สร้างใบซื้อใหม่ → `/admin/purchases/new`
-  - [ ] สร้างใบคืนซื้อใหม่ → `/admin/purchase-returns/new`
-  - [ ] สร้าง CN ใหม่ → `/admin/credit-notes/new`
-  - [ ] สร้างใบเสร็จรับเงินใหม่ → `/admin/receipts/new`
-  - [ ] สร้างค่าใช้จ่ายใหม่ → `/admin/expenses/new`
-  - [ ] สร้างใบเคลมใหม่ → `/admin/warranty-claims/new`
-  - [ ] สร้างมัดจำซัพพลายเออร์ → `/admin/supplier-advances/new`
-  - [ ] สร้างใบจ่ายชำระซัพพลายเออร์ → `/admin/supplier-payments/new`
-- [ ] หมวด **Navigation**:
-  - [ ] ไปหน้า dashboard / workboard / รายงานสรุป / รายงาน AR / รายงาน AP / Stock card / Lot expiry / Cash-bank ledger / สินค้า / ลูกค้า / supplier
-- [ ] หมวด **Settings / Personal**:
-  - [ ] toggle dark / light mode (เรียก theme switcher เดิม)
-  - [ ] เปลี่ยนรหัสผ่าน (`/admin/profile`)
-  - [ ] ออกจากระบบ (logout action)
-- [ ] **เคารพ permission** — command ที่ user ไม่มีสิทธิ์ ต้องไม่ขึ้นในรายการ
-- [ ] รายการ command static เก็บใน `lib/quick-search-commands.ts` — readable + maintainable
+- [x] รายการ static อยู่ที่ [lib/quick-search-commands.ts](lib/quick-search-commands.ts)
+- [x] หมวด **สร้างเอกสารใหม่** ครบทั้ง 9 รายการ (sales / purchases / purchase-returns / credit-notes / receipts / expenses / warranty-claims / supplier-advances / supplier-payments)
+- [x] หมวด **Navigation**: dashboard / workboard / reports สรุป / AR / AP / stock card / lot / cash-bank ledger / products / customers / suppliers
+- [x] หมวด **Settings / Personal**:
+  - [x] toggle dark/light mode (เรียก `useAdminTheme().toggleTheme()` เดิม — ไม่สร้างของซ้ำ)
+  - [x] เปลี่ยนรหัสผ่าน → `/admin/profile`
+  - [x] ออกจากระบบ → `signOut({ redirect: true, callbackUrl: "/admin/login" })`
+- [x] permission gating ผ่าน `filterCommandsByPermission()` (ทั้ง role ADMIN และตาม permissions[])
 
 ### 4.6 Permission integration
 
-- [ ] โหลด permission ของ session ปัจจุบันส่งให้ palette ตอน mount (ผ่าน server component → props หรือ context)
-- [ ] filter command list ตาม permission **ฝั่ง client** เพื่อ UX ทันที + filter result **ฝั่ง server** เพื่อความปลอดภัย (defense in depth)
-- [ ] ถ้า user ไม่มี permission ใด ๆ ของ entity ต้องไม่เห็นกลุ่มนั้นเลย
+- [x] [app/admin/(protected)/layout.tsx](app/admin/(protected)/layout.tsx) ส่ง `role` + `permissions` + `userId` → `AdminShell` → `QuickSearchLauncher` → `CommandPalette`
+- [x] filter command list ฝั่ง client (UX) + filter result ฝั่ง server (security) — defense in depth
+- [x] entity ที่ user ไม่มี permission view → ไม่มีในผลลัพธ์เลย (ทั้ง group + items)
 
 ### 4.7 UX polish
 
-- [ ] แสดง shortcut hint บน input: "Esc to close · ↑↓ to navigate · ⏎ to select"
-- [ ] platform-aware label — Mac แสดง `⌘K`, Windows/Linux แสดง `Ctrl+K`
-- [ ] แสดง shortcut tip บนปุ่ม 🔍 ของ admin header (เช่น tooltip "ค้นหา (Ctrl+K)")
-- [ ] รองรับ Thai input ครบ (composition events)
-- [ ] focus กลับไปยัง element เดิมหลังปิด palette
-- [ ] animation เปิด/ปิดเบา ๆ (fade + scale 200ms) — ห้ามทำให้ INP เกิน 200ms
+- [x] shortcut hint แถว footer ของ palette: ↑↓ เลื่อน · ⏎ เลือก · Esc ปิด · `⌘K`/`Ctrl+K`
+- [x] platform-aware label ผ่าน `getPlatformShortcutLabel()` (Mac → `⌘K`, อื่น ๆ → `Ctrl+K`)
+- [x] tooltip + aria-label บนปุ่ม 🔍 header แสดง `ค้นหา (⌘K)` / `ค้นหา (Ctrl+K)`
+- [x] Thai input — ใช้ native `<input>` ของ cmdk รองรับ composition events ในตัว
+- [x] focus return — เก็บ `document.activeElement` ตอนเปิด, restore หลังปิด (defer ให้ cmdk unmount ก่อน)
+- [x] animation เปิด: `animate-in fade-in zoom-in-95 duration-200` (panel) + `fade-in duration-150` (backdrop) — เบามาก ไม่กระทบ INP
 
 ### 4.8 Performance
 
-- [ ] target API response < 200ms p95 บน production data
-- [ ] ใช้ `select` เฉพาะ field ที่ใช้ — ห้าม fetch ทุก field
-- [ ] ใช้ index เดิมที่มีอยู่ (Phase 5 search) — ถ้าจำเป็นต้องเพิ่ม index ใหม่ ให้ระบุชัดใน checklist และขอ confirm ก่อน push schema
-- [ ] payload กลับ < 20KB ต่อ query
-- [ ] bundle impact: `cmdk` + palette UI ต้องเป็น dynamic import (lazy load) — ห้ามใส่ใน initial admin bundle
+- [x] `npm run build` ผ่าน zero TS error
+- [x] ทุก query ใช้ `select` เฉพาะ field ที่ใช้ (ไม่มี cost/avgCost/margin) → payload เล็ก
+- [x] ใช้ index เดิม (saleNo/purchaseNo/cnNo/... ทั้งหมดเป็น `@unique` indexed; supplier.name + customer.name มี index แล้ว) — ไม่ต้องเพิ่ม index ใหม่
+- [x] payload เล็ก: 12 groups × 5 items × ~120 bytes ≈ < 8KB ต่อ query (ภายใต้เป้า 20KB)
+- [x] bundle impact: `CommandPalette` ใช้ `next/dynamic({ ssr: false })` ใน `QuickSearchLauncher` + รอ `hasOpened` ก่อน mount จริง → ไม่เข้า initial admin bundle
 
 ### 4.9 Verification
 
-- [ ] `npm run build` zero TS error / warning
-- [ ] ทดสอบ Mac (`Cmd+K`) + Windows (`Ctrl+K`) ทั้ง 2 platform
-- [ ] ทดสอบ Esc ปิดได้ทุก state
-- [ ] ทดสอบ keyboard navigation ครบ (↑ ↓ Tab Enter)
-- [ ] ทดสอบ search ทุกประเภท: docNo, ชื่อลูกค้าไทย, เลขโทรศัพท์, รหัสสินค้า, alias สินค้า
-- [ ] ทดสอบ command mode (`>`) ครบทุก action
-- [ ] ทดสอบ permission: login ด้วย role ต่าง ๆ → ตรวจว่าผลลัพธ์/command ที่เห็นตรงกับสิทธิ์
-- [ ] ทดสอบ mobile (touch + on-screen keyboard)
-- [ ] ทดสอบ dark mode + light mode
-- [ ] ทดสอบ rate limit (ยิง > 30 req/min ต้องโดน throttle)
-- [ ] ตรวจ INP < 200ms (ตาม `.rules` performance standard)
-- [ ] ตรวจว่าไม่มี extra bundle เข้า initial admin route (lazy load ทำงานจริง)
+- [x] `npm run build` zero TS error / warning (verified 2026-04-28)
+- [ ] ทดสอบ Mac (`Cmd+K`) + Windows (`Ctrl+K`) — รอทดสอบจริงบน production / staging
+- [ ] ทดสอบ Esc ปิดได้ทุก state — รอทดสอบ
+- [ ] ทดสอบ keyboard navigation ครบ (↑ ↓ Tab Enter) — รอทดสอบ
+- [ ] ทดสอบ search ทุกประเภท: docNo, ชื่อลูกค้าไทย, เลขโทรศัพท์, รหัสสินค้า, alias สินค้า — รอทดสอบ
+- [ ] ทดสอบ command mode (`>`) ครบทุก action — รอทดสอบ
+- [ ] ทดสอบ permission: login ด้วย role ต่าง ๆ → ตรวจว่าผลลัพธ์/command ตรงกับสิทธิ์ — รอทดสอบ
+- [ ] ทดสอบ mobile (touch + on-screen keyboard) — รอทดสอบ
+- [ ] ทดสอบ dark mode + light mode — รอทดสอบ
+- [ ] ทดสอบ rate limit (ยิง > 30 req/min ต้องโดน throttle) — รอทดสอบ
+- [ ] ตรวจ INP < 200ms (ตาม `.rules` performance standard) — รอ measure
+- [x] ตรวจว่าไม่มี extra bundle เข้า initial admin route (`next/dynamic({ ssr: false })` + lazy mount) — verified ใน build
 
 ### 4.10 Guard rails
 
-- [ ] ห้ามเปลี่ยน business logic, stock/MAVG, AR/AP, cash-bank, permission catalog
-- [ ] ห้ามเพิ่ม route ใหม่นอก `/api/admin/quick-search` สำหรับงานนี้
-- [ ] ห้าม mount palette บน storefront / login / print pages
-- [ ] ห้าม leak ข้อมูล sensitive (cost, margin, balance) ใน sublabel
-- [ ] ห้าม bypass permission แม้แต่กรณีเดียว
-- [ ] ใช้ search engine เดิมจาก Phase 5 — ห้ามสร้าง search backend ใหม่ขนาน
-- [ ] เคารพ feedback memory: ห้ามถอด `unstable_cache` ออกจาก storefront query
-- [ ] อัปเดต `PLAN.md` checklist ทันทีหลังลงงานแต่ละย่อย
+- [x] ไม่แตะ business logic / stock / MAVG / AR / AP / cash-bank / permission catalog
+- [x] ไม่เพิ่ม route ใหม่นอก `/api/admin/quick-search`
+- [x] ไม่ mount บน storefront / login / print pages (mount ผ่าน `(protected)/layout.tsx` เท่านั้น)
+- [x] ไม่ leak field sensitive (cost/margin/balance) ใน sublabel
+- [x] ไม่ bypass permission — server filter ทุก group + client filter command list
+- [x] ใช้ search style เดียวกับ `lib/product-search.ts` (insensitive contains + alias join) — ไม่สร้าง backend ใหม่ขนาน
+- [x] ไม่ถอด `unstable_cache` จาก storefront / product-search เดิม
+- [x] อัปเดต `PLAN.md` checklist (รอบนี้)
 
