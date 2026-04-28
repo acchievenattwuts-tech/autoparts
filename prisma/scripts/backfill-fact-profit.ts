@@ -1,4 +1,6 @@
 import { db, dbTx } from "@/lib/db";
+import { safeWriteAuditLog } from "@/lib/audit-log";
+import { AuditAction } from "@/lib/generated/prisma";
 import {
   rebuildCreditNoteProfitFacts,
   rebuildExpenseProfitFacts,
@@ -29,6 +31,21 @@ async function main() {
       await rebuildExpenseProfitFacts(tx, expense.id);
     });
   }
+
+  await safeWriteAuditLog({
+    userName: "SYSTEM",
+    userRole: "SYSTEM",
+    action: AuditAction.RECALCULATE,
+    entityType: "FactProfit",
+    entityId: "backfill",
+    entityRef: "backfill-fact-profit",
+    meta: {
+      script: "backfill-fact-profit",
+      sales: sales.length,
+      creditNotes: creditNotes.length,
+      expenses: expenses.length,
+    },
+  });
 
   console.log(
     `Backfilled fact_profit for ${sales.length} sales, ${creditNotes.length} credit notes, ${expenses.length} expenses.`,

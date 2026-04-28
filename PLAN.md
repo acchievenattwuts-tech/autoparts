@@ -4602,7 +4602,7 @@ Implementation progress (2026-04-27, phase 1):
 - [x] Wired auth events: `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `PASSWORD_CHANGE`
 - [x] Wired current mutation coverage: `User`, `Role`, `Customer`, `Supplier`, `Product`, `CompanySettings`, `Sale`, `Purchase`, `Receipt`, `CreditNote`, delivery status updates, and report `EXPORT` routes
 - [x] Replaced `/admin/audit-log` placeholder with a real viewer page guarded by `audit_log.view`
-- [ ] Remaining follow-up in next slice: `PurchaseReturn`, `SupplierAdvance`, `SupplierPayment`, `Expense`, stock operations, warranty flows, cash/bank transfers/adjustments, and other business-document actions
+- [x] Follow-up slices completed: coverage now includes `PurchaseReturn`, `SupplierAdvance`, `SupplierPayment`, `Expense`, stock operations, warranty flows, cash/bank transfers/adjustments, content, warranty claims, line-daily-summary settings, and CLI `fact-profit` operations
 
 - [ ] เพิ่ม model `AuditLog` ใน `prisma/schema.prisma` (fields ขั้นต่ำ):
   - [ ] `id String @id @default(cuid())`
@@ -4626,6 +4626,8 @@ Implementation progress (2026-04-27, phase 1):
 
 #### 1.2 Service layer
 
+- [x] Historical checklist below is implemented in code now; `lib/audit-log.ts` remains the central API for future admin mutations and operational scripts
+
 - [ ] สร้างไฟล์ `lib/audit-log.ts` ที่มี API กลาง:
   - [ ] `writeAuditLog(input)` — ใช้รับใน try/catch ของ Server Action
   - [ ] `writeAuditLogTx(tx, input)` — เวอร์ชันใช้ใน `db.$transaction()` เพื่อให้ผูกกับเอกสารต้นทาง atomic
@@ -4636,6 +4638,8 @@ Implementation progress (2026-04-27, phase 1):
 #### 1.3 จุดที่ต้องเรียก writeAuditLog (Hook points)
 
 > หลัก: ทุก Server Action ที่ "เปลี่ยน state ที่กระทบเงิน/สต็อก/สิทธิ" ต้อง audit
+
+- [x] Current repo coverage is complete for the admin/business mutations that exist in this round, including delivery status updates and special `fact-profit` scripts
 
 - [ ] **เอกสารธุรกิจ — create/update/cancel ทุกประเภท**:
   - [ ] `Sale` (`app/admin/(protected)/sales/actions.ts`)
@@ -4672,6 +4676,9 @@ Implementation progress (2026-04-27, phase 1):
 
 #### 1.4 หน้า Audit Log Viewer
 
+- [x] Viewer now stays idle on first open, defaults the date filter to today, supports `ผู้ใช้ + action + entityType + entityRef + ช่วงวันที่`, paginates at 100 rows/page, and renders source-document links when a route is available
+- [x] Added `/admin/audit-log/[id]` detail view with side-by-side diff highlighting plus `loading.tsx` for both list and detail segments
+
 - [ ] เพิ่มเมนู `/admin/audit-log` (เห็นได้เฉพาะ role ที่มีสิทธิ — แนะนำ `OWNER` / `ADMIN` เท่านั้น)
 - [ ] ทำตาม 5-step permission rule:
   - [ ] เพิ่ม permission key `audit_log.view` ใน `lib/access-control.ts` (`PERMISSION_CATALOG`, ไม่อยู่ใน `STAFF_*` defaults)
@@ -4690,6 +4697,10 @@ Implementation progress (2026-04-27, phase 1):
 
 #### 1.5 Retention & performance
 
+- [x] List query now avoids broad scans by requiring explicit search, defaulting the date range to today, querying only summary columns on the list page, and limiting results to `take: 100`
+- [x] Non-blocking audit writes remain in place for out-of-transaction flows via `safeWriteAuditLog()`, while transactional document flows continue using `writeAuditLogTx()`
+- [ ] Retention / archive policy (12-24 months + cold storage strategy) is still a follow-up item
+
 - [ ] เพิ่ม note ใน PLAN: เก็บ audit log นาน 12–24 เดือน, หลังจากนั้นย้ายลง cold storage หรือ archive table (เลื่อนเป็น phase ต่อยอด)
 - [ ] ตรวจว่า index ครบและ query หน้า list ไม่ scan ทั้งตาราง (filter วันที่ default ป้องกัน scan ใหญ่)
 - [ ] ตรวจว่า `writeAuditLog` ใน Server Action ห้าม block transaction หลัก (ใช้ try/catch ภายใน — ถ้า audit เขียนไม่ได้ ให้ log ไป server log แต่ไม่ทำให้เอกสารพัง)
@@ -4699,6 +4710,7 @@ Implementation progress (2026-04-27, phase 1):
 
 - [x] Phase 1 wiring complete for `login / login_failed / logout / password_change`, `users`, `roles`, `customers`, `suppliers`, `products`, `settings.company`, `sales`, `purchases`, `receipts`, `credit_notes`, `purchase_returns`, `supplier_advances`, `supplier_payments`, `expenses`, `stock.adjustments`, `stock.bf`, `stock.card.recalculate`, `warranties`, `warranty-claims`, `cash-bank`, `content`, `master/car-brands`, `master/categories`, `master/parts-brands`, `reports/line-daily-summary`, and report exports
 - [x] Current repo mutation coverage is complete for this slice; future admin mutations added after this round must include `AuditLog` wiring as part of definition of done
+- [x] Audit Log viewer phase completed with source links, detail diff page, and today-default filter while still avoiding the initial auto-query
 - [x] `npm run build` zero TS error / warning
 - [ ] ทดสอบ flow: สร้าง sale → cancel → ดูว่า audit log มี 2 entries (CREATE + CANCEL) พร้อม before/after
 - [ ] ทดสอบ login fail 3 ครั้ง → ดู `LOGIN_FAILED` 3 entries

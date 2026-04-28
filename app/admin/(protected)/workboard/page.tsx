@@ -20,6 +20,7 @@ import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 
+import RefreshWorkboardButton from "./RefreshWorkboardButton";
 import { getWorkboardData } from "./workboard-data";
 
 function formatCurrency(value: number): string {
@@ -147,13 +148,7 @@ const WorkboardPage = async () => {
             <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-slate-300">
               อัปเดตล่าสุด {formatDateTimeThai(data.generatedAt, { hour: "2-digit", minute: "2-digit" })}
             </span>
-            <Link
-              href="/admin/workboard"
-              className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163052] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
-            >
-              รีเฟรช
-              <ArrowRight size={16} />
-            </Link>
+            <RefreshWorkboardButton />
           </div>
         </div>
       </div>
@@ -320,7 +315,7 @@ const WorkboardPage = async () => {
 
         <SectionCard
           icon={ShieldAlert}
-          title="เคลมรอ Supplier ตอบ"
+          title="รอเคลม(ส่งให้ supplier แล้ว)"
           href="/admin/warranty-claims?status=SENT_TO_SUPPLIER"
           count={data.supplierClaims.count}
           tone="blue"

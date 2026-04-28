@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { safeWriteAuditLog } from "@/lib/audit-log";
+import { AuditAction } from "@/lib/generated/prisma";
 import { getReportsData, type ParsedReportFilters } from "@/lib/reports";
 import { getThailandDateKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
@@ -162,6 +164,20 @@ async function main() {
       netProfit: diff(factTotals.netProfit, reportTotals.netProfit),
     },
   };
+
+  await safeWriteAuditLog({
+    userName: "SYSTEM",
+    userRole: "SYSTEM",
+    action: AuditAction.RECALCULATE,
+    entityType: "FactProfit",
+    entityId: "reconcile",
+    entityRef: `${fromInput} ถึง ${toInput}`,
+    meta: {
+      script: "reconcile-fact-profit",
+      range: result.range,
+      delta: result.delta,
+    },
+  });
 
   console.log(JSON.stringify(result, null, 2));
 }

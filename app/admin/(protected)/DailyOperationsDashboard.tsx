@@ -1,4 +1,4 @@
-import { TrendingUp, AlertTriangle, Banknote, Users, ShoppingCart, Receipt, Globe } from "lucide-react";
+import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { getBangkokDayKey } from "@/lib/storefront-visitor";
@@ -11,7 +11,6 @@ import {
 } from "@/lib/th-date";
 
 import AdminDashboardCharts from "./AdminDashboardCharts";
-import ExpiryAlerts, { type LotExpiry, type LowStockItem } from "./ExpiryAlerts";
 import type { SalesChartDatum } from "./SalesChart";
 import type { TopProductsChartDatum } from "./TopProductsChart";
 
@@ -24,12 +23,9 @@ const DailyOperationsDashboard = async () => {
   const bangkokStartOfMonth = parseDateOnlyToStartOfDay(bangkokMonthStart);
   const bangkokStartOf30Days = new Date(bangkokStartOfToday);
   bangkokStartOf30Days.setUTCDate(bangkokStartOf30Days.getUTCDate() - 29);
-  const expiryEndDate = new Date(bangkokEndOfToday);
-  expiryEndDate.setUTCDate(expiryEndDate.getUTCDate() + 90);
 
   const [
     salesTodayAgg,
-    lowStockCount,
     salesMonthAgg,
     purchasesMonthAgg,
     arNormal,
@@ -43,9 +39,6 @@ const DailyOperationsDashboard = async () => {
     storefrontVisitorsTotal,
     recentSales,
     monthSaleItems,
-    lowStockProducts,
-    expiringLots,
-    lotBalances,
   ] = await Promise.all([
     db.sale.aggregate({
       _count: { id: true },
@@ -55,9 +48,6 @@ const DailyOperationsDashboard = async () => {
         saleDate: { gte: bangkokStartOfToday, lte: bangkokEndOfToday },
       },
     }),
-    db.product.count({
-      where: { isActive: true, stock: { lte: db.product.fields.minStock } },
-    }).catch(() => 0),
     db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -115,13 +105,17 @@ const DailyOperationsDashboard = async () => {
     db.storefrontVisitDaily.count({
       where: { visitDay: bangkokToday },
     }),
-    db.storefrontVisitDaily.groupBy({
-      by: ["visitorKey"],
-      where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
-    }).then((rows) => rows.length),
-    db.storefrontVisitDaily.groupBy({
-      by: ["visitorKey"],
-    }).then((rows) => rows.length),
+    db.storefrontVisitDaily
+      .groupBy({
+        by: ["visitorKey"],
+        where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
+      })
+      .then((rows) => rows.length),
+    db.storefrontVisitDaily
+      .groupBy({
+        by: ["visitorKey"],
+      })
+      .then((rows) => rows.length),
     db.sale.findMany({
       where: {
         status: "ACTIVE",
@@ -142,48 +136,6 @@ const DailyOperationsDashboard = async () => {
         totalAmount: true,
         productId: true,
         product: { select: { name: true } },
-      },
-    }),
-    db.product.findMany({
-      where: {
-        isActive: true,
-        stock: { lte: db.product.fields.minStock },
-      },
-      select: {
-        name: true,
-        stock: true,
-        minStock: true,
-        reportUnitName: true,
-      },
-      orderBy: [{ stock: "asc" }, { minStock: "asc" }, { name: "asc" }],
-      take: 5,
-    }),
-    db.productLot.findMany({
-      where: {
-        expDate: {
-          gte: bangkokStartOfToday,
-          lte: expiryEndDate,
-        },
-      },
-      select: {
-        productId: true,
-        lotNo: true,
-        expDate: true,
-        product: {
-          select: {
-            name: true,
-            reportUnitName: true,
-          },
-        },
-      },
-      orderBy: [{ expDate: "asc" }, { lotNo: "asc" }],
-      take: 30,
-    }),
-    db.lotBalance.findMany({
-      select: {
-        productId: true,
-        lotNo: true,
-        qtyOnHand: true,
       },
     }),
   ]);
@@ -232,38 +184,6 @@ const DailyOperationsDashboard = async () => {
   const topProductsData = Array.from(topProductsMap.values())
     .sort((left, right) => right.revenue - left.revenue || right.qty - left.qty || left.name.localeCompare(right.name))
     .slice(0, 10);
-
-  const lowStockItems: LowStockItem[] = lowStockProducts.map((product) => ({
-    name: product.name,
-    stock: product.stock,
-    minStock: product.minStock,
-    unit: product.reportUnitName,
-  }));
-
-  const lotBalanceMap = new Map(
-    lotBalances.map((lot) => [`${lot.productId}::${lot.lotNo}`, Number(lot.qtyOnHand)]),
-  );
-  const millisecondsPerDay = 1000 * 60 * 60 * 24;
-  const expiryItems: LotExpiry[] = expiringLots
-    .map((lot) => {
-      const qtyOnHand = lotBalanceMap.get(`${lot.productId}::${lot.lotNo}`) ?? 0;
-      if (!lot.expDate || qtyOnHand <= 0) return null;
-
-      return {
-        productName: lot.product.name,
-        lotNo: lot.lotNo,
-        expDate: formatDateThai(lot.expDate),
-        daysLeft: Math.max(
-          0,
-          Math.ceil((lot.expDate.getTime() - bangkokStartOfToday.getTime()) / millisecondsPerDay),
-        ),
-        qty: qtyOnHand,
-        unit: lot.product.reportUnitName,
-      };
-    })
-    .filter((item): item is LotExpiry => item !== null)
-    .sort((left, right) => left.daysLeft - right.daysLeft || left.productName.localeCompare(right.productName))
-    .slice(0, 5);
 
   const cards = [
     {
@@ -336,13 +256,6 @@ const DailyOperationsDashboard = async () => {
       icon: Receipt,
       color: "bg-purple-50 text-purple-600",
     },
-    {
-      label: "สินค้าใกล้ขั้นต่ำ",
-      value: lowStockCount.toLocaleString(),
-      helper: "รายการที่ต้องติดตาม",
-      icon: AlertTriangle,
-      color: "bg-orange-50 text-orange-600",
-    },
   ];
 
   return (
@@ -350,7 +263,7 @@ const DailyOperationsDashboard = async () => {
       <div className="max-w-3xl space-y-1">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">Daily Operations</h1>
         <p className="text-sm text-gray-500">
-          สรุปภาพการขาย เงินสด ลูกหนี้ เจ้าหนี้ และสถานะสต็อกที่เจ้าของต้องติดตามทุกวัน
+          สรุปภาพการขาย เงินสด ลูกหนี้ เจ้าหนี้ และตัวเลขสำคัญที่เจ้าของต้องติดตามทุกวัน
         </p>
       </div>
 
@@ -375,8 +288,6 @@ const DailyOperationsDashboard = async () => {
       </div>
 
       <AdminDashboardCharts salesData={salesChartData} topProductsData={topProductsData} />
-
-      <ExpiryAlerts lowStockItems={lowStockItems} expiryItems={expiryItems} />
     </div>
   );
 };

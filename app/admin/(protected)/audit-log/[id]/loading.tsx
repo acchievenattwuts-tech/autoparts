@@ -1,9 +1,9 @@
-const AuditLogLoading = () => (
+const AuditLogDetailLoading = () => (
   <div className="flex min-h-[60vh] items-center justify-center">
     <div
       role="status"
       aria-live="polite"
-      className="flex min-w-[220px] flex-col items-center gap-4 rounded-2xl border border-gray-100 bg-white/95 px-6 py-7 text-center shadow-sm dark:border-white/10 dark:bg-slate-950/80"
+      className="flex min-w-[240px] flex-col items-center gap-4 rounded-2xl border border-gray-100 bg-white/95 px-6 py-7 text-center shadow-sm dark:border-white/10 dark:bg-slate-950/80"
     >
       <svg
         className="h-10 w-10 animate-spin text-[#1e3a5f] dark:text-sky-300"
@@ -17,7 +17,7 @@ const AuditLogLoading = () => (
       </svg>
       <div className="space-y-1">
         <p className="text-sm font-medium text-gray-700 dark:text-slate-100">
-          กำลังโหลดบันทึกการใช้งาน...
+          กำลังโหลดรายละเอียดบันทึก...
         </p>
       </div>
       <span className="sr-only">กำลังโหลด...</span>
@@ -25,4 +25,4 @@ const AuditLogLoading = () => (
   </div>
 );
 
-export default AuditLogLoading;
+export default AuditLogDetailLoading;
