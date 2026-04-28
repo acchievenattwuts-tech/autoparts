@@ -40,6 +40,7 @@ const accountSchema = z.object({
   openingBalance: z.coerce.number().min(0, "ยอดยกมาต้องไม่ต่ำกว่า 0"),
   openingDate: z.string().min(1, "กรุณาระบุวันที่ยอดยกมา"),
   isActive: z.boolean(),
+  lowBalanceThreshold: z.coerce.number().min(0, "ยอดขั้นต่ำเตือนต้องไม่ต่ำกว่า 0"),
 });
 
 const transferSchema = z.object({
@@ -136,15 +137,15 @@ function getPrimaryTransferRuleMessage(
 ): string {
   switch (violation) {
     case "PRIMARY_REQUIRES_BANK":
-      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเน€เธเนเธเธเธฑเธเธเธตเธเธฃเธฐเน€เธ เธ—เธเธเธฒเธเธฒเธฃ";
+      return "บัญชีหลักรับโอนต้องเป็นบัญชีประเภทธนาคาร";
     case "PRIMARY_REQUIRES_ACTIVE":
-      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเธญเธขเธนเนเนเธเธชเธ–เธฒเธเธฐเนเธเนเธเธฒเธ";
+      return "บัญชีหลักรับโอนต้องอยู่ในสถานะใช้งาน";
     case "PRIMARY_REQUIRES_PROMPTPAY":
-      return "เธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธ•เนเธญเธเธฃเธฐเธเธธ PromptPay ID เน€เธเธทเนเธญเธชเธฃเนเธฒเธ QR เธชเธณเธซเธฃเธฑเธเธเธณเธฃเธฐเน€เธเธดเธ";
+      return "บัญชีหลักรับโอนต้องระบุ PromptPay ID เพื่อสร้าง QR สำหรับชำระเงิน";
     case "PRIMARY_ALREADY_EXISTS":
       return existingPrimary
-        ? `เธกเธตเธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธญเธขเธนเนเนเธฅเนเธง (${existingPrimary.code} - ${existingPrimary.name}) เธเธฃเธธเธ“เธฒเน€เธญเธฒเธ•เธดเนเธเธญเธญเธเธเธฒเธเธเธฑเธเธเธตเน€เธ”เธดเธกเธเนเธญเธ`
-        : "เธกเธตเธเธฑเธเธเธตเธซเธฅเธฑเธเธฃเธฑเธเนเธญเธเธญเธขเธนเนเนเธฅเนเธง เธเธฃเธธเธ“เธฒเน€เธญเธฒเธ•เธดเนเธเธญเธญเธเธเธฒเธเธเธฑเธเธเธตเน€เธ”เธดเธกเธเนเธญเธ";
+        ? `มีบัญชีหลักรับโอนอยู่แล้ว (${existingPrimary.code} - ${existingPrimary.name}) กรุณาเอาติ๊กออกจากบัญชีเดิมก่อน`
+        : "มีบัญชีหลักรับโอนอยู่แล้ว กรุณาเอาติ๊กออกจากบัญชีเดิมก่อน";
   }
 }
 
@@ -163,6 +164,7 @@ async function getCashBankAccountAuditSnapshot(accountId: string) {
       openingBalance: true,
       openingDate: true,
       isActive: true,
+      lowBalanceThreshold: true,
     },
   });
 }
@@ -289,6 +291,7 @@ export async function createCashBankAccount(formData: FormData) {
       openingBalance: formData.get("openingBalance") || 0,
       openingDate: formData.get("openingDate"),
       isActive: parseBoolean(formData.get("isActive")),
+      lowBalanceThreshold: formData.get("lowBalanceThreshold") || 0,
     });
     if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -314,6 +317,7 @@ export async function createCashBankAccount(formData: FormData) {
           openingBalance: data.openingBalance,
           openingDate: parseDateOnlyToDate(data.openingDate),
           isActive: data.isActive,
+          lowBalanceThreshold: data.lowBalanceThreshold,
         },
       });
       createdAccountId = account.id;
@@ -361,6 +365,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
       openingBalance: formData.get("openingBalance") || 0,
       openingDate: formData.get("openingDate"),
       isActive: parseBoolean(formData.get("isActive")),
+      lowBalanceThreshold: formData.get("lowBalanceThreshold") || 0,
     });
     if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -388,6 +393,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
           openingBalance: data.openingBalance,
           openingDate: parseDateOnlyToDate(data.openingDate),
           isActive: data.isActive,
+          lowBalanceThreshold: data.lowBalanceThreshold,
         },
       });
       await recalculateCashBankAccount(tx, accountId);

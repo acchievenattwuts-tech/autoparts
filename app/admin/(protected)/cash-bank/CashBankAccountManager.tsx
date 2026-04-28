@@ -19,6 +19,7 @@ export type CashBankAccountRow = {
   openingBalance: number;
   openingDate: string;
   isActive: boolean;
+  lowBalanceThreshold: number;
 };
 
 type Props = {
@@ -38,6 +39,7 @@ type FormState = {
   openingBalance: string;
   openingDate: string;
   isActive: boolean;
+  lowBalanceThreshold: string;
 };
 
 function emptyFormState(): FormState {
@@ -53,6 +55,7 @@ function emptyFormState(): FormState {
     openingBalance: "0",
     openingDate: getThailandDateKey(),
     isActive: true,
+    lowBalanceThreshold: "0",
   };
 }
 
@@ -88,6 +91,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
       openingBalance: String(account.openingBalance),
       openingDate: account.openingDate,
       isActive: account.isActive,
+      lowBalanceThreshold: String(account.lowBalanceThreshold),
     });
     setError("");
     setSuccess("");
@@ -135,6 +139,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
     formData.set("openingBalance", form.openingBalance);
     formData.set("openingDate", form.openingDate);
     formData.set("isActive", String(form.isActive));
+    formData.set("lowBalanceThreshold", form.lowBalanceThreshold);
 
     startTransition(async () => {
       const result = form.accountId
@@ -252,6 +257,23 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
             className={inputCls}
             value={form.openingDate}
             onChange={(e) => setForm((prev) => ({ ...prev, openingDate: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">ยอดขั้นต่ำเตือน</label>
+          <input
+            type="number"
+            step={0.01}
+            min={0}
+            className={inputCls}
+            value={form.lowBalanceThreshold}
+            onChange={(e) => setForm((prev) => ({ ...prev, lowBalanceThreshold: e.target.value }))}
+            onBlur={(e) => {
+              if (e.target.value.trim() === "") {
+                setForm((prev) => ({ ...prev, lowBalanceThreshold: "0" }));
+              }
+            }}
+            placeholder="0 = ไม่เตือน"
           />
         </div>
         <div>

@@ -77,6 +77,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
       openingBalance: true,
       openingDate: true,
       isActive: true,
+      lowBalanceThreshold: true,
       movements: {
         orderBy: [{ txnDate: "desc" }, { sorder: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         take: 1,
@@ -97,6 +98,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     openingBalance: Number(account.openingBalance),
     openingDate: formatDateOnlyForInput(account.openingDate),
     isActive: account.isActive,
+    lowBalanceThreshold: Number(account.lowBalanceThreshold),
   }));
 
   const summaryCards = accountsRaw.map((account) => ({

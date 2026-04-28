@@ -4713,68 +4713,72 @@ Implementation progress (2026-04-27, phase 1):
 
 #### 2.1 Route + Permission
 
-- [ ] เพิ่ม route `/admin/workboard` (เป็นเมนูใหม่ ไม่ใช่หน้า dashboard เดิม — ไม่ทับ tabs Daily Operations / Profit Dashboard)
-- [ ] permission key ใหม่ `workboard.view` (ให้ทั้ง `STAFF_OPERATIONS` + `STAFF_VIEWER` เห็น) — หรือเลือกใช้ `dashboard.view` เดิมก็ได้ (ตัดสินใจเชิง UX ก่อนเริ่ม)
-- [ ] ครบ 5-step permission rule (route rule, requirePermission, sidebar item, ฯลฯ)
-- [ ] `loading.tsx`, `export const dynamic = "force-dynamic"`
+- [x] เพิ่ม route `/admin/workboard` (เป็นเมนูใหม่ ไม่ใช่หน้า dashboard เดิม — ไม่ทับ tabs Daily Operations / Profit Dashboard)
+- [x] permission key ใหม่ `workboard.view` (ให้ทั้ง `STAFF_OPERATIONS` + `STAFF_VIEWER` เห็น) — เลือก option A ตามการตัดสินใจของ owner
+- [x] ครบ 5-step permission rule (PERMISSION_CATALOG, ADMIN_ROUTE_RULES, requirePermission, AdminSidebar, role templates)
+- [x] `loading.tsx`, `export const dynamic = "force-dynamic"`
 
 #### 2.2 Sections บนหน้า (Card-grid layout)
 
 แต่ละ section ใช้ shared card pattern เดิม (light + dark mode). ลำดับเรียงตาม urgency:
 
-- [ ] **🚚 ใบขายรอจัดส่งวันนี้** (`Sale` ที่ `fulfillmentType=DELIVERY` + ยังไม่ส่ง + `saleDate <= today`)
-  - [ ] count + list 5 รายการแรก พร้อมลิงก์ "ดูทั้งหมด → /admin/delivery"
-  - [ ] แสดง: docNo, ลูกค้า, ยอด, จำนวนรายการ, ขนส่ง (ถ้ามี)
-- [ ] **💰 COD รอรับเงิน** (`Sale.paymentType=CREDIT_SALE` + `fulfillmentType=DELIVERY` + `amountRemain > 0`)
-  - [ ] count + ยอดรวม + list 5 ใบใหญ่สุด
-  - [ ] ลิงก์ → `/admin/sales?paymentType=CREDIT_SALE&fulfillment=DELIVERY`
-- [ ] **⏰ ลูกหนี้เกินเครดิต** (`Sale.amountRemain > 0` AND `today - saleDate > Sale.creditTerm`)
-  - [ ] แยก bucket: เกิน 1–7 วัน / 8–30 วัน / 30+ วัน (3 มินิการ์ด)
-  - [ ] list ลูกหนี้ค้างนานสุด 5 ราย
-  - [ ] ลิงก์ → `/admin/reports/ar`
-- [ ] **🏢 Supplier ครบกำหนดจ่าย** (`Purchase.purchaseType=CREDIT_PURCHASE` + `amountRemain > 0` + ใกล้/เกินกำหนด — ตอนนี้ Purchase ยังไม่มี `creditTerm` ต่อใบ → fallback เป็น `Supplier.creditTerm` ถ้ามี, ถ้าไม่มีให้ใช้ default 30 วันและ note ใน PLAN ว่าควรเพิ่ม `Purchase.creditTerm` รอบถัดไป)
-  - [ ] count + ยอดรวม + list 5 ใบใหญ่/ใกล้สุด
-  - [ ] ลิงก์ → `/admin/reports/ap`
-- [ ] **🔧 เคลมรอ supplier ตอบ** (`WarrantyClaim` ที่ status รอผล supplier)
-  - [ ] count + list 5 รายการเก่าสุด
-  - [ ] ลิงก์ → `/admin/warranty-claims`
-- [ ] **📦 สินค้าใกล้/ต่ำกว่าขั้นต่ำ** (`Product.isActive=true` + `stock <= minStock`)
-  - [ ] count + list 5 ตัวที่ stock ต่ำสุด
-  - [ ] ลิงก์ → `/admin/reports/stock`
-- [ ] **⏳ Lot ใกล้หมดอายุ** (`Lot.expDate` ภายใน 30 / 60 / 90 วัน + `qtyBalance > 0`)
-  - [ ] 3 มินิการ์ดแบ่ง bucket
-  - [ ] list 5 lot ใกล้สุด
-  - [ ] ลิงก์ → `/admin/lots/expiry`
-- [ ] **🐢 Slow-moving** (option — link ไป `/admin/lots/slow-moving`, แสดง count อย่างเดียว ไม่ต้อง list)
-- [ ] **💵 เงินสด/ธนาคาร < threshold** (ใช้ `CashBankAccount.balance` ปัจจุบัน เทียบกับ threshold ใน setting — ถ้ายังไม่มี setting ให้ใช้ค่า hardcode default + note ว่าจะทำ setting page รอบถัดไป)
-  - [ ] list บัญชีที่ต่ำกว่า threshold
-  - [ ] ลิงก์ → `/admin/cash-bank`
+- [x] **🚚 ใบขายรอจัดส่งวันนี้** (`Sale` ที่ `fulfillmentType=DELIVERY` + ยังไม่ส่ง + `saleDate <= today`)
+  - [x] count + list 5 รายการแรก พร้อมลิงก์ "ดูทั้งหมด → /admin/delivery"
+  - [x] แสดง: docNo, ลูกค้า, ยอด, จำนวนรายการ, ขนส่ง (ถ้ามี)
+- [x] **💰 COD รอรับเงิน** (`Sale.paymentType=CREDIT_SALE` + `fulfillmentType=DELIVERY` + `amountRemain > 0`)
+  - [x] count + ยอดรวม + list 5 ใบใหญ่สุด
+  - [x] ลิงก์ → `/admin/sales?paymentType=CREDIT_SALE&fulfillment=DELIVERY`
+- [x] **⏰ ลูกหนี้เกินเครดิต** (`Sale.amountRemain > 0` AND `today - saleDate > Sale.creditTerm`)
+  - [x] แยก bucket: เกิน 1–7 วัน / 8–30 วัน / 30+ วัน (3 มินิการ์ด)
+  - [x] list ลูกหนี้ค้างนานสุด 5 ราย
+  - [x] ลิงก์ → `/admin/reports/ar`
+- [x] **🏢 Supplier ครบกำหนดจ่าย** (`Purchase.purchaseType=CREDIT_PURCHASE` + `amountRemain > 0` + เกินกำหนด)
+  - [x] ใช้ `Purchase.creditTerm` snapshot ก่อน, fallback ไปที่ `Supplier.creditTerm`, ถ้าไม่มีทั้งคู่ใช้ 0 (ทำหน้าที่เหมือน "ครบกำหนดทันที")
+  - [x] count + ยอดรวม + list 5 ใบใหญ่/ใกล้สุด
+  - [x] ลิงก์ → `/admin/reports/ap`
+- [x] **🔧 เคลมรอ supplier ตอบ** (`WarrantyClaim.status=SENT_TO_SUPPLIER`)
+  - [x] count + list 5 รายการเก่าสุด
+  - [x] ลิงก์ → `/admin/warranty-claims?status=SENT_TO_SUPPLIER`
+- [x] **📦 สินค้าใกล้/ต่ำกว่าขั้นต่ำ** (`Product.isActive=true` + `stock <= minStock`)
+  - [x] count + list 5 ตัวที่ stock ต่ำสุด
+  - [x] ลิงก์ → `/admin/reports/stock`
+- [x] **⏳ Lot ใกล้หมดอายุ** (`ProductLot.expDate` ภายใน 30 / 60 / 90 วัน + `LotBalance.qtyOnHand > 0`)
+  - [x] 3 มินิการ์ดแบ่ง bucket
+  - [x] list 5 lot ใกล้สุด
+  - [x] ลิงก์ → `/admin/lots/expiry`
+- [ ] **🐢 Slow-moving** (option — link ไป `/admin/lots/slow-moving`, แสดง count อย่างเดียว ไม่ต้อง list) — เลื่อนรอบถัดไป
+- [x] **💵 เงินสด/ธนาคาร < threshold** — เก็บ `CashBankAccount.lowBalanceThreshold` ใน schema (ตั้งค่าได้ที่หน้า cash-bank), เทียบกับ balance ปัจจุบัน
+  - [x] list บัญชีที่ active + threshold > 0 + balance < threshold (top 5)
+  - [x] ลิงก์ → `/admin/cash-bank`
 
 #### 2.3 Behavior + Performance
 
-- [ ] ทุก section query parallel ด้วย `Promise.all()` — ห้าม sequential
-- [ ] ใช้ `select` เฉพาะ field ที่ใช้ — ห้าม fetch ทุก field
-- [ ] count + top-5 query แยกกัน (count เร็ว, list 5 รายการเร็ว)
-- [ ] ทุก list cap ที่ `take: 5` — ห้ามดึงทั้งหมดมาแล้ว slice ใน JS
-- [ ] auto-refresh ทุก 60 วินาที (optional — ใส่ปุ่ม refresh แทนถ้ายังไม่อยาก realtime)
-- [ ] ใช้ Bangkok timezone helper เดิม (`getBangkokDayKey`, `parseDateOnlyToStartOfDay`)
+- [x] ทุก section query parallel ด้วย `Promise.all()` — รวม 8 sections ใน 1 round trip
+- [x] ใช้ `select` เฉพาะ field ที่ใช้ — ห้าม fetch ทุก field
+- [x] count + top-5 query แยกกัน สำหรับ section ที่ใช้ Prisma count/findMany; section ที่ต้องคำนวณ daysOverdue/daysLeft fetch ครั้งเดียวแล้วทำ bucket+top5 ใน JS
+- [x] ทุก list cap ที่ `take: 5` หรือทำ `slice(0, 5)` หลัง sort ใน memory
+- [x] ใช้ปุ่ม refresh manual แทน auto-refresh (ตามการตัดสินใจ owner — option B)
+- [x] ใช้ Bangkok timezone helper (`getBangkokDayKey`, `parseDateOnlyToStartOfDay`, `parseDateOnlyToEndOfDay`)
 
 #### 2.4 UI/UX
 
-- [ ] Layout: 2-column desktop / 1-column mobile, sticky section title
-- [ ] แต่ละ section card มี: icon, title, count badge สี (เขียว/เหลือง/แดง ตาม severity), list, ลิงก์ "ดูทั้งหมด"
-- [ ] empty state: "ไม่มีงานค้างในหมวดนี้ ✓"
-- [ ] ครอบคลุม light + dark mode (mandatory)
-- [ ] responsive ตาม `.rules` (mobile-first)
+- [x] Layout: 2-column desktop (xl:grid-cols-2) / 1-column mobile, sticky header
+- [x] แต่ละ section card มี: icon, title, count badge สี (red/amber/blue/emerald ตาม severity), list, ลิงก์ "ดูทั้งหมด"
+- [x] empty state: "ไม่มีงานค้างในหมวดนี้"
+- [x] ครอบคลุม light + dark mode (mandatory)
+- [x] responsive (mobile-first)
 
 #### 2.5 Verification
 
-- [ ] `npm run build` clean
-- [ ] ทดสอบ section ที่เป็น 0 ทุกตัว (empty state แสดงถูก)
-- [ ] ทดสอบ section ที่มีข้อมูล (count + list ตรง)
-- [ ] วัด query time — total page TTFB < 1s บน production data
-- [ ] light + dark mode QA
-- [ ] mobile view (375px) ใช้งานได้
+- [x] `npm run build` clean (สร้าง `.next` ใหม่หลังลบ stale cache; build สำเร็จ, route `/admin/workboard` ปรากฏใน build output เป็น dynamic)
+- [ ] ทดสอบ section ที่เป็น 0 ทุกตัว (empty state แสดงถูก) — pending owner QA
+- [ ] ทดสอบ section ที่มีข้อมูล (count + list ตรง) — pending owner QA
+- [ ] วัด query time — total page TTFB < 1s บน production data — pending owner QA
+- [ ] light + dark mode QA — pending owner QA
+- [ ] mobile view (375px) ใช้งานได้ — pending owner QA
+- [ ] **Pending DB push by owner**: รัน `npx prisma db push` เพื่อ sync `CashBankAccount.lowBalanceThreshold` ไป Supabase
+
+หมายเหตุการแก้ side issue: ระหว่าง implement พบ mojibake ใน `getPrimaryTransferRuleMessage` ที่ `app/admin/(protected)/cash-bank/actions.ts` — แก้แล้ว (เปลี่ยนเป็นข้อความไทยที่ถูกต้องตามกฎห้าม mojibake ใน `.rules`)
 
 ---
 
