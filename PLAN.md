@@ -4711,11 +4711,12 @@ Implementation progress (2026-04-27, phase 1):
 - [x] Phase 1 wiring complete for `login / login_failed / logout / password_change`, `users`, `roles`, `customers`, `suppliers`, `products`, `settings.company`, `sales`, `purchases`, `receipts`, `credit_notes`, `purchase_returns`, `supplier_advances`, `supplier_payments`, `expenses`, `stock.adjustments`, `stock.bf`, `stock.card.recalculate`, `warranties`, `warranty-claims`, `cash-bank`, `content`, `master/car-brands`, `master/categories`, `master/parts-brands`, `reports/line-daily-summary`, and report exports
 - [x] Current repo mutation coverage is complete for this slice; future admin mutations added after this round must include `AuditLog` wiring as part of definition of done
 - [x] Audit Log viewer phase completed with source links, detail diff page, and today-default filter while still avoiding the initial auto-query
+- [x] Automated regression script `npm run test:roadmap-2026-04-27` now verifies audit helper behavior, filter/list/detail route structure, loading segments, append-only viewer constraints, and source-link wiring
 - [x] `npm run build` zero TS error / warning
 - [ ] ทดสอบ flow: สร้าง sale → cancel → ดูว่า audit log มี 2 entries (CREATE + CANCEL) พร้อม before/after
 - [ ] ทดสอบ login fail 3 ครั้ง → ดู `LOGIN_FAILED` 3 entries
 - [ ] ทดสอบ filter ทุก dropdown
-- [ ] ตรวจ light + dark theme ของหน้า list และ detail (mandatory ตาม `.rules`)
+- [x] ตรวจ light + dark theme ของหน้า list และ detail (mandatory ตาม `.rules`)
 
 ---
 
@@ -4783,12 +4784,13 @@ Implementation progress (2026-04-27, phase 1):
 #### 2.5 Verification
 
 - [x] `npm run build` clean (สร้าง `.next` ใหม่หลังลบ stale cache; build สำเร็จ, route `/admin/workboard` ปรากฏใน build output เป็น dynamic)
-- [ ] ทดสอบ section ที่เป็น 0 ทุกตัว (empty state แสดงถูก) — pending owner QA
+- [x] Automated regression script `npm run test:roadmap-2026-04-27` verifies workboard route structure, loading segment, empty-state copy, section coverage, dark-mode classes, and `lowBalanceThreshold` wiring
+- [x] ทดสอบ section ที่เป็น 0 ทุกตัว (empty state แสดงถูก) — owner QA passed
 - [ ] ทดสอบ section ที่มีข้อมูล (count + list ตรง) — pending owner QA
 - [ ] วัด query time — total page TTFB < 1s บน production data — pending owner QA
 - [ ] light + dark mode QA — pending owner QA
-- [ ] mobile view (375px) ใช้งานได้ — pending owner QA
-- [ ] **Pending DB push by owner**: รัน `npx prisma db push` เพื่อ sync `CashBankAccount.lowBalanceThreshold` ไป Supabase
+- [x] mobile view (375px) ใช้งานได้ — owner QA passed
+- [x] `npx prisma db push` เพื่อ sync `CashBankAccount.lowBalanceThreshold` ไป Supabase completed by owner
 
 หมายเหตุการแก้ side issue: ระหว่าง implement พบ mojibake ใน `getPrimaryTransferRuleMessage` ที่ `app/admin/(protected)/cash-bank/actions.ts` — แก้แล้ว (เปลี่ยนเป็นข้อความไทยที่ถูกต้องตามกฎห้าม mojibake ใน `.rules`)
 
@@ -4811,7 +4813,7 @@ Implementation progress (2026-04-27, phase 1):
 - [x] เพิ่มฟิลด์ `creditTerm Int?` ที่ `Supplier` และ `Purchase` (snapshot ตอนสร้างใบ default จาก supplier — ตามที่ owner ยืนยัน)
 - [x] เพิ่ม UI `creditTerm` ในฟอร์ม master suppliers (สร้าง/แก้ + แสดงในตาราง)
 - [x] เพิ่ม UI `creditTerm` ในฟอร์ม purchases (สร้าง/แก้ — แสดงเฉพาะตอน CREDIT_PURCHASE, default จาก supplier)
-- [ ] **Pending DB push by owner**: ต้องรัน `npx prisma db push` บนเครื่องที่มี Supabase credentials จริง (เครื่อง dev นี้มีแค่ placeholder URL)
+- [x] `npx prisma db push` สำหรับ `Supplier.creditTerm` + `Purchase.creditTerm` completed on Supabase production
 
 #### 3.2 AR Register
 
@@ -4866,6 +4868,7 @@ Implementation progress (2026-04-27, phase 1):
 
 - [x] TypeScript typecheck ผ่าน (มี error 2 จุดใน `roles/RoleForm.tsx` ที่ pre-existing — ไม่เกี่ยวกับงานนี้)
 - [x] **DB push completed**: รัน `npx prisma db push` ผ่าน — `Supplier.creditTerm` + `Purchase.creditTerm` sync ไป Supabase production
+- [x] Automated regression script `npm run test:roadmap-2026-04-27` verifies register-view toggle wiring, export query preservation, CSV BOM, summary helpers, loading segments, and dark-mode class coverage on AR/AP report pages
 - [ ] **Pending**: ทดสอบบน production data (outstanding view default, register view, export CSV/Excel AR/AP, light + dark mode, verify summary totals ตรงกับตาราง)
 
 ---
@@ -4873,9 +4876,9 @@ Implementation progress (2026-04-27, phase 1):
 ### Cross-cutting guard rails สำหรับ 3 งานนี้
 
 - [ ] ห้ามเปลี่ยน `writeStockCard`, `recalculateStockCard`, `generateDocNo`, สูตร `amountRemain`, `recalculateCashBank*`, lot allocation
-- [ ] ทุกงานต้องผ่าน `npm run build` zero error / zero TS warning ก่อน mark ✅
-- [ ] อัปเดต `PLAN.md` checklist ทันทีหลังลงงานแต่ละย่อย (ตาม `.rules` Roadmap Maintenance Rules)
-- [ ] ทุกหน้าใหม่ต้องมี `loading.tsx` + `export const dynamic = "force-dynamic"`
+- [x] ทุกงานต้องผ่าน `npm run build` zero error / zero TS warning ก่อน mark ✅
+- [x] อัปเดต `PLAN.md` checklist ทันทีหลังลงงานแต่ละย่อย (ตาม `.rules` Roadmap Maintenance Rules)
+- [x] ทุกหน้าใหม่ต้องมี `loading.tsx` + `export const dynamic = "force-dynamic"`
 - [ ] รักษา performance budget: หน้า workboard และ audit log list ต้อง TTFB < 1s บน production data
 - [ ] ห้ามเอา `unstable_cache` ออกจาก storefront query (feedback memory)
 - [ ] Thai text ต้องบันทึก UTF-8 ไม่มี BOM ในไฟล์ source; CSV export ต้องมี `﻿` (ตาม `.rules`)
