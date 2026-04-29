@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -81,7 +83,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <form method="GET" className="flex flex-wrap items-end gap-3">
+      <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           ตั้งแต่วันที่
           <input
@@ -125,12 +127,9 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
           />
           รวมที่ยกเลิก
         </label>
-        <button
-          type="submit"
-          className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
-        >
+        <AdminSearchSubmitButton className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]">
           แสดงรายงาน
-        </button>
+        </AdminSearchSubmitButton>
         <Link
           href="/admin/reports/purchases"
           className="inline-flex h-9 items-center self-end rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
@@ -153,7 +152,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
             Excel
           </Link>
         </div>
-      </form>
+      </AdminSearchForm>
 
       {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">

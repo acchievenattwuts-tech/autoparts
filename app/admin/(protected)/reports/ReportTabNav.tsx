@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 
 const TABS = [
   { label: "รายงานขาย", href: "/admin/reports/sales" },
@@ -30,13 +31,14 @@ export default function ReportTabNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               active
                 ? "border-[#1e3a5f] bg-white text-[#1e3a5f]"
                 : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
             }`}
           >
             {tab.label}
+            <LinkPendingIndicator className={active ? "text-current" : "text-gray-400"} />
           </Link>
         );
       })}

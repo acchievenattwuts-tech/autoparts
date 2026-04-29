@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -95,7 +97,7 @@ export default async function APReportPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <form method="GET" className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+      <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           วันที่เอกสาร (ตั้งแต่)
           <input
@@ -140,12 +142,9 @@ export default async function APReportPage({ searchParams }: PageProps) {
             ))}
           </select>
         </label>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
-        >
+        <AdminSearchSubmitButton className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
           แสดงรายการ
-        </button>
+        </AdminSearchSubmitButton>
         <Link
           href="/admin/reports/ap"
           className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
@@ -168,7 +167,7 @@ export default async function APReportPage({ searchParams }: PageProps) {
             Excel
           </Link>
         </div>
-      </form>
+      </AdminSearchForm>
 
       {!filters.hasFilter ? (
         <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm dark:border-white/10 dark:bg-slate-950/40">

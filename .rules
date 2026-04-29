@@ -304,6 +304,11 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 - **100% type safety** — no `any`, no unnecessary type assertions (`as`).
 - Before every deploy: pass `npm run build` with zero errors and zero TypeScript warnings.
 
+## 11. Admin Search / Report Submit Rule
+
+- Whenever adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern.
+- These admin GET-filter/search flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not fall back to a full page refresh.
+
 ### Performance Review Before Committing
 - If a new query is added on a page with large datasets, assess whether it will become slow as data grows (e.g., StockCard with 10,000+ rows).
 - StockCard queries must always use the index `[productId, docDate, sorder]` — no full scans.

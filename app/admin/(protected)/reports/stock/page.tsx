@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -58,7 +60,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <form
+      <AdminSearchForm
         method="GET"
         className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
       >
@@ -98,12 +100,9 @@ export default async function StockReportPage({ searchParams }: PageProps) {
           />
           รวมสินค้าสต็อก 0
         </label>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
-        >
+        <AdminSearchSubmitButton className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]">
           แสดงรายการ
-        </button>
+        </AdminSearchSubmitButton>
         <Link
           href="/admin/reports/stock"
           className="inline-flex h-9 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
@@ -126,7 +125,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
             Excel
           </Link>
         </div>
-      </form>
+      </AdminSearchForm>
 
       {filters.hasFilter ? (
         <>

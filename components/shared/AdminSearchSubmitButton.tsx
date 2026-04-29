@@ -17,7 +17,6 @@ const AdminSearchSubmitButton = ({
   ...props
 }: AdminSearchSubmitButtonProps) => {
   const isPending = useAdminSearchFormPending();
-  void children;
 
   return (
     <button
@@ -30,7 +29,7 @@ const AdminSearchSubmitButton = ({
       )}
     >
       {isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
-      {"\u0e04\u0e49\u0e19\u0e2b\u0e32"}
+      {children ?? "ค้นหา"}
     </button>
   );
 };

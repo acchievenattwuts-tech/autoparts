@@ -23,4 +23,8 @@ When adding, removing, renaming, regrouping, or changing access for any admin me
 Admin navigation and Quick Search command entries must share the same source of truth whenever possible. Do not maintain a second hand-written list of navigable admin menu commands if it can be derived from the shared navigation config.
 
 When introducing a new admin menu, admin page entrypoint, or user-facing admin workflow shortcut, add or derive its Quick Search coverage before shipping. Do not leave new functionality discoverable in the UI but missing from Quick Search.
+
+# Admin Search / Report Submit Rule
+
+When adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, you must use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern in the same round. These flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not regress back to a full page refresh.
 <!-- END:nextjs-agent-rules -->

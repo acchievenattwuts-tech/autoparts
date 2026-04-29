@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import Link from "next/link";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { requirePermission } from "@/lib/require-auth";
 import { getReportsData, parseReportFilters } from "@/lib/reports";
 import CashBankSnapshot from "../CashBankSnapshot";
@@ -69,7 +71,7 @@ export default async function SummaryReportPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <form method="GET" className="flex flex-wrap items-end gap-3">
+      <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           ตั้งแต่วันที่
           <input
@@ -88,19 +90,16 @@ export default async function SummaryReportPage({ searchParams }: PageProps) {
             className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </label>
-        <button
-          type="submit"
-          className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]"
-        >
+        <AdminSearchSubmitButton className="h-9 self-end rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055]">
           แสดงรายงาน
-        </button>
+        </AdminSearchSubmitButton>
         <Link
           href="/admin/reports/summary"
           className="inline-flex h-9 items-center self-end rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-600 hover:bg-gray-200"
         >
           ล้าง
         </Link>
-      </form>
+      </AdminSearchForm>
 
       <Suspense fallback={<SectionSkeleton heightClass="min-h-[280px]" />}>
         <SummaryCashBankSection />
