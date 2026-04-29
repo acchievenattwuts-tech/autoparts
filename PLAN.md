@@ -5042,3 +5042,21 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] ไม่เปลี่ยน Zod schema / FormData contract — UI เดิมใช้ได้ทันที
 - [x] ไม่กระทบ ADMIN flow ปกติ — guard ผ่อนผันเฉพาะกรณี `session.user.role === "ADMIN"`
 
+## Roadmap Update (2026-04-29 Security Hardening — REVALIDATE_SECRET Isolation)
+
+> **ที่มา:** Security audit รอบ 2026-04-29 พบว่า `getRouteSecret()` ใน `/api/revalidate/storefront` fallback ไปใช้ `NEXTAUTH_SECRET` (JWT signing key) เมื่อไม่ได้ตั้ง `REVALIDATE_SECRET` — ทำให้กุญแจ JWT อาจรั่วได้ผ่าน webhook call
+> **ขอบเขต:** แก้ `route.ts` + เพิ่ม `REVALIDATE_SECRET` ใน `.env.example` ไม่แตะ business logic
+
+### Checklist
+
+- [x] ลบ fallback `?? process.env.NEXTAUTH_SECRET` ออกจาก `getRouteSecret()`
+- [x] throw `Error` ถ้า `REVALIDATE_SECRET` ไม่ได้ถูกตั้งค่า (route คืน 401 โดยอัตโนมัติ)
+- [x] เพิ่ม `REVALIDATE_SECRET` ใน `.env.example` พร้อมคำแนะนำ `openssl rand -hex 16`
+- [x] ไม่กระทบ flow การ revalidate เดิม — ยังใช้ `timingSafeEqual` + Bearer token เหมือนเดิม
+
+### Action ที่ต้องทำบน Vercel (manual)
+
+- [ ] ตรวจสอบว่า `REVALIDATE_SECRET` ถูกตั้งค่าบน Vercel Environment Variables แล้ว
+- [ ] ถ้ายังไม่มี: generate ด้วย `openssl rand -hex 16` แล้วเพิ่มที่ Vercel Dashboard → Settings → Environment Variables
+- [ ] อัปเดต `Authorization: Bearer <token>` ในทุก script/curl ที่ใช้เรียก endpoint นี้ให้ตรงกับค่าใหม่
+

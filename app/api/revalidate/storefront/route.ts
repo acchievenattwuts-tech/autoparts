@@ -2,11 +2,20 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
-const getRouteSecret = () => process.env.REVALIDATE_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
+const getRouteSecret = (): string => {
+  const secret = process.env.REVALIDATE_SECRET;
+  if (!secret) throw new Error("REVALIDATE_SECRET is not configured");
+  return secret;
+};
 
 const isAuthorized = (providedSecret: string) => {
-  const routeSecret = getRouteSecret();
-  if (!routeSecret || !providedSecret) {
+  let routeSecret: string;
+  try {
+    routeSecret = getRouteSecret();
+  } catch {
+    return false;
+  }
+  if (!providedSecret) {
     return false;
   }
 
