@@ -5020,3 +5020,25 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] ไม่ถอด `unstable_cache` จาก storefront / product-search เดิม
 - [x] อัปเดต `PLAN.md` checklist (รอบนี้)
 
+## Roadmap Update (2026-04-29 Security Hardening — User Privilege Escalation Fix)
+
+> **ที่มา:** Security audit รอบ 2026-04-29 พบช่องโหว่ระดับ HIGH ที่อนุญาตให้ผู้ใช้ที่มีสิทธิ์ `admin.users.update` (ผ่าน custom `AppRole`) สามารถแก้ไขบัญชี `ADMIN` หรือเลื่อนตัวเองเป็น `ADMIN` ได้ — ทำให้เกิด full account takeover
+> **ขอบเขต:** เพิ่ม guard ฝั่ง Server Action เท่านั้น ไม่แตะ schema / business logic / stock / AR-AP
+
+### Checklist
+
+- [x] `createUser` — ห้าม non-ADMIN กำหนดบทบาทใหม่เป็น `ADMIN`
+- [x] `updateUser` — ห้าม non-ADMIN แก้ไขบัญชีที่ปัจจุบันเป็น `ADMIN`
+- [x] `updateUser` — ห้าม non-ADMIN เลื่อนบัญชีอื่นเป็น `ADMIN`
+- [x] `updateUser` — ห้ามเปลี่ยนบทบาทของตนเอง (กัน self-elevation/demotion)
+- [x] `toggleUserActive` — ห้าม non-ADMIN ปิด/เปิดบัญชี `ADMIN`
+- [x] `toggleUserActive` — ห้ามผู้ใช้ปิดใช้งานบัญชีของตนเอง
+- [x] ข้อความ error เป็นภาษาไทย, สอดคล้อง pattern เดิม
+- [x] ไม่แตะ Audit Log structure — entry ที่ผ่าน guard ยังบันทึก before/after เดิม
+
+### Guard rails
+
+- [x] ไม่แตะ `requirePermission` หรือ `lib/access-control.ts` — guard เพิ่มเฉพาะใน Server Action ที่เกี่ยวข้อง
+- [x] ไม่เปลี่ยน Zod schema / FormData contract — UI เดิมใช้ได้ทันที
+- [x] ไม่กระทบ ADMIN flow ปกติ — guard ผ่อนผันเฉพาะกรณี `session.user.role === "ADMIN"`
+

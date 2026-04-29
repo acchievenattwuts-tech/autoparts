@@ -101,6 +101,10 @@ export async function createUser(
 
   const { name, username, password, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
 
+  if (role === "ADMIN" && session.user.role !== "ADMIN") {
+    return { error: "เฉพาะผู้ดูแลระบบ (ADMIN) เท่านั้นที่กำหนดบทบาท ADMIN ได้" };
+  }
+
   try {
     const hashedPassword = await bcrypt.hash(password, 12);
     const requestContext = await getRequestContext();
@@ -200,6 +204,18 @@ export async function updateUser(
     if (!existingUser) {
       return { error: "User not found" };
     }
+
+    const isCallerAdmin = session.user.role === "ADMIN";
+    if (existingUser.role === "ADMIN" && !isCallerAdmin) {
+      return { error: "ไม่สามารถแก้ไขบัญชีผู้ดูแลระบบ (ADMIN) ได้" };
+    }
+    if (role === "ADMIN" && !isCallerAdmin) {
+      return { error: "เฉพาะผู้ดูแลระบบ (ADMIN) เท่านั้นที่กำหนดบทบาท ADMIN ได้" };
+    }
+    if (id === session.user.id && role !== existingUser.role) {
+      return { error: "ไม่สามารถเปลี่ยนบทบาทของตนเองได้" };
+    }
+
     const hasSignatureChanged = (existingUser?.signatureUrl ?? "") !== signatureUrl;
 
     const updatedUser = await db.user.update({
@@ -293,6 +309,14 @@ export async function toggleUserActive(
     });
     if (!existingUser) {
       return { error: "User not found" };
+    }
+
+    const isCallerAdmin = session.user.role === "ADMIN";
+    if (existingUser.role === "ADMIN" && !isCallerAdmin) {
+      return { error: "ไม่สามารถเปลี่ยนสถานะบัญชีผู้ดูแลระบบ (ADMIN) ได้" };
+    }
+    if (id === session.user.id && !isActive) {
+      return { error: "ไม่สามารถปิดใช้งานบัญชีของตนเองได้" };
     }
 
     const updatedUser = await db.user.update({
