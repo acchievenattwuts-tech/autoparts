@@ -9,6 +9,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { ADMIN_NAVIGATION, filterAdminNavigationByPermission } from "@/lib/admin-navigation";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { cn } from "@/lib/utils";
 
 interface AdminSidebarProps {
@@ -87,8 +88,11 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
                         : "text-blue-50 hover:bg-white/10 dark:text-slate-300 dark:hover:bg-white/8"
                     )}
                   >
-                    <sub.icon size={18} />
-                    {sub.label}
+                    <span className="flex min-w-0 items-center gap-3">
+                      <sub.icon size={18} className="shrink-0" />
+                      <span className="truncate">{sub.label}</span>
+                    </span>
+                    <LinkPendingIndicator />
                   </Link>
                 ))}
             </div>

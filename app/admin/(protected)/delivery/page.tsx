@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Eye } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { formatDateThai } from "@/lib/th-date";
 
 const DeliveryPage = async ({
@@ -84,12 +85,17 @@ const DeliveryPage = async ({
           <Link
             key={tab.label}
             href={tab.value ? `/admin/delivery?status=${tab.value}` : "/admin/delivery"}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`relative inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               statusFilter === tab.value
                 ? "bg-[#1e3a5f] text-white"
                 : "bg-white border border-gray-200 text-gray-600 hover:border-[#1e3a5f]"
             }`}
           >
+            <LinkPendingIndicator
+              variant="chip"
+              label="กำลังกรอง"
+              className="right-2 top-1/2 -translate-y-1/2 rounded-full px-1.5 py-0.5 text-[10px]"
+            />
             {tab.label}
           </Link>
         ))}

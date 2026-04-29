@@ -1,12 +1,29 @@
-const AdminLoading = () => (
-  <div className="flex items-center justify-center min-h-[60vh]">
-    <div className="flex flex-col items-center gap-3">
-      <svg className="animate-spin h-10 w-10 text-[#1e3a5f]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
-      <p className="text-sm text-gray-400 font-sarabun">กำลังโหลด...</p>
+const Loading = () => (
+  <div className="animate-pulse space-y-4">
+    <div className="h-8 w-44 rounded-lg bg-gray-200 dark:bg-slate-800" />
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-20 rounded-xl border border-gray-100 bg-white dark:border-white/10 dark:bg-slate-900"
+        />
+      ))}
+    </div>
+    <div className="rounded-xl border border-gray-100 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
+      <div className="flex flex-wrap gap-3">
+        <div className="h-10 w-60 rounded-lg bg-gray-100 dark:bg-slate-800" />
+        <div className="h-10 flex-1 rounded-lg bg-gray-100 dark:bg-slate-800" />
+      </div>
+    </div>
+    <div className="overflow-hidden rounded-xl border border-gray-100 bg-white dark:border-white/10 dark:bg-slate-900">
+      <div className="h-12 border-b border-gray-100 bg-gray-50 dark:border-white/10 dark:bg-slate-800/70" />
+      <div className="space-y-3 p-4">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-12 rounded-lg bg-gray-100 dark:bg-slate-800" />
+        ))}
+      </div>
     </div>
   </div>
 );
-export default AdminLoading;
+
+export default Loading;

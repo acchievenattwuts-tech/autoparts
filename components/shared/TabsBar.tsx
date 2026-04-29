@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { useTabStore } from "@/hooks/useTabStore";
 import { normalizeAdminTabPath } from "@/lib/admin-tabs";
 import { cn } from "@/lib/utils";
@@ -59,6 +59,8 @@ const TabsBar = () => {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
   const { tabs, addTab, removeTab } = useTabStore();
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     const basePath = normalizePath(pathname);
@@ -83,8 +85,20 @@ const TabsBar = () => {
     removeTab(path);
     if (path === activePath && tabs.length > 1) {
       const nextTab = tabs[index + 1] ?? tabs[index - 1];
-      if (nextTab) router.push(nextTab.path);
+      if (nextTab) {
+        setPendingPath(nextTab.path);
+        startTransition(() => {
+          router.push(nextTab.path);
+        });
+      }
     }
+  };
+
+  const handleNavigate = (path: string) => {
+    setPendingPath(path);
+    startTransition(() => {
+      router.push(path);
+    });
   };
 
   return (
@@ -96,11 +110,13 @@ const TabsBar = () => {
       >
         {tabs.map((tab) => {
           const isActive = tab.path === activePath;
+          const showPending = pendingPath === tab.path && isPending;
+
           return (
             <div
               key={tab.path}
               data-path={tab.path}
-              onClick={() => router.push(tab.path)}
+              onClick={() => handleNavigate(tab.path)}
               className={cn(
                 "group flex flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 px-3.5 py-2 text-sm transition-all",
                 isActive
@@ -109,6 +125,9 @@ const TabsBar = () => {
               )}
             >
               <span>{tab.label}</span>
+              <span className={cn("inline-flex h-3.5 w-3.5 items-center justify-center transition-opacity", showPending ? "opacity-100" : "opacity-0")}>
+                <LoaderCircle size={12} className="animate-spin" />
+              </span>
               <button
                 onClick={(event) => handleClose(event, tab.path)}
                 className={cn(
@@ -117,6 +136,7 @@ const TabsBar = () => {
                     ? "text-gray-400 hover:bg-blue-100 hover:text-[#1e3a5f] dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-100"
                     : "text-transparent group-hover:text-gray-400 hover:!text-gray-600 hover:bg-gray-300 dark:group-hover:text-slate-500 dark:hover:!text-slate-200 dark:hover:bg-white/10"
                 )}
+                disabled={showPending}
               >
                 <X size={11} />
               </button>

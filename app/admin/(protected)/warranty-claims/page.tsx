@@ -9,6 +9,7 @@ import { ShieldAlert, Clock, CheckCircle2, Send, XCircle, Eye, Pencil, PackageCh
 import CancelClaimButton from "./CancelClaimButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import Pagination from "@/components/shared/Pagination";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -166,10 +167,15 @@ const ClaimListPage = async ({
           <Link
             key={key}
             href={`/admin/warranty-claims?status=${status === key ? "" : key}`}
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
+            className={`relative flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
               status === key ? `${color} ring-2 ring-offset-1 ring-current/20` : "bg-white border-gray-100 hover:border-gray-200"
             }`}
           >
+            <LinkPendingIndicator
+              variant="chip"
+              label="กำลังกรอง"
+              className={status === key ? "border-current/20 bg-white/85 text-current dark:bg-slate-950/75" : undefined}
+            />
             <Icon size={20} className={status === key ? "" : "text-gray-400"} />
             <div>
               <p className={`text-xl font-bold ${status === key ? "" : "text-gray-800"}`}>{countMap[key] ?? 0}</p>
