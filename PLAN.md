@@ -5056,7 +5056,25 @@ Implementation progress (2026-04-28, Batch A + B):
 
 ### Action ที่ต้องทำบน Vercel (manual)
 
-- [ ] ตรวจสอบว่า `REVALIDATE_SECRET` ถูกตั้งค่าบน Vercel Environment Variables แล้ว
-- [ ] ถ้ายังไม่มี: generate ด้วย `openssl rand -hex 16` แล้วเพิ่มที่ Vercel Dashboard → Settings → Environment Variables
-- [ ] อัปเดต `Authorization: Bearer <token>` ในทุก script/curl ที่ใช้เรียก endpoint นี้ให้ตรงกับค่าใหม่
+- [x] ตรวจสอบว่า `REVALIDATE_SECRET` ถูกตั้งค่าบน Vercel Environment Variables แล้ว
+- [x] ถ้ายังไม่มี: generate ด้วย `openssl rand -hex 16` แล้วเพิ่มที่ Vercel Dashboard → Settings → Environment Variables
+- [x] อัปเดต `Authorization: Bearer <token>` ในทุก script/curl ที่ใช้เรียก endpoint นี้ให้ตรงกับค่าใหม่
+
+---
+
+## ✅ Security Hardening Phase Complete (2026-04-29)
+
+**Status:** เสร็จสมบูรณ์ — ปล่อย deploy ได้
+**Commits:** 49726cd (Finding #1), a574729 (Finding #2)
+**Production:** REVALIDATE_SECRET configured, guards in place, audit logging intact
+
+### Deployment Status
+- [x] Both findings merged to main branch
+- [x] Code changes verified (TypeScript, build)
+- [x] PLAN.md updated with implementation details
+- [x] Vercel environment variables configured
+- [x] Ready for production deployment to www.sriwanparts.com
+
+### Outstanding (Non-blocking)
+- Finding #3: CSP unsafe-eval hardening — can be addressed in next phase if needed
 
