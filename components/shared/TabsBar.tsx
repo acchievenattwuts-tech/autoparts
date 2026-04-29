@@ -38,7 +38,6 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/cash-bank/transfers": "โอนเงินระหว่างบัญชี",
   "/admin/cash-bank/adjustments": "ปรับยอดเงิน",
   "/admin/reports": "รายงาน",
-  "/admin/reports/cash-bank-ledger": "Cash / Bank Ledger",
   "/admin/content": "คอนเทนต์ Facebook",
   "/admin/content/approval-queue": "คิวอนุมัติโพสต์",
   "/admin/settings/company": "ตั้งค่าร้านค้า",
