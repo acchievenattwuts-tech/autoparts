@@ -470,10 +470,13 @@ export default function SalesDeliveryPrintDocument({
             <div className={`border-r ${PRINT_BODY_BORDER_CLASS}`}>
               <div className="flex h-16 items-end justify-center px-4">
                 {sale.signerSignatureUrl ? (
-                  <img
+                  <Image
                     src={sale.signerSignatureUrl}
                     alt={`ลายเซ็น ${signerDisplayName}`}
+                    width={200}
+                    height={64}
                     className="max-h-[64px] w-auto object-contain"
+                    unoptimized
                   />
                 ) : null}
               </div>

@@ -4,9 +4,12 @@ import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import Pagination from "@/components/shared/Pagination";
+
+const LOT_PAGE_SIZE = 50;
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; status?: string; ready?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; ready?: string; page?: string }>;
 }
 
 const STATUS_OPTIONS = [
@@ -34,7 +37,8 @@ function statusLabel(days: number | null): string {
 export default async function LotBalancePage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { q = "", status = "all", ready = "" } = await searchParams;
+  const { q = "", status = "all", ready = "", page: pageParam = "1" } = await searchParams;
+  const page = Math.max(1, parseInt(pageParam, 10));
   const qTrim = q.trim();
   const shouldShowData = ready === "1";
 
@@ -113,6 +117,9 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
   const filtered =
     status === "all" ? rows : rows.filter((row) => row.rowStatus === (status as RowStatus));
 
+  const totalPages = Math.ceil(filtered.length / LOT_PAGE_SIZE);
+  const pagedRows = filtered.slice((page - 1) * LOT_PAGE_SIZE, page * LOT_PAGE_SIZE);
+
   return (
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-3">
@@ -150,7 +157,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
 
       <p className="text-sm text-muted-foreground">
         {shouldShowData
-          ? `แสดง ${filtered.length} รายการ${filtered.length >= 300 ? " (จำกัด 300 รายการ)" : ""}`
+          ? `พบ ${filtered.length} รายการ${filtered.length >= 300 ? " (จำกัด 300 รายการ)" : ""}`
           : "กรอกชื่อหรือรหัสสินค้า หรือเลือกสถานะก่อน แล้วกดกรองเพื่อแสดงข้อมูล"}
       </p>
 
@@ -183,7 +190,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
                 </td>
               </tr>
             )}
-            {filtered.map((row) => (
+            {pagedRows.map((row) => (
               <tr key={`${row.productId}-${row.lotNo}`} className="transition-colors hover:bg-gray-50">
                 <td className="px-4 py-2.5 font-mono text-xs">{row.product.code}</td>
                 <td className="px-4 py-2.5">{row.product.name}</td>
@@ -213,6 +220,15 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
           </tbody>
         </table>
       </div>
+
+      {shouldShowData && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          basePath="/admin/lots/balance"
+          searchParams={{ q, status, ready }}
+        />
+      )}
     </div>
   );
 }

@@ -4,9 +4,12 @@ import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import Pagination from "@/components/shared/Pagination";
+
+const LOT_PAGE_SIZE = 50;
 
 interface PageProps {
-  searchParams: Promise<{ days?: string }>;
+  searchParams: Promise<{ days?: string; page?: string }>;
 }
 
 const DAYS_OPTIONS = [
@@ -41,7 +44,8 @@ function badgeLabel(daysUntil: number): string {
 export default async function LotExpiryPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { days = "30" } = await searchParams;
+  const { days = "30", page: pageParam = "1" } = await searchParams;
+  const page = Math.max(1, parseInt(pageParam, 10));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -118,6 +122,9 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
+  const totalPages = Math.ceil(rows.length / LOT_PAGE_SIZE);
+  const pagedRows = rows.slice((page - 1) * LOT_PAGE_SIZE, page * LOT_PAGE_SIZE);
+
   return (
     <div className="space-y-4">
       <form method="GET" className="flex flex-wrap items-end gap-3">
@@ -144,7 +151,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
       </form>
 
       <p className="text-sm text-muted-foreground">
-        แสดง {rows.length} รายการที่มีสต็อกคงเหลือ
+        พบ {rows.length} รายการที่มีสต็อกคงเหลือ
         {rows.length >= 300 ? " (จำกัด 300 รายการ)" : ""}
       </p>
 
@@ -184,7 +191,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
                 </td>
               </tr>
             )}
-            {rows.map(({ productLot, qtyOnHand, unitName, daysUntil }) => (
+            {pagedRows.map(({ productLot, qtyOnHand, unitName, daysUntil }) => (
               <tr
                 key={`${productLot.productId}-${productLot.lotNo}`}
                 className={`transition-colors hover:brightness-95 ${rowBg(daysUntil)}`}
@@ -214,6 +221,13 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        basePath="/admin/lots/expiry"
+        searchParams={{ days }}
+      />
     </div>
   );
 }

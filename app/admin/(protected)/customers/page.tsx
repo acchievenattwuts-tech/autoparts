@@ -10,11 +10,14 @@ import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Plus, Pencil, Eye } from "lucide-react";
 import ToggleCustomerButton from "./DeleteCustomerButton";
+import Pagination from "@/components/shared/Pagination";
+
+const PAGE_SIZE = 50;
 
 const CustomersPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string }>;
+  searchParams: Promise<{ search?: string; page?: string }>;
 }) => {
   await requirePermission("customers.view");
 
@@ -27,22 +30,32 @@ const CustomersPage = async ({
   const canUpdate = hasPermissionAccess(role, permissions, "customers.update");
   const canCancel = hasPermissionAccess(role, permissions, "customers.cancel");
 
-  const { search } = await searchParams;
+  const { search, page: pageParam } = await searchParams;
+  const page = Math.max(1, parseInt(pageParam ?? "1", 10));
+  const skip = (page - 1) * PAGE_SIZE;
 
-  const customers = await db.customer.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { phone: { contains: search } },
-            { code: { contains: search, mode: "insensitive" } },
-          ],
-        }
-      : undefined,
-    include: { _count: { select: { sales: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const whereClause = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { phone: { contains: search } },
+          { code: { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : undefined;
+
+  const [customers, total] = await Promise.all([
+    db.customer.findMany({
+      where: whereClause,
+      include: { _count: { select: { sales: true } } },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: PAGE_SIZE,
+    }),
+    db.customer.count({ where: whereClause }),
+  ]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
@@ -83,6 +96,10 @@ const CustomersPage = async ({
           )}
         </div>
       </form>
+
+      <p className="text-sm text-gray-500">
+        {total} รายการ
+      </p>
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -157,6 +174,13 @@ const CustomersPage = async ({
           </table>
         </div>
       </div>
+
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        basePath="/admin/customers"
+        searchParams={search ? { search } : undefined}
+      />
     </div>
   );
 };

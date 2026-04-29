@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { PRINT_BODY_BORDER_CLASS, PRINT_SECTION_BORDER_CLASS, PRINT_SECTION_TOP_BORDER_CLASS } from "./shared";
 
 type PrintSignatureColumn = {
@@ -21,10 +22,13 @@ const PrintSignatureGrid = ({
       <div key={`${column.label}-${index}`} className={index < columns.length - 1 ? `border-r ${PRINT_BODY_BORDER_CLASS}` : ""}>
         <div className={column.signatureUrl ? "flex h-16 items-end justify-center px-4" : "h-16"}>
           {column.signatureUrl ? (
-            <img
+            <Image
               src={column.signatureUrl}
               alt={column.signatureAlt ?? column.label}
+              width={200}
+              height={64}
               className="max-h-[64px] w-auto object-contain"
+              unoptimized
             />
           ) : null}
         </div>

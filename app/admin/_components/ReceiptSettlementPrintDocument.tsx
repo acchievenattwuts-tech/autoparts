@@ -335,10 +335,13 @@ export default function ReceiptSettlementPrintDocument({
             <div className={`border-r ${PRINT_BODY_BORDER_CLASS}`}>
               <div className="flex h-16 items-end justify-center px-4">
                 {receipt.signerSignatureUrl ? (
-                  <img
+                  <Image
                     src={receipt.signerSignatureUrl}
                     alt={`ลายเซ็น ${signerDisplayName}`}
+                    width={200}
+                    height={64}
                     className="max-h-[64px] w-auto object-contain"
+                    unoptimized
                   />
                 ) : null}
               </div>
