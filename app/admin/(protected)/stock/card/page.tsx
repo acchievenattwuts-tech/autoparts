@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { buildProductSearchWhere } from "@/lib/product-search";
@@ -152,7 +154,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
       </div>
 
       <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <form method="GET" className="flex flex-wrap gap-3">
+        <AdminSearchForm method="GET" className="flex flex-wrap gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="min-w-48 flex-1">
             <input
@@ -163,12 +165,11 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {(q || productId) && (
             <Link
               href="/admin/stock/card"
@@ -177,7 +178,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
               ล้าง
             </Link>
           )}
-        </form>
+        </AdminSearchForm>
 
         {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
           <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">

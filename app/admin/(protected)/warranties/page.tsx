@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 import Link from "next/link";
 import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -177,7 +179,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
 
       {/* Search + Date filter */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <form method="GET" className="flex gap-3 flex-wrap">
+        <AdminSearchForm method="GET" className="flex gap-3 flex-wrap">
           {status && <input type="hidden" name="status" value={status} />}
           <div lang="en-GB" className="flex items-center gap-2 text-sm">
             <span className="text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
@@ -202,12 +204,11 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
             placeholder="ค้นหาสินค้า, ลูกค้า, เลขที่ใบขาย..."
             className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
           />
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {(q || from || to) && (
             <Link
               href={status ? `/admin/warranties?status=${status}` : "/admin/warranties"}
@@ -216,7 +217,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
               ล้าง
             </Link>
           )}
-        </form>
+        </AdminSearchForm>
       </div>
 
       {/* Table */}

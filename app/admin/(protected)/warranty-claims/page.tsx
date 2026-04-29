@@ -6,6 +6,8 @@ import Link from "next/link";
 import { requirePermission, getSessionPermissionContext } from "@/lib/require-auth";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { ShieldAlert, Clock, CheckCircle2, Send, XCircle, Eye, Pencil, PackageCheck } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import CancelClaimButton from "./CancelClaimButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import Pagination from "@/components/shared/Pagination";
@@ -186,7 +188,7 @@ const ClaimListPage = async ({
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <form method="GET" className="flex gap-3 flex-wrap">
+        <AdminSearchForm method="GET" className="flex gap-3 flex-wrap">
           {status && <input type="hidden" name="status" value={status} />}
           <div lang="en-GB" className="flex items-center gap-2 text-sm">
             <span className="text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
@@ -211,12 +213,11 @@ const ClaimListPage = async ({
             placeholder="ค้นหาเลขเคลม, สินค้า, ลูกค้า..."
             className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm"
           />
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {(q || from || to) && (
             <Link
               href={status ? `/admin/warranty-claims?status=${status}` : "/admin/warranty-claims"}
@@ -225,7 +226,7 @@ const ClaimListPage = async ({
               ล้าง
             </Link>
           )}
-        </form>
+        </AdminSearchForm>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

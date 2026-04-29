@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Receipt, Plus, Eye, Pencil } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import CancelExpenseButton from "./CancelExpenseButton";
 import Pagination from "@/components/shared/Pagination";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -117,7 +119,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
 
       {/* Search + Filter */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <form method="GET" className="flex gap-3 flex-wrap">
+        <AdminSearchForm method="GET" className="flex gap-3 flex-wrap">
           <div lang="en-GB" className="flex items-center gap-2 text-sm">
             <span className="text-gray-500 whitespace-nowrap">ช่วงวันที่</span>
             <input
@@ -150,12 +152,11 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
             <option value="CANCELLED">เฉพาะที่ยกเลิก</option>
             <option value="">ทั้งหมด</option>
           </select>
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {(q || from || to || (status && status !== "ACTIVE")) && (
             <Link
               href="/admin/expenses"
@@ -164,7 +165,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
               ล้าง
             </Link>
           )}
-        </form>
+        </AdminSearchForm>
       </div>
 
       {/* Table */}

@@ -10,6 +10,8 @@ import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Plus, Pencil, Eye } from "lucide-react";
 import ToggleCustomerButton from "./DeleteCustomerButton";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
 
 const PAGE_SIZE = 50;
@@ -71,7 +73,7 @@ const CustomersPage = async ({
         )}
       </div>
 
-      <form method="GET" className="mb-4">
+      <AdminSearchForm method="GET" className="mb-4">
         <div className="flex max-w-md gap-2">
           <input
             type="text"
@@ -80,12 +82,11 @@ const CustomersPage = async ({
             placeholder="ค้นหาชื่อ รหัส หรือเบอร์โทร"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
           />
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162d4a]"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {search && (
             <Link
               href="/admin/customers"
@@ -95,7 +96,7 @@ const CustomersPage = async ({
             </Link>
           )}
         </div>
-      </form>
+      </AdminSearchForm>
 
       <p className="text-sm text-gray-500">
         {total} รายการ

@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, Search, X } from "lucide-react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 
 interface SearchBarProps {

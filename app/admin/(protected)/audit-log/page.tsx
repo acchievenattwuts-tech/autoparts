@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
 import {
   AUDIT_ACTION_OPTIONS,
@@ -68,7 +70,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
         </p>
       </div>
 
-      <form className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40 md:grid-cols-2 xl:grid-cols-6">
+      <AdminSearchForm className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40 md:grid-cols-2 xl:grid-cols-6">
         <input type="hidden" name="ready" value="1" />
         <input
           type="text"
@@ -116,12 +118,11 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
           className={FILTER_INPUT_CLASS}
         />
         <div className="flex gap-2 md:col-span-2 xl:col-span-6">
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-600"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           <Link
             href="/admin/audit-log"
             className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-sky-400 hover:text-sky-600 dark:border-white/10 dark:text-slate-200 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -129,7 +130,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
             ล้างตัวกรอง
           </Link>
         </div>
-      </form>
+      </AdminSearchForm>
 
       {!filters.ready ? (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center shadow-sm dark:border-white/15 dark:bg-slate-950/40">

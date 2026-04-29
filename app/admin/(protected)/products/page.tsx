@@ -9,6 +9,8 @@ import {
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Plus, Search, Pencil } from "lucide-react";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -74,7 +76,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       </div>
 
       <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <form method="GET" className="flex gap-3">
+        <AdminSearchForm method="GET" className="flex gap-3">
           <div className="relative max-w-sm flex-1">
             <Search
               size={16}
@@ -88,12 +90,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
               className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
-          <button
-            type="submit"
+          <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
-          </button>
+          </AdminSearchSubmitButton>
           {search && (
             <Link
               href="/admin/products"
@@ -102,7 +103,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
               ล้าง
             </Link>
           )}
-        </form>
+        </AdminSearchForm>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
