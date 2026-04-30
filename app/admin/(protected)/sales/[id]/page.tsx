@@ -337,9 +337,19 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   ลายเซ็น รูปหน้าบ้าน ชื่อผู้รับ และหมายเหตุจากหน้าจัดส่งมือถือ
                 </p>
               </div>
-              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-slate-200">
-                {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-slate-200">
+                  {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ
+                </span>
+                {sale._count.deliveryProofs > DELIVERY_PROOF_HISTORY_LIMIT ? (
+                  <Link
+                    href={`/admin/sales/${sale.id}/delivery-proofs`}
+                    className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 px-3 py-1 text-xs font-semibold text-[#1e3a5f] hover:bg-[#1e3a5f]/5 dark:border-sky-400/30 dark:text-sky-300 dark:hover:bg-sky-400/10"
+                  >
+                    ดูหลักฐานทั้งหมด
+                  </Link>
+                ) : null}
+              </div>
             </div>
 
             {sale.deliveryProofs.length === 0 ? (
@@ -409,7 +419,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 {sale._count.deliveryProofs > sale.deliveryProofs.length ? (
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
                     แสดง {sale.deliveryProofs.length.toLocaleString("th-TH")} รายการล่าสุดจากทั้งหมด{" "}
-                    {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ
+                    {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ{" "}
+                    <Link
+                      href={`/admin/sales/${sale.id}/delivery-proofs`}
+                      className="font-semibold text-[#1e3a5f] hover:underline dark:text-sky-300"
+                    >
+                      ดูหลักฐานทั้งหมด
+                    </Link>
                   </div>
                 ) : null}
               </div>

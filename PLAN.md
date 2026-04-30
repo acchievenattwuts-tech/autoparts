@@ -269,11 +269,13 @@
 - [x] เพิ่ม signature pad สำหรับลูกค้าเซ็นบนมือถือพนักงาน โดย canvas ต้องพื้นหลังขาวเสมอแม้ admin อยู่ dark mode
 - [x] ตอน export ลายเซ็นต้อง flatten พื้นหลังเป็นสีขาวและเส้นสีดำ/เข้ม เพื่อให้รูปย้อนหลังอ่านได้บนทุก theme
 - [x] เพิ่มการถ่าย/อัปโหลดรูปหน้าบ้านหรือจุดวางของ (`deliveryPhoto`) ผ่าน input กล้องมือถือ (`accept="image/*"` + `capture`)
+- [x] แยก UX ปุ่มรูปเป็น “ถ่ายรูป” และ “เลือกรูป” โดยใช้ input คนละตัว เพื่อลดความสับสนบนมือถือที่ fallback เป็น file picker
 - [x] บีบอัด/resize `deliveryPhoto` ฝั่ง client ก่อน preview/upload เพื่อลดเวลาส่งไฟล์บนมือถือและลด storage โดย server validation เดิมยังทำงานเหมือนเดิม
 - [x] เพิ่มช่องหมายเหตุการส่ง เช่น “ลูกค้าไม่สะดวกเซ็น”, “ฝากไว้หน้าบ้าน”, “ฝาก รปภ.” โดยไม่บังคับกรอก
 - [x] แสดง preview หลักฐานก่อนบันทึก: รูปลายเซ็นบนกรอบขาว, รูปถ่าย, ชื่อผู้รับ, หมายเหตุ
 - [x] แสดงสถานะใน card เมื่อมี proof แล้ว เช่น badge “มีหลักฐาน” และปุ่มเปิดดูย้อนหลัง
 - [x] เพิ่มส่วนดูย้อนหลังในหน้า sale detail (`/admin/sales/[id]`) และ/หรือ delivery mobile card สำหรับรายการ `DELIVERED`
+- [x] เพิ่มหน้า `/admin/sales/[id]/delivery-proofs` สำหรับดูหลักฐานทั้งหมดแบบ pagination เมื่อรายการเกิน 20 รายการล่าสุดในหน้า detail
 - [x] เขียน audit log ตอนบันทึก proof โดย log meta/URL เท่านั้น ไม่เก็บ binary หรือ base64 ลง audit log
 - [x] หลังบันทึก proof ให้ revalidate `/admin/delivery`, `/admin/delivery/update`, และ `/admin/sales/{saleId}`
 - [x] ตรวจ light/dark mode ของ admin surface ให้ครบ โดยเฉพาะ signature pad ต้องไม่เปลี่ยนพื้นหลังตาม dark mode

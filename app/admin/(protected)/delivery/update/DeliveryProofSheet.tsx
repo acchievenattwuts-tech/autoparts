@@ -78,6 +78,8 @@ const formatFileSize = (size: number) => {
 const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const signaturePadRef = useRef<SignaturePad | null>(null);
   const [receiverName, setReceiverName] = useState("");
   const [note, setNote] = useState("");
@@ -247,6 +249,14 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
     }
   };
 
+  const handleOpenCamera = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenGallery = () => {
+    galleryInputRef.current?.click();
+  };
+
   const handleSubmit = () => {
     if (!selectedSale) return;
     setError("");
@@ -411,7 +421,7 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                   <label className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
                     <Camera size={16} /> รูปหน้าบ้านหรือจุดวางของ
                   </label>
-                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center active:scale-[0.99] dark:border-white/15 dark:bg-white/5">
+                  <div className="flex min-h-32 flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center dark:border-white/15 dark:bg-white/5">
                     {photoPreviewUrl ? (
                       <img
                         src={photoPreviewUrl}
@@ -436,16 +446,48 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                         </span>
                       </>
                     )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="sr-only"
-                      onChange={(event) => {
-                        void handlePhotoChange(event.target.files?.[0] ?? null);
-                      }}
-                    />
-                  </label>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenCamera}
+                      disabled={isCompressingPhoto}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1e3a5f] px-3 py-3 text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60 dark:bg-sky-600"
+                    >
+                      <Camera size={16} />
+                      ถ่ายรูป
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenGallery}
+                      disabled={isCompressingPhoto}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm font-semibold text-gray-700 transition active:scale-[0.98] disabled:opacity-60 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200"
+                    >
+                      <ImageIcon size={16} />
+                      เลือกรูป
+                    </button>
+                  </div>
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={(event) => {
+                      void handlePhotoChange(event.target.files?.[0] ?? null);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(event) => {
+                      void handlePhotoChange(event.target.files?.[0] ?? null);
+                      event.currentTarget.value = "";
+                    }}
+                  />
                   {photoCompressionLabel ? (
                     <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
                       {photoCompressionLabel}
