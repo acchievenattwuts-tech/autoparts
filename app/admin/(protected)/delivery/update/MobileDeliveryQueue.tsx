@@ -21,6 +21,7 @@ import {
 import { ArrowDown, Loader2 } from "lucide-react";
 
 import { reorderDeliveryQueue } from "../../sales/actions";
+import DeliveryProofSheet from "./DeliveryProofSheet";
 import MobileDeliveryCard from "./MobileDeliveryCard";
 import MobileStatusTabs from "./MobileStatusTabs";
 import QueueHeader, { type Mode } from "./QueueHeader";
@@ -41,6 +42,14 @@ type Item = {
   paymentType:        string;
   amountRemain:       number;
   deliveryQueueOrder: number | null;
+  proofCount:         number;
+  latestProof:        DeliveryProofSummary | null;
+};
+
+export type DeliveryProofSummary = {
+  id:           string;
+  receiverName: string | null;
+  capturedAt:   string;
 };
 
 type Counts = {
@@ -70,6 +79,7 @@ const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
   const [isPending, startTransition]    = useTransition();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDist, setPullDist]         = useState(0);
+  const [selectedProofSale, setSelectedProofSale] = useState<Item | null>(null);
 
   // Sync draft when items prop changes (React recommended pattern)
   const [prevInitialIds, setPrevInitialIds] = useState(initialIds);
@@ -307,6 +317,8 @@ const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
                   netAmount={item.netAmount}
                   paymentType={item.paymentType}
                   amountRemain={item.amountRemain}
+                  proofCount={item.proofCount}
+                  latestProof={item.latestProof}
                   queueIndex={index}
                   totalInList={orderedItems.length}
                   mode={mode}
@@ -314,6 +326,7 @@ const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
                   canMoveDown={index < orderedItems.length - 1}
                   onMoveUp={() => handleMoveUp(item.saleId)}
                   onMoveDown={() => handleMoveDown(item.saleId)}
+                  onOpenProof={() => setSelectedProofSale(item)}
                 />
               ))}
             </SortableContext>
@@ -327,6 +340,11 @@ const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
           </div>
         )}
       </div>
+
+      <DeliveryProofSheet
+        selectedSale={selectedProofSale}
+        onClose={() => setSelectedProofSale(null)}
+      />
     </div>
   );
 };

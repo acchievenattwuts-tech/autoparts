@@ -1,5 +1,6 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
@@ -1027,6 +1028,250 @@ export async function updateSale(
 }
 
 // updateShippingStatus
+
+const DELIVERY_PROOF_BUCKET = "products";
+const DELIVERY_PROOF_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const DELIVERY_PROOF_EXTENSIONS_LIST = ["jpg", "jpeg", "png", "webp"];
+const DELIVERY_PROOF_EXTENSIONS = {
+  "image/jpeg": "jpg",
+  "image/png":  "png",
+  "image/webp": "webp",
+} satisfies Record<(typeof DELIVERY_PROOF_IMAGE_TYPES)[number], string>;
+const DELIVERY_PROOF_MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const DELIVERY_PROOF_MAX_SIGNATURE_BYTES = 1 * 1024 * 1024;
+
+const deliveryProofSchema = z.object({
+  saleId:       z.string().min(1).max(50),
+  receiverName: z.string().trim().max(100).optional(),
+  note:         z.string().trim().max(500).optional(),
+});
+
+type DeliveryProofImageKind = "signature" | "photo";
+type DeliveryProofUploadResult = { url?: string; error?: string };
+
+export type DeliveryProofDetail = {
+  id:                string;
+  receiverName:      string | null;
+  signatureImageUrl: string | null;
+  deliveryPhotoUrl:  string | null;
+  note:              string | null;
+  capturedAt:        string;
+};
+
+const getDeliveryProofFile = (formData: FormData, key: string): File | null => {
+  const file = formData.get(key);
+  if (!(file instanceof File) || file.size === 0) {
+    return null;
+  }
+
+  return file;
+};
+
+const uploadDeliveryProofImage = async ({
+  saleId,
+  file,
+  kind,
+}: {
+  saleId: string;
+  file: File;
+  kind: DeliveryProofImageKind;
+}): Promise<DeliveryProofUploadResult> => {
+  if (!DELIVERY_PROOF_IMAGE_TYPES.includes(file.type as (typeof DELIVERY_PROOF_IMAGE_TYPES)[number])) {
+    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ JPEG, PNG หรือ WebP" };
+  }
+
+  const originalExt = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!DELIVERY_PROOF_EXTENSIONS_LIST.includes(originalExt)) {
+    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, jpeg, png, webp" };
+  }
+
+  const maxSize =
+    kind === "signature" ? DELIVERY_PROOF_MAX_SIGNATURE_BYTES : DELIVERY_PROOF_MAX_PHOTO_BYTES;
+  if (file.size > maxSize) {
+    return {
+      error:
+        kind === "signature"
+          ? "ไฟล์ลายเซ็นต้องไม่เกิน 1MB"
+          : "ไฟล์รูปหลักฐานต้องไม่เกิน 5MB",
+    };
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return { error: "ไม่พบการตั้งค่า Supabase Storage" };
+  }
+
+  const contentType = file.type as keyof typeof DELIVERY_PROOF_EXTENSIONS;
+  const ext = DELIVERY_PROOF_EXTENSIONS[contentType];
+  const safeSaleId = saleId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const filePath = `delivery-proofs/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  const { error: uploadError } = await supabase.storage
+    .from(DELIVERY_PROOF_BUCKET)
+    .upload(filePath, buffer, { contentType, upsert: false });
+
+  if (uploadError) {
+    return { error: "อัปโหลดรูปหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from(DELIVERY_PROOF_BUCKET).getPublicUrl(filePath);
+
+  return { url: publicUrl };
+};
+
+export async function getLatestDeliveryProof(
+  saleId: string,
+): Promise<{ proof?: DeliveryProofDetail | null; error?: string }> {
+  const session = await requirePermission("delivery.view").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = z.string().min(1).max(50).safeParse(saleId);
+  if (!parsed.success) return { error: "ข้อมูลใบขายไม่ถูกต้อง" };
+
+  try {
+    const proof = await db.deliveryProof.findFirst({
+      where: {
+        saleId: parsed.data,
+        sale:   { fulfillmentType: FulfillmentType.DELIVERY },
+      },
+      orderBy: { capturedAt: "desc" },
+      select: {
+        id:                true,
+        receiverName:      true,
+        signatureImageUrl: true,
+        deliveryPhotoUrl:  true,
+        note:              true,
+        capturedAt:        true,
+      },
+    });
+
+    if (!proof) return { proof: null };
+
+    return {
+      proof: {
+        ...proof,
+        capturedAt: proof.capturedAt.toISOString(),
+      },
+    };
+  } catch (err) {
+    console.error("[getLatestDeliveryProof]", err);
+    return { error: "โหลดหลักฐานการส่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+export async function saveDeliveryProof(
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await requirePermission("delivery.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = deliveryProofSchema.safeParse({
+    saleId:       formData.get("saleId"),
+    receiverName: formData.get("receiverName") || undefined,
+    note:         formData.get("note") || undefined,
+  });
+  if (!parsed.success) return { error: "ข้อมูลหลักฐานการส่งไม่ถูกต้อง" };
+
+  const signatureFile = getDeliveryProofFile(formData, "signatureImage");
+  const photoFile = getDeliveryProofFile(formData, "deliveryPhoto");
+  const receiverName = parsed.data.receiverName?.trim() || null;
+  const note = parsed.data.note?.trim() || null;
+
+  if (!receiverName && !note && !signatureFile && !photoFile) {
+    return { error: "กรุณาระบุหลักฐานอย่างน้อยหนึ่งรายการก่อนบันทึก" };
+  }
+
+  try {
+    const sale = await db.sale.findUnique({
+      where: { id: parsed.data.saleId },
+      select: {
+        id: true,
+        saleNo: true,
+        status: true,
+        fulfillmentType: true,
+      },
+    });
+
+    if (!sale || sale.status !== "ACTIVE") {
+      return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
+    }
+
+    if (sale.fulfillmentType !== FulfillmentType.DELIVERY) {
+      return { error: "ใบขายนี้ไม่ได้เป็นรายการจัดส่ง" };
+    }
+
+    const emptyUpload: DeliveryProofUploadResult = {};
+    const [signatureUpload, photoUpload] = await Promise.all([
+      signatureFile
+        ? uploadDeliveryProofImage({
+            saleId: sale.id,
+            file:   signatureFile,
+            kind:   "signature",
+          })
+        : Promise.resolve(emptyUpload),
+      photoFile
+        ? uploadDeliveryProofImage({
+            saleId: sale.id,
+            file:   photoFile,
+            kind:   "photo",
+          })
+        : Promise.resolve(emptyUpload),
+    ]);
+    if (signatureUpload.error) return { error: signatureUpload.error };
+    if (photoUpload.error) return { error: photoUpload.error };
+
+    const requestContext = await getRequestContext();
+    const proof = await db.deliveryProof.create({
+      data: {
+        saleId:            sale.id,
+        receiverName,
+        signatureImageUrl: signatureUpload.url ?? null,
+        deliveryPhotoUrl:  photoUpload.url ?? null,
+        note,
+        capturedByUserId:  session.user.id,
+      },
+      select: {
+        id: true,
+        receiverName: true,
+        signatureImageUrl: true,
+        deliveryPhotoUrl: true,
+        note: true,
+        capturedAt: true,
+      },
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.CREATE,
+      entityType: "DeliveryProof",
+      entityId: proof.id,
+      entityRef: sale.saleNo,
+      after: {
+        id: proof.id,
+        saleId: sale.id,
+        receiverName: proof.receiverName,
+        signatureImageUrl: proof.signatureImageUrl,
+        deliveryPhotoUrl: proof.deliveryPhotoUrl,
+        note: proof.note,
+        capturedAt: proof.capturedAt,
+      },
+      meta: { source: "delivery.proof" },
+    });
+
+    revalidatePath("/admin/delivery");
+    revalidatePath("/admin/delivery/update");
+    revalidatePath(`/admin/sales/${sale.id}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[saveDeliveryProof]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
 
 const shippingUpdateSchema = z.object({
   shippingStatus: z.nativeEnum(ShippingStatus),

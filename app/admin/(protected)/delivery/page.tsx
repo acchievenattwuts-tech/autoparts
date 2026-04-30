@@ -44,6 +44,7 @@ const DeliveryPage = async ({
       netAmount:       true,
       paymentType:     true,
       amountRemain:    true,
+      _count:          { select: { deliveryProofs: true } },
       customer:        { select: { name: true, phone: true } },
     },
   });
@@ -173,6 +174,11 @@ const DeliveryPage = async ({
                           {SHIPPING_METHOD_LABEL[s.shippingMethod ?? "NONE"]}: {s.trackingNo}
                         </p>
                       )}
+                      {s._count.deliveryProofs > 0 ? (
+                        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          มีหลักฐาน {s._count.deliveryProofs.toLocaleString("th-TH")} รายการ
+                        </p>
+                      ) : null}
                     </td>
                     <td className="py-3 px-4">
                       <DeliveryUpdateButton

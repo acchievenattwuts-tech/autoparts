@@ -51,6 +51,16 @@ const DeliveryUpdatePage = async ({
         amountRemain:       true,
         deliveryQueueOrder: true,
         customer:           { select: { name: true, phone: true } },
+        deliveryProofs: {
+          orderBy: { capturedAt: "desc" },
+          take:    1,
+          select: {
+            id:           true,
+            receiverName: true,
+            capturedAt:   true,
+          },
+        },
+        _count: { select: { deliveryProofs: true } },
       },
     }),
     db.sale.groupBy({
@@ -88,6 +98,14 @@ const DeliveryUpdatePage = async ({
     paymentType:        s.paymentType,
     amountRemain:       Number(s.amountRemain),
     deliveryQueueOrder: s.deliveryQueueOrder,
+    proofCount:         s._count.deliveryProofs,
+    latestProof:        s.deliveryProofs[0]
+      ? {
+          id:           s.deliveryProofs[0].id,
+          receiverName: s.deliveryProofs[0].receiverName,
+          capturedAt:   s.deliveryProofs[0].capturedAt.toISOString(),
+        }
+      : null,
   }));
 
   return (

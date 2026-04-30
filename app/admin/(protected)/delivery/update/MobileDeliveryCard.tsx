@@ -14,6 +14,7 @@ import {
   Check,
   AlertTriangle,
   Loader2,
+  ClipboardCheck,
   ChevronUp,
   ChevronDown,
   GripVertical,
@@ -28,6 +29,7 @@ import {
   SHIPPING_METHOD_OPTIONS,
 } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
+import type { DeliveryProofSummary } from "./MobileDeliveryQueue";
 
 type ShippingStatus = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
 type CardMode = "view" | "reorder";
@@ -45,6 +47,8 @@ type Props = {
   netAmount:        number;
   paymentType:      string;
   amountRemain:     number;
+  proofCount:       number;
+  latestProof:      DeliveryProofSummary | null;
   queueIndex:       number;
   totalInList:      number;
   mode:             CardMode;
@@ -52,6 +56,7 @@ type Props = {
   canMoveDown:      boolean;
   onMoveUp:         () => void;
   onMoveDown:       () => void;
+  onOpenProof:      () => void;
 };
 
 type StatusActionLabel = {
@@ -97,12 +102,15 @@ const MobileDeliveryCard = ({
   netAmount,
   paymentType,
   amountRemain,
+  proofCount,
+  latestProof,
   queueIndex,
   mode,
   canMoveUp,
   canMoveDown,
   onMoveUp,
   onMoveDown,
+  onOpenProof,
 }: Props) => {
   const {
     attributes,
@@ -343,6 +351,21 @@ const MobileDeliveryCard = ({
                 {shippingAddress}
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={onOpenProof}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition active:scale-[0.98] ${
+                latestProof
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200"
+                  : "border-gray-200 bg-white text-gray-700 hover:border-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+              }`}
+            >
+              {latestProof ? <CheckCircle2 size={16} /> : <ClipboardCheck size={16} />}
+              {latestProof
+                ? `มีหลักฐาน ${proofCount.toLocaleString("th-TH")} รายการ`
+                : "หลักฐานรับของ"}
+            </button>
           </div>
 
           {/* Method (read-only) + tracking */}

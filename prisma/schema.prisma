@@ -42,6 +42,7 @@ model User {
   contentScheduledJobsCreated ContentScheduledJob[] @relation("ContentScheduledJobCreatedBy")
   contentAuditLogs   ContentAuditLog[] @relation("ContentAuditActor")
   auditLogs          AuditLog[]
+  deliveryProofs     DeliveryProof[]
   appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
@@ -565,9 +566,29 @@ model Sale {
   user            User            @relation(fields: [userId], references: [id])
   items           SaleItem[]
   warranties      Warranty[]
+  deliveryProofs  DeliveryProof[]
 
   @@index([cashBankAccountId])
   @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
+  @@index([fulfillmentType, status, shippingStatus, saleDate, saleNo])
+}
+
+model DeliveryProof {
+  id                String   @id @default(cuid())
+  saleId            String
+  receiverName      String?
+  signatureImageUrl String?
+  deliveryPhotoUrl  String?
+  note              String?
+  capturedAt        DateTime @default(now())
+  capturedByUserId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  sale              Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  capturedByUser    User?    @relation(fields: [capturedByUserId], references: [id])
+
+  @@index([saleId, capturedAt])
+  @@index([capturedByUserId])
 }
 
 model SaleItem {

@@ -251,6 +251,36 @@
 
 ---
 
+#### Phase 4.2-G — Delivery Proof Mobile App UX
+
+> **Scope:** เฟสนี้เพิ่มเฉพาะหลักฐานการส่งบนหน้าจัดส่งมือถือ ไม่เปลี่ยน business logic เดิมของการขาย/จัดส่ง
+> **UX direction:** หน้าจอนี้ต้องรู้สึกเป็น mobile application ให้มากที่สุด ใช้งานเร็วในมือพนักงาน ไม่เหมือนตารางเว็บย่อส่วน
+
+- [x] คง logic เดิมทั้งหมด: อัปเดทสถานะข้ามได้เหมือนเดิม, เปลี่ยนเป็น `DELIVERED` ได้แม้ไม่มี proof, และ proof ทุกช่องเป็น optional
+- [x] เพิ่ม `DeliveryProof` ใน `prisma/schema.prisma` แบบแยก model เพื่อผูกกับ `Sale` และรองรับหลักฐานหลายประเภทในอนาคต
+- [x] เก็บข้อมูล proof รอบนี้ให้ครบ: `receiverName`, `signatureImageUrl`, `deliveryPhotoUrl`, `note`, `capturedAt`, `capturedByUserId`
+- [x] เพิ่ม relation จาก `Sale` และ `User` ไปยัง `DeliveryProof` เพื่อเปิดดูย้อนหลังและ audit ได้
+- [x] เพิ่ม server action สำหรับบันทึกหลักฐานการส่ง โดยใช้ permission `delivery.update` และไม่ผูกเป็นเงื่อนไขของ `updateShippingStatus`
+- [x] อัปโหลดลายเซ็นและรูปหน้าบ้าน/จุดวางของไป Supabase Storage ด้วย path แยก เช่น `delivery-proofs/{saleId}/...`
+- [x] เพิ่มปุ่ม/entrypoint “หลักฐานรับของ” ใน mobile delivery card (`/admin/delivery/update`) โดยไม่รบกวนปุ่มเปลี่ยนสถานะเดิม
+- [x] ออกแบบ proof modal/sheet แบบ app-like: เปิดเต็มจอหรือ bottom sheet, ปุ่มใหญ่, tap target ชัด, ใช้งานมือเดียวได้, รองรับ touch จริงบนมือถือ
+- [x] อนุญาตให้เพิ่ม library ใหม่ได้เฉพาะเมื่อช่วยให้ประสบการณ์เซ็น/ถ่ายรูป/มือถือไหลลื่นขึ้นจริง โดยต้องเลือกตัวที่เล็ก, client-only เฉพาะจุด, ไม่เพิ่ม bundle ให้หน้าที่ไม่เกี่ยวข้อง, และตรวจ performance หลัง build (รอบนี้ยังไม่เพิ่ม dependency ใหม่)
+- [x] เพิ่มช่องชื่อผู้รับแบบพิมพ์ (`receiverName`) พร้อม placeholder สำหรับกรณีลูกค้าไม่เซ็นหรือฝากคนอื่นรับ
+- [x] เพิ่ม signature pad สำหรับลูกค้าเซ็นบนมือถือพนักงาน โดย canvas ต้องพื้นหลังขาวเสมอแม้ admin อยู่ dark mode
+- [x] ตอน export ลายเซ็นต้อง flatten พื้นหลังเป็นสีขาวและเส้นสีดำ/เข้ม เพื่อให้รูปย้อนหลังอ่านได้บนทุก theme
+- [x] เพิ่มการถ่าย/อัปโหลดรูปหน้าบ้านหรือจุดวางของ (`deliveryPhoto`) ผ่าน input กล้องมือถือ (`accept="image/*"` + `capture`)
+- [x] เพิ่มช่องหมายเหตุการส่ง เช่น “ลูกค้าไม่สะดวกเซ็น”, “ฝากไว้หน้าบ้าน”, “ฝาก รปภ.” โดยไม่บังคับกรอก
+- [x] แสดง preview หลักฐานก่อนบันทึก: รูปลายเซ็นบนกรอบขาว, รูปถ่าย, ชื่อผู้รับ, หมายเหตุ
+- [x] แสดงสถานะใน card เมื่อมี proof แล้ว เช่น badge “มีหลักฐาน” และปุ่มเปิดดูย้อนหลัง
+- [x] เพิ่มส่วนดูย้อนหลังในหน้า sale detail (`/admin/sales/[id]`) และ/หรือ delivery mobile card สำหรับรายการ `DELIVERED`
+- [x] เขียน audit log ตอนบันทึก proof โดย log meta/URL เท่านั้น ไม่เก็บ binary หรือ base64 ลง audit log
+- [x] หลังบันทึก proof ให้ revalidate `/admin/delivery`, `/admin/delivery/update`, และ `/admin/sales/{saleId}`
+- [x] ตรวจ light/dark mode ของ admin surface ให้ครบ โดยเฉพาะ signature pad ต้องไม่เปลี่ยนพื้นหลังตาม dark mode
+- [x] Performance pass 2026-04-30: mobile delivery list now sends only lightweight proof metadata, opens one shared proof sheet, loads latest proof detail on demand, uploads signature/photo in parallel, lazy-loads proof images, caps sale-detail proof history at 20 latest rows, and adds a delivery desktop sort index.
+- [ ] ทดสอบ flow หลัก: ส่งแล้วแบบไม่มี proof, บันทึก proof ก่อน/หลังส่งแล้ว, อัปเดทสถานะข้าม, ดูย้อนหลัง, ถ่ายรูปบนมือถือ, ลายเซ็นพื้นขาวใน dark mode
+
+---
+
 ### ✅ Phase 4.3 — Users + Roles + Permissions (เสร็จแล้ว — commit `307f9f4`)
 
 > **หลักการ:** เพิ่มระบบสิทธิ์ใหม่แบบคู่ขนานกับ `User.role` เดิมก่อน เพื่อไม่ให้ flow ปัจจุบันหยุดทำงาน
