@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
+import type SignaturePad from "signature_pad";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   Camera,
   Eraser,
@@ -33,19 +34,28 @@ type Props = {
   onClose:      () => void;
 };
 
-const drawCanvasPaper = (canvas: HTMLCanvasElement) => {
-  const context = canvas.getContext("2d");
-  if (!context) return;
-  context.save();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.restore();
-};
+const SIGNATURE_CANVAS_MIN_WIDTH = 320;
+const SIGNATURE_CANVAS_MIN_HEIGHT = 180;
+const DELIVERY_PHOTO_MAX_SIZE_MB = 1.5;
+const DELIVERY_PHOTO_MAX_DIMENSION = 1600;
+const BYTES_PER_MB = 1024 * 1024;
 
 const canvasToPngFile = (canvas: HTMLCanvasElement): Promise<File> =>
   new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
+    const outputCanvas = document.createElement("canvas");
+    outputCanvas.width = canvas.width;
+    outputCanvas.height = canvas.height;
+    const context = outputCanvas.getContext("2d");
+    if (!context) {
+      reject(new Error("signature-export-failed"));
+      return;
+    }
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+    context.drawImage(canvas, 0, 0);
+
+    outputCanvas.toBlob((blob) => {
       if (!blob) {
         reject(new Error("signature-export-failed"));
         return;
@@ -54,14 +64,28 @@ const canvasToPngFile = (canvas: HTMLCanvasElement): Promise<File> =>
     }, "image/png");
   });
 
+const formatFileSize = (size: number) => {
+  if (size < BYTES_PER_MB) {
+    return `${Math.max(1, Math.round(size / 1024)).toLocaleString("th-TH")} KB`;
+  }
+
+  return `${(size / BYTES_PER_MB).toLocaleString("th-TH", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  })} MB`;
+};
+
 const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const drawingRef = useRef(false);
+  const signaturePadRef = useRef<SignaturePad | null>(null);
   const [receiverName, setReceiverName] = useState("");
   const [note, setNote] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoCompressionLabel, setPhotoCompressionLabel] = useState("");
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [photoCompressionProgress, setPhotoCompressionProgress] = useState(0);
   const [isSignatureEmpty, setIsSignatureEmpty] = useState(true);
   const [error, setError] = useState("");
   const [latestProof, setLatestProof] = useState<DeliveryProofDetail | null>(null);
@@ -80,6 +104,8 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
     setReceiverName("");
     setNote("");
     setPhotoFile(null);
+    setPhotoCompressionLabel("");
+    setPhotoCompressionProgress(0);
     setIsSignatureEmpty(true);
     setLatestProof(null);
     setError("");
@@ -105,29 +131,53 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
     if (!isOpen) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let disposed = false;
+    let activeSignaturePad: SignaturePad | null = null;
 
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
-      const width = Math.max(320, Math.round(rect.width));
-      const height = Math.max(180, Math.round(rect.height));
+      const width = Math.max(SIGNATURE_CANVAS_MIN_WIDTH, Math.round(rect.width));
+      const height = Math.max(SIGNATURE_CANVAS_MIN_HEIGHT, Math.round(rect.height));
       const scale = window.devicePixelRatio || 1;
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
       const context = canvas.getContext("2d");
       if (!context) return;
       context.setTransform(scale, 0, 0, scale, 0, 0);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineWidth = 3;
-      context.strokeStyle = "#111827";
-      drawCanvasPaper(canvas);
+      signaturePadRef.current?.clear();
       setIsSignatureEmpty(true);
     };
 
     resizeCanvas();
+    const handleEndStroke = () => {
+      if (activeSignaturePad) {
+        setIsSignatureEmpty(activeSignaturePad.isEmpty());
+      }
+    };
+
+    void import("signature_pad").then(({ default: SignaturePadCtor }) => {
+      if (disposed) return;
+      activeSignaturePad = new SignaturePadCtor(canvas, {
+        backgroundColor: "#ffffff",
+        penColor: "#111827",
+        minWidth: 0.8,
+        maxWidth: 2.8,
+        throttle: 16,
+        minDistance: 3,
+      });
+      signaturePadRef.current = activeSignaturePad;
+      activeSignaturePad.addEventListener("endStroke", handleEndStroke);
+    });
+
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(canvas);
-    return () => observer.disconnect();
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      activeSignaturePad?.removeEventListener("endStroke", handleEndStroke);
+      activeSignaturePad?.off();
+      signaturePadRef.current = null;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -141,56 +191,8 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
     return () => URL.revokeObjectURL(nextUrl);
   }, [photoFile]);
 
-  const getPoint = (event: PointerEvent<HTMLCanvasElement>) => {
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    };
-  };
-
-  const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
-    const canvas = event.currentTarget;
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    const point = getPoint(event);
-    drawingRef.current = true;
-    canvas.setPointerCapture(event.pointerId);
-    context.beginPath();
-    context.moveTo(point.x, point.y);
-  };
-
-  const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    const context = event.currentTarget.getContext("2d");
-    if (!context) return;
-    const point = getPoint(event);
-    context.lineTo(point.x, point.y);
-    context.stroke();
-    setIsSignatureEmpty(false);
-  };
-
-  const handlePointerEnd = (event: PointerEvent<HTMLCanvasElement>) => {
-    drawingRef.current = false;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
   const handleClearSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    drawCanvasPaper(canvas);
-    const context = canvas.getContext("2d");
-    if (context) {
-      const scale = window.devicePixelRatio || 1;
-      context.setTransform(scale, 0, 0, scale, 0, 0);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineWidth = 3;
-      context.strokeStyle = "#111827";
-    }
+    signaturePadRef.current?.clear();
     setIsSignatureEmpty(true);
   };
 
@@ -198,8 +200,51 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
     setReceiverName("");
     setNote("");
     setPhotoFile(null);
+    setPhotoCompressionLabel("");
+    setPhotoCompressionProgress(0);
     setError("");
     handleClearSignature();
+  };
+
+  const handlePhotoChange = async (file: File | null) => {
+    setError("");
+    setPhotoCompressionLabel("");
+    setPhotoCompressionProgress(0);
+
+    if (!file) {
+      setPhotoFile(null);
+      return;
+    }
+
+    setIsCompressingPhoto(true);
+    try {
+      const { default: imageCompression } = await import("browser-image-compression");
+      const compressedFile = await imageCompression(file, {
+        maxSizeMB: DELIVERY_PHOTO_MAX_SIZE_MB,
+        maxWidthOrHeight: DELIVERY_PHOTO_MAX_DIMENSION,
+        useWebWorker: true,
+        libURL: "/vendor/browser-image-compression.js",
+        initialQuality: 0.82,
+        fileType: file.type || undefined,
+        onProgress: (progress) => setPhotoCompressionProgress(progress),
+      });
+
+      setPhotoFile(compressedFile);
+      if (compressedFile.size < file.size) {
+        setPhotoCompressionLabel(
+          `ปรับรูปจาก ${formatFileSize(file.size)} เหลือ ${formatFileSize(compressedFile.size)}`,
+        );
+      } else {
+        setPhotoCompressionLabel(`รูปพร้อมอัปโหลด ${formatFileSize(compressedFile.size)}`);
+      }
+    } catch (err) {
+      console.error("[compressDeliveryPhoto]", err);
+      setPhotoFile(file);
+      setPhotoCompressionLabel(`ใช้ไฟล์ต้นฉบับ ${formatFileSize(file.size)}`);
+    } finally {
+      setIsCompressingPhoto(false);
+      setPhotoCompressionProgress(0);
+    }
   };
 
   const handleSubmit = () => {
@@ -354,10 +399,6 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                   </div>
                   <canvas
                     ref={canvasRef}
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerEnd}
-                    onPointerCancel={handlePointerEnd}
                     className="h-48 w-full rounded-2xl border border-gray-300 bg-white [touch-action:none]"
                     aria-label="พื้นที่เซ็นชื่อ"
                   />
@@ -377,6 +418,13 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                         alt="ตัวอย่างรูปหลักฐาน"
                         className="max-h-64 w-full rounded-xl object-cover"
                       />
+                    ) : isCompressingPhoto ? (
+                      <>
+                        <Loader2 size={28} className="animate-spin text-gray-400 dark:text-slate-500" />
+                        <span className="mt-2 text-sm font-medium text-gray-700 dark:text-slate-200">
+                          กำลังปรับขนาดรูป {photoCompressionProgress.toLocaleString("th-TH", { maximumFractionDigits: 0 })}%
+                        </span>
+                      </>
                     ) : (
                       <>
                         <ImageIcon size={28} className="text-gray-400 dark:text-slate-500" />
@@ -394,14 +442,19 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                       capture="environment"
                       className="sr-only"
                       onChange={(event) => {
-                        setPhotoFile(event.target.files?.[0] ?? null);
+                        void handlePhotoChange(event.target.files?.[0] ?? null);
                       }}
                     />
                   </label>
+                  {photoCompressionLabel ? (
+                    <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                      {photoCompressionLabel}
+                    </p>
+                  ) : null}
                   {photoFile ? (
                     <button
                       type="button"
-                      onClick={() => setPhotoFile(null)}
+                      onClick={() => void handlePhotoChange(null)}
                       className="mt-2 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 dark:border-white/10 dark:text-slate-300"
                     >
                       ลบรูปนี้
@@ -432,7 +485,7 @@ const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
                   <button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={isPending}
+                    disabled={isPending || isCompressingPhoto}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1e3a5f] px-4 py-4 text-base font-bold text-white shadow-lg shadow-slate-900/10 transition active:scale-[0.98] disabled:opacity-60 dark:bg-sky-600"
                   >
                     {isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
