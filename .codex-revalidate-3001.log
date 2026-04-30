@@ -1,0 +1,10 @@
+
+> autoparts@0.1.0 start
+> next start
+
+▲ Next.js 16.2.1
+- Local:         http://localhost:3001
+- Network:       http://26.66.139.38:3001
+✓ Ready in 353ms
+^Cnpm error Log files were not written due to an error writing to the directory: C:\Users\User\AppData\Local\npm-cache\_logs
+npm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal

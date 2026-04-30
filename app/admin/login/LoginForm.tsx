@@ -9,6 +9,19 @@ import { Eye, EyeOff, LogIn } from "lucide-react";
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
 const STORAGE_KEY = "admin_login_lockout";
+const REDIRECT_KEY = "admin_login_redirect";
+
+const REDIRECT_OPTIONS = [
+  { value: "/admin", label: "เข้าระบบจัดการ" },
+  { value: "/admin/delivery/update", label: "อัปเดตการจัดส่ง" },
+] as const;
+
+type RedirectValue = (typeof REDIRECT_OPTIONS)[number]["value"];
+
+const DEFAULT_REDIRECT: RedirectValue = "/admin";
+
+const isValidRedirect = (value: string | null): value is RedirectValue =>
+  REDIRECT_OPTIONS.some((option) => option.value === value);
 
 interface LockoutData {
   until: number;
@@ -71,6 +84,25 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
     return until > Date.now() ? until : 0;
   });
   const [countdown, setCountdown] = useState(0);
+  const [redirectTo, setRedirectTo] = useState<RedirectValue>(() => {
+    if (typeof window === "undefined") return DEFAULT_REDIRECT;
+    try {
+      const saved = localStorage.getItem(REDIRECT_KEY);
+      return isValidRedirect(saved) ? saved : DEFAULT_REDIRECT;
+    } catch {
+      return DEFAULT_REDIRECT;
+    }
+  });
+
+  const handleRedirectChange = (value: string) => {
+    if (!isValidRedirect(value)) return;
+    setRedirectTo(value);
+    try {
+      localStorage.setItem(REDIRECT_KEY, value);
+    } catch {
+      // ignore
+    }
+  };
 
   useEffect(() => {
     if (lockedUntil <= Date.now()) {
@@ -132,7 +164,7 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
       }
     } else {
       clearLockout();
-      router.push("/admin");
+      router.push(redirectTo);
     }
   };
 
@@ -222,6 +254,24 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
               {error}
             </div>
           )}
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              ปลายทางหลังเข้าสู่ระบบ
+            </label>
+            <select
+              value={redirectTo}
+              onChange={(e) => handleRedirectChange(e.target.value)}
+              disabled={isLocked}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] disabled:bg-gray-50 disabled:text-gray-400"
+            >
+              {REDIRECT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <button
             type="submit"

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
 import Link from "next/link";
-import { Eye } from "lucide-react";
+import { Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
@@ -66,6 +66,12 @@ const DeliveryPage = async ({
         <h1 className="font-kanit text-2xl font-bold text-gray-900">คิวจัดส่ง</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">{sales.length} รายการ</span>
+          <Link
+            href={`/admin/delivery/update${statusFilter ? `?status=${statusFilter}` : ""}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <Smartphone size={14} /> มุมมองมือถือ
+          </Link>
           {printAllUrl && (
             <a
               href={printAllUrl}

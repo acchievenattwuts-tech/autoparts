@@ -5078,3 +5078,45 @@ Implementation progress (2026-04-28, Batch A + B):
 ### Outstanding (Non-blocking)
 - Finding #3: CSP unsafe-eval hardening — can be addressed in next phase if needed
 
+---
+
+## Phase 8 — Mobile Delivery Update (2026-04-30)
+
+**Goal:** ให้พนักงานที่ออกไปจัดส่งเองสามารถอัปเดตสถานะ + เลขติดตามจากโทรศัพท์มือถือ/iPad ได้สะดวก โดยไม่ต้องเข้าหน้าหลังบ้านปกติที่ออกแบบสำหรับ desktop
+
+### Scope
+- ไม่แตะ Server Action `updateShippingStatus` — reuse logic เดิมทั้งหมด
+- ไม่แตะหน้า `/admin/delivery` เดิม (desktop) — ยังใช้งานได้ปกติ
+- ไม่แก้ schema — ใช้ Google Maps text-search สำหรับลิงก์แผนที่จาก `Sale.shippingAddress`
+- เปลี่ยนวิธีจัดส่ง (`shippingMethod`) ทำที่หน้าบันทึกการขายเท่านั้น (ไม่อยู่ในหน้านี้)
+
+### Checklist
+- [x] เพิ่ม route rule `/admin/delivery/update` → `delivery.view` ใน `lib/access-control.ts`
+- [x] เพิ่ม dropdown ปลายทางหลัง login ที่ `app/admin/login/LoginForm.tsx` (จดจำค่าล่าสุดใน `localStorage` คีย์ `admin_login_redirect`)
+- [x] สร้างหน้า `app/admin/(protected)/delivery/update/page.tsx` (Server Component, `force-dynamic`, เรียก `requirePermission("delivery.view")`)
+- [x] สร้าง `loading.tsx` ตามกฎ `.rules`
+- [x] สร้าง `MobileStatusTabs.tsx` — sticky tab filter ใช้หัวข้อเดียวกับ `/admin/delivery` (รอจัดส่ง+กำลังส่ง / รอจัดส่ง / กำลังส่ง / ส่งแล้ว)
+- [x] สร้าง `MobileDeliveryCard.tsx` — card UI พร้อม:
+  - กดเบอร์โทรเพื่อโทร (`tel:`)
+  - กดที่อยู่เพื่อเปิด Google Maps (text search)
+  - แสดง shipping method แบบ read-only
+  - แก้ tracking + ปุ่มบันทึก (เฉพาะเมื่อมีการเปลี่ยนแปลง) + ปุ่ม copy
+  - ปุ่มเปลี่ยนสถานะข้ามขั้นได้ทุก status ที่ไม่ใช่ปัจจุบัน
+  - Confirm dialog ก่อน mark "ส่งแล้ว" หรือย้อนสถานะ
+- [x] รองรับ light/dark mode
+
+### Files Touched
+- `lib/access-control.ts`
+- `app/admin/login/LoginForm.tsx`
+- `app/admin/(protected)/delivery/update/page.tsx` (ใหม่)
+- `app/admin/(protected)/delivery/update/loading.tsx` (ใหม่)
+- `app/admin/(protected)/delivery/update/MobileStatusTabs.tsx` (ใหม่)
+- `app/admin/(protected)/delivery/update/MobileDeliveryCard.tsx` (ใหม่)
+
+### Future Backlog (ยังไม่เริ่ม)
+- [ ] LIFF/LINE OA — ให้พนักงานเข้าผ่าน LINE โดยไม่ต้อง login ทุกครั้ง + ส่ง notification ให้ลูกค้าเมื่อ shipping status เปลี่ยน
+- [ ] `Sale.assignedTo` — เพิ่ม field ผู้รับผิดชอบจัดส่ง เพื่อกรองงานเฉพาะของพนักงานคนนั้น
+- [ ] `Customer.mapUrl` — field ใหม่สำหรับเก็บ Google Maps share link เพื่อ pin ตำแหน่งบ้านลูกค้าได้แม่นยำขึ้น (fallback ไป text-search ถ้าไม่ระบุ)
+- [x] เพิ่มลิงก์เข้าหน้า Mobile Delivery Update — ใส่ปุ่ม "มุมมองมือถือ" ในหน้า `/admin/delivery` (cross-link ระหว่าง desktop ↔ mobile, ส่งต่อ `?status=` filter ปัจจุบัน)
+- [ ] เพิ่ม Date Range Filter (วันนี้/เมื่อวาน/ทั้งหมด) ในหน้า Mobile Delivery Update ถ้าจำนวนรายการเริ่มเยอะ
+

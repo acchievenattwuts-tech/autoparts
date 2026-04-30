@@ -253,6 +253,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/lots", permission: "lot_reports.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
+  { prefix: "/admin/delivery/update", permission: "delivery.view" },
   { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/content/approval-queue", permission: "content.view" },
   { prefix: "/admin/content", permission: "content.view" },
