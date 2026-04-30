@@ -29,8 +29,8 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
-      // Allow images from self, Supabase storage, and data URIs
-      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
+      // Allow images from self, Supabase storage, analytics pixels, and data URIs
+      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com",
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
       "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
