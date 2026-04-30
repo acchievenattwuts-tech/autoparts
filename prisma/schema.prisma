@@ -555,6 +555,7 @@ model Sale {
   shippingMethod  ShippingMethod  @default(NONE)
   shippingStatus  ShippingStatus  @default(PENDING)
   trackingNo      String?
+  deliveryQueueOrder Int?
   creditTerm      Int?
   cashBankAccountId String?
   cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
@@ -566,6 +567,7 @@ model Sale {
   warranties      Warranty[]
 
   @@index([cashBankAccountId])
+  @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
 }
 
 model SaleItem {

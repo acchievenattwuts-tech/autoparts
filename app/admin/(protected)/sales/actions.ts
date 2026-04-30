@@ -1107,6 +1107,86 @@ export async function updateShippingStatus(
   }
 }
 
+// reorderDeliveryQueue - manual queue ordering for /admin/delivery/update
+
+const reorderQueueSchema = z.object({
+  saleIds: z.array(z.string().min(1)).min(1).max(100),
+});
+
+export async function reorderDeliveryQueue(
+  saleIds: string[],
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await requirePermission("delivery.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  const parsed = reorderQueueSchema.safeParse({ saleIds });
+  if (!parsed.success) return { error: "ข้อมูลไม่ถูกต้อง" };
+
+  try {
+    const requestContext = await getRequestContext();
+
+    const sales = await db.sale.findMany({
+      where: {
+        id:              { in: parsed.data.saleIds },
+        fulfillmentType: FulfillmentType.DELIVERY,
+        status:          "ACTIVE",
+      },
+      select: {
+        id:                 true,
+        saleNo:             true,
+        deliveryQueueOrder: true,
+      },
+    });
+
+    if (sales.length === 0) return { error: "ไม่พบใบขายที่ต้องจัดเรียง" };
+
+    const saleMap = new Map(sales.map((s) => [s.id, s]));
+    const orderedSales = parsed.data.saleIds
+      .map((id) => saleMap.get(id))
+      .filter((s): s is (typeof sales)[number] => Boolean(s));
+
+    const before = orderedSales.map((s) => ({
+      saleNo: s.saleNo,
+      order:  s.deliveryQueueOrder,
+    }));
+    const after = orderedSales.map((s, index) => ({
+      saleNo: s.saleNo,
+      order:  index + 1,
+    }));
+
+    await dbTx(async (tx) => {
+      for (let i = 0; i < orderedSales.length; i++) {
+        const sale = orderedSales[i];
+        const nextOrder = i + 1;
+        if (sale.deliveryQueueOrder === nextOrder) continue;
+        await tx.sale.update({
+          where: { id: sale.id },
+          data:  { deliveryQueueOrder: nextOrder },
+        });
+      }
+    });
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action:     AuditAction.UPDATE,
+      entityType: "Sale",
+      entityId:   null,
+      entityRef:  `delivery-queue:${orderedSales.length}`,
+      before,
+      after,
+      meta:       { source: "delivery.queue-reorder", count: orderedSales.length },
+    });
+
+    revalidatePath("/admin/delivery");
+    revalidatePath("/admin/delivery/update");
+    return { success: true };
+  } catch (err) {
+    console.error("[reorderDeliveryQueue]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
 // fetchProductLots - for SaleForm auto-allocate
 
 export async function fetchProductLots(

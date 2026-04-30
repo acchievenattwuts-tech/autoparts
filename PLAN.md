@@ -5120,3 +5120,58 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] เพิ่มลิงก์เข้าหน้า Mobile Delivery Update — ใส่ปุ่ม "มุมมองมือถือ" ในหน้า `/admin/delivery` (cross-link ระหว่าง desktop ↔ mobile, ส่งต่อ `?status=` filter ปัจจุบัน)
 - [ ] เพิ่ม Date Range Filter (วันนี้/เมื่อวาน/ทั้งหมด) ในหน้า Mobile Delivery Update ถ้าจำนวนรายการเริ่มเยอะ
 
+---
+
+## Phase 8.1 — Mobile Delivery Queue Redesign (Driver App Style) (2026-04-30)
+
+**Goal:** ออกแบบหน้า `/admin/delivery/update` ใหม่ให้ใกล้เคียง UX/UI แอปคนขับ (Grab Driver / Lalamove) — รองรับโทรศัพท์ + iPad โดยคง logic เดิมทั้งหมด
+
+### Scope
+- ไม่แตะ `updateShippingStatus` Server Action — reuse logic เดิม
+- ไม่แตะหน้า `/admin/delivery` desktop — ยังใช้งานได้ปกติ
+- ไม่เพิ่ม permission key ใหม่ — reuse `delivery.view` + `delivery.update`
+
+### Schema Change
+- [x] เพิ่ม field `Sale.deliveryQueueOrder Int?` (nullable) — เก็บลำดับคิวที่พนักงานจัดเอง
+- [x] เพิ่ม `@@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])` — ครอบคลุม query เดิม + new ordering
+- [x] `prisma db push` ผ่าน Supabase pooler
+
+### Server Action ใหม่
+- [x] `reorderDeliveryQueue(saleIds: string[])` ใน `app/admin/(protected)/sales/actions.ts`
+  - `requirePermission("delivery.update")`
+  - Zod validate (array of cuid, 1-100 items)
+  - กรองเฉพาะ Sale ที่ ACTIVE + DELIVERY ก่อนเซต `deliveryQueueOrder = index + 1`
+  - `db.$transaction` — skip update ถ้าค่าเดิมตรงกับ index ใหม่
+  - Audit Log 1 entry ต่อการจัดคิว (ไม่ใช่ต่อใบ) — `meta: { source: "delivery.queue-reorder", count: N }`, `before`/`after` เก็บ saleNo + order pair
+  - `revalidatePath("/admin/delivery")` + `revalidatePath("/admin/delivery/update")`
+
+### Dependency
+- [x] เพิ่ม `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+
+### UX/UI ใหม่
+- [x] **Driver App style card:** queue badge `01`/`02`/`03` ด้านซ้าย, status dot, ลูกค้า + ยอด, quick actions `📞 โทร` + `🗺️ แผนที่` แยกเป็นปุ่ม grid 2 คอลัมน์, status buttons ขนาดใหญ่ touch-friendly
+- [x] **Tab counts:** "ทั้งหมด N · รอจัดส่ง N · กำลังส่ง N · ส่งแล้ว N" — query ผ่าน `db.sale.groupBy` ขนาน `Promise.all` กับ `findMany`
+- [x] **Reorder mode:** ปุ่ม "จัดเรียงคิว" ที่หัวมุมขวาบน → เข้าสู่ drag mode
+  - ลากการ์ดผ่าน `@dnd-kit` (PointerSensor 6px / TouchSensor delay 200ms)
+  - ปุ่มลูกศร ↑↓ บนแต่ละการ์ดเป็น fallback (เลื่อนทีละขั้น)
+  - ปุ่ม "เสร็จสิ้น" บันทึก / "ยกเลิก" ทิ้งการเปลี่ยนแปลง
+- [x] **Pull-to-refresh:** custom touch hook (ไม่ใช้ library) — ดึงลง > 80px ที่ scrollTop=0 → `router.refresh()`
+- [x] **Sort default:** `deliveryQueueOrder ASC NULLS LAST, saleDate DESC, saleNo DESC` — ใบที่จัดคิวแล้วขึ้นก่อน, ใบใหม่ตกท้ายตามวันที่
+- [x] รองรับ light + dark mode พร้อมกัน
+
+### Files Touched
+- `prisma/schema.prisma` — เพิ่ม field + compound index
+- `app/admin/(protected)/sales/actions.ts` — เพิ่ม `reorderDeliveryQueue`
+- `app/admin/(protected)/delivery/update/page.tsx` — `Promise.all` query + ส่งข้อมูลให้ Client wrapper
+- `app/admin/(protected)/delivery/update/MobileDeliveryQueue.tsx` (ใหม่) — Client wrapper, pull-to-refresh, DnD context, mode state
+- `app/admin/(protected)/delivery/update/QueueHeader.tsx` (ใหม่) — sticky header + reorder toggle
+- `app/admin/(protected)/delivery/update/MobileStatusTabs.tsx` — แสดง count บน tab
+- `app/admin/(protected)/delivery/update/MobileDeliveryCard.tsx` — redesign ใหม่ + รองรับ drag/move modes
+- `app/admin/(protected)/delivery/update/loading.tsx` — skeleton ตรงกับ layout ใหม่
+- `package.json` — `@dnd-kit/*`
+
+### Performance
+- `Promise.all([findMany, groupBy])` รันคู่ขนาน → groupBy ไม่บวก latency
+- compound index ใหม่ครอบคลุม WHERE + ORDER BY → no full scan
+- Pull-to-refresh เรียก `router.refresh()` (Server Component re-fetch ใน background, ไม่ reload หน้า)
+
