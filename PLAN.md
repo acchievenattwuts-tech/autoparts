@@ -5183,7 +5183,7 @@ Implementation progress (2026-04-28, Batch A + B):
 
 ### UX/UI ใหม่
 - [x] **Driver App style card:** queue badge `01`/`02`/`03` ด้านซ้าย, status dot, ลูกค้า + ยอด, quick actions `📞 โทร` + `🗺️ แผนที่` แยกเป็นปุ่ม grid 2 คอลัมน์, status buttons ขนาดใหญ่ touch-friendly
-- [x] **Tab counts:** "ทั้งหมด N · รอจัดส่ง N · กำลังส่ง N · ส่งแล้ว N" — query ผ่าน `db.sale.groupBy` ขนาน `Promise.all` กับ `findMany`
+- [x] **Tab counts:** "รอจัดส่ง + กำลังส่ง N · รอจัดส่ง N · กำลังส่ง N · ส่งแล้ว" — query ผ่าน `db.sale.groupBy` ขนาน `Promise.all` กับ `findMany`; ไม่ query/ส่ง counter ของปุ่ม `ส่งแล้ว` เพราะไม่ได้แสดงใน UX มือถือ
 - [x] **Reorder mode:** ปุ่ม "จัดเรียงคิว" ที่หัวมุมขวาบน → เข้าสู่ drag mode
   - ลากการ์ดผ่าน `@dnd-kit` (PointerSensor 6px / TouchSensor delay 200ms)
   - ปุ่มลูกศร ↑↓ บนแต่ละการ์ดเป็น fallback (เลื่อนทีละขั้น)

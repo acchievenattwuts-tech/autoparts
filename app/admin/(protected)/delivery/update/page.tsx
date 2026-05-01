@@ -68,7 +68,7 @@ const DeliveryUpdatePage = async ({
       where: {
         fulfillmentType: "DELIVERY",
         status:          "ACTIVE",
-        shippingStatus:  { in: ["PENDING", "OUT_FOR_DELIVERY", "DELIVERED"] },
+        shippingStatus:  { in: ["PENDING", "OUT_FOR_DELIVERY"] },
       },
       _count: { _all: true },
     }),
@@ -77,12 +77,12 @@ const DeliveryUpdatePage = async ({
   const counts = {
     PENDING:          0,
     OUT_FOR_DELIVERY: 0,
-    DELIVERED:        0,
   };
   for (const group of statusGroups) {
-    counts[group.shippingStatus] = group._count._all;
+    if (group.shippingStatus === "PENDING" || group.shippingStatus === "OUT_FOR_DELIVERY") {
+      counts[group.shippingStatus] = group._count._all;
+    }
   }
-  const totalActive = counts.PENDING + counts.OUT_FOR_DELIVERY;
 
   const items = sales.map((s) => ({
     saleId:             s.id,
@@ -112,10 +112,8 @@ const DeliveryUpdatePage = async ({
     <MobileDeliveryQueue
       items={items}
       counts={{
-        all:              totalActive,
         PENDING:          counts.PENDING,
         OUT_FOR_DELIVERY: counts.OUT_FOR_DELIVERY,
-        DELIVERED:        counts.DELIVERED,
       }}
       currentFilter={statusFilter ?? null}
     />

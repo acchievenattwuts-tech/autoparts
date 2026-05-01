@@ -53,10 +53,8 @@ export type DeliveryProofSummary = {
 };
 
 type Counts = {
-  all:              number;
   PENDING:          number;
   OUT_FOR_DELIVERY: number;
-  DELIVERED:        number;
 };
 
 type Props = {
