@@ -3668,18 +3668,18 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 
 ### 📅 Week 1 — April 27–May 3 [Monitoring Setup, ~4 hours]
 
-- [ ] **April 27** — Verify Google Search Console property for sriwanparts.com
-  - Check Coverage report, Mobile Usability, Core Web Vitals tabs
-  - Set up email alerts for critical issues
-  - Confirm sitemap at `/sitemap.xml` is submitted and indexed
+- [x] **April 27** — Verify Google Search Console property for sriwanparts.com ✅ DONE May 1
+  - Check Coverage report, Mobile Usability, Core Web Vitals tabs ✅
+  - Set up email alerts for critical issues ✅
+  - Confirm sitemap at `/sitemap.xml` is submitted and indexed ✅
 - [x] **April 28** — Set up Google Analytics 4
   - Create GA4 property → get Measurement ID
   - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example` ✅
   - Implement `next/script` with `strategy="afterInteractive"` ✅ (`components/shared/GoogleAnalytics.tsx`)
   - Add GA4 bootstrap queue + App Router page_view tracking ✅ (`components/shared/GoogleAnalytics.tsx`)
   - Emit conversion candidate events: LINE/phone `qualify_lead`, product `product_page_view` ✅
-  - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view
-  - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local)
+  - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view ✅ DONE May 1
+  - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local) ✅ DONE May 1
 - [x] **April 29-30** — Verify caching headers on Vercel
   - `curl -I https://sriwanparts.com` → check Cache-Control
   - `curl -I https://sriwanparts.com/_next/static/` → should be `max-age=31536000`
@@ -3704,10 +3704,12 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Implemented as server-rendered text only; no new client component, image, script, or layout-shifting asset
 
 **Content (writing task):**
-- [ ] **May 6-7** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"
-  - 2,000 words | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
-- [ ] **May 8-10** — Article #2: "อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูก"
-  - 2,500 words | Target: "อะไหล่แอร์ของแท้เทียม" | CTA: "ติดต่อเลือก"
+- [x] **May 1** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุหลักและแนวทางแก้ไขก่อนเปลี่ยนอะไหล่" ✅ DONE May 1
+  - slug: `car-ac-not-cold-5-main-causes-and-fixes` | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
+  - Hybrid (option 3): new angle (5 causes + fixes), keeps existing `car-air-not-cold-what-to-check` (commercial intent) untouched
+- [x] **May 1** — Article #2: "อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูกก่อนซื้อจริง" ✅ DONE May 1
+  - slug: `how-to-spot-genuine-vs-aftermarket-ac-parts` | Target: "อะไหล่แอร์ของแท้เทียม" | CTA: "ติดต่อเลือก"
+  - Hybrid (option 3): new angle (visual/spec identification), keeps existing `genuine-vs-aftermarket-auto-ac-parts` (definitions) untouched
 
 **Deploy:** May 7 (categories), May 10 (articles) | **Monitor until:** May 14
 
