@@ -284,20 +284,29 @@
 
 ---
 
-### 🚧 Phase 4.2-H — Delivery Commission Settlement (กำลังทำ)
+### ✅ Phase 4.2-H — Delivery Commission Settlement (เสร็จแล้ว — commit `8476325`)
 
 > **ที่มา:** เพิ่มระบบทำจ่ายค่าส่งให้พนักงานส่งจากคิวจัดส่งที่ส่งสำเร็จแล้ว โดยยึดเปอร์เซ็นต์จากค่าส่งและบันทึกเป็นค่าใช้จ่ายจริง
 > **หลักการบัญชี:** `shippingFee` ที่เก็บจากลูกค้าเป็นรายได้ค่าจัดส่ง ส่วนยอดทำจ่ายพนักงานส่งเป็นค่าใช้จ่าย ทำให้กำไรสุทธิถูกหักผ่าน Expense/CashBank/FactProfit และไม่ปนกับต้นทุนสินค้า
 
-- [x] ออกแบบ schema สำหรับ `deliveryStaffId`, รอบทำจ่ายค่าส่ง, รายการบิลต่อรอบ และ flag รหัสค่าใช้จ่ายค่าส่ง
-- [ ] ตั้งค่าเปอร์เซ็นต์ค่าส่งเริ่มต้นใน `/admin/settings/company`
-- [ ] เพิ่ม checkbox ในหน้ารหัสค่าใช้จ่ายให้เลือกได้เพียง 1 รหัสสำหรับเมนูทำจ่ายค่าส่ง
-- [ ] เลือก/แก้ไขพนักงานส่งจากหน้า delivery queue และ mobile delivery update
-- [ ] เพิ่มเมนู `/admin/delivery-commissions` สำหรับ preview/generate/cancel รอบทำจ่าย
-- [ ] เมื่อ generate ให้สร้าง Expense, CashBankMovement, FactProfit, AuditLog และกันบิลซ้ำ
-- [ ] เมื่อ cancel รอบทำจ่าย ให้ cancel Expense ที่เกี่ยวข้องและคืนสถานะบิลให้พร้อมทำจ่ายใหม่
-- [ ] ปรับ FactProfit ให้แยกรายได้ค่าจัดส่งออกจากกำไรสินค้ารายบรรทัด
-- [ ] ตรวจ dashboard กำไรสุทธิ รายงานค่าใช้จ่าย cash-bank ledger summary/export และ Quick Search ให้ครอบคลุม
+- [x] ออกแบบ schema สำหรับ `Sale.deliveryStaffId`, `DeliveryCommissionRun`, `DeliveryCommissionItem`, และ flag `ExpenseCode.isDeliveryCommission`
+- [x] ตั้งค่าเปอร์เซ็นต์ค่าส่งเริ่มต้นใน `/admin/settings/company` (`delivery_commission_percent`)
+- [x] เพิ่ม checkbox ในหน้ารหัสค่าใช้จ่ายให้เลือกได้เพียง 1 รหัสสำหรับเมนูทำจ่ายค่าส่ง
+- [x] ปรับผู้ส่งให้บันทึกอัตโนมัติจาก user ที่ login ตอนเปลี่ยนสถานะเป็น `DELIVERED` และไม่ให้แก้เองหลังส่งแล้ว
+- [x] แสดงผู้ส่งแบบ read-only ในหน้า `/admin/delivery` และ `/admin/delivery/update`
+- [x] เพิ่มเมนู `/admin/delivery-commissions` สำหรับ preview/generate/cancel รอบทำจ่าย
+- [x] เมื่อ generate สร้าง Expense, CashBankMovement, FactProfit, AuditLog และกันบิลซ้ำด้วย active run relation
+- [x] เมื่อ cancel รอบทำจ่าย ให้ cancel Expense ที่เกี่ยวข้อง, ล้าง CashBankMovement, rebuild FactProfit และเปิดบิลให้พร้อมทำจ่ายใหม่
+- [x] ปรับ FactProfit ให้แยกรายได้ค่าจัดส่งออกจากรายได้สินค้า โดย `ค่าจัดส่ง` เป็น line แยก และค่าทำจ่ายพนักงานลดกำไรสุทธิผ่าน Expense
+- [x] ตรวจผลกระทบ LINE Daily Summary: กำไรขั้นต้นยังรวมค่าจัดส่ง, ค่าทำจ่ายเข้า `ค่าใช้จ่ายวันนี้`, ถ้าต้องการกำไรสุทธิต้องเพิ่มบรรทัด `netProfitAmount` แยก
+- [x] ตรวจ dashboard กำไรสุทธิ รายงานค่าใช้จ่าย cash-bank ledger summary/export และ Quick Search ให้ครอบคลุม
+- [x] เปิด RLS ให้ `public.DeliveryCommissionRun` และ `public.DeliveryCommissionItem` พร้อม script `prisma/scripts/enable-delivery-commission-rls.ts`
+- [x] Verification: `npx prisma generate`, `npx prisma db push`, `npx tsc --noEmit`, `npm run build` ผ่าน
+
+**ข้อควรทราบหลังจบ phase**
+- รายได้ค่าจัดส่งจากลูกค้ายังอยู่ในกำไรขั้นต้นของวันนั้น แต่ถูกแยกเป็น line `ค่าจัดส่ง` ไม่ปนกับสินค้า
+- ค่าทำจ่ายผู้ส่งเป็น Expense จึงลดกำไรสุทธิ ไม่ลดกำไรขั้นต้นสินค้าโดยตรง
+- LINE Daily Summary ปัจจุบันยังแสดง “กำไรขั้นต้น” และ “ค่าใช้จ่ายวันนี้” แต่ยังไม่แสดง “กำไรสุทธิวันนี้” เป็นบรรทัดแยก
 
 ---
 
