@@ -1,0 +1,16 @@
+
+> autoparts@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.11:3000
+- Environments: .env.local
+✓ Ready in 1650ms
+- Experiments (use with caution):
+  · cpus: 1
+  · serverActions
+  · staticGenerationMaxConcurrency: 1
+  · staticGenerationMinPagesPerWorker: 80
+  · staticGenerationRetryCount: 1
+

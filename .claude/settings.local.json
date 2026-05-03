@@ -136,7 +136,22 @@
       "Bash(node -e \"require\\('dotenv'\\).config\\({path:'.env.local'}\\); const {execSync}=require\\('child_process'\\); console.log\\(execSync\\('npx prisma db push', {env:{...process.env}, encoding:'utf8'}\\)\\);\")",
       "Bash(curl -X POST https://www.sriwanparts.com/api/revalidate/storefront -H \"Content-Type: application/json\" -H \"Authorization: Bearer e1e3c4dec7a0960bb41b67e159e90df7\" -d '{}')",
       "Bash(xargs file *)",
-      "Bash(find app *)"
+      "Bash(find app *)",
+      "WebFetch(domain:sriwanparts.com)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(gh pr *)",
+      "Bash(pkill -f \"next build\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(curl -s http://localhost:3001/admin/reports/ar -H \"Cookie: authjs.session-token=test\")",
+      "Bash(nohup npm *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -I http://localhost:3000/admin/reports/ar)",
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/test-ar-ap.sh)",
+      "Bash(bash /tmp/test-ar-ap.sh)",
+      "Bash(awk '{print \"  ✅ \" $NF \" \\(\" $5 \" bytes\\)\"}')",
+      "Bash(git reset *)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
