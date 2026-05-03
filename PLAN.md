@@ -303,6 +303,15 @@
 - [x] เปิด RLS ให้ `public.DeliveryCommissionRun` และ `public.DeliveryCommissionItem` พร้อม script `prisma/scripts/enable-delivery-commission-rls.ts`
 - [x] Verification: `npx prisma generate`, `npx prisma db push`, `npx tsc --noEmit`, `npm run build` ผ่าน
 
+**Hardening update (2026-05-03)**
+- [x] เพิ่ม DB guard กันบิลซ้ำข้ามรอบทำจ่ายด้วย `DeliveryCommissionItem.activeSaleId @unique` และให้ `createDeliveryCommissionRun` re-check รายการใน transaction เดียวก่อนสร้างเอกสาร
+- [x] เพิ่ม retry รอบสร้างเลขเอกสารทำจ่าย/ค่าใช้จ่ายเมื่อชนกัน และจำกัด batch ทำจ่ายที่ 200 บิลต่อครั้ง พร้อมแจ้งเตือนให้กรองช่วงวันที่เพิ่มเมื่อเกิน limit
+- [x] เพิ่ม `ExpenseCode.deliveryCommissionSlot @unique` เพื่อบังคับให้มีรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงานได้เพียง 1 รหัสในเวลาเดียวกัน
+- [x] หน้า `/admin/delivery-commissions` เปลี่ยนเป็น SearchableSelect + client action feedback สำหรับ create/cancel และ export route แยก query proof / payout เพื่อลด relation fan-out
+- [x] หน้า `/admin/delivery/update` mobile เพิ่ม permission-aware UI, refresh หลังบันทึก, delivered date filter, load more, และบังคับ reorder ได้เฉพาะเมื่อโหลดคิวเปิดครบทั้งชุด
+- [x] `updateShippingStatus` stamp ผู้ส่งจาก user ที่ login ตอนเปลี่ยนเป็น `DELIVERED` แบบแก้ย้อนหลังไม่ได้ และ block การย้อนสถานะถ้ามี active delivery commission payout แล้ว
+- [x] เพิ่ม index ที่ใช้จริงกับ delivery/product filters: `Sale(deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo)`, `Product(categoryId)`, `Product(brandId)`, `ProductCarModel(carModelId, productId)`, `CarModel(carBrandId)`
+
 **ข้อควรทราบหลังจบ phase**
 - รายได้ค่าจัดส่งจากลูกค้ายังอยู่ในกำไรขั้นต้นของวันนั้น แต่ถูกแยกเป็น line `ค่าจัดส่ง` ไม่ปนกับสินค้า
 - ค่าทำจ่ายผู้ส่งเป็น Expense จึงลดกำไรสุทธิ ไม่ลดกำไรขั้นต้นสินค้าโดยตรง

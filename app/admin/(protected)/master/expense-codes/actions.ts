@@ -13,6 +13,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateExpenseCodeCode } from "@/lib/entity-code";
 
+const DELIVERY_COMMISSION_SLOT = "delivery-commission";
+
 const expenseCodeSchema = z.object({
   name:        z.string().min(1, "กรุณาระบุชื่อ").max(100),
   description: z.string().max(200).optional(),
@@ -75,7 +77,13 @@ export async function createExpenseCode(
     );
     if (deliveryCommissionError) return { error: deliveryCommissionError };
 
-    const created = await db.expenseCode.create({ data: { code, ...parsed.data } });
+    const created = await db.expenseCode.create({
+      data: {
+        code,
+        ...parsed.data,
+        deliveryCommissionSlot: parsed.data.isDeliveryCommission ? DELIVERY_COMMISSION_SLOT : null,
+      },
+    });
     const afterSnapshot = await getExpenseCodeAuditSnapshot(created.id);
     if (afterSnapshot) {
       await safeWriteAuditLog({
@@ -130,6 +138,7 @@ export async function updateExpenseCode(
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         isDeliveryCommission: parsed.data.isDeliveryCommission,
+        deliveryCommissionSlot: parsed.data.isDeliveryCommission ? DELIVERY_COMMISSION_SLOT : null,
       },
     });
     const afterSnapshot = await getExpenseCodeAuditSnapshot(id);

@@ -8,6 +8,7 @@ type Props = {
   mode:        Mode;
   totalCount:  number;
   isPending:   boolean;
+  canReorder:  boolean;
   onEnter:     () => void;
   onCancel:    () => void;
   onSave:      () => void;
@@ -18,6 +19,7 @@ const QueueHeader = ({
   mode,
   totalCount,
   isPending,
+  canReorder,
   onEnter,
   onCancel,
   onSave,
@@ -73,7 +75,7 @@ const QueueHeader = ({
       <button
         type="button"
         onClick={onEnter}
-        disabled={totalCount < 2}
+        disabled={!canReorder}
         className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-400 dark:hover:text-sky-200"
       >
         <GripVertical size={16} />

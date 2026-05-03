@@ -31,6 +31,7 @@ export type DeliveryProofSheetSale = {
 
 type Props = {
   selectedSale: DeliveryProofSheetSale | null;
+  canUpdate: boolean;
   onClose:      () => void;
 };
 
@@ -75,7 +76,7 @@ const formatFileSize = (size: number) => {
   })} MB`;
 };
 
-const DeliveryProofSheet = ({ selectedSale, onClose }: Props) => {
+const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Props) => {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);

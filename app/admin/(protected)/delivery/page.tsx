@@ -23,39 +23,34 @@ const DeliveryPage = async ({
       ? status
       : undefined;
 
-  const [sales, deliveryStaffOptions] = await Promise.all([
-    db.sale.findMany({
-      where: {
-        fulfillmentType: "DELIVERY",
-        status:          "ACTIVE",
-        ...(statusFilter
-          ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
-          : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
-      },
-      orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
-      take: 100,
-      select: {
-        id:              true,
-        saleNo:          true,
-        saleDate:        true,
-        customerName:    true,
-        shippingAddress: true,
-        shippingStatus:  true,
-        shippingMethod:  true,
-        trackingNo:      true,
-        netAmount:       true,
-        paymentType:     true,
-        amountRemain:    true,
-        deliveryStaffId: true,
-        _count:          { select: { deliveryProofs: true } },
-        customer:        { select: { name: true, phone: true } },
-      },
-    }),
-    db.user.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, email: true },
-    }),
-  ]);
+  const sales = await db.sale.findMany({
+    where: {
+      fulfillmentType: "DELIVERY",
+      status: "ACTIVE",
+      ...(statusFilter
+        ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
+        : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
+    },
+    orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
+    take: 100,
+    select: {
+      id: true,
+      saleNo: true,
+      saleDate: true,
+      customerName: true,
+      shippingAddress: true,
+      shippingStatus: true,
+      shippingMethod: true,
+      trackingNo: true,
+      netAmount: true,
+      paymentType: true,
+      amountRemain: true,
+      deliveryStaffId: true,
+      _count: { select: { deliveryProofs: true } },
+      customer: { select: { name: true, phone: true } },
+      deliveryStaff: { select: { name: true, email: true } },
+    },
+  });
 
   const tabs = [
     { label: "รอจัดส่ง + กำลังส่ง", value: undefined },
@@ -149,10 +144,9 @@ const DeliveryPage = async ({
                     </td>
                     <td className="py-3 px-4">
                       <DeliveryStaffPicker
-                        saleId={s.id}
                         shippingStatus={s.shippingStatus}
-                        currentDeliveryStaffId={s.deliveryStaffId}
-                        staffOptions={deliveryStaffOptions}
+                        deliveryStaffName={s.deliveryStaff?.name ?? null}
+                        deliveryStaffEmail={s.deliveryStaff?.email ?? null}
                       />
                     </td>
                     <td className="py-3 px-4">

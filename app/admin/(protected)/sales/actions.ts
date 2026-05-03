@@ -1164,6 +1164,27 @@ export async function getLatestDeliveryProof(
   }
 }
 
+async function getSaleDeliveryAuditSnapshot(saleId: string) {
+  const sale = await db.sale.findUnique({
+    where: { id: saleId },
+    select: {
+      id: true,
+      saleNo: true,
+      shippingStatus: true,
+      shippingMethod: true,
+      trackingNo: true,
+      deliveryStaffId: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!sale) {
+    return null;
+  }
+
+  return sale;
+}
+
 export async function saveDeliveryProof(
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
@@ -1226,6 +1247,11 @@ export async function saveDeliveryProof(
     if (photoUpload.error) return { error: photoUpload.error };
 
     const requestContext = await getRequestContext();
+    const openQueueWhere = {
+      fulfillmentType: FulfillmentType.DELIVERY,
+      status: "ACTIVE" as const,
+      shippingStatus: { in: [ShippingStatus.PENDING, ShippingStatus.OUT_FOR_DELIVERY] },
+    };
     const proof = await db.deliveryProof.create({
       data: {
         saleId:            sale.id,
@@ -1292,15 +1318,28 @@ export async function updateShippingStatus(
 
   try {
     const requestContext = await getRequestContext();
+    const existingSnapshot = await getSaleDeliveryAuditSnapshot(saleId);
+    if (!existingSnapshot) {
+      return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
+    }
     const sale = await db.sale.findUnique({
       where: { id: saleId },
       select: {
         id: true,
         status: true,
         fulfillmentType: true,
+        shippingStatus: true,
         shippingMethod: true,
         trackingNo: true,
         deliveryStaffId: true,
+        deliveryCommissionItems: {
+          where: {
+            activeSaleId: saleId,
+            run: { status: "ACTIVE" },
+          },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
 
@@ -1310,6 +1349,16 @@ export async function updateShippingStatus(
 
     if (sale.fulfillmentType !== FulfillmentType.DELIVERY) {
       return { error: "ใบขายนี้ไม่ได้เป็นรายการจัดส่ง" };
+    }
+
+    if (
+      sale.deliveryCommissionItems.length > 0 &&
+      parsed.data.shippingStatus !== sale.shippingStatus
+    ) {
+      return {
+        error:
+          "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนสถานะ กรุณายกเลิกเอกสารทำจ่ายก่อน",
+      };
     }
 
     const nextShippingMethod = parsed.data.shippingMethod ?? sale.shippingMethod;
@@ -1324,17 +1373,28 @@ export async function updateShippingStatus(
     const shouldStampDeliveryStaff =
       parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId;
 
-    const beforeSnapshot = await getSaleAuditSnapshot(saleId);
+    const beforeSnapshot = existingSnapshot;
     await db.sale.update({
       where: { id: saleId },
       data: {
         shippingStatus: parsed.data.shippingStatus,
         ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
-        ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
       },
     });
-    const afterSnapshot = await getSaleAuditSnapshot(saleId);
+    if (shouldStampDeliveryStaff) {
+      await db.sale.updateMany({
+        where: {
+          id: saleId,
+          deliveryStaffId: null,
+        },
+        data: {
+          deliveryStaffId: session.user.id,
+        },
+      });
+    }
+
+    const afterSnapshot = await getSaleDeliveryAuditSnapshot(saleId);
     if (beforeSnapshot && afterSnapshot) {
       const diff = diffEntity(beforeSnapshot, afterSnapshot);
       await safeWriteAuditLog({
@@ -1351,6 +1411,7 @@ export async function updateShippingStatus(
     }
     revalidatePath("/admin/delivery");
     revalidatePath("/admin/delivery/update");
+    revalidatePath("/admin/delivery-commissions");
     revalidatePath(`/admin/sales/${saleId}`);
     return { success: true };
   } catch (err) {
@@ -1376,21 +1437,35 @@ export async function reorderDeliveryQueue(
 
   try {
     const requestContext = await getRequestContext();
+    const openQueueWhere = {
+      fulfillmentType: FulfillmentType.DELIVERY,
+      status: "ACTIVE" as const,
+      shippingStatus: { in: [ShippingStatus.PENDING, ShippingStatus.OUT_FOR_DELIVERY] },
+    };
 
-    const sales = await db.sale.findMany({
-      where: {
-        id:              { in: parsed.data.saleIds },
-        fulfillmentType: FulfillmentType.DELIVERY,
-        status:          "ACTIVE",
-      },
-      select: {
-        id:                 true,
-        saleNo:             true,
-        deliveryQueueOrder: true,
-      },
-    });
+    const [sales, totalOpenQueueCount] = await Promise.all([
+      db.sale.findMany({
+        where: {
+          id: { in: parsed.data.saleIds },
+          ...openQueueWhere,
+        },
+        select: {
+          id: true,
+          saleNo: true,
+          deliveryQueueOrder: true,
+        },
+      }),
+      db.sale.count({ where: openQueueWhere }),
+    ]);
 
     if (sales.length === 0) return { error: "ไม่พบใบขายที่ต้องจัดเรียง" };
+
+    if (sales.length !== totalOpenQueueCount || parsed.data.saleIds.length !== totalOpenQueueCount) {
+      return {
+        error:
+          "กรุณาเปิดคิวจัดส่งหลักและโหลดรายการให้ครบก่อนจัดลำดับ",
+      };
+    }
 
     const saleMap = new Map(sales.map((s) => [s.id, s]));
     const orderedSales = parsed.data.saleIds

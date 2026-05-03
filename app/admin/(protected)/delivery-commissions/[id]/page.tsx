@@ -10,7 +10,7 @@ import { DocStatus } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateOnlyForInput, formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 
-import { cancelDeliveryCommissionRun } from "../actions";
+import CancelDeliveryCommissionButton from "../CancelDeliveryCommissionButton";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -23,11 +23,6 @@ function money(value: number): string {
 export default async function DeliveryCommissionRunDetailPage({ params }: PageProps) {
   await requirePermission("delivery_commissions.view");
   const { id } = await params;
-
-  const cancelRunAction = async (formData: FormData) => {
-    "use server";
-    await cancelDeliveryCommissionRun(formData);
-  };
 
   const { role, permissions } = await getSessionPermissionContext();
   const canCancel = hasPermissionAccess(role, permissions, "delivery_commissions.cancel");
@@ -88,23 +83,19 @@ export default async function DeliveryCommissionRunDetailPage({ params }: PagePr
             {isActive ? "ใช้งาน" : "ยกเลิก"}
           </span>
           {canCancel && isActive ? (
-            <form action={cancelRunAction}>
-              <input type="hidden" name="runId" value={run.id} />
-              <input type="hidden" name="cancelNote" value="ยกเลิกจากหน้ารายละเอียดทำจ่าย" />
-              <button
-                type="submit"
-                className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-400/20 dark:text-red-300 dark:hover:bg-red-400/10"
-              >
-                ยกเลิกเอกสาร
-              </button>
-            </form>
+            <CancelDeliveryCommissionButton
+              runId={run.id}
+              cancelNote="ยกเลิกจากหน้ารายละเอียดทำจ่าย"
+              redirectTo={`/admin/delivery-commissions?tab=payouts&highlight=${run.id}`}
+              className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-400/20 dark:text-red-300 dark:hover:bg-red-400/10"
+            />
           ) : null}
         </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <InfoCard label="วันที่จ่าย" value={formatDateOnlyForInput(run.payDate)} />
-        <InfoCard label="พนักงานส่ง" value={`${run.deliveryStaff.name}`} sub={run.deliveryStaff.email} />
+        <InfoCard label="พนักงานส่ง" value={run.deliveryStaff.name} sub={run.deliveryStaff.email} />
         <InfoCard label="% ที่ใช้" value={`${Number(run.commissionPercent)}%`} />
         <InfoCard
           label="ช่วงบิล"

@@ -96,22 +96,41 @@ export async function GET(request: Request) {
       paymentType: true,
       shippingStatus: true,
       deliveryStaff: { select: { name: true } },
-      deliveryProofs: {
-        orderBy: { capturedAt: "desc" },
-        take: 1,
-        select: { capturedAt: true },
-      },
-      deliveryCommissionItems: {
-        where: { run: { status: DocStatus.ACTIVE } },
-        take: 1,
-        select: {
-          commissionAmount: true,
-          commissionPercent: true,
-          run: { select: { runNo: true } },
-        },
-      },
     },
   });
+
+  const saleIds = sales.map((sale) => sale.id);
+  const [latestProofs, activeCommissionItems] = await Promise.all([
+    saleIds.length === 0
+      ? Promise.resolve([])
+      : db.deliveryProof.findMany({
+          where: { saleId: { in: saleIds } },
+          orderBy: [{ saleId: "asc" }, { capturedAt: "desc" }],
+          distinct: ["saleId"],
+          select: {
+            saleId: true,
+            capturedAt: true,
+          },
+        }),
+    saleIds.length === 0
+      ? Promise.resolve([])
+      : db.deliveryCommissionItem.findMany({
+          where: {
+            saleId: { in: saleIds },
+            run: { status: DocStatus.ACTIVE },
+          },
+          orderBy: [{ saleId: "asc" }, { createdAt: "desc" }],
+          distinct: ["saleId"],
+          select: {
+            saleId: true,
+            commissionAmount: true,
+            commissionPercent: true,
+            run: { select: { runNo: true } },
+          },
+        }),
+  ]);
+  const proofMap = new Map(latestProofs.map((proof) => [proof.saleId, proof]));
+  const payoutMap = new Map(activeCommissionItems.map((item) => [item.saleId, item]));
 
   const header = csvRow([
     "ลำดับ",
@@ -134,8 +153,8 @@ export async function GET(request: Request) {
     const shippingFee = Number(sale.shippingFee ?? 0);
     const netAmount = Number(sale.netAmount);
     const amountRemain = Number(sale.amountRemain);
-    const proof = sale.deliveryProofs[0];
-    const paid = sale.deliveryCommissionItems[0];
+    const proof = proofMap.get(sale.id);
+    const paid = payoutMap.get(sale.id);
     const percent = paid ? Number(paid.commissionPercent) : currentPercent;
     const commissionAmount = paid
       ? Number(paid.commissionAmount)

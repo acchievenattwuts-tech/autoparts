@@ -291,6 +291,7 @@ model CarModel {
   products   ProductCarModel[]
 
   @@unique([name, carBrandId])
+  @@index([carBrandId])
 }
 
 model Category {
@@ -373,6 +374,9 @@ model Product {
   saleItems           SaleItem[]
   stockCards          StockCard[]
   warranties          Warranty[]
+
+  @@index([categoryId])
+  @@index([brandId])
 }
 
 model ProductUnit {
@@ -405,6 +409,7 @@ model ProductCarModel {
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, carModelId])
+  @@index([carModelId, productId])
 }
 
 model StockCard {
@@ -576,6 +581,7 @@ model Sale {
 
   @@index([cashBankAccountId])
   @@index([deliveryStaffId, shippingStatus, status])
+  @@index([deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo])
   @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
   @@index([fulfillmentType, status, shippingStatus, saleDate, saleNo])
 }
@@ -689,6 +695,7 @@ model ExpenseCode {
   description String?
   isActive    Boolean       @default(true)
   isDeliveryCommission Boolean @default(false)
+  deliveryCommissionSlot String? @unique
   createdAt   DateTime      @default(now())
   items       ExpenseItem[]
   deliveryCommissionRuns DeliveryCommissionRun[]
@@ -756,6 +763,7 @@ model DeliveryCommissionItem {
   id                String    @id @default(cuid())
   runId             String
   saleId            String
+  activeSaleId      String?   @unique
   saleNo            String
   saleDate          DateTime
   customerName      String?
