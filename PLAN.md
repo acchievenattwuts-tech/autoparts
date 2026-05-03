@@ -5236,3 +5236,45 @@ Implementation progress (2026-04-28, Batch A + B):
 - compound index ใหม่ครอบคลุม WHERE + ORDER BY → no full scan
 - Pull-to-refresh เรียก `router.refresh()` (Server Component re-fetch ใน background, ไม่ reload หน้า)
 
+---
+
+## Roadmap Update (2026-05-03 Delivery Commission Tabs + Report)
+
+**Goal:** ปรับหน้า `/admin/delivery-commissions` ให้แยกแท็บชัดเจน + เพิ่มรายงานบิลจัดส่งสำหรับติดตามสถานะการชำระเงินและการทำจ่ายค่าส่ง
+
+### Scope
+- ไม่แตะ Server Action `createDeliveryCommissionRun` / `cancelDeliveryCommissionRun` — reuse logic เดิม
+- ไม่เพิ่ม permission key ใหม่ — reuse `delivery_commissions.view` / `.create` / `.cancel`
+- ไม่ snapshot % ที่ Sale (ระบบเดิมเก็บ snapshot ไว้บน `DeliveryCommissionItem` ตอน run ถูกสร้าง — ของยังไม่จ่ายใช้ % ปัจจุบันจาก SiteConfig)
+
+### UI/UX Changes
+- [x] เพิ่มแท็บด้านบนของหน้า: **"ทำจ่าย / ประวัติ"** (default) และ **"รายงานบิลจัดส่ง"** ผ่าน `?tab=payouts|report`
+- [x] รายงานบิลจัดส่ง — filter: ช่วงวันที่ขาย, ลูกค้า (`SearchableSelect`), พนักงานส่ง (`SearchableSelect`), checkbox "เฉพาะที่ยังไม่ชำระ" (`amountRemain > 0`)
+- [x] กรองเฉพาะ `fulfillmentType=DELIVERY, status=ACTIVE` เสมอ
+- [x] คอลัมน์: วันที่ขาย, วันที่ส่ง (จาก `DeliveryProof.capturedAt` ล่าสุด), เลขที่บิล (link → `/admin/sales/[id]`), ลูกค้า, พนักงานส่ง, ยอดบิล, ค่าส่ง, ยอดทำจ่าย, สถานะจัดส่ง, สถานะชำระ, ทำจ่ายค่าส่ง
+- [x] ยอดทำจ่ายของบิลที่จ่ายแล้วใช้ snapshot จาก `DeliveryCommissionItem.commissionAmount`; บิลที่ยังไม่จ่ายคำนวณจาก % ปัจจุบันใน SiteConfig (mark ดอกจัน + footnote)
+- [x] บิลที่จ่ายแล้ว — badge "จ่ายแล้ว · {runNo}" ลิงก์ไป `?tab=payouts&highlight={runId}#run-{runId}` (highlight แถวใน tab ประวัติด้วย ring สีเหลือง)
+- [x] Pagination เลขหน้า 50/หน้า ผ่านตัว `Pagination` shared
+- [x] Light + dark mode ครบ
+
+### Detail Page ใหม่
+- [x] เพิ่ม route `/admin/delivery-commissions/[id]` — แสดงหัวเอกสาร (runNo, payDate, พนักงานส่ง, %, ช่วงบิล, บัญชีจ่าย, expense link, หมายเหตุ, สถานะ/cancelNote)
+- [x] ตารางบิลที่อยู่ใน run พร้อมลิงก์ไปหน้าบิลขาย, % ที่ snapshot ไว้, ยอดทำจ่ายแต่ละบรรทัด, footer รวม
+- [x] ปุ่มยกเลิกเอกสารสำหรับผู้มีสิทธิ์ `delivery_commissions.cancel` (reuse Server Action เดิม → cancel Expense + clear cash-bank + audit log)
+- [x] เพิ่ม `loading.tsx` ของ segment ใหม่ตามมาตรฐาน .rules §8
+
+### Files Touched
+- `app/admin/(protected)/delivery-commissions/page.tsx` — refactor เป็น 2 tab + ฝัง report tab + ลิงก์ runNo ไปหน้า detail + highlight support
+- `app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx` (ใหม่) — client filter (date / customer / staff / unpaid-only)
+- `app/admin/(protected)/delivery-commissions/[id]/page.tsx` (ใหม่) — detail page
+- `app/admin/(protected)/delivery-commissions/[id]/loading.tsx` (ใหม่)
+
+### Notes
+- ระบบยังไม่มี snapshot % ที่บิลขาย — ถ้าต้องการให้ % ของบิลที่ยังไม่จ่ายตรงตามวันที่ขายแม่นยำ ต้องเพิ่ม field `Sale.deliveryCommissionPercent` แยก (schema change) และ backfill — ยังไม่ทำในรอบนี้
+
+### Export (เพิ่มภายหลัง — ตาม pattern `/admin/reports/*`)
+- [x] เพิ่ม route `/admin/delivery-commissions/export` (CSV + UTF-8 BOM) และ `/admin/delivery-commissions/export-excel` (xlsx ผ่าน ExcelJS)
+- [x] ทั้งสอง route รับ filter เดียวกับรายงาน, จำกัด 10,000 แถวแรก, เขียน AuditLog `EXPORT` ของ entityType `ReportExport` (`entityRef=delivery-commission-report`) พร้อม filter snapshot
+- [x] xlsx ใช้สไตล์เดียวกับ `/admin/reports/export-excel` (header สีน้ำเงิน, footer รวม, numFmt บนคอลัมน์ตัวเงิน, ตัวเอียงสีเหลืองสำหรับยอดทำจ่ายที่ยังไม่ snapshot)
+- [x] ปุ่ม "CSV" (เทา) + "Excel" (เขียว) ใน Tab รายงาน เหมือนหน้า `/admin/reports/sales`
+

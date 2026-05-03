@@ -12,6 +12,8 @@ import {
 import Link from "next/link";
 
 import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanel";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import {
   getProfitDashboardData,
   getRevenueAmountByBasis,
@@ -457,7 +459,7 @@ const ProfitDashboard = async ({
               ส่วนล่างของ dashboard จะอิงช่วงวันที่นี้ ส่วน Snapshot ด้านบนยังคงแสดงตามวันนี้
             </p>
           </div>
-          <form className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <AdminSearchForm method="GET" className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <input type="hidden" name="tab" value="profit" />
             <label className="space-y-1 text-sm text-gray-600">
               <span>จากวันที่</span>
@@ -488,14 +490,11 @@ const ProfitDashboard = async ({
                 <option value="inc_vat">รวม VAT</option>
               </select>
             </label>
-            <button
-              type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-sky-400/30"
-            >
+            <AdminSearchSubmitButton className="justify-center rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200 dark:focus:ring-sky-400/30">
               <Filter size={16} />
               อัปเดตช่วงวิเคราะห์
-            </button>
-          </form>
+            </AdminSearchSubmitButton>
+          </AdminSearchForm>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-600 sm:grid-cols-4">
           <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
