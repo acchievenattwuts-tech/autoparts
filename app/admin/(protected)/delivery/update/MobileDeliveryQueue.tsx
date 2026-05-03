@@ -42,8 +42,15 @@ type Item = {
   paymentType:        string;
   amountRemain:       number;
   deliveryQueueOrder: number | null;
+  deliveryStaffId:    string | null;
   proofCount:         number;
   latestProof:        DeliveryProofSummary | null;
+};
+
+type DeliveryStaffOption = {
+  id: string;
+  name: string;
+  email: string;
 };
 
 export type DeliveryProofSummary = {
@@ -61,12 +68,13 @@ type Props = {
   items:         Item[];
   counts:        Counts;
   currentFilter: ShippingStatus | null;
+  deliveryStaffOptions: DeliveryStaffOption[];
 };
 
 const PULL_THRESHOLD = 80;
 const PULL_MAX       = 140;
 
-const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
+const MobileDeliveryQueue = ({ items, counts, currentFilter, deliveryStaffOptions }: Props) => {
   const router = useRouter();
 
   const initialIds = useMemo(() => items.map((i) => i.saleId), [items]);
@@ -315,6 +323,8 @@ const MobileDeliveryQueue = ({ items, counts, currentFilter }: Props) => {
                   netAmount={item.netAmount}
                   paymentType={item.paymentType}
                   amountRemain={item.amountRemain}
+                  deliveryStaffId={item.deliveryStaffId}
+                  deliveryStaffOptions={deliveryStaffOptions}
                   proofCount={item.proofCount}
                   latestProof={item.latestProof}
                   queueIndex={index}

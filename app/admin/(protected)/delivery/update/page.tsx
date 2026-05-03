@@ -21,7 +21,7 @@ const DeliveryUpdatePage = async ({
       ? (status as ShippingStatusFilter)
       : undefined;
 
-  const [sales, statusGroups] = await Promise.all([
+  const [sales, statusGroups, deliveryStaffOptions] = await Promise.all([
     db.sale.findMany({
       where: {
         fulfillmentType: "DELIVERY",
@@ -50,6 +50,7 @@ const DeliveryUpdatePage = async ({
         paymentType:        true,
         amountRemain:       true,
         deliveryQueueOrder: true,
+        deliveryStaffId:    true,
         customer:           { select: { name: true, phone: true } },
         deliveryProofs: {
           orderBy: { capturedAt: "desc" },
@@ -71,6 +72,10 @@ const DeliveryUpdatePage = async ({
         shippingStatus:  { in: ["PENDING", "OUT_FOR_DELIVERY"] },
       },
       _count: { _all: true },
+    }),
+    db.user.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true },
     }),
   ]);
 
@@ -98,6 +103,7 @@ const DeliveryUpdatePage = async ({
     paymentType:        s.paymentType,
     amountRemain:       Number(s.amountRemain),
     deliveryQueueOrder: s.deliveryQueueOrder,
+    deliveryStaffId:    s.deliveryStaffId,
     proofCount:         s._count.deliveryProofs,
     latestProof:        s.deliveryProofs[0]
       ? {
@@ -116,6 +122,7 @@ const DeliveryUpdatePage = async ({
         OUT_FOR_DELIVERY: counts.OUT_FOR_DELIVERY,
       }}
       currentFilter={statusFilter ?? null}
+      deliveryStaffOptions={deliveryStaffOptions}
     />
   );
 };

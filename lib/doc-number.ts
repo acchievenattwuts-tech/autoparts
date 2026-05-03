@@ -93,6 +93,24 @@ export async function generateExpenseNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate delivery commission run number using DeliveryCommissionRun table
+ * Format: DCP{YYMM}{4-digit}
+ */
+export async function generateDeliveryCommissionRunNo(date?: Date): Promise<string> {
+  const d = date ?? new Date();
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const pattern = `DCP${yy}${mm}`;
+  const last = await db.deliveryCommissionRun.findFirst({
+    where: { runNo: { startsWith: pattern } },
+    orderBy: { runNo: "desc" },
+    select: { runNo: true },
+  });
+  const seq = last ? parseInt(last.runNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Generate purchase number using Purchase table
  * prefix: RR (cash) or RRC (credit)
  * Format: {prefix}{YYMM}{4-digit}

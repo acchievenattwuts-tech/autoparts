@@ -22,6 +22,7 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { updateShippingStatus } from "../../sales/actions";
+import DeliveryStaffPicker from "../DeliveryStaffPicker";
 import {
   SHIPPING_STATUS_LABEL,
   SHIPPING_STATUS_BADGE,
@@ -33,6 +34,12 @@ import type { DeliveryProofSummary } from "./MobileDeliveryQueue";
 
 type ShippingStatus = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
 type CardMode = "view" | "reorder";
+
+type DeliveryStaffOption = {
+  id: string;
+  name: string;
+  email: string;
+};
 
 type Props = {
   saleId:           string;
@@ -47,6 +54,8 @@ type Props = {
   netAmount:        number;
   paymentType:      string;
   amountRemain:     number;
+  deliveryStaffId:  string | null;
+  deliveryStaffOptions: DeliveryStaffOption[];
   proofCount:       number;
   latestProof:      DeliveryProofSummary | null;
   queueIndex:       number;
@@ -102,6 +111,8 @@ const MobileDeliveryCard = ({
   netAmount,
   paymentType,
   amountRemain,
+  deliveryStaffId,
+  deliveryStaffOptions,
   proofCount,
   latestProof,
   queueIndex,
@@ -351,6 +362,19 @@ const MobileDeliveryCard = ({
                 {shippingAddress}
               </p>
             )}
+
+            <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-slate-900">
+              <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+                ผู้ส่ง
+              </p>
+              <DeliveryStaffPicker
+                saleId={saleId}
+                shippingStatus={shippingStatus}
+                currentDeliveryStaffId={deliveryStaffId}
+                staffOptions={deliveryStaffOptions}
+                compact
+              />
+            </div>
 
             <button
               type="button"

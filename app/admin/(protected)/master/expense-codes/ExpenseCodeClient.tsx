@@ -45,6 +45,15 @@ export const ExpenseCodeForm = () => {
           <input name="description" maxLength={200} placeholder="(ไม่บังคับ)" className={inputCls} />
         </div>
       </div>
+      <label className="mt-3 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-200">
+        <input type="checkbox" name="isDeliveryCommission" className="mt-0.5 h-4 w-4 rounded border-orange-300" />
+        <span>
+          ใช้เป็นรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงาน
+          <span className="block text-xs text-orange-700 dark:text-orange-200/80">
+            เลือกได้เพียง 1 รหัส หากต้องการเปลี่ยนต้องเอาเครื่องหมายออกจากรหัสเดิมก่อน
+          </span>
+        </span>
+      </label>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {success && (
         <div className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
@@ -111,6 +120,7 @@ export const ExpenseCodeRow = ({
     name: string;
     description: string | null;
     isActive: boolean;
+    isDeliveryCommission: boolean;
     _count: { items: number };
   };
   canUpdate: boolean;
@@ -167,6 +177,20 @@ export const ExpenseCodeRow = ({
                 />
               </div>
             </div>
+            <label className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+              <input
+                type="checkbox"
+                name="isDeliveryCommission"
+                defaultChecked={expenseCode.isDeliveryCommission}
+                className="mt-0.5 h-4 w-4 rounded border-orange-300"
+              />
+              <span>
+                ใช้เป็นรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงาน
+                <span className="block text-xs text-orange-700">
+                  เลือกได้เพียง 1 รหัส หากต้องการเปลี่ยนต้องเอาเครื่องหมายออกจากรหัสเดิมก่อน
+                </span>
+              </span>
+            </label>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex items-center gap-2">
               <button
@@ -200,7 +224,16 @@ export const ExpenseCodeRow = ({
       }`}
     >
       <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{expenseCode.code}</td>
-      <td className="px-4 py-3 font-medium text-gray-800">{expenseCode.name}</td>
+      <td className="px-4 py-3 font-medium text-gray-800">
+        <div className="space-y-1">
+          <p>{expenseCode.name}</p>
+          {expenseCode.isDeliveryCommission && (
+            <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+              ค่าส่งพนักงาน
+            </span>
+          )}
+        </div>
+      </td>
       <td className="px-4 py-3 text-gray-500">
         {expenseCode.description ?? <span className="text-gray-300">-</span>}
       </td>

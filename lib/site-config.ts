@@ -31,6 +31,7 @@ export interface SiteConfig {
   printNoticeText: string;
   vatType: string; // "NO_VAT" | "EXCLUDING_VAT" | "INCLUDING_VAT"
   vatRate: number; // e.g. 7
+  deliveryCommissionPercent: number;
 }
 
 export const defaultSiteConfig: SiteConfig = {
@@ -62,6 +63,7 @@ export const defaultSiteConfig: SiteConfig = {
   printNoticeText: "",
   vatType: "NO_VAT",
   vatRate: 7,
+  deliveryCommissionPercent: 30,
 };
 
 export const getSiteConfig = unstable_cache(
@@ -98,6 +100,9 @@ export const getSiteConfig = unstable_cache(
       printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
       vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
       vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
+      deliveryCommissionPercent: Number(
+        map["delivery_commission_percent"] ?? defaultSiteConfig.deliveryCommissionPercent,
+      ),
     };
   },
   ["site-config"],

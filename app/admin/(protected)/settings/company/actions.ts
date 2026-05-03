@@ -112,6 +112,7 @@ const companySchema = z.object({
   print_notice_text: printNoticeTextSchema,
   vat_type: z.enum(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"]),
   vat_rate: z.coerce.number().min(0).max(100).transform(String),
+  delivery_commission_percent: z.coerce.number().min(0).max(100).transform(String),
 });
 
 export async function updateCompanySettings(formData: FormData) {

@@ -285,6 +285,30 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
+          ตั้งค่าค่าส่งพนักงาน
+        </h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className={labelClass}>เปอร์เซ็นต์ค่าส่งเริ่มต้น (%)</label>
+            <input
+              type="number"
+              name="delivery_commission_percent"
+              defaultValue={config.deliveryCommissionPercent}
+              min={0}
+              max={100}
+              step={0.01}
+              className={inputClass}
+              placeholder="30"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
+              ใช้เป็นค่าเริ่มต้นตอนทำจ่ายค่าส่งพนักงาน และจะถูกบันทึก snapshot ลงเอกสารแต่ละรอบ
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
         <h2 className="mb-1 font-kanit font-semibold text-gray-800">โปรดทราบในฟอร์มพิมพ์</h2>
         <p className="mb-4 text-xs text-gray-400">ใช้กับใบแจ้งหนี้ / ใบส่งของ และใบเสร็จรับเงิน โดยระบบรับไม่เกิน 5 บรรทัด</p>

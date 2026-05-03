@@ -6,6 +6,7 @@ import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } f
 import Link from "next/link";
 import { Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
+import DeliveryStaffPicker from "./DeliveryStaffPicker";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { formatDateThai } from "@/lib/th-date";
@@ -22,32 +23,39 @@ const DeliveryPage = async ({
       ? status
       : undefined;
 
-  const sales = await db.sale.findMany({
-    where: {
-      fulfillmentType: "DELIVERY",
-      status:          "ACTIVE",
-      ...(statusFilter
-        ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
-        : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
-    },
-    orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
-    take: 100,
-    select: {
-      id:              true,
-      saleNo:          true,
-      saleDate:        true,
-      customerName:    true,
-      shippingAddress: true,
-      shippingStatus:  true,
-      shippingMethod:  true,
-      trackingNo:      true,
-      netAmount:       true,
-      paymentType:     true,
-      amountRemain:    true,
-      _count:          { select: { deliveryProofs: true } },
-      customer:        { select: { name: true, phone: true } },
-    },
-  });
+  const [sales, deliveryStaffOptions] = await Promise.all([
+    db.sale.findMany({
+      where: {
+        fulfillmentType: "DELIVERY",
+        status:          "ACTIVE",
+        ...(statusFilter
+          ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
+          : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
+      },
+      orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
+      take: 100,
+      select: {
+        id:              true,
+        saleNo:          true,
+        saleDate:        true,
+        customerName:    true,
+        shippingAddress: true,
+        shippingStatus:  true,
+        shippingMethod:  true,
+        trackingNo:      true,
+        netAmount:       true,
+        paymentType:     true,
+        amountRemain:    true,
+        deliveryStaffId: true,
+        _count:          { select: { deliveryProofs: true } },
+        customer:        { select: { name: true, phone: true } },
+      },
+    }),
+    db.user.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true },
+    }),
+  ]);
 
   const tabs = [
     { label: "รอจัดส่ง + กำลังส่ง", value: undefined },
@@ -120,6 +128,7 @@ const DeliveryPage = async ({
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ชำระ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">ผู้ส่ง</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">อัปเดต</th>
                 <th className="py-3 px-4" />
               </tr>
@@ -127,7 +136,7 @@ const DeliveryPage = async ({
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400">
                     ไม่มีรายการจัดส่ง
                   </td>
                 </tr>
@@ -137,6 +146,14 @@ const DeliveryPage = async ({
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
                       {formatDateThai(s.saleDate)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <DeliveryStaffPicker
+                        saleId={s.id}
+                        shippingStatus={s.shippingStatus}
+                        currentDeliveryStaffId={s.deliveryStaffId}
+                        staffOptions={deliveryStaffOptions}
+                      />
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900">

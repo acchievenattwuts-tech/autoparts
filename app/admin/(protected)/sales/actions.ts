@@ -189,6 +189,7 @@ async function getSaleAuditSnapshot(saleId: string) {
     shippingStatus: sale.shippingStatus,
     shippingMethod: sale.shippingMethod,
     trackingNo: sale.trackingNo,
+    deliveryStaffId: sale.deliveryStaffId,
     shippingAddress: sale.shippingAddress,
     shippingFee: sale.shippingFee,
     discount: sale.discount,
@@ -1299,6 +1300,7 @@ export async function updateShippingStatus(
         fulfillmentType: true,
         shippingMethod: true,
         trackingNo: true,
+        deliveryStaffId: true,
       },
     });
 
@@ -1319,6 +1321,9 @@ export async function updateShippingStatus(
       return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
     }
 
+    const shouldStampDeliveryStaff =
+      parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId;
+
     const beforeSnapshot = await getSaleAuditSnapshot(saleId);
     await db.sale.update({
       where: { id: saleId },
@@ -1326,6 +1331,7 @@ export async function updateShippingStatus(
         shippingStatus: parsed.data.shippingStatus,
         ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+        ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
       },
     });
     const afterSnapshot = await getSaleAuditSnapshot(saleId);
@@ -1344,6 +1350,7 @@ export async function updateShippingStatus(
       });
     }
     revalidatePath("/admin/delivery");
+    revalidatePath("/admin/delivery/update");
     revalidatePath(`/admin/sales/${saleId}`);
     return { success: true };
   } catch (err) {
