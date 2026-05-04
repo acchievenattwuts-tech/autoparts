@@ -5287,3 +5287,1098 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] xlsx ใช้สไตล์เดียวกับ `/admin/reports/export-excel` (header สีน้ำเงิน, footer รวม, numFmt บนคอลัมน์ตัวเงิน, ตัวเอียงสีเหลืองสำหรับยอดทำจ่ายที่ยังไม่ snapshot)
 - [x] ปุ่ม "CSV" (เทา) + "Excel" (เขียว) ใน Tab รายงาน เหมือนหน้า `/admin/reports/sales`
 
+## Roadmap Update (2026-05-04 LIFF Mini-App Phase 1 MVP — Customer LINE Self-Service)
+
+> Scope: เปิดให้ลูกค้าใช้ LINE OA เป็นช่องทาง self-service หลัก ผ่าน LIFF (LINE Front-end Framework) ที่ host บน domain production เดิม (`/liff/*`) Phase 1 ทำเฉพาะ MVP: รับลูกค้าใหม่ลงทะเบียนผ่าน LINE, mapping ลูกค้าเก่าด้วย OTP, ดูประวัติคำสั่งซื้อ, ดู tracking, และค้นหาสินค้า ห้ามแตะ business logic เดิม (stock, MAVG, AR/AP, document numbering, audit) — ใช้ Server Action / lib เดิมทั้งหมดผ่าน wrapper ที่ verify identity ก่อน
+>
+> สถานะ: **ร่างแผน รอ user สั่ง "เริ่ม" ก่อน implement** (2026-05-04)
+
+### Decisions Locked-In (สรุปจากบทสนทนา 2026-05-04)
+
+- **OTP provider**: Firebase Phone Auth — Spark plan (ฟรี, ไม่ผูกบัตร, ไม่ต้องเติม credit ล่วงหน้า)
+  - Free quota: 10 SMS/วัน/project (≈300/เดือนสูงสุด) เกิน quota = block ไม่ใช่คิดเงิน
+  - Volume คาดการณ์ MVP: 30-50 OTP/เดือน → ฟรี 100% แน่นอน
+  - Sender = "Firebase" / Google (ยอมรับสำหรับ MVP, จะย้าย ThaiBulkSMS ใน Phase 2 ถ้าต้องการ branding)
+  - Provider abstraction layer ตั้งแต่แรก เพื่อย้าย provider ทีหลังโดยแก้ไฟล์เดียว
+- **OTP channel**: SMS ทุก case (ทั้งลูกค้าใหม่และลูกค้าเก่า)
+- **Domain**: ใช้ domain production เดิม path `/liff/*` (monorepo, deploy เดียว, reuse `unstable_cache` storefront)
+  - Subdomain แยกถูกพิจารณาแล้วและ reject เพราะทำให้ deploy / cache แตก
+  - Path `/liff/*` ใส่ `<meta name="robots" content="noindex">` กัน Google index
+- **LINE plan**: Communication (ฟรี — 200 push/เดือน) ใช้ Messaging API channel เดิม ไม่สร้าง channel ใหม่
+- **LINE Login channel**: ต้องสร้างใหม่แยกจาก Messaging API เพื่อใช้กับ LIFF (คนละ channel แต่ provider เดียวกัน)
+- **Mapping flow**: LINE userId → ถ้ายังไม่ผูก → กรอกเบอร์โทร → SMS OTP → resolve 3 case (auto-link / register-new / block สวมรอย)
+
+### Mapping Flow (กฎสำคัญที่สุดของ Phase 1)
+
+```
+เปิด LIFF → liff.init() → liff.getProfile() → ได้ LINE userId
+  │
+  ├─ Customer.lineUserId = userId มีอยู่แล้ว?
+  │     YES → เข้าระบบเลย (0 step)
+  │     NO  ↓
+  │
+  กรอกเบอร์โทร (1 ช่อง) → normalize เป็น +66 หรือ 0XX format เดียว
+  │
+  ส่ง Firebase Phone Auth SMS OTP → กรอก 6 หลัก
+  │
+  Server: verify Firebase ID token (phone auth) แล้ว lookup Customer by phone
+  │
+  ├─ พบ Customer + lineUserId = null
+  │     → set lineUserId, lineLinkedAt, phoneVerified=true
+  │     → AuditLog action="customer.line_link"
+  │     → เข้าระบบ  [Case A: ลูกค้าเก่า map สำเร็จ]
+  │
+  ├─ พบ Customer + lineUserId = อื่น
+  │     → REJECT แสดงข้อความ "เบอร์นี้ผูก LINE อื่นแล้ว ติดต่อร้าน"
+  │     → AuditLog action="customer.line_link_blocked"  [Case B: กันสวมรอย]
+  │
+  └─ ไม่พบ Customer
+        → สร้าง Customer ใหม่ (name=liff.getProfile().displayName, phone, phoneVerified=true)
+        → set lineUserId, lineLinkedAt
+        → AuditLog action="customer.line_register"  [Case C: ลูกค้าใหม่]
+```
+
+### Schema Changes (Prisma — ต้องคุยก่อน push ตาม .rules §8)
+
+- [ ] เพิ่มฟิลด์ใน `Customer`:
+  ```prisma
+  lineUserId    String?   @unique
+  lineLinkedAt  DateTime?
+  phoneVerified Boolean   @default(false)
+  @@index([lineUserId])
+  ```
+- [ ] (อาจไม่จำเป็น) ตาราง `OtpChallenge` สำหรับเก็บ OTP audit หาก Firebase verify ID token ฝั่ง server เพียงพอแล้วก็ไม่ต้องสร้าง — ตัดสินตอนเริ่ม implement
+- [ ] รัน `prisma db push` (ห้าม `migrate dev` ตาม .rules §8 — Supabase pooler ไม่รองรับ shadow DB)
+
+### Security Rules (ตาม .rules §7 + LINE/Firebase best practice)
+
+- ห้าม trust `liff.getProfile()` ฝั่ง client — ทุก Server Action ต้อง verify **LIFF ID token** ที่ `https://api.line.me/oauth2/v2.1/verify` และ verify **Firebase ID token** (สำหรับ phone auth) ที่ Firebase Admin SDK
+- Phone normalization บังคับ format เดียวก่อน lookup เพื่อกัน Customer ซ้ำ (เช่น `0812345678` กับ `+66812345678`)
+- Rate-limit OTP request: 1 ครั้ง/เบอร์/60 วินาที, สูงสุด 5 ครั้ง/เบอร์/วัน
+- Block สวมรอย: ถ้าเบอร์มี `lineUserId` อื่นผูกอยู่แล้ว ห้าม override อัตโนมัติ ต้อง admin unlink ก่อน
+- AuditLog ทุก case: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_unlink` (admin)
+- LIFF page: ใส่ `<meta name="robots" content="noindex">` + ไม่ expose admin route ใน LIFF layout
+- Firebase config (apiKey ฯลฯ) ใช้ `NEXT_PUBLIC_*` ได้ตามดีไซน์ของ Firebase (เป็น public key อยู่แล้ว) แต่ **service account JSON ต้องเก็บ server-side เท่านั้น**
+
+### Env Vars ที่ต้องเพิ่ม
+
+```
+# LINE Login channel (ใหม่ — สำหรับ LIFF)
+NEXT_PUBLIC_LINE_LIFF_ID=xxxx-xxxxxxxx
+LINE_LIFF_CHANNEL_ID=xxxxxxxxxx          # server-side verify ID token
+
+# Firebase (Spark plan)
+NEXT_PUBLIC_FIREBASE_API_KEY=...
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
+NEXT_PUBLIC_FIREBASE_APP_ID=...
+FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON=...   # server-side, base64 encoded JSON
+```
+
+อัปเดต `.env.example` ด้วยทุกตัว (ไม่ commit ค่าจริง)
+
+### File Structure ที่จะเพิ่ม
+
+```
+app/liff/
+  layout.tsx                          # client boundary, LiffProvider, noindex meta
+  page.tsx                            # landing — auto route ตาม link state
+  link/page.tsx                       # หน้า OTP flow (กรอกเบอร์ + OTP + result)
+  orders/page.tsx                     # ประวัติคำสั่งซื้อ (Server Component)
+  orders/[id]/page.tsx                # ใบขายรายตัว + tracking + receipt link
+  products/page.tsx                   # ค้นหาสินค้า (reuse lib/product-search.ts)
+  profile/page.tsx                    # ข้อมูลลูกค้า + ที่อยู่
+  loading.tsx                         # ทุก segment ตาม .rules §8
+
+components/liff/
+  LiffProvider.tsx                    # 'use client' — liff.init, expose context
+  LiffGate.tsx                        # ถ้ายังไม่ link → render <LinkFlow/>
+  LinkPhoneForm.tsx                   # 'use client' — Firebase phone auth UI
+  OtpVerifyForm.tsx                   # 'use client' — กรอก 6 หลัก
+
+lib/
+  liff-auth.ts                        # verifyLiffIdToken() — server-side
+  liff-customer.ts                    # resolveCustomerByLineUserId(),
+                                      # linkLineUserToCustomerByPhone(),
+                                      # registerNewCustomerFromLine()
+  firebase-admin.ts                   # init Firebase Admin SDK (server-side)
+  firebase-client.ts                  # init Firebase Client SDK (browser, lazy)
+  phone-normalize.ts                  # normalizePhone() bangkok rules
+  otp-rate-limit.ts                   # in-memory + DB-backed rate limit
+  sms-provider.ts                     # interface — ให้ย้าย provider ทีหลังได้
+
+app/api/liff/
+  verify-otp/route.ts                 # POST: verify Firebase token + map customer
+
+prisma/schema.prisma                  # Customer fields เพิ่ม
+.env.example                          # เพิ่ม env ใหม่
+```
+
+### Server Action Pattern (ทุก action ของ /liff/*)
+
+```ts
+// boilerplate ที่ทุก liff server action ต้องเริ่มด้วย
+const { lineUserId } = await verifyLiffIdToken(idToken);
+const customer = await resolveCustomerByLineUserId(lineUserId);
+if (!customer) throw new Error("Not linked");
+// query ต้อง where: { customerId: customer.id } เสมอ
+```
+
+ลูกค้าจะ query ได้เฉพาะข้อมูลของตัวเอง (`Sale.customerId === customer.id`)
+
+### Reuse จากระบบเดิม (ห้ามทำซ้ำ)
+
+- `lib/product-search.ts` — ค้นหาสินค้า (`/liff/products` ใช้ตรงๆ)
+- `lib/line-daily-summary.ts` — ไม่เกี่ยว แต่อ้างอิง pattern Flex message ได้
+- `lib/th-date.ts` — `formatDateThai`, `formatDateTimeThai`, `getThailandDateKey`, etc.
+- `unstable_cache` ของ storefront — ห้ามถอด (memory feedback rule)
+- LINE Messaging API channel + webhook + recipient capture เดิม — Phase 2 จะใช้ส่ง push order status ไปลูกค้า
+
+### Phase 1 MVP Checklist
+
+#### Foundation
+- [ ] สร้าง LINE Login channel + LIFF app ใน LINE Developer Console
+  - Endpoint URL: `https://<production-domain>/liff`
+  - Scope: `profile`, `openid`
+  - บันทึก `liffId` และ `channelId`
+- [ ] สร้าง Firebase project (Spark plan) เปิด Phone Auth
+  - Authorized domains เพิ่ม domain production
+  - Generate service account JSON (base64 encode สำหรับ env)
+- [ ] เพิ่ม env vars ทุกตัวใน Vercel + `.env.example`
+- [ ] Schema: เพิ่ม fields ใน `Customer` + `prisma db push`
+- [ ] AuditLog actions ใหม่: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_unlink`
+
+#### Core Libraries
+- [ ] `lib/firebase-admin.ts` — init แบบ singleton + verify ID token
+- [ ] `lib/firebase-client.ts` — lazy init เฉพาะหน้า OTP
+- [ ] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
+- [ ] `lib/phone-normalize.ts` — normalize เบอร์ไทยเป็น format เดียว
+- [ ] `lib/liff-customer.ts` — resolve / link / register flow + AuditLog
+- [ ] `lib/otp-rate-limit.ts` — rate limit guard (1/60s, 5/day per phone)
+- [ ] `lib/sms-provider.ts` — interface abstraction (Firebase = first impl)
+
+#### LIFF Pages
+- [ ] `app/liff/layout.tsx` — Server Component shell + `<LiffProvider>` client wrapper + noindex
+- [ ] `components/liff/LiffProvider.tsx` — liff.init() + context (idToken, profile, isReady)
+- [ ] `components/liff/LiffGate.tsx` — gate logic, redirect ไป `/liff/link` ถ้ายังไม่ผูก
+- [ ] `app/liff/page.tsx` — landing (route ลูกค้าตาม link state)
+- [ ] `app/liff/link/page.tsx` + `LinkPhoneForm` + `OtpVerifyForm`
+- [ ] `app/liff/orders/page.tsx` — list + date range filter ตาม .rules §8 (จาก/ถึง)
+- [ ] `app/liff/orders/[id]/page.tsx` — รายละเอียด + tracking + receipt link
+- [ ] `app/liff/products/page.tsx` — reuse product-search
+- [ ] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ที่อยู่
+- [ ] `loading.tsx` ทุก segment
+
+#### Server Actions / API
+- [ ] `app/api/liff/verify-otp/route.ts` — รับ Firebase ID token + LIFF ID token → resolve case A/B/C → AuditLog
+- [ ] Server Actions สำหรับ orders/products/profile — ทุก action verify LIFF ID token ก่อน
+
+#### UI/UX
+- [ ] Light mode + dark mode ครบ ตาม .rules §8 (UI/UX Decisions)
+- [ ] Mobile-first (LIFF เปิดใน LINE app เท่านั้น — ไม่ต้องคิด desktop)
+- [ ] ใช้ `next/image` ทุกรูปสินค้า, `next/font` สำหรับ Thai font
+- [ ] ข้อความ error ภาษาไทย (ไม่เผย stack trace)
+- [ ] วันที่ใช้ `formatDateThai` / `formatDateTimeThai` (Gregorian, ตาม .rules §8)
+
+#### Performance (.rules §10)
+- [ ] LIFF SDK โหลดผ่าน `next/script` strategy `afterInteractive`
+- [ ] Firebase client SDK lazy load เฉพาะหน้า `/liff/link`
+- [ ] Server Components default — Client Components เฉพาะ form OTP + LiffProvider
+- [ ] Query ใช้ `select` เฉพาะ field ที่ต้องการ, `take` 50/หน้าใน `/liff/orders`
+- [ ] วัด Lighthouse mobile หลัง deploy บันทึก baseline ใหม่ใน `docs/performance/`
+
+#### Security Verification
+- [ ] ทุก Server Action ของ `/liff/*` verify LIFF ID token ก่อน query
+- [ ] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
+- [ ] OTP rate-limit ทำงานจริง (test: ยิง 6 ครั้งติดต่อกัน → block)
+- [ ] Block สวมรอย: ทดสอบกรณีเบอร์เดียวกัน 2 LINE → reject ครั้งที่ 2
+- [ ] Firebase service account JSON ไม่อยู่ใน client bundle (ตรวจ build output)
+
+### Out of Scope (ห้ามทำใน Phase 1)
+
+- ❌ ไม่มี LINE push notification ไปลูกค้า (Phase 2)
+- ❌ ไม่มี checkout / cart / payment ใน LIFF (Phase 3)
+- ❌ ไม่มี warranty card / claim flow ใน LIFF (Phase 2)
+- ❌ ไม่มี quote request flow (Phase 2)
+- ❌ ไม่มี admin UI สำหรับ unlink LINE (Phase 1.5 ถ้าจำเป็น)
+- ❌ ไม่แตะ Messaging API webhook / recipient capture เดิม
+- ❌ ไม่แตะ daily summary, ไม่แตะ approval workflow
+- ❌ ไม่ย้าย OTP provider ไป ThaiBulkSMS (Phase 2 หลังประเมิน volume จริง)
+- ❌ ไม่ทำ Rich Menu (Phase 2 หลัง LIFF เสถียร)
+
+### Phase 2 (Future — บันทึกไว้เพื่ออ้างอิง ยังไม่เริ่ม)
+
+- LINE push order status (ใช้ Messaging API channel เดิม + recipient mapping pattern เดิม)
+- Rich Menu ใต้ chat ลิงก์ไป LIFF แต่ละหน้า
+- Warranty card + expiry reminder
+- Quote request flow
+- Admin UI: unlink LINE จาก customer detail page
+- Optional: ย้าย OTP ไป ThaiBulkSMS เพื่อ branding sender name
+
+### Phase 3 (Future)
+
+- LIFF cart + checkout
+- Re-order reminder (จาก purchase history)
+- Promotion broadcast แบบ segment
+
+### Cost Projection
+
+| Item | Phase 1 MVP | Phase 2 |
+|---|---|---|
+| Firebase Phone Auth | 0 บาท (Spark, <300/mo) | 0 บาท หรือย้าย ThaiBulkSMS ~25 บาท/เดือน |
+| LINE Messaging API | 0 บาท (Communication, <200 push/mo) | 0-1,200 บาท ตาม volume |
+| LIFF / LINE Login | 0 บาท | 0 บาท |
+| **รวม** | **0 บาท/เดือน** | <50 บาท/เดือน |
+
+### Cross-Machine Continuity Notes (สำหรับ AI ตัวอื่น/เครื่องอื่นที่ resume งานนี้)
+
+หาก resume งานบนเครื่องอื่น AI ตัวอื่น ให้อ่านส่วนนี้ก่อน:
+
+1. **Decisions ทุกข้อ locked-in แล้ว** (ดู section "Decisions Locked-In") — อย่าเปิดประเด็นใหม่เว้นแต่ user ขอ
+2. **ห้ามเริ่ม implement จนกว่า user สั่ง "เริ่ม"** — Roadmap นี้ร่างไว้รอ approval ณ 2026-05-04
+3. **อ่าน `.rules` §7, §8, §10 ทั้งหมด** ก่อน touch DB / เพิ่ม admin menu / เขียน query ใหม่
+4. **memory `MEMORY.md`** มี feedback `feedback_storefront_cache.md` — ห้ามถอด `unstable_cache` ของ storefront query
+5. **Account setup ที่ user ต้องทำเอง** (ไม่ใช่งาน AI):
+   - สร้าง LINE Login channel + LIFF app ใน LINE Developer Console
+   - สร้าง Firebase project + เปิด Phone Auth + generate service account
+   - กรอก env vars ใน Vercel
+6. **Provider abstraction** — เขียน `lib/sms-provider.ts` interface ตั้งแต่แรก ให้ Firebase เป็น implementation แรก เพื่อย้ายไป ThaiBulkSMS / DeeMee ในอนาคตได้โดยแก้ไฟล์เดียว
+7. **Audit Log mandatory** ทุก mutation — ตาม .rules §7 และ §8
+8. **OTP volume คาดการณ์** 30-50/เดือน — ถ้า Lighthouse / cost monitoring เห็นเกิน 200/เดือน ต่อเนื่อง ให้แจ้ง user พิจารณา upgrade Blaze plan + budget alert
+9. **LIFF testing** ต้องเปิดใน LINE app จริง (ไม่ใช่ browser ปกติ) — Vercel Preview URL ต้องเพิ่มใน Authorized domains ของ Firebase + LINE LIFF endpoint
+
+## Roadmap Update (2026-05-04 LIFF Phase 1 Scope Expansion — PDF + Push Notifications + Warranty + Invoice/Receipt)
+
+> Scope: ขยาย Phase 1 LIFF MVP จากเดิม (read-only orders + products + profile) เพิ่ม push notification ลูกค้า 2 events, ดู/บันทึก PDF ใบแจ้งหนี้+ใบเสร็จ, ประวัติประกัน, status timeline. ส่วนนี้ **ทับและเพิ่มจาก** Roadmap Update ก่อนหน้า ("LIFF Mini-App Phase 1 MVP") — section ก่อนยังคงใช้ใน 1A และ section นี้กำหนด 1B + 1C
+>
+> สถานะ: **ร่างแผน รอ user สั่ง "เริ่ม" ก่อน implement** (2026-05-04)
+
+### Decisions Locked-In (รอบที่ 2 — 2026-05-04)
+
+- **Push events**: เฉพาะ **2 events** เท่านั้น
+  - `sale.created` — สร้างใบขาย (ทั้ง CASH/CREDIT/COD ครอบคลุมทุก fulfillmentType)
+  - `receipt.created` — รับชำระเงิน
+  - **ไม่ push**: shipping status changes (OUT_FOR_DELIVERY, DELIVERED), cancellation, warranty issued — ลูกค้าเข้า LIFF เห็นเอง
+- **PDF approach**: **Option C** — Browser print → "Save as PDF" (0 cost, reuse print page เดิม)
+  - ไม่ติดตั้ง `@react-pdf/renderer` หรือ Puppeteer
+  - ใน LIFF เพิ่มปุ่ม "บันทึก PDF" → trigger `window.print()` → ลูกค้าเลือก Save as PDF จาก dialog
+  - ยอมรับว่าบางมือถือ (โดยเฉพาะ iOS LINE in-app browser) UX อาจไม่สมบูรณ์ — ถ้ามีปัญหาจริง ค่อยพิจารณา Option B ใน Phase 2
+- **Notification preference UI (ข้อเสนอแนะข้อ 1)**: ❌ **ไม่ทำ** — push ทุกบิล default ON ไม่มี toggle (รับความเสี่ยง PDPA)
+- **Bundled push (ข้อ 5)**: ❌ **ไม่ทำ** — push ทันทีทุก event ไม่ debounce
+- **Webhook auto-confirm delivery (ข้อ 7)**: ❌ **ไม่ทำ** — admin ยังเป็นคน update shipping status เอง
+- **ข้อเสนอแนะที่ทำ**: 2 (Status timeline), 3 (Tracking smart link), 4 (PDF watermark + QR), 6 (Test send), 8 (Re-send button)
+- **LINE plan**: Volume คาดการณ์ ~2 push/บิล × 30 บิล/วัน × 30 วัน = 1,800 push/เดือน → **upgrade Light plan 1,200 บาท/เดือน** ตอน Phase 1C deploy (Phase 1A/1B ยังฟรี)
+
+### Phase Breakdown (3 sub-phases)
+
+| Phase | Scope | Cost | Time |
+|---|---|---|---|
+| **1A** | Identity + read-only LIFF (orders, products, profile) | 0 บาท/เดือน | 1-2 สัปดาห์ |
+| **1B** | Warranty + Invoice/Receipt PDF (Option C) + Status timeline | 0 บาท/เดือน | ~1 สัปดาห์ |
+| **1C** | Push notifications (2 events) + Admin re-send + Test send | +1,200 บาท/เดือน (LINE Light) | ~1-2 สัปดาห์ |
+
+ส่งมอบทีละ phase, deploy แยก, Phase 1C จะ deploy เมื่อ user พร้อม upgrade LINE plan เท่านั้น
+
+---
+
+### Phase 1A — LIFF Identity + Read-only (เดิมจาก Roadmap Update ก่อนหน้า)
+
+ดูรายละเอียดทั้งหมดใน "Roadmap Update (2026-05-04 LIFF Mini-App Phase 1 MVP — Customer LINE Self-Service)" ด้านบน — ไม่ทำซ้ำ
+
+**Deliverables**:
+- LINE userId mapping (3-case flow) + Firebase Phone OTP
+- `/liff/orders` (list + detail read-only)
+- `/liff/products`, `/liff/profile`
+- `Customer.lineUserId`, `lineLinkedAt`, `phoneVerified`
+
+---
+
+### Phase 1B — PDF + Warranty + Status Timeline
+
+#### Schema (เพิ่มจาก 1A)
+
+ไม่มี schema change — reuse `Sale`, `Receipt`, `Warranty`, `WarrantyClaim` ที่มีอยู่
+
+#### Pages ใหม่
+
+```
+app/liff/
+  orders/[id]/invoice/page.tsx        # ดูใบแจ้งหนี้ + ปุ่มบันทึก PDF (เฉพาะ CREDIT)
+  orders/[id]/receipt/page.tsx        # ดูใบเสร็จ + ปุ่มบันทึก PDF (เมื่อมี Receipt link)
+  outstanding/page.tsx                # ยอดค้างชำระทั้งหมด (รวม + per-bill)
+  warranties/page.tsx                 # list ประกันสินค้า (active/expired tabs)
+  warranties/[id]/page.tsx            # รายละเอียด + วันหมดประกัน + product info
+  warranties/loading.tsx
+  claims/page.tsx                     # ประวัติการเคลม + สถานะ
+  claims/[id]/page.tsx                # รายละเอียดเคลม + timeline สถานะ
+  claims/loading.tsx
+  orders/[id]/loading.tsx (อัปเดต)    # เพิ่ม timeline section
+```
+
+#### หน้า `/liff/outstanding` — ยอดค้างชำระทั้งหมด
+
+**จุดประสงค์**: ลูกค้าเห็นยอดทั้งหมดที่ค้างในที่เดียว ไม่ต้องไล่ดูแต่ละบิล
+
+**Data source** (reuse logic เดิมจาก `/admin/customers/[id]` AR view):
+```ts
+const sales = await db.sale.findMany({
+  where: {
+    customerId: customer.id,
+    status: "ACTIVE",
+    paymentType: "CREDIT_SALE",
+    amountRemain: { gt: 0 },
+  },
+  select: {
+    id: true, saleNo: true, saleDate: true, dueDate: true,
+    grandTotal: true, amountRemain: true,
+  },
+  orderBy: { dueDate: "asc" },
+});
+
+const totalOutstanding = sales.reduce((sum, s) => sum + Number(s.amountRemain), 0);
+const overdueCount = sales.filter(s => s.dueDate && s.dueDate < today).length;
+```
+
+**Layout**:
+
+```
+┌─────────────────────────────────────┐
+│ ยอดค้างชำระทั้งหมด                   │
+│ ╔═════════════════════════════════╗ │
+│ ║   ฿ 12,450.00                  ║ │ ← ตัวใหญ่ เน้น
+│ ║   3 บิล (เกินกำหนด 1 บิล)       ║ │
+│ ╚═════════════════════════════════╝ │
+│                                     │
+│ ─── ช่องทางรับชำระเงินของร้าน ───── │
+│ 🏦 ธ.กสิกรไทย                       │
+│    เลขบัญชี  123-4-56789-0          │ ← copy ได้
+│    ชื่อบัญชี  บริษัท XX จำกัด        │
+│ 📱 PromptPay                        │
+│    เบอร์ 0812345678                 │ ← copy ได้
+│ ─────────────────────────────────── │
+│ หลังโอนเงินกรุณาส่งสลิป               │
+│ ในแชท LINE OA นี้ได้เลยค่ะ 📎        │
+│ ─────────────────────────────────── │
+│                                     │
+│ ─── รายการบิลค้าง ───────────────── │
+│                                     │
+│ 🔴 SO-20260420-0001                 │ ← เกินกำหนด สีแดง
+│    วันที่ขาย   20 เม.ย. 2026         │
+│    ครบกำหนด   30 เม.ย. 2026         │
+│    ยอดบิล     ฿ 6,500.00            │
+│    ชำระแล้ว   ฿ 1,300.00            │ ← (grandTotal - amountRemain)
+│    คงค้าง     ฿ 5,200.00            │ ← เน้นสีแดง
+│    [ดูใบแจ้งหนี้ →]                  │
+│                                     │
+│ ⏳ SO-20260425-0003                 │ ← ยังไม่ถึงกำหนด
+│    วันที่ขาย   25 เม.ย. 2026         │
+│    ครบกำหนด   9 พ.ค. 2026           │
+│    ยอดบิล     ฿ 3,250.00            │
+│    ชำระแล้ว   ฿ 0.00                │
+│    คงค้าง     ฿ 3,250.00            │
+│    [ดูใบแจ้งหนี้ →]                  │
+│                                     │
+│ ⏳ SO-20260502-0002                 │
+│    วันที่ขาย   2 พ.ค. 2026           │
+│    ครบกำหนด   16 พ.ค. 2026          │
+│    ยอดบิล     ฿ 4,000.00            │
+│    ชำระแล้ว   ฿ 0.00                │
+│    คงค้าง     ฿ 4,000.00            │
+│    [ดูใบแจ้งหนี้ →]                  │
+└─────────────────────────────────────┘
+```
+
+**Per-bill detail (locked)** — ทุกบิลในรายการต้องแสดงครบ 6 บรรทัด:
+- เลขที่บิล (`saleNo`)
+- วันที่ขาย (`saleDate`)
+- ครบกำหนด (`dueDate`) — ถ้าเลยวันนี้ใส่ icon 🔴 + label "เกินกำหนด"
+- ยอดบิล (`grandTotal`)
+- ชำระแล้ว (`grandTotal - amountRemain`) — partial payment visibility
+- คงค้าง (`amountRemain`) — เน้นสีแดงถ้าเกินกำหนด, สีเหลืองถ้ายังไม่ถึง
+- ปุ่ม "ดูใบแจ้งหนี้ →" → `/liff/orders/{saleId}/invoice`
+
+**Payment Channels Block (locked — ไม่มี QR)**:
+- ดึงจาก `getPrimaryTransferAccount()` (`lib/payment-qr.ts` มีอยู่แล้ว)
+- แสดงเป็นข้อความล้วน — bank name, account no, account name, promptPayId
+- เลขบัญชี + PromptPay = tappable copy-to-clipboard (ใช้ `navigator.clipboard.writeText()` + toast "คัดลอกแล้ว")
+- ❌ ไม่ render QR PNG — ลูกค้า scan QR จาก Flex Card ของแต่ละบิลแทน (Phase 1C)
+- ถ้า admin ยังไม่ตั้ง primary transfer account → แสดงข้อความ "กรุณาติดต่อร้านเพื่อรับช่องทางชำระเงิน"
+
+**Empty state**: "ขณะนี้ไม่มีบิลค้างชำระ ขอบคุณค่ะ ✓"
+
+#### หน้า `/liff/claims` — ประวัติการเคลม
+
+**Data source**:
+```ts
+const claims = await db.warrantyClaim.findMany({
+  where: { 
+    warranty: { customerId: customer.id }
+  },
+  select: {
+    id: true, claimNo: true, claimDate: true, claimType: true,
+    status: true, outcome: true, symptom: true,
+    sentAt: true, resolvedAt: true, returnedAt: true,
+    warranty: { select: { warrantyNo: true, product: { select: { name: true } } } },
+  },
+  orderBy: { claimDate: "desc" },
+});
+```
+
+**Status mapping (ภาษาไทย — ห้าม leak enum ดิบ)**:
+
+| `WarrantyClaimStatus` | แสดง | สี Badge |
+|---|---|---|
+| `DRAFT` | รอดำเนินการ | gray |
+| `SENT_TO_SUPPLIER` | ส่งซัพพลายเออร์แล้ว | blue |
+| `CLOSED` | จบเคลม | green |
+| `RETURNED_TO_CUSTOMER` | ส่งคืนลูกค้าแล้ว | green |
+| `CANCELLED` | ยกเลิก | red |
+
+`ClaimType` mapping:
+- `REPLACE_NOW` → "เปลี่ยนสินค้าทันที"
+- `CUSTOMER_WAIT` → "ลูกค้ารอ"
+
+**Layout `/liff/claims/[id]`** — Timeline แสดง 4 จุด:
+
+```
+┌─────────────────────────────────────┐
+│ เคลม CL-20260420-0001                │
+│ สินค้า: {product.name}              │
+│ Warranty: {warrantyNo}              │
+│ อาการ: {symptom}                    │
+│                                     │
+│ Timeline สถานะ                       │
+│  ●━━━━ แจ้งเคลม                      │
+│  │     20 เม.ย. 2026                │
+│  │                                  │
+│  ●━━━━ ส่งซัพพลายเออร์                │
+│  │     22 เม.ย. 2026 (sentAt)       │
+│  │                                  │
+│  ●━━━━ จบเคลม                        │ ← active step สีน้ำเงิน
+│  │     2 พ.ค. 2026 (resolvedAt)     │
+│  │                                  │
+│  ○━━━━ ส่งคืนลูกค้า                   │ ← pending สีเทา
+│        (returnedAt: -)              │
+│                                     │
+│ ผลการเคลม: {outcome}                 │
+└─────────────────────────────────────┘
+```
+
+**Empty state**: "ยังไม่มีประวัติการเคลมสินค้า"
+
+**ห้าม**:
+- ❌ ไม่แสดงข้อมูล supplier (`supplierName`, `supplierPhone`) ในฝั่งลูกค้า — เป็นข้อมูลภายใน
+- ❌ ไม่แสดง `signerSignatureUrl` (ลายเซ็น admin)
+- ❌ ไม่ให้ลูกค้า cancel/edit claim ผ่าน LIFF (Phase 2+ ถ้าต้องการ)
+- ❌ ไม่ให้ลูกค้าสร้าง claim ใหม่ผ่าน LIFF (Phase 2 — ต้องคิด workflow + photo upload)
+
+#### Components ใหม่
+
+```
+components/liff/
+  OrderStatusTimeline.tsx             # vertical timeline (PENDING → OUT_FOR_DELIVERY → DELIVERED → PAID)
+  PrintToPdfButton.tsx                # 'use client' — wrapper เรียก window.print()
+  TrackingSmartLink.tsx               # detect shippingMethod → ลิงก์ตรงไปเว็บขนส่ง
+  WatermarkOverlay.tsx                # CSS watermark "ต้นฉบับ/สำเนา" + QR สำหรับ print only
+```
+
+#### Implementation Notes
+
+**ข้อ 2 — Status Timeline UI**
+- Render เป็น vertical step (Tailwind, ไม่ต้องใช้ lib เพิ่ม)
+- Step สีตามสถานะปัจจุบัน + วันที่ของแต่ละ step (ดึงจาก `Sale.createdAt`, `Sale.shippedAt` ถ้ามี, `Receipt.receiptDate`)
+- ถ้า `fulfillmentType=PICKUP` → ข้าม step shipping
+- ถ้า `paymentMethod=CASH` แล้ว pay ในวันสร้าง → step สุดท้ายมาทันที
+
+**ข้อ 3 — Tracking Smart Link**
+- Map `shippingMethod` → URL pattern:
+  ```ts
+  const TRACKING_URL: Record<ShippingMethod, (t: string) => string> = {
+    KERRY: (t) => `https://th.kerryexpress.com/th/track/?track=${t}`,
+    FLASH: (t) => `https://www.flashexpress.co.th/tracking/?se=${t}`,
+    JT:    (t) => `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${t}`,
+    OTHER: (t) => `https://google.com/search?q=tracking+${t}`,
+    SELF:  () => "",  // ส่งเอง ไม่มีลิงก์
+    NONE:  () => "",
+  };
+  ```
+- ใส่ใน `Sale` detail page (admin) + `/liff/orders/[id]` (customer)
+
+**ข้อ 4 — PDF Watermark + QR**
+- ใน print stylesheet เดิม: เพิ่ม `<div className="print-watermark">` ที่แสดงเฉพาะตอน print
+- Watermark text: "ต้นฉบับ" สำหรับเอกสารหลัก / "สำเนา (LIFF)" เมื่อลูกค้าโหลดผ่าน LIFF
+- QR code: encode URL `https://yourshop.com/verify/{docType}/{docNo}/{token}` — token = HMAC ของ docNo + secret
+- หน้า `/verify/[type]/[docNo]` (ใหม่) — public route, ตรวจ token, แสดง "ถูกต้อง" + ข้อมูลย่อยืนยัน เพื่อกัน PDF ปลอม
+- ใช้ lib `qrcode` (server-side generate SVG) — bundle ~30KB
+
+**Option C PDF (สำคัญ)**
+- ไม่ใช่ generate PDF จริง — ใช้ `window.print()` ของ browser เปิด print dialog
+- ลูกค้าเลือก "Save as PDF" ใน dialog เอง
+- LIFF in-app browser ส่วนใหญ่รองรับ (Android Chrome WebView, iOS Safari WebView)
+- Print stylesheet ต้องแยก media query `@media print` ให้ชัด — hide LIFF nav/header
+
+##### กฎเหล็ก — Form Variant Selection (อย่าให้แสดงผิดแบบ)
+
+> **LIFF ห้าม fork print component — ต้อง reuse `SharedSalesDeliveryPrintDocument` (และ shared print primitives อื่นๆ ตาม .rules §8) ตรงๆ** เพื่อให้ admin กับ LIFF ใช้ logic ตัดสินใจแบบฟอร์มเดียวกัน
+
+**Logic เดิมของระบบ admin (ห้ามแก้ ห้าม duplicate)** ที่ LIFF ต้องเคารพ:
+
+| เอกสารต้นทาง | เงื่อนไข | Title ที่แสดง | Block พิเศษ |
+|---|---|---|---|
+| Sale (CREDIT_SALE) | `paymentType="CREDIT_SALE"` | **"ใบแจ้งหนี้ / ใบส่งของ"** | shippingAddress + PromptPay QR card + เลขบัญชีโอน |
+| Sale (CASH_SALE) | `paymentType="CASH_SALE"` | **"ใบเสร็จรับเงิน"** | block "ชำระแล้ว" + ไม่มี QR (จ่ายแล้ว) |
+| Receipt (`/admin/receipts`) | จาก `Receipt` entity | **"ใบเสร็จรับเงิน"** (จากการรับชำระบิลเชื่อ) | reference saleNo, paymentMethod, ยอดรับชำระ |
+
+**Mapping ใน LIFF**:
+- `/liff/orders/[id]/invoice` — สำหรับ Sale ใดก็ได้ → render ผ่าน `SharedSalesDeliveryPrintDocument` ส่ง props เดิมจาก `paymentType` → component เลือก title/block เอง
+- `/liff/orders/[id]/receipt` — เปิดได้เฉพาะเมื่อ Sale มี Receipt ที่ link อยู่:
+  - ถ้า `paymentType=CASH_SALE` → ใช้ `SharedSalesDeliveryPrintDocument` (รวมในตัว)
+  - ถ้า `paymentType=CREDIT_SALE` + มี Receipt → ใช้ shared receipt print component (`SharedReceiptPrintDocument` ถ้ามี ไม่งั้นต้องเช็ค `app/admin/(protected)/receipts/[id]`)
+
+**ห้ามทำ**:
+- ❌ ห้ามสร้าง `LiffInvoicePrintDocument.tsx` หรือ `LiffReceiptPrintDocument.tsx` ใหม่ที่ duplicate logic
+- ❌ ห้าม hardcode title "ใบแจ้งหนี้" หรือ "ใบเสร็จรับเงิน" ใน LIFF page
+- ❌ ห้ามตัดสินใจ form variant ใหม่ใน LIFF ด้วย if/else — ต้องส่ง props ตามจริง แล้วให้ shared component ตัดสินเอง
+- ❌ ห้าม hide block ไหนใน shared component (เช่น hide watermark, hide QR) — ถ้าจำเป็นจริงๆ ต้องเพิ่ม prop ใน shared component แล้วอัปเดตทุก consumer (sale + delivery + warranty claim + LIFF) พร้อมกัน
+
+**ที่ต้องทำใน LIFF page**:
+1. Server-side load Sale (พร้อม `paymentType`, `shippingAddress`, `items`, `customer`, `transferPrimaryAccount`, `printNotice`)
+2. Verify `customer.id === currentLineCustomer.id` (security boundary — ห้ามดูใบของคนอื่น)
+3. ส่ง props เข้า `<SharedSalesDeliveryPrintDocument>` ตรงๆ
+4. wrap ด้วย `<PrintToPdfButton>` + watermark variant="LIFF_COPY"
+5. ใส่ `@media screen` style ให้แสดงสวยในมือถือ + `@media print` ใช้ของเดิม
+
+##### Receipt PDF — เคสที่ลูกค้าเปิดได้
+
+| Sale paymentType | มี Receipt? | LIFF เปิดอะไรได้ |
+|---|---|---|
+| CASH_SALE | (มีในตัว) | `/liff/orders/[id]/invoice` แสดง "ใบเสร็จรับเงิน" |
+| CASH_SALE | — | เหมือนข้างบน (ไม่มี receipt page แยก) |
+| CREDIT_SALE | ยังไม่มี Receipt | `/liff/orders/[id]/invoice` แสดง "ใบแจ้งหนี้ / ใบส่งของ" + QR ชำระ |
+| CREDIT_SALE | มี Receipt 1 ใบ | `/liff/orders/[id]/invoice` (ใบแจ้งหนี้) + `/liff/orders/[id]/receipt` (ใบเสร็จรับเงิน) |
+| CREDIT_SALE | มี Receipt หลายใบ (ผ่อน) | `/liff/orders/[id]/invoice` + `/liff/orders/[id]/receipts/[receiptId]` (รายตัว) |
+
+LIFF order detail แสดงรายการ receipt ทั้งหมดที่ link กับบิล + ปุ่มเปิดแต่ละใบ
+
+##### Test Matrix — ต้อง verify ก่อน deploy
+
+- [ ] ขายสด → `/liff/orders/[id]/invoice` title = "ใบเสร็จรับเงิน" ไม่มี QR
+- [ ] ขายเชื่อยังไม่ชำระ → title = "ใบแจ้งหนี้ / ใบส่งของ" มี QR + บัญชีโอน
+- [ ] ขายเชื่อชำระบางส่วน → ใบแจ้งหนี้ยังแสดง + มี Receipt 1 ใบให้เปิด
+- [ ] ขายเชื่อชำระครบ → ใบแจ้งหนี้ยังเปิดได้ + Receipt ทุกใบเปิดได้
+- [ ] เปิดบิลของลูกค้าอื่น → 403 / redirect (security)
+- [ ] เปลี่ยนแปลงใน `SharedSalesDeliveryPrintDocument` → ต้อง reflect ทั้ง admin + LIFF พร้อมกัน
+
+#### Files Touched
+- `lib/tracking-url.ts` (ใหม่)
+- `lib/verify-token.ts` (ใหม่ — HMAC sign/verify)
+- `app/verify/[type]/[docNo]/page.tsx` (ใหม่ — public)
+- หน้า print เดิม (sales/receipts) — เพิ่ม watermark + QR (เฉพาะ @media print)
+- `components/liff/*` ตามที่ลิสต์ข้างบน
+
+#### Phase 1B Checklist
+- [ ] `OrderStatusTimeline.tsx` + integrate ใน `/liff/orders/[id]`
+- [ ] `TrackingSmartLink.tsx` + map URL ทุก ShippingMethod
+- [ ] `lib/verify-token.ts` (HMAC) + env `DOC_VERIFY_SECRET`
+- [ ] `qrcode` package install
+- [ ] Watermark + QR ใน print stylesheet ของ sale/receipt เดิม (light + dark mode)
+- [ ] หน้า `/verify/[type]/[docNo]` public + i18n ไทย
+- [ ] หน้า `/liff/orders/[id]/invoice` + `/receipt` + ปุ่ม `PrintToPdfButton`
+- [ ] หน้า `/liff/warranties` + `/liff/warranties/[id]`
+- [ ] Test ใน LINE app จริง (Android + iOS) ว่า Save as PDF ใช้ได้
+- [ ] AuditLog: `customer.view_invoice_pdf`, `customer.view_receipt_pdf` (track usage)
+- [ ] **Form variant test** — ขายสด/เชื่อ/เชื่อมี Receipt: title + block แสดงตรงกับ admin print 100%
+- [ ] **Reuse audit** — ตรวจว่า LIFF ใช้ `SharedSalesDeliveryPrintDocument` (และ shared receipt print component) ตรงๆ ไม่มี fork
+- [ ] **Cross-customer security test** — ลูกค้า A เปิด URL ของลูกค้า B → 403
+- [ ] หน้า `/liff/outstanding` — รวมยอดค้าง + list บิลเรียงตามครบกำหนด + badge เกินกำหนด
+- [ ] Per-bill detail ครบ 6 บรรทัด (saleNo / saleDate / dueDate / grandTotal / paid / amountRemain) — paid คำนวณจาก grandTotal - amountRemain
+- [ ] Payment channels block (text-only ไม่มี QR) — bank + PromptPay จาก `getPrimaryTransferAccount()`
+- [ ] Tap-to-copy เลขบัญชี + PromptPay ID + toast "คัดลอกแล้ว"
+- [ ] Empty state: ไม่มีบิลค้าง + ไม่มี primary transfer account → ข้อความ "ติดต่อร้าน"
+- [ ] หน้า `/liff/claims` + `/liff/claims/[id]` — list + timeline 4 จุด
+- [ ] Status / ClaimType i18n mapping (Thai labels) ใน `lib/warranty-claim-i18n.ts`
+- [ ] ซ่อนข้อมูลภายใน (supplier info, signature URL) ในฝั่ง LIFF
+- [ ] Test: ลูกค้าเห็นเฉพาะ claims ของตัวเอง (where `warranty.customerId = currentCustomer.id`)
+
+---
+
+### Phase 1C — Customer Push Notifications
+
+#### Schema เพิ่ม
+
+```prisma
+model LineCustomerNotification {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  eventType   String   // sale.created, receipt.created
+  entityType  String   // sale, receipt
+  entityId    String   // saleId or receiptId
+  status      String   // PENDING, SENT, FAILED, SKIPPED
+  attempts    Int      @default(0)
+  lastError   String?
+  payload     Json     // Flex message JSON snapshot
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  @@index([customerId, createdAt])
+  @@index([status, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Customer {
+  // เพิ่มจาก 1A:
+  lineNotifications LineCustomerNotification[]
+}
+```
+
+ไม่เพิ่ม `notifyOptIn` flag (decision: ไม่ทำ ข้อ 1)
+
+#### Architecture: Event Hook Pattern
+
+**ห้ามแก้** business logic ของ `sales/actions.ts`, `receipts/actions.ts` — เพิ่มเฉพาะ "side-effect call" ท้าย transaction:
+
+```ts
+// ใน sales/actions.ts หลัง create สำเร็จ (นอก transaction)
+await enqueueCustomerNotification({
+  eventType: "sale.created",
+  saleId: sale.id,
+});
+
+// ใน receipts/actions.ts เช่นกัน
+await enqueueCustomerNotification({
+  eventType: "receipt.created",
+  receiptId: receipt.id,
+});
+```
+
+**`enqueueCustomerNotification`** จะ:
+1. โหลด Sale/Receipt + Customer
+2. ถ้า `customer.lineUserId` = null → INSERT row status=`SKIPPED` reason="not_linked" (เพื่อ audit)
+3. ถ้ามี → INSERT row status=`PENDING` พร้อม Flex payload snapshot
+4. Fire-and-forget dispatch (immediate try, ถ้า fail ปล่อยให้ cron retry)
+
+**ข้อสำคัญ**: fail การ enqueue/push ห้ามทำให้ Sale/Receipt fail — wrap try-catch แยก
+
+#### Dispatcher + Retry
+
+- `lib/line-customer-notification.ts` — `enqueueCustomerNotification()`, `dispatchPending()`, `buildSaleFlexPayload()`, `buildReceiptFlexPayload()`
+- Retry pattern reuse จาก `lib/line-daily-summary` retry helper เดิม (max 3 attempts, exponential backoff)
+- Cron route `/api/internal/dispatch-line-customer-notifications` ทุก 5 นาที ดึง `PENDING` หรือ `FAILED + attempts<3` มา retry
+- ใช้ QStash schedule เดียวกับ pattern ของ daily summary (signed)
+
+#### Flex Message Templates (Visual Spec)
+
+##### Color Palette (locked)
+
+| Card Type | Header Hex | เงื่อนไข |
+|---|---|---|
+| `sale_paid` (CASH ชำระครบ) | `#22c55e` (เขียว) | `paymentMethod=CASH` + `amountRemain=0` |
+| `sale_credit_pending` | `#f59e0b` (ส้มเหลือง) | `paymentMethod=CREDIT` |
+| `sale_cod_pending` | `#14b8a6` (ฟ้าเขียว) | `fulfillmentType=DELIVERY` + `paymentMethod=CASH` + `amountRemain>0` |
+| `receipt.created` | `#3b82f6` (น้ำเงิน) | ทุกใบเสร็จ |
+
+##### Template selector logic
+
+```ts
+function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod_pending" {
+  if (sale.paymentMethod === "CASH" && sale.amountRemain === 0) return "sale_paid";
+  if (sale.paymentMethod === "CREDIT") return "sale_credit_pending";
+  if (sale.fulfillmentType === "DELIVERY" && sale.paymentMethod === "CASH" && sale.amountRemain > 0) {
+    return "sale_cod_pending";
+  }
+  return "sale_paid"; // default fallback
+}
+```
+
+##### Card 1 — `sale_paid` (CASH ชำระครบ — ไม่มี QR)
+
+```
+┌─────────────────────────────────────┐
+│ [HEADER เขียว #22c55e]              │
+│ ✓  ขอบคุณสำหรับการสั่งซื้อ           │
+├─────────────────────────────────────┤
+│ เลขที่บิล    SO-20260504-0001       │
+│ วันที่        4 พ.ค. 2026           │
+│ รายการ       3 รายการ                │
+│ ยอดรวม       ฿ 2,580.00             │
+│ ชำระแล้ว ✓ เงินสด                    │
+│ ─────────────────────────────────── │
+│ [ปุ่มหลัก] ดูรายละเอียด →            │ ← LIFF deep link
+└─────────────────────────────────────┘
+```
+
+##### Card 2 — `sale_credit_pending` (CREDIT — มี QR + เลขบัญชี + ครบกำหนด)
+
+```
+┌─────────────────────────────────────┐
+│ [HEADER ส้มเหลือง #f59e0b]          │
+│ ⚠️  รอชำระเงิน (เงินเชื่อ)           │
+├─────────────────────────────────────┤
+│ เลขที่บิล    SO-20260504-0001       │
+│ วันที่        4 พ.ค. 2026           │
+│ ─────────────────────────────────── │
+│ ยอดที่ต้องชำระ                       │
+│ ฿ 2,580.00 (font ใหญ่ เน้น)         │
+│ 📅 ครบกำหนด 18 พ.ค. 2026           │
+│ ─────────────────────────────────── │
+│       [QR PromptPay 240x240]        │ ← Image จาก /api/public/qr/promptpay
+│       สแกนเพื่อชำระเงิน              │
+│ ─────────────────────────────────── │
+│ หรือโอนเข้าบัญชี                     │
+│ {bankName} เลขที่ {accountNo}       │
+│ ชื่อบัญชี {accountName}              │
+│ ─────────────────────────────────── │
+│ หลังโอนเงินกรุณาส่งสลิป              │
+│ ในแชทนี้ได้เลยค่ะ 📎                │
+│ ─────────────────────────────────── │
+│ [ปุ่มหลัก] ดูรายละเอียด →            │
+└─────────────────────────────────────┘
+```
+
+##### Card 3 — `sale_cod_pending` (COD — มี QR + เลขบัญชี + badge เก็บปลายทาง)
+
+```
+┌─────────────────────────────────────┐
+│ [HEADER ฟ้าเขียว #14b8a6]           │
+│ 📦  รอจัดส่ง (เก็บเงินปลายทาง)       │
+├─────────────────────────────────────┤
+│ เลขที่บิล    SO-20260504-0001       │
+│ วันที่        4 พ.ค. 2026           │
+│ ─────────────────────────────────── │
+│ ยอดเก็บปลายทาง                       │
+│ ฿ 2,580.00 (font ใหญ่ เน้น)         │
+│ 🚚 จัดส่งโดย {shippingMethod}        │
+│ ─────────────────────────────────── │
+│       [QR PromptPay 240x240]        │ ← optional แสดงเสมอ
+│       สแกนเพื่อชำระเงินก่อนส่ง        │
+│ ─────────────────────────────────── │
+│ หรือโอนเข้าบัญชี (ก่อนจัดส่ง)         │
+│ {bankName} เลขที่ {accountNo}       │
+│ ชื่อบัญชี {accountName}              │
+│ ─────────────────────────────────── │
+│ หากชำระล่วงหน้า กรุณาส่งสลิป          │
+│ ในแชทนี้ได้เลยค่ะ 📎                │
+│ ─────────────────────────────────── │
+│ [ปุ่มหลัก] ดูรายละเอียด →            │
+└─────────────────────────────────────┘
+```
+
+##### Card 4 — `receipt.created` (ใบเสร็จ — สีน้ำเงิน ไม่มี QR)
+
+```
+┌─────────────────────────────────────┐
+│ [HEADER น้ำเงิน #3b82f6]            │
+│ ₿  ได้รับชำระเงินแล้ว                │
+├─────────────────────────────────────┤
+│ เลขที่ใบเสร็จ  RC-20260504-0001     │
+│ วันที่          4 พ.ค. 2026          │
+│ อ้างถึงบิล      SO-20260504-0001    │
+│ ─────────────────────────────────── │
+│ ยอดรับชำระ     ฿ 2,580.00           │
+│ วิธีชำระ        เงินสด/โอน           │
+│ ─────────────────────────────────── │
+│ [ปุ่มหลัก] ดูใบเสร็จ →               │ ← `/orders/{saleId}/receipt`
+└─────────────────────────────────────┘
+```
+
+##### PromptPay QR Endpoint (security)
+
+- Route: `app/api/public/qr/promptpay/[saleId]/route.ts`
+- Method: GET
+- Query: `?t={hmacToken}` (token = HMAC-SHA256 of `{saleId}|{timestamp}` with `DOC_VERIFY_SECRET`, expires 24h)
+- Logic:
+  1. Verify HMAC token (reject ถ้าผิด/หมดอายุ)
+  2. Load `Sale` + ตรวจ `amountRemain > 0` (ถ้าจ่ายครบไม่ออก QR)
+  3. Load `getPrimaryTransferAccount()` → ถ้าไม่มี `promptPayId` → 404
+  4. Call `buildPromptPayQrDataUrl(promptPayId, amountRemain)` แล้ว decode data URL → return PNG buffer
+  5. Headers: `Content-Type: image/png`, `Cache-Control: public, max-age=300, immutable`
+- ห้าม Server Action — Flex โหลด image ผ่าน HTTPS GET เท่านั้น
+
+##### Bank Account Display Logic
+
+- Card 2 + Card 3 ดึงจาก `getPrimaryTransferAccount()` (มีอยู่แล้วใน `lib/payment-qr.ts`)
+- ถ้า `promptPayId = null` → ซ่อนส่วน QR ทั้งบล็อก แสดงแค่เลขบัญชี
+- ถ้า `accountNo = null` → ซ่อนส่วนเลขบัญชี แสดงแค่ QR
+- ถ้าทั้งสองว่าง → ซ่อนทั้งบล็อกชำระเงิน + แสดงข้อความ "กรุณาติดต่อร้านเพื่อรับวิธีชำระเงิน"
+
+##### Slip Notification (decision: ใช้ข้อความในการ์ด ไม่มี upload page)
+
+- Card CREDIT + COD ปิดท้ายด้วยข้อความ "หลังโอนเงินกรุณาส่งสลิปในแชทนี้ได้เลยค่ะ 📎"
+- ลูกค้าส่งรูปสลิปกลับเข้า LINE OA chat ปกติ — admin เห็นใน LINE OA inbox
+- ❌ ไม่มี `/liff/orders/{id}/notify-payment` page
+- ❌ ไม่มี schema `PaymentNotification`
+- ❌ ไม่ทำ webhook auto-process slip image (Phase 2+ ถ้าต้องการ)
+
+##### Reuse จากระบบเดิม
+
+- `lib/payment-qr.ts` — `buildPromptPayQrDataUrl()`, `getPrimaryTransferAccount()`
+- `lib/cash-bank-primary-transfer.ts` — `getTransferDocumentState()`
+- Pattern Flex jsonจาก `lib/line-daily-summary.ts` (Flex container/box/text/separator)
+- ห้าม fork helper เดิม — ใช้ตรงๆ
+
+#### Admin UI เพิ่ม
+
+**ข้อ 6 — Test Send**
+- ในหน้า admin `/admin/sales/[id]` และ `/admin/receipts/[id]`: ปุ่ม **"ทดสอบส่ง LINE (admin)"** — ส่งไปที่ LINE userId ของ admin คนกด (จาก mapping เดิม) ไม่ใช่ลูกค้า
+- ใช้ Flex payload ตัวจริง — preview ก่อน push ลูกค้า
+
+**ข้อ 8 — Re-send Button**
+- ในหน้า admin `/admin/sales/[id]` + `/admin/receipts/[id]`: ปุ่ม **"ส่ง LINE แจ้งลูกค้าซ้ำ"**
+- ตรวจ permission `sales.notify` / `receipts.notify` (ใหม่)
+- เรียก `enqueueCustomerNotification` อีกครั้ง แต่ status= `PENDING` ใหม่ (สร้าง row ใหม่ ไม่ทับเดิม — เก็บ history)
+- AuditLog action: `customer.line_notification_resend`
+
+#### Permissions ใหม่ (ตาม .rules §8 — 5 steps)
+- `customer_notifications.view` — ดู history (admin)
+- `sales.notify` — กด re-send LINE จากใบขาย
+- `receipts.notify` — กด re-send LINE จากใบเสร็จ
+- เพิ่มใน `PERMISSION_CATALOG` + `STAFF_OPERATIONS_PERMISSIONS`
+- ไม่ต้องเพิ่ม route rule (ไม่มี menu แยก) — Phase 1C ยังไม่มี notification history page
+
+#### Phase 1C Checklist
+- [ ] Schema: `LineCustomerNotification` + `prisma db push`
+- [ ] LINE plan upgrade Light 1,200 บาท/เดือน (user ต้องทำเอง)
+- [ ] `lib/line-customer-notification.ts` (enqueue, dispatch, payload builders, retry)
+- [ ] `lib/line-customer-flex-templates.ts` — Flex JSON sale/receipt
+- [ ] Hook ใน `app/admin/(protected)/sales/actions.ts` (create only — ไม่แตะ update/cancel)
+- [ ] Hook ใน `app/admin/(protected)/receipts/actions.ts` (create only)
+- [ ] Cron route `/api/internal/dispatch-line-customer-notifications` + QStash schedule
+- [ ] Test send button ใน sale + receipt detail page (admin)
+- [ ] Re-send button ใน sale + receipt detail page (admin)
+- [ ] Permission keys + permission checks ใน Server Actions
+- [ ] AuditLog: `customer.line_notification_sent`, `customer.line_notification_resend`, `customer.line_notification_failed`
+- [ ] LIFF deep link routing ทำงาน (`liff.line.me/{liffId}/orders/{id}` → เปิดหน้า detail ทันที)
+- [ ] E2E test: สร้างใบขาย CASH → ตรวจ LINE ลูกค้าได้ Flex
+- [ ] E2E test: รับชำระ → ตรวจได้ Flex อันที่สอง
+- [ ] Failure mode test: ลูกค้าที่ยังไม่ link → row status=SKIPPED, ไม่มี error
+- [ ] Retry test: mock LINE API fail → cron retry สำเร็จในรอบถัดไป
+
+---
+
+### Out of Scope ทั้ง Phase 1 (1A + 1B + 1C)
+
+- ❌ Push event อื่นๆ นอกเหนือจาก sale.created + receipt.created (shipping, cancel, warranty)
+- ❌ Notification opt-in/opt-out UI (decision: ไม่ทำ)
+- ❌ Bundled/debounced push (decision: ไม่ทำ)
+- ❌ Webhook auto-confirm delivery จากลูกค้า (decision: ไม่ทำ — Phase 2+)
+- ❌ Server-side PDF generator (decision: Option C ใช้ browser print)
+- ❌ LIFF cart / checkout / payment
+- ❌ Quote request flow
+- ❌ Admin UI สำหรับ unlink LINE จาก customer (Phase 2)
+- ❌ Rich Menu (Phase 2)
+- ❌ ย้าย OTP provider ไป ThaiBulkSMS (Phase 2 ถ้า volume สูง)
+
+### Cost Summary (Final)
+
+| Phase | LINE | Firebase | PDF | รวม/เดือน |
+|---|---|---|---|---|
+| 1A | 0 (Communication) | 0 (Spark) | — | **0 บาท** |
+| 1B | 0 (Communication) | 0 (Spark) | 0 (browser print) | **0 บาท** |
+| 1C | 1,200 (Light) | 0 (Spark) | 0 | **1,200 บาท** |
+
+ค่าใช้จ่ายครั้งเดียว: 0 (Firebase + LINE สมัครฟรี, ไม่ต้องเติม credit)
+
+### Cross-Machine Continuity Notes (อัปเดต — สำหรับ AI ตัวอื่น)
+
+10. **Phase ลำดับ**: ต้องเสร็จ 1A ก่อน 1B ก่อน 1C — ห้าม jump
+11. **Push events lock**: เฉพาะ `sale.created` + `receipt.created` เท่านั้น ห้ามเพิ่ม event อื่นโดยไม่ถาม user
+12. **PDF lock**: Option C (browser print) เท่านั้น — ห้ามติดตั้ง `@react-pdf/renderer`, `puppeteer`, `chromium` โดยไม่ถาม user
+13. **No opt-in UI**: ห้ามเพิ่ม notification preference toggle (decision ลงไว้ชัด)
+14. **LINE plan upgrade เป็น blocker ของ Phase 1C** — ห้าม deploy 1C จนกว่า user ยืนยัน upgrade Light plan
+15. **Event hook pattern**: ห้ามแทรก push call ใน transaction ของ Sale/Receipt — ต้องอยู่หลัง commit, wrap try-catch แยก, fail การ push ต้องไม่ทำให้ business mutation fail
+16. **Re-send สร้าง row ใหม่** ไม่ทับเดิม (เก็บ history audit)
+17. **Verify token secret** `DOC_VERIFY_SECRET` ต้องเป็น random 32+ chars, server-side only
+
+## Roadmap Update (2026-05-04 LIFF Phase 1 — Final Decisions ทับล่าสุด)
+
+> **สำคัญ**: Section นี้ทับและแก้ไข decisions ทั้งหมดที่ขัดแย้งใน 2 Roadmap Update ก่อนหน้า (LIFF Mini-App Phase 1 MVP + LIFF Phase 1 Scope Expansion) — ถ้ามีข้อขัดแย้ง ให้ใช้ section นี้เป็นหลัก ตัด section ก่อนเป็น historical context
+>
+> สถานะ: **Phase 1A + 1B = ทำตามแผน, Phase 1C = DEFERRED ยังไม่ทำ** (2026-05-04)
+
+### Final Decisions (override ทุก decision ก่อนหน้า)
+
+| # | เรื่อง | Decision Final | เหตุผล |
+|---|---|---|---|
+| 1 | **OTP** | ❌ ไม่มี OTP เลย (Option A) | LINE userId เป็น identity, phone lookup ตรงๆ — security ระดับเดียวกับ LINE OTP แต่เร็วกว่า ฟรีกว่า |
+| 2 | **Firebase** | ❌ ไม่ใช้ ลบทั้งหมดจาก plan | ไม่ต้อง phone auth |
+| 3 | **Mapping flow** | LINE userId → ไม่มี link → กรอกเบอร์ 1 ช่อง → resolve 4 case | ไม่มี OTP step, register/auto-link ทันที |
+| 4 | **Phase 1C (Push notifications)** | 🟡 **DEFERRED** ไม่ทำในรอบนี้ | รอประเมินอีกครั้งเมื่อ user พร้อม + ยืนยัน LINE plan |
+| 5 | **LINE plan** | Communication ฟรี (ใช้แค่ daily summary admin เดิม) | Phase 1A+1B ไม่ใช้ push ลูกค้า |
+| 6 | **Background dispatch** | ใช้ `waitUntil()` + popup admin หาก fail (ไม่มี cron retry) | Phase 1C เท่านั้น — ตอนนี้ defer |
+| 7 | **Preview workflow** | Vercel alias `liff-preview.yourshop.com` → branch `develop` (fix ครั้งเดียวใน LINE/Firebase console) | ไม่ต้อง Firebase แล้ว แต่ LINE LIFF endpoint ยังต้องคงที่ |
+
+### Mapping Flow (แทนที่ flow เดิม)
+
+```
+เปิด LIFF → liff.init() → liff.getProfile() → ได้ LINE userId
+  │
+  ├─ Customer.lineUserId = userId มีอยู่แล้ว?
+  │     YES → เข้าระบบเลย (0 step)
+  │     NO  ↓
+  │
+  กรอกเบอร์โทร (1 ช่องเดียว) → normalize เป็น format เดียว
+  │
+  Server lookup Customer by phone:
+  │
+  ├─ พบ Customer + lineUserId = null
+  │     → set lineUserId, lineLinkedAt
+  │     → AuditLog action="customer.line_link"
+  │     → เข้าระบบ  [Case A: ลูกค้าเก่า link สำเร็จ]
+  │
+  ├─ พบ Customer + lineUserId = อื่น
+  │     → REJECT แสดงข้อความ "เบอร์นี้ผูก LINE อื่นแล้ว ติดต่อร้าน"
+  │     → AuditLog action="customer.line_link_blocked"  [Case B: กันสวมรอย]
+  │
+  ├─ ไม่พบ Customer
+  │     → สร้าง Customer ใหม่ (name=liff.getProfile().displayName, phone)
+  │     → set lineUserId, lineLinkedAt
+  │     → AuditLog action="customer.line_register"  [Case C: ลูกค้าใหม่]
+  │
+  └─ พบ Customer หลายราย (เบอร์ซ้ำ — ไม่มี data ตอนนี้ แต่กันไว้)
+        → REJECT "พบบัญชีหลายรายการ ติดต่อร้าน"
+        → AuditLog action="customer.line_link_ambiguous"  [Case D]
+```
+
+**Security note**: ระดับเดียวกับ LINE OTP — ลูกค้ากรอกเบอร์ใครก็ได้ แต่ Block สวมรอย (Case B) ป้องกันการยึดบัญชีเดิม สำหรับ MVP รับความเสี่ยงนี้ได้ — Phase 2 ค่อยเพิ่ม magic link จาก admin สำหรับ VIP
+
+### ลบจาก plan เดิม (ห้าม implement)
+
+จาก Roadmap Update ก่อน — ส่วนต่อไปนี้ **ยกเลิกทั้งหมด ห้าม implement**:
+
+- ❌ Firebase project + Phone Auth setup
+- ❌ Env vars: `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_ADMIN_SERVICE_ACCOUNT_JSON`
+- ❌ ไฟล์: `lib/firebase-admin.ts`, `lib/firebase-client.ts`, `lib/phone-normalize.ts` (ย้ายเป็น helper เล็กๆ ใน `lib/liff-customer.ts` แทน), `lib/otp-rate-limit.ts`, `lib/sms-provider.ts`
+- ❌ Components: `OtpVerifyForm.tsx`
+- ❌ API: `app/api/liff/verify-otp/route.ts` (ใช้ `verify-link` แทน)
+- ❌ Schema: `OtpChallenge` table
+- ❌ AuditLog: `customer.line_link_blocked` (ของเดิม) → คง รวมกับ Case B แล้ว
+
+### File Structure ปรับใหม่ (Phase 1A)
+
+```
+app/liff/
+  layout.tsx
+  page.tsx                            # landing — auto route
+  link/page.tsx                       # หน้ากรอกเบอร์ + resolve 4 case
+  orders/page.tsx
+  orders/[id]/page.tsx
+  products/page.tsx
+  profile/page.tsx
+  loading.tsx (ทุก segment)
+
+components/liff/
+  LiffProvider.tsx
+  LiffGate.tsx
+  LinkPhoneForm.tsx                   # 'use client' — ช่องเดียว ส่งเบอร์ไปเช็ค
+  ContactShopButton.tsx               # ปุ่มลอย "ติดต่อร้าน" — เรียก liff.closeWindow()
+  WelcomeScreen.tsx                   # onboarding ครั้งแรก (ตามข้อ 6)
+
+lib/
+  liff-auth.ts                        # verifyLiffIdToken() — server-side
+  liff-customer.ts                    # resolve / link / register (4 case) + phone normalize helper
+
+app/api/liff/
+  verify-link/route.ts                # POST: รับ phone + LIFF ID token → resolve case A/B/C/D
+```
+
+### Env Vars ปรับใหม่
+
+```
+# LINE Login channel — สำหรับ LIFF
+NEXT_PUBLIC_LINE_LIFF_ID=xxxx-xxxxxxxx
+LINE_LIFF_CHANNEL_ID=xxxxxxxxxx
+
+# Document verify (Phase 1B watermark + QR ตรวจสอบ)
+DOC_VERIFY_SECRET=<random 32+ chars>
+
+# (ตัด Firebase ทั้งหมด)
+```
+
+### Phase 1A Checklist (แทนที่ checklist เดิม)
+
+#### Foundation
+- [ ] สร้าง LINE Login channel + LIFF app (Endpoint = `https://liff-preview.yourshop.com/liff` สำหรับ test, `https://yourshop.com/liff` สำหรับ production — สร้าง 2 LIFF apps แยก dev/prod)
+- [ ] ตั้ง Vercel alias `liff-preview.yourshop.com` → branch `develop`
+- [ ] เพิ่ม env: `NEXT_PUBLIC_LINE_LIFF_ID`, `LINE_LIFF_CHANNEL_ID`, `DOC_VERIFY_SECRET` + อัปเดต `.env.example`
+- [ ] Schema: `Customer.lineUserId` + `lineLinkedAt` + `prisma db push` (ไม่ต้องมี `phoneVerified` field แล้ว)
+- [ ] AuditLog actions: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_link_ambiguous`
+
+#### Core Libraries
+- [ ] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
+- [ ] `lib/liff-customer.ts` — phone normalize + resolve 4 case + AuditLog
+
+#### LIFF Pages
+- [ ] `app/liff/layout.tsx` — Server shell + LiffProvider + ContactShopButton + noindex meta
+- [ ] `components/liff/WelcomeScreen.tsx` — onboarding 1 ครั้งแรก (3 bullet: ดูบิล/เช็คประกัน/ใบเสร็จ + ปุ่มเริ่ม) + flag `liff_onboarded` ใน localStorage
+- [ ] `components/liff/ContactShopButton.tsx` — ปุ่มลอยทุกหน้า เรียก `liff.closeWindow()` + (option) `liff.sendMessages()` ส่งข้อความเข้า OA chat
+- [ ] `app/liff/link/page.tsx` + `LinkPhoneForm` — กรอกเบอร์ 1 ช่อง
+- [ ] `app/liff/page.tsx` — landing route ตาม link state
+- [ ] `app/liff/orders/page.tsx` + `[id]/page.tsx` — list + detail (read-only)
+- [ ] `app/liff/products/page.tsx` — reuse `lib/product-search.ts`
+- [ ] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ปุ่ม unlink (option Phase 2)
+- [ ] `loading.tsx` ทุก segment
+
+#### API
+- [ ] `app/api/liff/verify-link/route.ts` — POST: ตรวจ LIFF ID token + phone → resolve 4 case → AuditLog → return result
+- [ ] Server Actions ของ `/liff/*` ทุก action verify LIFF ID token + customer ownership
+
+#### Security
+- [ ] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
+- [ ] Rate limit phone lookup: 5 ครั้ง/LINE userId/ชั่วโมง (กัน brute force scan ฐานข้อมูลลูกค้า)
+- [ ] LIFF page noindex meta + ไม่ expose admin route
+
+#### UI/UX
+- [ ] Light + dark mode ครบ
+- [ ] Mobile-first, ใช้ `formatDateThai` (Gregorian)
+- [ ] Onboarding screen ดีไซน์สากล (illustration / icon + ข้อความสั้น + ปุ่ม CTA เดียว)
+- [ ] Contact shop button ลอย bottom-right ทุกหน้า
+
+### Phase 1B Checklist (คงเดิม + เพิ่ม)
+
+ใช้ checklist เดิมจาก section "Phase 1B" ก่อนหน้า + เพิ่ม:
+- [ ] หน้า `/liff/outstanding` (ตามที่ระบุไปแล้ว)
+- [ ] หน้า `/liff/claims` + `[id]` (ตามที่ระบุไปแล้ว)
+- [ ] Order detail แสดง "ประวัติการชำระเงิน" — list `Receipt[]` ที่ link กับ saleId เรียงตาม `receiptDate` แบบย่อ (วันที่, ยอด, methodชำระ, ปุ่มดูใบเสร็จ) — รายละเอียดน้อยกว่า admin
+- [ ] Order detail แสดง Receipt ที่ถูกยกเลิกพร้อม badge "ยกเลิก" + เหตุผล (ใช้ `Receipt.cancelNote`) — กันลูกค้า confused
+
+### Phase 1C — DEFERRED (เก็บไว้ทำในอนาคต)
+
+> **สถานะ**: ยังไม่ทำในรอบนี้ — ทุก spec ใน section "Phase 1C — Customer Push Notifications" ก่อนหน้า **คงไว้เป็น reference** สำหรับ resume งานในอนาคต ไม่ลบ
+
+**เงื่อนไขที่ต้องครบก่อน start Phase 1C ในอนาคต**:
+1. User ยืนยัน upgrade LINE plan Light 1,200 บาท/เดือน
+2. ประเมินยอดขายปัจจุบัน + คาดการณ์ push volume ใหม่
+3. POC test Flex card บน LINE OA จริง (ส่ง test ไป admin ดูสวย)
+4. ตัดสินใจ: ทำ Bundle / Opt-in / Cancel push อีกครั้ง (ตอนนี้ทุกข้อ "ไม่ทำ")
+
+**สิ่งที่จะเปลี่ยนเมื่อ Phase 1C เริ่ม** (จากที่ตอบรอบนี้):
+- Background dispatch: ใช้ `waitUntil()` (ไม่มี cron retry)
+- Failure UX: popup สีแดงในหน้า admin "ส่ง LINE ไม่สำเร็จ" + ปุ่ม "ส่งใหม่" (toast/dialog ทันที, ไม่ใช่ silent log)
+- Notification status badge ทุก row ใน sale/receipt list (icon เขียว=sent, แดง=failed, เทา=skipped)
+- Re-send button ในหน้า detail (เดิม)
+
+**Spec ของ Flex card (4 templates)** + **PromptPay QR endpoint** + **Permission keys** ใน Phase 1C section ก่อนหน้า — **คงไว้ทั้งหมด** สำหรับ implement ในอนาคต
+
+### Cost Summary (Final — รอบนี้)
+
+| Phase | Cost/เดือน | สถานะ |
+|---|---|---|
+| **1A** | **0 บาท** | จะทำ |
+| **1B** | **0 บาท** | จะทำต่อจาก 1A |
+| 1C | +1,200 บาท (Light plan) | **DEFERRED** |
+
+ค่าใช้จ่าย one-time: 0 บาท
+
+### Cross-Machine Continuity Notes (อัปเดต — สำหรับ AI ตัวอื่น)
+
+ลบข้อ 14 เดิม + เพิ่ม:
+
+18. **Decision tree priority**: ถ้า PLAN.md มี 2 section ที่ขัดแย้งกัน ให้เชื่อ section ที่เขียนทีหลัง (ตามวันที่ใน header) — section "Final Decisions" 2026-05-04 ทับ section "Scope Expansion" 2026-05-04 ก่อนหน้า
+19. **No Firebase**: ห้ามติดตั้ง `firebase`, `firebase-admin`, ห้ามใช้ Phone Auth ในรอบนี้
+20. **Phase 1C DEFERRED**: ห้ามเริ่ม Phase 1C จนกว่า user สั่ง — push notification ห้ามทำใน Phase 1A/1B
+21. **Phone lookup security**: ระดับ Option A — ยอมรับว่าไม่ verify phone ownership, ป้องกันแค่สวมรอย (Case B) + brute force (rate limit)
+22. **Vercel alias preview workflow**: `liff-preview.yourshop.com` ชี้ไป branch `develop` — feature branch อื่น test LIFF ไม่ได้ ต้อง merge develop ก่อน
+23. **2 LIFF apps แยก**: dev = `liff-preview.yourshop.com/liff`, prod = `yourshop.com/liff` — มี `NEXT_PUBLIC_LINE_LIFF_ID` คนละค่า ใช้ Vercel env per-environment
+24. **Receipt cancel UX**: ไม่ push noti (Phase 1C decision เดิม) แต่หน้า LIFF order detail แสดง badge "ยกเลิก" + เหตุผลให้ลูกค้าเห็น — กัน confused
+25. **Onboarding screen**: แสดงครั้งแรกเท่านั้น เก็บ flag `liff_onboarded` ใน localStorage — ห้าม block ลูกค้าที่เคยใช้แล้ว
+
