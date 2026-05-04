@@ -8,18 +8,20 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Pencil, Eye } from "lucide-react";
+import { Plus, Pencil, Eye, Filter } from "lucide-react";
 import ToggleCustomerButton from "./DeleteCustomerButton";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
+import type { Prisma } from "@/lib/generated/prisma";
+import { normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const PAGE_SIZE = 50;
 
 const CustomersPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; page?: string }>;
+  searchParams: Promise<{ search?: string; page?: string; source?: string }>;
 }) => {
   await requirePermission("customers.view");
 
@@ -32,19 +34,31 @@ const CustomersPage = async ({
   const canUpdate = hasPermissionAccess(role, permissions, "customers.update");
   const canCancel = hasPermissionAccess(role, permissions, "customers.cancel");
 
-  const { search, page: pageParam } = await searchParams;
+  const { search, page: pageParam, source } = await searchParams;
   const page = Math.max(1, parseInt(pageParam ?? "1", 10));
   const skip = (page - 1) * PAGE_SIZE;
+  const sourceFilter = source === "LINE_LIFF" ? "LINE_LIFF" : undefined;
+  const normalizedSearchPhone = (() => {
+    try {
+      return normalizeCustomerPhone(search);
+    } catch {
+      return undefined;
+    }
+  })();
 
-  const whereClause = search
-    ? {
+  const whereClause: Prisma.CustomerWhereInput = {
+    ...(sourceFilter ? { source: sourceFilter } : {}),
+    ...(search
+      ? {
         OR: [
           { name: { contains: search, mode: "insensitive" as const } },
           { phone: { contains: search } },
+          ...(normalizedSearchPhone ? [{ phone: { contains: normalizedSearchPhone } }] : []),
           { code: { contains: search, mode: "insensitive" as const } },
         ],
       }
-    : undefined;
+      : {}),
+  };
 
   const [customers, total] = await Promise.all([
     db.customer.findMany({
@@ -74,20 +88,31 @@ const CustomersPage = async ({
       </div>
 
       <AdminSearchForm method="GET" className="mb-4">
-        <div className="flex max-w-md gap-2">
+        <div className="flex flex-col gap-2 md:flex-row">
           <input
             type="text"
             name="search"
             defaultValue={search ?? ""}
             placeholder="ค้นหาชื่อ รหัส หรือเบอร์โทร"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] md:max-w-md"
           />
+          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600">
+            <Filter size={14} />
+            <select
+              name="source"
+              defaultValue={sourceFilter ?? ""}
+              className="bg-transparent text-sm outline-none"
+            >
+              <option value="">ลูกค้าทั้งหมด</option>
+              <option value="LINE_LIFF">ลูกค้าจาก LINE</option>
+            </select>
+          </label>
           <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162d4a]"
           >
             ค้นหา
           </AdminSearchSubmitButton>
-          {search && (
+          {(search || sourceFilter) && (
             <Link
               href="/admin/customers"
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50"
@@ -132,7 +157,27 @@ const CustomersPage = async ({
                     }`}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{customer.code ?? "-"}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{customer.name}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{customer.name}</span>
+                        {customer.source === "LINE_LIFF" ? (
+                          <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                            สมัครผ่าน LINE
+                          </span>
+                        ) : null}
+                        {customer.lineUserId ? (
+                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            ผูก LINE แล้ว
+                          </span>
+                        ) : null}
+                        {customer.source === "LINE_LIFF" &&
+                        (!customer.shippingAddress || !customer.taxId) ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            ข้อมูลยังไม่ครบ
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{customer.phone ?? "-"}</td>
                     <td className="max-w-xs truncate px-4 py-3 text-gray-500">{customer.address ?? "-"}</td>
                     <td className="px-4 py-3 text-right text-gray-600">{customer._count.sales} ครั้ง</td>
@@ -180,7 +225,10 @@ const CustomersPage = async ({
         currentPage={page}
         totalPages={totalPages}
         basePath="/admin/customers"
-        searchParams={search ? { search } : undefined}
+        searchParams={{
+          ...(search ? { search } : {}),
+          ...(sourceFilter ? { source: sourceFilter } : {}),
+        }}
       />
     </div>
   );

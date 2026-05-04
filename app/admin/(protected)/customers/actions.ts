@@ -13,10 +13,22 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateCustomerCode } from "@/lib/entity-code";
 import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
+import { CUSTOMER_PHONE_EXAMPLE, normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const customerSchema = z.object({
   name:            z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
-  phone:           z.string().max(20).optional(),
+  phone:           z.preprocess(
+    (value) => {
+      try {
+        return normalizeCustomerPhone(value);
+      } catch {
+        return "__INVALID_PHONE__";
+      }
+    },
+    z.string().refine((value) => value !== "__INVALID_PHONE__", {
+      message: `กรุณาระบุเบอร์โทรศัพท์ในรูปแบบ ${CUSTOMER_PHONE_EXAMPLE}`,
+    }).optional(),
+  ),
   address:         z.string().max(300).optional(),
   shippingAddress: z.string().max(500).optional(),
   taxId:           z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
@@ -34,6 +46,9 @@ function toAuditCustomer(customer: {
   taxId: string | null;
   note: string | null;
   creditTerm: number | null;
+  source: string;
+  lineUserId: string | null;
+  lineLinkedAt: Date | null;
   isActive: boolean;
 }) {
   return {
@@ -46,6 +61,9 @@ function toAuditCustomer(customer: {
     taxId: customer.taxId,
     note: customer.note,
     creditTerm: customer.creditTerm,
+    source: customer.source,
+    lineUserId: customer.lineUserId,
+    lineLinkedAt: customer.lineLinkedAt,
     isActive: customer.isActive,
   };
 }
@@ -93,6 +111,9 @@ export async function createCustomer(
         taxId: true,
         note: true,
         creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
         isActive: true,
       },
     });
@@ -109,6 +130,9 @@ export async function createCustomer(
     return { success: true, id: customer.id };
   } catch (err) {
     console.error("[createCustomer]", err);
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      return { error: "เบอร์โทรนี้มีอยู่ในระบบแล้ว" };
+    }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -147,6 +171,9 @@ export async function updateCustomer(
         taxId: true,
         note: true,
         creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
         isActive: true,
       },
     });
@@ -176,6 +203,9 @@ export async function updateCustomer(
         taxId: true,
         note: true,
         creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
         isActive: true,
       },
     });
@@ -199,6 +229,9 @@ export async function updateCustomer(
     return { success: true };
   } catch (err) {
     console.error("[updateCustomer]", err);
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      return { error: "เบอร์โทรนี้มีอยู่ในระบบแล้ว" };
+    }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -224,6 +257,9 @@ export async function toggleCustomer(
         taxId: true,
         note: true,
         creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
         isActive: true,
       },
     });
@@ -244,6 +280,9 @@ export async function toggleCustomer(
         taxId: true,
         note: true,
         creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
         isActive: true,
       },
     });

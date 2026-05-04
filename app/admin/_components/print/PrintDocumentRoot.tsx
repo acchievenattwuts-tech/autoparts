@@ -17,8 +17,8 @@ const PrintDocumentRoot = ({
     id={rootId}
     className={
       rootClassName
-        ? `print-document-root ${rootClassName}`
-        : "print-document-root mx-auto bg-white p-8 text-[13px] leading-snug"
+        ? `print-document-root relative ${rootClassName}`
+        : "print-document-root relative mx-auto bg-white p-8 text-[13px] leading-snug"
     }
     style={rootStyle ?? DEFAULT_ROOT_STYLE}
   >

@@ -1,0 +1,115 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { CheckCircle2, LoaderCircle, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+import { useLiff } from "./LiffProvider";
+import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
+
+type VerifyLinkResponse = {
+  status?: "LINKED" | "REGISTERED" | "BLOCKED" | "AMBIGUOUS" | "ERROR";
+  message?: string;
+  customerName?: string;
+};
+
+export default function LinkPhoneForm() {
+  const router = useRouter();
+  const { idToken, profile, isReady } = useLiff();
+  const [phone, setPhone] = useState("");
+  const [message, setMessage] = useState("");
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage("");
+    setIsSuccess(false);
+
+    startTransition(async () => {
+      if (!idToken) {
+        setMessage("ยังไม่พบข้อมูลยืนยันจาก LINE กรุณาปิดแล้วเปิดใหม่อีกครั้ง");
+        return;
+      }
+
+      const response = await fetch("/api/liff/verify-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, phone }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as VerifyLinkResponse;
+
+      if (!response.ok || payload.status === "BLOCKED" || payload.status === "AMBIGUOUS") {
+        setMessage(payload.message || "ไม่สามารถผูกบัญชีได้ กรุณาติดต่อร้าน");
+        return;
+      }
+
+      setIsSuccess(true);
+      setMessage(
+        payload.status === "REGISTERED"
+          ? "สมัครใช้งานเรียบร้อยแล้ว"
+          : "ผูกบัญชีลูกค้าเรียบร้อยแล้ว",
+      );
+      router.replace("/liff/orders");
+      router.refresh();
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+            <Phone size={20} />
+          </div>
+          <div>
+            <p className="font-kanit text-lg font-bold text-slate-950">ยืนยันเบอร์โทร</p>
+            <p className="text-xs text-slate-500">
+              {profile?.displayName ? `LINE: ${profile.displayName}` : "ใช้บัญชี LINE นี้ผูกกับข้อมูลลูกค้า"}
+            </p>
+          </div>
+        </div>
+
+        <label className="mb-1.5 block text-sm font-semibold text-slate-700">เบอร์โทรศัพท์</label>
+        <input
+          type="tel"
+          inputMode="tel"
+          value={phone}
+          onChange={(event) => setPhone(formatCustomerPhoneInput(event.target.value))}
+          placeholder={CUSTOMER_PHONE_EXAMPLE}
+          required
+          maxLength={12}
+          pattern="0[0-9]{2}-[0-9]{3}-[0-9]{4}"
+          className="w-full rounded-lg border border-slate-300 px-3 py-3 text-base font-semibold text-slate-950 outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100"
+        />
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          ถ้าเบอร์นี้มีในระบบ ร้านจะผูกให้ทันที ถ้ายังไม่มี ระบบจะสร้างข้อมูลลูกค้าใหม่ให้พนักงานตรวจต่อใน admin
+        </p>
+      </div>
+
+      {message ? (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            isSuccess
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-rose-200 bg-rose-50 text-rose-800"
+          }`}
+        >
+          <div className="flex gap-2">
+            {isSuccess ? <CheckCircle2 size={18} /> : null}
+            <span>{message}</span>
+          </div>
+        </div>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={!isReady || isPending}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold text-white transition disabled:cursor-wait disabled:opacity-60"
+      >
+        {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+        ผูกบัญชีและเริ่มใช้งาน
+      </button>
+    </form>
+  );
+}

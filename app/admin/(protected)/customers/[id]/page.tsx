@@ -130,7 +130,26 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
       {/* Info card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex items-start justify-between mb-5 pb-3 border-b border-gray-100">
-          <h1 className="font-kanit text-xl font-bold text-gray-900">{customer.name}</h1>
+          <div>
+            <h1 className="font-kanit text-xl font-bold text-gray-900">{customer.name}</h1>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {customer.source === "LINE_LIFF" ? (
+                <span className="inline-flex items-center rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                  สมัครผ่าน LINE
+                </span>
+              ) : null}
+              {customer.lineUserId ? (
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  ผูก LINE แล้ว
+                </span>
+              ) : null}
+              {customer.source === "LINE_LIFF" && (!customer.shippingAddress || !customer.taxId) ? (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                  ข้อมูลยังไม่ครบ
+                </span>
+              ) : null}
+            </div>
+          </div>
           <Link
             href={`/admin/customers/${id}/edit`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-medium rounded-lg transition-colors"
@@ -150,6 +169,18 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <div>
             <p className="text-gray-500 mb-1">เลขผู้เสียภาษี</p>
             <p className="font-medium text-gray-900">{customer.taxId ?? "-"}</p>
+          </div>
+          <div>
+            <p className="text-gray-500 mb-1">แหล่งที่มา</p>
+            <p className="font-medium text-gray-900">
+              {customer.source === "LINE_LIFF" ? "สมัครผ่าน LINE" : "พนักงานเพิ่มในระบบ"}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-500 mb-1">วันที่ผูก LINE</p>
+            <p className="font-medium text-gray-900">
+              {customer.lineLinkedAt ? formatDateThai(customer.lineLinkedAt) : "-"}
+            </p>
           </div>
           {customer.address && (
             <div className="sm:col-span-2 md:col-span-3">

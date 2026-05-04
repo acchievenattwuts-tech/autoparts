@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import TaxIdInput from "@/components/shared/TaxIdInput";
+import { formatDateThai } from "@/lib/th-date";
+import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
 import { createCustomer, updateCustomer } from "./actions";
 
 interface CustomerFormProps {
@@ -17,6 +19,9 @@ interface CustomerFormProps {
     taxId: string | null;
     note: string | null;
     creditTerm: number | null;
+    source?: string | null;
+    lineUserId?: string | null;
+    lineLinkedAt?: Date | null;
   };
 }
 
@@ -71,6 +76,27 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             </div>
           )}
 
+          {customer?.source === "LINE_LIFF" && (
+            <div>
+              <label className={labelCls}>แหล่งที่มา</label>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-700">
+                  สมัครผ่าน LINE
+                </span>
+                {customer.lineUserId ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    ผูก LINE แล้ว
+                  </span>
+                ) : null}
+              </div>
+              {customer.lineLinkedAt ? (
+                <p className="mt-1 text-xs text-gray-400">
+                  ผูกเมื่อ {formatDateThai(customer.lineLinkedAt)}
+                </p>
+              ) : null}
+            </div>
+          )}
+
           <div>
             <label className={labelCls}>
               ชื่อลูกค้า <span className="text-red-500">*</span>
@@ -91,11 +117,19 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             <input
               type="tel"
               name="phone"
-              maxLength={20}
+              inputMode="tel"
+              maxLength={12}
+              pattern="0[0-9]{2}-[0-9]{3}-[0-9]{4}"
               defaultValue={customer?.phone ?? ""}
+              onChange={(event) => {
+                event.currentTarget.value = formatCustomerPhoneInput(event.currentTarget.value);
+              }}
               className={inputCls}
-              placeholder="0xx-xxx-xxxx"
+              placeholder={CUSTOMER_PHONE_EXAMPLE}
             />
+            <p className="mt-1 text-xs text-gray-400">
+              รูปแบบเดียวกับ LINE: {CUSTOMER_PHONE_EXAMPLE}
+            </p>
           </div>
 
           <div>

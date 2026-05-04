@@ -13,6 +13,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -103,6 +104,11 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
     receipt.paymentMethod === PaymentMethod.TRANSFER
       ? receipt.cashBankAccount ?? primaryTransferAccount
       : null;
+  const verify = await buildPrintDocumentVerifyBadge({
+    type: "receipt",
+    docNo: receipt.receiptNo,
+    variant: "ORIGINAL",
+  });
 
   return (
     <>
@@ -309,6 +315,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         }}
         signerDisplayName={signerDisplayName}
         receivedTransferAccount={receivedTransferAccount}
+        verify={verify}
         rootId="receipt"
       />
     </>

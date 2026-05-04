@@ -1,6 +1,9 @@
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
+import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
+import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocumentVerifyMark";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
+import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
   PRINT_BODY_BORDER_CLASS,
   PRINT_HEADER_CELL_CLASS,
@@ -51,8 +54,10 @@ type SalePrintSale = {
   discount: NumericLike;
   netAmount: NumericLike;
   shippingFee?: NumericLike | null;
+  amountRemain?: NumericLike | null;
   paymentType: "CASH_SALE" | "CREDIT_SALE";
   paymentMethod?: string | null;
+  status?: string | null;
   creditTerm?: number | null;
   note?: string | null;
   signerSignatureUrl?: string | null;
@@ -93,6 +98,7 @@ const SharedSalesDeliveryPrintDocument = ({
   receivedTransferAccount,
   promptPayQrDataUrl,
   qrAmount,
+  verify,
   rootId,
   rootClassName,
 }: {
@@ -104,6 +110,7 @@ const SharedSalesDeliveryPrintDocument = ({
   receivedTransferAccount: ReceivedTransferAccount;
   promptPayQrDataUrl: string | null;
   qrAmount: number;
+  verify?: PrintDocumentVerifyBadge | null;
   rootId?: string;
   rootClassName?: string;
 }) => {
@@ -116,9 +123,23 @@ const SharedSalesDeliveryPrintDocument = ({
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
   const transferSlipLineId = shopConfig.shopLineId?.trim() || null;
+  const isCancelled = sale.status === "CANCELLED";
+  const isPaidCreditSale =
+    !isCancelled &&
+    sale.paymentType === "CREDIT_SALE" &&
+    sale.amountRemain != null &&
+    Number(sale.amountRemain) <= 0;
 
   return (
     <PrintDocumentRoot rootId={rootId} rootClassName={rootClassName}>
+      {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
+
+      {isCancelled ? (
+        <PrintDocumentStatusStamp label="เอกสารถูกยกเลิกแล้ว" tone="cancelled" />
+      ) : isPaidCreditSale ? (
+        <PrintDocumentStatusStamp label="ชำระเงินแล้ว" tone="paid" />
+      ) : null}
+
       <PrintDocumentHeader
         shopConfig={shopConfig}
         title={sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}

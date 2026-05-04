@@ -1,6 +1,9 @@
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
+import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
+import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocumentVerifyMark";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
+import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
   PRINT_BODY_BORDER_CLASS,
   PRINT_HEADER_CELL_CLASS,
@@ -38,6 +41,7 @@ type ReceiptSettlementPrintReceipt = {
   customerName?: string | null;
   totalAmount: NumericLike;
   paymentMethod: "CASH" | "TRANSFER" | "CREDIT";
+  status?: string | null;
   note?: string | null;
   signerSignatureUrl?: string | null;
   items: ReceiptSettlementItem[];
@@ -69,6 +73,7 @@ const SharedReceiptSettlementPrintDocument = ({
   shopConfig,
   signerDisplayName,
   receivedTransferAccount,
+  verify,
   rootId,
   rootClassName,
 }: {
@@ -76,6 +81,7 @@ const SharedReceiptSettlementPrintDocument = ({
   shopConfig: PrintShopConfig;
   signerDisplayName: string;
   receivedTransferAccount: TransferAccount;
+  verify?: PrintDocumentVerifyBadge | null;
   rootId?: string;
   rootClassName?: string;
 }) => {
@@ -86,6 +92,7 @@ const SharedReceiptSettlementPrintDocument = ({
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasSupportBlock = receipt.paymentMethod === "CASH" || receipt.paymentMethod === "TRANSFER" || Boolean(receivedTransferAccount);
+  const isCancelled = receipt.status === "CANCELLED";
 
   return (
     <PrintDocumentRoot
@@ -93,6 +100,10 @@ const SharedReceiptSettlementPrintDocument = ({
       rootClassName={rootClassName ?? "mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug"}
       rootStyle={undefined}
     >
+      {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
+
+      {isCancelled ? <PrintDocumentStatusStamp label="เอกสารถูกยกเลิกแล้ว" tone="cancelled" /> : null}
+
       <PrintDocumentHeader shopConfig={shopConfig} title="ใบเสร็จรับเงิน" />
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs">

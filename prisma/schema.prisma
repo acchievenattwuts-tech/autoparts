@@ -514,11 +514,14 @@ model Customer {
   id              String       @id @default(cuid())
   code            String?      @unique
   name            String
-  phone           String?
+  phone           String?      @unique
   address         String?
   taxId           String?
   note            String?
   creditTerm      Int?
+  source          String       @default("ADMIN")
+  lineUserId      String?      @unique
+  lineLinkedAt    DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   shippingAddress String?
@@ -1387,6 +1390,12 @@ enum AuditAction {
   ROLE_CHANGE
   RECALCULATE
   EXPORT
+  LINE_LINK
+  LINE_REGISTER
+  LINE_LINK_BLOCKED
+  LINE_LINK_AMBIGUOUS
+  CUSTOMER_VIEW_INVOICE_PDF
+  CUSTOMER_VIEW_RECEIPT_PDF
 }
 
 enum StockCardSource {

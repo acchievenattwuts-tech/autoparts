@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { requirePermission } from "@/lib/require-auth";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
@@ -68,12 +69,14 @@ const DeliveryPrintPage = async ({
         id: true,
         saleNo: true,
         saleDate: true,
+        status: true,
         customerName: true,
         customerPhone: true,
         shippingAddress: true,
         totalAmount: true,
         discount: true,
         netAmount: true,
+        amountRemain: true,
         shippingFee: true,
         paymentType: true,
         paymentMethod: true,
@@ -184,6 +187,11 @@ const DeliveryPrintPage = async ({
           const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
             ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
             : null;
+          const verify = await buildPrintDocumentVerifyBadge({
+            type: "sale",
+            docNo: sale.saleNo,
+            variant: "ORIGINAL",
+          });
 
           return (
             <SharedSalesDeliveryPrintDocument
@@ -196,6 +204,7 @@ const DeliveryPrintPage = async ({
               receivedTransferAccount={receivedTransferAccount}
               promptPayQrDataUrl={promptPayQrDataUrl}
               qrAmount={transferDocumentState.qrAmount}
+              verify={verify}
               rootClassName="slip mx-auto bg-white p-8 text-[13px] leading-snug md:flex md:min-h-[100vh] md:flex-col"
             />
           );

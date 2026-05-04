@@ -5877,28 +5877,28 @@ LIFF order detail แสดงรายการ receipt ทั้งหมด�
 - `components/liff/*` ตามที่ลิสต์ข้างบน
 
 #### Phase 1B Checklist
-- [ ] `OrderStatusTimeline.tsx` + integrate ใน `/liff/orders/[id]`
-- [ ] `TrackingSmartLink.tsx` + map URL ทุก ShippingMethod
-- [ ] `lib/verify-token.ts` (HMAC) + env `DOC_VERIFY_SECRET`
-- [ ] `qrcode` package install
-- [ ] Watermark + QR ใน print stylesheet ของ sale/receipt เดิม (light + dark mode)
-- [ ] หน้า `/verify/[type]/[docNo]` public + i18n ไทย
-- [ ] หน้า `/liff/orders/[id]/invoice` + `/receipt` + ปุ่ม `PrintToPdfButton`
-- [ ] หน้า `/liff/warranties` + `/liff/warranties/[id]`
+- [x] `OrderStatusTimeline.tsx` + integrate ใน `/liff/orders/[id]`
+- [x] `TrackingSmartLink.tsx` + map URL ทุก ShippingMethod
+- [x] `lib/verify-token.ts` (HMAC) + env `DOC_VERIFY_SECRET`
+- [x] `qrcode` package install
+- [x] Watermark + QR ใน print stylesheet ของ sale/receipt เดิม (light + dark mode)
+- [x] หน้า `/verify/[type]/[docNo]/[token]` public + i18n ไทย
+- [x] หน้า `/liff/orders/[id]/invoice` + `/receipt` + ปุ่ม `PrintToPdfButton`
+- [x] หน้า `/liff/warranties` + `/liff/warranties/[id]`
 - [ ] Test ใน LINE app จริง (Android + iOS) ว่า Save as PDF ใช้ได้
-- [ ] AuditLog: `customer.view_invoice_pdf`, `customer.view_receipt_pdf` (track usage)
+- [x] AuditLog: `CUSTOMER_VIEW_INVOICE_PDF`, `CUSTOMER_VIEW_RECEIPT_PDF` (track usage)
 - [ ] **Form variant test** — ขายสด/เชื่อ/เชื่อมี Receipt: title + block แสดงตรงกับ admin print 100%
-- [ ] **Reuse audit** — ตรวจว่า LIFF ใช้ `SharedSalesDeliveryPrintDocument` (และ shared receipt print component) ตรงๆ ไม่มี fork
+- [x] **Reuse audit** — ตรวจว่า LIFF ใช้ `SharedSalesDeliveryPrintDocument` (และ shared receipt print component) ตรงๆ ไม่มี fork
 - [ ] **Cross-customer security test** — ลูกค้า A เปิด URL ของลูกค้า B → 403
-- [ ] หน้า `/liff/outstanding` — รวมยอดค้าง + list บิลเรียงตามครบกำหนด + badge เกินกำหนด
-- [ ] Per-bill detail ครบ 6 บรรทัด (saleNo / saleDate / dueDate / grandTotal / paid / amountRemain) — paid คำนวณจาก grandTotal - amountRemain
-- [ ] Payment channels block (text-only ไม่มี QR) — bank + PromptPay จาก `getPrimaryTransferAccount()`
-- [ ] Tap-to-copy เลขบัญชี + PromptPay ID + toast "คัดลอกแล้ว"
-- [ ] Empty state: ไม่มีบิลค้าง + ไม่มี primary transfer account → ข้อความ "ติดต่อร้าน"
-- [ ] หน้า `/liff/claims` + `/liff/claims/[id]` — list + timeline 4 จุด
-- [ ] Status / ClaimType i18n mapping (Thai labels) ใน `lib/warranty-claim-i18n.ts`
-- [ ] ซ่อนข้อมูลภายใน (supplier info, signature URL) ในฝั่ง LIFF
-- [ ] Test: ลูกค้าเห็นเฉพาะ claims ของตัวเอง (where `warranty.customerId = currentCustomer.id`)
+- [x] หน้า `/liff/outstanding` — รวมยอดค้าง + list บิลเรียงตามครบกำหนด + badge เกินกำหนด
+- [x] Per-bill detail ครบ 6 บรรทัด (saleNo / saleDate / dueDate / grandTotal/netAmount / paid / amountRemain) — paid คำนวณจาก grandTotal - amountRemain
+- [x] Payment channels block (text-only ไม่มี QR) — bank + PromptPay จาก `getPrimaryTransferAccount()`
+- [x] Tap-to-copy เลขบัญชี + PromptPay ID + toast "คัดลอกแล้ว"
+- [x] Empty state: ไม่มีบิลค้าง + ไม่มี primary transfer account → ข้อความ "ติดต่อร้าน"
+- [x] หน้า `/liff/claims` + `/liff/claims/[id]` — list + timeline 4 จุด
+- [x] Status / ClaimType i18n mapping (Thai labels) ใน `lib/warranty-claim-i18n.ts`
+- [x] ซ่อนข้อมูลภายใน (supplier info, signature URL) ในฝั่ง LIFF
+- [x] Test: ลูกค้าเห็นเฉพาะ claims ของตัวเอง (where `warranty.sale.customerId = currentCustomer.id`)
 
 ---
 
@@ -6230,7 +6230,7 @@ function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod
   │     → AuditLog action="customer.line_link_blocked"  [Case B: กันสวมรอย]
   │
   ├─ ไม่พบ Customer
-  │     → สร้าง Customer ใหม่ (name=liff.getProfile().displayName, phone)
+  │     → สร้าง Customer ใหม่ (name=liff.getProfile().displayName, phone, source="LINE_LIFF")
   │     → set lineUserId, lineLinkedAt
   │     → AuditLog action="customer.line_register"  [Case C: ลูกค้าใหม่]
   │
@@ -6262,6 +6262,8 @@ app/liff/
   link/page.tsx                       # หน้ากรอกเบอร์ + resolve 4 case
   orders/page.tsx
   orders/[id]/page.tsx
+  orders/[id]/invoice/page.tsx             # customer PDF/print — reuse shared admin print document
+  orders/[id]/receipt/page.tsx             # customer PDF/print — reuse shared admin print document
   products/page.tsx
   profile/page.tsx
   loading.tsx (ทุก segment)
@@ -6299,47 +6301,82 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 #### Foundation
 - [ ] สร้าง LINE Login channel + LIFF app (Endpoint = `https://liff-preview.yourshop.com/liff` สำหรับ test, `https://yourshop.com/liff` สำหรับ production — สร้าง 2 LIFF apps แยก dev/prod)
 - [ ] ตั้ง Vercel alias `liff-preview.yourshop.com` → branch `develop`
-- [ ] เพิ่ม env: `NEXT_PUBLIC_LINE_LIFF_ID`, `LINE_LIFF_CHANNEL_ID`, `DOC_VERIFY_SECRET` + อัปเดต `.env.example`
-- [ ] Schema: `Customer.lineUserId` + `lineLinkedAt` + `prisma db push` (ไม่ต้องมี `phoneVerified` field แล้ว)
-- [ ] AuditLog actions: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_link_ambiguous`
+- [x] เพิ่ม env: `NEXT_PUBLIC_LINE_LIFF_ID`, `LINE_LIFF_CHANNEL_ID`, `DOC_VERIFY_SECRET` + อัปเดต `.env.example`
+- [x] Schema: `Customer.lineUserId` + `lineLinkedAt` + `source String @default("ADMIN")` (ค่า `ADMIN`, `LINE_LIFF`) + `Customer.phone @unique` + `prisma db push` (ไม่ต้องมี `phoneVerified` field แล้ว)
+- [x] AuditLog actions: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_link_ambiguous`
 
 #### Core Libraries
-- [ ] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
-- [ ] `lib/liff-customer.ts` — phone normalize + resolve 4 case + AuditLog
+- [x] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
+- [x] `lib/liff-customer.ts` — phone normalize + resolve 4 case + AuditLog
+- [x] `lib/customer-phone.ts` — helper กลางบังคับ format เบอร์ลูกค้าเป็น `081-234-5678` ใช้ร่วมกันทั้ง admin และ LINE_LIFF
+- [x] `lib/liff-session.ts` + `lib/liff-data.ts` — signed httpOnly LIFF customer session หลัง verify LINE token แล้ว เพื่อให้ Server Components query ได้โดยไม่ expose identity ฝั่ง client ซ้ำ
 
 #### LIFF Pages
-- [ ] `app/liff/layout.tsx` — Server shell + LiffProvider + ContactShopButton + noindex meta
-- [ ] `components/liff/WelcomeScreen.tsx` — onboarding 1 ครั้งแรก (3 bullet: ดูบิล/เช็คประกัน/ใบเสร็จ + ปุ่มเริ่ม) + flag `liff_onboarded` ใน localStorage
-- [ ] `components/liff/ContactShopButton.tsx` — ปุ่มลอยทุกหน้า เรียก `liff.closeWindow()` + (option) `liff.sendMessages()` ส่งข้อความเข้า OA chat
-- [ ] `app/liff/link/page.tsx` + `LinkPhoneForm` — กรอกเบอร์ 1 ช่อง
-- [ ] `app/liff/page.tsx` — landing route ตาม link state
-- [ ] `app/liff/orders/page.tsx` + `[id]/page.tsx` — list + detail (read-only)
-- [ ] `app/liff/products/page.tsx` — reuse `lib/product-search.ts`
-- [ ] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ปุ่ม unlink (option Phase 2)
-- [ ] `loading.tsx` ทุก segment
+- [x] `app/liff/layout.tsx` — Server shell + LiffProvider + ContactShopButton + noindex meta
+- [x] `components/liff/WelcomeScreen.tsx` — onboarding 1 ครั้งแรก (3 bullet: ดูบิล/เช็คประกัน/ใบเสร็จ + ปุ่มเริ่ม) + flag `liff_onboarded` ใน localStorage
+- [x] `components/liff/ContactShopButton.tsx` — ปุ่มลอยทุกหน้า เรียก `liff.closeWindow()` + (option) `liff.sendMessages()` ส่งข้อความเข้า OA chat
+- [x] `app/liff/link/page.tsx` + `LinkPhoneForm` — กรอกเบอร์ 1 ช่อง
+- [x] `app/liff/page.tsx` — landing route ตาม link state
+- [x] `app/liff/orders/page.tsx` + `[id]/page.tsx` — list + detail (read-only)
+- [x] `app/liff/orders/[id]/invoice/page.tsx` + `receipt/page.tsx` — บันทึก PDF/print โดย reuse shared admin print primitives และ verify customer ownership ก่อน render
+- [x] `app/liff/products/page.tsx` — reuse `lib/product-search.ts`
+- [x] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ปุ่ม unlink (option Phase 2)
+- [x] `loading.tsx` ทุก segment
 
 #### API
-- [ ] `app/api/liff/verify-link/route.ts` — POST: ตรวจ LIFF ID token + phone → resolve 4 case → AuditLog → return result
-- [ ] Server Actions ของ `/liff/*` ทุก action verify LIFF ID token + customer ownership
+- [x] `app/api/liff/verify-link/route.ts` — POST: ตรวจ LIFF ID token + phone → resolve 4 case → AuditLog → return result
+- [x] `app/api/liff/session/route.ts` — POST: ตรวจ LIFF ID token → set signed customer session เมื่อมี link แล้ว
+- [x] Server Actions/Server reads ของ `/liff/*` ทุก action verify LIFF session + customer ownership
+
+#### Admin Customer Visibility
+- [x] หน้า `/admin/customers` แสดง badge แยกลูกค้าที่ `source = LINE_LIFF` เช่น "สมัครผ่าน LINE" และ badge "ผูก LINE แล้ว" เมื่อมี `lineUserId`
+- [x] หน้า `/admin/customers` เพิ่ม filter หรือ quick filter สำหรับ "ลูกค้าจาก LINE" โดยใช้ shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern เพื่อให้พนักงานตามตรวจข้อมูลได้ง่าย
+- [x] หน้า customer detail/edit แสดงสถานะ `lineLinkedAt` + แหล่งที่มาลูกค้า และยังแก้ไขข้อมูลลูกค้าปกติได้เหมือนเดิม
+- [x] UI admin ที่เพิ่มต้องตรวจทั้ง light mode และ dark mode ในรอบเดียวกัน
+- [x] หน้า admin customer create/edit บังคับ format เบอร์โทรเดียวกับ LINE_LIFF เป็น `081-234-5678` และ server normalize ก่อนบันทึกเสมอ
+- [x] เพิ่มตัวบ่งชี้ "ข้อมูลยังไม่ครบ" แบบ derived จาก field สำคัญที่มักต้องให้พนักงานเติม เช่น ที่อยู่จัดส่ง / เลขภาษี / creditTerm (ไม่ต้องเก็บเป็น field ถาวรถ้า derive ได้)
+- [x] ลูกค้าใหม่จาก LIFF ต้องสร้างเป็น `Customer` ปกติ ไม่แยกตาราง เพื่อให้ sale/receipt/admin workflow เดิมใช้งานต่อได้ทันที
 
 #### Security
-- [ ] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
-- [ ] Rate limit phone lookup: 5 ครั้ง/LINE userId/ชั่วโมง (กัน brute force scan ฐานข้อมูลลูกค้า)
-- [ ] LIFF page noindex meta + ไม่ expose admin route
+- [x] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
+- [x] Rate limit phone lookup: 5 ครั้ง/LINE userId/ชั่วโมง (กัน brute force scan ฐานข้อมูลลูกค้า)
+- [x] LIFF page noindex meta + ไม่ expose admin route
 
 #### UI/UX
-- [ ] Light + dark mode ครบ
-- [ ] Mobile-first, ใช้ `formatDateThai` (Gregorian)
-- [ ] Onboarding screen ดีไซน์สากล (illustration / icon + ข้อความสั้น + ปุ่ม CTA เดียว)
-- [ ] Contact shop button ลอย bottom-right ทุกหน้า
+- [x] Light + dark mode ครบ
+- [x] Mobile-first, ใช้ `formatDateThai` (Gregorian)
+- [x] Onboarding screen ดีไซน์สากล (illustration / icon + ข้อความสั้น + ปุ่ม CTA เดียว)
+- [x] Contact shop button ลอย bottom-right ทุกหน้า
+
+#### Implementation Progress (2026-05-04)
+- [x] Phase 1A foundation slice implemented: Prisma schema + generated client + DB push completed
+- [x] Customer phone uniqueness/format slice implemented: `Customer.phone @unique`, shared phone normalizer, admin + LINE_LIFF use `081-234-5678`
+- [x] LIFF MVP routes added: `/liff`, `/liff/link`, `/liff/orders`, `/liff/orders/[id]`, `/liff/products`, `/liff/profile`
+- [x] Phase 1B read-only routes added: `/liff/outstanding`, `/liff/warranties`, `/liff/warranties/[id]`, `/liff/claims`, `/liff/claims/[id]`
+- [x] LIFF order detail upgraded with status timeline + tracking smart link
+- [x] Phase 1B print/PDF invoice/receipt routes added: `/liff/orders/[id]/invoice`, `/liff/orders/[id]/receipt`, and `components/liff/PrintToPdfButton.tsx`; both reuse shared print primitives and keep admin print logic untouched
+- [x] Shared print documents now show derived status stamp: `เอกสารถูกยกเลิกแล้ว` for cancelled sale/receipt documents, and `ชำระเงินแล้ว` for active credit-sale documents with `amountRemain <= 0`
+- [x] Phase 1B document verify watermark/QR token added: `lib/verify-token.ts`, `/verify/[type]/[docNo]/[token]`, print-only watermark/QR mark, admin original variant, LIFF copy variant
+- [x] LIFF loading states completed for every route segment with shared `components/liff/LiffPageLoading.tsx`
+- [x] LIFF outstanding payment channel now supports tap-to-copy account no / PromptPay without extra query
+- [x] AuditLog actions added for LIFF PDF views: `CUSTOMER_VIEW_INVOICE_PDF`, `CUSTOMER_VIEW_RECEIPT_PDF`
+- [x] LIFF dark-mode polish completed with scoped `LiffThemeProvider` + root CSS overrides, while keeping `print-document-root` previews in light document mode
+- [x] Customer LINE admin visibility added in list/detail/edit without changing existing sale/receipt/stock logic
+- [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
+- [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
 
 ### Phase 1B Checklist (คงเดิม + เพิ่ม)
 
 ใช้ checklist เดิมจาก section "Phase 1B" ก่อนหน้า + เพิ่ม:
-- [ ] หน้า `/liff/outstanding` (ตามที่ระบุไปแล้ว)
-- [ ] หน้า `/liff/claims` + `[id]` (ตามที่ระบุไปแล้ว)
-- [ ] Order detail แสดง "ประวัติการชำระเงิน" — list `Receipt[]` ที่ link กับ saleId เรียงตาม `receiptDate` แบบย่อ (วันที่, ยอด, methodชำระ, ปุ่มดูใบเสร็จ) — รายละเอียดน้อยกว่า admin
-- [ ] Order detail แสดง Receipt ที่ถูกยกเลิกพร้อม badge "ยกเลิก" + เหตุผล (ใช้ `Receipt.cancelNote`) — กันลูกค้า confused
+- [x] หน้า `/liff/outstanding` (ตามที่ระบุไปแล้ว)
+- [x] หน้า `/liff/claims` + `[id]` (ตามที่ระบุไปแล้ว)
+- [x] Order detail แสดง "ประวัติการชำระเงิน" — list `ReceiptItem[]` ที่ link กับ saleId เรียงตาม `Receipt.receiptDate` แบบย่อ (วันที่, ยอด, methodชำระ, ปุ่มดูใบเสร็จ) — รายละเอียดน้อยกว่า admin
+- [x] Order detail แสดง Receipt ที่ถูกยกเลิกพร้อม badge "ยกเลิก" + เหตุผล (ใช้ `Receipt.cancelNote`) — กันลูกค้า confused
+- [x] Order detail เพิ่ม card "เอกสารของฉัน" สำหรับเปิดใบแจ้งหนี้/ใบส่งของ/ใบเสร็จและบันทึกเป็น PDF จากมือถือ
+- [x] หน้า PDF/print ฝั่งลูกค้าตรวจ `customerId` จาก LIFF session ทุกครั้งก่อน query เอกสาร และไม่ expose admin route
+- [x] LIFF claim customer timeline: `claimType = REPLACE_NOW` แสดงจบที่ "เปลี่ยนสินค้าแล้ว" เพราะถือว่าลูกค้าได้รับสินค้าแล้ว โดยไม่กระทบ admin claim workflow เดิม
+- [x] Watermark/QR ตรวจสอบเอกสารด้วย `DOC_VERIFY_SECRET` สำหรับเอกสาร admin/LIFF print/PDF โดยไม่ fork shared print layout
+- [x] Payment channels block เพิ่มปุ่ม copy เลขบัญชี + PromptPay พร้อมข้อความ `คัดลอกแล้ว`
 
 ### Phase 1C — DEFERRED (เก็บไว้ทำในอนาคต)
 
@@ -6381,4 +6418,5 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 23. **2 LIFF apps แยก**: dev = `liff-preview.yourshop.com/liff`, prod = `yourshop.com/liff` — มี `NEXT_PUBLIC_LINE_LIFF_ID` คนละค่า ใช้ Vercel env per-environment
 24. **Receipt cancel UX**: ไม่ push noti (Phase 1C decision เดิม) แต่หน้า LIFF order detail แสดง badge "ยกเลิก" + เหตุผลให้ลูกค้าเห็น — กัน confused
 25. **Onboarding screen**: แสดงครั้งแรกเท่านั้น เก็บ flag `liff_onboarded` ใน localStorage — ห้าม block ลูกค้าที่เคยใช้แล้ว
+26. **Admin visibility for LINE customers**: ลูกค้าใหม่ที่สมัครผ่าน LIFF ต้องเป็น `Customer` ปกติพร้อม `source = LINE_LIFF`, แสดง badge/filter ใน admin, และให้พนักงานแก้ข้อมูลเพิ่มเติมได้จาก customer edit flow เดิม
 

@@ -15,6 +15,7 @@ import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
+import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
@@ -168,6 +169,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
     ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
     : null;
+  const verify = await buildPrintDocumentVerifyBadge({
+    type: "sale",
+    docNo: sale.saleNo,
+    variant: "ORIGINAL",
+  });
 
   return (
     <>
@@ -444,6 +450,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         receivedTransferAccount={receivedTransferAccount}
         promptPayQrDataUrl={promptPayQrDataUrl}
         qrAmount={transferDocumentState.qrAmount}
+        verify={verify}
         rootId="receipt"
       />
     </>
