@@ -47,6 +47,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
     shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
     printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+    deliveryCommissionPercent: Number(map["delivery_commission_percent"] ?? defaultSiteConfig.deliveryCommissionPercent),
     vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
     vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
   };
@@ -63,6 +64,8 @@ const fmtDate = (d: Date | string) =>
 
 const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const DELIVERY_PROOF_HISTORY_LIMIT = 20;
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL: "ปลีก",
@@ -113,6 +116,20 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         user: { select: { name: true, signatureUrl: true } },
         customer: { select: { id: true, name: true, phone: true, address: true } },
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
+        deliveryProofs: {
+          orderBy: { capturedAt: "desc" },
+          take:    DELIVERY_PROOF_HISTORY_LIMIT,
+          select: {
+            id:                true,
+            receiverName:      true,
+            signatureImageUrl: true,
+            deliveryPhotoUrl:  true,
+            note:              true,
+            capturedAt:        true,
+            capturedByUser:    { select: { name: true } },
+          },
+        },
+        _count: { select: { deliveryProofs: true } },
       },
     }),
     db.siteContent.findMany(),
@@ -311,6 +328,111 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             ) : null}
           </div>
         </div>
+
+        {sale.fulfillmentType === "DELIVERY" ? (
+          <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900">
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3 dark:border-white/10">
+              <div>
+                <h2 className="font-kanit text-lg font-bold text-gray-900 dark:text-slate-100">หลักฐานการส่ง</h2>
+                <p className="text-sm text-gray-500 dark:text-slate-400">
+                  ลายเซ็น รูปหน้าบ้าน ชื่อผู้รับ และหมายเหตุจากหน้าจัดส่งมือถือ
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-white/10 dark:text-slate-200">
+                  {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ
+                </span>
+                {sale._count.deliveryProofs > DELIVERY_PROOF_HISTORY_LIMIT ? (
+                  <Link
+                    href={`/admin/sales/${sale.id}/delivery-proofs`}
+                    className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 px-3 py-1 text-xs font-semibold text-[#1e3a5f] hover:bg-[#1e3a5f]/5 dark:border-sky-400/30 dark:text-sky-300 dark:hover:bg-sky-400/10"
+                  >
+                    ดูหลักฐานทั้งหมด
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+
+            {sale.deliveryProofs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400">
+                ยังไม่มีหลักฐานการส่งสำหรับใบขายนี้
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {sale.deliveryProofs.map((proof) => (
+                  <article
+                    key={proof.id}
+                    className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-950"
+                  >
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                          {proof.receiverName ? `ผู้รับ: ${proof.receiverName}` : "ไม่ได้ระบุชื่อผู้รับ"}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-slate-400">
+                          บันทึกโดย {proof.capturedByUser?.name ?? "-"} · {formatDateThai(proof.capturedAt)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {proof.signatureImageUrl ? (
+                        <div>
+                          <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">ลายเซ็นผู้รับ</p>
+                          <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                            <img
+                              src={proof.signatureImageUrl}
+                              alt="ลายเซ็นผู้รับ"
+                              loading="lazy"
+                              className="h-32 w-full object-contain"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {proof.deliveryPhotoUrl ? (
+                        <div>
+                          <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">รูปหลักฐานการส่ง</p>
+                          <a
+                            href={proof.deliveryPhotoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block overflow-hidden rounded-2xl border border-gray-200 bg-white"
+                          >
+                            <img
+                              src={proof.deliveryPhotoUrl}
+                              alt="รูปหลักฐานการส่ง"
+                              loading="lazy"
+                              className="max-h-64 w-full object-cover"
+                            />
+                          </a>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {proof.note ? (
+                      <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm text-gray-700 dark:bg-white/5 dark:text-slate-200">
+                        {proof.note}
+                      </p>
+                    ) : null}
+                  </article>
+                ))}
+                {sale._count.deliveryProofs > sale.deliveryProofs.length ? (
+                  <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
+                    แสดง {sale.deliveryProofs.length.toLocaleString("th-TH")} รายการล่าสุดจากทั้งหมด{" "}
+                    {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ{" "}
+                    <Link
+                      href={`/admin/sales/${sale.id}/delivery-proofs`}
+                      className="font-semibold text-[#1e3a5f] hover:underline dark:text-sky-300"
+                    >
+                      ดูหลักฐานทั้งหมด
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <SharedSalesDeliveryPrintDocument

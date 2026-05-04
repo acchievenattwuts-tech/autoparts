@@ -41,6 +41,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     shopLazadaUrl: map["shop_lazada_url"] ?? defaultSiteConfig.shopLazadaUrl,
     shopLazadaEnabled: map["shop_lazada_enabled"] === "true",
     printNoticeText: map["print_notice_text"] ?? defaultSiteConfig.printNoticeText,
+    deliveryCommissionPercent: Number(map["delivery_commission_percent"] ?? defaultSiteConfig.deliveryCommissionPercent),
     vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
     vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
   };

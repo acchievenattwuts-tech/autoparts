@@ -33,6 +33,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/warranties": "ประกันสินค้า",
   "/admin/warranty-claims": "ใบเคลมสินค้า",
   "/admin/expenses": "ค่าใช้จ่าย",
+  "/admin/delivery-commissions": "ทำจ่ายค่าส่งพนักงาน",
   "/admin/cash-bank": "บัญชีเงินสด / ธนาคาร",
   "/admin/cash-bank/ledger": "Cash / Bank Ledger",
   "/admin/cash-bank/transfers": "โอนเงินระหว่างบัญชี",

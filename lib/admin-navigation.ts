@@ -92,6 +92,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "โอนเงินระหว่างบัญชี", href: "/admin/cash-bank/transfers", icon: RefreshCw, permission: "cash_bank.transfers.view", keywords: "transfer cash bank โอนเงิน" },
       { label: "ปรับยอดเงิน", href: "/admin/cash-bank/adjustments", icon: Receipt, permission: "cash_bank.adjustments.view", keywords: "cash adjustment ปรับยอดเงิน" },
       { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt, permission: "expenses.view", keywords: "expenses ค่าใช้จ่าย" },
+      { label: "ทำจ่ายค่าส่งพนักงาน", href: "/admin/delivery-commissions", icon: Truck, permission: "delivery_commissions.view", keywords: "delivery commission payout ค่าส่ง พนักงานส่ง" },
     ],
   },
   {

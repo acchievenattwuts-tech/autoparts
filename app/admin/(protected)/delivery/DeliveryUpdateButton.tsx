@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Truck, CheckCircle, RotateCcw, Save } from "lucide-react";
 import { updateShippingStatus } from "../sales/actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
@@ -18,6 +19,7 @@ const PREV_STATUS: Record<string, string> = {
 };
 
 const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, currentShippingMethod }: Props) => {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [trackingNo, setTrackingNo]       = useState(currentTrackingNo ?? "");
   const [shippingMethod, setShippingMethod] = useState(currentShippingMethod);
@@ -28,11 +30,16 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
   const handleSave = () => {
     setError("");
     startTransition(async () => {
-      await updateShippingStatus(saleId, {
+      const result = await updateShippingStatus(saleId, {
         shippingStatus: currentStatus,
         trackingNo:     trackingNo.trim(),
         shippingMethod,
       });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
     });
   };
 
@@ -43,11 +50,16 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
     }
     setError("");
     startTransition(async () => {
-      await updateShippingStatus(saleId, {
+      const result = await updateShippingStatus(saleId, {
         shippingStatus: newStatus,
         trackingNo:     trackingNo.trim(),
         shippingMethod,
       });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
     });
   };
 
@@ -56,11 +68,16 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
     if (!prev) return;
     setError("");
     startTransition(async () => {
-      await updateShippingStatus(saleId, {
+      const result = await updateShippingStatus(saleId, {
         shippingStatus: prev,
         trackingNo:     trackingNo.trim(),
         shippingMethod,
       });
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
     });
   };
 

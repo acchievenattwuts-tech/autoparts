@@ -143,7 +143,22 @@
       "WebFetch(domain:vercel.com)",
       "Bash(grep -rn '\"/admin\"\\\\|`/admin`\\\\b' D:/autoparts/app D:/autoparts/components D:/autoparts/lib D:/autoparts/middleware.ts D:/autoparts/auth.ts)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/admin)",
-      "Bash(awk 'NR>=139 && NR<=148' \"app/admin/\\(protected\\)/cash-bank/actions.ts\")"
+      "Bash(awk 'NR>=139 && NR<=148' \"app/admin/\\(protected\\)/cash-bank/actions.ts\")",
+      "WebFetch(domain:sriwanparts.com)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(gh pr *)",
+      "Bash(pkill -f \"next build\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(curl -s http://localhost:3001/admin/reports/ar -H \"Cookie: authjs.session-token=test\")",
+      "Bash(nohup npm *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -I http://localhost:3000/admin/reports/ar)",
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/test-ar-ap.sh)",
+      "Bash(bash /tmp/test-ar-ap.sh)",
+      "Bash(awk '{print \"  ✅ \" $NF \" \\\\(\" $5 \" bytes\\\\)\"}')",
+      "Bash(git reset *)"
     ]
   }
 }
+

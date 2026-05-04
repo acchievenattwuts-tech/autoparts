@@ -251,6 +251,74 @@
 
 ---
 
+#### Phase 4.2-G — Delivery Proof Mobile App UX
+
+> **Scope:** เฟสนี้เพิ่มเฉพาะหลักฐานการส่งบนหน้าจัดส่งมือถือ ไม่เปลี่ยน business logic เดิมของการขาย/จัดส่ง
+> **UX direction:** หน้าจอนี้ต้องรู้สึกเป็น mobile application ให้มากที่สุด ใช้งานเร็วในมือพนักงาน ไม่เหมือนตารางเว็บย่อส่วน
+
+- [x] คง logic เดิมทั้งหมด: อัปเดทสถานะข้ามได้เหมือนเดิม, เปลี่ยนเป็น `DELIVERED` ได้แม้ไม่มี proof, และ proof ทุกช่องเป็น optional
+- [x] เพิ่ม `DeliveryProof` ใน `prisma/schema.prisma` แบบแยก model เพื่อผูกกับ `Sale` และรองรับหลักฐานหลายประเภทในอนาคต
+- [x] เก็บข้อมูล proof รอบนี้ให้ครบ: `receiverName`, `signatureImageUrl`, `deliveryPhotoUrl`, `note`, `capturedAt`, `capturedByUserId`
+- [x] เพิ่ม relation จาก `Sale` และ `User` ไปยัง `DeliveryProof` เพื่อเปิดดูย้อนหลังและ audit ได้
+- [x] เพิ่ม server action สำหรับบันทึกหลักฐานการส่ง โดยใช้ permission `delivery.update` และไม่ผูกเป็นเงื่อนไขของ `updateShippingStatus`
+- [x] อัปโหลดลายเซ็นและรูปหน้าบ้าน/จุดวางของไป Supabase Storage ด้วย path แยก เช่น `delivery-proofs/{saleId}/...`
+- [x] เพิ่มปุ่ม/entrypoint “หลักฐานรับของ” ใน mobile delivery card (`/admin/delivery/update`) โดยไม่รบกวนปุ่มเปลี่ยนสถานะเดิม
+- [x] ออกแบบ proof modal/sheet แบบ app-like: เปิดเต็มจอหรือ bottom sheet, ปุ่มใหญ่, tap target ชัด, ใช้งานมือเดียวได้, รองรับ touch จริงบนมือถือ
+- [x] เพิ่ม library แบบจำกัด scope เฉพาะ proof sheet: `signature_pad` สำหรับลายเซ็นที่ลื่นขึ้น และ `browser-image-compression` สำหรับบีบอัดรูปหน้าบ้านก่อนอัปโหลด โดย self-host worker script เพื่อไม่พึ่ง CDN
+- [x] เพิ่มช่องชื่อผู้รับแบบพิมพ์ (`receiverName`) พร้อม placeholder สำหรับกรณีลูกค้าไม่เซ็นหรือฝากคนอื่นรับ
+- [x] เพิ่ม signature pad สำหรับลูกค้าเซ็นบนมือถือพนักงาน โดย canvas ต้องพื้นหลังขาวเสมอแม้ admin อยู่ dark mode
+- [x] ตอน export ลายเซ็นต้อง flatten พื้นหลังเป็นสีขาวและเส้นสีดำ/เข้ม เพื่อให้รูปย้อนหลังอ่านได้บนทุก theme
+- [x] เพิ่มการถ่าย/อัปโหลดรูปหน้าบ้านหรือจุดวางของ (`deliveryPhoto`) ผ่าน input กล้องมือถือ (`accept="image/*"` + `capture`)
+- [x] แยก UX ปุ่มรูปเป็น “ถ่ายรูป” และ “เลือกรูป” โดยใช้ input คนละตัว เพื่อลดความสับสนบนมือถือที่ fallback เป็น file picker
+- [x] บีบอัด/resize `deliveryPhoto` ฝั่ง client ก่อน preview/upload เพื่อลดเวลาส่งไฟล์บนมือถือและลด storage โดย server validation เดิมยังทำงานเหมือนเดิม
+- [x] เพิ่มช่องหมายเหตุการส่ง เช่น “ลูกค้าไม่สะดวกเซ็น”, “ฝากไว้หน้าบ้าน”, “ฝาก รปภ.” โดยไม่บังคับกรอก
+- [x] แสดง preview หลักฐานก่อนบันทึก: รูปลายเซ็นบนกรอบขาว, รูปถ่าย, ชื่อผู้รับ, หมายเหตุ
+- [x] แสดงสถานะใน card เมื่อมี proof แล้ว เช่น badge “มีหลักฐาน” และปุ่มเปิดดูย้อนหลัง
+- [x] เพิ่มส่วนดูย้อนหลังในหน้า sale detail (`/admin/sales/[id]`) และ/หรือ delivery mobile card สำหรับรายการ `DELIVERED`
+- [x] เพิ่มหน้า `/admin/sales/[id]/delivery-proofs` สำหรับดูหลักฐานทั้งหมดแบบ pagination เมื่อรายการเกิน 20 รายการล่าสุดในหน้า detail
+- [x] เขียน audit log ตอนบันทึก proof โดย log meta/URL เท่านั้น ไม่เก็บ binary หรือ base64 ลง audit log
+- [x] หลังบันทึก proof ให้ revalidate `/admin/delivery`, `/admin/delivery/update`, และ `/admin/sales/{saleId}`
+- [x] ตรวจ light/dark mode ของ admin surface ให้ครบ โดยเฉพาะ signature pad ต้องไม่เปลี่ยนพื้นหลังตาม dark mode
+- [x] Performance pass 2026-04-30: mobile delivery list now sends only lightweight proof metadata, opens one shared proof sheet, loads latest proof detail on demand, uploads signature/photo in parallel, lazy-loads proof images, caps sale-detail proof history at 20 latest rows, and adds a delivery desktop sort index.
+- [ ] ทดสอบ flow หลัก: ส่งแล้วแบบไม่มี proof, บันทึก proof ก่อน/หลังส่งแล้ว, อัปเดทสถานะข้าม, ดูย้อนหลัง, ถ่ายรูปบนมือถือ, ลายเซ็นพื้นขาวใน dark mode
+
+---
+
+### ✅ Phase 4.2-H — Delivery Commission Settlement (เสร็จแล้ว — commit `8476325`)
+
+> **ที่มา:** เพิ่มระบบทำจ่ายค่าส่งให้พนักงานส่งจากคิวจัดส่งที่ส่งสำเร็จแล้ว โดยยึดเปอร์เซ็นต์จากค่าส่งและบันทึกเป็นค่าใช้จ่ายจริง
+> **หลักการบัญชี:** `shippingFee` ที่เก็บจากลูกค้าเป็นรายได้ค่าจัดส่ง ส่วนยอดทำจ่ายพนักงานส่งเป็นค่าใช้จ่าย ทำให้กำไรสุทธิถูกหักผ่าน Expense/CashBank/FactProfit และไม่ปนกับต้นทุนสินค้า
+
+- [x] ออกแบบ schema สำหรับ `Sale.deliveryStaffId`, `DeliveryCommissionRun`, `DeliveryCommissionItem`, และ flag `ExpenseCode.isDeliveryCommission`
+- [x] ตั้งค่าเปอร์เซ็นต์ค่าส่งเริ่มต้นใน `/admin/settings/company` (`delivery_commission_percent`)
+- [x] เพิ่ม checkbox ในหน้ารหัสค่าใช้จ่ายให้เลือกได้เพียง 1 รหัสสำหรับเมนูทำจ่ายค่าส่ง
+- [x] ปรับผู้ส่งให้บันทึกอัตโนมัติจาก user ที่ login ตอนเปลี่ยนสถานะเป็น `DELIVERED` และไม่ให้แก้เองหลังส่งแล้ว
+- [x] แสดงผู้ส่งแบบ read-only ในหน้า `/admin/delivery` และ `/admin/delivery/update`
+- [x] เพิ่มเมนู `/admin/delivery-commissions` สำหรับ preview/generate/cancel รอบทำจ่าย
+- [x] เมื่อ generate สร้าง Expense, CashBankMovement, FactProfit, AuditLog และกันบิลซ้ำด้วย active run relation
+- [x] เมื่อ cancel รอบทำจ่าย ให้ cancel Expense ที่เกี่ยวข้อง, ล้าง CashBankMovement, rebuild FactProfit และเปิดบิลให้พร้อมทำจ่ายใหม่
+- [x] ปรับ FactProfit ให้แยกรายได้ค่าจัดส่งออกจากรายได้สินค้า โดย `ค่าจัดส่ง` เป็น line แยก และค่าทำจ่ายพนักงานลดกำไรสุทธิผ่าน Expense
+- [x] ตรวจผลกระทบ LINE Daily Summary: กำไรขั้นต้นยังรวมค่าจัดส่ง, ค่าทำจ่ายเข้า `ค่าใช้จ่ายวันนี้`, ถ้าต้องการกำไรสุทธิต้องเพิ่มบรรทัด `netProfitAmount` แยก
+- [x] ตรวจ dashboard กำไรสุทธิ รายงานค่าใช้จ่าย cash-bank ledger summary/export และ Quick Search ให้ครอบคลุม
+- [x] เปิด RLS ให้ `public.DeliveryCommissionRun` และ `public.DeliveryCommissionItem` พร้อม script `prisma/scripts/enable-delivery-commission-rls.ts`
+- [x] Verification: `npx prisma generate`, `npx prisma db push`, `npx tsc --noEmit`, `npm run build` ผ่าน
+
+**Hardening update (2026-05-03)**
+- [x] เพิ่ม DB guard กันบิลซ้ำข้ามรอบทำจ่ายด้วย `DeliveryCommissionItem.activeSaleId @unique` และให้ `createDeliveryCommissionRun` re-check รายการใน transaction เดียวก่อนสร้างเอกสาร
+- [x] เพิ่ม retry รอบสร้างเลขเอกสารทำจ่าย/ค่าใช้จ่ายเมื่อชนกัน และจำกัด batch ทำจ่ายที่ 200 บิลต่อครั้ง พร้อมแจ้งเตือนให้กรองช่วงวันที่เพิ่มเมื่อเกิน limit
+- [x] เพิ่ม `ExpenseCode.deliveryCommissionSlot @unique` เพื่อบังคับให้มีรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงานได้เพียง 1 รหัสในเวลาเดียวกัน
+- [x] หน้า `/admin/delivery-commissions` เปลี่ยนเป็น SearchableSelect + client action feedback สำหรับ create/cancel และ export route แยก query proof / payout เพื่อลด relation fan-out
+- [x] หน้า `/admin/delivery/update` mobile เพิ่ม permission-aware UI, refresh หลังบันทึก, delivered date filter, load more, และบังคับ reorder ได้เฉพาะเมื่อโหลดคิวเปิดครบทั้งชุด
+- [x] `updateShippingStatus` stamp ผู้ส่งจาก user ที่ login ตอนเปลี่ยนเป็น `DELIVERED` แบบแก้ย้อนหลังไม่ได้ และ block การย้อนสถานะถ้ามี active delivery commission payout แล้ว
+- [x] เพิ่ม index ที่ใช้จริงกับ delivery/product filters: `Sale(deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo)`, `Product(categoryId)`, `Product(brandId)`, `ProductCarModel(carModelId, productId)`, `CarModel(carBrandId)`
+
+**ข้อควรทราบหลังจบ phase**
+- รายได้ค่าจัดส่งจากลูกค้ายังอยู่ในกำไรขั้นต้นของวันนั้น แต่ถูกแยกเป็น line `ค่าจัดส่ง` ไม่ปนกับสินค้า
+- ค่าทำจ่ายผู้ส่งเป็น Expense จึงลดกำไรสุทธิ ไม่ลดกำไรขั้นต้นสินค้าโดยตรง
+- LINE Daily Summary ปัจจุบันยังแสดง “กำไรขั้นต้น” และ “ค่าใช้จ่ายวันนี้” แต่ยังไม่แสดง “กำไรสุทธิวันนี้” เป็นบรรทัดแยก
+
+---
+
 ### ✅ Phase 4.3 — Users + Roles + Permissions (เสร็จแล้ว — commit `307f9f4`)
 
 > **หลักการ:** เพิ่มระบบสิทธิ์ใหม่แบบคู่ขนานกับ `User.role` เดิมก่อน เพื่อไม่ให้ flow ปัจจุบันหยุดทำงาน
@@ -3635,18 +3703,18 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 
 ### 📅 Week 1 — April 27–May 3 [Monitoring Setup, ~4 hours]
 
-- [ ] **April 27** — Verify Google Search Console property for sriwanparts.com
-  - Check Coverage report, Mobile Usability, Core Web Vitals tabs
-  - Set up email alerts for critical issues
-  - Confirm sitemap at `/sitemap.xml` is submitted and indexed
+- [x] **April 27** — Verify Google Search Console property for sriwanparts.com ✅ DONE May 1
+  - Check Coverage report, Mobile Usability, Core Web Vitals tabs ✅
+  - Set up email alerts for critical issues ✅
+  - Confirm sitemap at `/sitemap.xml` is submitted and indexed ✅
 - [x] **April 28** — Set up Google Analytics 4
   - Create GA4 property → get Measurement ID
   - Add `NEXT_PUBLIC_GA_ID` to `.env.local` + `.env.example` ✅
   - Implement `next/script` with `strategy="afterInteractive"` ✅ (`components/shared/GoogleAnalytics.tsx`)
   - Add GA4 bootstrap queue + App Router page_view tracking ✅ (`components/shared/GoogleAnalytics.tsx`)
   - Emit conversion candidate events: LINE/phone `qualify_lead`, product `product_page_view` ✅
-  - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view
-  - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local)
+  - Set up GA4 key events/conversion goals for LINE button click, phone click, product page view ✅ DONE May 1
+  - Verify events in GA4 DebugView (requires NEXT_PUBLIC_GA_ID in .env.local) ✅ DONE May 1
 - [x] **April 29-30** — Verify caching headers on Vercel
   - `curl -I https://sriwanparts.com` → check Cache-Control
   - `curl -I https://sriwanparts.com/_next/static/` → should be `max-age=31536000`
@@ -3671,10 +3739,12 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Implemented as server-rendered text only; no new client component, image, script, or layout-shifting asset
 
 **Content (writing task):**
-- [ ] **May 6-7** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุและวิธีแก้ไข"
-  - 2,000 words | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
-- [ ] **May 8-10** — Article #2: "อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูก"
-  - 2,500 words | Target: "อะไหล่แอร์ของแท้เทียม" | CTA: "ติดต่อเลือก"
+- [x] **May 1** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุหลักและแนวทางแก้ไขก่อนเปลี่ยนอะไหล่" ✅ DONE May 1
+  - slug: `car-ac-not-cold-5-main-causes-and-fixes` | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
+  - Hybrid (option 3): new angle (5 causes + fixes), keeps existing `car-air-not-cold-what-to-check` (commercial intent) untouched
+- [x] **May 1** — Article #2: "อะไหล่แอร์ของแท้ vs เทียม: วิธีดูให้ถูกก่อนซื้อจริง" ✅ DONE May 1
+  - slug: `how-to-spot-genuine-vs-aftermarket-ac-parts` | Target: "อะไหล่แอร์ของแท้เทียม" | CTA: "ติดต่อเลือก"
+  - Hybrid (option 3): new angle (visual/spec identification), keeps existing `genuine-vs-aftermarket-auto-ac-parts` (definitions) untouched
 
 **Deploy:** May 7 (categories), May 10 (articles) | **Monitor until:** May 14
 
@@ -5119,4 +5189,101 @@ Implementation progress (2026-04-28, Batch A + B):
 - [ ] `Customer.mapUrl` — field ใหม่สำหรับเก็บ Google Maps share link เพื่อ pin ตำแหน่งบ้านลูกค้าได้แม่นยำขึ้น (fallback ไป text-search ถ้าไม่ระบุ)
 - [x] เพิ่มลิงก์เข้าหน้า Mobile Delivery Update — ใส่ปุ่ม "มุมมองมือถือ" ในหน้า `/admin/delivery` (cross-link ระหว่าง desktop ↔ mobile, ส่งต่อ `?status=` filter ปัจจุบัน)
 - [ ] เพิ่ม Date Range Filter (วันนี้/เมื่อวาน/ทั้งหมด) ในหน้า Mobile Delivery Update ถ้าจำนวนรายการเริ่มเยอะ
+
+---
+
+## Phase 8.1 — Mobile Delivery Queue Redesign (Driver App Style) (2026-04-30)
+
+**Goal:** ออกแบบหน้า `/admin/delivery/update` ใหม่ให้ใกล้เคียง UX/UI แอปคนขับ (Grab Driver / Lalamove) — รองรับโทรศัพท์ + iPad โดยคง logic เดิมทั้งหมด
+
+### Scope
+- ไม่แตะ `updateShippingStatus` Server Action — reuse logic เดิม
+- ไม่แตะหน้า `/admin/delivery` desktop — ยังใช้งานได้ปกติ
+- ไม่เพิ่ม permission key ใหม่ — reuse `delivery.view` + `delivery.update`
+
+### Schema Change
+- [x] เพิ่ม field `Sale.deliveryQueueOrder Int?` (nullable) — เก็บลำดับคิวที่พนักงานจัดเอง
+- [x] เพิ่ม `@@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])` — ครอบคลุม query เดิม + new ordering
+- [x] `prisma db push` ผ่าน Supabase pooler
+
+### Server Action ใหม่
+- [x] `reorderDeliveryQueue(saleIds: string[])` ใน `app/admin/(protected)/sales/actions.ts`
+  - `requirePermission("delivery.update")`
+  - Zod validate (array of cuid, 1-100 items)
+  - กรองเฉพาะ Sale ที่ ACTIVE + DELIVERY ก่อนเซต `deliveryQueueOrder = index + 1`
+  - `db.$transaction` — skip update ถ้าค่าเดิมตรงกับ index ใหม่
+  - Audit Log 1 entry ต่อการจัดคิว (ไม่ใช่ต่อใบ) — `meta: { source: "delivery.queue-reorder", count: N }`, `before`/`after` เก็บ saleNo + order pair
+  - `revalidatePath("/admin/delivery")` + `revalidatePath("/admin/delivery/update")`
+
+### Dependency
+- [x] เพิ่ม `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+
+### UX/UI ใหม่
+- [x] **Driver App style card:** queue badge `01`/`02`/`03` ด้านซ้าย, status dot, ลูกค้า + ยอด, quick actions `📞 โทร` + `🗺️ แผนที่` แยกเป็นปุ่ม grid 2 คอลัมน์, status buttons ขนาดใหญ่ touch-friendly
+- [x] **Tab counts:** "รอจัดส่ง + กำลังส่ง N · รอจัดส่ง N · กำลังส่ง N · ส่งแล้ว" — query ผ่าน `db.sale.groupBy` ขนาน `Promise.all` กับ `findMany`; ไม่ query/ส่ง counter ของปุ่ม `ส่งแล้ว` เพราะไม่ได้แสดงใน UX มือถือ
+- [x] **Reorder mode:** ปุ่ม "จัดเรียงคิว" ที่หัวมุมขวาบน → เข้าสู่ drag mode
+  - ลากการ์ดผ่าน `@dnd-kit` (PointerSensor 6px / TouchSensor delay 200ms)
+  - ปุ่มลูกศร ↑↓ บนแต่ละการ์ดเป็น fallback (เลื่อนทีละขั้น)
+  - ปุ่ม "เสร็จสิ้น" บันทึก / "ยกเลิก" ทิ้งการเปลี่ยนแปลง
+- [x] **Pull-to-refresh:** custom touch hook (ไม่ใช้ library) — ดึงลง > 80px ที่ scrollTop=0 → `router.refresh()`
+- [x] **Sort default:** `deliveryQueueOrder ASC NULLS LAST, saleDate DESC, saleNo DESC` — ใบที่จัดคิวแล้วขึ้นก่อน, ใบใหม่ตกท้ายตามวันที่
+- [x] รองรับ light + dark mode พร้อมกัน
+
+### Files Touched
+- `prisma/schema.prisma` — เพิ่ม field + compound index
+- `app/admin/(protected)/sales/actions.ts` — เพิ่ม `reorderDeliveryQueue`
+- `app/admin/(protected)/delivery/update/page.tsx` — `Promise.all` query + ส่งข้อมูลให้ Client wrapper
+- `app/admin/(protected)/delivery/update/MobileDeliveryQueue.tsx` (ใหม่) — Client wrapper, pull-to-refresh, DnD context, mode state
+- `app/admin/(protected)/delivery/update/QueueHeader.tsx` (ใหม่) — sticky header + reorder toggle
+- `app/admin/(protected)/delivery/update/MobileStatusTabs.tsx` — แสดง count บน tab
+- `app/admin/(protected)/delivery/update/MobileDeliveryCard.tsx` — redesign ใหม่ + รองรับ drag/move modes
+- `app/admin/(protected)/delivery/update/loading.tsx` — skeleton ตรงกับ layout ใหม่
+- `package.json` — `@dnd-kit/*`
+
+### Performance
+- `Promise.all([findMany, groupBy])` รันคู่ขนาน → groupBy ไม่บวก latency
+- compound index ใหม่ครอบคลุม WHERE + ORDER BY → no full scan
+- Pull-to-refresh เรียก `router.refresh()` (Server Component re-fetch ใน background, ไม่ reload หน้า)
+
+---
+
+## Roadmap Update (2026-05-03 Delivery Commission Tabs + Report)
+
+**Goal:** ปรับหน้า `/admin/delivery-commissions` ให้แยกแท็บชัดเจน + เพิ่มรายงานบิลจัดส่งสำหรับติดตามสถานะการชำระเงินและการทำจ่ายค่าส่ง
+
+### Scope
+- ไม่แตะ Server Action `createDeliveryCommissionRun` / `cancelDeliveryCommissionRun` — reuse logic เดิม
+- ไม่เพิ่ม permission key ใหม่ — reuse `delivery_commissions.view` / `.create` / `.cancel`
+- ไม่ snapshot % ที่ Sale (ระบบเดิมเก็บ snapshot ไว้บน `DeliveryCommissionItem` ตอน run ถูกสร้าง — ของยังไม่จ่ายใช้ % ปัจจุบันจาก SiteConfig)
+
+### UI/UX Changes
+- [x] เพิ่มแท็บด้านบนของหน้า: **"ทำจ่าย / ประวัติ"** (default) และ **"รายงานบิลจัดส่ง"** ผ่าน `?tab=payouts|report`
+- [x] รายงานบิลจัดส่ง — filter: ช่วงวันที่ขาย, ลูกค้า (`SearchableSelect`), พนักงานส่ง (`SearchableSelect`), checkbox "เฉพาะที่ยังไม่ชำระ" (`amountRemain > 0`)
+- [x] กรองเฉพาะ `fulfillmentType=DELIVERY, status=ACTIVE` เสมอ
+- [x] คอลัมน์: วันที่ขาย, วันที่ส่ง (จาก `DeliveryProof.capturedAt` ล่าสุด), เลขที่บิล (link → `/admin/sales/[id]`), ลูกค้า, พนักงานส่ง, ยอดบิล, ค่าส่ง, ยอดทำจ่าย, สถานะจัดส่ง, สถานะชำระ, ทำจ่ายค่าส่ง
+- [x] ยอดทำจ่ายของบิลที่จ่ายแล้วใช้ snapshot จาก `DeliveryCommissionItem.commissionAmount`; บิลที่ยังไม่จ่ายคำนวณจาก % ปัจจุบันใน SiteConfig (mark ดอกจัน + footnote)
+- [x] บิลที่จ่ายแล้ว — badge "จ่ายแล้ว · {runNo}" ลิงก์ไป `?tab=payouts&highlight={runId}#run-{runId}` (highlight แถวใน tab ประวัติด้วย ring สีเหลือง)
+- [x] Pagination เลขหน้า 50/หน้า ผ่านตัว `Pagination` shared
+- [x] Light + dark mode ครบ
+
+### Detail Page ใหม่
+- [x] เพิ่ม route `/admin/delivery-commissions/[id]` — แสดงหัวเอกสาร (runNo, payDate, พนักงานส่ง, %, ช่วงบิล, บัญชีจ่าย, expense link, หมายเหตุ, สถานะ/cancelNote)
+- [x] ตารางบิลที่อยู่ใน run พร้อมลิงก์ไปหน้าบิลขาย, % ที่ snapshot ไว้, ยอดทำจ่ายแต่ละบรรทัด, footer รวม
+- [x] ปุ่มยกเลิกเอกสารสำหรับผู้มีสิทธิ์ `delivery_commissions.cancel` (reuse Server Action เดิม → cancel Expense + clear cash-bank + audit log)
+- [x] เพิ่ม `loading.tsx` ของ segment ใหม่ตามมาตรฐาน .rules §8
+
+### Files Touched
+- `app/admin/(protected)/delivery-commissions/page.tsx` — refactor เป็น 2 tab + ฝัง report tab + ลิงก์ runNo ไปหน้า detail + highlight support
+- `app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx` (ใหม่) — client filter (date / customer / staff / unpaid-only)
+- `app/admin/(protected)/delivery-commissions/[id]/page.tsx` (ใหม่) — detail page
+- `app/admin/(protected)/delivery-commissions/[id]/loading.tsx` (ใหม่)
+
+### Notes
+- ระบบยังไม่มี snapshot % ที่บิลขาย — ถ้าต้องการให้ % ของบิลที่ยังไม่จ่ายตรงตามวันที่ขายแม่นยำ ต้องเพิ่ม field `Sale.deliveryCommissionPercent` แยก (schema change) และ backfill — ยังไม่ทำในรอบนี้
+
+### Export (เพิ่มภายหลัง — ตาม pattern `/admin/reports/*`)
+- [x] เพิ่ม route `/admin/delivery-commissions/export` (CSV + UTF-8 BOM) และ `/admin/delivery-commissions/export-excel` (xlsx ผ่าน ExcelJS)
+- [x] ทั้งสอง route รับ filter เดียวกับรายงาน, จำกัด 10,000 แถวแรก, เขียน AuditLog `EXPORT` ของ entityType `ReportExport` (`entityRef=delivery-commission-report`) พร้อม filter snapshot
+- [x] xlsx ใช้สไตล์เดียวกับ `/admin/reports/export-excel` (header สีน้ำเงิน, footer รวม, numFmt บนคอลัมน์ตัวเงิน, ตัวเอียงสีเหลืองสำหรับยอดทำจ่ายที่ยังไม่ snapshot)
+- [x] ปุ่ม "CSV" (เทา) + "Excel" (เขียว) ใน Tab รายงาน เหมือนหน้า `/admin/reports/sales`
 

@@ -103,6 +103,9 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
 
   { key: "delivery.view",   group: "ระบบงาน", label: "ดูคิวจัดส่ง" },
   { key: "delivery.update", group: "ระบบงาน", label: "อัปเดตสถานะจัดส่ง" },
+  { key: "delivery_commissions.view", group: "การเงิน", label: "ดูทำจ่ายค่าส่งพนักงาน" },
+  { key: "delivery_commissions.create", group: "การเงิน", label: "สร้างทำจ่ายค่าส่งพนักงาน" },
+  { key: "delivery_commissions.cancel", group: "การเงิน", label: "ยกเลิกทำจ่ายค่าส่งพนักงาน" },
 
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
 
@@ -177,6 +180,8 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "cash_bank.adjustments.cancel",
   "delivery.view",
   "delivery.update",
+  "delivery_commissions.view",
+  "delivery_commissions.create",
   "lot_reports.view",
   "content.view",
   "content.create",
@@ -209,6 +214,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "cash_bank.adjustments.view",
   "reports.view",
   "delivery.view",
+  "delivery_commissions.view",
   "content.view",
 ];
 
@@ -253,6 +259,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/lots", permission: "lot_reports.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
+  { prefix: "/admin/delivery-commissions", permission: "delivery_commissions.view" },
   { prefix: "/admin/delivery/update", permission: "delivery.view" },
   { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/content/approval-queue", permission: "content.view" },

@@ -35,6 +35,7 @@ import {
   getActiveStorefrontProductById,
   getRelatedStorefrontProductsByCategory,
 } from "@/lib/storefront-product";
+import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
 
 interface Props {
   params: Promise<{
@@ -107,6 +108,7 @@ const ProductDetailPage = async ({ params }: Props) => {
   });
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
+  const displayPrices = getStorefrontDisplayPrices(product.salePrice);
 
   const carBrandMap = new Map<string, string[]>();
   for (const { carModel } of product.carModels) {
@@ -211,10 +213,16 @@ const ProductDetailPage = async ({ params }: Props) => {
                   </div>
                   <div className="rounded-2xl bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      ราคา
+                      ราคาปกติ
                     </p>
-                    <p className="mt-1 text-xl font-bold text-[#f97316]">
-                      ฿{Number(product.salePrice).toLocaleString("th-TH")}
+                    <p className="mt-1 text-sm text-slate-400 line-through">
+                      ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
+                    </p>
+                    <p className="mt-2 text-xs font-semibold text-emerald-600">
+                      ราคาพิเศษ
+                    </p>
+                    <p className="text-xl font-bold text-[#f97316]">
+                      ฿{displayPrices.salePrice.toLocaleString("th-TH")}
                     </p>
                   </div>
                 </div>

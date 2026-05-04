@@ -28,6 +28,9 @@
 *.pem
 /.tmp/
 /.claude/settings.local.json
+/.claude/launch.json
+/.codex-*.log
+/.codex-*.err.log
 /testsprite_tests/
 
 # debug

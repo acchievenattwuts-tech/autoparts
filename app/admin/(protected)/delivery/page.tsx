@@ -6,6 +6,7 @@ import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } f
 import Link from "next/link";
 import { Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
+import DeliveryStaffPicker from "./DeliveryStaffPicker";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { formatDateThai } from "@/lib/th-date";
@@ -25,7 +26,7 @@ const DeliveryPage = async ({
   const sales = await db.sale.findMany({
     where: {
       fulfillmentType: "DELIVERY",
-      status:          "ACTIVE",
+      status: "ACTIVE",
       ...(statusFilter
         ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
         : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
@@ -33,18 +34,21 @@ const DeliveryPage = async ({
     orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
     take: 100,
     select: {
-      id:              true,
-      saleNo:          true,
-      saleDate:        true,
-      customerName:    true,
+      id: true,
+      saleNo: true,
+      saleDate: true,
+      customerName: true,
       shippingAddress: true,
-      shippingStatus:  true,
-      shippingMethod:  true,
-      trackingNo:      true,
-      netAmount:       true,
-      paymentType:     true,
-      amountRemain:    true,
-      customer:        { select: { name: true, phone: true } },
+      shippingStatus: true,
+      shippingMethod: true,
+      trackingNo: true,
+      netAmount: true,
+      paymentType: true,
+      amountRemain: true,
+      deliveryStaffId: true,
+      _count: { select: { deliveryProofs: true } },
+      customer: { select: { name: true, phone: true } },
+      deliveryStaff: { select: { name: true, email: true } },
     },
   });
 
@@ -119,6 +123,7 @@ const DeliveryPage = async ({
                 <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">ชำระ</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">ผู้ส่ง</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">อัปเดต</th>
                 <th className="py-3 px-4" />
               </tr>
@@ -126,7 +131,7 @@ const DeliveryPage = async ({
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400">
                     ไม่มีรายการจัดส่ง
                   </td>
                 </tr>
@@ -136,6 +141,13 @@ const DeliveryPage = async ({
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
                       {formatDateThai(s.saleDate)}
+                    </td>
+                    <td className="py-3 px-4">
+                      <DeliveryStaffPicker
+                        shippingStatus={s.shippingStatus}
+                        deliveryStaffName={s.deliveryStaff?.name ?? null}
+                        deliveryStaffEmail={s.deliveryStaff?.email ?? null}
+                      />
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900">
@@ -173,6 +185,11 @@ const DeliveryPage = async ({
                           {SHIPPING_METHOD_LABEL[s.shippingMethod ?? "NONE"]}: {s.trackingNo}
                         </p>
                       )}
+                      {s._count.deliveryProofs > 0 ? (
+                        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                          มีหลักฐาน {s._count.deliveryProofs.toLocaleString("th-TH")} รายการ
+                        </p>
+                      ) : null}
                     </td>
                     <td className="py-3 px-4">
                       <DeliveryUpdateButton

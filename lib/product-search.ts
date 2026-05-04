@@ -13,6 +13,10 @@ type ProductSearchInput = {
   query?: string | null;
   isActive?: boolean;
   categoryName?: string | null;
+  categoryId?: string | null;
+  brandId?: string | null;
+  carBrandId?: string | null;
+  carModelId?: string | null;
   carBrandName?: string | null;
   carModelName?: string | null;
   carModelNames?: string[] | null;
@@ -96,12 +100,16 @@ const buildProductFilterWhere = ({
   query,
   isActive,
   categoryName,
+  categoryId,
+  brandId,
+  carBrandId,
+  carModelId,
   carBrandName,
   carModelNames,
   carModelName,
 }: Pick<
   ProductSearchInput,
-  "query" | "isActive" | "categoryName" | "carBrandName" | "carModelName" | "carModelNames"
+  "query" | "isActive" | "categoryName" | "categoryId" | "brandId" | "carBrandId" | "carModelId" | "carBrandName" | "carModelName" | "carModelNames"
 >): PrismaTypes.ProductWhereInput => {
   const where: PrismaTypes.ProductWhereInput = {};
   const searchWhere = buildProductSearchWhere(query);
@@ -115,7 +123,27 @@ const buildProductFilterWhere = ({
     where.category = { name: categoryName };
   }
 
-  if (carBrandName && normalizedCarModelNames.length > 0) {
+  if (categoryId) {
+    where.categoryId = categoryId;
+  }
+
+  if (brandId) {
+    where.brandId = brandId;
+  }
+
+  if (carModelId) {
+    where.carModels = { some: { carModelId } };
+  } else if (carBrandId) {
+    where.carModels = {
+      some: {
+        carModel: {
+          carBrandId,
+        },
+      },
+    };
+  }
+
+  if (!carBrandId && !carModelId && carBrandName && normalizedCarModelNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
@@ -124,7 +152,7 @@ const buildProductFilterWhere = ({
         },
       },
     };
-  } else if (carBrandName) {
+  } else if (!carBrandId && !carModelId && carBrandName) {
     where.carModels = {
       some: {
         carModel: {
@@ -132,7 +160,7 @@ const buildProductFilterWhere = ({
         },
       },
     };
-  } else if (normalizedCarModelNames.length > 0) {
+  } else if (!carBrandId && !carModelId && normalizedCarModelNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
@@ -224,6 +252,51 @@ async function searchProductIdsV2(
     ? Prisma.sql`AND psd.category_name = ${input.categoryName}`
     : Prisma.empty;
 
+  const categoryIdClause = input.categoryId
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "Product" p
+          WHERE p.id = psd.product_id
+            AND p."categoryId" = ${input.categoryId}
+        )
+      `
+    : Prisma.empty;
+
+  const brandIdClause = input.brandId
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "Product" p
+          WHERE p.id = psd.product_id
+            AND p."brandId" = ${input.brandId}
+        )
+      `
+    : Prisma.empty;
+
+  const carBrandIdClause = input.carBrandId
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
+          WHERE pcm."productId" = psd.product_id
+            AND cm."carBrandId" = ${input.carBrandId}
+        )
+      `
+    : Prisma.empty;
+
+  const carModelIdClause = input.carModelId
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          WHERE pcm."productId" = psd.product_id
+            AND pcm."carModelId" = ${input.carModelId}
+        )
+      `
+    : Prisma.empty;
+
   const carBrandClause = input.carBrandName
     ? Prisma.sql`
         AND EXISTS (
@@ -253,6 +326,10 @@ async function searchProductIdsV2(
     WHERE TRUE
       ${isActiveClause}
       ${categoryClause}
+      ${categoryIdClause}
+      ${brandIdClause}
+      ${carBrandIdClause}
+      ${carModelIdClause}
       ${carBrandClause}
       ${carModelClause}
   `;
@@ -354,6 +431,10 @@ export async function searchProductIds(
     query: normalizeSearchQuery(input.query) ?? "",
     isActive: input.isActive ?? null,
     categoryName: input.categoryName ?? "",
+    categoryId: input.categoryId ?? "",
+    brandId: input.brandId ?? "",
+    carBrandId: input.carBrandId ?? "",
+    carModelId: input.carModelId ?? "",
     carBrandName: input.carBrandName ?? "",
     carModelNames: normalizeCarModelNames(input),
     skip: input.skip ?? 0,

@@ -1,4 +1,3 @@
-export const revalidate = 300;
 import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
@@ -21,8 +20,6 @@ import {
   getActiveStorefrontCategoryBySlug,
   getStorefrontCategoryPageData,
 } from "@/lib/storefront-category";
-
-export const dynamicParams = true;
 
 interface Props {
   params: Promise<{
@@ -54,12 +51,6 @@ const getCategorySupportArticles = (categoryName: string) => {
     .slice(0, 3)
     .map(({ article }) => article);
 };
-
-export async function generateStaticParams() {
-  // Avoid category-wide DB fan-out during build; pages are generated on first hit
-  // and kept fresh by the existing ISR window.
-  return [];
-}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { categorySlug } = await params;

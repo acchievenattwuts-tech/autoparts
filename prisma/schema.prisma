@@ -42,6 +42,10 @@ model User {
   contentScheduledJobsCreated ContentScheduledJob[] @relation("ContentScheduledJobCreatedBy")
   contentAuditLogs   ContentAuditLog[] @relation("ContentAuditActor")
   auditLogs          AuditLog[]
+  deliveryProofs     DeliveryProof[]
+  deliverySales      Sale[]            @relation("SaleDeliveryStaff")
+  deliveryCommissionRunsCreated DeliveryCommissionRun[] @relation("DeliveryCommissionCreatedBy")
+  deliveryCommissionRuns DeliveryCommissionRun[] @relation("DeliveryCommissionStaff")
   appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
@@ -287,6 +291,7 @@ model CarModel {
   products   ProductCarModel[]
 
   @@unique([name, carBrandId])
+  @@index([carBrandId])
 }
 
 model Category {
@@ -369,6 +374,9 @@ model Product {
   saleItems           SaleItem[]
   stockCards          StockCard[]
   warranties          Warranty[]
+
+  @@index([categoryId])
+  @@index([brandId])
 }
 
 model ProductUnit {
@@ -401,6 +409,7 @@ model ProductCarModel {
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@id([productId, carModelId])
+  @@index([carModelId, productId])
 }
 
 model StockCard {
@@ -555,17 +564,44 @@ model Sale {
   shippingMethod  ShippingMethod  @default(NONE)
   shippingStatus  ShippingStatus  @default(PENDING)
   trackingNo      String?
+  deliveryQueueOrder Int?
+  deliveryStaffId String?
   creditTerm      Int?
   cashBankAccountId String?
   cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   creditNotes     CreditNote[]
   receipts        ReceiptItem[]
   customer        Customer?       @relation(fields: [customerId], references: [id])
+  deliveryStaff   User?           @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
   user            User            @relation(fields: [userId], references: [id])
   items           SaleItem[]
   warranties      Warranty[]
+  deliveryProofs  DeliveryProof[]
+  deliveryCommissionItems DeliveryCommissionItem[]
 
   @@index([cashBankAccountId])
+  @@index([deliveryStaffId, shippingStatus, status])
+  @@index([deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo])
+  @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
+  @@index([fulfillmentType, status, shippingStatus, saleDate, saleNo])
+}
+
+model DeliveryProof {
+  id                String   @id @default(cuid())
+  saleId            String
+  receiverName      String?
+  signatureImageUrl String?
+  deliveryPhotoUrl  String?
+  note              String?
+  capturedAt        DateTime @default(now())
+  capturedByUserId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  sale              Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  capturedByUser    User?    @relation(fields: [capturedByUserId], references: [id])
+
+  @@index([saleId, capturedAt])
+  @@index([capturedByUserId])
 }
 
 model SaleItem {
@@ -658,8 +694,11 @@ model ExpenseCode {
   name        String
   description String?
   isActive    Boolean       @default(true)
+  isDeliveryCommission Boolean @default(false)
+  deliveryCommissionSlot String? @unique
   createdAt   DateTime      @default(now())
   items       ExpenseItem[]
+  deliveryCommissionRuns DeliveryCommissionRun[]
 }
 
 model Expense {
@@ -683,8 +722,60 @@ model Expense {
   cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   user           User          @relation(fields: [userId], references: [id])
   items          ExpenseItem[]
+  deliveryCommissionRun DeliveryCommissionRun?
 
   @@index([cashBankAccountId])
+}
+
+model DeliveryCommissionRun {
+  id                String      @id @default(cuid())
+  runNo             String      @unique
+  payDate           DateTime
+  fromDate          DateTime
+  toDate            DateTime
+  deliveryStaffId   String
+  userId            String
+  cashBankAccountId String
+  expenseCodeId     String
+  expenseId         String?     @unique
+  commissionPercent Decimal     @db.Decimal(5, 2)
+  shippingFeeTotal  Decimal     @default(0) @db.Decimal(10, 2)
+  commissionTotal   Decimal     @default(0) @db.Decimal(10, 2)
+  note              String?
+  status            DocStatus   @default(ACTIVE)
+  cancelNote        String?
+  cancelledAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  cashBankAccount   CashBankAccount @relation(fields: [cashBankAccountId], references: [id])
+  deliveryStaff     User        @relation("DeliveryCommissionStaff", fields: [deliveryStaffId], references: [id])
+  expense           Expense?    @relation(fields: [expenseId], references: [id])
+  expenseCode       ExpenseCode @relation(fields: [expenseCodeId], references: [id])
+  user              User        @relation("DeliveryCommissionCreatedBy", fields: [userId], references: [id])
+  items             DeliveryCommissionItem[]
+
+  @@index([payDate, status])
+  @@index([deliveryStaffId, status, payDate])
+  @@index([expenseId])
+}
+
+model DeliveryCommissionItem {
+  id                String    @id @default(cuid())
+  runId             String
+  saleId            String
+  activeSaleId      String?   @unique
+  saleNo            String
+  saleDate          DateTime
+  customerName      String?
+  shippingFee       Decimal   @db.Decimal(10, 2)
+  commissionPercent Decimal   @db.Decimal(5, 2)
+  commissionAmount  Decimal   @db.Decimal(10, 2)
+  createdAt         DateTime  @default(now())
+  run               DeliveryCommissionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sale              Sale      @relation(fields: [saleId], references: [id])
+
+  @@unique([runId, saleId])
+  @@index([saleId])
 }
 
 model ExpenseItem {
@@ -939,6 +1030,7 @@ model CashBankAccount {
   transfersFrom     CashBankTransfer[]   @relation("CashBankTransferFrom")
   transfersTo       CashBankTransfer[]   @relation("CashBankTransferTo")
   adjustments       CashBankAdjustment[]
+  deliveryCommissionRuns DeliveryCommissionRun[]
 
   @@index([type, isActive])
   @@index([name])

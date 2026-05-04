@@ -1,94 +1,154 @@
 export const dynamic = "force-dynamic";
 
+import type { Prisma } from "@/lib/generated/prisma";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
-import MobileStatusTabs from "./MobileStatusTabs";
-import MobileDeliveryCard from "./MobileDeliveryCard";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getThailandDateKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import MobileDeliveryQueue from "./MobileDeliveryQueue";
 
 const VALID_STATUSES = ["PENDING", "OUT_FOR_DELIVERY", "DELIVERED"] as const;
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 300;
 
 type ShippingStatusFilter = (typeof VALID_STATUSES)[number];
+
+const clampLimit = (value: string | undefined) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
+  return Math.min(MAX_LIMIT, Math.max(20, Math.trunc(parsed)));
+};
 
 const DeliveryUpdatePage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; deliveredDate?: string; limit?: string }>;
 }) => {
   await requirePermission("delivery.view");
 
-  const { status } = await searchParams;
+  const params = await searchParams;
   const statusFilter: ShippingStatusFilter | undefined =
-    status && (VALID_STATUSES as readonly string[]).includes(status)
-      ? (status as ShippingStatusFilter)
+    params.status && (VALID_STATUSES as readonly string[]).includes(params.status)
+      ? (params.status as ShippingStatusFilter)
       : undefined;
 
-  const sales = await db.sale.findMany({
-    where: {
-      fulfillmentType: "DELIVERY",
-      status:          "ACTIVE",
-      ...(statusFilter
-        ? { shippingStatus: statusFilter }
-        : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
-    },
-    orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
-    take: 100,
-    select: {
-      id:              true,
-      saleNo:          true,
-      saleDate:        true,
-      customerName:    true,
-      customerPhone:   true,
-      shippingAddress: true,
-      shippingStatus:  true,
-      shippingMethod:  true,
-      trackingNo:      true,
-      netAmount:       true,
-      paymentType:     true,
-      amountRemain:    true,
-      customer:        { select: { name: true, phone: true } },
-    },
-  });
+  const deliveredDateKey = params.deliveredDate || getThailandDateKey();
+  const limit = clampLimit(params.limit);
+  const openStatuses: ShippingStatusFilter[] = ["PENDING", "OUT_FOR_DELIVERY"];
+  const deliveredRange =
+    statusFilter === "DELIVERED"
+      ? {
+          gte: parseDateOnlyToStartOfDay(deliveredDateKey),
+          lte: parseDateOnlyToEndOfDay(deliveredDateKey),
+        }
+      : undefined;
+
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "delivery.update");
+
+  const salesWhere: Prisma.SaleWhereInput = {
+    fulfillmentType: "DELIVERY" as const,
+    status: "ACTIVE" as const,
+    ...(statusFilter
+      ? statusFilter === "DELIVERED"
+        ? {
+            shippingStatus: "DELIVERED" as const,
+            updatedAt: deliveredRange,
+          }
+        : { shippingStatus: statusFilter }
+      : { shippingStatus: { in: openStatuses } }),
+  };
+
+  const [sales, statusGroups] = await Promise.all([
+    db.sale.findMany({
+      where: salesWhere,
+      orderBy:
+        statusFilter === "DELIVERED"
+          ? [{ updatedAt: "desc" }, { saleNo: "desc" }]
+          : [
+              { deliveryQueueOrder: { sort: "asc", nulls: "last" } },
+              { saleDate: "desc" },
+              { saleNo: "desc" },
+            ],
+      take: limit + 1,
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        customerName: true,
+        customerPhone: true,
+        shippingAddress: true,
+        shippingStatus: true,
+        shippingMethod: true,
+        trackingNo: true,
+        netAmount: true,
+        paymentType: true,
+        amountRemain: true,
+        deliveryQueueOrder: true,
+        deliveryStaffId: true,
+        customer: { select: { name: true, phone: true } },
+        deliveryStaff: { select: { name: true, email: true } },
+        _count: { select: { deliveryProofs: true } },
+      },
+    }),
+    db.sale.groupBy({
+      by: ["shippingStatus"],
+      where: {
+        fulfillmentType: "DELIVERY",
+        status: "ACTIVE",
+        shippingStatus: { in: openStatuses },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const hasMore = sales.length > limit;
+  const visibleSales = hasMore ? sales.slice(0, limit) : sales;
+
+  const counts = {
+    PENDING: 0,
+    OUT_FOR_DELIVERY: 0,
+  };
+  for (const group of statusGroups) {
+    if (group.shippingStatus === "PENDING" || group.shippingStatus === "OUT_FOR_DELIVERY") {
+      counts[group.shippingStatus] = group._count._all;
+    }
+  }
+
+  const items = visibleSales.map((s) => ({
+    saleId: s.id,
+    saleNo: s.saleNo,
+    saleDate: s.saleDate.toISOString(),
+    customerName: s.customer?.name ?? s.customerName ?? "-",
+    customerPhone: s.customer?.phone ?? s.customerPhone ?? null,
+    shippingAddress: s.shippingAddress ?? null,
+    shippingStatus: s.shippingStatus,
+    shippingMethod: s.shippingMethod ?? "NONE",
+    trackingNo: s.trackingNo ?? null,
+    netAmount: Number(s.netAmount),
+    paymentType: s.paymentType,
+    amountRemain: Number(s.amountRemain),
+    deliveryQueueOrder: s.deliveryQueueOrder,
+    deliveryStaffId: s.deliveryStaffId,
+    deliveryStaffName: s.deliveryStaff?.name ?? null,
+    deliveryStaffEmail: s.deliveryStaff?.email ?? null,
+    proofCount: s._count.deliveryProofs,
+  }));
+
+  const canReorder = canUpdate && !statusFilter && !hasMore && items.length > 1;
 
   return (
-    <div className="-m-4 lg:-m-6">
-      <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#0f172a]/95">
-        <div className="mb-2 flex items-center justify-between">
-          <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">
-            อัปเดตจัดส่ง
-          </h1>
-          <span className="text-sm text-gray-500 dark:text-slate-400">
-            {sales.length} รายการ
-          </span>
-        </div>
-        <MobileStatusTabs current={statusFilter} />
-      </div>
-
-      <div className="space-y-3 px-3 py-3 sm:px-4">
-        {sales.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-400 dark:border-white/10 dark:bg-slate-900 dark:text-slate-500">
-            ไม่มีรายการจัดส่ง
-          </div>
-        ) : (
-          sales.map((s) => (
-            <MobileDeliveryCard
-              key={s.id}
-              saleId={s.id}
-              saleNo={s.saleNo}
-              saleDate={s.saleDate.toISOString()}
-              customerName={s.customer?.name ?? s.customerName ?? "-"}
-              customerPhone={s.customer?.phone ?? s.customerPhone ?? null}
-              shippingAddress={s.shippingAddress ?? null}
-              shippingStatus={s.shippingStatus}
-              shippingMethod={s.shippingMethod ?? "NONE"}
-              trackingNo={s.trackingNo ?? null}
-              netAmount={Number(s.netAmount)}
-              paymentType={s.paymentType}
-              amountRemain={Number(s.amountRemain)}
-            />
-          ))
-        )}
-      </div>
-    </div>
+    <MobileDeliveryQueue
+      items={items}
+      counts={counts}
+      currentFilter={statusFilter ?? null}
+      canUpdate={canUpdate}
+      canReorder={canReorder}
+      deliveredDate={statusFilter === "DELIVERED" ? deliveredDateKey : null}
+      deliveredDateLabel={statusFilter === "DELIVERED" ? deliveredDateKey : null}
+      currentLimit={limit}
+      hasMore={hasMore}
+    />
   );
 };
 

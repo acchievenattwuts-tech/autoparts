@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
+import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
 
 type ProductForCard = {
   id: string;
@@ -29,6 +30,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
     category: product.category,
     product,
   });
+  const displayPrices = getStorefrontDisplayPrices(product.salePrice);
 
   const compatibilitySummary =
     product.carModels && product.carModels.length > 0
@@ -91,9 +93,13 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
 
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div>
-            <p className="text-xs text-gray-400">ราคา</p>
+            <p className="text-xs text-gray-400">ราคาปกติ</p>
+            <p className="text-xs text-gray-400 line-through">
+              ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
+            </p>
+            <p className="text-[11px] font-medium text-emerald-600">ราคาพิเศษ</p>
             <p className="text-base font-bold text-[#f97316] sm:text-lg">
-              ฿{Number(product.salePrice).toLocaleString("th-TH")}
+              ฿{displayPrices.salePrice.toLocaleString("th-TH")}
             </p>
           </div>
 

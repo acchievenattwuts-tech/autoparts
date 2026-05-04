@@ -8,18 +8,24 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Search, Pencil } from "lucide-react";
-import AdminSearchForm from "@/components/shared/AdminSearchForm";
-import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import { Plus, Pencil } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import ProductFilterForm from "./ProductFilterForm";
 
 const PAGE_SIZE = 30;
 
 interface ProductsPageProps {
-  searchParams: Promise<{ search?: string; page?: string }>;
+  searchParams: Promise<{
+    search?: string;
+    page?: string;
+    categoryId?: string;
+    brandId?: string;
+    carBrandId?: string;
+    carModelId?: string;
+  }>;
 }
 
 const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
@@ -34,15 +40,44 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");
   const canCancel = hasPermissionAccess(role, permissions, "products.cancel");
 
-  const { search, page } = await searchParams;
+  const { search, page, categoryId, brandId, carBrandId, carModelId } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
-  const searchResult = await searchProductIds({
-    query: search,
-    skip: (pageNum - 1) * PAGE_SIZE,
-    take: PAGE_SIZE,
-    order: "codeDesc",
-  });
+  const [searchResult, categories, partsBrands, carBrands] = await Promise.all([
+    searchProductIds({
+      query: search,
+      categoryId,
+      brandId,
+      carBrandId,
+      carModelId,
+      skip: (pageNum - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      order: "codeDesc",
+    }),
+    db.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    db.partsBrand.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    db.carBrand.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        carModels: {
+          where: { isActive: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true },
+        },
+      },
+    }),
+  ]);
 
   const products = sortProductsByIds(
     await db.product.findMany({
@@ -75,36 +110,20 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         )}
       </div>
 
-      <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <AdminSearchForm method="GET" className="flex gap-3">
-          <div className="relative max-w-sm flex-1">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-            <input
-              type="text"
-              name="search"
-              defaultValue={search ?? ""}
-              placeholder="ค้นหาจากชื่อสินค้า รหัส หรือคำค้นอื่น ๆ"
-              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
-            />
-          </div>
-          <AdminSearchSubmitButton
-            className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
-          >
-            ค้นหา
-          </AdminSearchSubmitButton>
-          {search && (
-            <Link
-              href="/admin/products"
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
-            >
-              ล้าง
-            </Link>
-          )}
-        </AdminSearchForm>
-      </div>
+      <ProductFilterForm
+        search={search}
+        categoryId={categoryId}
+        brandId={brandId}
+        carBrandId={carBrandId}
+        carModelId={carModelId}
+        categories={categories}
+        partsBrands={partsBrands}
+        carBrands={carBrands.map((brand) => ({
+          id: brand.id,
+          name: brand.name,
+          models: brand.carModels,
+        }))}
+      />
 
       <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-6 py-4">
@@ -245,7 +264,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         currentPage={pageNum}
         totalPages={totalPages}
         basePath="/admin/products"
-        searchParams={search ? { search } : {}}
+        searchParams={{
+          ...(search ? { search } : {}),
+          ...(categoryId ? { categoryId } : {}),
+          ...(brandId ? { brandId } : {}),
+          ...(carBrandId ? { carBrandId } : {}),
+          ...(carModelId ? { carModelId } : {}),
+        }}
       />
     </div>
   );

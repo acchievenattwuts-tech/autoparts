@@ -13,9 +13,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateExpenseCodeCode } from "@/lib/entity-code";
 
+const DELIVERY_COMMISSION_SLOT = "delivery-commission";
+
 const expenseCodeSchema = z.object({
   name:        z.string().min(1, "กรุณาระบุชื่อ").max(100),
   description: z.string().max(200).optional(),
+  isDeliveryCommission: z.boolean().default(false),
 });
 
 async function getExpenseCodeAuditSnapshot(id: string) {
@@ -27,8 +30,28 @@ async function getExpenseCodeAuditSnapshot(id: string) {
       name: true,
       description: true,
       isActive: true,
+      isDeliveryCommission: true,
     },
   });
+}
+
+async function validateDeliveryCommissionExpenseCode(
+  id: string | null,
+  isDeliveryCommission: boolean,
+): Promise<string | null> {
+  if (!isDeliveryCommission) return null;
+
+  const existing = await db.expenseCode.findFirst({
+    where: {
+      isDeliveryCommission: true,
+      ...(id ? { id: { not: id } } : {}),
+    },
+    select: { code: true, name: true },
+  });
+
+  if (!existing) return null;
+
+  return `มีรหัสค่าส่งพนักงานอยู่แล้ว (${existing.code} ${existing.name}) กรุณาเอาเครื่องหมายออกจากรหัสเดิมก่อน`;
 }
 
 export async function createExpenseCode(
@@ -41,13 +64,26 @@ export async function createExpenseCode(
   const parsed = expenseCodeSchema.safeParse({
     name:        formData.get("name"),
     description: formData.get("description") || undefined,
+    isDeliveryCommission: formData.get("isDeliveryCommission") === "on",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const code = await generateExpenseCodeCode();
 
   try {
-    const created = await db.expenseCode.create({ data: { code, ...parsed.data } });
+    const deliveryCommissionError = await validateDeliveryCommissionExpenseCode(
+      null,
+      parsed.data.isDeliveryCommission,
+    );
+    if (deliveryCommissionError) return { error: deliveryCommissionError };
+
+    const created = await db.expenseCode.create({
+      data: {
+        code,
+        ...parsed.data,
+        deliveryCommissionSlot: parsed.data.isDeliveryCommission ? DELIVERY_COMMISSION_SLOT : null,
+      },
+    });
     const afterSnapshot = await getExpenseCodeAuditSnapshot(created.id);
     if (afterSnapshot) {
       await safeWriteAuditLog({
@@ -84,16 +120,25 @@ export async function updateExpenseCode(
   const parsed = expenseCodeSchema.safeParse({
     name: formData.get("name"),
     description: formData.get("description") || undefined,
+    isDeliveryCommission: formData.get("isDeliveryCommission") === "on",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   try {
+    const deliveryCommissionError = await validateDeliveryCommissionExpenseCode(
+      id,
+      parsed.data.isDeliveryCommission,
+    );
+    if (deliveryCommissionError) return { error: deliveryCommissionError };
+
     const beforeSnapshot = await getExpenseCodeAuditSnapshot(id);
     await db.expenseCode.update({
       where: { id },
       data: {
         name: parsed.data.name,
         description: parsed.data.description ?? null,
+        isDeliveryCommission: parsed.data.isDeliveryCommission,
+        deliveryCommissionSlot: parsed.data.isDeliveryCommission ? DELIVERY_COMMISSION_SLOT : null,
       },
     });
     const afterSnapshot = await getExpenseCodeAuditSnapshot(id);

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma, CreditNoteType, DocStatus, ProfitSourceType } from "@/lib/generated/prisma";
+import { calcItemSubtotal } from "@/lib/vat";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -214,7 +215,10 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       subtotalAmount: true,
       vatAmount: true,
       customer: { select: { name: true } },
-      netAmount: true,
+      discount: true,
+      shippingFee: true,
+      vatRate: true,
+      vatType: true,
       items: {
         select: {
           id: true,
@@ -246,17 +250,21 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE, saleId);
-  const totalRevenueExVat = roundMoney(Number(sale.subtotalAmount));
-  const totalRevenueIncVat = roundMoney(Number(sale.netAmount));
+  const itemGrossTotal = roundMoney(sale.items.reduce((sum, item) => sum + Number(item.totalAmount), 0));
+  const discount = roundMoney(Number(sale.discount));
+  const shippingFee = roundMoney(Number(sale.shippingFee));
+  const discountOnItems = Math.min(discount, itemGrossTotal);
+  const discountOnShipping = Math.min(Math.max(discount - discountOnItems, 0), shippingFee);
+  const productRevenueIncVat = roundMoney(Math.max(itemGrossTotal - discountOnItems, 0));
+  const shippingRevenueIncVat = roundMoney(Math.max(shippingFee - discountOnShipping, 0));
   const itemWeights = sale.items.map((item) => Number(item.totalAmount));
-  const allocatedRevenueExVat = allocateByWeights(totalRevenueExVat, itemWeights);
-  const allocatedRevenueIncVat = allocateByWeights(totalRevenueIncVat, itemWeights);
+  const allocatedRevenueIncVat = allocateByWeights(productRevenueIncVat, itemWeights);
   const customerName = sale.customer?.name ?? sale.customerName ?? null;
 
   const rows: FactProfitRowInput[] = sale.items.map((item, index) => {
     const quantity = roundQty(Number(item.quantity));
-    const salesAmountExVat = roundMoney(allocatedRevenueExVat[index] ?? 0);
     const salesAmountIncVat = roundMoney(allocatedRevenueIncVat[index] ?? 0);
+    const salesAmountExVat = roundMoney(calcItemSubtotal(salesAmountIncVat, sale.vatType, Number(sale.vatRate)));
     const salesAmount = salesAmountExVat;
     const costAmount = roundMoney(quantity * Number(item.costPrice));
     const grossProfit = roundMoney(salesAmountExVat - costAmount);
@@ -299,6 +307,38 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       marginPct: calcMarginPct(grossProfit, salesAmount),
     };
   });
+
+  if (shippingRevenueIncVat > 0) {
+    const shippingRevenueExVat = roundMoney(
+      calcItemSubtotal(shippingRevenueIncVat, sale.vatType, Number(sale.vatRate)),
+    );
+    rows.push({
+      businessDate: sale.saleDate,
+      sourceType: ProfitSourceType.SALE,
+      sourceId: sale.id,
+      sourceLineId: `${sale.id}:shipping`,
+      sourceDocNo: sale.saleNo,
+      sourceStatus: sale.status,
+      versionNo,
+      customerId: sale.customerId ?? null,
+      customerName,
+      lineLabel: "ค่าจัดส่ง",
+      quantity: 0,
+      salesAmountExVat: shippingRevenueExVat,
+      salesAmountIncVat: shippingRevenueIncVat,
+      salesAmount: shippingRevenueExVat,
+      costAmount: 0,
+      expenseAmount: 0,
+      grossProfit: shippingRevenueExVat,
+      netProfitAmount: shippingRevenueExVat,
+      unitSalePriceExVat: 0,
+      unitSalePriceIncVat: 0,
+      unitSalePrice: 0,
+      unitCostPrice: 0,
+      unitProfit: 0,
+      marginPct: 0,
+    });
+  }
 
   await createFactProfitRows(tx, rows);
 }
