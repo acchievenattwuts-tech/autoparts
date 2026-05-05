@@ -1,11 +1,14 @@
 # ศรีวรรณ อะไหล่แอร์ — Project Plan
 
 ## Overview
+
 ร้านขายอะไหล่แอร์และหม้อน้ำรถยนต์ ชื่อร้าน **ศรีวรรณ อะไหล่แอร์**
+
 - LINE OA: `@435adwz` | Link: `https://lin.ee/18P0SqG`
-- เว็บไซต์มี 2 ส่วน: **หน้าร้าน (public)** และ **หลังบ้าน (admin)**
+- เว็บไซต์มี 2 ส่วน: **หน้าร้าน (public)** และ **หลังบ้าน (admin)** ok
 
 ## Tech Stack
+
 - Framework: Next.js 15+ (App Router)
 - Language: TypeScript (strict mode)
 - Styling: Tailwind CSS + Shadcn UI (Radix)
@@ -18,6 +21,7 @@
 - Storage: Supabase Storage (รูปสินค้า)
 
 ## Folder Structure
+
 ```
 /app              → routes & layouts
 /app/admin        → admin dashboard (protected)
@@ -31,43 +35,47 @@
 ```
 
 ## Database Models (ใน prisma/schema.prisma)
-| Model | ใช้สำหรับ |
-|---|---|
-| User | Admin/Staff login |
-| CarBrand / CarModel | ยี่ห้อ/รุ่นรถ |
-| Category | หมวดหมู่สินค้า |
-| Supplier | ซัพพลายเออร์ |
-| Product | สินค้า (stock = system-managed, มี saleUnitName/purchaseUnitName/reportUnitName) |
-| ProductUnit | หน่วยนับต่อสินค้า (isBase=true → scale=1, อื่นๆ scale=จำนวนหน่วยย่อย) |
-| ProductAlias | ชื่อเรียกอื่นๆ สำหรับ search |
-| ProductCarModel | สินค้า ↔ รุ่นรถ (many-to-many) |
-| StockCard | บัตรสต็อกสินค้า — source of truth การเคลื่อนไหว stock (qty/price ใน base unit) |
-| Purchase / PurchaseItem | ระบบซื้อสินค้าเข้า |
-| PurchaseReturn / PurchaseReturnItem | คืนสินค้าให้ซัพพลายเออร์ (RETURN_OUT) |
-| Customer | ข้อมูลลูกค้า (รหัส, ชื่อ, เบอร์, ที่อยู่, เลขภาษี, ที่อยู่จัดส่ง) |
-| Sale / SaleItem | ระบบขาย (saleType: RETAIL/WHOLESALE, paymentType: CASH/CREDIT, fulfillmentType: PICKUP/DELIVERY) |
-| CreditNote / CreditNoteItem | CN ฝั่งขาย — settlementType: CASH_REFUND/CREDIT_DEBT |
-| Adjustment / AdjustmentItem | ปรับสต็อก +/- พร้อมเหตุผล |
-| Warranty | ประกันสินค้า (เริ่มนับจากวันขาย) |
-| Expense | ค่าใช้จ่ายอื่นๆ (schema พร้อม, UI ยังไม่ได้ทำ) |
-| SiteContent | Admin แก้ไขข้อความหน้าเว็บ + company settings + VAT config |
+
+| Model                               | ใช้สำหรับ                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
+| User                                | Admin/Staff login                                                                                |
+| CarBrand / CarModel                 | ยี่ห้อ/รุ่นรถ                                                                                    |
+| Category                            | หมวดหมู่สินค้า                                                                                   |
+| Supplier                            | ซัพพลายเออร์                                                                                     |
+| Product                             | สินค้า (stock = system-managed, มี saleUnitName/purchaseUnitName/reportUnitName)                 |
+| ProductUnit                         | หน่วยนับต่อสินค้า (isBase=true → scale=1, อื่นๆ scale=จำนวนหน่วยย่อย)                            |
+| ProductAlias                        | ชื่อเรียกอื่นๆ สำหรับ search                                                                     |
+| ProductCarModel                     | สินค้า ↔ รุ่นรถ (many-to-many)                                                                   |
+| StockCard                           | บัตรสต็อกสินค้า — source of truth การเคลื่อนไหว stock (qty/price ใน base unit)                   |
+| Purchase / PurchaseItem             | ระบบซื้อสินค้าเข้า                                                                               |
+| PurchaseReturn / PurchaseReturnItem | คืนสินค้าให้ซัพพลายเออร์ (RETURN_OUT)                                                            |
+| Customer                            | ข้อมูลลูกค้า (รหัส, ชื่อ, เบอร์, ที่อยู่, เลขภาษี, ที่อยู่จัดส่ง)                                |
+| Sale / SaleItem                     | ระบบขาย (saleType: RETAIL/WHOLESALE, paymentType: CASH/CREDIT, fulfillmentType: PICKUP/DELIVERY) |
+| CreditNote / CreditNoteItem         | CN ฝั่งขาย — settlementType: CASH_REFUND/CREDIT_DEBT                                             |
+| Adjustment / AdjustmentItem         | ปรับสต็อก +/- พร้อมเหตุผล                                                                        |
+| Warranty                            | ประกันสินค้า (เริ่มนับจากวันขาย)                                                                 |
+| Expense                             | ค่าใช้จ่ายอื่นๆ (schema พร้อม, UI ยังไม่ได้ทำ)                                                   |
+| SiteContent                         | Admin แก้ไขข้อความหน้าเว็บ + company settings + VAT config                                       |
 
 ---
 
 ## Phases
 
 ### ✅ Phase 0 — หน้าร้าน (เสร็จแล้ว)
+
 - Navbar, Hero, ProductCategories, WhyUs, FeaturedProducts, LineCTA, Footer
 - FloatingLine button (LINE OA)
 - Font: Kanit (heading) + Sarabun (body)
 - Social links: Facebook, TikTok, Shopee, Lazada (show/hide toggle)
 
 ### ✅ Phase 1 — Setup DB + Deploy (เสร็จแล้ว)
+
 - ติดตั้ง Prisma v7 + สร้าง schema ครบทุกระบบ
 - เชื่อมต่อ Supabase PostgreSQL (Session pooler port 5432)
 - Deploy บน Vercel + domain sriwanparts.com ✓
 
 ### ✅ Phase 2 — Admin Auth + สินค้า (เสร็จแล้ว)
+
 - NextAuth.js v5 (Credentials provider) + Login page + Middleware
 - Admin layout + Sidebar navigation (reorganized: สินค้า+ลูกค้า อยู่ใต้ ข้อมูลหลัก)
 - Dashboard (summary cards)
@@ -77,6 +85,7 @@
 - Security headers (CSP, HSTS, X-Frame-Options ฯลฯ)
 
 ### ✅ Phase 2.5 — ระบบลูกค้า (เสร็จแล้ว)
+
 - CRUD ลูกค้า: list (พร้อม search), create, edit, delete (ป้องกันลบถ้ามียอดขาย)
 - หน้าโปรไฟล์ลูกค้า: ข้อมูล + สถิติ (ยอดซื้อรวม, จำนวนครั้ง) + ประวัติการซื้อ
 - ที่อยู่จัดส่ง (shippingAddress) แยกจากที่อยู่ปกติ
@@ -85,6 +94,7 @@
 ### ✅ Phase 3 — Stock + ซื้อ + ขาย + เอกสาร (เสร็จแล้ว)
 
 #### ✅ 3.0 โครงสร้าง DB + MAVG Engine
+
 - StockCard เป็น source of truth — qty/price ใน base unit ทั้งหมด
 - avgCost (Moving Average Cost) เก็บใน Product + StockCard.priceBalance
 - `lib/stock-card.ts` — MAVG engine (`writeStockCard`)
@@ -92,31 +102,39 @@
 - `lib/vat.ts` — VAT calculation utility (calcVat, calcItemSubtotal)
 
 #### ✅ 3.1 ระบบ BF (ยอดยกมา)
+
 - หน้า `/admin/stock/bf` — บันทึกยอดสินค้าเริ่มต้น เลือกหน่วย+จำนวน+ต้นทุน + รองรับ Lot Control (Phase 5.5-I1)
 
 #### ✅ 3.2 ปรับสต็อก (Adjustment)
+
 - หน้า `/admin/stock/adjustments` — ปรับ +/- หลายรายการพร้อมเหตุผล + รองรับ Lot Control (Phase 5.5-I2: IN=manual input, OUT=dropdown)
 
 #### ✅ 3.3 ระบบซื้อสินค้า
+
 - `/admin/purchases` — ใบซื้อ + MAVG + VAT (NoVAT/ExclVAT/InclVAT) + referenceNo + auto-fill ราคาทุน
 - `/admin/purchase-returns` — คืนให้ซัพพลายเออร์ (RETURN_OUT) + VAT
 
 #### ✅ 3.4 ระบบขาย
+
 - `/admin/sales` — บันทึกการขาย + SaleType (ปลีก/ส่ง) + PaymentType (ขายสด/ขายเชื่อ) + FulfillmentType (หน้าร้าน/จัดส่ง) + VAT
 - `/admin/sales/[id]` — รายละเอียด + พิมพ์ใบเสร็จ (browser print)
 
 #### ✅ 3.5 Credit Note (CN ฝั่งขาย)
+
 - `/admin/credit-notes` — CN type: รับคืนสินค้า/ส่วนลด/อื่นๆ + SettlementType: คืนเงินสด/ตั้งหนี้ + RefundMethod: เงินสด/โอนเงิน + VAT
 
 #### ✅ 3.6 Stock Card MAVG Viewer
+
 - `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้
 
 #### ✅ 3.7 VAT System
+
 - VatType enum: NO_VAT / EXCLUDING_VAT / INCLUDING_VAT
 - ครอบคลุม: ซื้อ, คืนซัพพลายเออร์, ขาย, CN — คำนวณ subtotalAmount + vatAmount realtime
 - ตั้งค่า VAT default ได้ที่ `/admin/settings/company`
 
 #### ✅ 3.8 โมดูลใบเสร็จรับเงิน / Accounts Receivable (เสร็จแล้ว)
+
 - [x] บันทึกการรับชำระสำหรับการขายเชื่อ (Sale.paymentType=CREDIT_SALE)
 - [x] CN ประเภทตั้งหนี้ (settlementType=CREDIT_DEBT) — บันทึกลดยอดหนี้
 - [x] เก็บยอดลูกหนี้ค้างชำระต่อลูกค้า (Accounts Receivable)
@@ -124,6 +142,7 @@
 - [x] แสดงยอดค้างชำระในหน้า Customer profile
 
 #### ✅ 3.9 Search ทุก Transaction + ประวัติเอกสาร (เสร็จแล้ว)
+
 - [x] Sales: SearchBar + filter paymentType
 - [x] Purchases: SearchBar
 - [x] Purchase Returns: SearchBar
@@ -133,6 +152,7 @@
 - [x] Adjustment: แสดงประวัติเอกสาร + CancelDocButton
 
 #### ✅ 3.10 ระบบยกเลิกเอกสาร (Document Cancellation) (เสร็จแล้ว)
+
 - [x] Schema: `enum DocStatus { ACTIVE CANCELLED }` + status/cancelledAt/cancelNote ใน Adjustment, Purchase, Sale, CreditNote, PurchaseReturn, Receipt
 - [x] Schema: model `BalanceForward` (BF header tracking)
 - [x] `lib/stock-card.ts`: `recalculateStockCard(tx, productId)` + fix backdating bug ใน `writeStockCard`
@@ -147,16 +167,19 @@
 - [x] Stock Card: เพิ่ม column มูลค่าคงเหลือ + ปุ่ม Re-calculate All
 
 #### ✅ 3.11 Tab Navigation + Loading UX (เสร็จแล้ว)
+
 - [x] `components/shared/TabsBar.tsx` — Zustand-based tab bar, เปิด tab ต่อเมนู, scroll, X-to-close
 - [x] Tabs persist ใน sessionStorage, ล้างตอน logout
 - [x] Sub-routes normalize เป็น parent tab (/sales/new → /sales)
 - [x] `loading.tsx` ครบทุก route segment ใน `/admin/(protected)/` (20+ ไฟล์)
 
 ### ✅ Phase 4 — ประกัน + ค่าใช้จ่าย (เสร็จแล้ว)
+
 - [x] ระบบประกัน (`/admin/warranties`) — เริ่มนับจากวันที่ขาย, แสดงสถานะ/หมดประกัน
 - [x] ระบบค่าใช้จ่าย (`/admin/expenses`) — บันทึกตาม category + VAT (NoVAT/ExclVAT/InclVAT)
 
 ### ✅ Phase 4.1 — Edit ทุก Transaction + amountRemain Fix (เสร็จแล้ว)
+
 - [x] Edit pages ครบ 6 ประเภท: purchases, purchase-returns, sales, credit-notes, receipts, expenses
 - [x] ปุ่ม View (Eye) + Edit (Pencil) ทุก list page
 - [x] amountRemain fix: CASH_SALE → 0 เสมอ, CN CREDIT_DEBT หักออกจาก AR, recalculate check paymentType
@@ -172,12 +195,12 @@
 
 #### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
 
-| ประเด็น | ข้อตกลง |
-|---|---|
-| COD tracking | ใช้ `paymentType = CREDIT_SALE + fulfillmentType = DELIVERY` — ไม่เพิ่ม codAmount |
-| AR ปนกัน | แก้ด้วย filter แยก: CREDIT_SALE+PICKUP = หนี้จริง / CREDIT_SALE+DELIVERY = COD รอส่ง |
-| สถานะจัดส่ง | enum `ShippingStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED }` |
-| ขนส่ง | field `shippingMethod` (SELF/KERRY/FLASH/JT/OTHER) + `trackingNo` (สำหรับขนส่งเอกชน) |
+| ประเด็น      | ข้อตกลง                                                                              |
+| ------------ | ------------------------------------------------------------------------------------ |
+| COD tracking | ใช้ `paymentType = CREDIT_SALE + fulfillmentType = DELIVERY` — ไม่เพิ่ม codAmount    |
+| AR ปนกัน     | แก้ด้วย filter แยก: CREDIT_SALE+PICKUP = หนี้จริง / CREDIT_SALE+DELIVERY = COD รอส่ง |
+| สถานะจัดส่ง  | enum `ShippingStatus { PENDING, OUT_FOR_DELIVERY, DELIVERED }`                       |
+| ขนส่ง        | field `shippingMethod` (SELF/KERRY/FLASH/JT/OTHER) + `trackingNo` (สำหรับขนส่งเอกชน) |
 
 ---
 
@@ -304,6 +327,7 @@
 - [x] Verification: `npx prisma generate`, `npx prisma db push`, `npx tsc --noEmit`, `npm run build` ผ่าน
 
 **Hardening update (2026-05-03)**
+
 - [x] เพิ่ม DB guard กันบิลซ้ำข้ามรอบทำจ่ายด้วย `DeliveryCommissionItem.activeSaleId @unique` และให้ `createDeliveryCommissionRun` re-check รายการใน transaction เดียวก่อนสร้างเอกสาร
 - [x] เพิ่ม retry รอบสร้างเลขเอกสารทำจ่าย/ค่าใช้จ่ายเมื่อชนกัน และจำกัด batch ทำจ่ายที่ 200 บิลต่อครั้ง พร้อมแจ้งเตือนให้กรองช่วงวันที่เพิ่มเมื่อเกิน limit
 - [x] เพิ่ม `ExpenseCode.deliveryCommissionSlot @unique` เพื่อบังคับให้มีรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงานได้เพียง 1 รหัสในเวลาเดียวกัน
@@ -313,6 +337,7 @@
 - [x] เพิ่ม index ที่ใช้จริงกับ delivery/product filters: `Sale(deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo)`, `Product(categoryId)`, `Product(brandId)`, `ProductCarModel(carModelId, productId)`, `CarModel(carBrandId)`
 
 **ข้อควรทราบหลังจบ phase**
+
 - รายได้ค่าจัดส่งจากลูกค้ายังอยู่ในกำไรขั้นต้นของวันนั้น แต่ถูกแยกเป็น line `ค่าจัดส่ง` ไม่ปนกับสินค้า
 - ค่าทำจ่ายผู้ส่งเป็น Expense จึงลดกำไรสุทธิ ไม่ลดกำไรขั้นต้นสินค้าโดยตรง
 - LINE Daily Summary ปัจจุบันยังแสดง “กำไรขั้นต้น” และ “ค่าใช้จ่ายวันนี้” แต่ยังไม่แสดง “กำไรสุทธิวันนี้” เป็นบรรทัดแยก
@@ -378,34 +403,39 @@
 
 #### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
 
-| ประเด็น | ข้อตกลง |
-|---|---|
+| ประเด็น       | ข้อตกลง                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------ |
 | ระบุ Supplier | เพิ่ม `preferredSupplierId?` ใน `Product` (optional) / auto-fill ใน SaleItem ตอนสร้างใบขาย |
-| Serial Number | ไม่ใช้ — ใช้ `unitSeq` (ลำดับที่ 1, 2, 3…) แทน แสดงใน Warranty card |
-| ใบเคลม format | รายละเอียดมาตรฐานสากล (ชื่อสินค้า, เลขที่ warranty, อาการ, supplier, วันที่) |
-| Phase A+B | ทำพร้อมกัน |
+| Serial Number | ไม่ใช้ — ใช้ `unitSeq` (ลำดับที่ 1, 2, 3…) แทน แสดงใน Warranty card                        |
+| ใบเคลม format | รายละเอียดมาตรฐานสากล (ชื่อสินค้า, เลขที่ warranty, อาการ, supplier, วันที่)               |
+| Phase A+B     | ทำพร้อมกัน                                                                                 |
 
 #### Phase 4.4-A — Schema
 
 **เพิ่ม field ใน `Product`:**
+
 ```prisma
 preferredSupplierId  String?
 preferredSupplier    Supplier? @relation(fields: [preferredSupplierId], references: [id])
 ```
 
 **เพิ่ม field ใน `SaleItem`:**
+
 ```prisma
 supplierId   String?
 supplierName String?   // snapshot ณ วันขาย
 ```
 
 **เพิ่ม field ใน `Warranty`:**
+
 ```prisma
 unitSeq  Int @default(1)   // ลำดับที่ของหน่วยภายใน SaleItem (1, 2, 3…)
 ```
+
 > การสร้าง Warranty จาก SaleItem ที่มี qty=3 → สร้าง 3 rows (unitSeq 1, 2, 3)
 
 **ตารางใหม่:**
+
 ```prisma
 model WarrantyClaim {
   id            String              @id @default(cuid())
@@ -448,6 +478,7 @@ enum ClaimOutcome {
 ```
 
 **Stock movement types ใหม่ (เพิ่มใน enum `StockMovementType`):**
+
 ```prisma
 CLAIM_RETURN_IN    // ลูกค้าเอาของเสียกลับมาที่ร้าน (qtyIn)
 CLAIM_SEND_OUT     // ส่งของเสียไปให้ supplier (qtyOut)
@@ -457,14 +488,14 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 
 **Stock flow ตาม ClaimType:**
 
-| Stage | Movement | REPLACE_NOW (เปลี่ยนทันที) | CUSTOMER_WAIT (ลูกค้ารอ) |
-|---|---|---|---|
-| สร้างใบเคลม | `CLAIM_RETURN_IN` | +1 | +1 |
-| สร้างใบเคลม | `CLAIM_REPLACE_OUT` | -1 (ให้ของใหม่ทันที) | — |
-| ส่ง supplier | `CLAIM_SEND_OUT` | -1 | -1 |
-| รับกลับ (RECEIVED) | `CLAIM_RECV_IN` | +1 (ขายใหม่ได้) | +1 |
-| ส่งคืนลูกค้า | `CLAIM_REPLACE_OUT` | — | -1 (ส่งลูกค้าที่รอ) |
-| **Net** | | **0** | **0** |
+| Stage              | Movement            | REPLACE_NOW (เปลี่ยนทันที) | CUSTOMER_WAIT (ลูกค้ารอ) |
+| ------------------ | ------------------- | -------------------------- | ------------------------ |
+| สร้างใบเคลม        | `CLAIM_RETURN_IN`   | +1                         | +1                       |
+| สร้างใบเคลม        | `CLAIM_REPLACE_OUT` | -1 (ให้ของใหม่ทันที)       | —                        |
+| ส่ง supplier       | `CLAIM_SEND_OUT`    | -1                         | -1                       |
+| รับกลับ (RECEIVED) | `CLAIM_RECV_IN`     | +1 (ขายใหม่ได้)            | +1                       |
+| ส่งคืนลูกค้า       | `CLAIM_REPLACE_OUT` | —                          | -1 (ส่งลูกค้าที่รอ)      |
+| **Net**            |                     | **0**                      | **0**                    |
 
 > `NO_RESOLUTION`: supplier ปฏิเสธ — ไม่มี `CLAIM_RECV_IN` / ร้านรับผลขาดทุน stock ของเสียยังติด +1 ให้ปรับออกทีหลังด้วยใบปรับสต็อก
 
@@ -472,7 +503,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 - [x] เพิ่ม `supplierId`, `supplierName` ใน `SaleItem`
 - [x] เพิ่ม `unitSeq` ใน `Warranty`
 - [x] สร้าง model `WarrantyClaim` พร้อม `claimType ClaimType`
-- [x] เพิ่ม enum `ClaimType`, `ClaimOutcome`, `WarrantyClaimStatus` (incl. CANCELLED) และ 4 CLAIM_* sources ใน `StockCardSource`
+- [x] เพิ่ม enum `ClaimType`, `ClaimOutcome`, `WarrantyClaimStatus` (incl. CANCELLED) และ 4 CLAIM\_\* sources ใน `StockCardSource`
 - [x] `prisma db push` + `prisma generate`
 
 ---
@@ -533,7 +564,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 #### Phase 4.4 — Fixes & Polish (หลัง release)
 
 - [x] `recalculateStockCard`: RETURN_IN, CLAIM_RETURN_IN, CLAIM_RECV_IN ใช้ `baPrice` แทน stored `priceIn` snapshot — MAVG neutral ไม่เพี้ยนแม้ประวัติก่อนหน้าเปลี่ยน
-- [x] Stock card display: เพิ่ม label + badge สี สำหรับ CLAIM_* sources ทั้ง 4 ประเภท
+- [x] Stock card display: เพิ่ม label + badge สี สำหรับ CLAIM\_\* sources ทั้ง 4 ประเภท
 - [x] TabsBar: เพิ่ม `/admin/warranty-claims` ใน ROUTE_LABELS
 - [x] Delivery print: ย้ายออกนอก `(protected)` — fix onClick Server Component error
 
@@ -548,6 +579,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 > **สถานะปัจจุบัน:** Search V2 ถูก rollout แล้วสำหรับทั้ง storefront และ admin product search โดยใช้ search document บน PostgreSQL + trigram + full-text ranking, มี fallback กลับไปใช้ Prisma `contains` search เมื่อจำเป็น, และมี cache invalidation สำหรับข้อมูลที่ส่งผลต่อการค้นหาแล้ว
 
 #### Phase 5-A — Audit + Benchmark + Safety Baseline
+
 - [x] วัดและทบทวนพฤติกรรม search เดิมของทั้ง `/products` และ `/admin/products` ก่อน rollout
 - [x] เก็บ safety baseline ของ query เดิมไว้ใน `lib/product-search.ts` ผ่าน legacy Prisma `contains` search เพื่อใช้เทียบและ fallback
 - [x] ระบุ query เดิมที่ใช้ `contains` หลาย field ใน `lib/product-search.ts`
@@ -559,6 +591,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
   - ต้องมี fallback path ถ้า search engine ใหม่มีปัญหา
 
 #### Phase 5-B — Database Search Architecture (Supabase/PostgreSQL)
+
 - [x] ออกแบบ search engine ใหม่บน PostgreSQL โดยใช้ **Full-text search + trigram/partial match**
 - [x] ออกแบบ search document ต่อสินค้าแบบรวมข้อมูลค้นหาทั้งหมดในตาราง `product_search_documents`
 - [x] เพิ่ม index ที่จำเป็นให้ตรง field ที่ใช้งานจริง ทั้ง `search_document`, `search_text`, `product_code`, `product_name`, และ `is_active`
@@ -570,6 +603,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
   - ทดสอบบน data จริงก่อนเปิดใช้เต็ม
 
 #### Phase 5-C — Shared Search Service (ใช้ร่วมกันทั้งระบบ)
+
 - [x] สร้าง search layer กลางใน `lib/product-search.ts` ให้ `/products/search` และ `/admin/products` ใช้ชุด logic เดียวกัน
 - [x] แยก concerns ให้ชัด:
   - search engine = รับผิดชอบ query และ ranking
@@ -579,6 +613,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 - [x] Admin product search ได้ shared search engine เดียวกัน โดยยังคง permissions และฟังก์ชันเดิม
 
 #### Phase 5-D — Verification + Rollout + Regression Protection
+
 - [x] เทียบผลลัพธ์ engine ใหม่กับขอบเขตการค้นหาเดิมของร้าน และคง legacy fallback path ไว้ใน production
 - [x] ทดสอบและครอบคลุมคำค้นกลุ่มสำคัญ:
   - ชื่อสินค้าเต็ม
@@ -601,17 +636,18 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 
 #### ข้อตกลงที่ผ่านการตัดสินใจแล้ว (ห้ามเปลี่ยนโดยไม่ปรึกษา)
 
-| ประเด็น | ข้อตกลง |
-|---|---|
-| ต้นทุน | **ใช้ Lot unitCost แยกต่างหาก** — ไม่ใช้ MAVG รวม ตอนขายออกให้ใช้ต้นทุนของ Lot นั้นๆ |
-| recalculate | ยกเลิกเอกสารต้อง reverse ทั้ง StockCard + LotBalance พร้อมกันใน `$transaction` เดียว |
-| Manual Allocation | ใช้ **Auto Allocate เป็น default** ตาม `lotIssueMethod` / user แก้ไขได้แต่ต้องกรอกเหตุผล / แสดง warning ถ้าไม่ตรง FIFO-FEFO / บันทึก log ว่าใครเปลี่ยน |
-| สต็อกเก่า | ไม่มีปัญหา — จะ restore DB ใหม่ก่อนเปิดใช้จริง |
-| Lot validation | ต้องมีทั้ง stock รวม และ LotBalance เพียงพอจึงจะขายได้ |
-| PurchaseReturn | ต้องอ้างอิง Lot เดิมตามใบซื้อเสมอ — reverse LotBalance ตาม Lot ที่รับเข้ามา |
-| CreditNote (รับคืน) | **Default = Merge กลับ LotBalance เดิม** / มี option "คืนแยก Lot" สำหรับของที่ไม่แน่ใจสภาพ (prefix `RET-{lotNo}`) |
+| ประเด็น             | ข้อตกลง                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ต้นทุน              | **ใช้ Lot unitCost แยกต่างหาก** — ไม่ใช้ MAVG รวม ตอนขายออกให้ใช้ต้นทุนของ Lot นั้นๆ                                                                   |
+| recalculate         | ยกเลิกเอกสารต้อง reverse ทั้ง StockCard + LotBalance พร้อมกันใน `$transaction` เดียว                                                                   |
+| Manual Allocation   | ใช้ **Auto Allocate เป็น default** ตาม `lotIssueMethod` / user แก้ไขได้แต่ต้องกรอกเหตุผล / แสดง warning ถ้าไม่ตรง FIFO-FEFO / บันทึก log ว่าใครเปลี่ยน |
+| สต็อกเก่า           | ไม่มีปัญหา — จะ restore DB ใหม่ก่อนเปิดใช้จริง                                                                                                         |
+| Lot validation      | ต้องมีทั้ง stock รวม และ LotBalance เพียงพอจึงจะขายได้                                                                                                 |
+| PurchaseReturn      | ต้องอ้างอิง Lot เดิมตามใบซื้อเสมอ — reverse LotBalance ตาม Lot ที่รับเข้ามา                                                                            |
+| CreditNote (รับคืน) | **Default = Merge กลับ LotBalance เดิม** / มี option "คืนแยก Lot" สำหรับของที่ไม่แน่ใจสภาพ (prefix `RET-{lotNo}`)                                      |
 
 #### โมดูลที่ข้ามเลย (ไม่มีในระบบ)
+
 - Purchase Order, Transfer Warehouse, Sales Order / Reserve Lot, Barcode/QR Scan
 
 ---
@@ -619,6 +655,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 #### ✅ Phase 5.5-A — Product Master + Schema ใหม่
 
 **เพิ่ม field ใน `Product`:**
+
 ```prisma
 isLotControl       Boolean  @default(false)
 requireExpiryDate  Boolean  @default(false)
@@ -627,11 +664,13 @@ allowExpiredIssue  Boolean  @default(false)
 ```
 
 **ตาราง enum ใหม่:**
+
 ```prisma
 enum LotIssueMethod { FIFO FEFO MANUAL }
 ```
 
 **ตารางใหม่:**
+
 ```prisma
 model ProductLot          // ข้อมูล Lot: lotNo, productId, mfgDate, expDate, unitCost, purchaseItemId
 model LotBalance           // คงเหลือราย Lot: productId + lotNo (unique), qtyOnHand
@@ -643,6 +682,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 ```
 
 **Index บังคับ:**
+
 - `@@unique([productId, lotNo])` ใน `LotBalance`
 - `@@index([productId, expDate])` ใน `ProductLot` (สำหรับ FEFO + expiry report)
 - `@@index([stockCardId])` ใน `StockMovementLot`
@@ -657,6 +697,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 #### ✅ Phase 5.5-B — ใบซื้อ รองรับแตก Lot
 
 **Logic:**
+
 1. เลือกสินค้าที่ `isLotControl = true` → แสดง sub-table ด้านล่างบรรทัด
 2. กรอก: Lot No, Qty, MFG Date (optional), EXP Date (required ถ้า `requireExpiryDate = true`), Unit Cost
 3. **Validate:** `sum(lot.qty) === item.qty` — ห้ามบันทึกถ้าไม่ตรง
@@ -664,6 +705,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 5. ต้นทุน StockCard ใช้ weighted average ของ Lot ทั้งหมดในบรรทัด (เพื่อความ compatible กับ MAVG เดิม)
 
 **UX:**
+
 - Sub-table แบบ inline expandable (ไม่ popup)
 - ปุ่ม "+ เพิ่ม Lot" ใต้บรรทัดสินค้า
 - แสดง progress bar "Lot รวม X / Y ชิ้น" แบบ realtime
@@ -680,6 +722,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 #### ✅ Phase 5.5-C — ใบขาย เลือก / Auto-allocate Lot
 
 **Logic:**
+
 1. บรรทัดสินค้า `isLotControl = true` → แสดงปุ่ม "เลือก Lot"
 2. **Auto Allocate** ทำตาม `lotIssueMethod`:
    - `FIFO` = เรียง `mfgDate ASC` (เก่าก่อน)
@@ -694,6 +737,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 7. บันทึก: สร้าง `SaleItemLot` (snapshot unitCost ณ วันขาย) + ลด `LotBalance` + `StockMovementLot`
 
 **UX:**
+
 - Popup / expandable panel เลือก Lot ใต้บรรทัด
 - ปุ่ม "Auto จัดสรร" กด 1 ครั้งเสร็จ
 - แสดงสรุปว่า allocate Lot ไหนเท่าไหร่
@@ -703,8 +747,8 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 - [x] Server Action: บันทึก + LotBalance deduct (writeSaleLots + writeStockMovementLots)
 - [x] cancelSale: reverseSaleLotBalance คืน LotBalance
 - [x] lib/lot-control-client.ts — แยก pure functions ออกจาก server module เพื่อใช้ใน "use client"
-> ✅ อัพเดท 2026-04-01: เปลี่ยน lotNo input เป็น dropdown (filter Lot ที่มีคงเหลือ แสดง lotNo | EXP | qty ในหน่วยที่เลือก), auto-fill qty/expDate/unitCost เมื่อเลือก, cache lots per item, ย้าย Supplier ชิดกับสินค้า, ย้าย "Lot Control" badge ลง section Lot
-> ⚠️ ยังไม่มี: color warning ล็อต EXP ใกล้หมด / block ถ้า allowExpiredIssue=false / manual override log
+  > ✅ อัพเดท 2026-04-01: เปลี่ยน lotNo input เป็น dropdown (filter Lot ที่มีคงเหลือ แสดง lotNo | EXP | qty ในหน่วยที่เลือก), auto-fill qty/expDate/unitCost เมื่อเลือก, cache lots per item, ย้าย Supplier ชิดกับสินค้า, ย้าย "Lot Control" badge ลง section Lot
+  > ⚠️ ยังไม่มี: color warning ล็อต EXP ใกล้หมด / block ถ้า allowExpiredIssue=false / manual override log
 
 ---
 
@@ -712,25 +756,25 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 
 **กฎเหล็ก:** ยกเลิกต้อง reverse ทั้ง StockCard + LotBalance ใน `$transaction` เดียวเสมอ
 
-| เอกสาร | Reverse Logic |
-|---|---|
-| ยกเลิกใบซื้อ | อ่าน `PurchaseItemLot` → ลด `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate |
-| ยกเลิกใบขาย | อ่าน `SaleItemLot` → คืน `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate |
-| ยกเลิกใบคืนซัพพลายเออร์ | อ่าน `PurchaseReturnItemLot` → คืน `LotBalance` ตาม Lot เดิม |
-| ยกเลิก CN (รับคืนจากลูกค้า) | ถ้า merge → ลด `LotBalance` กลับ / ถ้า RET-lot → ลบ LotBalance ของ RET-lot ทิ้ง |
+| เอกสาร                      | Reverse Logic                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| ยกเลิกใบซื้อ                | อ่าน `PurchaseItemLot` → ลด `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate |
+| ยกเลิกใบขาย                 | อ่าน `SaleItemLot` → คืน `LotBalance` กลับ → ลบ `StockMovementLot` → recalculate    |
+| ยกเลิกใบคืนซัพพลายเออร์     | อ่าน `PurchaseReturnItemLot` → คืน `LotBalance` ตาม Lot เดิม                        |
+| ยกเลิก CN (รับคืนจากลูกค้า) | ถ้า merge → ลด `LotBalance` กลับ / ถ้า RET-lot → ลบ LotBalance ของ RET-lot ทิ้ง     |
 
 - [x] แก้ `cancelPurchase` รองรับ Lot (reversePurchaseLotBalance)
 - [x] แก้ `cancelSale` รองรับ Lot (reverseSaleLotBalance)
 - [x] แก้ `cancelPurchaseReturn` รองรับ Lot (reversePurchaseReturnLotBalance — คืน stock ที่เคยส่งกลับซัพพลายเออร์)
 - [x] แก้ `cancelCreditNote` RETURN รองรับ Lot (reverseCreditNoteLotBalance — ลบ stock ที่เคยรับคืนจากลูกค้า, รองรับทั้ง merge-lot และ RET-lot)
-> หมายเหตุ: PurchaseReturn และ CreditNote RETURN ยังไม่มี UI กรอก Lot (writePurchaseReturnLots / writeCreditNoteLots ถูก implement แล้วใน lot-control.ts แต่ยังไม่ได้เรียกจาก form) → reverse จะ no-op จนกว่าจะ implement UI
+  > หมายเหตุ: PurchaseReturn และ CreditNote RETURN ยังไม่มี UI กรอก Lot (writePurchaseReturnLots / writeCreditNoteLots ถูก implement แล้วใน lot-control.ts แต่ยังไม่ได้เรียกจาก form) → reverse จะ no-op จนกว่าจะ implement UI
 
 ---
 
 #### ✅ Phase 5.5-E — รายงาน Lot
 
 - [x] **Lot Balance** — คงเหลือราย Lot ทุกสินค้า (filter by product / expiry status) — `/admin/lots/balance`
-  เปิดหน้าเริ่มต้นยังไม่แสดงข้อมูลจนกว่าจะค้นหาหรือเลือกสถานะแล้วกดกรอง
+      เปิดหน้าเริ่มต้นยังไม่แสดงข้อมูลจนกว่าจะค้นหาหรือเลือกสถานะแล้วกดกรอง
 - [x] **Lot Trace** — ค้นหา Lot No → ดูใบซื้อต้นทาง + ใบขาย + ใบคืน + CN + movement จาก Warranty Claim (`CLAIM_RETURN_IN`, `CLAIM_SEND_OUT`, `CLAIM_RECV_IN`, `CLAIM_REPLACE_OUT`) — `/admin/lots/trace`
 - [x] **Expiry Report** — Lot ที่หมดอายุแล้ว / ใกล้หมด (color-coded) — `/admin/lots/expiry`
 - [x] **Slow Moving Lot** — Lot ที่ไม่มีการขายเกิน X วัน — `/admin/lots/slow-moving`
@@ -753,6 +797,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 **Status update (2026-04-05):** Done. `updatePurchase` reverse lot balance before delete, rewrites lot rows after recreate, and the edit form now allows lot editing instead of read-only display.
 
 **ปัญหา:**
+
 ```
 ปัจจุบัน:  deleteMany PurchaseItem → cascade ลบ PurchaseItemLot
            แต่ไม่ reverse LotBalance ก่อน
@@ -760,6 +805,7 @@ model CreditNoteItemLot    // sub-rows CN รับคืนจากลูก�
 ```
 
 **แก้ไข — เพิ่มใน `updatePurchase` ก่อน step 1 (ลบ PurchaseItems):**
+
 ```typescript
 // 0. Reverse old Lot balance ก่อน (ป้องกัน LotBalance เกิน)
 const oldItemsWithLots = await tx.purchaseItem.findMany({
@@ -774,6 +820,7 @@ await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
 ```
 
 **เพิ่มหลังสร้าง purchaseItem + writeStockCard:**
+
 ```typescript
 // writePurchaseLots + writeStockMovementLots ถ้ามี lot data ใน item
 if (item.isLotControl && item.lots?.length > 0) {
@@ -790,6 +837,7 @@ if (item.isLotControl && item.lots?.length > 0) {
 
 **Schema:** ไม่เปลี่ยน
 **Checklist:**
+
 - [ ] อ่าน existing items + id ก่อน delete
 - [ ] เรียก `reversePurchaseLotBalance` ทุก item
 - [ ] `purchaseItemSchema` รับ `lots: z.array(lotSubRowSchema).default([])`
@@ -808,6 +856,7 @@ if (item.isLotControl && item.lots?.length > 0) {
 **ปัญหา:** เหมือน F1 — ลบ SaleItem ด้วย cascade โดยไม่ reverse SaleItemLot ก่อน
 
 **แก้ไข — เพิ่มใน `updateSale` ก่อนลบ SaleItems:**
+
 ```typescript
 // 0. Reverse old Lot balance
 const oldSaleItems = await tx.saleItem.findMany({
@@ -821,6 +870,7 @@ await tx.saleItem.deleteMany({ where: { saleId: id } });
 ```
 
 **เพิ่มหลังสร้าง saleItem + writeStockCard:**
+
 ```typescript
 if (item.isLotControl && item.lots?.length > 0) {
   await writeSaleLots(tx, saleItem.id, item.productId, item.lots);
@@ -836,6 +886,7 @@ if (item.isLotControl && item.lots?.length > 0) {
 
 **Schema:** ไม่เปลี่ยน
 **Checklist:**
+
 - [ ] เรียก `reverseSaleLotBalance` ทุก item ก่อน delete
 - [ ] `saleItemSchema` รับ `lots: z.array(lotSubRowSchema).default([])`
 - [ ] เรียก `writeSaleLots` + `writeStockMovementLots` หลัง create item ใหม่
@@ -856,6 +907,7 @@ if (item.isLotControl && item.lots?.length > 0) {
 > แต่ยังไม่ถูกเรียกจาก action ใดเลย
 
 **createPurchaseReturn — เพิ่มหลัง purchaseReturnItem.create:**
+
 ```typescript
 if (product.isLotControl && item.lots?.length > 0) {
   await writePurchaseReturnLots(tx, returnItem.id, item.productId, item.lots);
@@ -869,6 +921,7 @@ if (product.isLotControl && item.lots?.length > 0) {
 ```
 
 **updatePurchaseReturn — เพิ่มก่อนลบ items + หลังสร้างใหม่:**
+
 ```typescript
 // Before delete:
 for (const item of oldItems) {
@@ -880,6 +933,7 @@ await writeStockMovementLots(tx, sc.id, ..., "out")
 ```
 
 **Validation เพิ่ม (server):**
+
 ```typescript
 // ตรวจ LotBalance เพียงพอก่อนคืน
 for (const lot of item.lots) {
@@ -894,6 +948,7 @@ for (const lot of item.lots) {
 
 **Schema:** ไม่เปลี่ยน
 **Checklist:**
+
 - [ ] `returnItemSchema` รับ `lots: z.array(lotSubRowSchema).default([])`
 - [ ] `createPurchaseReturn`: เรียก `writePurchaseReturnLots` + `writeStockMovementLots`
 - [ ] `updatePurchaseReturn`: reverse old → re-create new lots
@@ -916,6 +971,7 @@ for (const lot of item.lots) {
 > `writeCreditNoteLots` + `reverseCreditNoteLotBalance` ใน `lot-control.ts` implement แล้ว
 
 **createCreditNote (type=RETURN) — เพิ่มหลัง cnItem.create:**
+
 ```typescript
 if (product.isLotControl && item.lots?.length > 0) {
   await writeCreditNoteLots(tx, cnItem.id, item.productId, item.lots);
@@ -929,6 +985,7 @@ if (product.isLotControl && item.lots?.length > 0) {
 ```
 
 **updateCreditNote (type=RETURN):**
+
 ```typescript
 // Before delete items:
 for (const item of oldItems) {
@@ -943,6 +1000,7 @@ await writeStockMovementLots(tx, sc.id, ..., "in")
 
 **Schema:** ไม่เปลี่ยน
 **Checklist:**
+
 - [ ] `cnItemSchema` รับ `lots: z.array(lotSubRowSchema & { isReturnLot: boolean }).default([])`
 - [ ] `createCreditNote` RETURN: เรียก `writeCreditNoteLots` + `writeStockMovementLots`
 - [ ] `updateCreditNote` RETURN: reverse old → re-create new lots
@@ -958,6 +1016,7 @@ await writeStockMovementLots(tx, sc.id, ..., "in")
 ### ✅ Phase 5.5-G — Delivery แสดง Lot
 
 **ไฟล์ที่กระทบ:**
+
 - `app/admin/delivery/print/page.tsx` (print)
 
 > ไม่มี stock/lot transaction ใหม่ — Delivery เป็นแค่ logistics status
@@ -971,13 +1030,16 @@ await writeStockMovementLots(tx, sc.id, ..., "in")
 **ไฟล์:** `app/admin/delivery/print/page.tsx`
 
 **เพิ่ม:**
+
 - คอลัมน์ "Lot No" ในตารางสินค้าของใบส่งของ
 - ถ้า item มีหลาย lot → แสดงทุก lot บนบรรทัดใหม่ย่อย
 
 **Checklist:**
+
 - [x] query `lotItems` ใน delivery print
 - [x] เพิ่มคอลัมน์ Lot No ในตารางสินค้า
 - [x] ทดสอบ print layout ไม่แตก
+
 ---
 
 ### ✅ Phase 5.5-H — Warranty + Claim Lot Integration
@@ -987,6 +1049,7 @@ await writeStockMovementLots(tx, sc.id, ..., "in")
 #### Phase 5.5-H1 — Warranty เก็บ Lot Snapshot
 
 **Schema change (`prisma/schema.prisma`):**
+
 ```prisma
 model Warranty {
   ...
@@ -995,6 +1058,7 @@ model Warranty {
 ```
 
 **Logic เมื่อสร้าง Warranty จากใบขาย (`sales/actions.ts`):**
+
 ```typescript
 // qty=5, lots=[LOT-A qty=3, LOT-B qty=2]
 // สร้าง warranty unitSeq 1,2,3 → lotNo="LOT-A"
@@ -1006,15 +1070,19 @@ for (const lot of saleItem.lots) {
   for (let i = 0; i < lot.qty; i++) flatLots.push(lot.lotNo);
 }
 // unitSeq-1 = index ใน flatLots
-warranties.forEach((w, idx) => { w.lotNo = flatLots[idx] ?? null; });
+warranties.forEach((w, idx) => {
+  w.lotNo = flatLots[idx] ?? null;
+});
 ```
 
 **Display:**
+
 - หน้า warranty list: เพิ่มคอลัมน์ "Lot No"
 - หน้า warranty detail: แสดง "Lot: LOT-001"
 - หน้า warranty claim: แสดง lot ต้นทาง (อ่านจาก warranty.lotNo)
 
 **Checklist:**
+
 - [x] เพิ่ม `lotNo String?` ใน Warranty schema
 - [x] `prisma db push`
 - [x] แก้ logic สร้าง Warranty หลัง createSale: assign lotNo ตาม sequential algorithm
@@ -1028,6 +1096,7 @@ warranties.forEach((w, idx) => { w.lotNo = flatLots[idx] ?? null; });
 #### Phase 5.5-H2 — WarrantyClaimLot Schema ใหม่
 
 **Schema change (`prisma/schema.prisma`):**
+
 ```prisma
 model WarrantyClaimLot {
   id         String        @id @default(cuid())
@@ -1050,6 +1119,7 @@ model WarrantyClaim {
 ```
 
 **Checklist:**
+
 - [x] เพิ่ม `WarrantyClaimLot` model
 - [x] เพิ่ม relation `claimLots` ใน `WarrantyClaim`
 - [x] `prisma db push`
@@ -1060,27 +1130,37 @@ model WarrantyClaim {
 
 **Stock + Lot logic ต่อ CLAIM action:**
 
-| CLAIM Action | StockCard Source | LotBalance | WarrantyClaimLot |
-|---|---|---|---|
-| `CLAIM_RETURN_IN` | รับสินค้าเสียจากลูกค้า | `+qty` ของ `warranty.lotNo` (หรือ `RET-{lotNo}` ถ้าเปิด option) | `direction="in"` |
-| `CLAIM_SEND_OUT` | ส่งสินค้าเสียให้ supplier | `-qty` ของ `warranty.lotNo` | `direction="out"` |
-| `CLAIM_RECV_IN` | รับสินค้าทดแทนจาก supplier | `+qty` ของ lot ใหม่/เดิมที่ระบุ | `direction="in"` |
-| `CLAIM_REPLACE_OUT` | ส่งสินค้าทดแทนให้ลูกค้า | `-qty` ของ lot ที่เลือก | `direction="out"` |
+| CLAIM Action        | StockCard Source           | LotBalance                                                      | WarrantyClaimLot  |
+| ------------------- | -------------------------- | --------------------------------------------------------------- | ----------------- |
+| `CLAIM_RETURN_IN`   | รับสินค้าเสียจากลูกค้า     | `+qty` ของ `warranty.lotNo` (หรือ `RET-{lotNo}` ถ้าเปิด option) | `direction="in"`  |
+| `CLAIM_SEND_OUT`    | ส่งสินค้าเสียให้ supplier  | `-qty` ของ `warranty.lotNo`                                     | `direction="out"` |
+| `CLAIM_RECV_IN`     | รับสินค้าทดแทนจาก supplier | `+qty` ของ lot ใหม่/เดิมที่ระบุ                                 | `direction="in"`  |
+| `CLAIM_REPLACE_OUT` | ส่งสินค้าทดแทนให้ลูกค้า    | `-qty` ของ lot ที่เลือก                                         | `direction="out"` |
 
 **ฟังก์ชันใหม่ใน `lib/lot-control.ts`:**
+
 ```typescript
 // เพิ่ม + deduct LotBalance + สร้าง WarrantyClaimLot
 export async function writeClaimLot(
-  tx, claimId, productId, lotNo, qty, direction: "in"|"out", unitCost
-): Promise<void>
+  tx,
+  claimId,
+  productId,
+  lotNo,
+  qty,
+  direction: "in" | "out",
+  unitCost,
+): Promise<void>;
 
 // Reverse เมื่อยกเลิกใบเคลม
 export async function reverseClaimLotBalance(
-  tx, claimId, productId
-): Promise<void>
+  tx,
+  claimId,
+  productId,
+): Promise<void>;
 ```
 
 **Logic cancelWarrantyClaim (เพิ่ม):**
+
 ```typescript
 // อ่าน WarrantyClaimLot → reverse LotBalance
 for (const lot of claimLots) {
@@ -1095,6 +1175,7 @@ for (const lot of claimLots) {
 ```
 
 **Checklist:**
+
 - [x] เพิ่ม `writeClaimLot` ใน `lib/lot-control.ts`
 - [x] เพิ่ม `reverseClaimLotBalance` ใน `lib/lot-control.ts`
 - [x] แก้ `warranty-claims/actions.ts`:
@@ -1125,17 +1206,18 @@ for (const lot of claimLots) {
 - [x] `npm run build`
 
 > หมายเหตุ implementation:
+>
 > - warranty ไม่มี detail route แยกในโครงสร้างปัจจุบัน จึงแสดง lot ที่หน้า list และหน้า claim แทน
 > - lot snapshot ที่มากับ warranty ถูกถือเป็นข้อมูลอ้างอิงจากตอนขายและไม่เปิดให้แก้ภายหลัง
 
 ### สรุป Schema Changes Phase 5.5-F/G/H
 
-| Table | การเปลี่ยน | Requires |
-|---|---|---|
-| `Warranty` | เพิ่ม `lotNo String?` | `prisma db push` + migrate existing rows = null |
-| `WarrantyClaimLot` | ตารางใหม่ | `prisma db push` |
-| `WarrantyClaim` | เพิ่ม relation `claimLots` | `prisma db push` |
-| อื่นๆ | ไม่เปลี่ยน schema | — |
+| Table              | การเปลี่ยน                 | Requires                                        |
+| ------------------ | -------------------------- | ----------------------------------------------- |
+| `Warranty`         | เพิ่ม `lotNo String?`      | `prisma db push` + migrate existing rows = null |
+| `WarrantyClaimLot` | ตารางใหม่                  | `prisma db push`                                |
+| `WarrantyClaim`    | เพิ่ม relation `claimLots` | `prisma db push`                                |
+| อื่นๆ              | ไม่เปลี่ยน schema          | —                                               |
 
 ---
 
@@ -1146,16 +1228,19 @@ for (const lot of claimLots) {
 #### ✅ Phase 5.5-I1 — BF (ยอดยกมา) รองรับ Lot
 
 **ไฟล์:**
+
 - `app/admin/(protected)/stock/bf/actions.ts` — createBF + cancelBF
 - `app/admin/(protected)/stock/bf/BfForm.tsx` — UI Lot sub-table
 - `app/admin/(protected)/stock/bf/page.tsx` — ส่ง isLotControl/requireExpiryDate ให้ form
 
 **Logic:**
+
 - สินค้า `isLotControl=true` → แสดง Lot sub-table (manual input: lotNo, qty, unitCost, mfgDate, expDate)
 - `createBF`: validate lots → `writePurchaseLots` (bf.id เป็น purchaseItemId) + `writeStockMovementLots` direction="in"
 - `cancelBF`: `reversePurchaseLotBalance(tx, bf.id, bf.productId)` → delete StockCard → recalculate
 
 **Checklist:**
+
 - [x] actions.ts: lotSubRowSchema + lotItems ใน bfSchema
 - [x] actions.ts: createBF — writePurchaseLots + writeStockMovementLots
 - [x] actions.ts: cancelBF — reversePurchaseLotBalance
@@ -1167,22 +1252,26 @@ for (const lot of claimLots) {
 #### ✅ Phase 5.5-I2 — Adjustment (ปรับสต็อก) รองรับ Lot
 
 **ไฟล์:**
+
 - `app/admin/(protected)/stock/adjustments/actions.ts` — createAdjustment + cancelAdjustment + fetchAdjustmentProductLots
 - `app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx` — UI Lot (IN=manual, OUT=dropdown)
 - `app/admin/(protected)/stock/adjustments/page.tsx` — ส่ง isLotControl/requireExpiryDate/lotIssueMethod ให้ form
 - `lib/lot-control.ts` — writeAdjustmentLots + reverseAdjustmentLotBalance
 
 **Logic:**
+
 - **ADJUST_IN:** แสดง manual input (lotNo, qty, unitCost, mfgDate, expDate) — เหมือน BF/Purchase
 - **ADJUST_OUT:** แสดง dropdown เลือก Lot (filter คงเหลือ, แสดง lotNo | EXP | qty) + ปุ่ม "Auto จัดสรร" — เหมือน SaleForm
 - `createAdjustment`: validate lots → `writeAdjustmentLots` (upsert LotBalance + ProductLot + StockMovementLot)
 - `cancelAdjustment`: `reverseAdjustmentLotBalance(tx, adj.id, affectedProductIds)` → delete StockCard → recalculate
 
 **ฟังก์ชันใหม่ใน `lib/lot-control.ts`:**
+
 - `writeAdjustmentLots(tx, stockCardId, productId, lots, direction)` — direction="in" upsert LotBalance+ProductLot / direction="out" deduct LotBalance
 - `reverseAdjustmentLotBalance(tx, adjustmentId, productIds)` — อ่าน StockMovementLot จาก StockCard ที่มี referenceId=adjustmentId แล้ว reverse
 
 **Checklist:**
+
 - [x] lot-control.ts: writeAdjustmentLots + reverseAdjustmentLotBalance
 - [x] actions.ts: lotSubRowSchema + lotItems ใน adjustItemSchema
 - [x] actions.ts: createAdjustment — writeAdjustmentLots per item
@@ -1194,6 +1283,7 @@ for (const lot of claimLots) {
 ---
 
 ### ✅ Phase 6 — Report (เสร็จแล้ว)
+
 - [x] Report สรุปยอดขาย (รายวัน/สัปดาห์/เดือน) พร้อม Net sale = ขาย - คืนขาย
 - [x] Report กำไร-ขาดทุน (รวม VAT breakdown)
 - [x] Report stock คงเหลือ + สินค้าต่ำกว่า minStock
@@ -1211,29 +1301,32 @@ for (const lot of claimLots) {
 ---
 
 ### ✅ Phase 6.5 — Accounting Reports Alignment (เสร็จแล้ว — 2026-04-06)
+
 > เป้าหมาย: ยกระดับรายงานเป็นแบบ Raw Data ระดับ line item พร้อม Export CSV และ Export Excel (.xlsx) แยกปุ่ม
 
 #### สิ่งที่ implement แล้ว
 
 **โครงสร้างใหม่:** `lib/report-queries.ts` + tab navigation (`ReportTabNav`) + layout ครอบทุก sub-page
 
-| Tab | Route | ประเภท | Export |
-|---|---|---|---|
-| รายงานขาย | `/reports/sales` | Raw data 1 row/item — filter ประเภทขาย/การชำระ | CSV + Excel |
-| รายงานซื้อ | `/reports/purchases` | Raw data 1 row/item — ทุกรายการซื้อ | CSV + Excel |
-| คืนขาย (CN) | `/reports/credit-notes` | Raw data 1 row/item — filter ประเภท CN | CSV + Excel |
-| รับเงินประจำวัน | `/reports/receipts` | ระดับใบ — ขายสด + รับชำระหนี้ — filter ประเภท | CSV + Excel |
-| จ่ายเงินประจำวัน | `/reports/payments` | ระดับใบ — ซื้อ + ค่าใช้จ่าย + CN คืนเงินสด — filter ประเภท | CSV + Excel |
-| สรุปภาพรวม | `/reports/summary` | Summary cards: กำไร-ขาดทุน, สต็อก, ลูกหนี้, ประกัน | — |
+| Tab              | Route                   | ประเภท                                                     | Export      |
+| ---------------- | ----------------------- | ---------------------------------------------------------- | ----------- |
+| รายงานขาย        | `/reports/sales`        | Raw data 1 row/item — filter ประเภทขาย/การชำระ             | CSV + Excel |
+| รายงานซื้อ       | `/reports/purchases`    | Raw data 1 row/item — ทุกรายการซื้อ                        | CSV + Excel |
+| คืนขาย (CN)      | `/reports/credit-notes` | Raw data 1 row/item — filter ประเภท CN                     | CSV + Excel |
+| รับเงินประจำวัน  | `/reports/receipts`     | ระดับใบ — ขายสด + รับชำระหนี้ — filter ประเภท              | CSV + Excel |
+| จ่ายเงินประจำวัน | `/reports/payments`     | ระดับใบ — ซื้อ + ค่าใช้จ่าย + CN คืนเงินสด — filter ประเภท | CSV + Excel |
+| สรุปภาพรวม       | `/reports/summary`      | Summary cards: กำไร-ขาดทุน, สต็อก, ลูกหนี้, ประกัน         | —           |
 
 **Export Excel** ใช้ `exceljs` — header สีน้ำเงิน (`#1e3a5f`), numeric format, แถวรวมท้าย, แถวที่ยกเลิกเป็นสีเทาและ italic
 
 **รายงานรับเงินประจำวัน** รวม:
+
 - ขายสด (`Sale.paymentType = CASH_SALE`) — พร้อมช่องทางชำระ
 - รับชำระหนี้ (`Receipt`) — พร้อมช่องทางชำระ
 - Summary cards แยก 3 ช่อง
 
 **รายงานจ่ายเงินประจำวัน** รวม:
+
 - ซื้อสินค้า (`Purchase`) — พร้อม paymentMethod
 - ค่าใช้จ่าย (`Expense`)
 - คืนเงินลูกค้า (`CreditNote.settlementType = CASH_REFUND`) — พร้อม refundMethod
@@ -1253,15 +1346,18 @@ for (const lot of claimLots) {
 - [x] loading.tsx ครบทุก sub-route
 
 **งานอนาคต / ยังไม่ทำในรอบนี้:**
+
 - [ ] AR Register / AP Register (รายงานทะเบียนอีกมิติหนึ่ง ต่างจากหน้า outstanding ปัจจุบันที่ `/admin/reports/ar` และ `/admin/reports/ap`)
 - [ ] รายงานภาษีขาย / ภาษีซื้อ (เก็บไว้เป็นงานอนาคต)
 
 ---
 
 ### 🔲 Phase 6.6 — โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
+
 > เป้าหมาย: ทำ Cash/Bank ledger ระดับใช้งานจริงแบบเบา ใช้คุมว่าเงินอยู่บัญชีไหน, เงินเข้าออกจากเอกสารอะไร, และดูยอดคงเหลือรายบัญชีได้ทันที โดยยังไม่เปิด scope เป็นระบบบัญชีเต็มหรือ bank reconcile เต็มรูปแบบตั้งแต่รอบแรก
 
 #### ขอบเขตของ Lite Version
+
 - [x] เพิ่ม master บัญชีการเงินแบบจำเป็นก่อน
   - [x] Cash/Bank Account master
   - [x] รองรับประเภทอย่างน้อย `CASH` / `BANK`
@@ -1289,6 +1385,7 @@ for (const lot of claimLots) {
   - [x] เฟส Lite ยังไม่ทำ Bank Reconcile เต็ม แต่ต้องวางโครงสร้าง source และ card ให้พร้อมต่อยอด
 
 #### กติกาธุรกิจสำคัญของ Cash/Bank Card
+
 - [x] การเพิ่มเอกสารที่กระทบเงินจริง ต้องสร้าง cash/bank movement และอัปเดตยอดคงเหลือปลายรายการของบัญชีนั้นทันที
 - [x] การแก้ไขเอกสารที่กระทบเงินจริง ต้อง reverse/replace movement เดิมก่อน แล้วสร้าง movement ชุดใหม่เสมอ
 - [x] การยกเลิกเอกสารที่กระทบเงินจริง ต้องยกเลิก movement ที่เกี่ยวข้องและ recalculate cash/bank card ของทุกบัญชีที่ได้รับผลกระทบ
@@ -1299,6 +1396,7 @@ for (const lot of claimLots) {
 - [x] ต้องมี utility กลางสำหรับ recalculate cash/bank card ตามลำดับวันและลำดับเอกสาร คล้ายแนวคิด `recalculateStockCard()` แต่สำหรับ ledger เงิน
 
 #### หน้าจอหลักของ Lite Version
+
 - [x] เพิ่มเมนู `/admin/cash-bank`
   - [x] จัดการบัญชีเงินสด/ธนาคาร
   - [x] เปิด/ปิดการใช้งาน
@@ -1320,6 +1418,7 @@ for (const lot of claimLots) {
   - [x] ต้องตรวจ role/permission ก่อนสร้าง แก้ไข หรือยกเลิก Adjustment
 
 #### รายงานที่ต้องมีใน Lite Version
+
 - [x] Cash/Bank Ledger Report
   - [x] filter ตามบัญชี / ช่วงวันที่
   - [x] แยกประเภท source เช่น `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`, `TRANSFER`, `ADJUSTMENT`
@@ -1334,6 +1433,7 @@ for (const lot of claimLots) {
   - [x] ติดตามจากบัญชีต้นทาง/ปลายทาง/ช่วงวันที่ได้
 
 #### ผลกระทบที่ต้อง preview และแก้ในโมดูลรายงานปัจจุบัน
+
 - [x] preview และทบทวน `/admin/reports/receipts`
   - [x] เพิ่มมุมมองบัญชีที่รับเงินจริง ไม่ใช่แค่ payment method
   - [x] เพิ่ม filter ตามบัญชีรับเงิน
@@ -1363,6 +1463,7 @@ for (const lot of claimLots) {
   - [x] ระบุชัดว่ารายงานไหนยังใช้ document totals ได้เหมือนเดิม และรายงานไหนต้องอิง ledger movement แทนให้ครบทั้งหมด
 
 #### เฟสที่ intentionally ยังไม่รวมใน Lite Version
+
 - [ ] ยังไม่ทำ Bank Reconcile เต็มรูปแบบใน Phase 6.6 Lite
 - [ ] ยังไม่ทำ import bank statement
 - [ ] ยังไม่ทำ payment run / clearing workflow / slip attachment
@@ -1425,7 +1526,7 @@ for (const lot of claimLots) {
 - [x] `app/robots.ts` ใช้ Next.js Metadata robots
 - [x] กัน `/admin/` จาก indexing
 - [x] Sitemap ชี้ `https://www.sriwanparts.com/sitemap.xml`
-- [x] Submit sitemap ใน Google Search Console *(manual action completed)*
+- [x] Submit sitemap ใน Google Search Console _(manual action completed)_
 
 ---
 
@@ -1443,7 +1544,7 @@ for (const lot of claimLots) {
 - [x] `components/seo/CollectionPageJsonLd.tsx` — สำหรับหน้าหมวดหมู่
 - [x] `components/seo/JsonLd.tsx` — base wrapper
 - [x] `components/seo/OgImageTemplate.tsx` — OG image generation
-- [x] ทดสอบด้วย [Google Rich Results Test](https://search.google.com/test/rich-results) *(manual action completed)*
+- [x] ทดสอบด้วย [Google Rich Results Test](https://search.google.com/test/rich-results) _(manual action completed)_
 
 ---
 
@@ -1460,26 +1561,28 @@ for (const lot of claimLots) {
 - [x] **หน้า `/knowledge`** — มี **14 บทความ** ครอบคลุมหมวด: การเลือกซื้อ, การวินิจฉัยอาการ, การใช้งานเว็บไซต์, local SEO นครสวรรค์ พร้อม ArticleJsonLd ทุกบทความ
 - [x] **`llms.txt`** — มีแล้วที่ `/public/llms.txt` (ระบุข้อมูลร้าน, หน้าหลัก, keyword, ช่องทางติดต่อ)
 - [x] **AIO Signals** — หน้าสินค้าแสดงยี่ห้อรถ/รุ่นรถที่ใช้ได้ จาก `ProductCarModel` + `buildStorefrontProductDescription()`
-- [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ *(ongoing — ขึ้นกับข้อมูล DB)*
+- [ ] เพิ่มข้อมูลปีรถ / OEM / compatibility depth ถ้ามีข้อมูลพอ _(ongoing — ขึ้นกับข้อมูล DB)_
 - [x] ขยาย knowledge hub ต่อให้ครอบคลุมคำค้นเชิงธุรกิจและ local intent
 - [x] ขยาย knowledge hub ต่อด้วยบทความเชิง conversion / เปรียบเทียบ / troubleshooting
-- [ ] ขยาย knowledge hub จากคำค้นจริงใน production + บทความเชิงรุ่นรถ / compatibility *(ongoing content)*
+- [ ] ขยาย knowledge hub จากคำค้นจริงใน production + บทความเชิงรุ่นรถ / compatibility _(ongoing content)_
 
 ---
 
 ## Environment Variables ที่ต้องมี
+
 ดูตัวอย่างได้ที่ `.env.example`
 
-| Variable | ใช้สำหรับ |
-|---|---|
-| `DATABASE_URL` | Supabase Transaction pooler (port 6543, `pgbouncer=true`) |
-| `DIRECT_URL` | Supabase direct connection (db host, for Prisma CLI / migrate) |
-| `NEXTAUTH_SECRET` | NextAuth encryption key |
-| `NEXTAUTH_URL` | URL ของเว็บ (เปลี่ยนเป็น production URL หลัง deploy) |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+| Variable                        | ใช้สำหรับ                                                      |
+| ------------------------------- | -------------------------------------------------------------- |
+| `DATABASE_URL`                  | Supabase Transaction pooler (port 6543, `pgbouncer=true`)      |
+| `DIRECT_URL`                    | Supabase direct connection (db host, for Prisma CLI / migrate) |
+| `NEXTAUTH_SECRET`               | NextAuth encryption key                                        |
+| `NEXTAUTH_URL`                  | URL ของเว็บ (เปลี่ยนเป็น production URL หลัง deploy)           |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                                           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key                                              |
 
 ## คำสั่งที่ใช้บ่อย
+
 ```bash
 # Sync schema กับ database
 npx prisma db push
@@ -1502,6 +1605,7 @@ npm run db:restore backup-{timestamp}.json
 ```
 
 ## หมายเหตุสำคัญ
+
 - ใช้ **Prisma db push** (ไม่ใช่ migrate dev) เพราะ Supabase Transaction pooler ไม่รองรับ shadow database
 - `lib/generated/prisma` อยู่ใน `.gitignore` → ต้องรัน `prisma generate` หลัง clone repo ใหม่
 - Admin user แรกต้องสร้างผ่าน seed script (Phase 2)
@@ -1509,12 +1613,14 @@ npm run db:restore backup-{timestamp}.json
 ---
 
 ## Roadmap Update (2026-03-30)
+
 - Phase 5 Search: done
 - Public search at /products is live.
 - Admin product search at /admin/products is live.
 - Product search now covers name, code, description, aliases, car brand, car model, category, and parts brand.
 
 ## Roadmap Update (2026-04-01)
+
 - Hero search UI on the storefront was redesigned to make product search more prominent and easier to use on all screen sizes.
 - Footer was simplified to focus on branding and contact information only.
 - Phase 5 was redefined as a **Search Performance Upgrade** roadmap and has now been completed for both storefront and admin product search:
@@ -1525,6 +1631,7 @@ npm run db:restore backup-{timestamp}.json
 - Search upgrade must preserve existing search coverage exactly while improving speed, correctness, and safety.
 
 ## Roadmap Update (2026-04-01 Search V2)
+
 - Phase 5 — Search Performance Upgrade (หน้าบ้าน + หลังบ้าน): เสร็จแล้ว
 - Search V2 target is now **marketplace-inspired**: fast, forgiving, and shared by both storefront and admin product search.
 - Search V2 must preserve the existing search coverage exactly:
@@ -1549,9 +1656,11 @@ npm run db:restore backup-{timestamp}.json
   - no schema-breaking change to core transaction tables
 
 ## Roadmap Update (2026-04-01 UI Consistency)
+
 - Fixed storefront `/products` navbar to use `shopLogoUrl` from company settings, keeping logo behavior consistent with the homepage, footer, favicon, and admin login.
 
 ## Roadmap Update (2026-04-02 Security Baseline)
+
 - Enabled RLS on every table in the `public` schema on Supabase.
 - Kept rollout in safe mode:
   - RLS enabled
@@ -1564,6 +1673,7 @@ npm run db:restore backup-{timestamp}.json
   - Prisma verification after rollout
 
 ## Roadmap Update (2026-04-02 Public API Blueprint)
+
 - Prepared a non-live blueprint for future storefront-safe Supabase API exposure through public views instead of raw tables.
 - Planned public views:
   - `public_site_settings`
@@ -1575,6 +1685,7 @@ npm run db:restore backup-{timestamp}.json
 - This blueprint is intentionally kept as the next security/data-contract phase and is **not required** for the current storefront while Prisma server-side data access remains the primary path.
 
 ## Roadmap Update (2026-04-02 Phase 7 Start)
+
 - Phase 7 implementation has started with the lowest-risk SEO foundation for the live storefront.
 - Completed in this rollout:
   - canonical-friendly metadata base at the app root using `https://www.sriwanparts.com`
@@ -1586,6 +1697,7 @@ npm run db:restore backup-{timestamp}.json
 - This rollout is intentionally scoped to technical SEO groundwork first, before expanding Phase 7 into structured data, content pages, URL architecture, and Core Web Vitals tuning.
 
 ## Roadmap Update (2026-04-02 Phase 7 Content + Schema)
+
 - Added `/about` to explain the shop, service model, contact channels, and storefront purpose in a way that supports trust and SEO.
 - Added `/faq` with customer-first questions and answers focused on:
   - how to search for parts
@@ -1603,6 +1715,7 @@ npm run db:restore backup-{timestamp}.json
 - Updated storefront navigation so the new SEO pages are reachable from the main navbar
 
 ## Roadmap Update (2026-04-02 Phase 7 Product SEO)
+
 - Added SEO-friendly product detail routes under `/products/[categorySlug]/[productSlug]`
 - Product slugs are readable for users and search engines while still resolving safely by product id
 - Added canonical enforcement with permanent redirect when a product is opened through a non-canonical slug
@@ -1611,6 +1724,7 @@ npm run db:restore backup-{timestamp}.json
 - Expanded sitemap coverage to include active product detail pages
 
 ## Roadmap Update (2026-04-02 Phase 7 Knowledge + LLMs)
+
 - Added `/knowledge` as a storefront knowledge hub for SEO, AEO, and AIO
 - Added article detail routes under `/knowledge/[slug]`
 - Published the first knowledge article set focused on:
@@ -1619,6 +1733,7 @@ npm run db:restore backup-{timestamp}.json
   - preparing the right information before ordering
 
 ## Roadmap Update (2026-04-02 Phase 7 Knowledge Expansion)
+
 - Expanded the knowledge hub with more bottom-of-funnel and comparison content for SEO/AEO:
   - genuine vs aftermarket vs used auto AC parts
   - compressor pricing and what to check before buying
@@ -1630,6 +1745,7 @@ npm run db:restore backup-{timestamp}.json
   - local SEO support for customers searching auto AC parts in Nakhon Sawan
 
 ## Roadmap Update (2026-04-02 Phase 7 Real User Web Vitals)
+
 - Added a lightweight real-user web vitals loop for the live storefront:
   - `useReportWebVitals` in a dedicated client component
   - `POST /api/web-vitals` endpoint for structured metric intake
@@ -1637,20 +1753,24 @@ npm run db:restore backup-{timestamp}.json
 - This rollout avoids database writes and keeps performance measurement isolated from core business flows.
 
 ## Roadmap Update (2026-04-02 Phase 7 Build Stability)
+
 - Tuned Next.js static generation concurrency to better fit the current Supabase pooled connection limits during build.
 - This reduces the risk of prerender failures caused by too many concurrent DB reads while keeping public SEO pages prerendered.
 
 ## Roadmap Update (2026-04-21 Production DB Connection Guard)
+
 - Added a runtime guard in `lib/db.ts` so a Supabase session-pooler `DATABASE_URL` on serverless automatically switches to the transaction pooler (`6543`) and appends `pgbouncer=true`.
 - Updated `prisma.config.ts` so Prisma CLI prefers `DIRECT_URL`, keeping migrations/admin tooling separate from pooled application traffic.
 - Corrected the documented environment contract so production app traffic uses the transaction pooler and direct connections stay reserved for CLI workflows.
 
 ## Roadmap Update (2026-04-21 Transaction Hot Path Audit)
+
 - Audited the busiest admin write paths and found repeated per-line `productUnit` / `product` lookups inside `sales` and `purchases` transactions.
 - Batched those dependency reads up front so create/update flows reuse cached unit and product snapshots inside the same transaction instead of re-querying for every line item.
 - Reused the `writeStockCard()` return value for purchase lot movements and switched sale warranty snapshot creation to `createMany()` to shorten transaction round trips without changing document, stock, or warranty logic.
 
 ## Roadmap Update (2026-04-02 Phase 7 Bundle Audit)
+
 - Added `@next/bundle-analyzer` and a local `npm run analyze` workflow for Windows.
 - Generated bundle analyzer reports under `.next/analyze/`.
 - Recorded the first bundle snapshot and low-risk dependency audit in `docs/performance/bundle-analysis-2026-04-02.md`.
@@ -1662,6 +1782,7 @@ npm run db:restore backup-{timestamp}.json
 - Expanded sitemap and storefront navigation to include the knowledge section
 
 ## Roadmap Update (2026-04-02 Phase 7 Sharing + Performance)
+
 - Added generated Open Graph image routes for key public pages:
   - `/opengraph-image`
   - `/about/opengraph-image`
@@ -1674,6 +1795,7 @@ npm run db:restore backup-{timestamp}.json
 - Added `generateStaticParams` for `/knowledge/[slug]` and knowledge article OG image routes so the knowledge section can be pre-rendered
 
 ## Roadmap Update (2026-04-02 Phase 7 Storefront Cache Tuning)
+
 - Added cached storefront filter data for the `/products` page so category and car brand filters do not hit the database on every request
 - Added cache-tag based storefront product detail caching for public product pages
 - Updated admin product mutations to invalidate storefront caches after create/update/toggle so public product pages and sitemap stay fresh
@@ -1682,6 +1804,7 @@ npm run db:restore backup-{timestamp}.json
   - `/sitemap.xml`
 
 ## Roadmap Update (2026-04-02 Phase 7 Performance Pass)
+
 - Tightened product image upload constraints for storefront performance:
   - product uploads now allow `jpg`, `png`, `webp`
   - removed `gif` support for product images
@@ -1694,6 +1817,7 @@ npm run db:restore backup-{timestamp}.json
 - Kept homepage static and added `revalidate` tuning for public product routes
 
 ## Roadmap Update (2026-04-02 Phase 7 Production Performance Measurement)
+
 - Started production performance measurement against the live `https://www.sriwanparts.com` storefront
 - Captured a mobile Lighthouse baseline for:
   - `/`
@@ -1708,6 +1832,7 @@ npm run db:restore backup-{timestamp}.json
   - the largest current bottleneck is front-end LCP resource discovery on `/products`, not server response time
 
 ## Roadmap Update (2026-04-02 Phase 7 LCP Priority Pass)
+
 - Applied explicit `fetchPriority="high"` and `loading="eager"` to the storefront's primary above-the-fold images identified as likely LCP candidates:
   - homepage hero image
   - `/products` hero image
@@ -1716,22 +1841,26 @@ npm run db:restore backup-{timestamp}.json
 - This pass is intentionally scoped to low-risk LCP discovery improvements before deeper client-bundle reductions on `/products`
 
 ## Roadmap Update (2026-04-02 Phase 7 Products Render Path Simplification)
+
 - Removed the decorative hero image from `/products` and replaced it with a CSS-only banner treatment
 - Kept the catalog heading and search-state summary while removing one large above-the-fold image request from the products listing page
 - This pass is intended to reduce the critical render path on the slowest public storefront route before the next measurement cycle
 
 ## Roadmap Update (2026-04-02 Phase 7 Products Pagination Pass)
+
 - Added storefront pagination to `/products` with a default page size of `24` items
 - Search and filter behavior remain the same, but the initial render now ships fewer product cards and images per request
 - Added preserved next/previous pagination links that keep the current search and filter state
 - Marked paginated catalog states as `noindex` through the existing metadata logic by treating `page > 1` as a search-state page
 
 ## Roadmap Update (2026-04-02 Phase 7 Products DOM Reduction Pass)
+
 - Simplified `ProductCard` so compatibility information renders as one summary line instead of multiple chips
 - Updated the products filter panel to mount its detailed filter controls only when expanded
 - This pass is aimed at reducing initial DOM and client-side render cost on the `/products` page while keeping the same search and filter behavior
 
 ## Roadmap Update (2026-04-02 Phase 7 Local SEO Keyword Layer)
+
 - Expanded Phase 7 to explicitly include local SEO language for the shop's real market:
   - `อะไหล่แอร์รถยนต์`
   - `นครสวรรค์`
@@ -1754,6 +1883,7 @@ npm run db:restore backup-{timestamp}.json
 - Keyword usage must remain natural and trust-focused rather than repetitive or spammy.
 
 ## Roadmap Update (2026-04-02 Phase 7 Category SEO + Checklist)
+
 - Added SEO category landing pages under `/products/[categorySlug]`
 - Category pages now provide:
   - category-specific metadata
@@ -1767,6 +1897,7 @@ npm run db:restore backup-{timestamp}.json
 - Added one more local SEO knowledge article focused on customers looking for auto AC parts in Nakhon Sawan
 
 ## Roadmap Update (2026-04-03 Phase 7 Knowledge Compatibility Expansion)
+
 - Expanded the knowledge hub with compatibility-first content that matches real purchase conversations:
   - how to check OEM / original part numbers before ordering
   - when one AC part can or cannot fit multiple car models
@@ -1778,6 +1909,7 @@ npm run db:restore backup-{timestamp}.json
 - Product-level compatibility data in the catalog still remains a separate future task and is not being faked in content.
 
 ## Roadmap Update (2026-04-03 Phase 7 Shared JS + Font Tuning)
+
 - Measured the live `/products` page again in desktop and mobile mode to isolate the current bottlenecks.
 - Current finding:
   - backend response is still strong
@@ -1793,6 +1925,7 @@ npm run db:restore backup-{timestamp}.json
 - The production tuning loop remains open and should be re-measured after deploy.
 
 ### Phase 7 Checklist Status
+
 - [x] canonical + metadata base
 - [x] `robots.txt`
 - [x] `sitemap.xml`
@@ -1812,6 +1945,7 @@ npm run db:restore backup-{timestamp}.json
 - [ ] continued production measurement + tuning loop
 
 ## Roadmap Update (2026-04-03 Phase 7 URL Consolidation)
+
 - Added stable `slug` fields to `Product` and `Category` in the database and backfilled existing rows.
 - Storefront paths now prefer DB-backed slugs instead of runtime-derived names.
 - Product detail canonical URLs were simplified to direct paths under `/product/[productSlug]`.
@@ -1820,6 +1954,7 @@ npm run db:restore backup-{timestamp}.json
 - Sitemap and internal linking were updated to use the current canonical URL shapes.
 
 ## Roadmap Update (2026-04-03 Phase 7 External Verification Complete)
+
 - Google Search Console ownership verification is complete.
 - `https://www.sriwanparts.com/sitemap.xml` was submitted successfully in Google Search Console.
 - URL inspection was run on the key public storefront pages.
@@ -1833,16 +1968,19 @@ npm run db:restore backup-{timestamp}.json
 - The remaining open item is the ongoing production measurement + tuning loop.
 
 ## Roadmap Update (2026-04-08 Phase 7 Canonical Consolidation Follow-up)
+
 - Tightened duplicate-control for legacy product URLs under `/products/[categorySlug]/[productSlug]` so the route now acts as a redirect-only legacy entrypoint.
 - The legacy product route now returns `noindex, follow` metadata alongside the canonical product URL to reduce mixed canonical signals while Google refreshes older URLs.
 - `/products/search` now stays `noindex, follow` in metadata for every state and aligns its Open Graph URL with the canonical `/products` catalog page.
 - This follow-up is intended to reduce "Duplicate, Google chose different canonical than user" risk while the canonical `/product/[productSlug]` URLs continue to accumulate stronger signals.
 
 ## Roadmap Update (2026-04-07 Phase 6.6 Lite Cash-Bank Progress)
+
 - Phase 6.6 Lite is now partially implemented in code, beyond the original roadmap draft.
 - The current foundation now includes schema, core movement logic, account-aware document flows, admin module surfaces, seed support, and report/export alignment work.
 
 ### Completed in code
+
 - Added cash-bank schema foundation in `prisma/schema.prisma`
   - `CashBankAccount`
   - `CashBankMovement`
@@ -1876,6 +2014,7 @@ npm run db:restore backup-{timestamp}.json
 - Updated `package.json` so `npm run seed` now loads `.env.local` automatically
 
 ### Core business logic now implemented
+
 - `SALE`
   - cash sale must select a receiving cash/bank account
   - creates `IN` movement into the selected account
@@ -1902,6 +2041,7 @@ npm run db:restore backup-{timestamp}.json
   - intended for opening correction, cash difference, bank fee, manual adjustment cases
 
 ### Critical ledger rules that must remain true
+
 - `CashBankMovement` is the source of truth for cash/bank card movement.
 - Every movement must carry at least:
   - `accountId`
@@ -1923,6 +2063,7 @@ npm run db:restore backup-{timestamp}.json
 - `accountId` is the account identity; `paymentMethod` is only the payment channel label.
 
 ### Validation and safety rules now added
+
 - Cash-bank account validation
   - `BANK` accounts require `bankName`
   - `BANK` accounts require `accountNo`
@@ -1939,6 +2080,7 @@ npm run db:restore backup-{timestamp}.json
 - Seed logic now skips admin creation if seed admin env vars are not provided, but still creates default cash-bank accounts
 
 ### Reporting work completed
+
 - Added reusable cash-bank snapshot component for summary and print reports
 - Updated summary report and print report to show cash/bank snapshot
 - Updated report data layer so daily receipt/payment summaries can carry account-aware data
@@ -1954,6 +2096,7 @@ npm run db:restore backup-{timestamp}.json
   - `creditNoteRefundAmount`
 
 ### Export alignment completed
+
 - CSV and Excel export flows under:
   - `/admin/reports/export`
   - `/admin/reports/export-excel`
@@ -1968,17 +2111,20 @@ npm run db:restore backup-{timestamp}.json
 - Excel layouts were updated so added columns still keep correct total-row positions
 
 ### Seed and environment note
+
 - `npm run seed` should now be the standard command for this repo.
 - It runs:
   - `npx tsx --env-file=.env.local prisma/seed.ts`
 - This avoids the previous problem where `npm run seed` did not automatically load `.env.local`.
 
 ### Still open after the current coding pass
+
 - Back-office polish
   - final validation wording across all related forms
   - transfer / adjustment sub-pages and related manager copy should be reviewed for final consistency
 
 ### Current implementation order from this point
+
 - [x] Schema foundation
 - [x] Core cash-bank utility logic
 - [x] Document linkage for `SALE`, `RECEIPT`, `PURCHASE`, `EXPENSE`, `CN_SALE`
@@ -1997,6 +2143,7 @@ npm run db:restore backup-{timestamp}.json
 ### Phase 6.6 Lite checklist status snapshot
 
 #### Completed
+
 - [x] Cash-bank schema foundation
 - [x] `CashBankAccount`
 - [x] `CashBankMovement`
@@ -2087,6 +2234,7 @@ npm run db:restore backup-{timestamp}.json
 - [x] Latest `npm run build` passes after these changes
 
 #### Still open
+
 - [x] Final text/encoding cleanup in older report UI surfaces
 - [x] Staff usage guide / back-office operating notes
 
@@ -2100,18 +2248,18 @@ npm run db:restore backup-{timestamp}.json
 
 ### ข้อตกลงที่ผ่านการตัดสินใจแล้ว
 
-| ประเด็น | ข้อตกลง |
-| --- | --- |
-| เงินมัดจำ supplier | ใช้เอกสาร `SupplierAdvance` แยกจาก `Purchase` เสมอ |
-| การตัดใช้เงินมัดจำ | ไม่สร้าง `SupplierAdvanceApply` |
-| เอกสาร apply กลาง | ใช้ `SupplierPayment` เป็นตัว apply `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, และ `SupplierAdvance` |
-| การผูก supplier | เอกสารใน `SupplierPayment` ต้องเป็น supplier เดียวกันทั้งหมด |
-| ซื้อสินค้า | เพิ่ม `Purchase.purchaseType = CASH_PURCHASE / CREDIT_PURCHASE` |
-| ซื้อสด | เงินออกที่ `Purchase` ทันที และ `amountRemain = 0` |
-| ซื้อเชื่อ | ไม่กระทบ cash/bank ตอนรับสินค้า และไปรับชำระที่ `SupplierPayment` |
-| คืนสินค้าซัพพลายเออร์ | เพิ่ม `settlementType = CASH_REFUND / SUPPLIER_CREDIT` |
-| CN ซื้อแบบคืนเงิน | เป็นเงิน **เข้า** เรา ไม่ใช่เงินออก |
-| CN ซื้อแบบตั้งเครดิต | ไม่กระทบ cash/bank ทันที และใช้หักใน `SupplierPayment` |
+| ประเด็น               | ข้อตกลง                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| เงินมัดจำ supplier    | ใช้เอกสาร `SupplierAdvance` แยกจาก `Purchase` เสมอ                                                       |
+| การตัดใช้เงินมัดจำ    | ไม่สร้าง `SupplierAdvanceApply`                                                                          |
+| เอกสาร apply กลาง     | ใช้ `SupplierPayment` เป็นตัว apply `Purchase`, `PurchaseReturn(SUPPLIER_CREDIT)`, และ `SupplierAdvance` |
+| การผูก supplier       | เอกสารใน `SupplierPayment` ต้องเป็น supplier เดียวกันทั้งหมด                                             |
+| ซื้อสินค้า            | เพิ่ม `Purchase.purchaseType = CASH_PURCHASE / CREDIT_PURCHASE`                                          |
+| ซื้อสด                | เงินออกที่ `Purchase` ทันที และ `amountRemain = 0`                                                       |
+| ซื้อเชื่อ             | ไม่กระทบ cash/bank ตอนรับสินค้า และไปรับชำระที่ `SupplierPayment`                                        |
+| คืนสินค้าซัพพลายเออร์ | เพิ่ม `settlementType = CASH_REFUND / SUPPLIER_CREDIT`                                                   |
+| CN ซื้อแบบคืนเงิน     | เป็นเงิน **เข้า** เรา ไม่ใช่เงินออก                                                                      |
+| CN ซื้อแบบตั้งเครดิต  | ไม่กระทบ cash/bank ทันที และใช้หักใน `SupplierPayment`                                                   |
 
 ### สูตร amountRemain ที่ต้องใช้ต่อจากนี้
 
@@ -2494,81 +2642,81 @@ npm run db:restore backup-{timestamp}.json
 ### A. จุดหลัก (แก้ก่อน)
 
 - [x] AR / Receipt: ปิดช่อง over-apply และอ้างอิงเอกสารผิด
-  แนวทางแก้ไข: เพิ่ม server-side validation ตอน create/update ให้ตรวจ `saleId` / `cnId` ว่า `ACTIVE`, เป็นลูกค้าคนเดียวกัน, และ `paidAmount` รวมต่อเอกสารไม่เกิน outstanding ปัจจุบัน
-  ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `lib/amount-remain.ts`
+      แนวทางแก้ไข: เพิ่ม server-side validation ตอน create/update ให้ตรวจ `saleId` / `cnId` ว่า `ACTIVE`, เป็นลูกค้าคนเดียวกัน, และ `paidAmount` รวมต่อเอกสารไม่เกิน outstanding ปัจจุบัน
+      ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `lib/amount-remain.ts`
 
 - [x] Cash-bank: cancel `CreditNote(CASH_REFUND)` ต้อง reverse movement
-  แนวทางแก้ไข: เรียก `clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cn.id)` ก่อน set status = `CANCELLED`
-  ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`
+      แนวทางแก้ไข: เรียก `clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cn.id)` ก่อน set status = `CANCELLED`
+      ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`
 
 - [x] Stock lot: `PurchaseReturn` ต้องกันการตัด lot เกินคงเหลือ
-  แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writePurchaseReturnLots` และ throw error เมื่อ lot ไม่พอ แทนการปล่อยให้ clamp เป็น `0`
-  ไฟล์หลัก: `app/admin/(protected)/purchase-returns/actions.ts`, `lib/lot-control.ts`
+      แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writePurchaseReturnLots` และ throw error เมื่อ lot ไม่พอ แทนการปล่อยให้ clamp เป็น `0`
+      ไฟล์หลัก: `app/admin/(protected)/purchase-returns/actions.ts`, `lib/lot-control.ts`
 
 - [x] Stock lot: `Stock Adjustment OUT` ต้องกันการตัด lot เกินคงเหลือ
-  แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writeAdjustmentLots` สำหรับ direction = `out`
-  ไฟล์หลัก: `app/admin/(protected)/stock/adjustments/actions.ts`, `lib/lot-control.ts`
+      แนวทางแก้ไข: เพิ่ม availability guard ก่อน `writeAdjustmentLots` สำหรับ direction = `out`
+      ไฟล์หลัก: `app/admin/(protected)/stock/adjustments/actions.ts`, `lib/lot-control.ts`
 
 - [x] Warranty Claim: `CUSTOMER_WAIT` ตอนปิดเคลม `RECEIVED` ต้องส่งของออกให้ลูกค้าที่รออยู่ด้วย
-  แนวทางแก้ไข: ตอน `closeClaim(outcome=RECEIVED)` ถ้า `claimType = CUSTOMER_WAIT` ให้สร้าง `CLAIM_REPLACE_OUT` เพิ่มอีก 1 movement พร้อม lot movement ที่เกี่ยวข้อง เพื่อให้ net stock = 0 ตาม roadmap
-  ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
+      แนวทางแก้ไข: ตอน `closeClaim(outcome=RECEIVED)` ถ้า `claimType = CUSTOMER_WAIT` ให้สร้าง `CLAIM_REPLACE_OUT` เพิ่มอีก 1 movement พร้อม lot movement ที่เกี่ยวข้อง เพื่อให้ net stock = 0 ตาม roadmap
+      ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
 
 ### B. จุดรอง (Hardening / Validation)
 
 - [x] Document reference: `CreditNote` และ `PurchaseReturn` ต้อง re-validate source document ฝั่ง server
-  แนวทางแก้ไข: ตอน create/update ตรวจ `saleId` / `purchaseId` ว่าเอกสารต้นทาง `ACTIVE` และสัมพันธ์กับ customer/supplier เดียวกันจริงก่อนบันทึก
-  ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`
+      แนวทางแก้ไข: ตอน create/update ตรวจ `saleId` / `purchaseId` ว่าเอกสารต้นทาง `ACTIVE` และสัมพันธ์กับ customer/supplier เดียวกันจริงก่อนบันทึก
+      ไฟล์หลัก: `app/admin/(protected)/credit-notes/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`
 
 - [x] Warranty Claim: ต้อง validate ว่า warranty ยังอยู่ในช่วงประกันและยังไม่มี active claim ค้างอยู่
-  แนวทางแก้ไข: เพิ่ม check `endDate >= today` และไม่ให้สร้าง claim ถ้ามี claim status != `CANCELLED`
-  ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
+      แนวทางแก้ไข: เพิ่ม check `endDate >= today` และไม่ให้สร้าง claim ถ้ามี claim status != `CANCELLED`
+      ไฟล์หลัก: `app/admin/(protected)/warranty-claims/actions.ts`
 
 - [x] Warranty manual create: ต้องผูก snapshot ให้สอดคล้องกับ claim flow ปัจจุบัน
-  แนวทางแก้ไข: ไม่เชื่อ `saleId` จาก payload ตรงๆ ให้ derive จาก `saleItem`; ถ้าเป็นสินค้าคุม lot ต้องเติม `lotNo` snapshot หรือ block manual create สำหรับกรณีที่ derive lot ไม่ได้
-  ไฟล์หลัก: `app/admin/(protected)/warranties/actions.ts`
+      แนวทางแก้ไข: ไม่เชื่อ `saleId` จาก payload ตรงๆ ให้ derive จาก `saleItem`; ถ้าเป็นสินค้าคุม lot ต้องเติม `lotNo` snapshot หรือ block manual create สำหรับกรณีที่ derive lot ไม่ได้
+      ไฟล์หลัก: `app/admin/(protected)/warranties/actions.ts`
 
 - [x] Delivery: `updateShippingStatus` ต้องมี server-side guard เท่ากับหน้า UI
-  แนวทางแก้ไข: ตรวจว่า sale เป็น `ACTIVE`, `fulfillmentType = DELIVERY`; ถ้า `shippingMethod` เป็น carrier ภายนอกต้องมี `trackingNo`; reject การอัปเดตเอกสารที่ไม่เข้าเงื่อนไข
-  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`
+      แนวทางแก้ไข: ตรวจว่า sale เป็น `ACTIVE`, `fulfillmentType = DELIVERY`; ถ้า `shippingMethod` เป็น carrier ภายนอกต้องมี `trackingNo`; reject การอัปเดตเอกสารที่ไม่เข้าเงื่อนไข
+      ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`
 
 ### C. เชิงโครงสร้าง / Performance (ไม่เปลี่ยน logic หลัก)
 
 - [x] ลด N+1 query ตอนดึง lot detail ในทุกฟอร์มที่ใช้ lot
-  แนวทางแก้ไข: เปลี่ยนจาก loop `findUnique/findFirst` ต่อ lot เป็น bulk fetch `productLot` / `lotBalance` แล้ว map ใน memory
-  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/warranty-claims/actions.ts`
+      แนวทางแก้ไข: เปลี่ยนจาก loop `findUnique/findFirst` ต่อ lot เป็น bulk fetch `productLot` / `lotBalance` แล้ว map ใน memory
+      ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/warranty-claims/actions.ts`
 
 - [x] preload `product` และ `productUnit` ก่อนเข้าลูปใน document line items
-  แนวทางแก้ไข: ดึง `productId in [...]` และ `(productId, unitName)` ที่ใช้ทั้งหมดครั้งเดียว แล้วทำ map ใน memory แทน query ต่อ item
-  ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/credit-notes/actions.ts`
+      แนวทางแก้ไข: ดึง `productId in [...]` และ `(productId, unitName)` ที่ใช้ทั้งหมดครั้งเดียว แล้วทำ map ใน memory แทน query ต่อ item
+      ไฟล์หลัก: `app/admin/(protected)/sales/actions.ts`, `app/admin/(protected)/purchase-returns/actions.ts`, `app/admin/(protected)/stock/adjustments/actions.ts`, `app/admin/(protected)/credit-notes/actions.ts`
 
 - [x] ให้ `writeStockCard()` คืน `stockCardId` กลับมาเพื่อตัด query `findFirst` ซ้ำ
-  แนวทางแก้ไข: ปรับ helper ให้ return row id ที่เพิ่งสร้าง แล้วส่งต่อเข้า `writeStockMovementLots()` ได้ทันที
-  ไฟล์หลัก: `lib/stock-card.ts`, จุดเรียกใช้ใน `sales/actions.ts`, `purchase-returns/actions.ts`, `credit-notes/actions.ts`, `warranty-claims/actions.ts`, `stock/adjustments/actions.ts`
+      แนวทางแก้ไข: ปรับ helper ให้ return row id ที่เพิ่งสร้าง แล้วส่งต่อเข้า `writeStockMovementLots()` ได้ทันที
+      ไฟล์หลัก: `lib/stock-card.ts`, จุดเรียกใช้ใน `sales/actions.ts`, `purchase-returns/actions.ts`, `credit-notes/actions.ts`, `warranty-claims/actions.ts`, `stock/adjustments/actions.ts`
 
 - [x] ทำ utility validation กลางให้ AR ใช้ pattern เดียวกับ AP
-  แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ helper สำหรับ `Receipt` เพื่อให้ logic สมมาตรและดูแลง่าย
-  ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `app/admin/(protected)/supplier-payments/actions.ts`
+      แนวทางแก้ไข: ใช้แนวเดียวกับ `SupplierPayment.validatePaymentItemsAgainstAvailable()` มาทำ helper สำหรับ `Receipt` เพื่อให้ logic สมมาตรและดูแลง่าย
+      ไฟล์หลัก: `app/admin/(protected)/receipts/actions.ts`, `app/admin/(protected)/supplier-payments/actions.ts`
 
 - [x] ปรับ `cash-bank` recalc ให้คุ้มขึ้นเมื่อ ledger โต
-  แนวทางแก้ไข: จากเดิม recalc ทั้งบัญชีและ update ทีละ row ทุกครั้ง ให้พิจารณา recalc เฉพาะช่วงที่ได้รับผลกระทบ หรือทำ set-based recalculation ในรอบถัดไป
-  ไฟล์หลัก: `lib/cash-bank.ts`
+      แนวทางแก้ไข: จากเดิม recalc ทั้งบัญชีและ update ทีละ row ทุกครั้ง ให้พิจารณา recalc เฉพาะช่วงที่ได้รับผลกระทบ หรือทำ set-based recalculation ในรอบถัดไป
+      ไฟล์หลัก: `lib/cash-bank.ts`
 
 - [x] ลด query summary ซ้ำในหน้าที่มี count หลายก้อน
-  แนวทางแก้ไข: ทบทวนหน้า list ที่ยิง count หลาย query พร้อมกัน เช่น warranty list เพื่อรวม summary ให้เหลือ query น้อยลงเมื่อข้อมูลโต
-  ไฟล์หลัก: `app/admin/(protected)/warranties/page.tsx`
+      แนวทางแก้ไข: ทบทวนหน้า list ที่ยิง count หลาย query พร้อมกัน เช่น warranty list เพื่อรวม summary ให้เหลือ query น้อยลงเมื่อข้อมูลโต
+      ไฟล์หลัก: `app/admin/(protected)/warranties/page.tsx`
 
 ### D. ภาพรวมที่ต้องรักษาไว้
 
 - [x] Reference-chain guard ต้องคงหลักเดิมไว้ทุกจุด
-  แนวทางแก้ไข: ก่อน edit/cancel เอกสารต้นทาง ต้อง reject ถ้ามี downstream `ACTIVE` อ้างอิงอยู่; งานรอบนี้เพิ่มเฉพาะ server-side validation ตอน create/update เอกสารลูก ไม่เปลี่ยนลำดับธุรกิจเดิม
+      แนวทางแก้ไข: ก่อน edit/cancel เอกสารต้นทาง ต้อง reject ถ้ามี downstream `ACTIVE` อ้างอิงอยู่; งานรอบนี้เพิ่มเฉพาะ server-side validation ตอน create/update เอกสารลูก ไม่เปลี่ยนลำดับธุรกิจเดิม
 
 - [x] ฝั่ง AP ปัจจุบันเป็น baseline ที่แข็งแรงกว่า AR
-  แนวทางแก้ไข: เวลาเติม validation ฝั่ง AR ให้ mirror pattern จาก `SupplierPayment` โดยไม่เปลี่ยนสูตร `amountRemain` เดิม
+      แนวทางแก้ไข: เวลาเติม validation ฝั่ง AR ให้ mirror pattern จาก `SupplierPayment` โดยไม่เปลี่ยนสูตร `amountRemain` เดิม
 
 ### E. Notes
 
 - [x] Note: ระบบปัจจุบัน "ยอมให้ stock ติดลบได้" ถือเป็น behavior ที่ตั้งใจรองรับในตอนนี้ ไม่ให้นับเป็น bug ใน audit รอบนี้
-  แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation
+      แนวทางติดตาม: ถ้าอนาคตต้องการปิด negative stock ค่อยเปิดเป็น initiative แยก เพราะจะกระทบ flow เดิมหลายจุดทั้ง sale, purchase return, adjustment และ stock valuation
 
 ---
 
@@ -2785,107 +2933,107 @@ npm run db:restore backup-{timestamp}.json
 ### Data mapping checklist
 
 - [x] `ยอดขายวันนี้ > ขายรวม`
-  Mapping: sum `Sale.netAmount`
-  Filter: `Sale.status = ACTIVE` และ `saleDate` อยู่ในวันรายงาน
+      Mapping: sum `Sale.netAmount`
+      Filter: `Sale.status = ACTIVE` และ `saleDate` อยู่ในวันรายงาน
 
 - [x] `ยอดขายวันนี้ > ขายสด`
-  Mapping: sum `Sale.netAmount`
-  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
+      Mapping: sum `Sale.netAmount`
+      Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
 
 - [x] `ยอดขายวันนี้ > ขายเชื่อ`
-  Mapping: sum `Sale.netAmount`
-  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, และ `saleDate` อยู่ในวันรายงาน
+      Mapping: sum `Sale.netAmount`
+      Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, และ `saleDate` อยู่ในวันรายงาน
 
 - [x] `เงินรับเข้าวันนี้ > จากการขายสด`
-  Mapping: sum `Sale.netAmount`
-  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
-  Note: รอบแรกยึดตามเอกสารขายสดที่สร้างในวันนั้นเท่านั้น และไม่ดึง `Receipt` มาปนในบรรทัดนี้
+      Mapping: sum `Sale.netAmount`
+      Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, และ `saleDate` อยู่ในวันรายงาน
+      Note: รอบแรกยึดตามเอกสารขายสดที่สร้างในวันนั้นเท่านั้น และไม่ดึง `Receipt` มาปนในบรรทัดนี้
 
 - [x] `เงินรับเข้าวันนี้ > จากการรับชำระหนี้`
-  Mapping: sum `Receipt.totalAmount`
-  Filter: `Receipt.status = ACTIVE` และ `receiptDate` อยู่ในวันรายงาน
-  Note: เป็นเงินที่รับจริงจากการเก็บหนี้/รับชำระภายหลัง จะแยกความหมายจากยอดขายใหม่
+      Mapping: sum `Receipt.totalAmount`
+      Filter: `Receipt.status = ACTIVE` และ `receiptDate` อยู่ในวันรายงาน
+      Note: เป็นเงินที่รับจริงจากการเก็บหนี้/รับชำระภายหลัง จะแยกความหมายจากยอดขายใหม่
 
 - [x] `เงินรับเข้าวันนี้ > รวมเงินเข้า`
-  Mapping: (`cash-sale receipts by Sale`) + (`Receipt.totalAmount`)
-  Formula v1: `sum(Sale.netAmount where CASH_SALE, ACTIVE, saleDate in day)` + `sum(Receipt.totalAmount where ACTIVE, receiptDate in day)`
+      Mapping: (`cash-sale receipts by Sale`) + (`Receipt.totalAmount`)
+      Formula v1: `sum(Sale.netAmount where CASH_SALE, ACTIVE, saleDate in day)` + `sum(Receipt.totalAmount where ACTIVE, receiptDate in day)`
 
 - [x] `แยกตามช่องทางรับเงิน > เงินสด`
-  Mapping: `Sale.netAmount` + `Receipt.totalAmount`
-  Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = CASH`, `saleDate` อยู่ในวันรายงาน
-  Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = CASH`, `receiptDate` อยู่ในวันรายงาน
+      Mapping: `Sale.netAmount` + `Receipt.totalAmount`
+      Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = CASH`, `saleDate` อยู่ในวันรายงาน
+      Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = CASH`, `receiptDate` อยู่ในวันรายงาน
 
 - [x] `แยกตามช่องทางรับเงิน > เงินโอน`
-  Mapping: `Sale.netAmount` + `Receipt.totalAmount`
-  Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = TRANSFER`, `saleDate` อยู่ในวันรายงาน
-  Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = TRANSFER`, `receiptDate` อยู่ในวันรายงาน
+      Mapping: `Sale.netAmount` + `Receipt.totalAmount`
+      Filter A: `Sale.status = ACTIVE`, `Sale.paymentType = CASH_SALE`, `Sale.paymentMethod = TRANSFER`, `saleDate` อยู่ในวันรายงาน
+      Filter B: `Receipt.status = ACTIVE`, `Receipt.paymentMethod = TRANSFER`, `receiptDate` อยู่ในวันรายงาน
 
 - [x] `ยอดค้าง > ลูกหนี้ค้างรับ`
-  Mapping: sum `Sale.amountRemain`
-  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = PICKUP`
-  Note: ยึดตาม dashboard logic ปัจจุบันเพื่อไม่ปน COD
+      Mapping: sum `Sale.amountRemain`
+      Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = PICKUP`
+      Note: ยึดตาม dashboard logic ปัจจุบันเพื่อไม่ปน COD
 
 - [x] `ยอดค้าง > COD ค้างรับเงิน`
-  Mapping: sum `Sale.amountRemain`
-  Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus != DELIVERED`
-  Note: ยึดตาม dashboard logic ปัจจุบันในรอบแรก
+      Mapping: sum `Sale.amountRemain`
+      Filter: `Sale.status = ACTIVE`, `Sale.paymentType = CREDIT_SALE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus != DELIVERED`
+      Note: ยึดตาม dashboard logic ปัจจุบันในรอบแรก
 
 - [x] `ยอดค้าง > เจ้าหนี้ค้างจ่าย`
-  Mapping: sum `Purchase.amountRemain`
-  Filter: `Purchase.status = ACTIVE`, `Purchase.purchaseType = CREDIT_PURCHASE`, `Purchase.amountRemain > 0`
+      Mapping: sum `Purchase.amountRemain`
+      Filter: `Purchase.status = ACTIVE`, `Purchase.purchaseType = CREDIT_PURCHASE`, `Purchase.amountRemain > 0`
 
 - [x] `งานจัดส่ง > รอจัดส่ง`
-  Mapping: count `Sale.id`
-  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = PENDING`
+      Mapping: count `Sale.id`
+      Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = PENDING`
 
 - [x] `งานจัดส่ง > กำลังจัดส่ง`
-  Mapping: count `Sale.id`
-  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = OUT_FOR_DELIVERY`
+      Mapping: count `Sale.id`
+      Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = OUT_FOR_DELIVERY`
 
 - [x] `งานจัดส่ง > ส่งสำเร็จวันนี้`
-  Mapping v1: count `Sale.id`
-  Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = DELIVERED`, และ `Sale.updatedAt` อยู่ในวันรายงาน
-  Note: รอบแรกใช้ `updatedAt` เป็น proxy จนกว่าจะมี dedicated delivered timestamp
+      Mapping v1: count `Sale.id`
+      Filter: `Sale.status = ACTIVE`, `Sale.fulfillmentType = DELIVERY`, `Sale.shippingStatus = DELIVERED`, และ `Sale.updatedAt` อยู่ในวันรายงาน
+      Note: รอบแรกใช้ `updatedAt` เป็น proxy จนกว่าจะมี dedicated delivered timestamp
 
 - [x] `สต๊อก > ต่ำกว่าขั้นต่ำ`
-  Mapping: count `Product.id`
-  Filter: `Product.isActive = true`, `Product.stock > 0`, `Product.stock <= Product.minStock`
+      Mapping: count `Product.id`
+      Filter: `Product.isActive = true`, `Product.stock > 0`, `Product.stock <= Product.minStock`
 
 - [x] `สต๊อก > ของหมด`
-  Mapping: count `Product.id`
-  Filter: `Product.isActive = true`, `Product.stock <= 0`
-  Note: ระบบปัจจุบันยอมให้ stock ติดลบได้ ให้รวมค่าติดลบในบรรทัดนี้ด้วย
+      Mapping: count `Product.id`
+      Filter: `Product.isActive = true`, `Product.stock <= 0`
+      Note: ระบบปัจจุบันยอมให้ stock ติดลบได้ ให้รวมค่าติดลบในบรรทัดนี้ด้วย
 
 - [x] `สต๊อก > lot ใกล้หมดอายุ`
-  Mapping: count lot จาก `ProductLot`
-  Join/Filter: `ProductLot.expDate != null`, `ProductLot.expDate` อยู่ภายในช่วงเตือน, และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
-  Default window v1: ภายใน 30 วันนับจากวันรายงาน
+      Mapping: count lot จาก `ProductLot`
+      Join/Filter: `ProductLot.expDate != null`, `ProductLot.expDate` อยู่ภายในช่วงเตือน, และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
+      Default window v1: ภายใน 30 วันนับจากวันรายงาน
 
 - [x] `สต๊อก > lot หมดอายุค้างสต๊อก`
-  Mapping: count lot จาก `ProductLot`
-  Join/Filter: `ProductLot.expDate < วันรายงาน` และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
+      Mapping: count lot จาก `ProductLot`
+      Join/Filter: `ProductLot.expDate < วันรายงาน` และมี `LotBalance.qtyOnHand > 0` คู่กันตาม `(productId, lotNo)`
 
 - [x] `เคลม/เอกสารผิดปกติ > เคลมค้างดำเนินการ`
-  Mapping: count `WarrantyClaim.id`
-  Filter: `WarrantyClaim.status in (DRAFT, SENT_TO_SUPPLIER)`
+      Mapping: count `WarrantyClaim.id`
+      Filter: `WarrantyClaim.status in (DRAFT, SENT_TO_SUPPLIER)`
 
 - [x] `เคลม/เอกสารผิดปกติ > เอกสารถูกยกเลิกวันนี้`
-  Mapping: sum counts across document headers
-  Sources v1:
-  `Sale.cancelledAt`, `Purchase.cancelledAt`, `Receipt.cancelledAt`, `CreditNote.cancelledAt`, `PurchaseReturn.cancelledAt`, `Expense.cancelledAt`, `Adjustment.cancelledAt`, `CashBankTransfer.cancelledAt`, `CashBankAdjustment.cancelledAt`
-  Filter: cancelled timestamp อยู่ในวันรายงาน และ status = `CANCELLED` ถ้ามี field status
+      Mapping: sum counts across document headers
+      Sources v1:
+      `Sale.cancelledAt`, `Purchase.cancelledAt`, `Receipt.cancelledAt`, `CreditNote.cancelledAt`, `PurchaseReturn.cancelledAt`, `Expense.cancelledAt`, `Adjustment.cancelledAt`, `CashBankTransfer.cancelledAt`, `CashBankAdjustment.cancelledAt`
+      Filter: cancelled timestamp อยู่ในวันรายงาน และ status = `CANCELLED` ถ้ามี field status
 
 - [x] `เคลม/เอกสารผิดปกติ > ปรับสต๊อกวันนี้`
-  Mapping: count `Adjustment.id`
-  Filter: `Adjustment.status = ACTIVE` และ `adjustDate` อยู่ในวันรายงาน
+      Mapping: count `Adjustment.id`
+      Filter: `Adjustment.status = ACTIVE` และ `adjustDate` อยู่ในวันรายงาน
 
 - [x] `สรุปเพิ่มเติม > ค่าใช้จ่ายวันนี้`
-  Mapping: sum `Expense.netAmount`
-  Filter: `Expense.status = ACTIVE` และ `expenseDate` อยู่ในวันรายงาน
+      Mapping: sum `Expense.netAmount`
+      Filter: `Expense.status = ACTIVE` และ `expenseDate` อยู่ในวันรายงาน
 
 - [x] `สรุปเพิ่มเติม > เงินโอนระหว่างบัญชีวันนี้`
-  Mapping: sum `CashBankTransfer.amount`
-  Filter: `CashBankTransfer.status = ACTIVE` และ `transferDate` อยู่ในวันรายงาน
+      Mapping: sum `CashBankTransfer.amount`
+      Filter: `CashBankTransfer.status = ACTIVE` และ `transferDate` อยู่ในวันรายงาน
 
 ### Implementation checklist
 
@@ -3120,6 +3268,7 @@ npm run db:restore backup-{timestamp}.json
 - [ ] Decide what minimum information must be shown in the LINE notification, for example caption preview, cover image preview, publish time, and page name
 
 Approved decisions for v1:
+
 - Any user who already has content approval permission (`content.manage`) can act as an approver
 - Every post must be approved before it can be published
 - `Approve & Post Now` is allowed for every post
@@ -3203,32 +3352,32 @@ Approved decisions for v1:
 #### Proposed DB structure
 
 - [ ] Add `CustomerAudience`
-  Stores saved recipient segments such as "customers who bought in last 90 days" or "customers with phone numbers and active status"
+      Stores saved recipient segments such as "customers who bought in last 90 days" or "customers with phone numbers and active status"
 - [ ] Add `CustomerAudienceMember`
-  Stores resolved recipients included in an audience snapshot when a campaign is prepared or sent
+      Stores resolved recipients included in an audience snapshot when a campaign is prepared or sent
 - [ ] Add `CustomerCampaign`
-  Stores the campaign header such as objective, target channel, message type, approval requirement, and schedule mode
+      Stores the campaign header such as objective, target channel, message type, approval requirement, and schedule mode
 - [ ] Add `CustomerCampaignMessage`
-  Stores one or more generated message variants/content assets for a campaign
+      Stores one or more generated message variants/content assets for a campaign
 - [ ] Add `CustomerCampaignDelivery`
-  Stores actual send attempts and delivery results per recipient
+      Stores actual send attempts and delivery results per recipient
 - [ ] Add `CustomerCampaignAuditLog`
-  Stores business-level actions such as draft created, approved, scheduled, started, completed, cancelled
+      Stores business-level actions such as draft created, approved, scheduled, started, completed, cancelled
 
 #### Proposed table details
 
 - [ ] `CustomerAudience`
-  Recommended fields: `id`, `name`, `description`, `channel`, `filterJson`, `isActive`, `createdByUserId`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `name`, `description`, `channel`, `filterJson`, `isActive`, `createdByUserId`, `createdAt`, `updatedAt`
 - [ ] `CustomerAudienceMember`
-  Recommended fields: `id`, `audienceId`, `customerId`, `lineRecipientId`, `snapshotLabel`, `createdAt`
+      Recommended fields: `id`, `audienceId`, `customerId`, `lineRecipientId`, `snapshotLabel`, `createdAt`
 - [ ] `CustomerCampaign`
-  Recommended fields: `id`, `name`, `objective`, `channel`, `status`, `audienceId`, `scheduledAt`, `approvedAt`, `createdByUserId`, `approvedByUserId`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `name`, `objective`, `channel`, `status`, `audienceId`, `scheduledAt`, `approvedAt`, `createdByUserId`, `approvedByUserId`, `createdAt`, `updatedAt`
 - [ ] `CustomerCampaignMessage`
-  Recommended fields: `id`, `campaignId`, `variantNo`, `title`, `body`, `imageUrl`, `ctaLabel`, `ctaUrl`, `isSelected`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `campaignId`, `variantNo`, `title`, `body`, `imageUrl`, `ctaLabel`, `ctaUrl`, `isSelected`, `createdAt`, `updatedAt`
 - [ ] `CustomerCampaignDelivery`
-  Recommended fields: `id`, `campaignId`, `messageId`, `customerId`, `lineRecipientId`, `status`, `provider`, `providerMessageId`, `attemptCount`, `lastError`, `sentAt`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `campaignId`, `messageId`, `customerId`, `lineRecipientId`, `status`, `provider`, `providerMessageId`, `attemptCount`, `lastError`, `sentAt`, `createdAt`, `updatedAt`
 - [ ] `CustomerCampaignAuditLog`
-  Recommended fields: `id`, `campaignId`, `actorUserId`, `action`, `detail`, `metadataJson`, `createdAt`
+      Recommended fields: `id`, `campaignId`, `actorUserId`, `action`, `detail`, `metadataJson`, `createdAt`
 
 #### Guard rails
 
@@ -3248,20 +3397,20 @@ Approved decisions for v1:
 #### Proposed DB structure
 
 - [ ] Add `RecurringCampaign`
-  Stores the recurring campaign definition/template
+      Stores the recurring campaign definition/template
 - [ ] Add `RecurringCampaignRun`
-  Stores each generated occurrence/run from the recurring campaign
+      Stores each generated occurrence/run from the recurring campaign
 - [ ] Add `RecurringCampaignTemplate`
-  Stores reusable generation prompt settings, posting defaults, and optional audience/content rules
+      Stores reusable generation prompt settings, posting defaults, and optional audience/content rules
 
 #### Proposed table details
 
 - [ ] `RecurringCampaign`
-  Recommended fields: `id`, `name`, `channel`, `status`, `scheduleType`, `scheduleExpr`, `timezone`, `templateId`, `approvalMode`, `nextRunAt`, `lastRunAt`, `createdByUserId`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `name`, `channel`, `status`, `scheduleType`, `scheduleExpr`, `timezone`, `templateId`, `approvalMode`, `nextRunAt`, `lastRunAt`, `createdByUserId`, `createdAt`, `updatedAt`
 - [ ] `RecurringCampaignRun`
-  Recommended fields: `id`, `campaignId`, `runKey`, `status`, `plannedAt`, `startedAt`, `finishedAt`, `generatedPostCount`, `selectedPostId`, `errorMessage`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `campaignId`, `runKey`, `status`, `plannedAt`, `startedAt`, `finishedAt`, `generatedPostCount`, `selectedPostId`, `errorMessage`, `createdAt`, `updatedAt`
 - [ ] `RecurringCampaignTemplate`
-  Recommended fields: `id`, `name`, `objective`, `promptTemplate`, `defaultPageId`, `defaultPublishTime`, `defaultHashtagSet`, `active`, `createdByUserId`, `createdAt`, `updatedAt`
+      Recommended fields: `id`, `name`, `objective`, `promptTemplate`, `defaultPageId`, `defaultPublishTime`, `defaultHashtagSet`, `active`, `createdByUserId`, `createdAt`, `updatedAt`
 
 #### Engine behavior checklist
 
@@ -3319,6 +3468,7 @@ Approved decisions for v1:
 - [x] Kept the open-claim definition aligned with the existing roadmap and LINE daily summary rule: only `WarrantyClaim.status in (DRAFT, SENT_TO_SUPPLIER)` is treated as still in progress.
 - [x] Added open-claim fields to the summary payload so the report can show claim number/date, product, customer with sale reference, claim type, supplier name, and current status from the real claim workflow.
 - [x] Verified `npm run build`
+
 ## Roadmap Update (2026-04-20 Summary Report Filter Separation)
 
 - [x] Removed the summary-report open-claims date filter so current open claims now ignore the selected report `from/to` range.
@@ -3692,6 +3842,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - 🟡 Unused JavaScript: 43 KiB (121 KiB bundle → 43.5 KiB saveable)
     - Fix: ตรวจสอบ large imports + code splitting → Week 2
   - ✅ LCP element: Hero image (500ms) — acceptable ไม่ต้องแก้ด่วน
+
 - [x] Audit `app/knowledge/[slug]/page.tsx` → confirm `ArticleJsonLd` is rendered on every article ✅ DONE Apr 26
   - `ArticleJsonLd` + `BreadcrumbJsonLd` — both present and complete
   - Metadata: title, description, canonical, OG, Twitter — all correct
@@ -3730,6 +3881,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 2 — May 4–10 [Category Pages + Article #1-2, ~12 hours]
 
 **Category Pages (developer task):**
+
 - [x] **May 4-5** — Add 150-200 word SEO descriptions to first 5 categories:
   - Compressor (คอมแอร์), Condenser (แผงแอร์), Evaporator (ตู้แอร์)
   - Drier/Receiver, Expansion Valve
@@ -3739,6 +3891,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Implemented as server-rendered text only; no new client component, image, script, or layout-shifting asset
 
 **Content (writing task):**
+
 - [x] **May 1** — Article #1: "แอร์รถยนต์ไม่เย็น: 5 สาเหตุหลักและแนวทางแก้ไขก่อนเปลี่ยนอะไหล่" ✅ DONE May 1
   - slug: `car-ac-not-cold-5-main-causes-and-fixes` | Target: "แอร์รถยนต์ไม่เย็น" | CTA: LINE
   - Hybrid (option 3): new angle (5 causes + fixes), keeps existing `car-air-not-cold-what-to-check` (commercial intent) untouched
@@ -3753,12 +3906,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 3 — May 11–17 [Category Pages Complete + Article #3-5, ~14 hours]
 
 **Category Pages:**
+
 - [x] **May 11-12** — Add descriptions to remaining 5 categories:
   - Blower Motor, Compressor Clutch, Magnetic Clutch, Radiator, Other Parts
   - Add `CollectionPageJsonLd` to each
   - Completed together with Week 2 at user request for all active categories as of 2026-04-26
 
 **Content:**
+
 - [ ] **May 12-13** — Article #3: "Honda Civic 2020-2024: อะไหล่แอร์ที่ต้องรู้"
   - 1,800 words | Target: "Honda Civic ac parts" | CTA: Product grid by model
 - [ ] **May 14-15** — Article #4: "วิธีบำรุงรักษาคอมแอร์รถยนต์ - 5 ขั้นตอน"
@@ -3773,12 +3928,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 4 — May 18–24 [Complete Phase 1 Articles + Review, ~14 hours]
 
 **Content:**
+
 - [ ] **May 18-19** — Article #6: "เสียงแอร์รถยนต์ดังผิดปกติ: สาเหตุและวิธีแก้"
   - 1,500 words | Target: "แอร์รถยนต์ดัง" | CTA: Phone contact
 - [ ] **May 20-21** — Article #7: "แอร์รถยนต์มีกลิ่นแปลก: สาเหตุและวิธีล้าง"
   - 1,800 words | Target: "แอร์รถยนต์มีกลิ่น" | CTA: Service mention
 
 **Phase 1 Review (May 22-24):**
+
 - [ ] Check GSC Performance → any new keyword impressions from Week 2-3 articles?
 - [ ] Check GA4 → top landing pages, bounce rate on new articles
 - [ ] Re-run PageSpeed Insights → compare against baseline recorded April 26
@@ -3819,6 +3976,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - 1,600 words | Target: "Navara AC compressor"
 
 **Phase 2 Mini-Review (June 7):**
+
 - [ ] GSC → new keyword impressions from car model articles?
 - [ ] Update PLAN.md status
 
@@ -3844,6 +4002,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### 📅 Week 8 — June 15–21 [Phase 3 Finish + Comparison + Monthly Review, ~12 hours]
 
 **Content:**
+
 - [ ] **June 15-16** — Article #21: "บ่อปสิการแอร์รถยนต์: เลือกที่ไหน มีข้อห้ามไหม"
   - 1,500 words | Target: "บ่อปสิการแอร์"
 - [ ] **June 17-18** — Article #22: "ต้องเติมน้ำยาแอร์กี่ปี: เครื่องหมาย + อันตราย"
@@ -3852,6 +4011,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - 2,200 words | Target: "คอมแอร์แบรนด์ไหนดี"
 
 **Monthly SEO Review #1 (June 21):**
+
 - [ ] GSC → top 20 keywords by impressions + clicks
 - [ ] Compare positions before/after content rollout
 - [ ] GA4 → top 10 landing pages, avg session duration, bounce rate
@@ -3877,18 +4037,18 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 
 ### Summary: 2-Month Plan at a Glance
 
-| Week | Dates | Tasks | Deploy Date |
-|------|-------|-------|-------------|
-| TODAY | Apr 26 | Alt text fix + CWV baseline + article audit | Apr 26 |
-| 1 | Apr 27–May 3 | GSC + GA4 setup + caching check | May 1 |
-| 2 | May 4–10 | 5 category pages + Articles #1-2 | May 10 |
-| 3 | May 11–17 | 5 category pages + Articles #3-5 | May 17 |
-| 4 | May 18–24 | Articles #6-7 + Phase 1 review | May 21 |
-| 5 | May 25–31 | Articles #8-11 (Honda + Toyota) | May 31 |
-| 6 | Jun 1–7 | Articles #12-16 (Other models) | Jun 7 |
-| 7 | Jun 8–14 | Articles #17-20 (Maintenance) | Jun 14 |
-| 8 | Jun 15–21 | Articles #21-23 + Monthly review | Jun 20 |
-| Buffer | Jun 22–26 | Fixes + Phase 4 planning | — |
+| Week   | Dates        | Tasks                                       | Deploy Date |
+| ------ | ------------ | ------------------------------------------- | ----------- |
+| TODAY  | Apr 26       | Alt text fix + CWV baseline + article audit | Apr 26      |
+| 1      | Apr 27–May 3 | GSC + GA4 setup + caching check             | May 1       |
+| 2      | May 4–10     | 5 category pages + Articles #1-2            | May 10      |
+| 3      | May 11–17    | 5 category pages + Articles #3-5            | May 17      |
+| 4      | May 18–24    | Articles #6-7 + Phase 1 review              | May 21      |
+| 5      | May 25–31    | Articles #8-11 (Honda + Toyota)             | May 31      |
+| 6      | Jun 1–7      | Articles #12-16 (Other models)              | Jun 7       |
+| 7      | Jun 8–14     | Articles #17-20 (Maintenance)               | Jun 14      |
+| 8      | Jun 15–21    | Articles #21-23 + Monthly review            | Jun 20      |
+| Buffer | Jun 22–26    | Fixes + Phase 4 planning                    | —           |
 
 **Total:** 23 articles + 10 category pages + monitoring setup | **Expected traffic gain:** +1,500-2,000/month by June 26
 
@@ -3899,6 +4059,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### ✅ Already Implemented (Verified in Codebase)
 
 **Priority 1 - Meta Tags & Core SEO** ✅ DONE
+
 - [x] Unique Title Tags + Meta Descriptions (dynamic via metadata API)
 - [x] Canonical Tags on all page types
 - [x] Viewport Meta Tag configured
@@ -3906,12 +4067,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] Structured keywords in `lib/seo.ts`
 
 **Priority 2 - Image Optimization & Alt Text** ✅ 90% DONE
+
 - [x] Using `next/image` (auto WebP, srcset, lazy loading)
 - [x] Alt text on key images (logos, hero, product cards)
 - [x] Supabase CDN image optimization
-- ⚠️ *Gap: Product alt text could be more descriptive (add brand + category)*
+- ⚠️ _Gap: Product alt text could be more descriptive (add brand + category)_
 
 **Priority 3 - Structured Data & Schema Markup** ✅ DONE
+
 - [x] Organization schema (OrganizationJsonLd.tsx)
 - [x] Product schema (ProductJsonLd.tsx)
 - [x] LocalBusiness schema (LocalBusinessJsonLd.tsx)
@@ -3923,13 +4086,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] Google verification meta tag
 
 **Priority 5 - Technical SEO & Performance (Partial)** ✅ INFRASTRUCTURE DONE
+
 - [x] `next/image` with auto WebP (Priority 5 images)
 - [x] ISR (revalidate: 300s on product pages)
 - [x] Force-dynamic on necessary pages
 - [x] Sitemap.xml (31 pages indexed)
 - [x] Robots.txt properly configured
 - [x] HTTPS/SSL active
-- ⚠️ *Gaps: Core Web Vitals baseline not measured yet, caching headers not verified*
+- ⚠️ _Gaps: Core Web Vitals baseline not measured yet, caching headers not verified_
 
 ### Priority 4 - Content & Keyword Optimization (DETAILED CHECKLIST)
 
@@ -3941,7 +4105,6 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Target: "แอร์รถยนต์ไม่เย็น"
   - Word count: 2,000 | Effort: 6 hours | CTA: "Line เพื่อสอบถาม"
   - Outline: 5 causes + DIY checks + when to call pro + product recommendations
-  
 - [ ] **"เสียงแอร์รถยนต์ดังผิดปกติ? ปัญหาและแนวทางแก้"**
   - Target: "แอร์รถยนต์ดัง"
   - Word count: 1,500 | Effort: 5 hours | CTA: Phone contact
@@ -3979,6 +4142,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 #### Phase 2 - Week 3-4: Car Model-Specific Buying Guides (8 articles)
 
 **Honda Models:**
+
 - [ ] **"อะไหล่แอร์ Honda Civic 2020-2024: ส่วนไหนต้องเปลี่ยน"** (PRIORITY #3)
   - Target: "Honda Civic ac parts"
   - Word count: 1,800 | Effort: 5 hours | CTA: Product grid by model
@@ -3994,6 +4158,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Word count: 1,500 | Effort: 5 hours | CTA: Price list
 
 **Toyota Models:**
+
 - [ ] **"อะไหล่แอร์ Toyota Altis 2019-2023: รายชื่อมาตรฐาน"**
   - Target: "Toyota Altis AC parts"
   - Word count: 1,800 | Effort: 5 hours | CTA: Product grid
@@ -4010,6 +4175,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Outline: What drier does + why it fails + replacement cost + symptoms
 
 **Other Popular Models:**
+
 - [ ] **"อะไหล่แอร์ Isuzu D-Max ราคาส่ง ของแท้จากไหน"**
   - Target: "D-Max AC parts Thailand"
   - Word count: 1,700 | Effort: 5 hours | CTA: Wholesale pricing
@@ -4062,6 +4228,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 #### Phase 4 - Month 3+: Comparison, Seasonal & Authority Content (5+ articles)
 
 **Commercial Intent / Comparison (2 articles):**
+
 - [ ] **"คอมแอร์ DENSO vs Coolgear vs Formula: เปรียบเทียบ"** (PRIORITY #5)
   - Target: "คอมแอร์แบรนด์ไหนดี"
   - Word count: 2,200 | Effort: 6 hours | CTA: Product comparison grid
@@ -4073,6 +4240,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Outline: Wholesale vs retail pricing + bulk discounts + quality comparison + ROI for mechanics
 
 **Seasonal (4 articles):**
+
 - [ ] **"เตรียมแอร์ก่อน Summer - ตรวจสอบ 5 จุด"** (Publish Mar-Apr)
   - Target: "เตรียมแอร์ฤดูร้อน"
   - Word count: 1,600 | Effort: 5 hours | CTA: Pre-summer check-up service
@@ -4090,6 +4258,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - Word count: 1,300 | Effort: 4 hours | CTA: Check-up service
 
 **Authority / Educational (2+ articles):**
+
 - [ ] **"ประวัติและหลักการทำงาน AC/Refrigeration ระบบแอร์"**
   - Target: General authority
   - Word count: 3,000 | Effort: 8 hours | CTA: Authority + credibility
@@ -4107,6 +4276,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 #### Supporting Activities (All Phases)
 
 **Category Page Optimization:**
+
 - [ ] Audit all 10 category pages for description length (currently < 150 words?)
 - [ ] Add 150-200 word SEO-optimized descriptions to each category:
   - [ ] Compressor category
@@ -4123,12 +4293,14 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [ ] Add internal links from category descriptions to relevant blog articles
 
 **Internal Linking Strategy:**
+
 - [ ] From "แอร์ไม่เย็น" article → Link to product pages (compressor, condenser, etc.)
 - [ ] From car model articles (e.g., Honda Civic) → Link to related parts + problem articles
 - [ ] From maintenance articles → Link to relevant products
 - [ ] From comparison articles → Link to product details page with specs
 
 **Blog Publishing Setup:**
+
 - [ ] Create `/knowledge` category taxonomy:
   - [ ] Problem-solving (แก้ปัญหา)
   - [ ] Buyer's guide (การเลือกซื้อ)
@@ -4139,6 +4311,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [ ] Create article outline template for consistency
 
 **Internal Linking Checklist Per Article:**
+
 - [ ] Link 3-5 product pages (contextual)
 - [ ] Link 2-3 related articles (natural)
 - [ ] Link to category pages where relevant
@@ -4148,15 +4321,15 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 
 #### Implementation Timeline & Ownership
 
-| Phase | Articles | Weeks | Hours | Owner | Status |
-|-------|----------|-------|-------|-------|--------|
-| Phase 1 | 7 | 1-2 | 38 | Content team | ⏳ Start now |
-| Phase 2 | 8 | 3-4 | 40 | Content team | ⏳ Start week 3 |
-| Phase 3 | 6 | Month 2 | 34 | Content team | ⏳ Start week 5 |
-| Phase 4+ | 5+ | Month 3+ | 48+ | Content team | ⏳ Ongoing |
-| Category pages | 10 | Concurrent | 10 | Developer | ⏳ Parallel |
-| JSON-LD schema | All | Concurrent | 5 | Developer | ⏳ Parallel |
-| **TOTAL** | **25+** | **2 months** | **75-85 hrs** | | |
+| Phase          | Articles | Weeks        | Hours         | Owner        | Status          |
+| -------------- | -------- | ------------ | ------------- | ------------ | --------------- |
+| Phase 1        | 7        | 1-2          | 38            | Content team | ⏳ Start now    |
+| Phase 2        | 8        | 3-4          | 40            | Content team | ⏳ Start week 3 |
+| Phase 3        | 6        | Month 2      | 34            | Content team | ⏳ Start week 5 |
+| Phase 4+       | 5+       | Month 3+     | 48+           | Content team | ⏳ Ongoing      |
+| Category pages | 10       | Concurrent   | 10            | Developer    | ⏳ Parallel     |
+| JSON-LD schema | All      | Concurrent   | 5             | Developer    | ⏳ Parallel     |
+| **TOTAL**      | **25+**  | **2 months** | **75-85 hrs** |              |                 |
 
 ---
 
@@ -4209,6 +4382,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - [ ] Mark/confirm GA4 key events for `qualify_lead` and `product_page_view`
 
 **Already Verified (No action needed):**
+
 - ✅ `next/image` used throughout
 - ✅ ISR revalidation set (300s on products)
 - ✅ force-dynamic on necessary pages
@@ -4219,6 +4393,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 ### Priority 6 - Monitoring & Maintenance
 
 **Setup (CRITICAL - Do First):**
+
 - [ ] **Google Search Console Integration** (DUPLICATE: Also in Priority 5)
   - [ ] Confirm property is added
   - [ ] Review Coverage, Mobile Usability, Core Web Vitals reports
@@ -4230,6 +4405,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
   - [ ] Set up conversion goals
 
 **Ongoing Maintenance:**
+
 - [ ] Create monthly SEO report template (ranking keywords, impressions, CTR, traffic)
 - [ ] Monitor Search Console for crawl errors and broken links
 - [ ] Set up alerts for Core Web Vitals drops
@@ -4241,10 +4417,12 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 Based on codebase analysis, these are the REAL gaps to fix:
 
 ### Gap 1: Product Image Alt Text Needs Improvement ⚠️
+
 **Current:** `alt={product.name}` (just product name)
 **Should be:** `alt={`${product.name} | ${category} ศรีวรรณ อะไหล่แอร์`}`
 
-**Action:** 
+**Action:**
+
 - [ ] Update `ProductCard.tsx` alt text template
 - [ ] Update product image components to include category + brand
 - [ ] Focus on top 50 products first
@@ -4255,9 +4433,11 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 2: Knowledge Article Metadata Consistency ⚠️
+
 **Issue:** Not verified if all article pages have ArticleJsonLd
 
 **Action:**
+
 - [ ] Audit `app/knowledge/[slug]/page.tsx` - verify ArticleJsonLd is used
 - [ ] Check if all articles have proper schema (author, published date, image)
 - [ ] Validate schema in Google Rich Results Test
@@ -4267,9 +4447,11 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 3: Category Page Descriptions Are Too Short 🔴
+
 **Issue:** Category pages may not have descriptive intros (Priority 4 mentions 150-200 words min)
 
 **Action:**
+
 - [ ] Audit existing category pages for description length
 - [ ] Add SEO-optimized descriptions to each category (150-200 words)
 - [ ] Add `CollectionPageJsonLd` schema to category pages
@@ -4280,9 +4462,11 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 4: Core Web Vitals Not Measured Yet 🔴
+
 **Issue:** No baseline measurements, no monitoring alerts
 
 **Action:**
+
 - [ ] Run PageSpeed Insights (desktop + mobile) on key pages:
   1. Homepage
   2. Product page (e.g., compressor)
@@ -4298,9 +4482,11 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 5: Google Analytics 4 ✅ DONE (2026-04-26)
+
 **Code:** `components/shared/GoogleAnalytics.tsx` + `components/analytics/ProductPageViewReporter.tsx` + `app/layout.tsx`
 
 **Remaining owner actions:**
+
 - [x] Create GA4 property at analytics.google.com → production Measurement ID `G-LLV81NHVFR`
 - [x] Add `NEXT_PUBLIC_GA_ID=G-LLV81NHVFR` to Vercel environment variables
 - [ ] Verify page_view events in GA4 DebugView after next deploy
@@ -4312,9 +4498,11 @@ Based on codebase analysis, these are the REAL gaps to fix:
 ---
 
 ### Gap 6: No Monthly SEO Reporting 🟡
+
 **Issue:** No way to track SEO performance over time
 
 **Action:**
+
 - [ ] Create Google Sheet template:
   - Columns: Keyword | Search Volume | Current Rank | Impressions | Clicks | CTR | Trend
   - Data source: Google Search Console
@@ -4330,6 +4518,7 @@ Based on codebase analysis, these are the REAL gaps to fix:
 Research Date: April 26, 2026 | Status: ✅ COMPLETED
 
 ### 1. Primary Keywords (High Intent, High Search Volume)
+
 - [x] **อะไหล่แอร์รถยนต์** → Homepage + Meta description
 - [x] **คอมแอร์รถยนต์** → Category: Compressor
 - [x] **ตู้แอร์รถยนต์** → Category: Evaporator
@@ -4339,24 +4528,28 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
 - [x] **แอร์รถยนต์ไม่เย็น ซ่อม** → Blog article (troubleshooting)
 
 ### 2. Long-Tail Keywords - Honda Models
+
 - [x] อะไหล่แอร์ Honda Accord
 - [x] อะไหล่แอร์ Honda Civic
 - [x] คอมแอร์ Honda CR-V
 - [x] ตู้แอร์ Honda Jazz
 
 ### 3. Long-Tail Keywords - Toyota Models
+
 - [x] อะไหล่แอร์ Toyota Fortuner
 - [x] คอมแอร์ Toyota Innova
 - [x] อะไหล่แอร์ Toyota Altis
 - [x] แผงแอร์ Toyota Camry
 
 ### 4. Long-Tail Keywords - Other Popular Brands
+
 - [x] อะไหล่แอร์ Isuzu D-Max
 - [x] อะไหล่แอร์ Ford Ranger
 - [x] อะไหล่แอร์ Nissan Navara
 - [x] อะไหล่แอร์ Mitsubishi Pajero
 
 ### 5. Question-Based Keywords (FAQ/Blog Content)
+
 - [x] แอร์รถยนต์ไม่เย็นเพราะอะไร → Troubleshooting guide
 - [x] ต้องเปลี่ยนแผงแอร์รถยนต์กี่ปี → Maintenance article
 - [x] วิธีบำรุงรักษาคอมแอร์รถยนต์ → DIY maintenance guide
@@ -4365,12 +4558,14 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
 - [x] อะไหล่แอร์ของแท้ vs เทียบ → Buyer's guide/comparison
 
 ### 6. Commercial Intent Keywords (Buyers Ready to Purchase)
+
 - [x] อะไหล่แอร์ราคาถูก
 - [x] บริการเปลี่ยนอะไหล่แอร์
 - [x] อะไหล่แอร์ของแท้ราคา
 - [x] อะไหล่แอร์ส่งทั่วประเทศ
 
 ### 7. Local Keywords (Geographic + Product)
+
 - [x] อะไหล่แอร์รถยนต์ กรุงเทพ
 - [x] อะไหล่แอร์ขายส่ง นนทบุรี
 - [x] ซ่อมแอร์รถยนต์ สมุทรปราการ
@@ -4378,6 +4573,7 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
 - [x] อะไหล่แอร์ราคาส่ง เชียงใหม่
 
 ### 8. Competitive/Brand Keywords
+
 - [x] อะไหล่แอร์ DENSO
 - [x] อะไหล่แอร์ Coolgear
 - [x] อะไหล่แอร์ Formula
@@ -4385,6 +4581,7 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
 - [x] อะไหล่แอร์ TIG
 
 ### 9. Service-Related Keywords
+
 - [x] ตรวจเช็คแอร์รถยนต์
 - [x] เติมน้ำยาแอร์รถยนต์
 - [x] ล้างระบบแอร์รถยนต์
@@ -4392,6 +4589,7 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
 - [x] ส่วนประกอบแอร์รถยนต์
 
 ### Implementation Plan for Priority 4 (Content & Keyword Optimization)
+
 - [ ] **Phase 1 - Quick Wins** (Week 1-2)
   - [ ] Update homepage meta tags with "อะไหล่แอร์ รถยนต์" keyword
   - [ ] Create 5 category pages with optimized H1, descriptions, and internal linking
@@ -4424,6 +4622,7 @@ Research Date: April 26, 2026 | Status: ✅ COMPLETED
   - [ ] Optimize for "ของแท้", "ส่งด่วน", "ราคาส่ง" local variants
 
 ### Keyword Research Sources
+
 - Primary research: Website structure analysis (10 product categories)
 - Market research: Competitor analysis (Patara Air, Airrodyon, SUPERPART)
 - Thailand suppliers identified: PACO, Valeo Service Thailand, Formula
@@ -4437,6 +4636,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 ### Website Baseline Status
 
 **What's Working ✅**
+
 - [x] Sitemap.xml exists (31 URLs properly indexed)
 - [x] Robots.txt exists with proper configuration
   - Allows: `/products`, `/about`, `/faq`, `/knowledge`
@@ -4448,6 +4648,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [x] Internal linking present
 
 **Critical Issues Found 🔴**
+
 - ❌ Meta Description missing → -20-30% CTR in search results
 - ❌ Title Tag unclear/inconsistent
 - ❌ Canonical Tags missing → Risk of duplicate content penalties
@@ -4458,6 +4659,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - ❌ Core Web Vitals unknown → Need baseline measurement
 
 **Medium Issues 🟡**
+
 - ⚠️ Heavy JavaScript rendering (Next.js Client Components)
 - ⚠️ Image optimization with query params (long URLs)
 - ⚠️ No explicit lazy loading implementation visible
@@ -4465,6 +4667,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 ### Week 1-2 Implementation: Critical Fixes (High Impact)
 
 **Task 1: Meta Tags Audit & Implementation**
+
 - [ ] Audit current page titles (check if all pages have `<title>`)
 - [ ] Audit current meta descriptions (use DevTools/curl)
 - [ ] Create Title/Meta Description template:
@@ -4474,7 +4677,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
   ```typescript
   export const metadata: Metadata = {
     title: "อะไหล่แอร์รถยนต์ | ศรีวรรณ อะไหล่แอร์",
-    description: "ขายอะไหล่แอร์รถยนต์คุณภาพสูง ราคาส่ง ส่งด่วนทั่วประเทศ"
+    description: "ขายอะไหล่แอร์รถยนต์คุณภาพสูง ราคาส่ง ส่งด่วนทั่วประเทศ",
   };
   ```
 - [ ] Update for each page type:
@@ -4485,12 +4688,14 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Verify in production with `curl -s https://sriwanparts.com | grep -E '<title>|<meta name="description"'`
 
 **Task 2: Canonical Tags Implementation**
+
 - [ ] Add canonical tag to base layout or page-level metadata
 - [ ] Ensure format: `<link rel="canonical" href="https://www.sriwanparts.com/products/..."/>`
 - [ ] Prevent duplicate content from query parameters (e.g., `?utm_source=...`)
 - [ ] Test for canonical chain issues (canonical pointing to another canonical)
 
 **Task 3: JSON-LD Structured Data**
+
 - [ ] **Organization Schema** (homepage only)
   ```json
   {
@@ -4524,11 +4729,13 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Validate all schemas in [Google Rich Results Test](https://search.google.com/test/rich-results)
 
 **Task 4: Viewport & Mobile Meta Tags Verification**
+
 - [ ] Confirm viewport meta tag exists: `<meta name="viewport" content="width=device-width, initial-scale=1">`
 - [ ] Test mobile rendering on actual devices or emulator
 - [ ] Check for mobile usability issues in Google Search Console
 
 **Task 5: Heading Hierarchy Audit & Fix**
+
 - [ ] Audit current heading structure (use DevTools Elements panel)
 - [ ] Correct to: 1 × H1 per page → multiple H2s → H3s under H2s
 - [ ] Example structure:
@@ -4545,6 +4752,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 ### Week 3-4 Implementation: Alt Text & Baseline Performance
 
 **Task 6: Alt Text Implementation** (integrates with Priority 2)
+
 - [ ] Audit all images without alt text
 - [ ] Create alt text guidelines:
   - Product images: `"[Product Name] [Model] [Variant]" e.g., "Honda Civic AC Compressor"`
@@ -4554,6 +4762,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Test with screen reader (NVDA, JAWS) or browser extension
 
 **Task 7: Core Web Vitals Baseline Measurement**
+
 - [ ] Run [PageSpeed Insights](https://pagespeed.web.dev) on:
   - Homepage (desktop + mobile)
   - Sample product page
@@ -4568,6 +4777,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Identify pages below "Good" threshold
 
 **Task 8: Image Optimization Audit** (integrates with Priority 2)
+
 - [ ] Review all image URLs for optimization:
   - Check if `next/image` is used (auto WebP conversion)
   - Check query parameters (e.g., `?url=...&w=3840&q=75`)
@@ -4579,6 +4789,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 ### Week 5-6 Implementation: Server Optimization & Crawlability
 
 **Task 9: Caching Strategy Implementation**
+
 - [ ] Configure `next.config.ts` cache headers:
   ```javascript
   async headers() {
@@ -4602,6 +4813,7 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Consider ISR for product pages that update weekly
 
 **Task 10: JavaScript & CSS Performance**
+
 - [ ] Audit client-side JavaScript:
   - [ ] Identify unnecessary `'use client'` directives
   - [ ] Check bundle size with `npm run build`
@@ -4610,12 +4822,14 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 - [ ] Check for unused JavaScript in production bundle
 
 **Task 11: Crawlability Verification**
+
 - [ ] Check Search Console → Crawl Stats for errors
 - [ ] Look for 404s, blocked resources, crawl anomalies
 - [ ] Verify CSS/JS are not blocked by robots.txt or server
 - [ ] Check sitemap.xml is discoverable at `/sitemap.xml`
 
 **Task 12: Mobile Responsiveness Testing**
+
 - [ ] Test on physical devices or emulators:
   - [ ] Mobile (375px): iPhone SE, Galaxy A12
   - [ ] Tablet (768px): iPad, Galaxy Tab
@@ -4627,21 +4841,22 @@ Audit Date: April 26, 2026 | Status: ✅ COMPLETED | Severity: 🔴 CRITICAL
 
 ### Success Criteria & Verification
 
-| Task | Pass Criteria | Verification Method |
-|------|--------------|-------------------|
-| Meta Tags | All pages have unique title + description | `curl -I` + browser DevTools |
-| Canonical | No duplicate content warnings in GSC | Search Console → Pages |
-| JSON-LD | 100% valid schema for all types | [Rich Results Test](https://search.google.com/test/rich-results) |
-| Viewport | Mobile-first rendering | Mobile device test + Lighthouse |
-| Heading | 1 H1 + semantic H2-H3 hierarchy | DevTools Elements panel |
-| Alt Text | All images have descriptive alt | Screen reader test + DevTools |
-| CWV LCP | < 2.5s on desktop, < 3.5s mobile | PageSpeed Insights + field data |
-| CWV INP | < 200ms on 75th percentile | PageSpeed Insights field data |
-| CWV CLS | < 0.1 (no unexpected shifts) | PageSpeed Insights + visual test |
-| Caching | Static: 1yr, HTML: 1hr, Images: 1day | HTTP headers verification |
-| Mobile UX | All pages readable, clickable, fast | Physical device testing |
+| Task      | Pass Criteria                             | Verification Method                                              |
+| --------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| Meta Tags | All pages have unique title + description | `curl -I` + browser DevTools                                     |
+| Canonical | No duplicate content warnings in GSC      | Search Console → Pages                                           |
+| JSON-LD   | 100% valid schema for all types           | [Rich Results Test](https://search.google.com/test/rich-results) |
+| Viewport  | Mobile-first rendering                    | Mobile device test + Lighthouse                                  |
+| Heading   | 1 H1 + semantic H2-H3 hierarchy           | DevTools Elements panel                                          |
+| Alt Text  | All images have descriptive alt           | Screen reader test + DevTools                                    |
+| CWV LCP   | < 2.5s on desktop, < 3.5s mobile          | PageSpeed Insights + field data                                  |
+| CWV INP   | < 200ms on 75th percentile                | PageSpeed Insights field data                                    |
+| CWV CLS   | < 0.1 (no unexpected shifts)              | PageSpeed Insights + visual test                                 |
+| Caching   | Static: 1yr, HTML: 1hr, Images: 1day      | HTTP headers verification                                        |
+| Mobile UX | All pages readable, clickable, fast       | Physical device testing                                          |
 
 ### Timeline & Ownership
+
 - **Week 1-2**: Meta tags + Canonical + JSON-LD (Owner: Developer)
 - **Week 3-4**: Alt text + CWV baseline (Owner: Content + Developer)
 - **Week 5-6**: Caching + JS optimization (Owner: DevOps/Developer)
@@ -4869,6 +5084,7 @@ Implementation progress (2026-04-27, phase 1):
 ### 3) AR / AP Register View (เพิ่มใน Report เดิม)
 
 > เป้าหมาย: เพิ่ม dropdown ในรายงาน AR และ AP ให้สลับระหว่าง 2 มุมมอง:
+>
 > - **Outstanding** (รายงานเดิม) — เฉพาะใบที่ยังค้างชำระ ณ ช่วงวันที่
 > - **Register** (ใหม่) — ทะเบียนเอกสารทุกใบในช่วงวันที่ ไม่ว่าจะชำระแล้วหรือยัง พร้อม running balance ของลูกค้า/supplier
 >
@@ -5043,7 +5259,7 @@ Implementation progress (2026-04-28, Batch A + B):
 
 ### 4.6 Permission integration
 
-- [x] [app/admin/(protected)/layout.tsx](app/admin/(protected)/layout.tsx) ส่ง `role` + `permissions` + `userId` → `AdminShell` → `QuickSearchLauncher` → `CommandPalette`
+- [x] [app/admin/(protected)/layout.tsx](<app/admin/(protected)/layout.tsx>) ส่ง `role` + `permissions` + `userId` → `AdminShell` → `QuickSearchLauncher` → `CommandPalette`
 - [x] filter command list ฝั่ง client (UX) + filter result ฝั่ง server (security) — defense in depth
 - [x] entity ที่ user ไม่มี permission view → ไม่มีในผลลัพธ์เลย (ทั้ง group + items)
 
@@ -5139,6 +5355,7 @@ Implementation progress (2026-04-28, Batch A + B):
 **Production:** REVALIDATE_SECRET configured, guards in place, audit logging intact
 
 ### Deployment Status
+
 - [x] Both findings merged to main branch
 - [x] Code changes verified (TypeScript, build)
 - [x] PLAN.md updated with implementation details
@@ -5146,6 +5363,7 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] Ready for production deployment to www.sriwanparts.com
 
 ### Outstanding (Non-blocking)
+
 - Finding #3: CSP unsafe-eval hardening — can be addressed in next phase if needed
 
 ---
@@ -5155,12 +5373,14 @@ Implementation progress (2026-04-28, Batch A + B):
 **Goal:** ให้พนักงานที่ออกไปจัดส่งเองสามารถอัปเดตสถานะ + เลขติดตามจากโทรศัพท์มือถือ/iPad ได้สะดวก โดยไม่ต้องเข้าหน้าหลังบ้านปกติที่ออกแบบสำหรับ desktop
 
 ### Scope
+
 - ไม่แตะ Server Action `updateShippingStatus` — reuse logic เดิมทั้งหมด
 - ไม่แตะหน้า `/admin/delivery` เดิม (desktop) — ยังใช้งานได้ปกติ
 - ไม่แก้ schema — ใช้ Google Maps text-search สำหรับลิงก์แผนที่จาก `Sale.shippingAddress`
 - เปลี่ยนวิธีจัดส่ง (`shippingMethod`) ทำที่หน้าบันทึกการขายเท่านั้น (ไม่อยู่ในหน้านี้)
 
 ### Checklist
+
 - [x] เพิ่ม route rule `/admin/delivery/update` → `delivery.view` ใน `lib/access-control.ts`
 - [x] เพิ่ม dropdown ปลายทางหลัง login ที่ `app/admin/login/LoginForm.tsx` (จดจำค่าล่าสุดใน `localStorage` คีย์ `admin_login_redirect`)
 - [x] สร้างหน้า `app/admin/(protected)/delivery/update/page.tsx` (Server Component, `force-dynamic`, เรียก `requirePermission("delivery.view")`)
@@ -5176,6 +5396,7 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] รองรับ light/dark mode
 
 ### Files Touched
+
 - `lib/access-control.ts`
 - `app/admin/login/LoginForm.tsx`
 - `app/admin/(protected)/delivery/update/page.tsx` (ใหม่)
@@ -5184,6 +5405,7 @@ Implementation progress (2026-04-28, Batch A + B):
 - `app/admin/(protected)/delivery/update/MobileDeliveryCard.tsx` (ใหม่)
 
 ### Future Backlog (ยังไม่เริ่ม)
+
 - [ ] LIFF/LINE OA — ให้พนักงานเข้าผ่าน LINE โดยไม่ต้อง login ทุกครั้ง + ส่ง notification ให้ลูกค้าเมื่อ shipping status เปลี่ยน
 - [ ] `Sale.assignedTo` — เพิ่ม field ผู้รับผิดชอบจัดส่ง เพื่อกรองงานเฉพาะของพนักงานคนนั้น
 - [ ] `Customer.mapUrl` — field ใหม่สำหรับเก็บ Google Maps share link เพื่อ pin ตำแหน่งบ้านลูกค้าได้แม่นยำขึ้น (fallback ไป text-search ถ้าไม่ระบุ)
@@ -5197,16 +5419,19 @@ Implementation progress (2026-04-28, Batch A + B):
 **Goal:** ออกแบบหน้า `/admin/delivery/update` ใหม่ให้ใกล้เคียง UX/UI แอปคนขับ (Grab Driver / Lalamove) — รองรับโทรศัพท์ + iPad โดยคง logic เดิมทั้งหมด
 
 ### Scope
+
 - ไม่แตะ `updateShippingStatus` Server Action — reuse logic เดิม
 - ไม่แตะหน้า `/admin/delivery` desktop — ยังใช้งานได้ปกติ
 - ไม่เพิ่ม permission key ใหม่ — reuse `delivery.view` + `delivery.update`
 
 ### Schema Change
+
 - [x] เพิ่ม field `Sale.deliveryQueueOrder Int?` (nullable) — เก็บลำดับคิวที่พนักงานจัดเอง
 - [x] เพิ่ม `@@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])` — ครอบคลุม query เดิม + new ordering
 - [x] `prisma db push` ผ่าน Supabase pooler
 
 ### Server Action ใหม่
+
 - [x] `reorderDeliveryQueue(saleIds: string[])` ใน `app/admin/(protected)/sales/actions.ts`
   - `requirePermission("delivery.update")`
   - Zod validate (array of cuid, 1-100 items)
@@ -5216,9 +5441,11 @@ Implementation progress (2026-04-28, Batch A + B):
   - `revalidatePath("/admin/delivery")` + `revalidatePath("/admin/delivery/update")`
 
 ### Dependency
+
 - [x] เพิ่ม `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
 
 ### UX/UI ใหม่
+
 - [x] **Driver App style card:** queue badge `01`/`02`/`03` ด้านซ้าย, status dot, ลูกค้า + ยอด, quick actions `📞 โทร` + `🗺️ แผนที่` แยกเป็นปุ่ม grid 2 คอลัมน์, status buttons ขนาดใหญ่ touch-friendly
 - [x] **Tab counts:** "รอจัดส่ง + กำลังส่ง N · รอจัดส่ง N · กำลังส่ง N · ส่งแล้ว" — query ผ่าน `db.sale.groupBy` ขนาน `Promise.all` กับ `findMany`; ไม่ query/ส่ง counter ของปุ่ม `ส่งแล้ว` เพราะไม่ได้แสดงใน UX มือถือ
 - [x] **Reorder mode:** ปุ่ม "จัดเรียงคิว" ที่หัวมุมขวาบน → เข้าสู่ drag mode
@@ -5230,6 +5457,7 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] รองรับ light + dark mode พร้อมกัน
 
 ### Files Touched
+
 - `prisma/schema.prisma` — เพิ่ม field + compound index
 - `app/admin/(protected)/sales/actions.ts` — เพิ่ม `reorderDeliveryQueue`
 - `app/admin/(protected)/delivery/update/page.tsx` — `Promise.all` query + ส่งข้อมูลให้ Client wrapper
@@ -5241,6 +5469,7 @@ Implementation progress (2026-04-28, Batch A + B):
 - `package.json` — `@dnd-kit/*`
 
 ### Performance
+
 - `Promise.all([findMany, groupBy])` รันคู่ขนาน → groupBy ไม่บวก latency
 - compound index ใหม่ครอบคลุม WHERE + ORDER BY → no full scan
 - Pull-to-refresh เรียก `router.refresh()` (Server Component re-fetch ใน background, ไม่ reload หน้า)
@@ -5252,11 +5481,13 @@ Implementation progress (2026-04-28, Batch A + B):
 **Goal:** ปรับหน้า `/admin/delivery-commissions` ให้แยกแท็บชัดเจน + เพิ่มรายงานบิลจัดส่งสำหรับติดตามสถานะการชำระเงินและการทำจ่ายค่าส่ง
 
 ### Scope
+
 - ไม่แตะ Server Action `createDeliveryCommissionRun` / `cancelDeliveryCommissionRun` — reuse logic เดิม
 - ไม่เพิ่ม permission key ใหม่ — reuse `delivery_commissions.view` / `.create` / `.cancel`
 - ไม่ snapshot % ที่ Sale (ระบบเดิมเก็บ snapshot ไว้บน `DeliveryCommissionItem` ตอน run ถูกสร้าง — ของยังไม่จ่ายใช้ % ปัจจุบันจาก SiteConfig)
 
 ### UI/UX Changes
+
 - [x] เพิ่มแท็บด้านบนของหน้า: **"ทำจ่าย / ประวัติ"** (default) และ **"รายงานบิลจัดส่ง"** ผ่าน `?tab=payouts|report`
 - [x] รายงานบิลจัดส่ง — filter: ช่วงวันที่ขาย, ลูกค้า (`SearchableSelect`), พนักงานส่ง (`SearchableSelect`), checkbox "เฉพาะที่ยังไม่ชำระ" (`amountRemain > 0`)
 - [x] กรองเฉพาะ `fulfillmentType=DELIVERY, status=ACTIVE` เสมอ
@@ -5267,21 +5498,25 @@ Implementation progress (2026-04-28, Batch A + B):
 - [x] Light + dark mode ครบ
 
 ### Detail Page ใหม่
+
 - [x] เพิ่ม route `/admin/delivery-commissions/[id]` — แสดงหัวเอกสาร (runNo, payDate, พนักงานส่ง, %, ช่วงบิล, บัญชีจ่าย, expense link, หมายเหตุ, สถานะ/cancelNote)
 - [x] ตารางบิลที่อยู่ใน run พร้อมลิงก์ไปหน้าบิลขาย, % ที่ snapshot ไว้, ยอดทำจ่ายแต่ละบรรทัด, footer รวม
 - [x] ปุ่มยกเลิกเอกสารสำหรับผู้มีสิทธิ์ `delivery_commissions.cancel` (reuse Server Action เดิม → cancel Expense + clear cash-bank + audit log)
 - [x] เพิ่ม `loading.tsx` ของ segment ใหม่ตามมาตรฐาน .rules §8
 
 ### Files Touched
+
 - `app/admin/(protected)/delivery-commissions/page.tsx` — refactor เป็น 2 tab + ฝัง report tab + ลิงก์ runNo ไปหน้า detail + highlight support
 - `app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx` (ใหม่) — client filter (date / customer / staff / unpaid-only)
 - `app/admin/(protected)/delivery-commissions/[id]/page.tsx` (ใหม่) — detail page
 - `app/admin/(protected)/delivery-commissions/[id]/loading.tsx` (ใหม่)
 
 ### Notes
+
 - ระบบยังไม่มี snapshot % ที่บิลขาย — ถ้าต้องการให้ % ของบิลที่ยังไม่จ่ายตรงตามวันที่ขายแม่นยำ ต้องเพิ่ม field `Sale.deliveryCommissionPercent` แยก (schema change) และ backfill — ยังไม่ทำในรอบนี้
 
 ### Export (เพิ่มภายหลัง — ตาม pattern `/admin/reports/*`)
+
 - [x] เพิ่ม route `/admin/delivery-commissions/export` (CSV + UTF-8 BOM) และ `/admin/delivery-commissions/export-excel` (xlsx ผ่าน ExcelJS)
 - [x] ทั้งสอง route รับ filter เดียวกับรายงาน, จำกัด 10,000 แถวแรก, เขียน AuditLog `EXPORT` ของ entityType `ReportExport` (`entityRef=delivery-commission-report`) พร้อม filter snapshot
 - [x] xlsx ใช้สไตล์เดียวกับ `/admin/reports/export-excel` (header สีน้ำเงิน, footer รวม, numFmt บนคอลัมน์ตัวเงิน, ตัวเอียงสีเหลืองสำหรับยอดทำจ่ายที่ยังไม่ snapshot)
@@ -5415,7 +5650,7 @@ prisma/schema.prisma                  # Customer fields เพิ่ม
 .env.example                          # เพิ่ม env ใหม่
 ```
 
-### Server Action Pattern (ทุก action ของ /liff/*)
+### Server Action Pattern (ทุก action ของ /liff/\*)
 
 ```ts
 // boilerplate ที่ทุก liff server action ต้องเริ่มด้วย
@@ -5438,6 +5673,7 @@ if (!customer) throw new Error("Not linked");
 ### Phase 1 MVP Checklist
 
 #### Foundation
+
 - [ ] สร้าง LINE Login channel + LIFF app ใน LINE Developer Console
   - Endpoint URL: `https://<production-domain>/liff`
   - Scope: `profile`, `openid`
@@ -5450,6 +5686,7 @@ if (!customer) throw new Error("Not linked");
 - [ ] AuditLog actions ใหม่: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_unlink`
 
 #### Core Libraries
+
 - [ ] `lib/firebase-admin.ts` — init แบบ singleton + verify ID token
 - [ ] `lib/firebase-client.ts` — lazy init เฉพาะหน้า OTP
 - [ ] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
@@ -5459,6 +5696,7 @@ if (!customer) throw new Error("Not linked");
 - [ ] `lib/sms-provider.ts` — interface abstraction (Firebase = first impl)
 
 #### LIFF Pages
+
 - [ ] `app/liff/layout.tsx` — Server Component shell + `<LiffProvider>` client wrapper + noindex
 - [ ] `components/liff/LiffProvider.tsx` — liff.init() + context (idToken, profile, isReady)
 - [ ] `components/liff/LiffGate.tsx` — gate logic, redirect ไป `/liff/link` ถ้ายังไม่ผูก
@@ -5471,10 +5709,12 @@ if (!customer) throw new Error("Not linked");
 - [ ] `loading.tsx` ทุก segment
 
 #### Server Actions / API
+
 - [ ] `app/api/liff/verify-otp/route.ts` — รับ Firebase ID token + LIFF ID token → resolve case A/B/C → AuditLog
 - [ ] Server Actions สำหรับ orders/products/profile — ทุก action verify LIFF ID token ก่อน
 
 #### UI/UX
+
 - [ ] Light mode + dark mode ครบ ตาม .rules §8 (UI/UX Decisions)
 - [ ] Mobile-first (LIFF เปิดใน LINE app เท่านั้น — ไม่ต้องคิด desktop)
 - [x] LIFF product images removed from scope because products are browsed on the public storefront.
@@ -5482,6 +5722,7 @@ if (!customer) throw new Error("Not linked");
 - [ ] วันที่ใช้ `formatDateThai` / `formatDateTimeThai` (Gregorian, ตาม .rules §8)
 
 #### Performance (.rules §10)
+
 - [ ] LIFF SDK โหลดผ่าน `next/script` strategy `afterInteractive`
 - [ ] Firebase client SDK lazy load เฉพาะหน้า `/liff/link`
 - [ ] Server Components default — Client Components เฉพาะ form OTP + LiffProvider
@@ -5489,6 +5730,7 @@ if (!customer) throw new Error("Not linked");
 - [ ] วัด Lighthouse mobile หลัง deploy บันทึก baseline ใหม่ใน `docs/performance/`
 
 #### Security Verification
+
 - [ ] ทุก Server Action ของ `/liff/*` verify LIFF ID token ก่อน query
 - [ ] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
 - [ ] OTP rate-limit ทำงานจริง (test: ยิง 6 ครั้งติดต่อกัน → block)
@@ -5524,12 +5766,12 @@ if (!customer) throw new Error("Not linked");
 
 ### Cost Projection
 
-| Item | Phase 1 MVP | Phase 2 |
-|---|---|---|
-| Firebase Phone Auth | 0 บาท (Spark, <300/mo) | 0 บาท หรือย้าย ThaiBulkSMS ~25 บาท/เดือน |
-| LINE Messaging API | 0 บาท (Communication, <200 push/mo) | 0-1,200 บาท ตาม volume |
-| LIFF / LINE Login | 0 บาท | 0 บาท |
-| **รวม** | **0 บาท/เดือน** | <50 บาท/เดือน |
+| Item                | Phase 1 MVP                         | Phase 2                                  |
+| ------------------- | ----------------------------------- | ---------------------------------------- |
+| Firebase Phone Auth | 0 บาท (Spark, <300/mo)              | 0 บาท หรือย้าย ThaiBulkSMS ~25 บาท/เดือน |
+| LINE Messaging API  | 0 บาท (Communication, <200 push/mo) | 0-1,200 บาท ตาม volume                   |
+| LIFF / LINE Login   | 0 บาท                               | 0 บาท                                    |
+| **รวม**             | **0 บาท/เดือน**                     | <50 บาท/เดือน                            |
 
 ### Cross-Machine Continuity Notes (สำหรับ AI ตัวอื่น/เครื่องอื่นที่ resume งานนี้)
 
@@ -5572,11 +5814,11 @@ if (!customer) throw new Error("Not linked");
 
 ### Phase Breakdown (3 sub-phases)
 
-| Phase | Scope | Cost | Time |
-|---|---|---|---|
-| **1A** | Identity + read-only LIFF (orders, profile; products stay on public `/products`) | 0 บาท/เดือน | 1-2 สัปดาห์ |
-| **1B** | Warranty + Invoice/Receipt PDF (Option C) + Status timeline | 0 บาท/เดือน | ~1 สัปดาห์ |
-| **1C** | Push notifications (2 events) + Admin re-send + Test send | +1,200 บาท/เดือน (LINE Light) | ~1-2 สัปดาห์ |
+| Phase  | Scope                                                                            | Cost                          | Time         |
+| ------ | -------------------------------------------------------------------------------- | ----------------------------- | ------------ |
+| **1A** | Identity + read-only LIFF (orders, profile; products stay on public `/products`) | 0 บาท/เดือน                   | 1-2 สัปดาห์  |
+| **1B** | Warranty + Invoice/Receipt PDF (Option C) + Status timeline                      | 0 บาท/เดือน                   | ~1 สัปดาห์   |
+| **1C** | Push notifications (2 events) + Admin re-send + Test send                        | +1,200 บาท/เดือน (LINE Light) | ~1-2 สัปดาห์ |
 
 ส่งมอบทีละ phase, deploy แยก, Phase 1C จะ deploy เมื่อ user พร้อม upgrade LINE plan เท่านั้น
 
@@ -5587,6 +5829,7 @@ if (!customer) throw new Error("Not linked");
 ดูรายละเอียดทั้งหมดใน "Roadmap Update (2026-05-04 LIFF Mini-App Phase 1 MVP — Customer LINE Self-Service)" ด้านบน — ไม่ทำซ้ำ
 
 **Deliverables**:
+
 - LINE userId mapping (3-case flow) + Firebase Phone OTP
 - `/liff/orders` (list + detail read-only)
 - `/liff/profile`
@@ -5621,6 +5864,7 @@ app/liff/
 **จุดประสงค์**: ลูกค้าเห็นยอดทั้งหมดที่ค้างในที่เดียว ไม่ต้องไล่ดูแต่ละบิล
 
 **Data source** (reuse logic เดิมจาก `/admin/customers/[id]` AR view):
+
 ```ts
 const sales = await db.sale.findMany({
   where: {
@@ -5630,14 +5874,21 @@ const sales = await db.sale.findMany({
     amountRemain: { gt: 0 },
   },
   select: {
-    id: true, saleNo: true, saleDate: true, dueDate: true,
-    grandTotal: true, amountRemain: true,
+    id: true,
+    saleNo: true,
+    saleDate: true,
+    dueDate: true,
+    grandTotal: true,
+    amountRemain: true,
   },
   orderBy: { dueDate: "asc" },
 });
 
-const totalOutstanding = sales.reduce((sum, s) => sum + Number(s.amountRemain), 0);
-const overdueCount = sales.filter(s => s.dueDate && s.dueDate < today).length;
+const totalOutstanding = sales.reduce(
+  (sum, s) => sum + Number(s.amountRemain),
+  0,
+);
+const overdueCount = sales.filter((s) => s.dueDate && s.dueDate < today).length;
 ```
 
 **Layout**:
@@ -5690,6 +5941,7 @@ const overdueCount = sales.filter(s => s.dueDate && s.dueDate < today).length;
 ```
 
 **Per-bill detail (locked)** — ทุกบิลในรายการต้องแสดงครบ 6 บรรทัด:
+
 - เลขที่บิล (`saleNo`)
 - วันที่ขาย (`saleDate`)
 - ครบกำหนด (`dueDate`) — ถ้าเลยวันนี้ใส่ icon 🔴 + label "เกินกำหนด"
@@ -5699,6 +5951,7 @@ const overdueCount = sales.filter(s => s.dueDate && s.dueDate < today).length;
 - ปุ่ม "ดูใบแจ้งหนี้ →" → `/liff/orders/{saleId}/invoice`
 
 **Payment Channels Block (locked — ไม่มี QR)**:
+
 - ดึงจาก `getPrimaryTransferAccount()` (`lib/payment-qr.ts` มีอยู่แล้ว)
 - แสดงเป็นข้อความล้วน — bank name, account no, account name, promptPayId
 - เลขบัญชี + PromptPay = tappable copy-to-clipboard (ใช้ `navigator.clipboard.writeText()` + toast "คัดลอกแล้ว")
@@ -5710,16 +5963,26 @@ const overdueCount = sales.filter(s => s.dueDate && s.dueDate < today).length;
 #### หน้า `/liff/claims` — ประวัติการเคลม
 
 **Data source**:
+
 ```ts
 const claims = await db.warrantyClaim.findMany({
-  where: { 
-    warranty: { customerId: customer.id }
+  where: {
+    warranty: { customerId: customer.id },
   },
   select: {
-    id: true, claimNo: true, claimDate: true, claimType: true,
-    status: true, outcome: true, symptom: true,
-    sentAt: true, resolvedAt: true, returnedAt: true,
-    warranty: { select: { warrantyNo: true, product: { select: { name: true } } } },
+    id: true,
+    claimNo: true,
+    claimDate: true,
+    claimType: true,
+    status: true,
+    outcome: true,
+    symptom: true,
+    sentAt: true,
+    resolvedAt: true,
+    returnedAt: true,
+    warranty: {
+      select: { warrantyNo: true, product: { select: { name: true } } },
+    },
   },
   orderBy: { claimDate: "desc" },
 });
@@ -5727,15 +5990,16 @@ const claims = await db.warrantyClaim.findMany({
 
 **Status mapping (ภาษาไทย — ห้าม leak enum ดิบ)**:
 
-| `WarrantyClaimStatus` | แสดง | สี Badge |
-|---|---|---|
-| `DRAFT` | รอดำเนินการ | gray |
-| `SENT_TO_SUPPLIER` | ส่งซัพพลายเออร์แล้ว | blue |
-| `CLOSED` | จบเคลม | green |
-| `RETURNED_TO_CUSTOMER` | ส่งคืนลูกค้าแล้ว | green |
-| `CANCELLED` | ยกเลิก | red |
+| `WarrantyClaimStatus`  | แสดง                | สี Badge |
+| ---------------------- | ------------------- | -------- |
+| `DRAFT`                | รอดำเนินการ         | gray     |
+| `SENT_TO_SUPPLIER`     | ส่งซัพพลายเออร์แล้ว | blue     |
+| `CLOSED`               | จบเคลม              | green    |
+| `RETURNED_TO_CUSTOMER` | ส่งคืนลูกค้าแล้ว    | green    |
+| `CANCELLED`            | ยกเลิก              | red      |
 
 `ClaimType` mapping:
+
 - `REPLACE_NOW` → "เปลี่ยนสินค้าทันที"
 - `CUSTOMER_WAIT` → "ลูกค้ารอ"
 
@@ -5768,6 +6032,7 @@ const claims = await db.warrantyClaim.findMany({
 **Empty state**: "ยังไม่มีประวัติการเคลมสินค้า"
 
 **ห้าม**:
+
 - ❌ ไม่แสดงข้อมูล supplier (`supplierName`, `supplierPhone`) ในฝั่งลูกค้า — เป็นข้อมูลภายใน
 - ❌ ไม่แสดง `signerSignatureUrl` (ลายเซ็น admin)
 - ❌ ไม่ให้ลูกค้า cancel/edit claim ผ่าน LIFF (Phase 2+ ถ้าต้องการ)
@@ -5786,26 +6051,30 @@ components/liff/
 #### Implementation Notes
 
 **ข้อ 2 — Status Timeline UI**
+
 - Render เป็น vertical step (Tailwind, ไม่ต้องใช้ lib เพิ่ม)
 - Step สีตามสถานะปัจจุบัน + วันที่ของแต่ละ step (ดึงจาก `Sale.createdAt`, `Sale.shippedAt` ถ้ามี, `Receipt.receiptDate`)
 - ถ้า `fulfillmentType=PICKUP` → ข้าม step shipping
 - ถ้า `paymentMethod=CASH` แล้ว pay ในวันสร้าง → step สุดท้ายมาทันที
 
 **ข้อ 3 — Tracking Smart Link**
+
 - Map `shippingMethod` → URL pattern:
   ```ts
   const TRACKING_URL: Record<ShippingMethod, (t: string) => string> = {
     KERRY: (t) => `https://th.kerryexpress.com/th/track/?track=${t}`,
     FLASH: (t) => `https://www.flashexpress.co.th/tracking/?se=${t}`,
-    JT:    (t) => `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${t}`,
+    JT: (t) =>
+      `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${t}`,
     OTHER: (t) => `https://google.com/search?q=tracking+${t}`,
-    SELF:  () => "",  // ส่งเอง ไม่มีลิงก์
-    NONE:  () => "",
+    SELF: () => "", // ส่งเอง ไม่มีลิงก์
+    NONE: () => "",
   };
   ```
 - ใส่ใน `Sale` detail page (admin) + `/liff/orders/[id]` (customer)
 
 **ข้อ 4 — PDF Watermark + QR**
+
 - ใน print stylesheet เดิม: เพิ่ม `<div className="print-watermark">` ที่แสดงเฉพาะตอน print
 - Watermark text: "ต้นฉบับ" สำหรับเอกสารหลัก / "สำเนา (LIFF)" เมื่อลูกค้าโหลดผ่าน LIFF
 - QR code: encode URL `https://yourshop.com/verify/{docType}/{docNo}/{token}` — token = HMAC ของ docNo + secret
@@ -5813,6 +6082,7 @@ components/liff/
 - ใช้ lib `qrcode` (server-side generate SVG) — bundle ~30KB
 
 **Option C PDF (สำคัญ)**
+
 - ไม่ใช่ generate PDF จริง — ใช้ `window.print()` ของ browser เปิด print dialog
 - ลูกค้าเลือก "Save as PDF" ใน dialog เอง
 - LIFF in-app browser ส่วนใหญ่รองรับ (Android Chrome WebView, iOS Safari WebView)
@@ -5824,25 +6094,28 @@ components/liff/
 
 **Logic เดิมของระบบ admin (ห้ามแก้ ห้าม duplicate)** ที่ LIFF ต้องเคารพ:
 
-| เอกสารต้นทาง | เงื่อนไข | Title ที่แสดง | Block พิเศษ |
-|---|---|---|---|
-| Sale (CREDIT_SALE) | `paymentType="CREDIT_SALE"` | **"ใบแจ้งหนี้ / ใบส่งของ"** | shippingAddress + PromptPay QR card + เลขบัญชีโอน |
-| Sale (CASH_SALE) | `paymentType="CASH_SALE"` | **"ใบเสร็จรับเงิน"** | block "ชำระแล้ว" + ไม่มี QR (จ่ายแล้ว) |
-| Receipt (`/admin/receipts`) | จาก `Receipt` entity | **"ใบเสร็จรับเงิน"** (จากการรับชำระบิลเชื่อ) | reference saleNo, paymentMethod, ยอดรับชำระ |
+| เอกสารต้นทาง                | เงื่อนไข                    | Title ที่แสดง                                | Block พิเศษ                                       |
+| --------------------------- | --------------------------- | -------------------------------------------- | ------------------------------------------------- |
+| Sale (CREDIT_SALE)          | `paymentType="CREDIT_SALE"` | **"ใบแจ้งหนี้ / ใบส่งของ"**                  | shippingAddress + PromptPay QR card + เลขบัญชีโอน |
+| Sale (CASH_SALE)            | `paymentType="CASH_SALE"`   | **"ใบเสร็จรับเงิน"**                         | block "ชำระแล้ว" + ไม่มี QR (จ่ายแล้ว)            |
+| Receipt (`/admin/receipts`) | จาก `Receipt` entity        | **"ใบเสร็จรับเงิน"** (จากการรับชำระบิลเชื่อ) | reference saleNo, paymentMethod, ยอดรับชำระ       |
 
 **Mapping ใน LIFF**:
+
 - `/liff/orders/[id]/invoice` — สำหรับ Sale ใดก็ได้ → render ผ่าน `SharedSalesDeliveryPrintDocument` ส่ง props เดิมจาก `paymentType` → component เลือก title/block เอง
 - `/liff/orders/[id]/receipt` — เปิดได้เฉพาะเมื่อ Sale มี Receipt ที่ link อยู่:
   - ถ้า `paymentType=CASH_SALE` → ใช้ `SharedSalesDeliveryPrintDocument` (รวมในตัว)
   - ถ้า `paymentType=CREDIT_SALE` + มี Receipt → ใช้ shared receipt print component (`SharedReceiptPrintDocument` ถ้ามี ไม่งั้นต้องเช็ค `app/admin/(protected)/receipts/[id]`)
 
 **ห้ามทำ**:
+
 - ❌ ห้ามสร้าง `LiffInvoicePrintDocument.tsx` หรือ `LiffReceiptPrintDocument.tsx` ใหม่ที่ duplicate logic
 - ❌ ห้าม hardcode title "ใบแจ้งหนี้" หรือ "ใบเสร็จรับเงิน" ใน LIFF page
 - ❌ ห้ามตัดสินใจ form variant ใหม่ใน LIFF ด้วย if/else — ต้องส่ง props ตามจริง แล้วให้ shared component ตัดสินเอง
 - ❌ ห้าม hide block ไหนใน shared component (เช่น hide watermark, hide QR) — ถ้าจำเป็นจริงๆ ต้องเพิ่ม prop ใน shared component แล้วอัปเดตทุก consumer (sale + delivery + warranty claim + LIFF) พร้อมกัน
 
 **ที่ต้องทำใน LIFF page**:
+
 1. Server-side load Sale (พร้อม `paymentType`, `shippingAddress`, `items`, `customer`, `transferPrimaryAccount`, `printNotice`)
 2. Verify `customer.id === currentLineCustomer.id` (security boundary — ห้ามดูใบของคนอื่น)
 3. ส่ง props เข้า `<SharedSalesDeliveryPrintDocument>` ตรงๆ
@@ -5851,13 +6124,13 @@ components/liff/
 
 ##### Receipt PDF — เคสที่ลูกค้าเปิดได้
 
-| Sale paymentType | มี Receipt? | LIFF เปิดอะไรได้ |
-|---|---|---|
-| CASH_SALE | (มีในตัว) | `/liff/orders/[id]/invoice` แสดง "ใบเสร็จรับเงิน" |
-| CASH_SALE | — | เหมือนข้างบน (ไม่มี receipt page แยก) |
-| CREDIT_SALE | ยังไม่มี Receipt | `/liff/orders/[id]/invoice` แสดง "ใบแจ้งหนี้ / ใบส่งของ" + QR ชำระ |
-| CREDIT_SALE | มี Receipt 1 ใบ | `/liff/orders/[id]/invoice` (ใบแจ้งหนี้) + `/liff/orders/[id]/receipt` (ใบเสร็จรับเงิน) |
-| CREDIT_SALE | มี Receipt หลายใบ (ผ่อน) | `/liff/orders/[id]/invoice` + `/liff/orders/[id]/receipts/[receiptId]` (รายตัว) |
+| Sale paymentType | มี Receipt?              | LIFF เปิดอะไรได้                                                                        |
+| ---------------- | ------------------------ | --------------------------------------------------------------------------------------- |
+| CASH_SALE        | (มีในตัว)                | `/liff/orders/[id]/invoice` แสดง "ใบเสร็จรับเงิน"                                       |
+| CASH_SALE        | —                        | เหมือนข้างบน (ไม่มี receipt page แยก)                                                   |
+| CREDIT_SALE      | ยังไม่มี Receipt         | `/liff/orders/[id]/invoice` แสดง "ใบแจ้งหนี้ / ใบส่งของ" + QR ชำระ                      |
+| CREDIT_SALE      | มี Receipt 1 ใบ          | `/liff/orders/[id]/invoice` (ใบแจ้งหนี้) + `/liff/orders/[id]/receipt` (ใบเสร็จรับเงิน) |
+| CREDIT_SALE      | มี Receipt หลายใบ (ผ่อน) | `/liff/orders/[id]/invoice` + `/liff/orders/[id]/receipts/[receiptId]` (รายตัว)         |
 
 LIFF order detail แสดงรายการ receipt ทั้งหมดที่ link กับบิล + ปุ่มเปิดแต่ละใบ
 
@@ -5871,6 +6144,7 @@ LIFF order detail แสดงรายการ receipt ทั้งหมด�
 - [ ] เปลี่ยนแปลงใน `SharedSalesDeliveryPrintDocument` → ต้อง reflect ทั้ง admin + LIFF พร้อมกัน
 
 #### Files Touched
+
 - `lib/tracking-url.ts` (ใหม่)
 - `lib/verify-token.ts` (ใหม่ — HMAC sign/verify)
 - `app/verify/[type]/[docNo]/page.tsx` (ใหม่ — public)
@@ -5878,6 +6152,7 @@ LIFF order detail แสดงรายการ receipt ทั้งหมด�
 - `components/liff/*` ตามที่ลิสต์ข้างบน
 
 #### Phase 1B Checklist
+
 - [x] `OrderStatusTimeline.tsx` + integrate ใน `/liff/orders/[id]`
 - [x] `TrackingSmartLink.tsx` + map URL ทุก ShippingMethod
 - [x] `lib/verify-token.ts` (HMAC) + env `DOC_VERIFY_SECRET`
@@ -5953,6 +6228,7 @@ await enqueueCustomerNotification({
 ```
 
 **`enqueueCustomerNotification`** จะ:
+
 1. โหลด Sale/Receipt + Customer
 2. ถ้า `customer.lineUserId` = null → INSERT row status=`SKIPPED` reason="not_linked" (เพื่อ audit)
 3. ถ้ามี → INSERT row status=`PENDING` พร้อม Flex payload snapshot
@@ -5971,20 +6247,27 @@ await enqueueCustomerNotification({
 
 ##### Color Palette (locked)
 
-| Card Type | Header Hex | เงื่อนไข |
-|---|---|---|
-| `sale_paid` (CASH ชำระครบ) | `#22c55e` (เขียว) | `paymentMethod=CASH` + `amountRemain=0` |
-| `sale_credit_pending` | `#f59e0b` (ส้มเหลือง) | `paymentMethod=CREDIT` |
-| `sale_cod_pending` | `#14b8a6` (ฟ้าเขียว) | `fulfillmentType=DELIVERY` + `paymentMethod=CASH` + `amountRemain>0` |
-| `receipt.created` | `#3b82f6` (น้ำเงิน) | ทุกใบเสร็จ |
+| Card Type                  | Header Hex            | เงื่อนไข                                                             |
+| -------------------------- | --------------------- | -------------------------------------------------------------------- |
+| `sale_paid` (CASH ชำระครบ) | `#22c55e` (เขียว)     | `paymentMethod=CASH` + `amountRemain=0`                              |
+| `sale_credit_pending`      | `#f59e0b` (ส้มเหลือง) | `paymentMethod=CREDIT`                                               |
+| `sale_cod_pending`         | `#14b8a6` (ฟ้าเขียว)  | `fulfillmentType=DELIVERY` + `paymentMethod=CASH` + `amountRemain>0` |
+| `receipt.created`          | `#3b82f6` (น้ำเงิน)   | ทุกใบเสร็จ                                                           |
 
 ##### Template selector logic
 
 ```ts
-function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod_pending" {
-  if (sale.paymentMethod === "CASH" && sale.amountRemain === 0) return "sale_paid";
+function pickSaleTemplate(
+  sale,
+): "sale_paid" | "sale_credit_pending" | "sale_cod_pending" {
+  if (sale.paymentMethod === "CASH" && sale.amountRemain === 0)
+    return "sale_paid";
   if (sale.paymentMethod === "CREDIT") return "sale_credit_pending";
-  if (sale.fulfillmentType === "DELIVERY" && sale.paymentMethod === "CASH" && sale.amountRemain > 0) {
+  if (
+    sale.fulfillmentType === "DELIVERY" &&
+    sale.paymentMethod === "CASH" &&
+    sale.amountRemain > 0
+  ) {
     return "sale_cod_pending";
   }
   return "sale_paid"; // default fallback
@@ -6120,16 +6403,19 @@ function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod
 #### Admin UI เพิ่ม
 
 **ข้อ 6 — Test Send**
+
 - ในหน้า admin `/admin/sales/[id]` และ `/admin/receipts/[id]`: ปุ่ม **"ทดสอบส่ง LINE (admin)"** — ส่งไปที่ LINE userId ของ admin คนกด (จาก mapping เดิม) ไม่ใช่ลูกค้า
 - ใช้ Flex payload ตัวจริง — preview ก่อน push ลูกค้า
 
 **ข้อ 8 — Re-send Button**
+
 - ในหน้า admin `/admin/sales/[id]` + `/admin/receipts/[id]`: ปุ่ม **"ส่ง LINE แจ้งลูกค้าซ้ำ"**
 - ตรวจ permission `sales.notify` / `receipts.notify` (ใหม่)
 - เรียก `enqueueCustomerNotification` อีกครั้ง แต่ status= `PENDING` ใหม่ (สร้าง row ใหม่ ไม่ทับเดิม — เก็บ history)
 - AuditLog action: `customer.line_notification_resend`
 
 #### Permissions ใหม่ (ตาม .rules §8 — 5 steps)
+
 - `customer_notifications.view` — ดู history (admin)
 - `sales.notify` — กด re-send LINE จากใบขาย
 - `receipts.notify` — กด re-send LINE จากใบเสร็จ
@@ -6137,6 +6423,7 @@ function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod
 - ไม่ต้องเพิ่ม route rule (ไม่มี menu แยก) — Phase 1C ยังไม่มี notification history page
 
 #### Phase 1C Checklist
+
 - [ ] Schema: `LineCustomerNotification` + `prisma db push`
 - [ ] LINE plan upgrade Light 1,200 บาท/เดือน (user ต้องทำเอง)
 - [ ] `lib/line-customer-notification.ts` (enqueue, dispatch, payload builders, retry)
@@ -6171,11 +6458,11 @@ function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod
 
 ### Cost Summary (Final)
 
-| Phase | LINE | Firebase | PDF | รวม/เดือน |
-|---|---|---|---|---|
-| 1A | 0 (Communication) | 0 (Spark) | — | **0 บาท** |
-| 1B | 0 (Communication) | 0 (Spark) | 0 (browser print) | **0 บาท** |
-| 1C | 1,200 (Light) | 0 (Spark) | 0 | **1,200 บาท** |
+| Phase | LINE              | Firebase  | PDF               | รวม/เดือน     |
+| ----- | ----------------- | --------- | ----------------- | ------------- |
+| 1A    | 0 (Communication) | 0 (Spark) | —                 | **0 บาท**     |
+| 1B    | 0 (Communication) | 0 (Spark) | 0 (browser print) | **0 บาท**     |
+| 1C    | 1,200 (Light)     | 0 (Spark) | 0                 | **1,200 บาท** |
 
 ค่าใช้จ่ายครั้งเดียว: 0 (Firebase + LINE สมัครฟรี, ไม่ต้องเติม credit)
 
@@ -6198,15 +6485,15 @@ function pickSaleTemplate(sale): "sale_paid" | "sale_credit_pending" | "sale_cod
 
 ### Final Decisions (override ทุก decision ก่อนหน้า)
 
-| # | เรื่อง | Decision Final | เหตุผล |
-|---|---|---|---|
-| 1 | **OTP** | ❌ ไม่มี OTP เลย (Option A) | LINE userId เป็น identity, phone lookup ตรงๆ — security ระดับเดียวกับ LINE OTP แต่เร็วกว่า ฟรีกว่า |
-| 2 | **Firebase** | ❌ ไม่ใช้ ลบทั้งหมดจาก plan | ไม่ต้อง phone auth |
-| 3 | **Mapping flow** | LINE userId → ไม่มี link → กรอกเบอร์ 1 ช่อง → resolve 4 case | ไม่มี OTP step, register/auto-link ทันที |
-| 4 | **Phase 1C (Push notifications)** | 🟡 **DEFERRED** ไม่ทำในรอบนี้ | รอประเมินอีกครั้งเมื่อ user พร้อม + ยืนยัน LINE plan |
-| 5 | **LINE plan** | Communication ฟรี (ใช้แค่ daily summary admin เดิม) | Phase 1A+1B ไม่ใช้ push ลูกค้า |
-| 6 | **Background dispatch** | ใช้ `waitUntil()` + popup admin หาก fail (ไม่มี cron retry) | Phase 1C เท่านั้น — ตอนนี้ defer |
-| 7 | **Preview workflow** | Vercel alias `liff-preview.yourshop.com` → branch `develop` (fix ครั้งเดียวใน LINE/Firebase console) | ไม่ต้อง Firebase แล้ว แต่ LINE LIFF endpoint ยังต้องคงที่ |
+| #   | เรื่อง                            | Decision Final                                                                                       | เหตุผล                                                                                             |
+| --- | --------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | **OTP**                           | ❌ ไม่มี OTP เลย (Option A)                                                                          | LINE userId เป็น identity, phone lookup ตรงๆ — security ระดับเดียวกับ LINE OTP แต่เร็วกว่า ฟรีกว่า |
+| 2   | **Firebase**                      | ❌ ไม่ใช้ ลบทั้งหมดจาก plan                                                                          | ไม่ต้อง phone auth                                                                                 |
+| 3   | **Mapping flow**                  | LINE userId → ไม่มี link → กรอกเบอร์ 1 ช่อง → resolve 4 case                                         | ไม่มี OTP step, register/auto-link ทันที                                                           |
+| 4   | **Phase 1C (Push notifications)** | 🟡 **DEFERRED** ไม่ทำในรอบนี้                                                                        | รอประเมินอีกครั้งเมื่อ user พร้อม + ยืนยัน LINE plan                                               |
+| 5   | **LINE plan**                     | Communication ฟรี (ใช้แค่ daily summary admin เดิม)                                                  | Phase 1A+1B ไม่ใช้ push ลูกค้า                                                                     |
+| 6   | **Background dispatch**           | ใช้ `waitUntil()` + popup admin หาก fail (ไม่มี cron retry)                                          | Phase 1C เท่านั้น — ตอนนี้ defer                                                                   |
+| 7   | **Preview workflow**              | Vercel alias `liff-preview.yourshop.com` → branch `develop` (fix ครั้งเดียวใน LINE/Firebase console) | ไม่ต้อง Firebase แล้ว แต่ LINE LIFF endpoint ยังต้องคงที่                                          |
 
 ### Mapping Flow (แทนที่ flow เดิม)
 
@@ -6299,6 +6586,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 ### Phase 1A Checklist (แทนที่ checklist เดิม)
 
 #### Foundation
+
 - [ ] สร้าง LINE Login channel + LIFF app (Endpoint = `https://liff-preview.yourshop.com/liff` สำหรับ test, `https://yourshop.com/liff` สำหรับ production — สร้าง 2 LIFF apps แยก dev/prod)
 - [ ] ตั้ง Vercel alias `liff-preview.yourshop.com` → branch `develop`
 - [x] เพิ่ม env: `NEXT_PUBLIC_LINE_LIFF_ID`, `LINE_LIFF_CHANNEL_ID`, `DOC_VERIFY_SECRET` + อัปเดต `.env.example`
@@ -6306,12 +6594,14 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] AuditLog actions: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_link_ambiguous`
 
 #### Core Libraries
+
 - [x] `lib/liff-auth.ts` — verify LIFF ID token (POST `https://api.line.me/oauth2/v2.1/verify`)
 - [x] `lib/liff-customer.ts` — phone normalize + resolve 4 case + AuditLog
 - [x] `lib/customer-phone.ts` — helper กลางบังคับ format เบอร์ลูกค้าเป็น `081-234-5678` ใช้ร่วมกันทั้ง admin และ LINE_LIFF
 - [x] `lib/liff-session.ts` + `lib/liff-data.ts` — signed httpOnly LIFF customer session หลัง verify LINE token แล้ว เพื่อให้ Server Components query ได้โดยไม่ expose identity ฝั่ง client ซ้ำ
 
 #### LIFF Pages
+
 - [x] `app/liff/layout.tsx` — Server shell + LiffProvider + ContactShopButton + noindex meta
 - [x] `components/liff/WelcomeScreen.tsx` — onboarding 1 ครั้งแรก (3 bullet: ดูบิล/เช็คประกัน/ใบเสร็จ + ปุ่มเริ่ม) + flag `liff_onboarded` ใน localStorage
 - [x] `components/liff/ContactShopButton.tsx` — ปุ่มลอยทุกหน้า เรียก `liff.closeWindow()` + (option) `liff.sendMessages()` ส่งข้อความเข้า OA chat
@@ -6324,11 +6614,13 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] `loading.tsx` ทุก segment
 
 #### API
+
 - [x] `app/api/liff/verify-link/route.ts` — POST: ตรวจ LIFF ID token + phone → resolve 4 case → AuditLog → return result
 - [x] `app/api/liff/session/route.ts` — POST: ตรวจ LIFF ID token → set signed customer session เมื่อมี link แล้ว
 - [x] Server Actions/Server reads ของ `/liff/*` ทุก action verify LIFF session + customer ownership
 
 #### Admin Customer Visibility
+
 - [x] หน้า `/admin/customers` แสดง badge แยกลูกค้าที่ `source = LINE_LIFF` เช่น "สมัครผ่าน LINE" และ badge "ผูก LINE แล้ว" เมื่อมี `lineUserId`
 - [x] หน้า `/admin/customers` เพิ่ม filter หรือ quick filter สำหรับ "ลูกค้าจาก LINE" โดยใช้ shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern เพื่อให้พนักงานตามตรวจข้อมูลได้ง่าย
 - [x] หน้า customer detail/edit แสดงสถานะ `lineLinkedAt` + แหล่งที่มาลูกค้า และยังแก้ไขข้อมูลลูกค้าปกติได้เหมือนเดิม
@@ -6338,17 +6630,20 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] ลูกค้าใหม่จาก LIFF ต้องสร้างเป็น `Customer` ปกติ ไม่แยกตาราง เพื่อให้ sale/receipt/admin workflow เดิมใช้งานต่อได้ทันที
 
 #### Security
+
 - [x] ทุก customer query มี `where: { customerId: customer.id }` เสมอ
 - [x] Rate limit phone lookup: 5 ครั้ง/LINE userId/ชั่วโมง (กัน brute force scan ฐานข้อมูลลูกค้า)
 - [x] LIFF page noindex meta + ไม่ expose admin route
 
 #### UI/UX
+
 - [x] Light + dark mode ครบ
 - [x] Mobile-first, ใช้ `formatDateThai` (Gregorian)
 - [x] Onboarding screen ดีไซน์สากล (illustration / icon + ข้อความสั้น + ปุ่ม CTA เดียว)
 - [x] Contact shop button ลอย bottom-right ทุกหน้า
 
 #### Implementation Progress (2026-05-04)
+
 - [x] Phase 1A foundation slice implemented: Prisma schema + generated client + DB push completed
 - [x] Customer phone uniqueness/format slice implemented: `Customer.phone @unique`, shared phone normalizer, admin + LINE_LIFF use `081-234-5678`
 - [x] LIFF MVP routes added: `/liff`, `/liff/link`, `/liff/orders`, `/liff/orders/[id]`, `/liff/profile`; product browsing stays on public `/products`
@@ -6371,6 +6666,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 ### Phase 1B Checklist (คงเดิม + เพิ่ม)
 
 ใช้ checklist เดิมจาก section "Phase 1B" ก่อนหน้า + เพิ่ม:
+
 - [x] หน้า `/liff/outstanding` (ตามที่ระบุไปแล้ว)
 - [x] หน้า `/liff/claims` + `[id]` (ตามที่ระบุไปแล้ว)
 - [x] Order detail แสดง "ประวัติการชำระเงิน" — list `ReceiptItem[]` ที่ link กับ saleId เรียงตาม `Receipt.receiptDate` แบบย่อ (วันที่, ยอด, methodชำระ, ปุ่มดูใบเสร็จ) — รายละเอียดน้อยกว่า admin
@@ -6386,12 +6682,14 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 > **สถานะ**: ยังไม่ทำในรอบนี้ — ทุก spec ใน section "Phase 1C — Customer Push Notifications" ก่อนหน้า **คงไว้เป็น reference** สำหรับ resume งานในอนาคต ไม่ลบ
 
 **เงื่อนไขที่ต้องครบก่อน start Phase 1C ในอนาคต**:
+
 1. User ยืนยัน upgrade LINE plan Light 1,200 บาท/เดือน
 2. ประเมินยอดขายปัจจุบัน + คาดการณ์ push volume ใหม่
 3. POC test Flex card บน LINE OA จริง (ส่ง test ไป admin ดูสวย)
 4. ตัดสินใจ: ทำ Bundle / Opt-in / Cancel push อีกครั้ง (ตอนนี้ทุกข้อ "ไม่ทำ")
 
 **สิ่งที่จะเปลี่ยนเมื่อ Phase 1C เริ่ม** (จากที่ตอบรอบนี้):
+
 - Background dispatch: ใช้ `waitUntil()` (ไม่มี cron retry)
 - Failure UX: popup สีแดงในหน้า admin "ส่ง LINE ไม่สำเร็จ" + ปุ่ม "ส่งใหม่" (toast/dialog ทันที, ไม่ใช่ silent log)
 - Notification status badge ทุก row ใน sale/receipt list (icon เขียว=sent, แดง=failed, เทา=skipped)
@@ -6401,11 +6699,11 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 
 ### Cost Summary (Final — รอบนี้)
 
-| Phase | Cost/เดือน | สถานะ |
-|---|---|---|
-| **1A** | **0 บาท** | จะทำ |
-| **1B** | **0 บาท** | จะทำต่อจาก 1A |
-| 1C | +1,200 บาท (Light plan) | **DEFERRED** |
+| Phase  | Cost/เดือน              | สถานะ         |
+| ------ | ----------------------- | ------------- |
+| **1A** | **0 บาท**               | จะทำ          |
+| **1B** | **0 บาท**               | จะทำต่อจาก 1A |
+| 1C     | +1,200 บาท (Light plan) | **DEFERRED**  |
 
 ค่าใช้จ่าย one-time: 0 บาท
 
@@ -6423,4 +6721,3 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 25. **Onboarding screen**: แสดงครั้งแรกเท่านั้น เก็บ flag `liff_onboarded` ใน localStorage — ห้าม block ลูกค้าที่เคยใช้แล้ว
 26. **Admin visibility for LINE customers**: ลูกค้าใหม่ที่สมัครผ่าน LIFF ต้องเป็น `Customer` ปกติพร้อม `source = LINE_LIFF`, แสดง badge/filter ใน admin, และให้พนักงานแก้ข้อมูลเพิ่มเติมได้จาก customer edit flow เดิม
 27. **No LIFF product catalog**: ตัดเมนู/หน้าค้นหาสินค้าออกจาก LIFF; `/liff/products` ต้อง redirect ไป public `/products` และห้าม query สินค้าใน LIFF เพื่อใช้หน้าจอ catalog แยก
-
