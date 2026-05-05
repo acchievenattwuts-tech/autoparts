@@ -1,13 +1,30 @@
 import Link from "next/link";
-import { ChevronRight, ShieldCheck } from "lucide-react";
+import { ChevronRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 
-export default async function LiffWarrantiesPage() {
+const warrantyStatusTabs = [
+  { key: "active", label: "ยังมีประกัน" },
+  { key: "expired", label: "หมดประกัน" },
+  { key: "all", label: "ทั้งหมด" },
+] as const;
+
+type WarrantyStatusFilter = (typeof warrantyStatusTabs)[number]["key"];
+
+function normalizeWarrantyStatusFilter(value: string | undefined): WarrantyStatusFilter {
+  return warrantyStatusTabs.some((tab) => tab.key === value) ? (value as WarrantyStatusFilter) : "active";
+}
+
+export default async function LiffWarrantiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const customer = await requireLiffCustomer();
+  const statusFilter = normalizeWarrantyStatusFilter((await searchParams).status);
   const today = new Date();
   const warranties = await db.warranty.findMany({
     where: { sale: { customerId: customer.id, status: "ACTIVE" } },
@@ -27,6 +44,13 @@ export default async function LiffWarrantiesPage() {
   });
 
   const activeCount = warranties.filter((item) => item.endDate >= today).length;
+  const expiredCount = warranties.length - activeCount;
+  const filteredWarranties = warranties.filter((warranty) => {
+    const expired = warranty.endDate < today;
+    if (statusFilter === "active") return !expired;
+    if (statusFilter === "expired") return expired;
+    return true;
+  });
 
   return (
     <main className="min-h-dvh pb-24">
@@ -41,17 +65,45 @@ export default async function LiffWarrantiesPage() {
           <div className="rounded-lg bg-white/10 px-4 py-4">
             <p className="text-xs text-teal-100">ทั้งหมด</p>
             <p className="font-kanit text-2xl font-bold">{warranties.length}</p>
+            <p className="mt-1 text-xs text-teal-100">หมดประกัน {expiredCount}</p>
           </div>
         </div>
+        <Link
+          href="/liff/claims"
+          className="mt-3 flex items-center justify-between rounded-lg bg-white/10 px-4 py-3 text-sm font-bold text-white ring-1 ring-white/15"
+        >
+          <span className="inline-flex items-center gap-2">
+            <ShieldAlert size={18} />
+            ดูประวัติเคลมทั้งหมด
+          </span>
+          <ChevronRight size={18} />
+        </Link>
       </section>
 
-      <section className="space-y-3 px-5 py-5">
-        {warranties.length === 0 ? (
+      <section className="space-y-4 px-5 py-5">
+        <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 p-1 text-xs font-bold">
+          {warrantyStatusTabs.map((tab) => {
+            const isActive = statusFilter === tab.key;
+            return (
+              <Link
+                key={tab.key}
+                href={tab.key === "active" ? "/liff/warranties" : `/liff/warranties?status=${tab.key}`}
+                className={`rounded-md px-2 py-2 text-center transition ${
+                  isActive ? "bg-white text-teal-800 shadow-sm" : "text-slate-500"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {filteredWarranties.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
             ยังไม่มีประวัติประกันสินค้า
           </div>
         ) : (
-          warranties.map((warranty) => {
+          filteredWarranties.map((warranty) => {
             const expired = warranty.endDate < today;
             return (
               <Link

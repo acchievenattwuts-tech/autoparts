@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
 
 import { verifyLiffIdToken } from "@/lib/liff-auth";
-import { resolveLiffCustomerFromPhone } from "@/lib/liff-customer";
+import {
+  getLiffPhoneLookupThrottleKeys,
+  isLiffCustomerVisibleError,
+  resolveLiffCustomerFromPhone,
+} from "@/lib/liff-customer";
 import { setLiffCustomerSession } from "@/lib/liff-session";
 
 export const dynamic = "force-dynamic";
+
+function getVerifyLinkErrorMessage(error: unknown) {
+  if (isLiffCustomerVisibleError(error)) {
+    return error.message;
+  }
+
+  return "ไม่สามารถยืนยันบัญชี LINE ได้ กรุณาลองใหม่อีกครั้ง";
+}
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +28,7 @@ export async function POST(request: Request) {
       lineUserId: identity.lineUserId,
       displayName: identity.displayName,
       phone,
+      throttleKeys: getLiffPhoneLookupThrottleKeys(identity.lineUserId, request),
     });
 
     if (result.status === "LINKED" || result.status === "REGISTERED") {
@@ -29,13 +42,10 @@ export async function POST(request: Request) {
       status: result.status === "BLOCKED" || result.status === "AMBIGUOUS" ? 409 : 200,
     });
   } catch (error) {
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
-
     console.error("[liff/verify-link]", error);
-
-    return NextResponse.json({ status: "ERROR", message }, { status: 400 });
+    return NextResponse.json(
+      { status: "ERROR", message: getVerifyLinkErrorMessage(error) },
+      { status: 400 },
+    );
   }
 }

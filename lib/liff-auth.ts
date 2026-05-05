@@ -6,6 +6,8 @@ type LineIdTokenVerifyResponse = {
   error_description?: string;
 };
 
+const LINE_VERIFY_TIMEOUT_MS = 5000;
+
 export type VerifiedLiffIdentity = {
   lineUserId: string;
   displayName: string | null;
@@ -30,17 +32,25 @@ export async function verifyLiffIdToken(idToken: string): Promise<VerifiedLiffId
     client_id: getLineLiffChannelId(),
   });
 
-  const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(LINE_VERIFY_TIMEOUT_MS),
+    });
+  } catch (error) {
+    console.error("[liff-auth] LINE token verify request failed", error);
+    throw new Error("LIFF_ID_TOKEN_VERIFY_FAILED");
+  }
 
   const payload = (await response.json().catch(() => ({}))) as LineIdTokenVerifyResponse;
 
   if (!response.ok || !payload.sub) {
-    throw new Error(payload.error_description || payload.error || "LIFF_ID_TOKEN_VERIFY_FAILED");
+    throw new Error("LIFF_ID_TOKEN_VERIFY_FAILED");
   }
 
   return {

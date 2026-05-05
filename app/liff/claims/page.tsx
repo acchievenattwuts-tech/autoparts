@@ -11,8 +11,36 @@ import {
   getCustomerClaimStatusLabel,
 } from "@/lib/warranty-claim-i18n";
 
-export default async function LiffClaimsPage() {
+const claimStatusTabs = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "open", label: "กำลังดำเนินการ" },
+  { key: "closed", label: "จบแล้ว" },
+] as const;
+
+type ClaimStatusFilter = (typeof claimStatusTabs)[number]["key"];
+
+function normalizeClaimStatusFilter(value: string | undefined): ClaimStatusFilter {
+  return claimStatusTabs.some((tab) => tab.key === value) ? (value as ClaimStatusFilter) : "all";
+}
+
+function isClosedCustomerClaim(claim: {
+  claimType: string;
+  status: string;
+}) {
+  return (
+    claim.claimType === "REPLACE_NOW" ||
+    claim.status === "CLOSED" ||
+    claim.status === "RETURNED_TO_CUSTOMER"
+  );
+}
+
+export default async function LiffClaimsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const customer = await requireLiffCustomer();
+  const statusFilter = normalizeClaimStatusFilter((await searchParams).status);
   const claims = await db.warrantyClaim.findMany({
     where: {
       warranty: {
@@ -39,6 +67,13 @@ export default async function LiffClaimsPage() {
     orderBy: { claimDate: "desc" },
     take: 50,
   });
+  const openCount = claims.filter((claim) => !isClosedCustomerClaim(claim) && claim.status !== "CANCELLED").length;
+  const closedCount = claims.filter(isClosedCustomerClaim).length;
+  const filteredClaims = claims.filter((claim) => {
+    if (statusFilter === "open") return !isClosedCustomerClaim(claim) && claim.status !== "CANCELLED";
+    if (statusFilter === "closed") return isClosedCustomerClaim(claim);
+    return true;
+  });
 
   return (
     <main className="min-h-dvh pb-24">
@@ -48,16 +83,36 @@ export default async function LiffClaimsPage() {
         <div className="mt-5 rounded-lg bg-white/10 px-4 py-4">
           <p className="text-xs text-teal-100">รายการเคลมทั้งหมด</p>
           <p className="font-kanit text-2xl font-bold">{claims.length}</p>
+          <p className="mt-1 text-xs text-teal-100">
+            กำลังดำเนินการ {openCount} · จบแล้ว {closedCount}
+          </p>
         </div>
       </section>
 
-      <section className="space-y-3 px-5 py-5">
-        {claims.length === 0 ? (
+      <section className="space-y-4 px-5 py-5">
+        <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 p-1 text-xs font-bold">
+          {claimStatusTabs.map((tab) => {
+            const isActive = statusFilter === tab.key;
+            return (
+              <Link
+                key={tab.key}
+                href={tab.key === "all" ? "/liff/claims" : `/liff/claims?status=${tab.key}`}
+                className={`rounded-md px-2 py-2 text-center transition ${
+                  isActive ? "bg-white text-teal-800 shadow-sm" : "text-slate-500"
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {filteredClaims.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
             ยังไม่มีประวัติการเคลมสินค้า
           </div>
         ) : (
-          claims.map((claim) => (
+          filteredClaims.map((claim) => (
             <Link
               key={claim.id}
               href={`/liff/claims/${claim.id}`}
@@ -97,7 +152,7 @@ export default async function LiffClaimsPage() {
           ))
         )}
       </section>
-      <LiffBottomNav active="/liff/warranties" />
+      <LiffBottomNav active="/liff/claims" />
     </main>
   );
 }

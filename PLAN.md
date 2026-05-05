@@ -5289,9 +5289,11 @@ Implementation progress (2026-04-28, Batch A + B):
 
 ## Roadmap Update (2026-05-04 LIFF Mini-App Phase 1 MVP — Customer LINE Self-Service)
 
-> Scope: เปิดให้ลูกค้าใช้ LINE OA เป็นช่องทาง self-service หลัก ผ่าน LIFF (LINE Front-end Framework) ที่ host บน domain production เดิม (`/liff/*`) Phase 1 ทำเฉพาะ MVP: รับลูกค้าใหม่ลงทะเบียนผ่าน LINE, mapping ลูกค้าเก่าด้วย OTP, ดูประวัติคำสั่งซื้อ, ดู tracking, และค้นหาสินค้า ห้ามแตะ business logic เดิม (stock, MAVG, AR/AP, document numbering, audit) — ใช้ Server Action / lib เดิมทั้งหมดผ่าน wrapper ที่ verify identity ก่อน
+> Scope: เปิดให้ลูกค้าใช้ LINE OA เป็นช่องทาง self-service หลัก ผ่าน LIFF (LINE Front-end Framework) ที่ host บน domain production เดิม (`/liff/*`) Phase 1 ทำเฉพาะ MVP: รับลูกค้าใหม่ลงทะเบียนผ่าน LINE, mapping ลูกค้าเก่าด้วย OTP, ดูประวัติคำสั่งซื้อ, ดู tracking, ยอดค้างชำระ, เอกสาร, ประกัน/เคลม และข้อมูลลูกค้า ห้ามแตะ business logic เดิม (stock, MAVG, AR/AP, document numbering, audit) — ใช้ Server Action / lib เดิมทั้งหมดผ่าน wrapper ที่ verify identity ก่อน
 >
 > สถานะ: **ร่างแผน รอ user สั่ง "เริ่ม" ก่อน implement** (2026-05-04)
+
+> Update 2026-05-05: LIFF Phase 1 no longer includes product browsing/search. Customers should browse products on the public storefront (`/products`); LIFF keeps only customer self-service screens such as orders, outstanding balance, warranties/claims, documents, and profile.
 
 ### Decisions Locked-In (สรุปจากบทสนทนา 2026-05-04)
 
@@ -5386,7 +5388,6 @@ app/liff/
   link/page.tsx                       # หน้า OTP flow (กรอกเบอร์ + OTP + result)
   orders/page.tsx                     # ประวัติคำสั่งซื้อ (Server Component)
   orders/[id]/page.tsx                # ใบขายรายตัว + tracking + receipt link
-  products/page.tsx                   # ค้นหาสินค้า (reuse lib/product-search.ts)
   profile/page.tsx                    # ข้อมูลลูกค้า + ที่อยู่
   loading.tsx                         # ทุก segment ตาม .rules §8
 
@@ -5428,7 +5429,7 @@ if (!customer) throw new Error("Not linked");
 
 ### Reuse จากระบบเดิม (ห้ามทำซ้ำ)
 
-- `lib/product-search.ts` — ค้นหาสินค้า (`/liff/products` ใช้ตรงๆ)
+- Product browsing/search stays on the public storefront (`/products`); LIFF must not add a separate product search screen or product query.
 - `lib/line-daily-summary.ts` — ไม่เกี่ยว แต่อ้างอิง pattern Flex message ได้
 - `lib/th-date.ts` — `formatDateThai`, `formatDateTimeThai`, `getThailandDateKey`, etc.
 - `unstable_cache` ของ storefront — ห้ามถอด (memory feedback rule)
@@ -5465,7 +5466,7 @@ if (!customer) throw new Error("Not linked");
 - [ ] `app/liff/link/page.tsx` + `LinkPhoneForm` + `OtpVerifyForm`
 - [ ] `app/liff/orders/page.tsx` — list + date range filter ตาม .rules §8 (จาก/ถึง)
 - [ ] `app/liff/orders/[id]/page.tsx` — รายละเอียด + tracking + receipt link
-- [ ] `app/liff/products/page.tsx` — reuse product-search
+- [x] Remove LIFF product search screen/query; old `/liff/products` redirects to public `/products`.
 - [ ] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ที่อยู่
 - [ ] `loading.tsx` ทุก segment
 
@@ -5476,7 +5477,7 @@ if (!customer) throw new Error("Not linked");
 #### UI/UX
 - [ ] Light mode + dark mode ครบ ตาม .rules §8 (UI/UX Decisions)
 - [ ] Mobile-first (LIFF เปิดใน LINE app เท่านั้น — ไม่ต้องคิด desktop)
-- [ ] ใช้ `next/image` ทุกรูปสินค้า, `next/font` สำหรับ Thai font
+- [x] LIFF product images removed from scope because products are browsed on the public storefront.
 - [ ] ข้อความ error ภาษาไทย (ไม่เผย stack trace)
 - [ ] วันที่ใช้ `formatDateThai` / `formatDateTimeThai` (Gregorian, ตาม .rules §8)
 
@@ -5549,7 +5550,7 @@ if (!customer) throw new Error("Not linked");
 
 ## Roadmap Update (2026-05-04 LIFF Phase 1 Scope Expansion — PDF + Push Notifications + Warranty + Invoice/Receipt)
 
-> Scope: ขยาย Phase 1 LIFF MVP จากเดิม (read-only orders + products + profile) เพิ่ม push notification ลูกค้า 2 events, ดู/บันทึก PDF ใบแจ้งหนี้+ใบเสร็จ, ประวัติประกัน, status timeline. ส่วนนี้ **ทับและเพิ่มจาก** Roadmap Update ก่อนหน้า ("LIFF Mini-App Phase 1 MVP") — section ก่อนยังคงใช้ใน 1A และ section นี้กำหนด 1B + 1C
+> Scope: ขยาย Phase 1 LIFF MVP จากเดิม (read-only orders + profile; product browsing stays on public `/products`) เพิ่ม push notification ลูกค้า 2 events, ดู/บันทึก PDF ใบแจ้งหนี้+ใบเสร็จ, ประวัติประกัน, status timeline. ส่วนนี้ **ทับและเพิ่มจาก** Roadmap Update ก่อนหน้า ("LIFF Mini-App Phase 1 MVP") — section ก่อนยังคงใช้ใน 1A และ section นี้กำหนด 1B + 1C
 >
 > สถานะ: **ร่างแผน รอ user สั่ง "เริ่ม" ก่อน implement** (2026-05-04)
 
@@ -5573,7 +5574,7 @@ if (!customer) throw new Error("Not linked");
 
 | Phase | Scope | Cost | Time |
 |---|---|---|---|
-| **1A** | Identity + read-only LIFF (orders, products, profile) | 0 บาท/เดือน | 1-2 สัปดาห์ |
+| **1A** | Identity + read-only LIFF (orders, profile; products stay on public `/products`) | 0 บาท/เดือน | 1-2 สัปดาห์ |
 | **1B** | Warranty + Invoice/Receipt PDF (Option C) + Status timeline | 0 บาท/เดือน | ~1 สัปดาห์ |
 | **1C** | Push notifications (2 events) + Admin re-send + Test send | +1,200 บาท/เดือน (LINE Light) | ~1-2 สัปดาห์ |
 
@@ -5588,7 +5589,7 @@ if (!customer) throw new Error("Not linked");
 **Deliverables**:
 - LINE userId mapping (3-case flow) + Firebase Phone OTP
 - `/liff/orders` (list + detail read-only)
-- `/liff/products`, `/liff/profile`
+- `/liff/profile`
 - `Customer.lineUserId`, `lineLinkedAt`, `phoneVerified`
 
 ---
@@ -6264,7 +6265,6 @@ app/liff/
   orders/[id]/page.tsx
   orders/[id]/invoice/page.tsx             # customer PDF/print — reuse shared admin print document
   orders/[id]/receipt/page.tsx             # customer PDF/print — reuse shared admin print document
-  products/page.tsx
   profile/page.tsx
   loading.tsx (ทุก segment)
 
@@ -6319,7 +6319,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] `app/liff/page.tsx` — landing route ตาม link state
 - [x] `app/liff/orders/page.tsx` + `[id]/page.tsx` — list + detail (read-only)
 - [x] `app/liff/orders/[id]/invoice/page.tsx` + `receipt/page.tsx` — บันทึก PDF/print โดย reuse shared admin print primitives และ verify customer ownership ก่อน render
-- [x] `app/liff/products/page.tsx` — reuse `lib/product-search.ts`
+- [x] Remove LIFF product search screen/query; old `/liff/products` redirects to public `/products`
 - [x] `app/liff/profile/page.tsx` — แสดงข้อมูลลูกค้า + ปุ่ม unlink (option Phase 2)
 - [x] `loading.tsx` ทุก segment
 
@@ -6351,7 +6351,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 #### Implementation Progress (2026-05-04)
 - [x] Phase 1A foundation slice implemented: Prisma schema + generated client + DB push completed
 - [x] Customer phone uniqueness/format slice implemented: `Customer.phone @unique`, shared phone normalizer, admin + LINE_LIFF use `081-234-5678`
-- [x] LIFF MVP routes added: `/liff`, `/liff/link`, `/liff/orders`, `/liff/orders/[id]`, `/liff/products`, `/liff/profile`
+- [x] LIFF MVP routes added: `/liff`, `/liff/link`, `/liff/orders`, `/liff/orders/[id]`, `/liff/profile`; product browsing stays on public `/products`
 - [x] Phase 1B read-only routes added: `/liff/outstanding`, `/liff/warranties`, `/liff/warranties/[id]`, `/liff/claims`, `/liff/claims/[id]`
 - [x] LIFF order detail upgraded with status timeline + tracking smart link
 - [x] Phase 1B print/PDF invoice/receipt routes added: `/liff/orders/[id]/invoice`, `/liff/orders/[id]/receipt`, and `components/liff/PrintToPdfButton.tsx`; both reuse shared print primitives and keep admin print logic untouched
@@ -6362,6 +6362,9 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] AuditLog actions added for LIFF PDF views: `CUSTOMER_VIEW_INVOICE_PDF`, `CUSTOMER_VIEW_RECEIPT_PDF`
 - [x] LIFF dark-mode polish completed with scoped `LiffThemeProvider` + root CSS overrides, while keeping `print-document-root` previews in light document mode
 - [x] Customer LINE admin visibility added in list/detail/edit without changing existing sale/receipt/stock logic
+- [x] LIFF hardening update (2026-05-05): phone lookup rate limit moved from per-process memory to persistent `LoginThrottle` keys, LINE token verify now has timeout, `verify-link` returns only safe customer-facing errors, and `LiffProvider` no longer re-verifies session on every route navigation
+- [x] LIFF bottom nav now includes a dedicated `เคลม` menu to `/liff/claims`, while warranties still expose a "ดูประวัติเคลมทั้งหมด" shortcut for discoverability
+- [x] LIFF UX polish (2026-05-05): contact button moved above bottom nav, bottom nav supports mobile safe-area + stronger active state, `/liff/claims` adds status tabs, and `/liff/warranties` adds active/expired/all tabs
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
 
@@ -6419,4 +6422,5 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 24. **Receipt cancel UX**: ไม่ push noti (Phase 1C decision เดิม) แต่หน้า LIFF order detail แสดง badge "ยกเลิก" + เหตุผลให้ลูกค้าเห็น — กัน confused
 25. **Onboarding screen**: แสดงครั้งแรกเท่านั้น เก็บ flag `liff_onboarded` ใน localStorage — ห้าม block ลูกค้าที่เคยใช้แล้ว
 26. **Admin visibility for LINE customers**: ลูกค้าใหม่ที่สมัครผ่าน LIFF ต้องเป็น `Customer` ปกติพร้อม `source = LINE_LIFF`, แสดง badge/filter ใน admin, และให้พนักงานแก้ข้อมูลเพิ่มเติมได้จาก customer edit flow เดิม
+27. **No LIFF product catalog**: ตัดเมนู/หน้าค้นหาสินค้าออกจาก LIFF; `/liff/products` ต้อง redirect ไป public `/products` และห้าม query สินค้าใน LIFF เพื่อใช้หน้าจอ catalog แยก
 

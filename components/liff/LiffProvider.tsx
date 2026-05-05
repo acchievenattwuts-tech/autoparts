@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -53,6 +54,7 @@ export function useLiff() {
 export default function LiffProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const initialPathnameRef = useRef(pathname);
   const [scriptReady, setScriptReady] = useState(false);
   const [idToken, setIdToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<LiffProfile | null>(null);
@@ -124,9 +126,10 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
         setIsLinked(linked);
 
-        if (!linked && pathname !== "/liff/link") {
+        const initialPathname = initialPathnameRef.current;
+        if (!linked && initialPathname !== "/liff/link") {
           router.replace("/liff/link");
-        } else if (linked && pathname === "/liff/link") {
+        } else if (linked && initialPathname === "/liff/link") {
           router.replace("/liff/orders");
         }
       } catch (initError) {
@@ -141,7 +144,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [pathname, router, scriptReady]);
+  }, [router, scriptReady]);
 
   const value = useMemo(
     () => ({ idToken, profile, isReady, isLinked, error, refreshSession }),

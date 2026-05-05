@@ -1,18 +1,26 @@
+import { getRequestContext, getRequestContextFromHeaders, safeWriteAuditLog } from "@/lib/audit-log";
+import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/customer-phone";
 import { db } from "@/lib/db";
 import { generateCustomerCode } from "@/lib/entity-code";
 import { AuditAction } from "@/lib/generated/prisma";
-import { getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
-import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const PHONE_LOOKUP_LIMIT = 5;
 const PHONE_LOOKUP_WINDOW_MS = 60 * 60 * 1000;
-
-type PhoneAttemptBucket = {
-  count: number;
-  resetAt: number;
-};
-
-const phoneLookupAttempts = new Map<string, PhoneAttemptBucket>();
+const LIFF_PHONE_LOOKUP_PREFIX = "liff-phone-lookup";
+const LINE_CUSTOMER_FALLBACK_NAME = "ลูกค้า LINE";
+const PHONE_LOOKUP_LIMIT_MESSAGE =
+  "ลองหลายครั้งเกินไป กรุณารอประมาณ 1 ชั่วโมงแล้วลองใหม่อีกครั้ง";
+const PHONE_REQUIRED_MESSAGE = "กรุณาระบุเบอร์โทรศัพท์";
+const AMBIGUOUS_CUSTOMER_MESSAGE =
+  "พบบัญชีหลายรายการจากเบอร์นี้ กรุณาติดต่อร้านเพื่อยืนยันข้อมูล";
+const LINE_ALREADY_LINKED_MESSAGE =
+  "เบอร์นี้ผูกกับ LINE อื่นแล้ว กรุณาติดต่อร้านเพื่อให้พนักงานตรวจสอบ";
+const CUSTOMER_VISIBLE_ERROR_MESSAGES = new Set([
+  PHONE_LOOKUP_LIMIT_MESSAGE,
+  PHONE_REQUIRED_MESSAGE,
+  AMBIGUOUS_CUSTOMER_MESSAGE,
+  LINE_ALREADY_LINKED_MESSAGE,
+]);
 
 export type LiffLinkResult =
   | { status: "LINKED"; customerId: string; customerName: string }
@@ -20,20 +28,74 @@ export type LiffLinkResult =
   | { status: "BLOCKED"; message: string }
   | { status: "AMBIGUOUS"; message: string };
 
-export function assertLiffPhoneLookupAllowed(lineUserId: string) {
-  const now = Date.now();
-  const existing = phoneLookupAttempts.get(lineUserId);
+export function isLiffCustomerVisibleError(error: unknown): error is Error {
+  return error instanceof Error && CUSTOMER_VISIBLE_ERROR_MESSAGES.has(error.message);
+}
 
-  if (!existing || existing.resetAt <= now) {
-    phoneLookupAttempts.set(lineUserId, { count: 1, resetAt: now + PHONE_LOOKUP_WINDOW_MS });
-    return;
+export function getLiffPhoneLookupThrottleKeys(lineUserId: string, request: Request) {
+  const { ipAddress } = getRequestContextFromHeaders(request.headers);
+  return [
+    `${LIFF_PHONE_LOOKUP_PREFIX}:line:${lineUserId}`,
+    ipAddress ? `${LIFF_PHONE_LOOKUP_PREFIX}:ip:${ipAddress}` : null,
+  ].filter((key): key is string => Boolean(key));
+}
+
+export async function assertLiffPhoneLookupAllowed(keys: string[]) {
+  if (keys.length === 0) return;
+
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - PHONE_LOOKUP_WINDOW_MS);
+  const lockedUntil = new Date(now.getTime() + PHONE_LOOKUP_WINDOW_MS);
+  const records = await db.loginThrottle.findMany({
+    where: { key: { in: keys } },
+  });
+  const recordMap = new Map(records.map((record) => [record.key, record]));
+  const isBlocked = records.some((record) => {
+    if (record.lockedUntil && record.lockedUntil > now) return true;
+    return (
+      record.firstFailureAt !== null &&
+      record.firstFailureAt >= windowStart &&
+      record.failures >= PHONE_LOOKUP_LIMIT
+    );
+  });
+
+  if (isBlocked) {
+    throw new Error(PHONE_LOOKUP_LIMIT_MESSAGE);
   }
 
-  if (existing.count >= PHONE_LOOKUP_LIMIT) {
-    throw new Error("ลองหลายครั้งเกินไป กรุณารอประมาณ 1 ชั่วโมงแล้วลองใหม่อีกครั้ง");
-  }
+  await db.$transaction(
+    keys.map((key) => {
+      const current = recordMap.get(key);
+      const shouldReset =
+        !current || current.firstFailureAt === null || current.firstFailureAt < windowStart;
 
-  existing.count += 1;
+      if (shouldReset) {
+        return db.loginThrottle.upsert({
+          where: { key },
+          create: {
+            key,
+            failures: 1,
+            firstFailureAt: now,
+            lockedUntil: null,
+          },
+          update: {
+            failures: 1,
+            firstFailureAt: now,
+            lockedUntil: null,
+          },
+        });
+      }
+
+      const failures = current.failures + 1;
+      return db.loginThrottle.update({
+        where: { key },
+        data: {
+          failures,
+          lockedUntil: failures >= PHONE_LOOKUP_LIMIT ? lockedUntil : null,
+        },
+      });
+    }),
+  );
 }
 
 async function writeCustomerLineAudit(input: {
@@ -71,13 +133,15 @@ export async function resolveLiffCustomerFromPhone(input: {
   lineUserId: string;
   displayName: string | null;
   phone: string;
+  throttleKeys: string[];
 }): Promise<LiffLinkResult> {
-  assertLiffPhoneLookupAllowed(input.lineUserId);
+  await assertLiffPhoneLookupAllowed(input.throttleKeys);
 
   const normalizedPhone = normalizeCustomerPhone(input.phone);
   if (!normalizedPhone) {
-    throw new Error("กรุณาระบุเบอร์โทรศัพท์");
+    throw new Error(PHONE_REQUIRED_MESSAGE);
   }
+
   const phoneVariants = buildCustomerPhoneLookupValues(normalizedPhone);
   const matchedCustomers = await db.customer.findMany({
     where: { phone: { in: phoneVariants }, isActive: true },
@@ -98,7 +162,7 @@ export async function resolveLiffCustomerFromPhone(input: {
     });
     return {
       status: "AMBIGUOUS",
-      message: "พบบัญชีหลายรายการจากเบอร์นี้ กรุณาติดต่อร้านเพื่อยืนยันข้อมูล",
+      message: AMBIGUOUS_CUSTOMER_MESSAGE,
     };
   }
 
@@ -113,7 +177,7 @@ export async function resolveLiffCustomerFromPhone(input: {
     });
     return {
       status: "BLOCKED",
-      message: "เบอร์นี้ผูกกับ LINE อื่นแล้ว กรุณาติดต่อร้านเพื่อให้พนักงานตรวจสอบ",
+      message: LINE_ALREADY_LINKED_MESSAGE,
     };
   }
 
@@ -142,7 +206,7 @@ export async function resolveLiffCustomerFromPhone(input: {
   const customer = await db.customer.create({
     data: {
       code,
-      name: input.displayName?.trim() || "ลูกค้า LINE",
+      name: input.displayName?.trim() || LINE_CUSTOMER_FALLBACK_NAME,
       phone: normalizedPhone,
       source: "LINE_LIFF",
       lineUserId: input.lineUserId,
