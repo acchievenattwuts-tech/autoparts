@@ -4,16 +4,24 @@ import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { printWhenReady } from "@/components/shared/print-assets";
 
-export default function PrintToPdfButton({ label = "บันทึก PDF" }: { label?: string }) {
+export default function PrintToPdfButton({
+  label = "บันทึก PDF",
+  externalUrl,
+}: {
+  label?: string;
+  externalUrl?: string | null;
+}) {
   const [shouldOpenExternal, setShouldOpenExternal] = useState(false);
 
   useEffect(() => {
-    setShouldOpenExternal(window.liff?.isInClient?.() === true && typeof window.liff?.openWindow === "function");
-  }, []);
+    setShouldOpenExternal(
+      Boolean(externalUrl) && window.liff?.isInClient?.() === true && typeof window.liff?.openWindow === "function",
+    );
+  }, [externalUrl]);
 
   const handleClick = async () => {
-    if (shouldOpenExternal && window.liff?.openWindow) {
-      window.liff.openWindow({ url: window.location.href, external: true });
+    if (shouldOpenExternal && externalUrl && window.liff?.openWindow) {
+      window.liff.openWindow({ url: externalUrl, external: true });
       return;
     }
 

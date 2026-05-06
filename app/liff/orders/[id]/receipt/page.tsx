@@ -11,7 +11,11 @@ import { AuditAction, PaymentMethod, SalePaymentType } from "@/lib/generated/pri
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
+import {
+  buildLiffPrintDocumentUrl,
+  buildPrintDocumentVerifyBadge,
+  verifyLiffPrintDocumentToken,
+} from "@/lib/verify-token";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +24,11 @@ export default async function LiffOrderReceiptPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ receiptId?: string }>;
+  searchParams: Promise<{ printToken?: string; receiptId?: string }>;
 }) {
-  const [{ id }, { receiptId }, customer, shopConfig, primaryTransferAccount] = await Promise.all([
+  const [{ id }, { printToken, receiptId }, shopConfig, primaryTransferAccount] = await Promise.all([
     params,
     searchParams,
-    requireLiffCustomer(),
     getPublicSiteConfig(),
     db.cashBankAccount.findFirst({
       where: {
@@ -42,11 +45,14 @@ export default async function LiffOrderReceiptPage({
       },
     }),
   ]);
+  const tokenAccess = verifyLiffPrintDocumentToken({ token: printToken, kind: "receipt", saleId: id, receiptId });
+  const liffCustomer = tokenAccess ? null : await requireLiffCustomer();
+  const customerId = tokenAccess?.customerId ?? liffCustomer!.id;
 
   const sale = await db.sale.findFirst({
     where: {
       id,
-      customerId: customer.id,
+      customerId,
       status: "ACTIVE",
     },
     select: {
@@ -122,23 +128,34 @@ export default async function LiffOrderReceiptPage({
       docNo: sale.saleNo,
       variant: "LIFF_COPY",
     });
-    const requestContext = await getRequestContext();
-    void safeWriteAuditLog({
-      ...requestContext,
-      action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
-      entityType: "Sale",
-      entityId: sale.id,
-      entityRef: sale.saleNo,
-      meta: {
-        customerId: customer.id,
-        lineLinkedAt: customer.lineLinkedAt,
-        receiptSource: "cash_sale",
-        source: "LIFF",
-      },
+    const externalPrintUrl = buildLiffPrintDocumentUrl({
+      kind: "receipt",
+      saleId: sale.id,
+      customerId,
     });
+    if (!tokenAccess && liffCustomer) {
+      const requestContext = await getRequestContext();
+      void safeWriteAuditLog({
+        ...requestContext,
+        action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
+        entityType: "Sale",
+        entityId: sale.id,
+        entityRef: sale.saleNo,
+        meta: {
+          customerId,
+          lineLinkedAt: liffCustomer.lineLinkedAt,
+          receiptSource: "cash_sale",
+          source: "LIFF",
+        },
+      });
+    }
 
     return (
-      <LiffPrintShell backHref={`/liff/orders/${sale.id}`} buttonLabel="บันทึกใบเสร็จ PDF">
+      <LiffPrintShell
+        backHref={`/liff/orders/${sale.id}`}
+        buttonLabel="บันทึกใบเสร็จ PDF"
+        externalUrl={externalPrintUrl}
+      >
         <SharedSalesDeliveryPrintDocument
           sale={{
             ...sale,
@@ -169,7 +186,7 @@ export default async function LiffOrderReceiptPage({
         some: {
           sale: {
             id: sale.id,
-            customerId: customer.id,
+            customerId,
           },
         },
       },
@@ -199,24 +216,36 @@ export default async function LiffOrderReceiptPage({
     docNo: receipt.receiptNo,
     variant: "LIFF_COPY",
   });
-  const requestContext = await getRequestContext();
-  void safeWriteAuditLog({
-    ...requestContext,
-    action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
-    entityType: "Receipt",
-    entityId: receipt.id,
-    entityRef: receipt.receiptNo,
-    meta: {
-      customerId: customer.id,
-      lineLinkedAt: customer.lineLinkedAt,
-      saleId: sale.id,
-      saleNo: sale.saleNo,
-      source: "LIFF",
-    },
+  const externalPrintUrl = buildLiffPrintDocumentUrl({
+    kind: "receipt",
+    saleId: sale.id,
+    customerId,
+    receiptId: receipt.id,
   });
+  if (!tokenAccess && liffCustomer) {
+    const requestContext = await getRequestContext();
+    void safeWriteAuditLog({
+      ...requestContext,
+      action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
+      entityType: "Receipt",
+      entityId: receipt.id,
+      entityRef: receipt.receiptNo,
+      meta: {
+        customerId,
+        lineLinkedAt: liffCustomer.lineLinkedAt,
+        saleId: sale.id,
+        saleNo: sale.saleNo,
+        source: "LIFF",
+      },
+    });
+  }
 
   return (
-    <LiffPrintShell backHref={`/liff/orders/${sale.id}`} buttonLabel="บันทึกใบเสร็จ PDF">
+    <LiffPrintShell
+      backHref={`/liff/orders/${sale.id}`}
+      buttonLabel="บันทึกใบเสร็จ PDF"
+      externalUrl={externalPrintUrl}
+    >
       <SharedReceiptSettlementPrintDocument
         receipt={{
           ...receipt,
@@ -244,10 +273,12 @@ export default async function LiffOrderReceiptPage({
 function LiffPrintShell({
   backHref,
   buttonLabel,
+  externalUrl,
   children,
 }: {
   backHref: string;
   buttonLabel: string;
+  externalUrl?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -286,7 +317,7 @@ function LiffPrintShell({
             <ChevronLeft size={16} />
             กลับ
           </Link>
-          <PrintToPdfButton label={buttonLabel} />
+          <PrintToPdfButton label={buttonLabel} externalUrl={externalUrl} />
         </div>
         <p className="mx-auto mt-2 max-w-[900px] text-right text-[11px] text-slate-500">
           หากเปิดใน LINE ระบบจะพาไปเบราว์เซอร์ภายนอกก่อนบันทึก/พิมพ์ PDF

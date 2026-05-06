@@ -10,18 +10,24 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
+import {
+  buildLiffPrintDocumentUrl,
+  buildPrintDocumentVerifyBadge,
+  verifyLiffPrintDocumentToken,
+} from "@/lib/verify-token";
 
 export const dynamic = "force-dynamic";
 
 export default async function LiffOrderInvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ printToken?: string }>;
 }) {
-  const [{ id }, customer, shopConfig, primaryTransferAccount] = await Promise.all([
+  const [{ id }, { printToken }, shopConfig, primaryTransferAccount] = await Promise.all([
     params,
-    requireLiffCustomer(),
+    searchParams,
     getPublicSiteConfig(),
     db.cashBankAccount.findFirst({
       where: {
@@ -38,11 +44,14 @@ export default async function LiffOrderInvoicePage({
       },
     }),
   ]);
+  const tokenAccess = verifyLiffPrintDocumentToken({ token: printToken, kind: "invoice", saleId: id });
+  const liffCustomer = tokenAccess ? null : await requireLiffCustomer();
+  const customerId = tokenAccess?.customerId ?? liffCustomer!.id;
 
   const sale = await db.sale.findFirst({
     where: {
       id,
-      customerId: customer.id,
+      customerId,
       status: "ACTIVE",
     },
     select: {
@@ -102,19 +111,26 @@ export default async function LiffOrderInvoicePage({
     docNo: sale.saleNo,
     variant: "LIFF_COPY",
   });
-  const requestContext = await getRequestContext();
-  void safeWriteAuditLog({
-    ...requestContext,
-    action: AuditAction.CUSTOMER_VIEW_INVOICE_PDF,
-    entityType: "Sale",
-    entityId: sale.id,
-    entityRef: sale.saleNo,
-    meta: {
-      customerId: customer.id,
-      lineLinkedAt: customer.lineLinkedAt,
-      source: "LIFF",
-    },
+  const externalPrintUrl = buildLiffPrintDocumentUrl({
+    kind: "invoice",
+    saleId: sale.id,
+    customerId,
   });
+  if (!tokenAccess && liffCustomer) {
+    const requestContext = await getRequestContext();
+    void safeWriteAuditLog({
+      ...requestContext,
+      action: AuditAction.CUSTOMER_VIEW_INVOICE_PDF,
+      entityType: "Sale",
+      entityId: sale.id,
+      entityRef: sale.saleNo,
+      meta: {
+        customerId,
+        lineLinkedAt: liffCustomer.lineLinkedAt,
+        source: "LIFF",
+      },
+    });
+  }
 
   return (
     <>
@@ -152,7 +168,10 @@ export default async function LiffOrderInvoicePage({
             <ChevronLeft size={16} />
             กลับ
           </Link>
-          <PrintToPdfButton label={sale.paymentType === "CREDIT_SALE" ? "บันทึกใบแจ้งหนี้ PDF" : "บันทึกใบเสร็จ PDF"} />
+          <PrintToPdfButton
+            label={sale.paymentType === "CREDIT_SALE" ? "บันทึกใบแจ้งหนี้ PDF" : "บันทึกใบเสร็จ PDF"}
+            externalUrl={externalPrintUrl}
+          />
         </div>
         <p className="mx-auto mt-2 max-w-[900px] text-right text-[11px] text-slate-500">
           หากเปิดใน LINE ระบบจะพาไปเบราว์เซอร์ภายนอกก่อนบันทึก/พิมพ์ PDF

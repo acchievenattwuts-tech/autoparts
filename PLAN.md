@@ -6376,6 +6376,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF/admin mobile stability fix (2026-05-06): LIFF refreshes Server Components after session sync so newly-set cookies are read consistently across devices, and mobile delivery queue no longer intercepts touch scrolling with custom pull-to-refresh handlers
 - [x] Admin delivery proof + LIFF warranty status fix (2026-05-06): delivery proof uploads now tolerate phone camera/compressed image filenames by deriving storage extension from image content type, the mobile proof button is more prominent, and LIFF warranty claim history now uses the same customer-facing `REPLACE_NOW` status logic as the claim pages
 - [x] LIFF document PDF UX fix (2026-05-06): customer order document links now say `ดู/บันทึก...` instead of implying instant download, cash-sale duplicate receipt actions were collapsed to one document entry, and print-preview buttons open the document in an external browser from LINE before saving/printing PDF
+- [x] LIFF external PDF access fix (2026-05-06): external-browser print links now use short-lived signed document tokens instead of reopening the LIFF URL, so Safari/Chrome can render the print form without losing LIFF session and falling into LINE Login
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
 
