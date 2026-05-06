@@ -244,6 +244,7 @@ const SharedReceiptSettlementPrintDocument = ({
 
         <div className="receipt-footer">
           <PrintSignatureGrid
+            reserveVerifySpace={Boolean(verify)}
             columns={[
               {
                 label: "ผู้รับเงิน",

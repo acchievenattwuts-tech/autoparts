@@ -85,7 +85,7 @@ const DeliveryPrintPage = async ({
         signerName: true,
         signerSignatureUrl: true,
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
-        user: { select: { name: true } },
+        user: { select: { name: true, signatureUrl: true } },
         customer: { select: { name: true, phone: true, address: true } },
         items: {
           select: {
@@ -196,7 +196,7 @@ const DeliveryPrintPage = async ({
           return (
             <SharedSalesDeliveryPrintDocument
               key={sale.id}
-              sale={sale}
+              sale={{ ...sale, signerSignatureUrl: sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null }}
               shopConfig={shopConfig}
               dueDate={dueDate}
               signerDisplayName={signerDisplayName}

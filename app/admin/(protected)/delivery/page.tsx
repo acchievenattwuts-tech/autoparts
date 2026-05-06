@@ -113,7 +113,19 @@ const DeliveryPage = async ({
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[1760px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[150px]" />
+              <col className="w-[120px]" />
+              <col className="w-[260px]" />
+              <col className="w-[390px]" />
+              <col className="w-[130px]" />
+              <col className="w-[150px]" />
+              <col className="w-[170px]" />
+              <col className="w-[170px]" />
+              <col className="w-[300px]" />
+              <col className="w-[120px]" />
+            </colgroup>
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบขาย</th>
@@ -142,14 +154,7 @@ const DeliveryPage = async ({
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
                       {formatDateThai(s.saleDate)}
                     </td>
-                    <td className="py-3 px-4">
-                      <DeliveryStaffPicker
-                        shippingStatus={s.shippingStatus}
-                        deliveryStaffName={s.deliveryStaff?.name ?? null}
-                        deliveryStaffEmail={s.deliveryStaff?.email ?? null}
-                      />
-                    </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 align-top">
                       <p className="font-medium text-gray-900">
                         {s.customer?.name ?? s.customerName ?? "-"}
                       </p>
@@ -157,13 +162,13 @@ const DeliveryPage = async ({
                         <p className="text-xs text-gray-400">{s.customer.phone}</p>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-gray-600 max-w-xs">
-                      <p className="truncate text-xs">{s.shippingAddress ?? "-"}</p>
+                    <td className="py-3 px-4 align-top text-gray-600">
+                      <p className="whitespace-normal break-words text-xs leading-relaxed">{s.shippingAddress ?? "-"}</p>
                     </td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    <td className="py-3 px-4 align-top text-right font-medium text-gray-900">
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 align-top">
                       {s.paymentType === "CASH_SALE" ? (
                         <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
                           ชำระแล้ว
@@ -174,7 +179,7 @@ const DeliveryPage = async ({
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 align-top">
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SHIPPING_STATUS_BADGE[s.shippingStatus]}`}
                       >
@@ -191,7 +196,14 @@ const DeliveryPage = async ({
                         </p>
                       ) : null}
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 align-top">
+                      <DeliveryStaffPicker
+                        shippingStatus={s.shippingStatus}
+                        deliveryStaffName={s.deliveryStaff?.name ?? null}
+                        deliveryStaffEmail={s.deliveryStaff?.email ?? null}
+                      />
+                    </td>
+                    <td className="py-3 px-4 align-top">
                       <DeliveryUpdateButton
                         saleId={s.id}
                         currentStatus={s.shippingStatus}
@@ -199,7 +211,7 @@ const DeliveryPage = async ({
                         currentShippingMethod={s.shippingMethod ?? "NONE"}
                       />
                     </td>
-                    <td className="py-3 px-4">
+                    <td className="py-3 px-4 align-top">
                       <div className="flex items-center gap-2">
                         <Link
                           href={`/admin/sales/${s.id}`}

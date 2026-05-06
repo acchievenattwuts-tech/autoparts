@@ -13,11 +13,16 @@ type PrintSignatureColumn = {
 const PrintSignatureGrid = ({
   columns,
   className = "text-center text-xs",
+  reserveVerifySpace = false,
 }: {
   columns: PrintSignatureColumn[];
   className?: string;
+  reserveVerifySpace?: boolean;
 }) => (
-  <div className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${className}`} style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
+  <div
+    className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${reserveVerifySpace ? "print:mr-36" : ""} ${className}`}
+    style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
+  >
     {columns.map((column, index) => (
       <div key={`${column.label}-${index}`} className={index < columns.length - 1 ? `border-r ${PRINT_BODY_BORDER_CLASS}` : ""}>
         <div className={column.signatureUrl ? "flex h-16 items-end justify-center px-4" : "h-16"}>
@@ -28,6 +33,7 @@ const PrintSignatureGrid = ({
               width={200}
               height={64}
               className="max-h-[64px] w-auto object-contain"
+              loading="eager"
               unoptimized
             />
           ) : null}

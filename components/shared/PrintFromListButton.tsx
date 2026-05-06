@@ -2,6 +2,7 @@
 
 import { Printer } from "lucide-react";
 import { useState } from "react";
+import { waitForPrintAssets } from "./print-assets";
 
 interface Props {
   href: string;
@@ -21,8 +22,11 @@ const PrintFromListButton = ({ href, label = "พิมพ์" }: Props) => {
     document.body.appendChild(iframe);
 
     iframe.onload = () => {
-      iframe.contentWindow?.print();
-      setLoading(false);
+      void (async () => {
+        await waitForPrintAssets({ root: iframe.contentDocument });
+        iframe.contentWindow?.print();
+        setLoading(false);
+      })();
       setTimeout(() => {
         if (document.body.contains(iframe)) document.body.removeChild(iframe);
       }, 10000);

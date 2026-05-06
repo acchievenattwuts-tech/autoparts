@@ -19,7 +19,15 @@ const PrintDocumentHeader = ({
     <div className="flex items-start gap-3">
       {shopConfig.shopLogoUrl ? (
         <div className="relative h-14 w-14 shrink-0 overflow-hidden">
-          <Image src={shopConfig.shopLogoUrl} alt="Shop logo" fill className="object-contain" sizes="56px" />
+          <Image
+            src={shopConfig.shopLogoUrl}
+            alt="Shop logo"
+            fill
+            className="object-contain"
+            sizes="56px"
+            loading="eager"
+            unoptimized
+          />
         </div>
       ) : null}
       <div className="space-y-0.5 text-xs text-gray-600">

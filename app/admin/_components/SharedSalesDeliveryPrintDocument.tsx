@@ -375,6 +375,7 @@ const SharedSalesDeliveryPrintDocument = ({
         <div className="receipt-footer">
           {sale.paymentType === "CREDIT_SALE" ? (
             <PrintSignatureGrid
+              reserveVerifySpace={Boolean(verify)}
               columns={[
                 {
                   label: "ผู้ส่งของ",
@@ -388,6 +389,7 @@ const SharedSalesDeliveryPrintDocument = ({
             />
           ) : (
             <PrintSignatureGrid
+              reserveVerifySpace={Boolean(verify)}
               columns={[
                 {
                   label: "ผู้รับเงิน",

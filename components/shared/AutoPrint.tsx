@@ -2,13 +2,16 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
+import { printWhenReady } from "./print-assets";
 
 const AutoPrint = () => {
   const searchParams = useSearchParams();
 
   useEffect(() => {
     if (searchParams.get("print") === "1") {
-      const timer = setTimeout(() => window.print(), 300);
+      const timer = setTimeout(() => {
+        void printWhenReady();
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [searchParams]);
