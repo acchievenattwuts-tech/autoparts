@@ -64,7 +64,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
   const handleUnlinkLine = () => {
     if (!customer?.id || !hasLineLink) return;
     const confirmed = window.confirm(
-      "ยืนยันปลดการผูก LINE ของลูกค้ารายนี้? ลูกค้าจะต้องยืนยันเบอร์ใหม่อีกครั้งใน LINE LIFF",
+      "ยืนยันปลดการเชื่อมต่อ LINE ของลูกค้ารายนี้? ลูกค้าจะต้องยืนยันเบอร์ใหม่อีกครั้งผ่าน LINE",
     );
     if (!confirmed) return;
 
@@ -77,7 +77,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
         setError(result.error);
         return;
       }
-      setSuccess("ปลดการผูก LINE เรียบร้อยแล้ว ลูกค้าสามารถผูกจาก production ได้อีกครั้ง");
+      setSuccess("ปลดการเชื่อมต่อ LINE เรียบร้อยแล้ว ลูกค้าสามารถยืนยันเบอร์ผ่าน LINE ได้อีกครั้ง");
       router.refresh();
     });
   };
@@ -231,13 +231,13 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h3 className="font-kanit text-base font-semibold text-amber-900 dark:text-amber-100">
-                การผูกบัญชี LINE
+                การเชื่อมต่อบัญชี LINE
               </h3>
               <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
-                ใช้เมื่อเบอร์นี้เคยผูกกับ LIFF preview หรือ LINE อื่นแล้ว ต้องการให้ลูกค้าผูกใหม่จาก production
+                ใช้เมื่อลูกค้าเปลี่ยนบัญชี LINE หรือไม่สามารถเข้าใช้งานบริการผ่าน LINE ได้
               </p>
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                หลังปลดแล้ว ลูกค้าต้องเปิด LINE LIFF และยืนยันเบอร์ {customer.phone ?? "เดิม"} ใหม่อีกครั้ง
+                หลังปลดการเชื่อมต่อ ลูกค้าต้องเปิดบริการผ่าน LINE และยืนยันเบอร์ {customer.phone ?? "เดิม"} ใหม่อีกครั้ง
               </p>
             </div>
             <button
@@ -247,7 +247,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-400/40 dark:bg-slate-950/80 dark:text-amber-100 dark:hover:bg-amber-500/15"
             >
               <Link2Off size={16} />
-              {isUnlinkPending ? "กำลังปลด..." : "ปลดการผูก LINE"}
+              {isUnlinkPending ? "กำลังปลด..." : "ปลดการเชื่อมต่อ LINE"}
             </button>
           </div>
         </div>
