@@ -45,6 +45,9 @@ declare global {
 
 const LiffContext = createContext<LiffContextValue | null>(null);
 
+const isExternalPrintRequest = () =>
+  typeof window !== "undefined" && new URLSearchParams(window.location.search).has("printToken");
+
 export function useLiff() {
   const value = useContext(LiffContext);
   if (!value) {
@@ -57,11 +60,12 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const initialPathnameRef = useRef(pathname);
+  const [isPrintTokenRequest] = useState(isExternalPrintRequest);
   const [scriptReady, setScriptReady] = useState(false);
   const [idToken, setIdToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<LiffProfile | null>(null);
-  const [isReady, setIsReady] = useState(false);
-  const [isLinked, setIsLinked] = useState(false);
+  const [isReady, setIsReady] = useState(isPrintTokenRequest);
+  const [isLinked, setIsLinked] = useState(isPrintTokenRequest);
   const [error, setError] = useState<string | null>(null);
 
   const refreshSession = useCallback(async () => {
@@ -89,6 +93,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
   }, [idToken, pathname, router]);
 
   useEffect(() => {
+    if (isPrintTokenRequest) return;
     if (!scriptReady || !window.liff) return;
 
     let isMounted = true;
@@ -154,7 +159,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [router, scriptReady]);
+  }, [isPrintTokenRequest, router, scriptReady]);
 
   const value = useMemo(
     () => ({ idToken, profile, isReady, isLinked, error, refreshSession }),
@@ -163,15 +168,17 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
   return (
     <LiffContext.Provider value={value}>
-      <Script
-        src="https://static.line-scdn.net/liff/edge/2/sdk.js"
-        strategy="afterInteractive"
-        onLoad={() => setScriptReady(true)}
-        onError={() => {
-          setError("โหลด LINE LIFF SDK ไม่สำเร็จ");
-          setIsReady(true);
-        }}
-      />
+      {isPrintTokenRequest ? null : (
+        <Script
+          src="https://static.line-scdn.net/liff/edge/2/sdk.js"
+          strategy="afterInteractive"
+          onLoad={() => setScriptReady(true)}
+          onError={() => {
+            setError("โหลด LINE LIFF SDK ไม่สำเร็จ");
+            setIsReady(true);
+          }}
+        />
+      )}
       {children}
     </LiffContext.Provider>
   );
