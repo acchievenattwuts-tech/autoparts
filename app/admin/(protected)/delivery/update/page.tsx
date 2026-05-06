@@ -88,6 +88,17 @@ const DeliveryUpdatePage = async ({
         deliveryStaffId: true,
         customer: { select: { name: true, phone: true } },
         deliveryStaff: { select: { name: true } },
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            salePrice: true,
+            totalAmount: true,
+            product: { select: { code: true, name: true, saleUnitName: true } },
+            lotItems: { select: { lotNo: true, qty: true } },
+          },
+          orderBy: { id: "asc" },
+        },
         _count: { select: { deliveryProofs: true } },
       },
     }),
@@ -132,6 +143,19 @@ const DeliveryUpdatePage = async ({
     deliveryStaffId: s.deliveryStaffId,
     deliveryStaffName: s.deliveryStaff?.name ?? null,
     proofCount: s._count.deliveryProofs,
+    items: s.items.map((item) => ({
+      id: item.id,
+      productCode: item.product.code,
+      productName: item.product.name,
+      unitName: item.product.saleUnitName,
+      quantity: Number(item.quantity),
+      salePrice: Number(item.salePrice),
+      totalAmount: Number(item.totalAmount),
+      lots: item.lotItems.map((lot) => ({
+        lotNo: lot.lotNo,
+        qty: Number(lot.qty),
+      })),
+    })),
   }));
 
   const canReorder = canUpdate && !statusFilter && !hasMore && items.length > 1;

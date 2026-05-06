@@ -12,6 +12,7 @@ import {
   Hourglass,
   Loader2,
   MapPin,
+  Package,
   PackageCheck,
   Phone,
   RotateCcw,
@@ -35,6 +36,17 @@ import { formatDateThai } from "@/lib/th-date";
 type ShippingStatus = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
 type CardMode = "view" | "reorder";
 
+type DeliveryItem = {
+  id: string;
+  productCode: string;
+  productName: string;
+  unitName: string;
+  quantity: number;
+  salePrice: number;
+  totalAmount: number;
+  lots: { lotNo: string; qty: number }[];
+};
+
 type Props = {
   saleId: string;
   saleNo: string;
@@ -51,6 +63,7 @@ type Props = {
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
   proofCount: number;
+  items: DeliveryItem[];
   queueIndex: number;
   mode: CardMode;
   canUpdate: boolean;
@@ -72,6 +85,12 @@ const STATUS_DOT = {
   OUT_FOR_DELIVERY: "bg-sky-400",
   DELIVERED: "bg-emerald-500",
 } satisfies Record<ShippingStatus, string>;
+
+const money = (value: number) =>
+  `฿${value.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 const PREV_STATUS: Partial<Record<ShippingStatus, ShippingStatus>> = {
   OUT_FOR_DELIVERY: "PENDING",
@@ -131,6 +150,7 @@ const MobileDeliveryCard = ({
   amountRemain,
   deliveryStaffName,
   proofCount,
+  items,
   queueIndex,
   mode,
   canUpdate,
@@ -157,6 +177,7 @@ const MobileDeliveryCard = ({
   const [shippingMethodInput, setShippingMethodInput] = useState(shippingMethod);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showAllItems, setShowAllItems] = useState(false);
 
   const [prevTrackingNo, setPrevTrackingNo] = useState(trackingNo ?? "");
   const propTracking = trackingNo ?? "";
@@ -182,6 +203,9 @@ const MobileDeliveryCard = ({
     shippingStatus,
     deliveryStaffName,
   });
+  const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  const previewItems = items.slice(0, 2);
+  const hasMoreItems = items.length > previewItems.length;
 
   const runUpdate = (nextStatus: ShippingStatus) => {
     setError("");
@@ -373,6 +397,89 @@ const MobileDeliveryCard = ({
         {shippingAddress ? (
           <div className="rounded-2xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-white/5 dark:text-slate-300">
             {shippingAddress}
+          </div>
+        ) : null}
+
+        {items.length > 0 ? (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 dark:border-sky-400/20 dark:bg-sky-400/10">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-slate-100">
+                  <Package size={16} className="text-blue-700 dark:text-sky-300" />
+                  <span>รายการสินค้า</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                  {items.length.toLocaleString("th-TH")} รายการ · รวม {totalQuantity.toLocaleString("th-TH")} ชิ้น
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllItems((value) => !value)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 shadow-sm dark:border-sky-400/20 dark:bg-slate-950 dark:text-sky-200"
+              >
+                {showAllItems ? "ซ่อน" : "ดูสินค้าทั้งหมด"}
+                {showAllItems ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            </div>
+
+            {!showAllItems ? (
+              <div className="mt-3 space-y-1.5">
+                {previewItems.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 truncate text-gray-700 dark:text-slate-200">
+                      <span className="font-mono text-gray-500 dark:text-slate-400">{item.productCode}</span>{" "}
+                      {item.productName}
+                    </span>
+                    <span className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">
+                      x{item.quantity.toLocaleString("th-TH")}
+                    </span>
+                  </div>
+                ))}
+                {hasMoreItems ? (
+                  <p className="text-xs font-medium text-blue-700 dark:text-sky-300">
+                    + อีก {(items.length - previewItems.length).toLocaleString("th-TH")} รายการ
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {items.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-blue-100 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-slate-950">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-semibold text-blue-700 dark:text-sky-300">
+                          {item.productCode}
+                        </p>
+                        <p className="mt-0.5 text-sm font-semibold leading-snug text-gray-900 dark:text-slate-100">
+                          {item.productName}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-slate-200">
+                        {item.quantity.toLocaleString("th-TH")} {item.unitName}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-gray-50 px-2 py-1.5 dark:bg-white/5">
+                        <p className="text-gray-500 dark:text-slate-400">ราคา/หน่วย</p>
+                        <p className="font-semibold text-gray-900 dark:text-slate-100">{money(item.salePrice)}</p>
+                      </div>
+                      <div className="rounded-lg bg-blue-50 px-2 py-1.5 text-right dark:bg-sky-400/10">
+                        <p className="text-gray-500 dark:text-slate-400">รวม</p>
+                        <p className="font-bold text-blue-800 dark:text-sky-200">{money(item.totalAmount)}</p>
+                      </div>
+                    </div>
+                    {item.lots.length > 0 ? (
+                      <p className="mt-2 text-[11px] text-gray-500 dark:text-slate-400">
+                        Lot:{" "}
+                        {item.lots
+                          .map((lot) => `${lot.lotNo} x${lot.qty.toLocaleString("th-TH")}`)
+                          .join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
 

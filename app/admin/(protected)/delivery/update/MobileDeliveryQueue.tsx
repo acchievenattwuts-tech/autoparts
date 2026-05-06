@@ -31,6 +31,17 @@ import QueueHeader, { type Mode } from "./QueueHeader";
 type ShippingStatus = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
 
 type Item = {
+  id: string;
+  productCode: string;
+  productName: string;
+  unitName: string;
+  quantity: number;
+  salePrice: number;
+  totalAmount: number;
+  lots: { lotNo: string; qty: number }[];
+};
+
+type QueueItem = {
   saleId: string;
   saleNo: string;
   saleDate: string;
@@ -47,6 +58,7 @@ type Item = {
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
   proofCount: number;
+  items: Item[];
 };
 
 type Counts = {
@@ -55,7 +67,7 @@ type Counts = {
 };
 
 type Props = {
-  items: Item[];
+  items: QueueItem[];
   counts: Counts;
   currentFilter: ShippingStatus | null;
   canUpdate: boolean;
@@ -83,7 +95,7 @@ const MobileDeliveryQueue = ({
   const [draftOrder, setDraftOrder] = useState<string[]>(initialIds);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [selectedProofSale, setSelectedProofSale] = useState<Item | null>(null);
+  const [selectedProofSale, setSelectedProofSale] = useState<QueueItem | null>(null);
 
   const [prevInitialIds, setPrevInitialIds] = useState(initialIds);
   if (prevInitialIds !== initialIds) {
@@ -97,7 +109,7 @@ const MobileDeliveryQueue = ({
   const itemMap = useMemo(() => new Map(items.map((i) => [i.saleId, i])), [items]);
   const orderedItems =
     mode === "reorder"
-      ? draftOrder.map((id) => itemMap.get(id)).filter((i): i is Item => Boolean(i))
+      ? draftOrder.map((id) => itemMap.get(id)).filter((i): i is QueueItem => Boolean(i))
       : items;
   const originalIds = useMemo(() => items.map((i) => i.saleId), [items]);
   const hasChanges = draftOrder.some((id, index) => id !== originalIds[index]);
@@ -229,6 +241,7 @@ const MobileDeliveryQueue = ({
                   deliveryStaffId={item.deliveryStaffId}
                   deliveryStaffName={item.deliveryStaffName}
                   proofCount={item.proofCount}
+                  items={item.items}
                   queueIndex={index}
                   mode={mode}
                   canUpdate={canUpdate}

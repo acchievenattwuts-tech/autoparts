@@ -780,9 +780,15 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
 }
 
 .liff-theme-root[data-liff-theme="dark"] .print-document-root {
-  color-scheme: light;
+  color-scheme: only light;
+  forced-color-adjust: none;
   background-color: #ffffff !important;
   color: #111827 !important;
+}
+
+.liff-theme-root[data-liff-theme="dark"] .print-document-root * {
+  color-scheme: only light;
+  forced-color-adjust: none;
 }
 
 .liff-theme-root[data-liff-theme="dark"] .print-document-root :is(.bg-white, .bg-white\/95, .bg-white\/90, .bg-white\/80) {

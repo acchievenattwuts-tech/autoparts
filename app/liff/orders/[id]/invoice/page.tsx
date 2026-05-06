@@ -142,12 +142,14 @@ export default async function LiffOrderInvoicePage({
         html,
         body {
           background: #ffffff !important;
-          color-scheme: light !important;
+          color-scheme: only light !important;
         }
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
           #receipt, #receipt * {
+            color-scheme: only light !important;
+            forced-color-adjust: none !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -166,6 +168,12 @@ export default async function LiffOrderInvoicePage({
             color: #111827 !important;
             box-sizing: border-box;
           }
+          #receipt :is(.bg-white, .bg-white\/95, .bg-white\/90, .bg-white\/80) { background-color: #ffffff !important; }
+          #receipt :is(.bg-gray-50, .hover\:bg-gray-50:hover) { background-color: #f9fafb !important; }
+          #receipt :is(.bg-gray-100, .hover\:bg-gray-100:hover, .bg-gray-200, .hover\:bg-gray-200:hover) { background-color: #f3f4f6 !important; }
+          #receipt :is(.text-gray-900, .text-gray-800, .text-gray-700) { color: #111827 !important; }
+          #receipt :is(.text-gray-600, .text-gray-500, .text-gray-400) { color: #6b7280 !important; }
+          #receipt .text-\\[\\#1e3a5f\\] { color: #1e3a5f !important; }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }
