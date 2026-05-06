@@ -133,7 +133,7 @@ export function buildLiffPrintDocumentUrl({
   if (!token) return null;
 
   const receiptQuery = receiptId ? `&receiptId=${encodeURIComponent(receiptId)}` : "";
-  return `${getAppBaseUrl()}/liff/orders/${encodeURIComponent(saleId)}/${kind}?printToken=${encodeURIComponent(token)}${receiptQuery}`;
+  return `${getAppBaseUrl()}/liff-print/orders/${encodeURIComponent(saleId)}/${kind}?printToken=${encodeURIComponent(token)}${receiptQuery}`;
 }
 
 export async function buildPrintDocumentVerifyBadge({
