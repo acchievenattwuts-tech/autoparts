@@ -17,13 +17,13 @@ import {
   RotateCcw,
   Save,
   Truck,
+  UserCheck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { updateShippingStatus } from "../../sales/actions";
-import DeliveryStaffPicker from "../DeliveryStaffPicker";
 import {
   SHIPPING_METHOD_LABEL,
   SHIPPING_METHOD_OPTIONS,
@@ -50,7 +50,6 @@ type Props = {
   amountRemain: number;
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
-  deliveryStaffEmail: string | null;
   proofCount: number;
   queueIndex: number;
   mode: CardMode;
@@ -81,6 +80,42 @@ const PREV_STATUS: Partial<Record<ShippingStatus, ShippingStatus>> = {
 
 const isExternalCarrier = (method: string) => method !== "NONE" && method !== "SELF";
 
+const getDeliveryStaffLabel = ({
+  shippingStatus,
+  deliveryStaffName,
+}: {
+  shippingStatus: ShippingStatus;
+  deliveryStaffName?: string | null;
+}) => {
+  if (deliveryStaffName) {
+    return {
+      label: deliveryStaffName,
+      helper: "ผู้ส่ง",
+      className:
+        "border-blue-100 bg-blue-50 text-blue-800 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200",
+      iconClassName: "bg-blue-100 text-blue-700 dark:bg-blue-400/15 dark:text-blue-200",
+    };
+  }
+
+  if (shippingStatus === "DELIVERED") {
+    return {
+      label: "ยังไม่ได้บันทึกผู้ส่ง",
+      helper: "ควรตรวจสอบ",
+      className:
+        "border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200",
+      iconClassName: "bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-200",
+    };
+  }
+
+  return {
+    label: "บันทึกอัตโนมัติ",
+    helper: "เมื่อกดส่งแล้ว",
+    className:
+      "border-gray-200 bg-gray-50 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200",
+    iconClassName: "bg-white text-gray-500 dark:bg-slate-900 dark:text-slate-300",
+  };
+};
+
 const MobileDeliveryCard = ({
   saleId,
   saleNo,
@@ -95,7 +130,6 @@ const MobileDeliveryCard = ({
   paymentType,
   amountRemain,
   deliveryStaffName,
-  deliveryStaffEmail,
   proofCount,
   queueIndex,
   mode,
@@ -144,6 +178,10 @@ const MobileDeliveryCard = ({
   const mapsHref = shippingAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shippingAddress)}`
     : null;
+  const deliveryStaffLabel = getDeliveryStaffLabel({
+    shippingStatus,
+    deliveryStaffName,
+  });
 
   const runUpdate = (nextStatus: ShippingStatus) => {
     setError("");
@@ -338,12 +376,15 @@ const MobileDeliveryCard = ({
           </div>
         ) : null}
 
-        <DeliveryStaffPicker
-          compact
-          shippingStatus={shippingStatus}
-          deliveryStaffName={deliveryStaffName}
-          deliveryStaffEmail={deliveryStaffEmail}
-        />
+        <div className={`flex items-center gap-3 rounded-2xl border px-3 py-2.5 ${deliveryStaffLabel.className}`}>
+          <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${deliveryStaffLabel.iconClassName}`}>
+            <UserCheck size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{deliveryStaffLabel.label}</p>
+            <p className="text-xs opacity-70">{deliveryStaffLabel.helper}</p>
+          </div>
+        </div>
 
         <button
           type="button"

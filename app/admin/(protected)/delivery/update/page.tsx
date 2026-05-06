@@ -87,7 +87,7 @@ const DeliveryUpdatePage = async ({
         deliveryQueueOrder: true,
         deliveryStaffId: true,
         customer: { select: { name: true, phone: true } },
-        deliveryStaff: { select: { name: true, email: true } },
+        deliveryStaff: { select: { name: true } },
         _count: { select: { deliveryProofs: true } },
       },
     }),
@@ -131,7 +131,6 @@ const DeliveryUpdatePage = async ({
     deliveryQueueOrder: s.deliveryQueueOrder,
     deliveryStaffId: s.deliveryStaffId,
     deliveryStaffName: s.deliveryStaff?.name ?? null,
-    deliveryStaffEmail: s.deliveryStaff?.email ?? null,
     proofCount: s._count.deliveryProofs,
   }));
 

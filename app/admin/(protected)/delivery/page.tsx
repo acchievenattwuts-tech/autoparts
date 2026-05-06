@@ -6,10 +6,36 @@ import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } f
 import Link from "next/link";
 import { Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
-import DeliveryStaffPicker from "./DeliveryStaffPicker";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { formatDateThai } from "@/lib/th-date";
+
+const getDeliveryStaffLabel = ({
+  shippingStatus,
+  deliveryStaffName,
+}: {
+  shippingStatus: "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
+  deliveryStaffName?: string | null;
+}) => {
+  if (deliveryStaffName) {
+    return {
+      label: deliveryStaffName,
+      className: "bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900/60",
+    };
+  }
+
+  if (shippingStatus === "DELIVERED") {
+    return {
+      label: "ยังไม่ได้บันทึกผู้ส่ง",
+      className: "bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/60",
+    };
+  }
+
+  return {
+    label: "บันทึกอัตโนมัติ",
+    className: "bg-gray-50 text-gray-600 ring-gray-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/10",
+  };
+};
 
 const DeliveryPage = async ({
   searchParams,
@@ -45,10 +71,9 @@ const DeliveryPage = async ({
       netAmount: true,
       paymentType: true,
       amountRemain: true,
-      deliveryStaffId: true,
       _count: { select: { deliveryProofs: true } },
       customer: { select: { name: true, phone: true } },
-      deliveryStaff: { select: { name: true, email: true } },
+      deliveryStaff: { select: { name: true } },
     },
   });
 
@@ -150,6 +175,14 @@ const DeliveryPage = async ({
               ) : (
                 sales.map((s) => (
                   <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
+                    {(() => {
+                      const deliveryStaffLabel = getDeliveryStaffLabel({
+                        shippingStatus: s.shippingStatus,
+                        deliveryStaffName: s.deliveryStaff?.name ?? null,
+                      });
+
+                      return (
+                        <>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
                       {formatDateThai(s.saleDate)}
@@ -197,11 +230,9 @@ const DeliveryPage = async ({
                       ) : null}
                     </td>
                     <td className="py-3 px-4 align-top">
-                      <DeliveryStaffPicker
-                        shippingStatus={s.shippingStatus}
-                        deliveryStaffName={s.deliveryStaff?.name ?? null}
-                        deliveryStaffEmail={s.deliveryStaff?.email ?? null}
-                      />
+                      <span className={`inline-flex max-w-full rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${deliveryStaffLabel.className}`}>
+                        <span className="truncate">{deliveryStaffLabel.label}</span>
+                      </span>
                     </td>
                     <td className="py-3 px-4 align-top">
                       <DeliveryUpdateButton
@@ -222,6 +253,9 @@ const DeliveryPage = async ({
                         <PrintFromListButton href={`/admin/sales/${s.id}`} />
                       </div>
                     </td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))
               )}

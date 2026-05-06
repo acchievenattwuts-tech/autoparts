@@ -46,7 +46,6 @@ type Item = {
   deliveryQueueOrder: number | null;
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
-  deliveryStaffEmail: string | null;
   proofCount: number;
 };
 
@@ -323,7 +322,6 @@ const MobileDeliveryQueue = ({
                   amountRemain={item.amountRemain}
                   deliveryStaffId={item.deliveryStaffId}
                   deliveryStaffName={item.deliveryStaffName}
-                  deliveryStaffEmail={item.deliveryStaffEmail}
                   proofCount={item.proofCount}
                   queueIndex={index}
                   mode={mode}
