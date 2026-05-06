@@ -15,7 +15,7 @@ const money = (value: unknown) =>
   });
 
 const shippingStatusLabel: Record<string, string> = {
-  PENDING: "รอดำเนินการ",
+  PENDING: "รอจัดส่ง",
   PREPARING: "เตรียมสินค้า",
   OUT_FOR_DELIVERY: "กำลังจัดส่ง",
   DELIVERED: "จัดส่งแล้ว",

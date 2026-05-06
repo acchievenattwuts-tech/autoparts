@@ -24,6 +24,10 @@ export default function OrderStatusTimeline({
     ...(fulfillmentType === "DELIVERY"
       ? [
           {
+            label: "รอจัดส่ง",
+            done: ["PENDING", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"].includes(shippingStatus),
+          },
+          {
             label: "กำลังจัดส่ง",
             done: ["OUT_FOR_DELIVERY", "DELIVERED"].includes(shippingStatus),
           },
