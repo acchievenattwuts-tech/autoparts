@@ -587,6 +587,8 @@ model Sale {
   @@index([deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo])
   @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
   @@index([fulfillmentType, status, shippingStatus, saleDate, saleNo])
+  @@index([customerId, status, saleDate(sort: Desc)])
+  @@index([customerId, paymentType, status, amountRemain])
 }
 
 model DeliveryProof {
@@ -623,6 +625,8 @@ model SaleItem {
   sale           Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
   lotItems       SaleItemLot[]
   warranties     Warranty[]
+
+  @@index([saleId])
 }
 
 model Warranty {
@@ -645,6 +649,7 @@ model Warranty {
   @@unique([saleItemId, unitSeq])
   @@index([productId])
   @@index([endDate])
+  @@index([saleId, endDate])
 }
 
 model WarrantyClaim {
@@ -676,6 +681,8 @@ model WarrantyClaim {
   @@index([warrantyId])
   @@index([claimDate])
   @@index([status])
+  @@index([warrantyId, claimDate(sort: Desc)])
+  @@index([warrantyId, status])
 }
 
 model WarrantyClaimLot {
@@ -1037,6 +1044,7 @@ model CashBankAccount {
 
   @@index([type, isActive])
   @@index([name])
+  @@index([type, isActive, isPrimaryTransferAccount])
 }
 
 model CashBankMovement {
@@ -1117,6 +1125,7 @@ model ReceiptItem {
   sale       Sale?       @relation(fields: [saleId], references: [id])
 
   @@index([saleId])
+  @@index([receiptId])
   @@index([cnId])
 }
 

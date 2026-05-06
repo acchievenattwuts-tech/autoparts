@@ -27,7 +27,7 @@ export default async function LiffOrdersPage() {
       amountRemain: true,
       paymentType: true,
       shippingStatus: true,
-      _count: { select: { items: true, receipts: true } },
+      _count: { select: { items: true } },
     },
     orderBy: { saleDate: "desc" },
     take: 50,
