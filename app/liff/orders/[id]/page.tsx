@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, Download, FileText, Package, ReceiptText, Truck } from "lucide-react";
+import { ChevronLeft, FileText, Package, ReceiptText, Truck } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import OrderStatusTimeline from "@/components/liff/OrderStatusTimeline";
@@ -82,6 +82,10 @@ export default async function LiffOrderDetailPage({
   if (!order) notFound();
 
   const remain = Number(order.amountRemain ?? 0);
+  const activeReceipt = order.receipts.find((item) => item.receipt.status === "ACTIVE");
+  const receiptHref = `/liff/orders/${order.id}/receipt${
+    order.paymentType === "CREDIT_SALE" ? `?receiptId=${activeReceipt?.receipt.id ?? ""}` : ""
+  }`;
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
@@ -117,29 +121,37 @@ export default async function LiffOrderDetailPage({
             <h2 className="font-kanit text-lg font-bold text-slate-950">เอกสารของฉัน</h2>
           </div>
           <div className="grid gap-2">
-            <Link
-              href={`/liff/orders/${order.id}/invoice`}
-              className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
-            >
-              <span>{order.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}</span>
-              <Download size={16} />
-            </Link>
-            {order.paymentType === "CASH_SALE" || order.receipts.some((item) => item.receipt.status === "ACTIVE") ? (
+            {order.paymentType === "CASH_SALE" ? (
               <Link
-                href={`/liff/orders/${order.id}/receipt${
-                  order.paymentType === "CREDIT_SALE"
-                    ? `?receiptId=${order.receipts.find((item) => item.receipt.status === "ACTIVE")?.receipt.id ?? ""}`
-                    : ""
-                }`}
+                href={receiptHref}
                 className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
               >
-                <span>บันทึกใบเสร็จ PDF</span>
-                <Download size={16} />
+                <span>ดู/บันทึกใบเสร็จรับเงิน</span>
+                <FileText size={16} />
               </Link>
             ) : (
-              <p className="rounded-xl border border-dashed border-blue-100 bg-white/80 px-4 py-3 text-xs text-slate-500">
-                ใบเสร็จจะแสดงหลังมีการรับชำระจากร้าน
-              </p>
+              <>
+                <Link
+                  href={`/liff/orders/${order.id}/invoice`}
+                  className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
+                >
+                  <span>ดู/บันทึกใบแจ้งหนี้ / ใบส่งของ</span>
+                  <FileText size={16} />
+                </Link>
+                {activeReceipt ? (
+                  <Link
+                    href={receiptHref}
+                    className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
+                  >
+                    <span>ดู/บันทึกใบเสร็จรับเงิน</span>
+                    <FileText size={16} />
+                  </Link>
+                ) : (
+                  <p className="rounded-xl border border-dashed border-blue-100 bg-white/80 px-4 py-3 text-xs text-slate-500">
+                    ใบเสร็จจะแสดงหลังมีการรับชำระจากร้าน
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>

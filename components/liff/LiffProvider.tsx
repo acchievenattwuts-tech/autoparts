@@ -36,6 +36,8 @@ declare global {
       login: (options?: { redirectUri?: string }) => void;
       getIDToken: () => string | null;
       getProfile: () => Promise<LiffProfile>;
+      isInClient?: () => boolean;
+      openWindow?: (options: { url: string; external?: boolean }) => void;
       closeWindow: () => void;
     };
   }

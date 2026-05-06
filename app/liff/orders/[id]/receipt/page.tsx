@@ -288,6 +288,9 @@ function LiffPrintShell({
           </Link>
           <PrintToPdfButton label={buttonLabel} />
         </div>
+        <p className="mx-auto mt-2 max-w-[900px] text-right text-[11px] text-slate-500">
+          หากเปิดใน LINE ระบบจะพาไปเบราว์เซอร์ภายนอกก่อนบันทึก/พิมพ์ PDF
+        </p>
       </div>
 
       <div className="overflow-x-auto bg-gradient-to-b from-sky-50 to-white px-4 py-4">{children}</div>
