@@ -390,16 +390,16 @@ const MobileDeliveryCard = ({
           type="button"
           onClick={onOpenProof}
           disabled={!canUpdate}
-          className={`inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium ${
+          className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-3 py-3.5 text-sm font-semibold shadow-sm transition ${
             proofCount > 0
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200"
-              : "border-gray-200 bg-white text-gray-700 hover:border-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-200"
+              ? "border-emerald-500 bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-emerald-900/15 hover:from-emerald-700 hover:to-teal-600 dark:border-emerald-300/30 dark:shadow-emerald-950/30"
+              : "border-sky-500 bg-gradient-to-r from-[#1e3a5f] to-sky-600 text-white shadow-sky-900/20 hover:from-[#173151] hover:to-sky-700 dark:border-sky-300/30 dark:shadow-sky-950/30"
           } disabled:cursor-not-allowed disabled:opacity-50`}
         >
-          {proofCount > 0 ? <CheckCircle2 size={16} /> : <ClipboardCheck size={16} />}
+          {proofCount > 0 ? <CheckCircle2 size={18} /> : <ClipboardCheck size={18} />}
           {proofCount > 0
             ? `มีหลักฐาน ${proofCount.toLocaleString("th-TH")} รายการ`
-            : "หลักฐานรับของ"}
+            : "บันทึกหลักฐานรับของ"}
         </button>
 
         <div className="rounded-2xl border border-gray-200 p-3 dark:border-white/10">

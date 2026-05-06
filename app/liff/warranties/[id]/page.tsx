@@ -6,8 +6,8 @@ import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 import {
-  WARRANTY_CLAIM_STATUS_BADGE_CLASS,
-  WARRANTY_CLAIM_STATUS_LABEL,
+  getCustomerClaimStatusBadgeClass,
+  getCustomerClaimStatusLabel,
 } from "@/lib/warranty-claim-i18n";
 
 export default async function LiffWarrantyDetailPage({
@@ -33,6 +33,7 @@ export default async function LiffWarrantyDetailPage({
           id: true,
           claimNo: true,
           claimDate: true,
+          claimType: true,
           status: true,
           symptom: true,
         },
@@ -107,8 +108,16 @@ export default async function LiffWarrantyDetailPage({
                       <p className="font-mono text-sm font-bold text-slate-950">{claim.claimNo}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatDateThai(claim.claimDate)}</p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${WARRANTY_CLAIM_STATUS_BADGE_CLASS[claim.status]}`}>
-                      {WARRANTY_CLAIM_STATUS_LABEL[claim.status]}
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-semibold ${getCustomerClaimStatusBadgeClass({
+                        claimType: claim.claimType,
+                        status:    claim.status,
+                      })}`}
+                    >
+                      {getCustomerClaimStatusLabel({
+                        claimType: claim.claimType,
+                        status:    claim.status,
+                      })}
                     </span>
                   </div>
                 </Link>

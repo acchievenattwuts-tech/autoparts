@@ -40,6 +40,35 @@ const SIGNATURE_CANVAS_MIN_HEIGHT = 180;
 const DELIVERY_PHOTO_MAX_SIZE_MB = 1.5;
 const DELIVERY_PHOTO_MAX_DIMENSION = 1600;
 const BYTES_PER_MB = 1024 * 1024;
+const DELIVERY_PHOTO_EXTENSION_BY_TYPE = {
+  "image/jpeg": "jpg",
+  "image/png":  "png",
+  "image/webp": "webp",
+} as const;
+type DeliveryPhotoContentType = keyof typeof DELIVERY_PHOTO_EXTENSION_BY_TYPE;
+
+const normalizeDeliveryPhotoContentType = (file: File): DeliveryPhotoContentType | null => {
+  if (file.type === "image/jpg") return "image/jpeg";
+  if (file.type in DELIVERY_PHOTO_EXTENSION_BY_TYPE) return file.type as DeliveryPhotoContentType;
+
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+
+  return null;
+};
+
+const normalizeDeliveryPhotoFile = (file: File, fallbackFile?: File) => {
+  const contentType = normalizeDeliveryPhotoContentType(file) ?? (fallbackFile ? normalizeDeliveryPhotoContentType(fallbackFile) : null);
+  if (!contentType) return file;
+
+  const ext = DELIVERY_PHOTO_EXTENSION_BY_TYPE[contentType];
+  return new File([file], `delivery-photo.${ext}`, {
+    type:         contentType,
+    lastModified: file.lastModified || fallbackFile?.lastModified || Date.now(),
+  });
+};
 
 const canvasToPngFile = (canvas: HTMLCanvasElement): Promise<File> =>
   new Promise((resolve, reject) => {
@@ -231,18 +260,19 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
         fileType: file.type || undefined,
         onProgress: (progress) => setPhotoCompressionProgress(progress),
       });
+      const uploadFile = normalizeDeliveryPhotoFile(compressedFile, file);
 
-      setPhotoFile(compressedFile);
-      if (compressedFile.size < file.size) {
+      setPhotoFile(uploadFile);
+      if (uploadFile.size < file.size) {
         setPhotoCompressionLabel(
-          `ปรับรูปจาก ${formatFileSize(file.size)} เหลือ ${formatFileSize(compressedFile.size)}`,
+          `ปรับรูปจาก ${formatFileSize(file.size)} เหลือ ${formatFileSize(uploadFile.size)}`,
         );
       } else {
-        setPhotoCompressionLabel(`รูปพร้อมอัปโหลด ${formatFileSize(compressedFile.size)}`);
+        setPhotoCompressionLabel(`รูปพร้อมอัปโหลด ${formatFileSize(uploadFile.size)}`);
       }
     } catch (err) {
       console.error("[compressDeliveryPhoto]", err);
-      setPhotoFile(file);
+      setPhotoFile(normalizeDeliveryPhotoFile(file));
       setPhotoCompressionLabel(`ใช้ไฟล์ต้นฉบับ ${formatFileSize(file.size)}`);
     } finally {
       setIsCompressingPhoto(false);

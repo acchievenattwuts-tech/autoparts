@@ -1031,13 +1031,12 @@ export async function updateSale(
 // updateShippingStatus
 
 const DELIVERY_PROOF_BUCKET = "products";
-const DELIVERY_PROOF_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
-const DELIVERY_PROOF_EXTENSIONS_LIST = ["jpg", "jpeg", "png", "webp"];
 const DELIVERY_PROOF_EXTENSIONS = {
   "image/jpeg": "jpg",
   "image/png":  "png",
   "image/webp": "webp",
-} satisfies Record<(typeof DELIVERY_PROOF_IMAGE_TYPES)[number], string>;
+} as const;
+type DeliveryProofContentType = keyof typeof DELIVERY_PROOF_EXTENSIONS;
 const DELIVERY_PROOF_MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const DELIVERY_PROOF_MAX_SIGNATURE_BYTES = 1 * 1024 * 1024;
 
@@ -1068,6 +1067,18 @@ const getDeliveryProofFile = (formData: FormData, key: string): File | null => {
   return file;
 };
 
+const getDeliveryProofContentType = (file: File): DeliveryProofContentType | null => {
+  if (file.type === "image/jpg") return "image/jpeg";
+  if (file.type in DELIVERY_PROOF_EXTENSIONS) return file.type as DeliveryProofContentType;
+
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "webp") return "image/webp";
+
+  return null;
+};
+
 const uploadDeliveryProofImage = async ({
   saleId,
   file,
@@ -1077,13 +1088,9 @@ const uploadDeliveryProofImage = async ({
   file: File;
   kind: DeliveryProofImageKind;
 }): Promise<DeliveryProofUploadResult> => {
-  if (!DELIVERY_PROOF_IMAGE_TYPES.includes(file.type as (typeof DELIVERY_PROOF_IMAGE_TYPES)[number])) {
+  const contentType = getDeliveryProofContentType(file);
+  if (!contentType) {
     return { error: "อนุญาตเฉพาะไฟล์รูปภาพ JPEG, PNG หรือ WebP" };
-  }
-
-  const originalExt = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!DELIVERY_PROOF_EXTENSIONS_LIST.includes(originalExt)) {
-    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, jpeg, png, webp" };
   }
 
   const maxSize =
@@ -1103,7 +1110,6 @@ const uploadDeliveryProofImage = async ({
     return { error: "ไม่พบการตั้งค่า Supabase Storage" };
   }
 
-  const contentType = file.type as keyof typeof DELIVERY_PROOF_EXTENSIONS;
   const ext = DELIVERY_PROOF_EXTENSIONS[contentType];
   const safeSaleId = saleId.replace(/[^a-zA-Z0-9_-]/g, "");
   const filePath = `delivery-proofs/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
