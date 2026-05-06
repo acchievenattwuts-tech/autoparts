@@ -68,6 +68,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
     const response = await fetch("/api/liff/session", {
       method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken: token }),
     });
@@ -79,6 +81,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
       router.replace("/liff/link");
     } else if (linked && pathname === "/liff/link") {
       router.replace("/liff/orders");
+    } else if (linked) {
+      router.refresh();
     }
   }, [idToken, pathname, router]);
 
@@ -117,6 +121,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
         const response = await fetch("/api/liff/session", {
           method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ idToken: nextIdToken }),
         });
@@ -131,6 +137,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
           router.replace("/liff/link");
         } else if (linked && initialPathname === "/liff/link") {
           router.replace("/liff/orders");
+        } else if (linked) {
+          router.refresh();
         }
       } catch (initError) {
         if (!isMounted) return;

@@ -6373,6 +6373,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF UX polish (2026-05-05): contact button moved above bottom nav, bottom nav supports mobile safe-area + stronger active state, `/liff/claims` adds status tabs, and `/liff/warranties` adds active/expired/all tabs
 - [x] LIFF UX polish (2026-05-06): profile incomplete-data notice now directs customers to contact staff for personal-data edits, LIFF status tabs show immediate loading feedback while filters navigate, the LIFF customer portal was restyled to match the blue/white rich-menu theme across shell, headers, cards, bottom nav, loading, onboarding, print toolbars, and key list/detail pages, and the orders dashboard summary now keeps only bill/outstanding cards
 - [x] LIFF production performance fix (2026-05-06): added customer-facing indexes for Sale/SaleItem/Warranty queries and reduced `/liff/orders` relation counts so linked customers with existing history do not stay on the loading skeleton
+- [x] LIFF/admin mobile stability fix (2026-05-06): LIFF refreshes Server Components after session sync so newly-set cookies are read consistently across devices, and mobile delivery queue no longer intercepts touch scrolling with custom pull-to-refresh handlers
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
 

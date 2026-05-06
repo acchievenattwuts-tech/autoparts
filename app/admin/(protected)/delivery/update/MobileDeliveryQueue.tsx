@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -18,7 +18,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { AlertTriangle, ArrowDown, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -66,9 +66,6 @@ type Props = {
   hasMore: boolean;
 };
 
-const PULL_THRESHOLD = 80;
-const PULL_MAX = 140;
-
 const MobileDeliveryQueue = ({
   items,
   counts,
@@ -86,8 +83,6 @@ const MobileDeliveryQueue = ({
   const [draftOrder, setDraftOrder] = useState<string[]>(initialIds);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [pullDist, setPullDist] = useState(0);
   const [selectedProofSale, setSelectedProofSale] = useState<Item | null>(null);
 
   const [prevInitialIds, setPrevInitialIds] = useState(initialIds);
@@ -138,69 +133,6 @@ const MobileDeliveryQueue = ({
     });
   };
 
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const pulling = useRef(false);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container || mode === "reorder") return;
-
-    const onTouchStart = (event: TouchEvent) => {
-      if (window.scrollY > 0) return;
-      touchStartY.current = event.touches[0].clientY;
-      pulling.current = true;
-    };
-
-    const onTouchMove = (event: TouchEvent) => {
-      if (!pulling.current || touchStartY.current === null) return;
-      if (window.scrollY > 0) {
-        pulling.current = false;
-        setPullDist(0);
-        return;
-      }
-      const delta = event.touches[0].clientY - touchStartY.current;
-      if (delta <= 0) {
-        setPullDist(0);
-        return;
-      }
-      const eased = Math.min(PULL_MAX, delta * 0.5);
-      setPullDist(eased);
-      if (eased > 4) event.preventDefault();
-    };
-
-    const onTouchEnd = () => {
-      if (!pulling.current) return;
-      pulling.current = false;
-      touchStartY.current = null;
-      setPullDist((current) => {
-        if (current >= PULL_THRESHOLD) {
-          setIsRefreshing(true);
-          router.refresh();
-        }
-        return 0;
-      });
-    };
-
-    container.addEventListener("touchstart", onTouchStart, { passive: true });
-    container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd);
-    container.addEventListener("touchcancel", onTouchEnd);
-
-    return () => {
-      container.removeEventListener("touchstart", onTouchStart);
-      container.removeEventListener("touchmove", onTouchMove);
-      container.removeEventListener("touchend", onTouchEnd);
-      container.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [mode, router]);
-
-  useEffect(() => {
-    if (!isRefreshing) return;
-    const timer = setTimeout(() => setIsRefreshing(false), 600);
-    return () => clearTimeout(timer);
-  }, [isRefreshing, items]);
-
   const loadMoreHref = (() => {
     const params = new URLSearchParams();
     if (currentFilter) params.set("status", currentFilter);
@@ -209,34 +141,8 @@ const MobileDeliveryQueue = ({
     return `/admin/delivery/update?${params.toString()}`;
   })();
 
-  const pullProgress = Math.min(1, pullDist / PULL_THRESHOLD);
-  const showSpinner = isRefreshing || pullDist >= PULL_THRESHOLD;
-
   return (
-    <div ref={scrollContainerRef} className="-m-4 lg:-m-6">
-      <div
-        className="flex items-center justify-center overflow-hidden transition-[height] duration-150"
-        style={{ height: isRefreshing ? 56 : pullDist }}
-      >
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
-          <Loader2
-            size={18}
-            className={showSpinner ? "animate-spin" : ""}
-            style={{
-              transform: showSpinner ? "none" : `rotate(${pullProgress * 360}deg)`,
-              opacity: pullProgress + (isRefreshing ? 1 : 0),
-            }}
-          />
-          <span style={{ opacity: pullProgress + (isRefreshing ? 1 : 0) }}>
-            {isRefreshing
-              ? "กำลังโหลด..."
-              : pullDist >= PULL_THRESHOLD
-                ? "ปล่อยเพื่อรีเฟรช"
-                : "ดึงเพื่อรีเฟรช"}
-          </span>
-        </div>
-      </div>
-
+    <div className="-m-4 lg:-m-6">
       <div className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-[#0f172a]/95">
         <QueueHeader
           mode={mode}
@@ -346,12 +252,6 @@ const MobileDeliveryQueue = ({
           </a>
         ) : null}
 
-        {mode === "view" && items.length > 0 ? (
-          <div className="flex items-center justify-center gap-2 pt-2 text-xs text-gray-400 dark:text-slate-500">
-            <ArrowDown size={12} />
-            ดึงลงจากบนสุดเพื่อรีเฟรช
-          </div>
-        ) : null}
       </div>
 
       <DeliveryProofSheet
