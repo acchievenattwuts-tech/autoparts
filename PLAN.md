@@ -1640,6 +1640,12 @@ npm run db:restore backup-{timestamp}.json
 - Tuned Next.js static generation concurrency to better fit the current Supabase pooled connection limits during build.
 - This reduces the risk of prerender failures caused by too many concurrent DB reads while keeping public SEO pages prerendered.
 
+## Roadmap Update (2026-05-06 LIFF Production Linking Recovery)
+
+- Kept LIFF phone mapping strict: a phone already linked to a different `lineUserId` remains blocked to prevent account takeover.
+- Added an admin recovery path for preview/prod LIFF testing: staff with customer update permission can unlink a customer's LINE binding from the customer edit page, with audit log diff and metadata.
+- Intended workflow: if a customer was linked through preview against the shared production customer record, staff unlink once in `/admin/customers/[id]/edit`, then the customer opens production LIFF and confirms the same phone again.
+
 ## Roadmap Update (2026-04-21 Production DB Connection Guard)
 - Added a runtime guard in `lib/db.ts` so a Supabase session-pooler `DATABASE_URL` on serverless automatically switches to the transaction pooler (`6543`) and appends `pgbouncer=true`.
 - Updated `prisma.config.ts` so Prisma CLI prefers `DIRECT_URL`, keeping migrations/admin tooling separate from pooled application traffic.

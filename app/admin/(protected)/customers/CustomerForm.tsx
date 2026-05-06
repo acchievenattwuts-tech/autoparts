@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Link2Off } from "lucide-react";
 import TaxIdInput from "@/components/shared/TaxIdInput";
 import { formatDateThai } from "@/lib/th-date";
 import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
-import { createCustomer, updateCustomer } from "./actions";
+import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
 
 interface CustomerFormProps {
   customer?: {
@@ -32,10 +32,12 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 const CustomerForm = ({ customer }: CustomerFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isUnlinkPending, startUnlinkTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const isEdit = Boolean(customer);
+  const hasLineLink = Boolean(customer?.lineUserId);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -59,6 +61,27 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
     });
   };
 
+  const handleUnlinkLine = () => {
+    if (!customer?.id || !hasLineLink) return;
+    const confirmed = window.confirm(
+      "ยืนยันปลดการผูก LINE ของลูกค้ารายนี้? ลูกค้าจะต้องยืนยันเบอร์ใหม่อีกครั้งใน LINE LIFF",
+    );
+    if (!confirmed) return;
+
+    setError("");
+    setSuccess("");
+
+    startUnlinkTransition(async () => {
+      const result = await unlinkCustomerLine(customer.id);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setSuccess("ปลดการผูก LINE เรียบร้อยแล้ว ลูกค้าสามารถผูกจาก production ได้อีกครั้ง");
+      router.refresh();
+    });
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -76,22 +99,24 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             </div>
           )}
 
-          {customer?.source === "LINE_LIFF" && (
+          {(customer?.source === "LINE_LIFF" || hasLineLink) && (
             <div>
               <label className={labelCls}>แหล่งที่มา</label>
               <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-700">
-                  สมัครผ่าน LINE
-                </span>
-                {customer.lineUserId ? (
+                {customer?.source === "LINE_LIFF" ? (
+                  <span className="inline-flex items-center rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-700">
+                    สมัครผ่าน LINE
+                  </span>
+                ) : null}
+                {customer?.lineUserId ? (
                   <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
                     ผูก LINE แล้ว
                   </span>
                 ) : null}
               </div>
-              {customer.lineLinkedAt ? (
+              {customer?.lineLinkedAt ? (
                 <p className="mt-1 text-xs text-gray-400">
-                  ผูกเมื่อ {formatDateThai(customer.lineLinkedAt)}
+                  ผูกเมื่อ {formatDateThai(customer?.lineLinkedAt)}
                 </p>
               ) : null}
             </div>
@@ -200,6 +225,33 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           </div>
         </div>
       </div>
+
+      {hasLineLink && customer ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h3 className="font-kanit text-base font-semibold text-amber-900 dark:text-amber-100">
+                การผูกบัญชี LINE
+              </h3>
+              <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                ใช้เมื่อเบอร์นี้เคยผูกกับ LIFF preview หรือ LINE อื่นแล้ว ต้องการให้ลูกค้าผูกใหม่จาก production
+              </p>
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                หลังปลดแล้ว ลูกค้าต้องเปิด LINE LIFF และยืนยันเบอร์ {customer.phone ?? "เดิม"} ใหม่อีกครั้ง
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleUnlinkLine}
+              disabled={isUnlinkPending || isPending}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-400/40 dark:bg-slate-950/80 dark:text-amber-100 dark:hover:bg-amber-500/15"
+            >
+              <Link2Off size={16} />
+              {isUnlinkPending ? "กำลังปลด..." : "ปลดการผูก LINE"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">

@@ -236,6 +236,87 @@ export async function updateCustomer(
   }
 }
 
+export async function unlinkCustomerLine(
+  id: string
+): Promise<{ success?: boolean; error?: string }> {
+  const session = await requirePermission("customers.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  try {
+    const requestContext = await getRequestContext();
+    const existingCustomer = await db.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        address: true,
+        shippingAddress: true,
+        taxId: true,
+        note: true,
+        creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
+        isActive: true,
+      },
+    });
+    if (!existingCustomer) {
+      return { error: "Customer not found" };
+    }
+    if (!existingCustomer.lineUserId) {
+      return { success: true };
+    }
+
+    const updatedCustomer = await db.customer.update({
+      where: { id },
+      data: {
+        lineUserId: null,
+        lineLinkedAt: null,
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        address: true,
+        shippingAddress: true,
+        taxId: true,
+        note: true,
+        creditTerm: true,
+        source: true,
+        lineUserId: true,
+        lineLinkedAt: true,
+        isActive: true,
+      },
+    });
+    const diff = diffEntity(
+      toAuditCustomer(existingCustomer),
+      toAuditCustomer(updatedCustomer),
+    );
+
+    await safeWriteAuditLog({
+      ...getAuditActorFromSession(session),
+      ...requestContext,
+      action: AuditAction.UPDATE,
+      entityType: "Customer",
+      entityId: updatedCustomer.id,
+      entityRef: updatedCustomer.code ?? updatedCustomer.name,
+      before: diff.before,
+      after: diff.after,
+      meta: { lineUnlinkedByAdmin: true },
+    });
+    revalidatePath("/admin/customers");
+    revalidatePath(`/admin/customers/${id}`);
+    revalidatePath(`/admin/customers/${id}/edit`);
+    return { success: true };
+  } catch (err) {
+    console.error("[unlinkCustomerLine]", err);
+    return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
 export async function toggleCustomer(
   id: string,
   isActive: boolean
