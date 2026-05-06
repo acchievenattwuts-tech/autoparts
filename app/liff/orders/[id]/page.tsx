@@ -84,19 +84,19 @@ export default async function LiffOrderDetailPage({
   const remain = Number(order.amountRemain ?? 0);
 
   return (
-    <main className="min-h-dvh pb-24">
-      <section className="bg-slate-950 px-5 pb-5 pt-6 text-white">
-        <Link href="/liff/orders" className="mb-5 inline-flex items-center gap-1 text-sm text-teal-100">
+    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
+      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-5 pt-6 text-[#083a78] shadow-sm">
+        <Link href="/liff/orders" className="mb-5 inline-flex items-center gap-1 text-sm font-semibold text-blue-700">
           <ChevronLeft size={16} />
           กลับไปประวัติซื้อ
         </Link>
-        <p className="font-mono text-sm text-slate-300">{order.saleNo}</p>
+        <p className="font-mono text-sm text-slate-500">{order.saleNo}</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">รายละเอียดบิล</h1>
-        <p className="mt-1 text-sm text-slate-300">{formatDateThai(order.saleDate)}</p>
+        <p className="mt-1 text-sm text-slate-600">{formatDateThai(order.saleDate)}</p>
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <p className="text-xs text-slate-500">ยอดรวม</p>
@@ -111,15 +111,15 @@ export default async function LiffOrderDetailPage({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-white via-teal-50 to-amber-50 p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-50 p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-teal-700" />
+            <FileText className="h-5 w-5 text-blue-700" />
             <h2 className="font-kanit text-lg font-bold text-slate-950">เอกสารของฉัน</h2>
           </div>
           <div className="grid gap-2">
             <Link
               href={`/liff/orders/${order.id}/invoice`}
-              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-teal-300 hover:text-teal-800"
+              className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
             >
               <span>{order.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}</span>
               <Download size={16} />
@@ -131,22 +131,22 @@ export default async function LiffOrderDetailPage({
                     ? `?receiptId=${order.receipts.find((item) => item.receipt.status === "ACTIVE")?.receipt.id ?? ""}`
                     : ""
                 }`}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-teal-300 hover:text-teal-800"
+                className="flex items-center justify-between rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800"
               >
                 <span>บันทึกใบเสร็จ PDF</span>
                 <Download size={16} />
               </Link>
             ) : (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-500">
+              <p className="rounded-xl border border-dashed border-blue-100 bg-white/80 px-4 py-3 text-xs text-slate-500">
                 ใบเสร็จจะแสดงหลังมีการรับชำระจากร้าน
               </p>
             )}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <Truck className="h-5 w-5 text-teal-700" />
+            <Truck className="h-5 w-5 text-blue-700" />
             <h2 className="font-kanit text-lg font-bold text-slate-950">Timeline สถานะ</h2>
           </div>
           <OrderStatusTimeline
@@ -157,9 +157,9 @@ export default async function LiffOrderDetailPage({
           />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <Truck className="h-5 w-5 text-teal-700" />
+            <Truck className="h-5 w-5 text-blue-700" />
             <h2 className="font-kanit text-lg font-bold text-slate-950">ข้อมูลจัดส่ง</h2>
           </div>
           <p className="text-sm font-semibold text-slate-800">
@@ -171,9 +171,9 @@ export default async function LiffOrderDetailPage({
           <TrackingSmartLink shippingMethod={order.shippingMethod} trackingNo={order.trackingNo} />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <Package className="h-5 w-5 text-teal-700" />
+            <Package className="h-5 w-5 text-blue-700" />
             <h2 className="font-kanit text-lg font-bold text-slate-950">รายการสินค้า</h2>
           </div>
           <div className="divide-y divide-slate-100">
@@ -193,9 +193,9 @@ export default async function LiffOrderDetailPage({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
-            <ReceiptText className="h-5 w-5 text-teal-700" />
+            <ReceiptText className="h-5 w-5 text-blue-700" />
             <h2 className="font-kanit text-lg font-bold text-slate-950">ประวัติการชำระเงิน</h2>
           </div>
           {order.receipts.length === 0 ? (
@@ -203,7 +203,7 @@ export default async function LiffOrderDetailPage({
           ) : (
             <div className="space-y-2">
               {order.receipts.map((receipt) => (
-                <div key={receipt.id} className="rounded-lg bg-slate-50 px-3 py-3">
+                <div key={receipt.id} className="rounded-xl bg-blue-50/60 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-sm font-bold text-slate-900">{receipt.receipt.receiptNo}</p>

@@ -57,9 +57,9 @@ export default function LinkPhoneForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
             <Phone size={20} />
           </div>
           <div>
@@ -80,7 +80,7 @@ export default function LinkPhoneForm() {
           required
           maxLength={12}
           pattern="0[0-9]{2}-[0-9]{3}-[0-9]{4}"
-          className="w-full rounded-lg border border-slate-300 px-3 py-3 text-base font-semibold text-slate-950 outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100"
+          className="w-full rounded-xl border border-blue-100 px-3 py-3 text-base font-semibold text-slate-950 outline-none transition focus:border-blue-700 focus:ring-2 focus:ring-blue-100"
         />
         <p className="mt-2 text-xs leading-5 text-slate-500">
           ถ้าเบอร์นี้มีในระบบ ร้านจะผูกให้ทันที ถ้ายังไม่มี ระบบจะสร้างข้อมูลลูกค้าใหม่ให้พนักงานตรวจต่อใน admin
@@ -89,7 +89,7 @@ export default function LinkPhoneForm() {
 
       {message ? (
         <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
+          className={`rounded-2xl border px-4 py-3 text-sm shadow-sm ${
             isSuccess
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-rose-200 bg-rose-50 text-rose-800"
@@ -105,7 +105,7 @@ export default function LinkPhoneForm() {
       <button
         type="submit"
         disabled={!isReady || isPending}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3 text-sm font-bold text-white transition disabled:cursor-wait disabled:opacity-60"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-800 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-900/20 transition disabled:cursor-wait disabled:opacity-60"
       >
         {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
         ผูกบัญชีและเริ่มใช้งาน

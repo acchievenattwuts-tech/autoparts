@@ -42,7 +42,7 @@ export default function OrderStatusTimeline({
         <li key={`${step.label}-${index}`} className="flex gap-3">
           <div className="pt-0.5">
             {step.done ? (
-              <CheckCircle2 className="h-5 w-5 text-teal-700" />
+              <CheckCircle2 className="h-5 w-5 text-blue-700" />
             ) : (
               <Circle className="h-5 w-5 text-slate-300" />
             )}

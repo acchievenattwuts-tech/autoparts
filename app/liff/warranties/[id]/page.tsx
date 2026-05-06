@@ -47,20 +47,20 @@ export default async function LiffWarrantyDetailPage({
   const expired = warranty.endDate < new Date();
 
   return (
-    <main className="min-h-dvh pb-10">
-      <section className="bg-slate-950 px-5 pb-6 pt-6 text-white">
-        <Link href="/liff/warranties" className="mb-5 inline-flex items-center gap-1 text-sm text-teal-100">
+    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-10">
+      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
+        <Link href="/liff/warranties" className="mb-5 inline-flex items-center gap-1 text-sm font-semibold text-blue-700">
           <ChevronLeft size={16} />
           กลับไปประกัน
         </Link>
-        <p className="text-sm text-slate-300">{warranty.product.code}</p>
+        <p className="text-sm text-slate-500">{warranty.product.code}</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">{warranty.product.name}</h1>
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-4 flex gap-3">
-            <ShieldCheck className="h-6 w-6 text-teal-700" />
+            <ShieldCheck className="h-6 w-6 text-blue-700" />
             <div>
               <p className="font-kanit text-lg font-bold text-slate-950">รายละเอียดประกัน</p>
               <p className={expired ? "mt-1 text-sm font-semibold text-rose-700" : "mt-1 text-sm font-semibold text-emerald-700"}>
@@ -94,14 +94,14 @@ export default async function LiffWarrantyDetailPage({
           </dl>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <h2 className="font-kanit text-lg font-bold text-slate-950">ประวัติการเคลม</h2>
           {warranty.claims.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500">ยังไม่มีประวัติการเคลมสินค้านี้</p>
           ) : (
             <div className="mt-3 space-y-2">
               {warranty.claims.map((claim) => (
-                <Link key={claim.id} href={`/liff/claims/${claim.id}`} className="block rounded-lg bg-slate-50 px-3 py-3">
+                <Link key={claim.id} href={`/liff/claims/${claim.id}`} className="block rounded-xl bg-blue-50/60 px-3 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-sm font-bold text-slate-950">{claim.claimNo}</p>

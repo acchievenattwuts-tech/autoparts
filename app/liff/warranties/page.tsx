@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
+import LiffWarrantyStatusTabs from "@/components/liff/LiffWarrantyStatusTabs";
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
@@ -53,24 +54,24 @@ export default async function LiffWarrantiesPage({
   });
 
   return (
-    <main className="min-h-dvh pb-24">
-      <section className="bg-slate-950 px-5 pb-6 pt-6 text-white">
-        <p className="text-sm text-teal-100">ประกันสินค้า</p>
+    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
+      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
+        <p className="text-sm font-semibold text-blue-700">ประกันสินค้า</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">รายการประกันของคุณ</h1>
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <div className="rounded-lg bg-white px-4 py-4 text-slate-950">
+          <div className="rounded-2xl border border-blue-100 bg-white/90 px-4 py-4 text-slate-950 shadow-sm">
             <p className="text-xs text-slate-500">ยังมีประกัน</p>
             <p className="font-kanit text-2xl font-bold">{activeCount}</p>
           </div>
-          <div className="rounded-lg bg-white/10 px-4 py-4">
-            <p className="text-xs text-teal-100">ทั้งหมด</p>
+          <div className="rounded-2xl border border-blue-100 bg-blue-800 px-4 py-4 text-white shadow-sm">
+            <p className="text-xs text-blue-100">ทั้งหมด</p>
             <p className="font-kanit text-2xl font-bold">{warranties.length}</p>
-            <p className="mt-1 text-xs text-teal-100">หมดประกัน {expiredCount}</p>
+            <p className="mt-1 text-xs text-blue-100">หมดประกัน {expiredCount}</p>
           </div>
         </div>
         <Link
           href="/liff/claims"
-          className="mt-3 flex items-center justify-between rounded-lg bg-white/10 px-4 py-3 text-sm font-bold text-white ring-1 ring-white/15"
+          className="mt-3 flex items-center justify-between rounded-2xl border border-blue-100 bg-white/90 px-4 py-3 text-sm font-bold text-blue-900 shadow-sm"
         >
           <span className="inline-flex items-center gap-2">
             <ShieldAlert size={18} />
@@ -81,25 +82,16 @@ export default async function LiffWarrantiesPage({
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 p-1 text-xs font-bold">
-          {warrantyStatusTabs.map((tab) => {
-            const isActive = statusFilter === tab.key;
-            return (
-              <Link
-                key={tab.key}
-                href={tab.key === "active" ? "/liff/warranties" : `/liff/warranties?status=${tab.key}`}
-                className={`rounded-md px-2 py-2 text-center transition ${
-                  isActive ? "bg-white text-teal-800 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </div>
+        <LiffWarrantyStatusTabs
+          activeKey={statusFilter}
+          tabs={warrantyStatusTabs.map((tab) => ({
+            ...tab,
+            href: tab.key === "active" ? "/liff/warranties" : `/liff/warranties?status=${tab.key}`,
+          }))}
+        />
 
         {filteredWarranties.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
             ยังไม่มีประวัติประกันสินค้า
           </div>
         ) : (
@@ -109,11 +101,11 @@ export default async function LiffWarrantiesPage({
               <Link
                 key={warranty.id}
                 href={`/liff/warranties/${warranty.id}`}
-                className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+                className="block rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
                       <ShieldCheck size={20} />
                     </div>
                     <div>

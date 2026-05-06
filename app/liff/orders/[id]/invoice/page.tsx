@@ -146,9 +146,9 @@ export default async function LiffOrderInvoicePage({
         }
       `}</style>
 
-      <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <div className="no-print sticky top-0 z-20 border-b border-blue-100 bg-white/95 px-4 py-3 shadow-sm shadow-blue-950/5 backdrop-blur">
         <div className="mx-auto flex max-w-[900px] items-center justify-between gap-3">
-          <Link href={`/liff/orders/${sale.id}`} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600">
+          <Link href={`/liff/orders/${sale.id}`} className="inline-flex items-center gap-1 text-sm font-semibold text-blue-800">
             <ChevronLeft size={16} />
             กลับ
           </Link>
@@ -156,7 +156,7 @@ export default async function LiffOrderInvoicePage({
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-slate-100 px-4 py-4">
+      <div className="overflow-x-auto bg-gradient-to-b from-sky-50 to-white px-4 py-4">
         <SharedSalesDeliveryPrintDocument
           sale={{
             ...sale,

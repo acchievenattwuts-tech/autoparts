@@ -67,18 +67,18 @@ export default async function LiffClaimDetailPage({
         ];
 
   return (
-    <main className="min-h-dvh pb-10">
-      <section className="bg-slate-950 px-5 pb-6 pt-6 text-white">
-        <Link href="/liff/claims" className="mb-5 inline-flex items-center gap-1 text-sm text-teal-100">
+    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-10">
+      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
+        <Link href="/liff/claims" className="mb-5 inline-flex items-center gap-1 text-sm font-semibold text-blue-700">
           <ChevronLeft size={16} />
           กลับไปประวัติเคลม
         </Link>
-        <p className="font-mono text-sm text-slate-300">{claim.claimNo}</p>
+        <p className="font-mono text-sm text-slate-500">{claim.claimNo}</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">รายละเอียดเคลม</h1>
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-slate-950">{claim.warranty.product.name}</p>
@@ -111,14 +111,14 @@ export default async function LiffClaimDetailPage({
           </dl>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <h2 className="font-kanit text-lg font-bold text-slate-950">Timeline สถานะ</h2>
           <ol className="mt-4 space-y-4">
             {timeline.map((step) => (
               <li key={step.label} className="flex gap-3">
                 <div className="pt-0.5">
                   {step.done ? (
-                    <CheckCircle2 className="h-5 w-5 text-teal-700" />
+                    <CheckCircle2 className="h-5 w-5 text-blue-700" />
                   ) : (
                     <Circle className="h-5 w-5 text-slate-300" />
                   )}
