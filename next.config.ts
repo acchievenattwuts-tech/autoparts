@@ -26,14 +26,14 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       // Next.js requires unsafe-inline for hydration scripts; Google Analytics
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.line-scdn.net",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
       // Allow images from self, Supabase storage, analytics pixels, and data URIs
-      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com",
+      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net",
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net",
       // Allow local compression workers without allowing external worker scripts.
       "worker-src 'self' blob:",
       // Allow trusted iframe embeds such as Google Maps on the storefront
