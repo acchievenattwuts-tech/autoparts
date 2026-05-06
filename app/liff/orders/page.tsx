@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeDollarSign, ChevronRight, ReceiptText, ShieldCheck } from "lucide-react";
+import { BadgeDollarSign, ChevronRight, ReceiptText } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import { db } from "@/lib/db";
@@ -40,7 +40,7 @@ export default async function LiffOrdersPage() {
       <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
         <p className="text-sm font-semibold text-blue-700">บัญชีลูกค้า</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">{customer.name}</h1>
-        <div className="mt-5 grid grid-cols-3 gap-2">
+        <div className="mt-5 grid grid-cols-2 gap-2">
           <Link href="/liff/orders" className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-3 shadow-sm">
             <ReceiptText className="mb-2 h-5 w-5 text-blue-700" />
             <p className="text-[11px] font-semibold text-slate-500">บิลทั้งหมด</p>
@@ -50,11 +50,6 @@ export default async function LiffOrdersPage() {
             <BadgeDollarSign className="mb-2 h-5 w-5 text-blue-700" />
             <p className="text-[11px] font-semibold text-slate-500">ค้างชำระ</p>
             <p className="font-kanit text-xl font-bold text-blue-950">{outstandingCount}</p>
-          </Link>
-          <Link href="/liff/warranties" className="rounded-2xl border border-blue-100 bg-white/90 px-3 py-3 shadow-sm">
-            <ShieldCheck className="mb-2 h-5 w-5 text-blue-700" />
-            <p className="text-[11px] font-semibold text-slate-500">ประกัน</p>
-            <p className="font-kanit text-xl font-bold text-blue-950">ดู</p>
           </Link>
         </div>
       </section>

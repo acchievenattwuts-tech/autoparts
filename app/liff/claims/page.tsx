@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight, ShieldAlert } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
+import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
@@ -90,22 +91,13 @@ export default async function LiffClaimsPage({
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="grid grid-cols-3 gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 p-1 text-xs font-bold">
-          {claimStatusTabs.map((tab) => {
-            const isActive = statusFilter === tab.key;
-            return (
-              <Link
-                key={tab.key}
-                href={tab.key === "all" ? "/liff/claims" : `/liff/claims?status=${tab.key}`}
-                className={`rounded-md px-2 py-2 text-center transition ${
-                  isActive ? "bg-white text-blue-800 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </div>
+        <LiffStatusTabs
+          activeKey={statusFilter}
+          tabs={claimStatusTabs.map((tab) => ({
+            ...tab,
+            href: tab.key === "all" ? "/liff/claims" : `/liff/claims?status=${tab.key}`,
+          }))}
+        />
 
         {filteredClaims.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
