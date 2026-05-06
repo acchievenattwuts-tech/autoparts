@@ -610,6 +610,14 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
   --liff-brand-strong: #083a78;
 }
 
+.liff-theme-root[data-liff-print="true"],
+.liff-theme-root[data-liff-print="true"] .liff-app-shell,
+.liff-theme-root[data-liff-print="true"] .liff-app-frame {
+  color-scheme: only light;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
 .liff-theme-root[data-liff-theme="dark"] {
   --liff-app-bg: #06162d;
   --liff-surface: #081c38;
