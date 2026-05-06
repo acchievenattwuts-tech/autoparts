@@ -23,7 +23,7 @@ export default function TrackingSmartLink({
 
   if (!href) {
     return (
-      <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700">
+      <p className="mt-2 rounded-xl bg-blue-50/60 px-3 py-2 font-mono text-sm text-slate-700">
         Tracking: {trackingNo}
       </p>
     );
@@ -34,7 +34,7 @@ export default function TrackingSmartLink({
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="mt-3 inline-flex items-center gap-2 rounded-lg bg-teal-700 px-3 py-2 text-sm font-bold text-white"
+      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-3 py-2 text-sm font-bold text-white shadow-sm shadow-blue-900/20"
     >
       ติดตามพัสดุ
       <ExternalLink size={14} />

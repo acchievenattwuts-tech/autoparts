@@ -22,7 +22,7 @@ export default function CopyPaymentValueButton({
     <button
       type="button"
       onClick={handleCopy}
-      className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800 transition active:scale-[0.98]"
+      className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800 transition active:scale-[0.98]"
     >
       <Copy size={13} />
       {copied ? "คัดลอกแล้ว" : label}

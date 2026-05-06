@@ -19,8 +19,8 @@ export default function LiffLayout({ children }: { children: ReactNode }) {
   return (
     <LiffThemeProvider>
       <LiffProvider>
-        <div className="liff-app-shell min-h-dvh bg-[#f5f7f4] text-slate-950 transition-colors">
-          <div className="liff-app-frame mx-auto min-h-dvh w-full max-w-md bg-[#f8faf7] shadow-2xl shadow-slate-950/5 transition-colors">
+        <div className="liff-app-shell min-h-dvh bg-gradient-to-b from-sky-50 via-white to-sky-100 text-slate-950 transition-colors">
+          <div className="liff-app-frame mx-auto min-h-dvh w-full max-w-md bg-gradient-to-b from-white via-sky-50/60 to-white shadow-2xl shadow-blue-950/10 transition-colors">
             <LiffGate>
               <WelcomeScreen />
               {children}
