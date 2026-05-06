@@ -4,17 +4,17 @@ import { useState, useTransition } from "react";
 import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-type WarrantyStatusTab = {
+type LiffStatusTab = {
   key: string;
   label: string;
   href: string;
 };
 
-export default function LiffWarrantyStatusTabs({
+export default function LiffStatusTabs({
   tabs,
   activeKey,
 }: {
-  tabs: readonly WarrantyStatusTab[];
+  tabs: readonly LiffStatusTab[];
   activeKey: string;
 }) {
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function LiffWarrantyStatusTabs({
   const [isPending, startTransition] = useTransition();
   const loadingTab = tabs.find((tab) => tab.key === pendingKey);
 
-  function handleTabClick(tab: WarrantyStatusTab) {
+  function handleTabClick(tab: LiffStatusTab) {
     if (tab.key === activeKey || isPending) return;
     setPendingKey(tab.key);
     startTransition(() => {

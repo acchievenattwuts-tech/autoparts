@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChevronRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
-import LiffWarrantyStatusTabs from "@/components/liff/LiffWarrantyStatusTabs";
+import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
@@ -82,7 +82,7 @@ export default async function LiffWarrantiesPage({
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <LiffWarrantyStatusTabs
+        <LiffStatusTabs
           activeKey={statusFilter}
           tabs={warrantyStatusTabs.map((tab) => ({
             ...tab,
