@@ -1,8 +1,19 @@
 "use client";
 
 import { MessageCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function ContactShopButton() {
+  const [isPrintTokenRequest, setIsPrintTokenRequest] = useState(false);
+
+  useEffect(() => {
+    setIsPrintTokenRequest(new URLSearchParams(window.location.search).has("printToken"));
+  }, []);
+
+  if (isPrintTokenRequest) {
+    return null;
+  }
+
   const handleClick = () => {
     if (window.liff) {
       window.liff.closeWindow();

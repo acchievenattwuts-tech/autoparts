@@ -19,6 +19,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const LIFF_A4_PRINT_ROOT_CLASS =
+  "mx-auto flex h-[297mm] w-[210mm] max-w-none flex-col overflow-hidden bg-white p-[8mm] text-[11px] leading-tight text-gray-900";
+
 export default async function LiffOrderReceiptPage({
   params,
   searchParams,
@@ -170,6 +173,7 @@ export default async function LiffOrderReceiptPage({
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
           rootId="receipt"
+          rootClassName={LIFF_A4_PRINT_ROOT_CLASS}
         />
       </LiffPrintShell>
     );
@@ -265,6 +269,7 @@ export default async function LiffOrderReceiptPage({
         receivedTransferAccount={receivedTransferAccount}
         verify={verify}
         rootId="receipt"
+        rootClassName={LIFF_A4_PRINT_ROOT_CLASS}
       />
     </LiffPrintShell>
   );
@@ -284,7 +289,12 @@ function LiffPrintShell({
   return (
     <>
       <style>{`
-        @page { margin: 0; }
+        @page { size: A4; margin: 0; }
+        html,
+        body {
+          background: #ffffff !important;
+          color-scheme: light !important;
+        }
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
@@ -296,17 +306,27 @@ function LiffPrintShell({
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
             display: flex;
             flex-direction: column;
-            min-height: 100vh;
+            background: #ffffff !important;
+            color: #111827 !important;
+            box-sizing: border-box;
           }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }
         @media screen {
           #receipt {
-            min-width: 900px;
+            width: 210mm;
+            min-width: 210mm;
+            min-height: 297mm;
+            background: #ffffff !important;
+            color: #111827 !important;
           }
         }
       `}</style>
@@ -324,7 +344,7 @@ function LiffPrintShell({
         </p>
       </div>
 
-      <div className="overflow-x-auto bg-gradient-to-b from-sky-50 to-white px-4 py-4">{children}</div>
+      <div className="overflow-x-auto bg-white px-4 py-4 [color-scheme:light]">{children}</div>
     </>
   );
 }

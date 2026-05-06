@@ -7,7 +7,10 @@ const STORAGE_KEY = "liff_onboarded";
 
 export default function WelcomeScreen() {
   const [shouldShow, setShouldShow] = useState(
-    () => typeof window !== "undefined" && window.localStorage.getItem(STORAGE_KEY) !== "1",
+    () =>
+      typeof window !== "undefined" &&
+      !new URLSearchParams(window.location.search).has("printToken") &&
+      window.localStorage.getItem(STORAGE_KEY) !== "1",
   );
 
   if (!shouldShow) return null;

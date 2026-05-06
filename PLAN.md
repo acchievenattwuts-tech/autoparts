@@ -6378,6 +6378,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF document PDF UX fix (2026-05-06): customer order document links now say `ดู/บันทึก...` instead of implying instant download, cash-sale duplicate receipt actions were collapsed to one document entry, and print-preview buttons open the document in an external browser from LINE before saving/printing PDF
 - [x] LIFF external PDF access fix (2026-05-06): external-browser print links now use short-lived signed document tokens instead of reopening the LIFF URL, so Safari/Chrome can render the print form without losing LIFF session and falling into LINE Login
 - [x] LIFF external PDF gate fix (2026-05-06): `LiffProvider` now skips LIFF SDK login only for signed `printToken` document URLs, preventing Safari/Chrome external print pages from redirecting to `access.line.me`
+- [x] LIFF external PDF print-form fix (2026-05-06): signed `printToken` document pages now suppress LIFF onboarding/contact overlays, force light/white document colors, and render print forms on an A4-sized root to prevent Android print preview from splitting the document background across two pages
 - [x] LIFF order timeline status polish (2026-05-06): delivery orders now show `รอจัดส่ง` before `กำลังจัดส่ง`, and the shipping info label for pending delivery now uses the same customer-facing wording
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
