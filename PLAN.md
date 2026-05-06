@@ -1757,6 +1757,12 @@ npm run db:restore backup-{timestamp}.json
 - Tuned Next.js static generation concurrency to better fit the current Supabase pooled connection limits during build.
 - This reduces the risk of prerender failures caused by too many concurrent DB reads while keeping public SEO pages prerendered.
 
+## Roadmap Update (2026-05-06 LIFF Production Linking Recovery)
+
+- Kept LIFF phone mapping strict: a phone already linked to a different `lineUserId` remains blocked to prevent account takeover.
+- Added an admin recovery path for preview/prod LIFF testing: staff with customer update permission can unlink a customer's LINE binding from the customer edit page, with audit log diff and metadata.
+- Intended workflow: if a customer was linked through preview against the shared production customer record, staff unlink once in `/admin/customers/[id]/edit`, then the customer opens production LIFF and confirms the same phone again.
+
 ## Roadmap Update (2026-04-21 Production DB Connection Guard)
 
 - Added a runtime guard in `lib/db.ts` so a Supabase session-pooler `DATABASE_URL` on serverless automatically switches to the transaction pooler (`6543`) and appends `pgbouncer=true`.
@@ -6660,6 +6666,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF hardening update (2026-05-05): phone lookup rate limit moved from per-process memory to persistent `LoginThrottle` keys, LINE token verify now has timeout, `verify-link` returns only safe customer-facing errors, and `LiffProvider` no longer re-verifies session on every route navigation
 - [x] LIFF bottom nav now includes a dedicated `เคลม` menu to `/liff/claims`, while warranties still expose a "ดูประวัติเคลมทั้งหมด" shortcut for discoverability
 - [x] LIFF UX polish (2026-05-05): contact button moved above bottom nav, bottom nav supports mobile safe-area + stronger active state, `/liff/claims` adds status tabs, and `/liff/warranties` adds active/expired/all tabs
+- [x] LIFF UX polish (2026-05-06): profile incomplete-data notice now directs customers to contact staff for personal-data edits, and `/liff/warranties` status tabs show immediate loading feedback while filters navigate
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
 
