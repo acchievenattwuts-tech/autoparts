@@ -32,6 +32,17 @@ const MOVEMENT_LABEL: Record<ClaimStockMovementType, string> = {
   CANCEL_REVERSAL: "รายการย้อนกลับ",
 };
 
+const MOVEMENT_SORT_ORDER: Record<ClaimStockMovementType, number> = {
+  CUSTOMER_RETURN_IN: 1,
+  SEND_TO_SUPPLIER_OUT: 2,
+  SUPPLIER_RECEIVE_IN: 3,
+  TRANSFER_TO_NORMAL_OUT: 4,
+  SUPPLIER_REJECT: 5,
+  SUPPLIER_CREDIT_SETTLE: 6,
+  SCRAP_OUT: 7,
+  CANCEL_REVERSAL: 8,
+};
+
 const formatQty = (value: number): string =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
 
@@ -64,7 +75,8 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
       : undefined;
 
   const movements = submitted
-    ? await db.claimStockMovement.findMany({
+    ? (
+        await db.claimStockMovement.findMany({
         where: {
           ...(dateWhere ? { docDate: dateWhere } : {}),
           ...(selectedMovementType ? { movementType: selectedMovementType } : {}),
@@ -82,7 +94,7 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
               : {}),
           },
         },
-        orderBy: [{ docDate: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ claim: { claimNo: "asc" } }, { docDate: "asc" }, { createdAt: "asc" }],
         take: 300,
         select: {
           id: true,
@@ -109,6 +121,19 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
             },
           },
         },
+      })
+      ).sort((a, b) => {
+        const claimNoDiff = a.claim.claimNo.localeCompare(b.claim.claimNo);
+        if (claimNoDiff !== 0) return claimNoDiff;
+
+        const movementTypeDiff =
+          MOVEMENT_SORT_ORDER[a.movementType] - MOVEMENT_SORT_ORDER[b.movementType];
+        if (movementTypeDiff !== 0) return movementTypeDiff;
+
+        const docDateDiff = a.docDate.getTime() - b.docDate.getTime();
+        if (docDateDiff !== 0) return docDateDiff;
+
+        return a.id.localeCompare(b.id);
       })
     : [];
 

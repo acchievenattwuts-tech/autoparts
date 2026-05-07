@@ -6315,8 +6315,8 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 ### Phase 1A Checklist (แทนที่ checklist เดิม)
 
 #### Foundation
-- [ ] สร้าง LINE Login channel + LIFF app (Endpoint = `https://liff-preview.yourshop.com/liff` สำหรับ test, `https://yourshop.com/liff` สำหรับ production — สร้าง 2 LIFF apps แยก dev/prod)
-- [ ] ตั้ง Vercel alias `liff-preview.yourshop.com` → branch `develop`
+- [x] สร้าง LINE Login channel + LIFF app (Endpoint = `https://liff-preview.yourshop.com/liff` สำหรับ test, `https://yourshop.com/liff` สำหรับ production — สร้าง 2 LIFF apps แยก dev/prod)
+- [x] ตั้ง Vercel alias `liff-preview.yourshop.com` → branch `develop`
 - [x] เพิ่ม env: `NEXT_PUBLIC_LINE_LIFF_ID`, `LINE_LIFF_CHANNEL_ID`, `DOC_VERIFY_SECRET` + อัปเดต `.env.example`
 - [x] Schema: `Customer.lineUserId` + `lineLinkedAt` + `source String @default("ADMIN")` (ค่า `ADMIN`, `LINE_LIFF`) + `Customer.phone @unique` + `prisma db push` (ไม่ต้องมี `phoneVerified` field แล้ว)
 - [x] AuditLog actions: `customer.line_link`, `customer.line_register`, `customer.line_link_blocked`, `customer.line_link_ambiguous`
@@ -6394,7 +6394,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF print token theme fix (2026-05-06): `LiffThemeProvider` now forces signed `printToken` pages to light-only mode at the root and suppresses dark LIFF wrapper backgrounds before Android/browser print preview captures the page
 - [x] LIFF external print isolation fix (2026-05-06): external PDF links now open signed `/liff-print/orders/...` routes outside the LIFF shell, force white/light print rendering without onboarding/contact overlays, and shrink the A4 content box to 198mm x 285mm with safe print margins to avoid iPhone blank page 2 overflow
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
-- [ ] Full `npm run lint` still blocked by pre-existing `components/shared/QuickSearchLauncher.tsx` React Compiler errors unrelated to LIFF work
+- [x] Full `npm run lint` ผ่านแล้วในระดับ error (2026-05-07): แก้ React Compiler rule `react-hooks/set-state-in-effect` ใน `components/shared/QuickSearchLauncher.tsx`, `components/liff/ContactShopButton.tsx`, `components/liff/PrintToPdfButton.tsx`; ยังเหลือ warning เดิมกระจายหลายไฟล์ซึ่งไม่บล็อก lint
 
 ### Phase 1B Checklist (คงเดิม + เพิ่ม)
 

@@ -1,16 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { Search } from "lucide-react";
 
-import { useGlobalShortcut, getPlatformShortcutLabel } from "@/hooks/useGlobalShortcut";
+import { getPlatformShortcutLabel, useGlobalShortcut } from "@/hooks/useGlobalShortcut";
 import { useQuickSearchStore } from "@/lib/quick-search-store";
 
 const CommandPalette = dynamic(
   () => import("@/components/shared/CommandPalette"),
   { ssr: false },
 );
+
+const subscribe = () => () => {};
 
 type QuickSearchLauncherProps = {
   role: string;
@@ -22,18 +24,22 @@ const QuickSearchLauncher = ({ role, permissions, userId }: QuickSearchLauncherP
   const isOpen = useQuickSearchStore((s) => s.isOpen);
   const open = useQuickSearchStore((s) => s.open);
   const toggle = useQuickSearchStore((s) => s.toggle);
-  const [shortcut, setShortcut] = useState("Ctrl+K");
+  const shortcut = useSyncExternalStore(
+    subscribe,
+    () => getPlatformShortcutLabel("k"),
+    () => "Ctrl+K",
+  );
   const [hasOpened, setHasOpened] = useState(false);
 
-  useEffect(() => {
-    setShortcut(getPlatformShortcutLabel("k"));
-  }, []);
-
-  useEffect(() => {
-    if (isOpen) setHasOpened(true);
-  }, [isOpen]);
-
-  const handleTrigger = useCallback(() => toggle(), [toggle]);
+  const ensureOpened = useCallback(() => setHasOpened(true), []);
+  const handleTrigger = useCallback(() => {
+    ensureOpened();
+    toggle();
+  }, [ensureOpened, toggle]);
+  const handleOpen = useCallback(() => {
+    ensureOpened();
+    open();
+  }, [ensureOpened, open]);
 
   useGlobalShortcut({
     key: "k",
@@ -46,7 +52,7 @@ const QuickSearchLauncher = ({ role, permissions, userId }: QuickSearchLauncherP
     <>
       <button
         type="button"
-        onClick={open}
+        onClick={handleOpen}
         aria-label={`ค้นหา (${shortcut})`}
         title={`ค้นหา (${shortcut})`}
         className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 shadow-sm transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -57,7 +63,7 @@ const QuickSearchLauncher = ({ role, permissions, userId }: QuickSearchLauncherP
           {shortcut}
         </kbd>
       </button>
-      {hasOpened && (
+      {(hasOpened || isOpen) && (
         <CommandPalette role={role} permissions={permissions} userId={userId} />
       )}
     </>

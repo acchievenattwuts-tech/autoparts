@@ -1,8 +1,15 @@
 "use client";
 
 import { Download } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { printWhenReady } from "@/components/shared/print-assets";
+
+const subscribe = () => () => {};
+
+const getShouldOpenExternal = (externalUrl?: string | null): boolean => {
+  if (!externalUrl || typeof window === "undefined") return false;
+  return window.liff?.isInClient?.() === true && typeof window.liff?.openWindow === "function";
+};
 
 export default function PrintToPdfButton({
   label = "บันทึก PDF",
@@ -11,13 +18,11 @@ export default function PrintToPdfButton({
   label?: string;
   externalUrl?: string | null;
 }) {
-  const [shouldOpenExternal, setShouldOpenExternal] = useState(false);
-
-  useEffect(() => {
-    setShouldOpenExternal(
-      Boolean(externalUrl) && window.liff?.isInClient?.() === true && typeof window.liff?.openWindow === "function",
-    );
-  }, [externalUrl]);
+  const shouldOpenExternal = useSyncExternalStore(
+    subscribe,
+    () => getShouldOpenExternal(externalUrl),
+    () => false,
+  );
 
   const handleClick = async () => {
     if (shouldOpenExternal && externalUrl && window.liff?.openWindow) {

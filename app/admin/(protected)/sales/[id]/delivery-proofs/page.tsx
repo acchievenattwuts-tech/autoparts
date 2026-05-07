@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -131,11 +132,14 @@ const DeliveryProofsPage = async ({
                       ลายเซ็นผู้รับ
                     </p>
                     <div className="rounded-xl border border-gray-200 bg-white p-3">
-                      <img
+                      <Image
                         src={proof.signatureImageUrl}
                         alt="ลายเซ็นผู้รับ"
+                        width={640}
+                        height={256}
                         loading="lazy"
                         className="h-32 w-full object-contain"
+                        sizes="(max-width: 768px) 100vw, 50vw"
                       />
                     </div>
                   </div>
@@ -152,11 +156,14 @@ const DeliveryProofsPage = async ({
                       rel="noopener noreferrer"
                       className="block overflow-hidden rounded-xl border border-gray-200 bg-white"
                     >
-                      <img
+                      <Image
                         src={proof.deliveryPhotoUrl}
                         alt="รูปหลักฐานการส่ง"
+                        width={1200}
+                        height={900}
                         loading="lazy"
                         className="max-h-72 w-full object-cover"
+                        sizes="(max-width: 768px) 100vw, 50vw"
                       />
                     </a>
                   </div>
