@@ -31,7 +31,7 @@ import {
   writeStockMovementLots,
   type LotSubRow,
 } from "@/lib/lot-control";
-import { formatDateOnlyForInput } from "@/lib/th-date";
+import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
@@ -354,8 +354,8 @@ async function writePurchaseReturnLines(
           lotNo: lot.lotNo.trim(),
           qtyInBase: lot.qty * lineScale,
           unitCostBase: line.costPerBase,
-          mfgDate: lot.mfgDate ? new Date(lot.mfgDate) : null,
-          expDate: lot.expDate ? new Date(lot.expDate) : null,
+          mfgDate: lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+          expDate: lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
         }));
 
         await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
@@ -548,7 +548,7 @@ export async function createPurchaseReturn(
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
 
-  const docDate = new Date(returnDate);
+  const docDate = parseDateOnlyToDate(returnDate);
   const returnNo = await generatePurchaseReturnNo(docDate);
   let createdPurchaseReturnId = "";
 
@@ -826,7 +826,7 @@ export async function updatePurchaseReturn(
     return { error: "กรุณาเลือกบัญชีรับเงิน" };
   }
 
-  const docDate = new Date(returnDate);
+  const docDate = parseDateOnlyToDate(returnDate);
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
   const oldHadStock = existing.type === PurchaseReturnType.RETURN;
 

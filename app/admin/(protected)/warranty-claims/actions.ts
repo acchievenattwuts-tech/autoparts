@@ -33,7 +33,12 @@ import {
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { requirePermission } from "@/lib/require-auth";
 import { recalculateStockCard, writeStockCard } from "@/lib/stock-card";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import {
+  formatDateOnlyForInput,
+  getThailandDateKey,
+  parseDateOnlyToDate,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const createClaimSchema = z.object({
   warrantyId: z.string().min(1).max(50),
@@ -180,6 +185,29 @@ async function getWarrantyClaimAuditSnapshot(id: string) {
   });
 }
 
+async function writeWarrantyClaimAuditLog(params: {
+  session: Awaited<ReturnType<typeof requirePermission>>;
+  requestContext: Awaited<ReturnType<typeof getRequestContext>>;
+  action: AuditAction;
+  beforeSnapshot: Awaited<ReturnType<typeof getWarrantyClaimAuditSnapshot>>;
+  afterSnapshot: Awaited<ReturnType<typeof getWarrantyClaimAuditSnapshot>>;
+}) {
+  const { session, requestContext, action, beforeSnapshot, afterSnapshot } = params;
+  if (!beforeSnapshot || !afterSnapshot) return;
+
+  const diff = diffEntity(beforeSnapshot, afterSnapshot);
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...requestContext,
+    action,
+    entityType: "WarrantyClaim",
+    entityId: afterSnapshot.id,
+    entityRef: afterSnapshot.claimNo,
+    before: diff.before,
+    after: diff.after,
+  });
+}
+
 export async function createClaim(
   formData: FormData,
 ): Promise<{ claimNo?: string; error?: string }> {
@@ -226,10 +254,8 @@ export async function createClaim(
   });
   if (!warranty) return { error: "ไม่พบข้อมูลประกัน" };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const warrantyEndDate = new Date(warranty.endDate);
-  warrantyEndDate.setHours(0, 0, 0, 0);
+  const today = parseDateOnlyToStartOfDay(getThailandDateKey());
+  const warrantyEndDate = parseDateOnlyToStartOfDay(formatDateOnlyForInput(warranty.endDate));
   if (warrantyEndDate < today) {
     return { error: "รายการประกันนี้หมดอายุแล้ว ไม่สามารถเปิดเคลมได้" };
   }
@@ -464,7 +490,7 @@ export async function sendClaimToSupplier(
   if (!claim) return { error: "ไม่พบใบเคลม" };
   if (claim.status !== WarrantyClaimStatus.DRAFT) return { error: "สถานะไม่อนุญาตให้ส่งเคลม" };
 
-  const sentDate = new Date(sentAt);
+  const sentDate = parseDateOnlyToDate(sentAt);
   const docNo = `${claim.claimNo}${SEND_DOC_SUFFIX}`;
 
   try {
@@ -526,8 +552,9 @@ export async function closeClaim(
   receivedMfgDate?: string,
   receivedExpDate?: string,
 ): Promise<{ error?: string }> {
+  let session: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -562,7 +589,7 @@ export async function closeClaim(
     return { error: "ต้องส่งซัพพลายเออร์ก่อนปิดเคลม" };
   }
 
-  const resolvedDate = new Date(resolvedAt);
+  const resolvedDate = parseDateOnlyToDate(resolvedAt);
   const docNo = `${claim.claimNo}${RECEIVE_DOC_SUFFIX}`;
   const receivedLotNoValue = normalizeOptionalString(receivedLotParsed.data.receivedLotNo);
   const receivedMfg = normalizeOptionalDate(receivedLotParsed.data.receivedMfgDate);
@@ -573,6 +600,8 @@ export async function closeClaim(
   }
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
 
@@ -668,6 +697,15 @@ export async function closeClaim(
       }
     });
 
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    await writeWarrantyClaimAuditLog({
+      session,
+      requestContext,
+      action: AuditAction.UPDATE,
+      beforeSnapshot,
+      afterSnapshot,
+    });
+
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
@@ -681,8 +719,9 @@ export async function returnClaimToCustomer(
   id: string,
   returnedAt: string,
 ): Promise<{ error?: string }> {
+  let session: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -710,10 +749,12 @@ export async function returnClaimToCustomer(
     return { error: "ต้องปิดเคลมแบบได้รับสินค้าคืนก่อนจึงจะส่งคืนลูกค้าได้" };
   }
 
-  const returnedDate = new Date(returnedAt);
+  const returnedDate = parseDateOnlyToDate(returnedAt);
   const docNo = `${claim.claimNo}${RETURN_DOC_SUFFIX}`;
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       await tx.warrantyClaim.update({
         where: { id },
@@ -767,6 +808,15 @@ export async function returnClaimToCustomer(
       }
     });
 
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    await writeWarrantyClaimAuditLog({
+      session,
+      requestContext,
+      action: AuditAction.UPDATE,
+      beforeSnapshot,
+      afterSnapshot,
+    });
+
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
@@ -777,8 +827,9 @@ export async function returnClaimToCustomer(
 }
 
 export async function reopenClaim(id: string): Promise<{ error?: string }> {
+  let session: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -796,6 +847,8 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
   if (!claim) return { error: "ไม่พบใบเคลม" };
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       if (claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER) {
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
@@ -849,6 +902,15 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
       });
     });
 
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    await writeWarrantyClaimAuditLog({
+      session,
+      requestContext,
+      action: AuditAction.UPDATE,
+      beforeSnapshot,
+      afterSnapshot,
+    });
+
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
@@ -867,8 +929,9 @@ export async function cancelClaimAction(
 }
 
 export async function cancelClaim(id: string): Promise<{ error?: string }> {
+  let session: Awaited<ReturnType<typeof requirePermission>>;
   try {
-    await requirePermission("warranty_claims.update");
+    session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
@@ -889,6 +952,8 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
   if (claim.status === WarrantyClaimStatus.CANCELLED) return { error: "ยกเลิกไปแล้ว" };
 
   try {
+    const requestContext = await getRequestContext();
+    const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, claim.warranty.productId);
@@ -907,6 +972,15 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
       await tx.stockCard.deleteMany({ where: { docNo: `${id}-RECV` } });
 
       await recalculateStockCard(tx, claim.warranty.productId);
+    });
+
+    const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
+    await writeWarrantyClaimAuditLog({
+      session,
+      requestContext,
+      action: AuditAction.CANCEL,
+      beforeSnapshot,
+      afterSnapshot,
     });
 
     revalidatePath("/admin/warranty-claims");

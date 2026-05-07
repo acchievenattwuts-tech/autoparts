@@ -4,6 +4,7 @@ import { ChevronRight, ShieldAlert } from "lucide-react";
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
+import { type Prisma } from "@/lib/generated/prisma";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 import {
@@ -24,17 +25,6 @@ function normalizeClaimStatusFilter(value: string | undefined): ClaimStatusFilte
   return claimStatusTabs.some((tab) => tab.key === value) ? (value as ClaimStatusFilter) : "all";
 }
 
-function isClosedCustomerClaim(claim: {
-  claimType: string;
-  status: string;
-}) {
-  return (
-    claim.claimType === "REPLACE_NOW" ||
-    claim.status === "CLOSED" ||
-    claim.status === "RETURNED_TO_CUSTOMER"
-  );
-}
-
 export default async function LiffClaimsPage({
   searchParams,
 }: {
@@ -42,41 +32,57 @@ export default async function LiffClaimsPage({
 }) {
   const customer = await requireLiffCustomer();
   const statusFilter = normalizeClaimStatusFilter((await searchParams).status);
-  const claims = await db.warrantyClaim.findMany({
-    where: {
-      status: { not: "CANCELLED" },
-      warranty: {
-        sale: {
-          customerId: customer.id,
-          status: "ACTIVE",
-        },
+  const baseClaimWhere: Prisma.WarrantyClaimWhereInput = {
+    status: { not: "CANCELLED" },
+    warranty: {
+      sale: {
+        customerId: customer.id,
+        status: "ACTIVE",
       },
     },
-    select: {
-      id: true,
-      claimNo: true,
-      claimDate: true,
-      claimType: true,
-      outcome: true,
-      status: true,
-      symptom: true,
-      warranty: {
-        select: {
-          id: true,
-          product: { select: { code: true, name: true } },
+  };
+  const closedClaimWhere: Prisma.WarrantyClaimWhereInput = {
+    ...baseClaimWhere,
+    OR: [
+      { claimType: "REPLACE_NOW" },
+      { status: { in: ["CLOSED", "RETURNED_TO_CUSTOMER"] } },
+    ],
+  };
+  const openClaimWhere: Prisma.WarrantyClaimWhereInput = {
+    ...baseClaimWhere,
+    NOT: [
+      { claimType: "REPLACE_NOW" },
+      { status: { in: ["CLOSED", "RETURNED_TO_CUSTOMER"] } },
+    ],
+  };
+  const listWhere =
+    statusFilter === "closed" ? closedClaimWhere : statusFilter === "open" ? openClaimWhere : baseClaimWhere;
+
+  const [claims, totalCount, openCount, closedCount] = await Promise.all([
+    db.warrantyClaim.findMany({
+      where: listWhere,
+      select: {
+        id: true,
+        claimNo: true,
+        claimDate: true,
+        claimType: true,
+        outcome: true,
+        status: true,
+        symptom: true,
+        warranty: {
+          select: {
+            id: true,
+            product: { select: { code: true, name: true } },
+          },
         },
       },
-    },
-    orderBy: { claimDate: "desc" },
-    take: 50,
-  });
-  const openCount = claims.filter((claim) => !isClosedCustomerClaim(claim)).length;
-  const closedCount = claims.filter(isClosedCustomerClaim).length;
-  const filteredClaims = claims.filter((claim) => {
-    if (statusFilter === "open") return !isClosedCustomerClaim(claim);
-    if (statusFilter === "closed") return isClosedCustomerClaim(claim);
-    return true;
-  });
+      orderBy: { claimDate: "desc" },
+      take: 50,
+    }),
+    db.warrantyClaim.count({ where: baseClaimWhere }),
+    db.warrantyClaim.count({ where: openClaimWhere }),
+    db.warrantyClaim.count({ where: closedClaimWhere }),
+  ]);
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
@@ -85,7 +91,7 @@ export default async function LiffClaimsPage({
         <h1 className="mt-1 font-kanit text-2xl font-bold">เคลมสินค้าของคุณ</h1>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-white/90 px-4 py-4 shadow-sm">
           <p className="text-xs text-slate-500">รายการเคลมทั้งหมด</p>
-          <p className="font-kanit text-2xl font-bold">{claims.length}</p>
+          <p className="font-kanit text-2xl font-bold">{totalCount}</p>
           <p className="mt-1 text-xs text-slate-600">
             กำลังดำเนินการ {openCount} · จบแล้ว {closedCount}
           </p>
@@ -101,12 +107,12 @@ export default async function LiffClaimsPage({
           }))}
         />
 
-        {filteredClaims.length === 0 ? (
+        {claims.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
             ยังไม่มีประวัติการเคลมสินค้า
           </div>
         ) : (
-          filteredClaims.map((claim) => (
+          claims.map((claim) => (
             <Link
               key={claim.id}
               href={`/liff/claims/${claim.id}`}

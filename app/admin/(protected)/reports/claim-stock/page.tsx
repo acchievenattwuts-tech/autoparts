@@ -5,7 +5,7 @@ import Link from "next/link";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
-import { ClaimStockMovementType, WarrantyClaimStatus } from "@/lib/generated/prisma";
+import { ClaimStockMovementType, type Prisma, WarrantyClaimStatus } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
@@ -43,6 +43,8 @@ const MOVEMENT_SORT_ORDER: Record<ClaimStockMovementType, number> = {
   CANCEL_REVERSAL: 8,
 };
 
+const REPORT_ROW_LIMIT = 300;
+
 const formatQty = (value: number): string =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
 
@@ -74,55 +76,65 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
         }
       : undefined;
 
-  const movements = submitted
-    ? (
-        await db.claimStockMovement.findMany({
-        where: {
-          ...(dateWhere ? { docDate: dateWhere } : {}),
-          ...(selectedMovementType ? { movementType: selectedMovementType } : {}),
-          claim: {
-            ...(selectedClaimStatus ? { status: selectedClaimStatus } : {}),
-            ...(q
-              ? {
-                  OR: [
-                    { claimNo: { contains: q, mode: "insensitive" } },
-                    { supplierName: { contains: q, mode: "insensitive" } },
-                    { warranty: { product: { code: { contains: q, mode: "insensitive" } } } },
-                    { warranty: { product: { name: { contains: q, mode: "insensitive" } } } },
-                  ],
-                }
-              : {}),
-          },
-        },
-        orderBy: [{ claim: { claimNo: "asc" } }, { docDate: "asc" }, { createdAt: "asc" }],
-        take: 300,
-        select: {
-          id: true,
-          docNo: true,
-          docDate: true,
-          movementType: true,
-          lotNo: true,
-          qtyIn: true,
-          qtyOut: true,
-          unitCost: true,
-          reversedAt: true,
-          reversalOfId: true,
-          claim: {
-            select: {
-              id: true,
-              claimNo: true,
-              status: true,
-              supplierName: true,
-              warranty: {
-                select: {
-                  product: { select: { code: true, name: true } },
+  const movementWhere: Prisma.ClaimStockMovementWhereInput = {
+    ...(dateWhere ? { docDate: dateWhere } : {}),
+    ...(selectedMovementType ? { movementType: selectedMovementType } : {}),
+    claim: {
+      ...(selectedClaimStatus ? { status: selectedClaimStatus } : {}),
+      ...(q
+        ? {
+            OR: [
+              { claimNo: { contains: q, mode: "insensitive" } },
+              { supplierName: { contains: q, mode: "insensitive" } },
+              { warranty: { product: { code: { contains: q, mode: "insensitive" } } } },
+              { warranty: { product: { name: { contains: q, mode: "insensitive" } } } },
+            ],
+          }
+        : {}),
+    },
+  };
+
+  const [movementRows, movementSummary, movementCount] = submitted
+    ? await Promise.all([
+        db.claimStockMovement.findMany({
+          where: movementWhere,
+          orderBy: [{ claim: { claimNo: "asc" } }, { docDate: "asc" }, { createdAt: "asc" }],
+          take: REPORT_ROW_LIMIT,
+          select: {
+            id: true,
+            docNo: true,
+            docDate: true,
+            movementType: true,
+            lotNo: true,
+            qtyIn: true,
+            qtyOut: true,
+            unitCost: true,
+            reversedAt: true,
+            reversalOfId: true,
+            claim: {
+              select: {
+                id: true,
+                claimNo: true,
+                status: true,
+                supplierName: true,
+                warranty: {
+                  select: {
+                    product: { select: { code: true, name: true } },
+                  },
                 },
               },
             },
           },
-        },
-      })
-      ).sort((a, b) => {
+        }),
+        db.claimStockMovement.aggregate({
+          where: movementWhere,
+          _sum: { qtyIn: true, qtyOut: true },
+        }),
+        db.claimStockMovement.count({ where: movementWhere }),
+      ])
+    : [[], null, 0];
+
+  const movements = movementRows.sort((a, b) => {
         const claimNoDiff = a.claim.claimNo.localeCompare(b.claim.claimNo);
         if (claimNoDiff !== 0) return claimNoDiff;
 
@@ -134,11 +146,11 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
         if (docDateDiff !== 0) return docDateDiff;
 
         return a.id.localeCompare(b.id);
-      })
-    : [];
+      });
 
-  const totalQtyIn = movements.reduce((sum, row) => sum + Number(row.qtyIn), 0);
-  const totalQtyOut = movements.reduce((sum, row) => sum + Number(row.qtyOut), 0);
+  const totalQtyIn = Number(movementSummary?._sum.qtyIn ?? 0);
+  const totalQtyOut = Number(movementSummary?._sum.qtyOut ?? 0);
+  const isResultLimited = movementCount > movements.length;
   const activeRows = movements.filter((row) => !row.reversedAt && !row.reversalOfId);
 
   return (
@@ -231,7 +243,12 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900">
               <p className="text-xs text-gray-500 dark:text-slate-400">จำนวนรายการ</p>
-              <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{movements.length}</p>
+              <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{movementCount}</p>
+              {isResultLimited ? (
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                  แสดง {movements.length} รายการแรก
+                </p>
+              ) : null}
             </div>
             <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/10">
               <p className="text-xs text-emerald-700 dark:text-emerald-300">จำนวนเข้า</p>
@@ -246,6 +263,12 @@ export default async function ClaimStockReportPage({ searchParams }: PageProps) 
               </p>
             </div>
           </div>
+
+          {isResultLimited ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              พบข้อมูล {movementCount} รายการ ตารางแสดง {movements.length} รายการแรก ส่วนยอดสรุปด้านบนคำนวณจากข้อมูลทั้งหมดตามเงื่อนไขแล้ว
+            </div>
+          ) : null}
 
           <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
             <div className="overflow-x-auto">

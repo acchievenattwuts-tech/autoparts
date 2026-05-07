@@ -729,6 +729,7 @@ model ClaimStockMovement {
   stockCard        StockCard?             @relation(fields: [stockCardId], references: [id])
 
   @@index([claimId, docDate])
+  @@index([docDate, movementType])
   @@index([productId])
   @@index([movementType])
   @@index([stockCardId])

@@ -4,8 +4,9 @@ import { ChevronRight, ShieldAlert, ShieldCheck } from "lucide-react";
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
+import { type Prisma } from "@/lib/generated/prisma";
 import { requireLiffCustomer } from "@/lib/liff-data";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, getThailandDateKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 const warrantyStatusTabs = [
   { key: "active", label: "ยังมีประกัน" },
@@ -26,32 +27,42 @@ export default async function LiffWarrantiesPage({
 }) {
   const customer = await requireLiffCustomer();
   const statusFilter = normalizeWarrantyStatusFilter((await searchParams).status);
-  const today = new Date();
-  const warranties = await db.warranty.findMany({
-    where: { sale: { customerId: customer.id, status: "ACTIVE" } },
-    select: {
-      id: true,
-      warrantyDays: true,
-      unitSeq: true,
-      lotNo: true,
-      startDate: true,
-      endDate: true,
-      product: { select: { code: true, name: true } },
-      sale: { select: { saleNo: true, saleDate: true } },
-      _count: { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
-    },
-    orderBy: [{ endDate: "desc" }, { unitSeq: "asc" }],
-    take: 80,
-  });
+  const today = parseDateOnlyToStartOfDay(getThailandDateKey());
+  const baseWarrantyWhere: Prisma.WarrantyWhereInput = {
+    sale: { customerId: customer.id, status: "ACTIVE" },
+  };
+  const activeWarrantyWhere: Prisma.WarrantyWhereInput = {
+    ...baseWarrantyWhere,
+    endDate: { gte: today },
+  };
+  const expiredWarrantyWhere: Prisma.WarrantyWhereInput = {
+    ...baseWarrantyWhere,
+    endDate: { lt: today },
+  };
+  const listWhere =
+    statusFilter === "all" ? baseWarrantyWhere : statusFilter === "expired" ? expiredWarrantyWhere : activeWarrantyWhere;
 
-  const activeCount = warranties.filter((item) => item.endDate >= today).length;
-  const expiredCount = warranties.length - activeCount;
-  const filteredWarranties = warranties.filter((warranty) => {
-    const expired = warranty.endDate < today;
-    if (statusFilter === "active") return !expired;
-    if (statusFilter === "expired") return expired;
-    return true;
-  });
+  const [warranties, totalCount, activeCount, expiredCount] = await Promise.all([
+    db.warranty.findMany({
+      where: listWhere,
+      select: {
+        id: true,
+        warrantyDays: true,
+        unitSeq: true,
+        lotNo: true,
+        startDate: true,
+        endDate: true,
+        product: { select: { code: true, name: true } },
+        sale: { select: { saleNo: true, saleDate: true } },
+        _count: { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
+      },
+      orderBy: [{ endDate: "desc" }, { unitSeq: "asc" }],
+      take: 80,
+    }),
+    db.warranty.count({ where: baseWarrantyWhere }),
+    db.warranty.count({ where: activeWarrantyWhere }),
+    db.warranty.count({ where: expiredWarrantyWhere }),
+  ]);
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
@@ -65,7 +76,7 @@ export default async function LiffWarrantiesPage({
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-800 px-4 py-4 text-white shadow-sm">
             <p className="text-xs text-blue-100">ทั้งหมด</p>
-            <p className="font-kanit text-2xl font-bold">{warranties.length}</p>
+            <p className="font-kanit text-2xl font-bold">{totalCount}</p>
             <p className="mt-1 text-xs text-blue-100">หมดประกัน {expiredCount}</p>
           </div>
         </div>
@@ -90,12 +101,12 @@ export default async function LiffWarrantiesPage({
           }))}
         />
 
-        {filteredWarranties.length === 0 ? (
+        {warranties.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
             ยังไม่มีประวัติประกันสินค้า
           </div>
         ) : (
-          filteredWarranties.map((warranty) => {
+          warranties.map((warranty) => {
             const expired = warranty.endDate < today;
             return (
               <Link

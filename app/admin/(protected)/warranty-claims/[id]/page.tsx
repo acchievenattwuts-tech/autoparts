@@ -49,7 +49,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
 
   const { id } = await params;
 
-  const [claim, suppliers, receivedStockCard] = await Promise.all([
+  const [claim, receivedStockCard] = await Promise.all([
     db.warrantyClaim.findUnique({
       where: { id },
       include: {
@@ -113,11 +113,6 @@ const ClaimDetailPage = async ({ params }: Props) => {
         },
       },
     }),
-    db.supplier.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, phone: true, address: true },
-    }),
     db.stockCard.findFirst({
       where: {
         referenceId: id,
@@ -139,6 +134,14 @@ const ClaimDetailPage = async ({ params }: Props) => {
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";
+  const suppliers =
+    canUpdate && isEditable
+      ? await db.supplier.findMany({
+          where: { isActive: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, phone: true, address: true },
+        })
+      : [];
   const receivedLot = receivedStockCard?.lotMovements.find((lot) => Number(lot.qtyIn) > 0) ?? null;
 
   return (
