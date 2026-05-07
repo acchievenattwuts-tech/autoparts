@@ -105,6 +105,7 @@ export default async function ExternalLiffOrderInvoicePage({
   return (
     <ExternalPrintShell
       buttonLabel={sale.paymentType === "CREDIT_SALE" ? "บันทึกใบแจ้งหนี้ PDF" : "บันทึกใบเสร็จ PDF"}
+      preloadImageUrls={[shopConfig.shopLogoUrl, sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null]}
     >
       <SharedSalesDeliveryPrintDocument
         sale={{

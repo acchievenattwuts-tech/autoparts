@@ -121,7 +121,10 @@ export default async function ExternalLiffOrderReceiptPage({
     });
 
     return (
-      <ExternalPrintShell buttonLabel="บันทึกใบเสร็จ PDF">
+      <ExternalPrintShell
+        buttonLabel="บันทึกใบเสร็จ PDF"
+        preloadImageUrls={[shopConfig.shopLogoUrl, sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null]}
+      >
         <SharedSalesDeliveryPrintDocument
           sale={{
             ...sale,
@@ -185,7 +188,10 @@ export default async function ExternalLiffOrderReceiptPage({
   });
 
   return (
-    <ExternalPrintShell buttonLabel="บันทึกใบเสร็จ PDF">
+    <ExternalPrintShell
+      buttonLabel="บันทึกใบเสร็จ PDF"
+      preloadImageUrls={[shopConfig.shopLogoUrl, receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null]}
+    >
       <SharedReceiptSettlementPrintDocument
         receipt={{
           ...receipt,
@@ -205,6 +211,7 @@ export default async function ExternalLiffOrderReceiptPage({
         receivedTransferAccount={receivedTransferAccount}
         verify={verify}
         rootId="receipt"
+        rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
       />
     </ExternalPrintShell>
   );

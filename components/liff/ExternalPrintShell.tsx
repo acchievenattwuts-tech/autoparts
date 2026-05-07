@@ -7,13 +7,21 @@ export const EXTERNAL_A4_PRINT_ROOT_CLASS =
 
 export default function ExternalPrintShell({
   buttonLabel,
+  preloadImageUrls,
   children,
 }: {
   buttonLabel: string;
+  preloadImageUrls?: (string | null | undefined)[];
   children: ReactNode;
 }) {
+  const preloadList = (preloadImageUrls ?? []).filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
   return (
     <>
+      {preloadList.map((url) => (
+        <link key={url} rel="preload" as="image" href={url} fetchPriority="high" />
+      ))}
       <style>{`
         @page { size: A4; margin: 6mm; }
         :root,
