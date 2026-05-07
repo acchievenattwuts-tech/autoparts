@@ -18,18 +18,22 @@ export default function LiffPrintLayout({ children }: { children: ReactNode }) {
       <style>{`
         :root, html, body {
           background-color: #ffffff !important;
-          background: #ffffff !important;
+          background-image: linear-gradient(#ffffff, #ffffff) !important;
           color: #111827 !important;
           color-scheme: light only !important;
           forced-color-adjust: none !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         html.dark, body.dark, .dark {
           background-color: #ffffff !important;
+          background-image: linear-gradient(#ffffff, #ffffff) !important;
           color: #111827 !important;
           color-scheme: light only !important;
         }
         body * {
           color-scheme: light only !important;
+          forced-color-adjust: none !important;
         }
       `}</style>
       <LiffPrintLightTheme />

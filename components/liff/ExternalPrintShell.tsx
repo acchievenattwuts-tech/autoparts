@@ -19,17 +19,21 @@ export default function ExternalPrintShell({
         :root,
         html,
         body {
-          background: #ffffff !important;
+          background-color: #ffffff !important;
+          background-image: linear-gradient(#ffffff, #ffffff) !important;
           color: #111827 !important;
-          color-scheme: only light !important;
+          color-scheme: light only !important;
           forced-color-adjust: none !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         body {
           margin: 0 !important;
           min-height: 100%;
         }
         * {
-          color-scheme: only light !important;
+          color-scheme: light only !important;
+          forced-color-adjust: none !important;
         }
         @media print {
           html, body {
@@ -61,7 +65,8 @@ export default function ExternalPrintShell({
             overflow: hidden !important;
             display: flex;
             flex-direction: column;
-            background: #ffffff !important;
+            background-color: #ffffff !important;
+            background-image: linear-gradient(#ffffff, #ffffff) !important;
             color: #111827 !important;
             box-sizing: border-box;
             page-break-inside: avoid !important;
@@ -84,7 +89,8 @@ export default function ExternalPrintShell({
             min-width: 210mm;
             min-height: 297mm;
             max-height: 297mm;
-            background: #ffffff !important;
+            background-color: #ffffff !important;
+            background-image: linear-gradient(#ffffff, #ffffff) !important;
             color: #111827 !important;
           }
         }
