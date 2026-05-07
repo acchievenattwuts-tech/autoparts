@@ -37,9 +37,7 @@ export default function ExternalPrintShell({
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            height: 100vh !important;
-            max-height: 100vh !important;
-            overflow: hidden !important;
+            width: 210mm !important;
             background: #ffffff !important;
           }
           body * { visibility: hidden; }
@@ -54,9 +52,7 @@ export default function ExternalPrintShell({
             position: absolute;
             left: 0;
             top: 0;
-            width: 100%;
-            max-height: 100vh;
-            overflow: hidden;
+            width: 210mm !important;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
