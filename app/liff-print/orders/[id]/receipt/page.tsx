@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
-import ExternalPrintShell, { EXTERNAL_A4_PRINT_ROOT_CLASS } from "@/components/liff/ExternalPrintShell";
+import ExternalPrintShell from "@/components/liff/ExternalPrintShell";
 import { db } from "@/lib/db";
 import { PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
@@ -136,7 +136,6 @@ export default async function ExternalLiffOrderReceiptPage({
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
           rootId="receipt"
-          rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
         />
       </ExternalPrintShell>
     );
@@ -205,7 +204,6 @@ export default async function ExternalLiffOrderReceiptPage({
         receivedTransferAccount={receivedTransferAccount}
         verify={verify}
         rootId="receipt"
-        rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
       />
     </ExternalPrintShell>
   );

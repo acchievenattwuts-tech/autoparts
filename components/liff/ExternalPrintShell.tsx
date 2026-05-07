@@ -2,9 +2,6 @@ import type { ReactNode } from "react";
 
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 
-export const EXTERNAL_A4_PRINT_ROOT_CLASS =
-  "mx-auto block w-[210mm] max-w-none overflow-hidden bg-white p-[6mm] text-[9.5px] leading-tight text-gray-900";
-
 export default function ExternalPrintShell({
   buttonLabel,
   children,
@@ -15,7 +12,7 @@ export default function ExternalPrintShell({
   return (
     <>
       <style>{`
-        @page { size: A4; margin: 0; }
+        @page { margin: 0; }
         :root,
         html,
         body {
@@ -31,7 +28,6 @@ export default function ExternalPrintShell({
         }
         body {
           margin: 0 !important;
-          min-height: 100%;
         }
         * {
           color-scheme: light only !important;
@@ -41,23 +37,13 @@ export default function ExternalPrintShell({
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 210mm !important;
-            height: 297mm !important;
-            min-height: 0 !important;
-            max-height: 297mm !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             overflow: hidden !important;
             background: #ffffff !important;
           }
-          main, [data-liff-print="true"] {
-            height: 297mm !important;
-            min-height: 0 !important;
-            max-height: 297mm !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          body * { visibility: hidden !important; }
-          #receipt, #receipt * { visibility: visible !important; }
+          body * { visibility: hidden; }
+          #receipt, #receipt * { visibility: visible; }
           #receipt, #receipt * {
             color-scheme: only light !important;
             forced-color-adjust: none !important;
@@ -65,45 +51,23 @@ export default function ExternalPrintShell({
             print-color-adjust: exact !important;
           }
           #receipt {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 210mm !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: 297mm !important;
-            overflow: hidden !important;
-            display: block !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            max-height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
             background-color: #ffffff !important;
             background-image: linear-gradient(#ffffff, #ffffff) !important;
             color: #111827 !important;
-            box-sizing: border-box;
-            page-break-inside: avoid !important;
             page-break-after: avoid !important;
-            break-inside: avoid !important;
             break-after: avoid !important;
           }
-          #receipt .mt-auto {
-            margin-top: 1rem !important;
-          }
-          #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
-          #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
-          #receipt :is(.bg-gray-100, .hover\\:bg-gray-100:hover, .bg-gray-200, .hover\\:bg-gray-200:hover) { background-color: #f3f4f6 !important; }
-          #receipt :is(.text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700) { color: #111827 !important; }
-          #receipt :is(.text-gray-600, .text-gray-500, .text-gray-400) { color: #6b7280 !important; }
-          #receipt .text-\\[\\#1e3a5f\\] { color: #1e3a5f !important; }
           .no-print { display: none !important; }
-        }
-        @media screen {
-          #receipt {
-            width: 210mm;
-            min-width: 210mm;
-            min-height: auto;
-            max-height: none;
-            background-color: #ffffff !important;
-            background-image: linear-gradient(#ffffff, #ffffff) !important;
-            color: #111827 !important;
-          }
+          .receipt-footer { margin-top: auto; }
         }
       `}</style>
 

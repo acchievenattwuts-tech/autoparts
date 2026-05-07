@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
-import ExternalPrintShell, { EXTERNAL_A4_PRINT_ROOT_CLASS } from "@/components/liff/ExternalPrintShell";
+import ExternalPrintShell from "@/components/liff/ExternalPrintShell";
 import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
@@ -120,7 +120,6 @@ export default async function ExternalLiffOrderInvoicePage({
         qrAmount={transferDocumentState.qrAmount}
         verify={verify}
         rootId="receipt"
-        rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
       />
     </ExternalPrintShell>
   );
