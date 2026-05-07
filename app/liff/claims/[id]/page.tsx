@@ -21,6 +21,7 @@ export default async function LiffClaimDetailPage({
   const claim = await db.warrantyClaim.findFirst({
     where: {
       id,
+      status: { not: "CANCELLED" },
       warranty: {
         sale: {
           customerId: customer.id,
@@ -53,18 +54,25 @@ export default async function LiffClaimDetailPage({
 
   if (!claim) notFound();
 
+  const isSupplierRejectedClaim = claim.status === "CLOSED" && claim.outcome === "NO_RESOLUTION";
   const timeline =
-    claim.claimType === "REPLACE_NOW" && claim.status !== "CANCELLED"
+    claim.claimType === "REPLACE_NOW"
       ? [
           { label: "แจ้งเคลม", date: claim.claimDate, done: true },
           { label: "เปลี่ยนสินค้าแล้ว", date: claim.resolvedAt ?? claim.claimDate, done: true },
         ]
-      : [
-          { label: "แจ้งเคลม", date: claim.claimDate, done: true },
-          { label: "ส่งซัพพลายเออร์", date: claim.sentAt, done: Boolean(claim.sentAt) },
-          { label: "จบเคลม", date: claim.resolvedAt, done: Boolean(claim.resolvedAt) || ["CLOSED", "RETURNED_TO_CUSTOMER"].includes(claim.status) },
-          { label: "ส่งคืนลูกค้า", date: claim.returnedAt, done: Boolean(claim.returnedAt) || claim.status === "RETURNED_TO_CUSTOMER" },
-        ];
+      : isSupplierRejectedClaim
+        ? [
+            { label: "แจ้งเคลม", date: claim.claimDate, done: true },
+            { label: "ส่งซัพพลายเออร์", date: claim.sentAt, done: Boolean(claim.sentAt) },
+            { label: "ซัพพลายเออร์ไม่รับเคลม", date: claim.resolvedAt, done: true },
+          ]
+        : [
+            { label: "แจ้งเคลม", date: claim.claimDate, done: true },
+            { label: "ส่งซัพพลายเออร์", date: claim.sentAt, done: Boolean(claim.sentAt) },
+            { label: "จบเคลม", date: claim.resolvedAt, done: Boolean(claim.resolvedAt) || ["CLOSED", "RETURNED_TO_CUSTOMER"].includes(claim.status) },
+            { label: "ส่งคืนลูกค้า", date: claim.returnedAt, done: Boolean(claim.returnedAt) || claim.status === "RETURNED_TO_CUSTOMER" },
+          ];
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-10">
@@ -89,10 +97,15 @@ export default async function LiffClaimDetailPage({
             <span
               className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${getCustomerClaimStatusBadgeClass({
                 claimType: claim.claimType,
+                outcome: claim.outcome,
                 status: claim.status,
               })}`}
             >
-              {getCustomerClaimStatusLabel({ claimType: claim.claimType, status: claim.status })}
+              {getCustomerClaimStatusLabel({
+                claimType: claim.claimType,
+                outcome: claim.outcome,
+                status: claim.status,
+              })}
             </span>
           </div>
           <dl className="mt-4 space-y-3 text-sm">
@@ -112,7 +125,7 @@ export default async function LiffClaimDetailPage({
         </div>
 
         <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-          <h2 className="font-kanit text-lg font-bold text-slate-950">Timeline สถานะ</h2>
+          <h2 className="font-kanit text-lg font-bold text-slate-950">ไทม์ไลน์สถานะ</h2>
           <ol className="mt-4 space-y-4">
             {timeline.map((step) => (
               <li key={step.label} className="flex gap-3">

@@ -195,43 +195,6 @@ async function resolveCreditNoteRefundMethod(
   return account.type === "CASH" ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
 }
 
-async function preloadCreditNoteLineMaps(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  items: z.infer<typeof cnItemSchema>[],
-): Promise<{
-  unitScaleMap: Map<string, number>;
-  productMap: Map<string, { isLotControl: boolean; avgCost: number }>;
-}> {
-  const productIds = [...new Set(items.map((item) => item.productId))];
-  const [units, products] = await Promise.all([
-    tx.productUnit.findMany({
-      where: {
-        OR: items.map((item) => ({
-          productId: item.productId,
-          name: item.unitName,
-        })),
-      },
-      select: { productId: true, name: true, scale: true },
-    }),
-    tx.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, isLotControl: true, avgCost: true },
-    }),
-  ]);
-
-  return {
-    unitScaleMap: new Map(
-      units.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
-    ),
-    productMap: new Map(
-      products.map((product) => [
-        product.id,
-        { isLotControl: product.isLotControl, avgCost: Number(product.avgCost) },
-      ]),
-    ),
-  };
-}
-
 async function validateCreditNoteSourceSale(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   saleId: string | undefined,
@@ -382,8 +345,6 @@ export async function createCreditNote(
         tx,
         resolvedCashBankAccountId,
       );
-      const { unitScaleMap, productMap } = await preloadCreditNoteLineMaps(tx, validItems);
-
       // Create CreditNote header
       const cn = await tx.creditNote.create({
         data: {
@@ -421,7 +382,7 @@ export async function createCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true, avgCost: true },
+          select: { isLotControl: true },
         });
         if (!product) throw new Error("Missing product");
         if (type === CreditNoteType.RETURN && product.isLotControl) {
@@ -443,7 +404,7 @@ export async function createCreditNote(
 
         // Write StockCard only for RETURN type
         if (type === CreditNoteType.RETURN) {
-          const returnAvgCost = Number(product.avgCost);
+          const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       cnNo,
@@ -451,7 +412,7 @@ export async function createCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     returnAvgCost,
+            priceIn:     returnPriceInBase,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });
@@ -757,7 +718,7 @@ export async function updateCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true, avgCost: true },
+          select: { isLotControl: true },
         });
         if (!product) throw new Error("Missing product");
         if (type === CreditNoteType.RETURN && product.isLotControl) {
@@ -777,7 +738,7 @@ export async function updateCreditNote(
         });
 
         if (type === CreditNoteType.RETURN) {
-          const returnAvgCost = Number(product.avgCost);
+          const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       existing.cnNo,
@@ -785,7 +746,7 @@ export async function updateCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     returnAvgCost,
+            priceIn:     returnPriceInBase,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });

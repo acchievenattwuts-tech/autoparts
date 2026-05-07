@@ -8,62 +8,62 @@ datasource db {
 }
 
 model User {
-  id                 String           @id @default(cuid())
-  name               String
-  email              String           @unique
-  password           String
-  role               Role             @default(STAFF)
-  isActive           Boolean          @default(true)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  appRoleId          String?
-  mustChangePassword Boolean          @default(false)
-  username           String?          @unique
-  signatureUrl       String?
-  signatureUpdatedAt DateTime?
-  adjustments        Adjustment[]
-  balanceForwards    BalanceForward[]
-  creditNotes        CreditNote[]
-  cashBankAdjustments CashBankAdjustment[]
-  cashBankTransfers   CashBankTransfer[]
-  expenses           Expense[]
-  purchases          Purchase[]
-  purchaseReturns    PurchaseReturn[]
-  receipts           Receipt[]
-  sales              Sale[]
-  supplierAdvances   SupplierAdvance[]
-  supplierPayments   SupplierPayment[]
-  lineRecipientLinks UserLineRecipient[]
-  lineSummaryDispatches LineDailySummaryDispatch[]
-  contentPostsCreated ContentPost[]   @relation("ContentPostCreatedBy")
-  contentPostsApproved ContentPost[]  @relation("ContentPostApprovedBy")
-  contentApprovalsRequested ContentApproval[] @relation("ContentApprovalRequestedBy")
-  contentApprovalsToReview ContentApproval[] @relation("ContentApprovalApprover")
-  contentScheduledJobsCreated ContentScheduledJob[] @relation("ContentScheduledJobCreatedBy")
-  contentAuditLogs   ContentAuditLog[] @relation("ContentAuditActor")
-  auditLogs          AuditLog[]
-  deliveryProofs     DeliveryProof[]
-  deliverySales      Sale[]            @relation("SaleDeliveryStaff")
-  deliveryCommissionRunsCreated DeliveryCommissionRun[] @relation("DeliveryCommissionCreatedBy")
-  deliveryCommissionRuns DeliveryCommissionRun[] @relation("DeliveryCommissionStaff")
-  appRole            AppRole?         @relation(fields: [appRoleId], references: [id])
+  id                            String                     @id @default(cuid())
+  name                          String
+  email                         String                     @unique
+  password                      String
+  role                          Role                       @default(STAFF)
+  isActive                      Boolean                    @default(true)
+  createdAt                     DateTime                   @default(now())
+  updatedAt                     DateTime                   @updatedAt
+  appRoleId                     String?
+  mustChangePassword            Boolean                    @default(false)
+  username                      String?                    @unique
+  signatureUrl                  String?
+  signatureUpdatedAt            DateTime?
+  adjustments                   Adjustment[]
+  balanceForwards               BalanceForward[]
+  creditNotes                   CreditNote[]
+  cashBankAdjustments           CashBankAdjustment[]
+  cashBankTransfers             CashBankTransfer[]
+  expenses                      Expense[]
+  purchases                     Purchase[]
+  purchaseReturns               PurchaseReturn[]
+  receipts                      Receipt[]
+  sales                         Sale[]
+  supplierAdvances              SupplierAdvance[]
+  supplierPayments              SupplierPayment[]
+  lineRecipientLinks            UserLineRecipient[]
+  lineSummaryDispatches         LineDailySummaryDispatch[]
+  contentPostsCreated           ContentPost[]              @relation("ContentPostCreatedBy")
+  contentPostsApproved          ContentPost[]              @relation("ContentPostApprovedBy")
+  contentApprovalsRequested     ContentApproval[]          @relation("ContentApprovalRequestedBy")
+  contentApprovalsToReview      ContentApproval[]          @relation("ContentApprovalApprover")
+  contentScheduledJobsCreated   ContentScheduledJob[]      @relation("ContentScheduledJobCreatedBy")
+  contentAuditLogs              ContentAuditLog[]          @relation("ContentAuditActor")
+  auditLogs                     AuditLog[]
+  deliveryProofs                DeliveryProof[]
+  deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
+  deliveryCommissionRunsCreated DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
+  deliveryCommissionRuns        DeliveryCommissionRun[]    @relation("DeliveryCommissionStaff")
+  appRole                       AppRole?                   @relation(fields: [appRoleId], references: [id])
 
   @@index([username])
   @@index([appRoleId])
 }
 
 model LineRecipient {
-  id              String             @id @default(cuid())
-  lineId          String             @unique
-  type            LineRecipientType
-  status          LineRecipientStatus @default(ACTIVE)
-  displayName     String?
-  sourceName      String?
-  sourceDetail    String?
-  lastWebhookAt   DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  userLinks       UserLineRecipient[]
+  id            String              @id @default(cuid())
+  lineId        String              @unique
+  type          LineRecipientType
+  status        LineRecipientStatus @default(ACTIVE)
+  displayName   String?
+  sourceName    String?
+  sourceDetail  String?
+  lastWebhookAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  userLinks     UserLineRecipient[]
 
   @@index([type, status])
 }
@@ -83,21 +83,21 @@ model UserLineRecipient {
 }
 
 model LineDailySummaryDispatch {
-  id                String                       @id @default(cuid())
-  dispatchKey       String?                      @unique
+  id                String                         @id @default(cuid())
+  dispatchKey       String?                        @unique
   reportDayKey      String
   dispatchKind      LineDailySummaryDispatchKind
   status            LineDailySummaryDispatchStatus
   targetMode        LineDailySummaryTargetMode
-  recipientCount    Int                          @default(0)
-  sentCount         Int                          @default(0)
+  recipientCount    Int                            @default(0)
+  sentCount         Int                            @default(0)
   recipientSnapshot String?
   errorMessage      String?
   sentAt            DateTime?
-  createdAt         DateTime                     @default(now())
-  updatedAt         DateTime                     @updatedAt
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
   triggeredByUserId String?
-  triggeredByUser   User?                        @relation(fields: [triggeredByUserId], references: [id])
+  triggeredByUser   User?                          @relation(fields: [triggeredByUserId], references: [id])
 
   @@index([reportDayKey, dispatchKind])
   @@index([status, createdAt])
@@ -105,35 +105,35 @@ model LineDailySummaryDispatch {
 }
 
 model ContentPost {
-  id                    String                  @id @default(cuid())
-  channel               ContentChannel
-  title                 String?
-  caption               String
-  imageUrl              String?
-  linkUrl               String?
-  status                ContentPostStatus      @default(DRAFT)
-  scheduledAt           DateTime?
-  approvedAt            DateTime?
-  postedAt              DateTime?
-  cancelledAt           DateTime?
-  failedAt              DateTime?
-  facebookPageId        String
-  metaPostId            String?
-  lastError             String?
-  draftSource           String?
-  timezone              String                  @default("Asia/Bangkok")
-  variantGroupId        String?
-  variantNo             Int?
-  isSelectedVariant     Boolean                 @default(false)
-  createdByUserId       String
-  approvedByUserId      String?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  createdByUser         User                    @relation("ContentPostCreatedBy", fields: [createdByUserId], references: [id])
-  approvedByUser        User?                   @relation("ContentPostApprovedBy", fields: [approvedByUserId], references: [id])
-  approvals             ContentApproval[]
-  scheduledJobs         ContentScheduledJob[]
-  auditLogs             ContentAuditLog[]
+  id                String                @id @default(cuid())
+  channel           ContentChannel
+  title             String?
+  caption           String
+  imageUrl          String?
+  linkUrl           String?
+  status            ContentPostStatus     @default(DRAFT)
+  scheduledAt       DateTime?
+  approvedAt        DateTime?
+  postedAt          DateTime?
+  cancelledAt       DateTime?
+  failedAt          DateTime?
+  facebookPageId    String
+  metaPostId        String?
+  lastError         String?
+  draftSource       String?
+  timezone          String                @default("Asia/Bangkok")
+  variantGroupId    String?
+  variantNo         Int?
+  isSelectedVariant Boolean               @default(false)
+  createdByUserId   String
+  approvedByUserId  String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  createdByUser     User                  @relation("ContentPostCreatedBy", fields: [createdByUserId], references: [id])
+  approvedByUser    User?                 @relation("ContentPostApprovedBy", fields: [approvedByUserId], references: [id])
+  approvals         ContentApproval[]
+  scheduledJobs     ContentScheduledJob[]
+  auditLogs         ContentAuditLog[]
 
   @@index([channel, status, scheduledAt])
   @@index([createdByUserId, createdAt])
@@ -165,25 +165,25 @@ model ContentApproval {
 }
 
 model ContentScheduledJob {
-  id              String                    @id @default(cuid())
-  postId          String
-  type            ContentScheduledJobType
-  status          ContentScheduledJobStatus @default(PENDING)
-  provider        String
+  id                String                    @id @default(cuid())
+  postId            String
+  type              ContentScheduledJobType
+  status            ContentScheduledJobStatus @default(PENDING)
+  provider          String
   providerMessageId String?
-  idempotencyKey  String                    @unique
-  runAt           DateTime
-  startedAt       DateTime?
-  finishedAt      DateTime?
-  attemptCount    Int                       @default(0)
-  maxAttempts     Int                       @default(3)
-  lastError       String?
-  payloadJson     String?
-  createdByUserId String?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
-  post            ContentPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
-  createdByUser   User?                     @relation("ContentScheduledJobCreatedBy", fields: [createdByUserId], references: [id])
+  idempotencyKey    String                    @unique
+  runAt             DateTime
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  attemptCount      Int                       @default(0)
+  maxAttempts       Int                       @default(3)
+  lastError         String?
+  payloadJson       String?
+  createdByUserId   String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  post              ContentPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdByUser     User?                     @relation("ContentScheduledJobCreatedBy", fields: [createdByUserId], references: [id])
 
   @@index([status, runAt])
   @@index([postId, type, status])
@@ -192,16 +192,16 @@ model ContentScheduledJob {
 }
 
 model ContentAuditLog {
-  id          String      @id @default(cuid())
-  postId      String
-  actorUserId String?
-  action      String
-  detail      String?
-  metadataJson String?
+  id               String                   @id @default(cuid())
+  postId           String
+  actorUserId      String?
+  action           String
+  detail           String?
+  metadataJson     String?
   notificationType ContentNotificationType?
-  createdAt   DateTime    @default(now())
-  post        ContentPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  actorUser   User?       @relation("ContentAuditActor", fields: [actorUserId], references: [id])
+  createdAt        DateTime                 @default(now())
+  post             ContentPost              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  actorUser        User?                    @relation("ContentAuditActor", fields: [actorUserId], references: [id])
 
   @@index([postId, createdAt])
   @@index([actorUserId, createdAt])
@@ -304,17 +304,17 @@ model Category {
 }
 
 model Supplier {
-  id                String           @id @default(cuid())
-  name              String           @unique
+  id                String            @id @default(cuid())
+  name              String            @unique
   contactName       String?
   phone             String?
   address           String?
   taxId             String?
   creditTerm        Int?
-  createdAt         DateTime         @default(now())
-  code              String?          @unique
-  isActive          Boolean          @default(true)
-  preferredProducts Product[]        @relation("ProductPreferredSupplier")
+  createdAt         DateTime          @default(now())
+  code              String?           @unique
+  isActive          Boolean           @default(true)
+  preferredProducts Product[]         @relation("ProductPreferredSupplier")
   purchases         Purchase[]
   purchaseItems     PurchaseItem[]
   purchaseReturns   PurchaseReturn[]
@@ -361,6 +361,8 @@ model Product {
   adjustmentItems     AdjustmentItem[]
   balanceForwards     BalanceForward[]
   creditNoteItems     CreditNoteItem[]
+  claimStockBalances  ClaimStockBalance[]
+  claimStockMovements ClaimStockMovement[]
   lotBalances         LotBalance[]
   brand               PartsBrand?          @relation(fields: [brandId], references: [id])
   category            Category             @relation(fields: [categoryId], references: [id])
@@ -413,24 +415,25 @@ model ProductCarModel {
 }
 
 model StockCard {
-  id           String             @id @default(cuid())
-  productId    String
-  docNo        String
-  docDate      DateTime
-  source       StockCardSource
-  sorder       Int
-  qtyIn        Decimal            @default(0) @db.Decimal(12, 4)
-  qtyOut       Decimal            @default(0) @db.Decimal(12, 4)
-  qtyBalance   Decimal            @default(0) @db.Decimal(12, 4)
-  priceIn      Decimal            @default(0) @db.Decimal(10, 4)
-  priceOut     Decimal            @default(0) @db.Decimal(10, 4)
-  priceBalance Decimal            @default(0) @db.Decimal(10, 4)
-  detail       String?
-  referenceId  String?
-  createdAt    DateTime           @default(now())
-  landedCost   Decimal            @default(0) @db.Decimal(10, 2)
-  product      Product            @relation(fields: [productId], references: [id])
-  lotMovements StockMovementLot[]
+  id                  String               @id @default(cuid())
+  productId           String
+  docNo               String
+  docDate             DateTime
+  source              StockCardSource
+  sorder              Int
+  qtyIn               Decimal              @default(0) @db.Decimal(12, 4)
+  qtyOut              Decimal              @default(0) @db.Decimal(12, 4)
+  qtyBalance          Decimal              @default(0) @db.Decimal(12, 4)
+  priceIn             Decimal              @default(0) @db.Decimal(10, 4)
+  priceOut            Decimal              @default(0) @db.Decimal(10, 4)
+  priceBalance        Decimal              @default(0) @db.Decimal(10, 4)
+  detail              String?
+  referenceId         String?
+  createdAt           DateTime             @default(now())
+  landedCost          Decimal              @default(0) @db.Decimal(10, 2)
+  product             Product              @relation(fields: [productId], references: [id])
+  claimStockMovements ClaimStockMovement[]
+  lotMovements        StockMovementLot[]
 
   @@index([productId, docDate, sorder])
   @@index([docNo])
@@ -458,36 +461,36 @@ model BalanceForward {
 }
 
 model Purchase {
-  id              String           @id @default(cuid())
-  purchaseNo      String           @unique
-  supplierId      String?
-  userId          String
-  totalAmount     Decimal          @db.Decimal(10, 2)
-  discount        Decimal          @default(0) @db.Decimal(10, 2)
-  netAmount       Decimal          @db.Decimal(10, 2)
-  note            String?
-  purchaseDate    DateTime         @default(now())
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  referenceNo     String?
-  subtotalAmount  Decimal          @default(0) @db.Decimal(10, 2)
-  vatAmount       Decimal          @default(0) @db.Decimal(10, 2)
-  vatRate         Decimal          @default(0) @db.Decimal(5, 2)
-  vatType         VatType          @default(NO_VAT)
-  cancelNote      String?
-  cancelledAt     DateTime?
-  status          DocStatus        @default(ACTIVE)
-  purchaseType    PurchaseType     @default(CREDIT_PURCHASE)
-  amountRemain    Decimal          @default(0) @db.Decimal(10, 2)
-  paymentMethod   PaymentMethod    @default(TRANSFER)
-  paymentStatus   PurchasePaymentStatus @default(UNPAID)
-  cashBankAccountId String?
-  creditTerm      Int?
-  supplier        Supplier?        @relation(fields: [supplierId], references: [id])
-  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  user            User             @relation(fields: [userId], references: [id])
-  items           PurchaseItem[]
-  purchaseReturns PurchaseReturn[]
+  id                   String                @id @default(cuid())
+  purchaseNo           String                @unique
+  supplierId           String?
+  userId               String
+  totalAmount          Decimal               @db.Decimal(10, 2)
+  discount             Decimal               @default(0) @db.Decimal(10, 2)
+  netAmount            Decimal               @db.Decimal(10, 2)
+  note                 String?
+  purchaseDate         DateTime              @default(now())
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  referenceNo          String?
+  subtotalAmount       Decimal               @default(0) @db.Decimal(10, 2)
+  vatAmount            Decimal               @default(0) @db.Decimal(10, 2)
+  vatRate              Decimal               @default(0) @db.Decimal(5, 2)
+  vatType              VatType               @default(NO_VAT)
+  cancelNote           String?
+  cancelledAt          DateTime?
+  status               DocStatus             @default(ACTIVE)
+  purchaseType         PurchaseType          @default(CREDIT_PURCHASE)
+  amountRemain         Decimal               @default(0) @db.Decimal(10, 2)
+  paymentMethod        PaymentMethod         @default(TRANSFER)
+  paymentStatus        PurchasePaymentStatus @default(UNPAID)
+  cashBankAccountId    String?
+  creditTerm           Int?
+  supplier             Supplier?             @relation(fields: [supplierId], references: [id])
+  cashBankAccount      CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
+  user                 User                  @relation(fields: [userId], references: [id])
+  items                PurchaseItem[]
+  purchaseReturns      PurchaseReturn[]
   supplierPaymentItems SupplierPaymentItem[]
 
   @@index([cashBankAccountId])
@@ -534,52 +537,52 @@ model Customer {
 }
 
 model Sale {
-  id              String          @id @default(cuid())
-  saleNo          String          @unique
-  customerName    String?
-  customerPhone   String?
-  userId          String
-  signerName      String?
-  signerSignatureUrl String?
-  signedAt        DateTime?
-  totalAmount     Decimal         @db.Decimal(10, 2)
-  discount        Decimal         @default(0) @db.Decimal(10, 2)
-  netAmount       Decimal         @db.Decimal(10, 2)
-  paymentMethod   PaymentMethod?  @default(CASH)
-  note            String?
-  saleDate        DateTime        @default(now())
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  customerId      String?
-  saleType        SaleType        @default(RETAIL)
-  fulfillmentType FulfillmentType @default(PICKUP)
-  shippingAddress String?
-  shippingFee     Decimal?        @db.Decimal(10, 2)
-  paymentType     SalePaymentType @default(CASH_SALE)
-  subtotalAmount  Decimal         @default(0) @db.Decimal(10, 2)
-  vatAmount       Decimal         @default(0) @db.Decimal(10, 2)
-  vatRate         Decimal         @default(0) @db.Decimal(5, 2)
-  vatType         VatType         @default(NO_VAT)
-  cancelNote      String?
-  cancelledAt     DateTime?
-  status          DocStatus       @default(ACTIVE)
-  amountRemain    Decimal         @default(0) @db.Decimal(10, 2)
-  shippingMethod  ShippingMethod  @default(NONE)
-  shippingStatus  ShippingStatus  @default(PENDING)
-  trackingNo      String?
-  deliveryQueueOrder Int?
-  deliveryStaffId String?
-  creditTerm      Int?
-  cashBankAccountId String?
-  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  creditNotes     CreditNote[]
-  receipts        ReceiptItem[]
-  customer        Customer?       @relation(fields: [customerId], references: [id])
-  deliveryStaff   User?           @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
-  user            User            @relation(fields: [userId], references: [id])
-  items           SaleItem[]
-  warranties      Warranty[]
-  deliveryProofs  DeliveryProof[]
+  id                      String                   @id @default(cuid())
+  saleNo                  String                   @unique
+  customerName            String?
+  customerPhone           String?
+  userId                  String
+  signerName              String?
+  signerSignatureUrl      String?
+  signedAt                DateTime?
+  totalAmount             Decimal                  @db.Decimal(10, 2)
+  discount                Decimal                  @default(0) @db.Decimal(10, 2)
+  netAmount               Decimal                  @db.Decimal(10, 2)
+  paymentMethod           PaymentMethod?           @default(CASH)
+  note                    String?
+  saleDate                DateTime                 @default(now())
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  customerId              String?
+  saleType                SaleType                 @default(RETAIL)
+  fulfillmentType         FulfillmentType          @default(PICKUP)
+  shippingAddress         String?
+  shippingFee             Decimal?                 @db.Decimal(10, 2)
+  paymentType             SalePaymentType          @default(CASH_SALE)
+  subtotalAmount          Decimal                  @default(0) @db.Decimal(10, 2)
+  vatAmount               Decimal                  @default(0) @db.Decimal(10, 2)
+  vatRate                 Decimal                  @default(0) @db.Decimal(5, 2)
+  vatType                 VatType                  @default(NO_VAT)
+  cancelNote              String?
+  cancelledAt             DateTime?
+  status                  DocStatus                @default(ACTIVE)
+  amountRemain            Decimal                  @default(0) @db.Decimal(10, 2)
+  shippingMethod          ShippingMethod           @default(NONE)
+  shippingStatus          ShippingStatus           @default(PENDING)
+  trackingNo              String?
+  deliveryQueueOrder      Int?
+  deliveryStaffId         String?
+  creditTerm              Int?
+  cashBankAccountId       String?
+  cashBankAccount         CashBankAccount?         @relation(fields: [cashBankAccountId], references: [id])
+  creditNotes             CreditNote[]
+  receipts                ReceiptItem[]
+  customer                Customer?                @relation(fields: [customerId], references: [id])
+  deliveryStaff           User?                    @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
+  user                    User                     @relation(fields: [userId], references: [id])
+  items                   SaleItem[]
+  warranties              Warranty[]
+  deliveryProofs          DeliveryProof[]
   deliveryCommissionItems DeliveryCommissionItem[]
 
   @@index([cashBankAccountId])
@@ -653,36 +656,83 @@ model Warranty {
 }
 
 model WarrantyClaim {
-  id              String              @id @default(cuid())
-  claimNo         String              @unique
-  warrantyId      String
-  claimDate       DateTime
-  claimType       ClaimType
-  status          WarrantyClaimStatus @default(DRAFT)
-  outcome         ClaimOutcome?
-  signerName      String?
-  signerSignatureUrl String?
-  signedAt        DateTime?
-  symptom         String?
-  note            String?
-  supplierId      String?
-  supplierName    String?
-  supplierPhone   String?
-  supplierAddress String?
-  sentAt          DateTime?
-  resolvedAt      DateTime?
-  returnedAt      DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  supplier        Supplier?           @relation(fields: [supplierId], references: [id])
-  warranty        Warranty            @relation(fields: [warrantyId], references: [id])
-  claimLots       WarrantyClaimLot[]
+  id                  String               @id @default(cuid())
+  claimNo             String               @unique
+  warrantyId          String
+  claimDate           DateTime
+  claimType           ClaimType
+  status              WarrantyClaimStatus  @default(DRAFT)
+  outcome             ClaimOutcome?
+  signerName          String?
+  signerSignatureUrl  String?
+  signedAt            DateTime?
+  symptom             String?
+  note                String?
+  supplierId          String?
+  supplierName        String?
+  supplierPhone       String?
+  supplierAddress     String?
+  sentAt              DateTime?
+  resolvedAt          DateTime?
+  returnedAt          DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  supplier            Supplier?            @relation(fields: [supplierId], references: [id])
+  warranty            Warranty             @relation(fields: [warrantyId], references: [id])
+  claimStockBalances  ClaimStockBalance[]
+  claimStockMovements ClaimStockMovement[]
+  claimLots           WarrantyClaimLot[]
+  purchaseReturns     PurchaseReturn[]
 
   @@index([warrantyId])
   @@index([claimDate])
   @@index([status])
   @@index([warrantyId, claimDate(sort: Desc)])
   @@index([warrantyId, status])
+}
+
+model ClaimStockBalance {
+  id        String        @id @default(cuid())
+  claimId   String
+  productId String
+  lotNo     String        @default("")
+  qtyOnHand Decimal       @default(0) @db.Decimal(12, 4)
+  unitCost  Decimal       @default(0) @db.Decimal(10, 2)
+  updatedAt DateTime      @updatedAt
+  claim     WarrantyClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  product   Product       @relation(fields: [productId], references: [id])
+
+  @@unique([claimId, productId, lotNo])
+  @@index([productId])
+  @@index([claimId])
+}
+
+model ClaimStockMovement {
+  id               String                 @id @default(cuid())
+  claimId          String
+  productId        String
+  movementType     ClaimStockMovementType
+  docNo            String
+  docDate          DateTime
+  lotNo            String                 @default("")
+  qtyIn            Decimal                @default(0) @db.Decimal(12, 4)
+  qtyOut           Decimal                @default(0) @db.Decimal(12, 4)
+  unitCost         Decimal                @default(0) @db.Decimal(10, 2)
+  detail           String?
+  stockCardId      String?
+  purchaseReturnId String?
+  reversalOfId     String?
+  reversedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  claim            WarrantyClaim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  product          Product                @relation(fields: [productId], references: [id])
+  stockCard        StockCard?             @relation(fields: [stockCardId], references: [id])
+
+  @@index([claimId, docDate])
+  @@index([productId])
+  @@index([movementType])
+  @@index([stockCardId])
+  @@index([purchaseReturnId])
 }
 
 model WarrantyClaimLot {
@@ -699,47 +749,47 @@ model WarrantyClaimLot {
 }
 
 model ExpenseCode {
-  id          String        @id @default(cuid())
-  code        String        @unique
-  name        String
-  description String?
-  isActive    Boolean       @default(true)
-  isDeliveryCommission Boolean @default(false)
-  deliveryCommissionSlot String? @unique
-  createdAt   DateTime      @default(now())
-  items       ExpenseItem[]
+  id                     String                  @id @default(cuid())
+  code                   String                  @unique
+  name                   String
+  description            String?
+  isActive               Boolean                 @default(true)
+  isDeliveryCommission   Boolean                 @default(false)
+  deliveryCommissionSlot String?                 @unique
+  createdAt              DateTime                @default(now())
+  items                  ExpenseItem[]
   deliveryCommissionRuns DeliveryCommissionRun[]
 }
 
 model Expense {
-  id             String        @id @default(cuid())
-  userId         String
-  expenseDate    DateTime
-  note           String?
-  createdAt      DateTime      @default(now())
-  subtotalAmount Decimal       @default(0) @db.Decimal(10, 2)
-  vatAmount      Decimal       @default(0) @db.Decimal(10, 2)
-  vatRate        Decimal       @default(0) @db.Decimal(5, 2)
-  vatType        VatType       @default(NO_VAT)
-  cancelNote     String?
-  cancelledAt    DateTime?
-  expenseNo      String        @unique
-  netAmount      Decimal       @db.Decimal(10, 2)
-  status         DocStatus     @default(ACTIVE)
-  totalAmount    Decimal       @db.Decimal(10, 2)
-  updatedAt      DateTime      @updatedAt
-  cashBankAccountId String?
-  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  user           User          @relation(fields: [userId], references: [id])
-  items          ExpenseItem[]
+  id                    String                 @id @default(cuid())
+  userId                String
+  expenseDate           DateTime
+  note                  String?
+  createdAt             DateTime               @default(now())
+  subtotalAmount        Decimal                @default(0) @db.Decimal(10, 2)
+  vatAmount             Decimal                @default(0) @db.Decimal(10, 2)
+  vatRate               Decimal                @default(0) @db.Decimal(5, 2)
+  vatType               VatType                @default(NO_VAT)
+  cancelNote            String?
+  cancelledAt           DateTime?
+  expenseNo             String                 @unique
+  netAmount             Decimal                @db.Decimal(10, 2)
+  status                DocStatus              @default(ACTIVE)
+  totalAmount           Decimal                @db.Decimal(10, 2)
+  updatedAt             DateTime               @updatedAt
+  cashBankAccountId     String?
+  cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id])
+  items                 ExpenseItem[]
   deliveryCommissionRun DeliveryCommissionRun?
 
   @@index([cashBankAccountId])
 }
 
 model DeliveryCommissionRun {
-  id                String      @id @default(cuid())
-  runNo             String      @unique
+  id                String                   @id @default(cuid())
+  runNo             String                   @unique
   payDate           DateTime
   fromDate          DateTime
   toDate            DateTime
@@ -747,21 +797,21 @@ model DeliveryCommissionRun {
   userId            String
   cashBankAccountId String
   expenseCodeId     String
-  expenseId         String?     @unique
-  commissionPercent Decimal     @db.Decimal(5, 2)
-  shippingFeeTotal  Decimal     @default(0) @db.Decimal(10, 2)
-  commissionTotal   Decimal     @default(0) @db.Decimal(10, 2)
+  expenseId         String?                  @unique
+  commissionPercent Decimal                  @db.Decimal(5, 2)
+  shippingFeeTotal  Decimal                  @default(0) @db.Decimal(10, 2)
+  commissionTotal   Decimal                  @default(0) @db.Decimal(10, 2)
   note              String?
-  status            DocStatus   @default(ACTIVE)
+  status            DocStatus                @default(ACTIVE)
   cancelNote        String?
   cancelledAt       DateTime?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  cashBankAccount   CashBankAccount @relation(fields: [cashBankAccountId], references: [id])
-  deliveryStaff     User        @relation("DeliveryCommissionStaff", fields: [deliveryStaffId], references: [id])
-  expense           Expense?    @relation(fields: [expenseId], references: [id])
-  expenseCode       ExpenseCode @relation(fields: [expenseCodeId], references: [id])
-  user              User        @relation("DeliveryCommissionCreatedBy", fields: [userId], references: [id])
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  cashBankAccount   CashBankAccount          @relation(fields: [cashBankAccountId], references: [id])
+  deliveryStaff     User                     @relation("DeliveryCommissionStaff", fields: [deliveryStaffId], references: [id])
+  expense           Expense?                 @relation(fields: [expenseId], references: [id])
+  expenseCode       ExpenseCode              @relation(fields: [expenseCodeId], references: [id])
+  user              User                     @relation("DeliveryCommissionCreatedBy", fields: [userId], references: [id])
   items             DeliveryCommissionItem[]
 
   @@index([payDate, status])
@@ -770,19 +820,19 @@ model DeliveryCommissionRun {
 }
 
 model DeliveryCommissionItem {
-  id                String    @id @default(cuid())
+  id                String                @id @default(cuid())
   runId             String
   saleId            String
-  activeSaleId      String?   @unique
+  activeSaleId      String?               @unique
   saleNo            String
   saleDate          DateTime
   customerName      String?
-  shippingFee       Decimal   @db.Decimal(10, 2)
-  commissionPercent Decimal   @db.Decimal(5, 2)
-  commissionAmount  Decimal   @db.Decimal(10, 2)
-  createdAt         DateTime  @default(now())
+  shippingFee       Decimal               @db.Decimal(10, 2)
+  commissionPercent Decimal               @db.Decimal(5, 2)
+  commissionAmount  Decimal               @db.Decimal(10, 2)
+  createdAt         DateTime              @default(now())
   run               DeliveryCommissionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  sale              Sale      @relation(fields: [saleId], references: [id])
+  sale              Sale                  @relation(fields: [saleId], references: [id])
 
   @@unique([runId, saleId])
   @@index([saleId])
@@ -799,42 +849,42 @@ model ExpenseItem {
 }
 
 model FactProfit {
-  id              String           @id @default(cuid())
-  businessDate    DateTime
-  sourceType      ProfitSourceType
-  sourceSubtype   String?
-  sourceId        String
-  sourceLineId    String?
-  sourceDocNo     String
-  referenceDocNo  String?
-  sourceStatus    DocStatus        @default(ACTIVE)
-  isActive        Boolean          @default(true)
-  versionNo       Int              @default(1)
-  productId       String?
-  productCode     String?
-  productName     String?
-  customerId      String?
-  customerName    String?
-  supplierId      String?
-  supplierName    String?
-  lineLabel       String?
-  quantity        Decimal          @default(0) @db.Decimal(12, 4)
-  salesAmountExVat Decimal         @default(0) @db.Decimal(10, 2)
-  salesAmountIncVat Decimal        @default(0) @db.Decimal(10, 2)
-  salesAmount     Decimal          @default(0) @db.Decimal(10, 2)
-  costAmount      Decimal          @default(0) @db.Decimal(10, 2)
-  expenseAmount   Decimal          @default(0) @db.Decimal(10, 2)
-  grossProfit     Decimal          @default(0) @db.Decimal(10, 2)
-  netProfitAmount Decimal          @default(0) @db.Decimal(10, 2)
-  unitSalePriceExVat Decimal       @default(0) @db.Decimal(10, 2)
-  unitSalePriceIncVat Decimal      @default(0) @db.Decimal(10, 2)
-  unitSalePrice   Decimal          @default(0) @db.Decimal(10, 2)
-  unitCostPrice   Decimal          @default(0) @db.Decimal(10, 2)
-  unitProfit      Decimal          @default(0) @db.Decimal(10, 2)
-  marginPct       Decimal          @default(0) @db.Decimal(7, 2)
-  supersededAt    DateTime?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                  String           @id @default(cuid())
+  businessDate        DateTime
+  sourceType          ProfitSourceType
+  sourceSubtype       String?
+  sourceId            String
+  sourceLineId        String?
+  sourceDocNo         String
+  referenceDocNo      String?
+  sourceStatus        DocStatus        @default(ACTIVE)
+  isActive            Boolean          @default(true)
+  versionNo           Int              @default(1)
+  productId           String?
+  productCode         String?
+  productName         String?
+  customerId          String?
+  customerName        String?
+  supplierId          String?
+  supplierName        String?
+  lineLabel           String?
+  quantity            Decimal          @default(0) @db.Decimal(12, 4)
+  salesAmountExVat    Decimal          @default(0) @db.Decimal(10, 2)
+  salesAmountIncVat   Decimal          @default(0) @db.Decimal(10, 2)
+  salesAmount         Decimal          @default(0) @db.Decimal(10, 2)
+  costAmount          Decimal          @default(0) @db.Decimal(10, 2)
+  expenseAmount       Decimal          @default(0) @db.Decimal(10, 2)
+  grossProfit         Decimal          @default(0) @db.Decimal(10, 2)
+  netProfitAmount     Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePriceExVat  Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePriceIncVat Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePrice       Decimal          @default(0) @db.Decimal(10, 2)
+  unitCostPrice       Decimal          @default(0) @db.Decimal(10, 2)
+  unitProfit          Decimal          @default(0) @db.Decimal(10, 2)
+  marginPct           Decimal          @default(0) @db.Decimal(7, 2)
+  supersededAt        DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   @@index([businessDate, isActive])
   @@index([sourceType, sourceId, isActive])
@@ -869,36 +919,36 @@ model AdjustmentItem {
 }
 
 model CreditNote {
-  id             String           @id @default(cuid())
-  cnNo           String           @unique
-  cnDate         DateTime         @default(now())
-  saleId         String?
-  customerName   String?
-  customerPhone  String?
-  userId         String
-  type           CreditNoteType
-  totalAmount    Decimal          @db.Decimal(10, 2)
-  note           String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  settlementType CNSettlementType @default(CASH_REFUND)
-  refundMethod   CNRefundMethod?
-  subtotalAmount Decimal          @default(0) @db.Decimal(10, 2)
-  vatAmount      Decimal          @default(0) @db.Decimal(10, 2)
-  vatRate        Decimal          @default(0) @db.Decimal(5, 2)
-  vatType        VatType          @default(NO_VAT)
-  customerId     String?
-  cancelNote     String?
-  cancelledAt    DateTime?
-  status         DocStatus        @default(ACTIVE)
-  amountRemain   Decimal          @default(0) @db.Decimal(10, 2)
+  id                String           @id @default(cuid())
+  cnNo              String           @unique
+  cnDate            DateTime         @default(now())
+  saleId            String?
+  customerName      String?
+  customerPhone     String?
+  userId            String
+  type              CreditNoteType
+  totalAmount       Decimal          @db.Decimal(10, 2)
+  note              String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  settlementType    CNSettlementType @default(CASH_REFUND)
+  refundMethod      CNRefundMethod?
+  subtotalAmount    Decimal          @default(0) @db.Decimal(10, 2)
+  vatAmount         Decimal          @default(0) @db.Decimal(10, 2)
+  vatRate           Decimal          @default(0) @db.Decimal(5, 2)
+  vatType           VatType          @default(NO_VAT)
+  customerId        String?
+  cancelNote        String?
+  cancelledAt       DateTime?
+  status            DocStatus        @default(ACTIVE)
+  amountRemain      Decimal          @default(0) @db.Decimal(10, 2)
   cashBankAccountId String?
-  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  customer       Customer?        @relation(fields: [customerId], references: [id])
-  sale           Sale?            @relation(fields: [saleId], references: [id])
-  user           User             @relation(fields: [userId], references: [id])
-  items          CreditNoteItem[]
-  receiptItems   ReceiptItem[]
+  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  customer          Customer?        @relation(fields: [customerId], references: [id])
+  sale              Sale?            @relation(fields: [saleId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
+  items             CreditNoteItem[]
+  receiptItems      ReceiptItem[]
 
   @@index([cashBankAccountId])
 }
@@ -918,36 +968,39 @@ model CreditNoteItem {
 }
 
 model PurchaseReturn {
-  id             String               @id @default(cuid())
-  returnNo       String               @unique
-  returnDate     DateTime             @default(now())
-  purchaseId     String?
-  supplierId     String?
-  userId         String
-  totalAmount    Decimal              @db.Decimal(10, 2)
-  note           String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  subtotalAmount Decimal              @default(0) @db.Decimal(10, 2)
-  vatAmount      Decimal              @default(0) @db.Decimal(10, 2)
-  vatRate        Decimal              @default(0) @db.Decimal(5, 2)
-  vatType        VatType              @default(NO_VAT)
-  type           PurchaseReturnType   @default(RETURN)
-  settlementType PurchaseReturnSettlementType @default(CASH_REFUND)
-  refundMethod   PurchaseReturnRefundMethod?
-  cancelNote     String?
-  cancelledAt    DateTime?
-  status         DocStatus            @default(ACTIVE)
-  amountRemain   Decimal              @default(0) @db.Decimal(10, 2)
-  cashBankAccountId String?
-  purchase       Purchase?            @relation(fields: [purchaseId], references: [id])
-  supplier       Supplier?            @relation(fields: [supplierId], references: [id])
-  cashBankAccount CashBankAccount?    @relation(fields: [cashBankAccountId], references: [id])
-  user           User                 @relation(fields: [userId], references: [id])
-  items          PurchaseReturnItem[]
+  id                   String                       @id @default(cuid())
+  returnNo             String                       @unique
+  returnDate           DateTime                     @default(now())
+  purchaseId           String?
+  supplierId           String?
+  userId               String
+  totalAmount          Decimal                      @db.Decimal(10, 2)
+  note                 String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  subtotalAmount       Decimal                      @default(0) @db.Decimal(10, 2)
+  vatAmount            Decimal                      @default(0) @db.Decimal(10, 2)
+  vatRate              Decimal                      @default(0) @db.Decimal(5, 2)
+  vatType              VatType                      @default(NO_VAT)
+  type                 PurchaseReturnType           @default(RETURN)
+  settlementType       PurchaseReturnSettlementType @default(CASH_REFUND)
+  refundMethod         PurchaseReturnRefundMethod?
+  cancelNote           String?
+  cancelledAt          DateTime?
+  status               DocStatus                    @default(ACTIVE)
+  amountRemain         Decimal                      @default(0) @db.Decimal(10, 2)
+  cashBankAccountId    String?
+  claimId              String?
+  purchase             Purchase?                    @relation(fields: [purchaseId], references: [id])
+  supplier             Supplier?                    @relation(fields: [supplierId], references: [id])
+  cashBankAccount      CashBankAccount?             @relation(fields: [cashBankAccountId], references: [id])
+  claim                WarrantyClaim?               @relation(fields: [claimId], references: [id])
+  user                 User                         @relation(fields: [userId], references: [id])
+  items                PurchaseReturnItem[]
   supplierPaymentItems SupplierPaymentItem[]
 
   @@index([cashBankAccountId])
+  @@index([claimId])
   @@index([settlementType])
 }
 
@@ -987,60 +1040,60 @@ model StorefrontVisitDaily {
 }
 
 model Receipt {
-  id            String        @id @default(cuid())
-  receiptNo     String        @unique
-  receiptDate   DateTime      @default(now())
-  customerId    String?
-  customerName  String?
-  userId        String
-  signerName    String?
+  id                 String           @id @default(cuid())
+  receiptNo          String           @unique
+  receiptDate        DateTime         @default(now())
+  customerId         String?
+  customerName       String?
+  userId             String
+  signerName         String?
   signerSignatureUrl String?
-  signedAt      DateTime?
-  totalAmount   Decimal       @db.Decimal(10, 2)
-  paymentMethod PaymentMethod
-  note          String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  cancelNote    String?
-  cancelledAt   DateTime?
-  status        DocStatus     @default(ACTIVE)
-  cashBankAccountId String?
-  cashBankAccount CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  customer      Customer?     @relation(fields: [customerId], references: [id])
-  user          User          @relation(fields: [userId], references: [id])
-  items         ReceiptItem[]
+  signedAt           DateTime?
+  totalAmount        Decimal          @db.Decimal(10, 2)
+  paymentMethod      PaymentMethod
+  note               String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  cancelNote         String?
+  cancelledAt        DateTime?
+  status             DocStatus        @default(ACTIVE)
+  cashBankAccountId  String?
+  cashBankAccount    CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  customer           Customer?        @relation(fields: [customerId], references: [id])
+  user               User             @relation(fields: [userId], references: [id])
+  items              ReceiptItem[]
 
   @@index([cashBankAccountId])
 }
 
 model CashBankAccount {
-  id                String               @id @default(cuid())
-  code              String               @unique
-  name              String
-  type              CashBankAccountType
-  bankName          String?
-  accountNo         String?
-  promptPayId       String?
-  isPrimaryTransferAccount Boolean       @default(false)
-  openingBalance    Decimal              @default(0) @db.Decimal(10, 2)
-  openingDate       DateTime
-  isActive          Boolean              @default(true)
-  lowBalanceThreshold Decimal            @default(0) @db.Decimal(10, 2)
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  purchases         Purchase[]
-  purchaseReturns   PurchaseReturn[]
-  sales             Sale[]
-  expenses          Expense[]
-  creditNotes       CreditNote[]
-  receipts          Receipt[]
-  supplierAdvances  SupplierAdvance[]
-  supplierPayments  SupplierPayment[]
-  movements         CashBankMovement[]
-  transfersFrom     CashBankTransfer[]   @relation("CashBankTransferFrom")
-  transfersTo       CashBankTransfer[]   @relation("CashBankTransferTo")
-  adjustments       CashBankAdjustment[]
-  deliveryCommissionRuns DeliveryCommissionRun[]
+  id                       String                  @id @default(cuid())
+  code                     String                  @unique
+  name                     String
+  type                     CashBankAccountType
+  bankName                 String?
+  accountNo                String?
+  promptPayId              String?
+  isPrimaryTransferAccount Boolean                 @default(false)
+  openingBalance           Decimal                 @default(0) @db.Decimal(10, 2)
+  openingDate              DateTime
+  isActive                 Boolean                 @default(true)
+  lowBalanceThreshold      Decimal                 @default(0) @db.Decimal(10, 2)
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  purchases                Purchase[]
+  purchaseReturns          PurchaseReturn[]
+  sales                    Sale[]
+  expenses                 Expense[]
+  creditNotes              CreditNote[]
+  receipts                 Receipt[]
+  supplierAdvances         SupplierAdvance[]
+  supplierPayments         SupplierPayment[]
+  movements                CashBankMovement[]
+  transfersFrom            CashBankTransfer[]      @relation("CashBankTransferFrom")
+  transfersTo              CashBankTransfer[]      @relation("CashBankTransferTo")
+  adjustments              CashBankAdjustment[]
+  deliveryCommissionRuns   DeliveryCommissionRun[]
 
   @@index([type, isActive])
   @@index([name])
@@ -1048,19 +1101,19 @@ model CashBankAccount {
 }
 
 model CashBankMovement {
-  id            String             @id @default(cuid())
-  accountId     String
-  txnDate       DateTime
-  sorder        Int
-  direction     CashBankDirection
-  amount        Decimal            @db.Decimal(10, 2)
-  balanceAfter  Decimal            @db.Decimal(10, 2)
-  sourceType    CashBankSourceType
-  sourceId      String
-  referenceNo   String
-  note          String?
-  createdAt     DateTime           @default(now())
-  account       CashBankAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id           String             @id @default(cuid())
+  accountId    String
+  txnDate      DateTime
+  sorder       Int
+  direction    CashBankDirection
+  amount       Decimal            @db.Decimal(10, 2)
+  balanceAfter Decimal            @db.Decimal(10, 2)
+  sourceType   CashBankSourceType
+  sourceId     String
+  referenceNo  String
+  note         String?
+  createdAt    DateTime           @default(now())
+  account      CashBankAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, txnDate, sorder])
   @@index([sourceType, sourceId])
@@ -1068,22 +1121,22 @@ model CashBankMovement {
 }
 
 model CashBankTransfer {
-  id             String                 @id @default(cuid())
-  transferNo     String                 @unique
-  transferDate   DateTime
-  fromAccountId  String
-  toAccountId    String
-  amount         Decimal                @db.Decimal(10, 2)
-  note           String?
-  userId         String
-  status         CashBankTransferStatus @default(ACTIVE)
-  cancelNote     String?
-  cancelledAt    DateTime?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  fromAccount    CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
-  toAccount      CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
-  user           User                   @relation(fields: [userId], references: [id])
+  id            String                 @id @default(cuid())
+  transferNo    String                 @unique
+  transferDate  DateTime
+  fromAccountId String
+  toAccountId   String
+  amount        Decimal                @db.Decimal(10, 2)
+  note          String?
+  userId        String
+  status        CashBankTransferStatus @default(ACTIVE)
+  cancelNote    String?
+  cancelledAt   DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  fromAccount   CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
+  toAccount     CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
+  user          User                   @relation(fields: [userId], references: [id])
 
   @@index([transferDate])
   @@index([fromAccountId])
@@ -1092,22 +1145,22 @@ model CashBankTransfer {
 }
 
 model CashBankAdjustment {
-  id            String                   @id @default(cuid())
-  adjustNo      String                   @unique
-  adjustDate    DateTime
-  accountId     String
-  direction     CashBankDirection
-  amount        Decimal                  @db.Decimal(10, 2)
-  reason        String
-  note          String?
-  userId        String
-  status        CashBankAdjustmentStatus @default(ACTIVE)
-  cancelNote    String?
-  cancelledAt   DateTime?
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-  account       CashBankAccount          @relation(fields: [accountId], references: [id])
-  user          User                     @relation(fields: [userId], references: [id])
+  id          String                   @id @default(cuid())
+  adjustNo    String                   @unique
+  adjustDate  DateTime
+  accountId   String
+  direction   CashBankDirection
+  amount      Decimal                  @db.Decimal(10, 2)
+  reason      String
+  note        String?
+  userId      String
+  status      CashBankAdjustmentStatus @default(ACTIVE)
+  cancelNote  String?
+  cancelledAt DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  account     CashBankAccount          @relation(fields: [accountId], references: [id])
+  user        User                     @relation(fields: [userId], references: [id])
 
   @@index([adjustDate])
   @@index([accountId, status])
@@ -1130,24 +1183,24 @@ model ReceiptItem {
 }
 
 model SupplierAdvance {
-  id                String               @id @default(cuid())
-  advanceNo         String               @unique
-  advanceDate       DateTime             @default(now())
+  id                String                @id @default(cuid())
+  advanceNo         String                @unique
+  advanceDate       DateTime              @default(now())
   supplierId        String
   userId            String
-  totalAmount       Decimal              @db.Decimal(10, 2)
-  amountRemain      Decimal              @default(0) @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod        @default(TRANSFER)
+  totalAmount       Decimal               @db.Decimal(10, 2)
+  amountRemain      Decimal               @default(0) @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod         @default(TRANSFER)
   note              String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
   cancelNote        String?
   cancelledAt       DateTime?
-  status            DocStatus            @default(ACTIVE)
+  status            DocStatus             @default(ACTIVE)
   cashBankAccountId String?
-  cashBankAccount   CashBankAccount?     @relation(fields: [cashBankAccountId], references: [id])
-  supplier          Supplier             @relation(fields: [supplierId], references: [id])
-  user              User                 @relation(fields: [userId], references: [id])
+  cashBankAccount   CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
+  supplier          Supplier              @relation(fields: [supplierId], references: [id])
+  user              User                  @relation(fields: [userId], references: [id])
   supplierPayments  SupplierPaymentItem[]
 
   @@index([advanceDate])
@@ -1157,23 +1210,23 @@ model SupplierAdvance {
 }
 
 model SupplierPayment {
-  id                String               @id @default(cuid())
-  paymentNo         String               @unique
-  paymentDate       DateTime             @default(now())
+  id                String                @id @default(cuid())
+  paymentNo         String                @unique
+  paymentDate       DateTime              @default(now())
   supplierId        String
   userId            String
-  totalAmount       Decimal              @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod        @default(CREDIT)
+  totalAmount       Decimal               @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod         @default(CREDIT)
   note              String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
   cancelNote        String?
   cancelledAt       DateTime?
-  status            DocStatus            @default(ACTIVE)
+  status            DocStatus             @default(ACTIVE)
   cashBankAccountId String?
-  cashBankAccount   CashBankAccount?     @relation(fields: [cashBankAccountId], references: [id])
-  supplier          Supplier             @relation(fields: [supplierId], references: [id])
-  user              User                 @relation(fields: [userId], references: [id])
+  cashBankAccount   CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
+  supplier          Supplier              @relation(fields: [supplierId], references: [id])
+  user              User                  @relation(fields: [userId], references: [id])
   items             SupplierPaymentItem[]
 
   @@index([paymentDate])
@@ -1183,16 +1236,16 @@ model SupplierPayment {
 }
 
 model SupplierPaymentItem {
-  id               String          @id @default(cuid())
+  id               String           @id @default(cuid())
   paymentId        String
   purchaseId       String?
   purchaseReturnId String?
   advanceId        String?
-  paidAmount       Decimal         @db.Decimal(10, 2)
+  paidAmount       Decimal          @db.Decimal(10, 2)
   advance          SupplierAdvance? @relation(fields: [advanceId], references: [id])
-  payment          SupplierPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  purchase         Purchase?       @relation(fields: [purchaseId], references: [id])
-  purchaseReturn   PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id])
+  payment          SupplierPayment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  purchase         Purchase?        @relation(fields: [purchaseId], references: [id])
+  purchaseReturn   PurchaseReturn?  @relation(fields: [purchaseReturnId], references: [id])
 
   @@index([paymentId])
   @@index([purchaseId])
@@ -1517,6 +1570,17 @@ enum ClaimType {
 enum ClaimOutcome {
   RECEIVED
   NO_RESOLUTION
+}
+
+enum ClaimStockMovementType {
+  CUSTOMER_RETURN_IN
+  SEND_TO_SUPPLIER_OUT
+  SUPPLIER_RECEIVE_IN
+  TRANSFER_TO_NORMAL_OUT
+  SUPPLIER_REJECT
+  SUPPLIER_CREDIT_SETTLE
+  SCRAP_OUT
+  CANCEL_REVERSAL
 }
 
 enum CreditNoteType {

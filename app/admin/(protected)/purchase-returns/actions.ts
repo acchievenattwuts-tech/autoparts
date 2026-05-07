@@ -15,6 +15,7 @@ import {
   AuditAction,
   CashBankDirection,
   CashBankSourceType,
+  ClaimStockMovementType,
   PurchaseReturnRefundMethod,
   PurchaseReturnSettlementType,
   PurchaseReturnType,
@@ -35,6 +36,7 @@ import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 
 const purchaseReturnProductOptionSelect = {
   id: true,
@@ -212,12 +214,14 @@ const returnItemSchema = z.object({
   productId: z.string().min(1).max(50),
   unitName: z.string().min(1).max(20),
   qty: z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
+  costPrice: z.coerce.number().min(0).optional(),
   lotItems: z.array(lotSubRowSchema).default([]),
 });
 
 const returnSchema = z.object({
   returnDate: z.string().min(1, "กรุณาระบุวันที่"),
   purchaseId: z.string().max(50).optional(),
+  claimId: z.string().max(50).optional(),
   supplierId: z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
   type: z.nativeEnum(PurchaseReturnType).default(PurchaseReturnType.RETURN),
   settlementType: z.nativeEnum(PurchaseReturnSettlementType).default(PurchaseReturnSettlementType.CASH_REFUND),
@@ -274,16 +278,16 @@ async function buildLineData(
   for (const item of validItems) {
     const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
     if (scale === undefined) {
-      throw new Error(`????????????? ${item.unitName} ?????????`);
+      throw new Error(`ไม่พบหน่วย ${item.unitName} ของสินค้า`);
     }
 
     const qtyInBase = item.qty * scale;
     const product = productMap.get(item.productId);
     if (!product) {
-      throw new Error("???????????");
+      throw new Error("ไม่พบสินค้า");
     }
 
-    const costPerBase = product.avgCost;
+    const costPerBase = item.costPrice && item.costPrice > 0 ? item.costPrice / scale : product.avgCost;
     const totalAmount = Math.round(qtyInBase) * costPerBase;
     const subtotalAmount = calcItemSubtotal(totalAmount, vatType, vatRate);
 
@@ -388,6 +392,41 @@ async function validatePurchaseReturnSourcePurchase(
   }
 }
 
+async function validatePurchaseReturnClaim(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  claimId: string | undefined,
+  supplierId: string,
+): Promise<{ id: string; claimNo: string; warrantyId: string; productId: string } | null> {
+  if (!claimId) return null;
+
+  const claim = await tx.warrantyClaim.findUnique({
+    where: { id: claimId },
+    select: {
+      id: true,
+      claimNo: true,
+      status: true,
+      supplierId: true,
+      warrantyId: true,
+      warranty: { select: { productId: true } },
+    },
+  });
+
+  if (!claim || claim.status === "CANCELLED") {
+    throw new Error("ไม่พบใบเคลมที่ใช้งานได้");
+  }
+
+  if (claim.supplierId && claim.supplierId !== supplierId) {
+    throw new Error(`ใบเคลม ${claim.claimNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
+  }
+
+  return {
+    id: claim.id,
+    claimNo: claim.claimNo,
+    warrantyId: claim.warrantyId,
+    productId: claim.warranty.productId,
+  };
+}
+
 async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
   const purchaseReturn = await db.purchaseReturn.findUnique({
     where: { id: purchaseReturnId },
@@ -434,6 +473,7 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
     settlementType: purchaseReturn.settlementType,
     refundMethod: purchaseReturn.refundMethod,
     purchaseId: purchaseReturn.purchaseId,
+    claimId: purchaseReturn.claimId,
     purchaseNo: purchaseReturn.purchase?.purchaseNo ?? null,
     supplierId: purchaseReturn.supplierId,
     supplierRef: purchaseReturn.supplier?.code ?? purchaseReturn.supplier?.name ?? null,
@@ -477,6 +517,7 @@ export async function createPurchaseReturn(
   const parsed = returnSchema.safeParse({
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
+    claimId: formData.get("claimId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
     type: (formData.get("type") as PurchaseReturnType) || PurchaseReturnType.RETURN,
     settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
@@ -492,6 +533,7 @@ export async function createPurchaseReturn(
   const {
     returnDate,
     purchaseId,
+    claimId,
     supplierId,
     type,
     settlementType,
@@ -514,6 +556,7 @@ export async function createPurchaseReturn(
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+      const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
 
       const lineData = await buildLineData(tx, validItems, vatType, vatRate);
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
@@ -527,6 +570,7 @@ export async function createPurchaseReturn(
           returnNo,
           returnDate: docDate,
           purchaseId: purchaseId || null,
+          claimId: linkedClaim?.id ?? null,
           supplierId,
           userId: session.user.id,
           totalAmount: netAmount,
@@ -546,6 +590,23 @@ export async function createPurchaseReturn(
       createdPurchaseReturnId = purchaseReturn.id;
 
       await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type);
+
+      if (linkedClaim) {
+        const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
+        await writeClaimStockMovement(tx, {
+          claimId: linkedClaim.id,
+          productId: linkedClaim.productId,
+          movementType: ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE,
+          docNo: returnNo,
+          docDate,
+          qtyIn: 0,
+          qtyOut: 0,
+          unitCost: originalCost.unitCost,
+          lotNo: originalCost.lotNo,
+          purchaseReturnId: purchaseReturn.id,
+          detail: `ผูกใบลดหนี้ซื้อกับใบเคลม ${linkedClaim.claimNo}`,
+        });
+      }
 
       if (settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT) {
         await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
@@ -636,6 +697,13 @@ export async function cancelPurchaseReturn(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
     await dbTx(async (tx) => {
+      if (ret.claimId) {
+        await reverseClaimStockMovements(tx, ret.claimId, {
+          movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
+          docNos: [ret.returnNo],
+        });
+      }
+
       if (hadStock) {
         for (const item of ret.items) {
           await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
@@ -727,6 +795,7 @@ export async function updatePurchaseReturn(
   const parsed = returnSchema.safeParse({
     returnDate: formData.get("returnDate"),
     purchaseId: formData.get("purchaseId") || undefined,
+    claimId: formData.get("claimId") || undefined,
     supplierId: formData.get("supplierId") || undefined,
     type: (formData.get("type") as PurchaseReturnType) || PurchaseReturnType.RETURN,
     settlementType: formData.get("settlementType") || PurchaseReturnSettlementType.CASH_REFUND,
@@ -742,6 +811,7 @@ export async function updatePurchaseReturn(
   const {
     returnDate,
     purchaseId,
+    claimId,
     supplierId,
     type,
     settlementType,
@@ -765,6 +835,14 @@ export async function updatePurchaseReturn(
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(id);
     await dbTx(async (tx) => {
       await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+      const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
+
+      if (existing.claimId) {
+        await reverseClaimStockMovements(tx, existing.claimId, {
+          movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
+          docNos: [existing.returnNo],
+        });
+      }
 
       if (oldHadStock) {
         for (const item of existing.items) {
@@ -789,6 +867,7 @@ export async function updatePurchaseReturn(
         data: {
           returnDate: docDate,
           purchaseId: purchaseId || null,
+          claimId: linkedClaim?.id ?? null,
           supplierId,
           totalAmount: netAmount,
           note: note?.trim() || null,
@@ -806,6 +885,23 @@ export async function updatePurchaseReturn(
       });
 
       await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData, type);
+
+      if (linkedClaim) {
+        const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
+        await writeClaimStockMovement(tx, {
+          claimId: linkedClaim.id,
+          productId: linkedClaim.productId,
+          movementType: ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE,
+          docNo: existing.returnNo,
+          docDate,
+          qtyIn: 0,
+          qtyOut: 0,
+          unitCost: originalCost.unitCost,
+          lotNo: originalCost.lotNo,
+          purchaseReturnId: id,
+          detail: `ผูกใบลดหนี้ซื้อกับใบเคลม ${linkedClaim.claimNo}`,
+        });
+      }
 
       await recalculatePurchaseReturnAmountRemain(tx, id);
 
@@ -870,7 +966,7 @@ export async function getPurchasesForSupplier(
 }
 
 export type PurchaseDetailResult = {
-  items: { productId: string; unitName: string; qty: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
+  items: { productId: string; unitName: string; qty: number; costPrice?: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
   products: PurchaseReturnProductOption[];
 } | null;
 
@@ -885,6 +981,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
         select: {
           productId: true,
           quantity: true,
+          costPrice: true,
           product: {
             select: {
               id: true,
@@ -926,6 +1023,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
       productId: item.productId,
       unitName,
       qty: Number(item.quantity) / scale,
+      costPrice: Number(item.costPrice) * scale,
       lotItems: item.product.isLotControl
         ? item.lotItems.map((lot) => ({
             lotNo: lot.lotNo,

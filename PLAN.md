@@ -107,6 +107,8 @@
 
 #### ✅ 3.5 Credit Note (CN ฝั่งขาย)
 - `/admin/credit-notes` — CN type: รับคืนสินค้า/ส่วนลด/อื่นๆ + SettlementType: คืนเงินสด/ตั้งหนี้ + RefundMethod: เงินสด/โอนเงิน + VAT
+- [x] CN sale RETURN writes StockCard `priceIn` from the editable CN line price converted to base unit; default line price comes from the referenced sale, or product sale price when no sale is referenced. MAVG remains neutral for `RETURN_IN` per stock rules.
+- [x] CN purchase supplier credit amount remains based on the saved CN purchase `totalAmount` and active supplier-payment usages.
 
 #### ✅ 3.6 Stock Card MAVG Viewer
 - `/admin/stock/card` — บัตรสต็อกรายสินค้า เลือกหน่วยแสดงได้
@@ -536,6 +538,14 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 - [x] Stock card display: เพิ่ม label + badge สี สำหรับ CLAIM_* sources ทั้ง 4 ประเภท
 - [x] TabsBar: เพิ่ม `/admin/warranty-claims` ใน ROUTE_LABELS
 - [x] Delivery print: ย้ายออกนอก `(protected)` — fix onClick Server Component error
+- [x] ปรับสต็อกเคลมให้ตรวจสอบย้อนหลังได้ (2026-05-07): เพิ่ม `ClaimStockMovement` + `ClaimStockBalance` แยกสินค้ารับเคลมออกจากสต็อกปกติ; รับคืนจากลูกค้า / ส่งซัพพลายเออร์ไม่เขียน StockCard ปกติแล้ว
+- [x] กฎต้นทุนเคลม (2026-05-07): รับคืนจากลูกค้าใช้ต้นทุนขายออกเดิมจาก `Warranty.saleItem` / ต้นทุนล็อต; สินค้าทดแทนจากซัพพลายเออร์ผ่านสต็อกเคลมก่อน แล้วเข้า stock ปกติด้วย `CLAIM_RECV_IN` ที่ไม่ทำให้ MAVG เพี้ยน
+- [x] การย้อนกลับรายการเคลม (2026-05-07): ทุกการเคลื่อนไหวของสต็อกเคลมมีประวัติ และการยกเลิก/ย้อนสถานะสร้างรายการย้อนกลับแทนการลบประวัติสต็อกเคลม
+- [x] การผูกใบลดหนี้ซื้อกับเคลม (2026-05-07): `PurchaseReturn.claimId` ผูกกับ `WarrantyClaim` และเขียนรายการ `SUPPLIER_CREDIT_SETTLE` แบบบันทึกเหตุการณ์; ยอดเจ้าหนี้ยังยึดตามบิลใบลดหนี้ซื้อที่บันทึกจริง
+- [x] รายละเอียดใบเคลม (2026-05-07): หน้า detail ใบเคลมแสดงยอดคงเหลือสต็อกเคลม, ประวัติการเคลื่อนไหว, สถานะการย้อนกลับ และใบลดหนี้ซื้อที่ผูกกับเคลม
+- [x] ทางลัดจากเคลมไปใบลดหนี้ซื้อ (2026-05-07): เพิ่มปุ่มจากหน้าเคลมไปสร้างใบลดหนี้ซื้อ พร้อมเติม claimId, ซัพพลายเออร์, สินค้า, รูปแบบชดเชยเป็นเครดิตซัพพลายเออร์ และต้นทุนบรรทัดจากต้นทุนขายออกเดิม
+- [x] รายงานรวมสต็อกเคลม (2026-05-07): เพิ่ม `/admin/reports/claim-stock` สำหรับดูรายการเคลื่อนไหวสต็อกเคลมหลายใบ พร้อม filter วันที่, สถานะใบเคลม, ประเภทรายการ และค้นหาเลขที่เคลม/สินค้า/ซัพพลายเออร์
+- [x] เก็บข้อความหน้าจอเป็นภาษาไทย (2026-05-07): แก้ข้อความอังกฤษที่เพิ่มใน flow สต็อกเคลม / ใบลดหนี้ซื้อ / รายงาน ให้เป็นภาษาไทย และเพิ่มคำสั่งค้นหาด่วนสำหรับรายงานสต็อกเคลม
 
 ---
 
@@ -6396,6 +6406,7 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] Order detail เพิ่ม card "เอกสารของฉัน" สำหรับเปิดใบแจ้งหนี้/ใบส่งของ/ใบเสร็จและบันทึกเป็น PDF จากมือถือ
 - [x] หน้า PDF/print ฝั่งลูกค้าตรวจ `customerId` จาก LIFF session ทุกครั้งก่อน query เอกสาร และไม่ expose admin route
 - [x] LIFF claim customer timeline: `claimType = REPLACE_NOW` แสดงจบที่ "เปลี่ยนสินค้าแล้ว" เพราะถือว่าลูกค้าได้รับสินค้าแล้ว โดยไม่กระทบ admin claim workflow เดิม
+- [x] LIFF claim visibility polish (2026-05-07): ซ่อนเคลมที่ยกเลิกจากหน้าลูกค้า, คงกฎ `REPLACE_NOW` ให้จบสำหรับลูกค้าทันที, และแสดงกรณี supplier ไม่รับเคลมเป็นสถานะ/ไทม์ไลน์ที่ชัดขึ้น โดยไม่เปิด claim stock movement หรือ CN purchase ให้ฝั่งลูกค้าเห็น
 - [x] Watermark/QR ตรวจสอบเอกสารด้วย `DOC_VERIFY_SECRET` สำหรับเอกสาร admin/LIFF print/PDF โดยไม่ fork shared print layout
 - [x] Payment channels block เพิ่มปุ่ม copy เลขบัญชี + PromptPay พร้อมข้อความ `คัดลอกแล้ว`
 

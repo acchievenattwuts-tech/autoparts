@@ -81,6 +81,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       productId: item.productId,
       unitName:  baseUnit?.name ?? "",
       qty:       Number(item.qty),
+      costPrice: Number(item.costPrice),
       lotItems: item.lotItems.map((lot) => ({
         lotNo: lot.lotNo,
         qty: Number(lot.qty),
@@ -95,6 +96,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     id,
       returnDate: formatDateOnlyForInput(ret.returnDate),
     purchaseId: ret.purchaseId ?? "",
+    claimId: ret.claimId ?? "",
     supplierId: ret.supplierId ?? "",
     type: ret.type,
     settlementType: ret.settlementType,

@@ -23,7 +23,7 @@ export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
 
 export const CLAIM_OUTCOME_LABEL: Record<ClaimOutcome, string> = {
   RECEIVED: "ได้รับสินค้าคืน",
-  NO_RESOLUTION: "ไม่ได้รับการแก้ไข",
+  NO_RESOLUTION: "ซัพพลายเออร์ไม่รับเคลม",
 };
 
 export function getClaimOutcomeLabel(outcome: ClaimOutcome | null | undefined) {
@@ -32,26 +32,32 @@ export function getClaimOutcomeLabel(outcome: ClaimOutcome | null | undefined) {
 
 export function getCustomerClaimStatusLabel({
   claimType,
+  outcome,
   status,
 }: {
   claimType: ClaimType;
+  outcome?: ClaimOutcome | null;
   status: WarrantyClaimStatus;
 }) {
   if (status === "CANCELLED") return WARRANTY_CLAIM_STATUS_LABEL.CANCELLED;
   if (claimType === "REPLACE_NOW") return "เปลี่ยนสินค้าแล้ว";
+  if (status === "CLOSED" && outcome === "NO_RESOLUTION") return CLAIM_OUTCOME_LABEL.NO_RESOLUTION;
 
   return WARRANTY_CLAIM_STATUS_LABEL[status];
 }
 
 export function getCustomerClaimStatusBadgeClass({
   claimType,
+  outcome,
   status,
 }: {
   claimType: ClaimType;
+  outcome?: ClaimOutcome | null;
   status: WarrantyClaimStatus;
 }) {
   if (status === "CANCELLED") return WARRANTY_CLAIM_STATUS_BADGE_CLASS.CANCELLED;
   if (claimType === "REPLACE_NOW") return "bg-emerald-100 text-emerald-700";
+  if (status === "CLOSED" && outcome === "NO_RESOLUTION") return "bg-amber-100 text-amber-800";
 
   return WARRANTY_CLAIM_STATUS_BADGE_CLASS[status];
 }

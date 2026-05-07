@@ -48,6 +48,7 @@ interface LineItem {
   productId: string;
   unitName: string;
   qty: number;
+  costPrice?: number;
   lotItems: LotSubRow[];
 }
 
@@ -55,6 +56,7 @@ interface InitialData {
   id: string;
   returnDate: string;
   purchaseId: string;
+  claimId?: string;
   supplierId: string;
   type: "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "SUPPLIER_CREDIT";
@@ -65,6 +67,8 @@ interface InitialData {
   items: LineItem[];
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }
+
+type PrefillData = Omit<InitialData, "id">;
 
 const RETURN_TYPE_LABELS: Record<string, string> = {
   RETURN: "ส่งคืนสินค้า",
@@ -85,6 +89,8 @@ const PurchaseReturnForm = ({
   defaultVatType,
   defaultVatRate,
   initialData,
+  prefillData,
+  claimId,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -93,13 +99,17 @@ const PurchaseReturnForm = ({
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
+  prefillData?: PrefillData;
+  claimId?: string;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
+  const seedData = initialData ?? prefillData;
+  const linkedClaimId = seedData?.claimId ?? claimId ?? "";
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [supplierId, setSupplierId] = useState(seedData?.supplierId ?? "");
   const [selectedSupplierOption, setSelectedSupplierOption] = useState<SelectOption | null>(
     supplierId
       ? (() => {
@@ -108,20 +118,20 @@ const PurchaseReturnForm = ({
         })()
       : null,
   );
-  const [purchaseId, setPurchaseId] = useState(initialData?.purchaseId ?? "");
+  const [purchaseId, setPurchaseId] = useState(seedData?.purchaseId ?? "");
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
-  const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [items, setItems] = useState<LineItem[]>(seedData?.items ?? [emptyItem()]);
   const [returnType, setReturnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(
-    initialData?.type ?? "RETURN",
+    seedData?.type ?? "RETURN",
   );
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "SUPPLIER_CREDIT">(
-    initialData?.settlementType ?? "CASH_REFUND",
+    seedData?.settlementType ?? "CASH_REFUND",
   );
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
-  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
-  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialData?.initialAvailableLots ?? {});
+  const [cashBankAccountId, setCashBankAccountId] = useState(seedData?.cashBankAccountId ?? "");
+  const [vatType, setVatType] = useState<string>(seedData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(seedData?.vatRate ?? defaultVatRate);
+  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(seedData?.initialAvailableLots ?? {});
   const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
@@ -201,6 +211,7 @@ const PurchaseReturnForm = ({
               ...item,
               productId: "",
               unitName: "",
+              costPrice: undefined,
               lotItems: [],
             },
       ),
@@ -219,6 +230,7 @@ const PurchaseReturnForm = ({
               ...item,
               productId: product.id,
               unitName: baseUnit?.name ?? "",
+              costPrice: undefined,
               lotItems: product.isLotControl
                 ? [{ lotNo: "", qty: item.qty, unitCost: 0, mfgDate: "", expDate: "" }]
                 : [],
@@ -317,7 +329,7 @@ const PurchaseReturnForm = ({
   };
 
   const totalBeforeVat = items.reduce((sum, item) => {
-    const cost = getDisplayCost(item.productId, item.unitName);
+    const cost = item.costPrice && item.costPrice > 0 ? item.costPrice : getDisplayCost(item.productId, item.unitName);
     return sum + item.qty * cost;
   }, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalBeforeVat, vatType as VatType, vatRate);
@@ -344,6 +356,7 @@ const PurchaseReturnForm = ({
     }
     formData.set("supplierId", supplierId);
     formData.set("purchaseId", purchaseId);
+    formData.set("claimId", linkedClaimId);
     formData.set("type", returnType);
     formData.set("settlementType", settlementType);
     formData.set("cashBankAccountId", settlementType === "CASH_REFUND" ? cashBankAccountId : "");
@@ -410,7 +423,7 @@ const PurchaseReturnForm = ({
               type="date"
               name="returnDate"
               required
-              defaultValue={initialData?.returnDate ?? getThailandDateKey()}
+              defaultValue={seedData?.returnDate ?? getThailandDateKey()}
               className={inputCls}
             />
           </div>
@@ -521,7 +534,7 @@ const PurchaseReturnForm = ({
               type="text"
               name="note"
               maxLength={500}
-              defaultValue={initialData?.note ?? ""}
+              defaultValue={seedData?.note ?? ""}
               className={inputCls}
               placeholder="หมายเหตุ"
             />
@@ -589,7 +602,9 @@ const PurchaseReturnForm = ({
             <tbody>
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
-                const displayCost = getDisplayCost(item.productId, item.unitName);
+                const displayCost = item.costPrice && item.costPrice > 0
+                  ? item.costPrice
+                  : getDisplayCost(item.productId, item.unitName);
                 const product = productMap.get(item.productId);
                 const isLot = !!product?.isLotControl;
                 const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;

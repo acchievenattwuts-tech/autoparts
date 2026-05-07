@@ -12,10 +12,11 @@ const TABS = [
   { label: "จ่ายเงิน", href: "/admin/reports/payments" },
   { label: "ลูกหนี้ (AR)", href: "/admin/reports/ar" },
   { label: "เจ้าหนี้ (AP)", href: "/admin/reports/ap" },
-  { label: "Stock คงเหลือ", href: "/admin/reports/stock" },
-  { label: "Cash / Bank Ledger", href: "/admin/reports/cash-bank-ledger" },
-  { label: "Transfer History", href: "/admin/reports/cash-bank-transfers" },
-  { label: "Adjustment History", href: "/admin/reports/cash-bank-adjustments" },
+  { label: "สต็อกคงเหลือ", href: "/admin/reports/stock" },
+  { label: "รายงานสต็อกเคลม", href: "/admin/reports/claim-stock" },
+  { label: "บัญชีเงินสด / ธนาคาร", href: "/admin/reports/cash-bank-ledger" },
+  { label: "ประวัติโอนเงิน", href: "/admin/reports/cash-bank-transfers" },
+  { label: "ประวัติปรับยอดเงิน", href: "/admin/reports/cash-bank-adjustments" },
   { label: "สรุปภาพรวม", href: "/admin/reports/summary" },
   { label: "LINE สรุปรายวัน", href: "/admin/reports/line-daily-summary" },
 ];
@@ -24,7 +25,7 @@ export default function ReportTabNav() {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-0">
+    <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-0 dark:border-white/10">
       {TABS.map((tab) => {
         const active = pathname.startsWith(tab.href);
         return (
@@ -33,8 +34,8 @@ export default function ReportTabNav() {
             href={tab.href}
             className={`inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
               active
-                ? "border-[#1e3a5f] bg-white text-[#1e3a5f]"
-                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                ? "border-[#1e3a5f] bg-white text-[#1e3a5f] dark:border-sky-300 dark:bg-slate-900 dark:text-sky-200"
+                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-slate-200"
             }`}
           >
             {tab.label}

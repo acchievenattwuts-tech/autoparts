@@ -11,7 +11,18 @@ import { z } from "zod";
 
 import { db, dbTx } from "@/lib/db";
 import { generateClaimNo } from "@/lib/doc-number";
-import { AuditAction, ClaimOutcome, ClaimType, WarrantyClaimStatus } from "@/lib/generated/prisma";
+import {
+  AuditAction,
+  ClaimOutcome,
+  ClaimStockMovementType,
+  ClaimType,
+  WarrantyClaimStatus,
+} from "@/lib/generated/prisma";
+import {
+  getOriginalClaimUnitCost,
+  reverseClaimStockMovements,
+  writeClaimStockMovement,
+} from "@/lib/claim-stock";
 import {
   autoAllocateLots,
   getLotAvailability,
@@ -79,14 +90,6 @@ async function getClaimSignerSnapshot(
   };
 }
 
-async function getAvgCost(tx: TxClient, productId: string): Promise<number> {
-  const product = await tx.product.findUnique({
-    where: { id: productId },
-    select: { avgCost: true },
-  });
-  return Number(product?.avgCost ?? 0);
-}
-
 async function getClaimReplacementLots(
   tx: TxClient,
   productId: string,
@@ -149,6 +152,23 @@ async function getWarrantyClaimAuditSnapshot(id: string) {
       sentAt: true,
       resolvedAt: true,
       returnedAt: true,
+      claimStockMovements: {
+        select: {
+          id: true,
+          movementType: true,
+          docNo: true,
+          docDate: true,
+          lotNo: true,
+          qtyIn: true,
+          qtyOut: true,
+          unitCost: true,
+          stockCardId: true,
+          purchaseReturnId: true,
+          reversedAt: true,
+          reversalOfId: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
       warranty: {
         select: {
           id: true,
@@ -223,7 +243,7 @@ export async function createClaim(
 
   try {
     await dbTx(async (tx) => {
-      const avgCost = await getAvgCost(tx, warranty.productId);
+      const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
       const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
       const replacementOptions =
         warranty.product.isLotControl && data.claimType === ClaimType.REPLACE_NOW
@@ -261,43 +281,18 @@ export async function createClaim(
       });
       createdClaimId = claim.id;
 
-      const returnStockCardId = await writeStockCard(tx, {
+      await writeClaimStockMovement(tx, {
+        claimId: claim.id,
         productId: warranty.productId,
+        movementType: ClaimStockMovementType.CUSTOMER_RETURN_IN,
         docNo: claimNo,
         docDate: claimDate,
-        source: "CLAIM_RETURN_IN",
         qtyIn: 1,
         qtyOut: 0,
-        priceIn: avgCost,
+        unitCost: originalCost.unitCost,
+        lotNo: originalCost.lotNo,
         detail: `รับคืนสินค้าเคลม ${claimNo}`,
-        referenceId: claim.id,
       });
-
-      if (warranty.product.isLotControl && warranty.lotNo) {
-        await writeClaimLot(tx, claim.id, warranty.productId, {
-          lotNo: warranty.lotNo,
-          qtyInBase: 1,
-          unitCostBase: avgCost,
-          mfgDate: null,
-          expDate: null,
-          direction: "in",
-        });
-
-        await writeStockMovementLots(
-          tx,
-          returnStockCardId,
-          [
-            {
-              lotNo: warranty.lotNo,
-              qtyInBase: 1,
-              unitCostBase: avgCost,
-              mfgDate: null,
-              expDate: null,
-            },
-          ],
-          "in",
-        );
-      }
 
       if (data.claimType === ClaimType.REPLACE_NOW) {
         const replaceStockCardId = await writeStockCard(tx, {
@@ -337,6 +332,7 @@ export async function createClaim(
             "out",
           );
         }
+
       }
     });
 
@@ -457,6 +453,7 @@ export async function sendClaimToSupplier(
       status: true,
       warranty: {
         select: {
+          id: true,
           lotNo: true,
           productId: true,
           product: { select: { isLotControl: true } },
@@ -473,50 +470,26 @@ export async function sendClaimToSupplier(
   try {
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const avgCost = await getAvgCost(tx, claim.warranty.productId);
+      const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
 
       await tx.warrantyClaim.update({
         where: { id },
         data: { status: WarrantyClaimStatus.SENT_TO_SUPPLIER, sentAt: sentDate },
       });
 
-      const stockCardId = await writeStockCard(tx, {
+      await writeClaimStockMovement(tx, {
+        claimId: id,
         productId: claim.warranty.productId,
+        movementType: ClaimStockMovementType.SEND_TO_SUPPLIER_OUT,
         docNo,
         docDate: sentDate,
-        source: "CLAIM_SEND_OUT",
         qtyIn: 0,
         qtyOut: 1,
-        priceIn: 0,
+        unitCost: originalCost.unitCost,
+        lotNo: originalCost.lotNo,
         detail: `ส่งสินค้าเคลมไปซัพพลายเออร์ ${claim.claimNo}`,
-        referenceId: id,
       });
 
-      if (claim.warranty.product.isLotControl && claim.warranty.lotNo) {
-        await writeClaimLot(tx, id, claim.warranty.productId, {
-          lotNo: claim.warranty.lotNo,
-          qtyInBase: 1,
-          unitCostBase: avgCost,
-          mfgDate: null,
-          expDate: null,
-          direction: "out",
-        });
-
-        await writeStockMovementLots(
-          tx,
-          stockCardId,
-          [
-            {
-              lotNo: claim.warranty.lotNo,
-              qtyInBase: 1,
-              unitCostBase: avgCost,
-              mfgDate: null,
-              expDate: null,
-            },
-          ],
-          "out",
-        );
-      }
     });
 
     const requestContext = await getRequestContext();
@@ -577,6 +550,7 @@ export async function closeClaim(
       status: true,
       warranty: {
         select: {
+          id: true,
           productId: true,
           product: { select: { isLotControl: true } },
         },
@@ -600,7 +574,7 @@ export async function closeClaim(
 
   try {
     await dbTx(async (tx) => {
-      const avgCost = await getAvgCost(tx, claim.warranty.productId);
+      const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
 
       await tx.warrantyClaim.update({
         where: { id },
@@ -614,6 +588,19 @@ export async function closeClaim(
       });
 
       if (parsedOutcome.data === ClaimOutcome.RECEIVED) {
+        await writeClaimStockMovement(tx, {
+          claimId: id,
+          productId: claim.warranty.productId,
+          movementType: ClaimStockMovementType.SUPPLIER_RECEIVE_IN,
+          docNo,
+          docDate: resolvedDate,
+          qtyIn: 1,
+          qtyOut: 0,
+          unitCost: originalCost.unitCost,
+          lotNo: receivedLotNoValue ?? originalCost.lotNo,
+          detail: `รับสินค้าทดแทนจากซัพพลายเออร์ ${claim.claimNo}`,
+        });
+
         const stockCardId = await writeStockCard(tx, {
           productId: claim.warranty.productId,
           docNo,
@@ -621,7 +608,7 @@ export async function closeClaim(
           source: "CLAIM_RECV_IN",
           qtyIn: 1,
           qtyOut: 0,
-          priceIn: avgCost,
+          priceIn: originalCost.unitCost,
           detail: `ได้รับสินค้าคืนจากซัพพลายเออร์ ${claim.claimNo}`,
           referenceId: id,
         });
@@ -630,7 +617,7 @@ export async function closeClaim(
           await writeClaimLot(tx, id, claim.warranty.productId, {
             lotNo: receivedLotNoValue,
             qtyInBase: 1,
-            unitCostBase: avgCost,
+            unitCostBase: originalCost.unitCost,
             mfgDate: receivedMfg,
             expDate: receivedExp,
             direction: "in",
@@ -643,7 +630,7 @@ export async function closeClaim(
               {
                 lotNo: receivedLotNoValue,
                 qtyInBase: 1,
-                unitCostBase: avgCost,
+                unitCostBase: originalCost.unitCost,
                 mfgDate: receivedMfg,
                 expDate: receivedExp,
               },
@@ -651,6 +638,33 @@ export async function closeClaim(
             "in",
           );
         }
+
+        await writeClaimStockMovement(tx, {
+          claimId: id,
+          productId: claim.warranty.productId,
+          movementType: ClaimStockMovementType.TRANSFER_TO_NORMAL_OUT,
+          docNo,
+          docDate: resolvedDate,
+          qtyIn: 0,
+          qtyOut: 1,
+          unitCost: originalCost.unitCost,
+          lotNo: receivedLotNoValue ?? originalCost.lotNo,
+          stockCardId,
+          detail: `โอนสินค้าเคลมเข้า stock ปกติ ${claim.claimNo}`,
+        });
+      } else {
+        await writeClaimStockMovement(tx, {
+          claimId: id,
+          productId: claim.warranty.productId,
+          movementType: ClaimStockMovementType.SUPPLIER_REJECT,
+          docNo,
+          docDate: resolvedDate,
+          qtyIn: 0,
+          qtyOut: 0,
+          unitCost: originalCost.unitCost,
+          lotNo: originalCost.lotNo,
+          detail: note || `ซัพพลายเออร์ปิดเคลมโดยไม่มีสินค้าทดแทน ${claim.claimNo}`,
+        });
       }
     });
 
@@ -805,11 +819,23 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
       }
 
       if (claim.outcome === ClaimOutcome.RECEIVED) {
+        await reverseClaimStockMovements(tx, id, {
+          movementTypes: [
+            ClaimStockMovementType.SUPPLIER_RECEIVE_IN,
+            ClaimStockMovementType.TRANSFER_TO_NORMAL_OUT,
+          ],
+          docNos: [`${claim.claimNo}${RECEIVE_DOC_SUFFIX}`],
+        });
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
           docNos: [`${claim.claimNo}${RECEIVE_DOC_SUFFIX}`],
         });
         await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RECEIVE_DOC_SUFFIX}` } });
         await recalculateStockCard(tx, claim.warranty.productId);
+      } else if (claim.outcome === ClaimOutcome.NO_RESOLUTION) {
+        await reverseClaimStockMovements(tx, id, {
+          movementTypes: [ClaimStockMovementType.SUPPLIER_REJECT],
+          docNos: [`${claim.claimNo}${RECEIVE_DOC_SUFFIX}`],
+        });
       }
 
       await tx.warrantyClaim.update({
@@ -864,6 +890,7 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
 
   try {
     await dbTx(async (tx) => {
+      await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, claim.warranty.productId);
 
       await tx.warrantyClaim.update({

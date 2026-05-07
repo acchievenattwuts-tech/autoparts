@@ -44,6 +44,7 @@ export default async function LiffClaimsPage({
   const statusFilter = normalizeClaimStatusFilter((await searchParams).status);
   const claims = await db.warrantyClaim.findMany({
     where: {
+      status: { not: "CANCELLED" },
       warranty: {
         sale: {
           customerId: customer.id,
@@ -56,6 +57,7 @@ export default async function LiffClaimsPage({
       claimNo: true,
       claimDate: true,
       claimType: true,
+      outcome: true,
       status: true,
       symptom: true,
       warranty: {
@@ -68,10 +70,10 @@ export default async function LiffClaimsPage({
     orderBy: { claimDate: "desc" },
     take: 50,
   });
-  const openCount = claims.filter((claim) => !isClosedCustomerClaim(claim) && claim.status !== "CANCELLED").length;
+  const openCount = claims.filter((claim) => !isClosedCustomerClaim(claim)).length;
   const closedCount = claims.filter(isClosedCustomerClaim).length;
   const filteredClaims = claims.filter((claim) => {
-    if (statusFilter === "open") return !isClosedCustomerClaim(claim) && claim.status !== "CANCELLED";
+    if (statusFilter === "open") return !isClosedCustomerClaim(claim);
     if (statusFilter === "closed") return isClosedCustomerClaim(claim);
     return true;
   });
@@ -129,10 +131,15 @@ export default async function LiffClaimsPage({
                 <span
                   className={`rounded-full px-2 py-1 text-xs font-semibold ${getCustomerClaimStatusBadgeClass({
                     claimType: claim.claimType,
+                    outcome: claim.outcome,
                     status: claim.status,
                   })}`}
                 >
-                  {getCustomerClaimStatusLabel({ claimType: claim.claimType, status: claim.status })}
+                  {getCustomerClaimStatusLabel({
+                    claimType: claim.claimType,
+                    outcome: claim.outcome,
+                    status: claim.status,
+                  })}
                 </span>
                 {claim.symptom ? (
                   <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">

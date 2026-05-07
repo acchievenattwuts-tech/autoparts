@@ -44,6 +44,14 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
     group: "navigate" as const,
     keywords: item.keywords,
   })),
+  {
+    id: "nav-admin-reports-claim-stock",
+    label: "รายงานสต็อกเคลม",
+    href: "/admin/reports/claim-stock",
+    permission: "reports.view",
+    group: "navigate",
+    keywords: "รายงาน เคลม สต็อก สินค้าเคลม claim stock",
+  },
 
   // Personal
   { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode" },

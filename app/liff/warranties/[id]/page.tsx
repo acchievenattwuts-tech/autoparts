@@ -29,11 +29,13 @@ export default async function LiffWarrantyDetailPage({
       product: { select: { code: true, name: true } },
       sale: { select: { id: true, saleNo: true, saleDate: true } },
       claims: {
+        where: { status: { not: "CANCELLED" } },
         select: {
           id: true,
           claimNo: true,
           claimDate: true,
           claimType: true,
+          outcome: true,
           status: true,
           symptom: true,
         },
@@ -111,12 +113,14 @@ export default async function LiffWarrantyDetailPage({
                     <span
                       className={`rounded-full px-2 py-1 text-xs font-semibold ${getCustomerClaimStatusBadgeClass({
                         claimType: claim.claimType,
-                        status:    claim.status,
+                        outcome: claim.outcome,
+                        status: claim.status,
                       })}`}
                     >
                       {getCustomerClaimStatusLabel({
                         claimType: claim.claimType,
-                        status:    claim.status,
+                        outcome: claim.outcome,
+                        status: claim.status,
                       })}
                     </span>
                   </div>

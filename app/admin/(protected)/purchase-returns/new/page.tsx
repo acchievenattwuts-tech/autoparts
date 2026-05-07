@@ -7,11 +7,19 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
+import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
+import { getThailandDateKey } from "@/lib/th-date";
 
-const NewPurchaseReturnPage = async () => {
+const NewPurchaseReturnPage = async ({
+  searchParams,
+}: {
+  searchParams?: Promise<{ claimId?: string }>;
+}) => {
   await requirePermission("purchase_returns.create");
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const claimId = resolvedSearchParams?.claimId?.trim() || undefined;
 
-  const [rawProducts, config, cashBankAccounts] = await Promise.all([
+  const [rawProducts, config, cashBankAccounts, linkedClaim] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -26,15 +34,100 @@ const NewPurchaseReturnPage = async () => {
     }),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
+    claimId
+      ? db.warrantyClaim.findUnique({
+          where: { id: claimId },
+          select: {
+            id: true,
+            claimNo: true,
+            warrantyId: true,
+            supplierId: true,
+            supplier: { select: { id: true, name: true } },
+            warranty: {
+              select: {
+                productId: true,
+                product: {
+                  select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    description: true,
+                    avgCost: true,
+                    isLotControl: true,
+                    purchaseUnitName: true,
+                    category: { select: { name: true } },
+                    brand: { select: { name: true } },
+                    aliases: { select: { alias: true } },
+                    units: {
+                      select: { name: true, scale: true, isBase: true },
+                      orderBy: { isBase: "desc" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        })
+      : Promise.resolve(null),
   ]);
 
-  const products = rawProducts.map((p) => ({
+  const productRows = [...rawProducts];
+  if (
+    linkedClaim?.warranty.product &&
+    !productRows.some((product) => product.id === linkedClaim.warranty.product.id)
+  ) {
+    productRows.push(linkedClaim.warranty.product);
+  }
+
+  const products = productRows.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     avgCost: Number(p.avgCost), isLotControl: p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
+
+  const originalCost = linkedClaim
+    ? await db.$transaction((tx) => getOriginalClaimUnitCost(tx, linkedClaim.warrantyId))
+    : null;
+  const claimProduct = linkedClaim?.warranty.product;
+  const claimPurchaseUnit = claimProduct?.units.find((unit) => unit.name === claimProduct.purchaseUnitName)
+    ?? claimProduct?.units.find((unit) => unit.isBase)
+    ?? claimProduct?.units[0];
+  const claimUnitScale = claimPurchaseUnit ? Number(claimPurchaseUnit.scale) : 1;
+  const supplierOptions = linkedClaim?.supplier ? [linkedClaim.supplier] : [];
+  const initialPurchases = linkedClaim?.supplierId
+    ? await db.purchase.findMany({
+        where: { supplierId: linkedClaim.supplierId },
+        orderBy: { purchaseDate: "desc" },
+        take: 200,
+        select: { id: true, purchaseNo: true, purchaseDate: true },
+      })
+    : [];
+  const prefillData =
+    linkedClaim && claimProduct && originalCost
+      ? {
+          returnDate: getThailandDateKey(),
+          purchaseId: "",
+          claimId: linkedClaim.id,
+          supplierId: linkedClaim.supplierId ?? "",
+          type: "OTHER" as const,
+          settlementType: "SUPPLIER_CREDIT" as const,
+          cashBankAccountId: "",
+          note: `ใบลดหนี้ซื้อจากใบเคลม ${linkedClaim.claimNo}`,
+          vatType: config.vatType,
+          vatRate: config.vatRate,
+          items: [
+            {
+              productId: claimProduct.id,
+              unitName: claimPurchaseUnit?.name ?? "",
+              qty: 1,
+              costPrice: originalCost.unitCost * claimUnitScale,
+              lotItems: [],
+            },
+          ],
+        }
+      : undefined;
 
   return (
     <div>
@@ -51,10 +144,13 @@ const NewPurchaseReturnPage = async () => {
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">คืนสินค้าให้ซัพพลายเออร์</h1>
       <PurchaseReturnForm
         products={products}
-        suppliers={[]}
+        suppliers={supplierOptions}
         cashBankAccounts={cashBankAccounts}
+        initialPurchases={initialPurchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        prefillData={prefillData}
+        claimId={claimId}
       />
     </div>
   );
