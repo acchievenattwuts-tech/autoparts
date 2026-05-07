@@ -46,8 +46,16 @@ export default function ExternalPrintShell({
             overflow: hidden !important;
             background: #ffffff !important;
           }
-          body * { visibility: hidden; }
-          #receipt, #receipt * { visibility: visible; }
+          main, [data-liff-print="true"] {
+            height: 297mm !important;
+            min-height: 0 !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body * { visibility: hidden !important; }
+          #receipt, #receipt * { visibility: visible !important; }
           #receipt, #receipt * {
             color-scheme: only light !important;
             forced-color-adjust: none !important;
@@ -55,15 +63,17 @@ export default function ExternalPrintShell({
             print-color-adjust: exact !important;
           }
           #receipt {
-            position: absolute;
-            left: 0;
-            top: 0;
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 210mm !important;
             height: 297mm !important;
             min-height: 0 !important;
             max-height: 297mm !important;
             overflow: hidden !important;
-            display: flex;
+            clip-path: inset(0 0 0 0) !important;
+            contain: size paint !important;
+            display: flex !important;
             flex-direction: column;
             background-color: #ffffff !important;
             background-image: linear-gradient(#ffffff, #ffffff) !important;
@@ -72,6 +82,10 @@ export default function ExternalPrintShell({
             page-break-inside: avoid !important;
             page-break-after: avoid !important;
             break-inside: avoid !important;
+            break-after: avoid !important;
+          }
+          #receipt > *:last-child {
+            page-break-after: avoid !important;
             break-after: avoid !important;
           }
           #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
