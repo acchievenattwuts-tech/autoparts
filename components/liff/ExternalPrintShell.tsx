@@ -71,6 +71,9 @@ export default function ExternalPrintShell({
             break-after: avoid !important;
             break-inside: avoid !important;
           }
+          #receipt .mt-auto {
+            margin-top: 0.5rem !important;
+          }
           #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
           #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
           #receipt :is(.bg-gray-100, .hover\\:bg-gray-100:hover, .bg-gray-200, .hover\\:bg-gray-200:hover) { background-color: #f3f4f6 !important; }
