@@ -1,20 +1,45 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
-export const metadata: Metadata = {
+import LiffPrintLightTheme from "@/components/liff/LiffPrintLightTheme";
+
+export const viewport: Viewport = {
   colorScheme: "light",
   themeColor: "#ffffff",
+};
+
+export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
 export default function LiffPrintLayout({ children }: { children: ReactNode }) {
   return (
-    <div
-      data-liff-print="true"
-      className="min-h-dvh bg-white text-slate-950"
-      style={{ colorScheme: "only light", backgroundColor: "#ffffff" }}
-    >
-      {children}
-    </div>
+    <>
+      <style>{`
+        :root, html, body {
+          background-color: #ffffff !important;
+          background: #ffffff !important;
+          color: #111827 !important;
+          color-scheme: light only !important;
+          forced-color-adjust: none !important;
+        }
+        html.dark, body.dark, .dark {
+          background-color: #ffffff !important;
+          color: #111827 !important;
+          color-scheme: light only !important;
+        }
+        body * {
+          color-scheme: light only !important;
+        }
+      `}</style>
+      <LiffPrintLightTheme />
+      <div
+        data-liff-print="true"
+        className="min-h-dvh bg-white text-slate-950"
+        style={{ colorScheme: "light only", backgroundColor: "#ffffff", color: "#111827" }}
+      >
+        {children}
+      </div>
+    </>
   );
 }
