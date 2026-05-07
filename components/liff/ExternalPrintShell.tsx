@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 
 export const EXTERNAL_A4_PRINT_ROOT_CLASS =
-  "mx-auto flex h-[297mm] w-[210mm] max-w-none flex-col overflow-hidden bg-white p-[8mm] text-[10px] leading-tight text-gray-900";
+  "mx-auto flex h-[297mm] w-[210mm] max-w-none flex-col overflow-hidden bg-white p-[6mm] text-[9.5px] leading-tight text-gray-900";
 
 export default function ExternalPrintShell({
   buttonLabel,
@@ -26,6 +26,8 @@ export default function ExternalPrintShell({
           forced-color-adjust: none !important;
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
+          -webkit-text-size-adjust: 100% !important;
+          text-size-adjust: 100% !important;
         }
         body {
           margin: 0 !important;

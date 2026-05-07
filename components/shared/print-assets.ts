@@ -52,7 +52,56 @@ export const waitForPrintAssets = async ({
   await wait(settleMs);
 };
 
+const A4_HEIGHT_PX = (297 / 25.4) * 96;
+const A4_HEIGHT_BUFFER_PX = 8;
+
+const measureReceiptContentHeight = (receipt: HTMLElement): number => {
+  const children = Array.from(receipt.children) as HTMLElement[];
+  if (children.length === 0) return receipt.scrollHeight;
+  let total = 0;
+  for (const child of children) {
+    const style = window.getComputedStyle(child);
+    if (style.position === "absolute" || style.position === "fixed") continue;
+    const rect = child.getBoundingClientRect();
+    total += rect.height;
+  }
+  const computed = window.getComputedStyle(receipt);
+  total += parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom);
+  return total;
+};
+
+const applyPrintAutoFit = () => {
+  const receipt = document.getElementById("receipt");
+  if (!receipt) return () => undefined;
+
+  const previousTransform = receipt.style.transform;
+  const previousTransformOrigin = receipt.style.transformOrigin;
+  const previousWidth = receipt.style.width;
+
+  const contentHeight = measureReceiptContentHeight(receipt);
+  if (contentHeight <= A4_HEIGHT_PX - A4_HEIGHT_BUFFER_PX) {
+    return () => undefined;
+  }
+
+  const scale = (A4_HEIGHT_PX - A4_HEIGHT_BUFFER_PX) / contentHeight;
+  const safeScale = Math.max(0.6, Math.min(scale, 1));
+  receipt.style.transform = `scale(${safeScale})`;
+  receipt.style.transformOrigin = "top left";
+  receipt.style.width = `${100 / safeScale}%`;
+
+  return () => {
+    receipt.style.transform = previousTransform;
+    receipt.style.transformOrigin = previousTransformOrigin;
+    receipt.style.width = previousWidth;
+  };
+};
+
 export const printWhenReady = async (options?: PrintReadyOptions) => {
   await waitForPrintAssets(options);
-  window.print();
+  const restore = applyPrintAutoFit();
+  try {
+    window.print();
+  } finally {
+    setTimeout(restore, 1000);
+  }
 };
