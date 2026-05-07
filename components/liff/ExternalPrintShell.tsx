@@ -71,9 +71,6 @@ export default function ExternalPrintShell({
             break-after: avoid !important;
             break-inside: avoid !important;
           }
-          #receipt .mt-auto {
-            margin-top: 0.5rem !important;
-          }
           #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
           #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
           #receipt :is(.bg-gray-100, .hover\\:bg-gray-100:hover, .bg-gray-200, .hover\\:bg-gray-200:hover) { background-color: #f3f4f6 !important; }
@@ -82,6 +79,16 @@ export default function ExternalPrintShell({
           #receipt .text-\\[\\#1e3a5f\\] { color: #1e3a5f !important; }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
+        }
+        /* iOS Safari only: content renders ~1-2mm taller than Android/desktop,
+           so the mt-auto stretched footer overflows onto a blank page 2.
+           @supports (-webkit-touch-callout: none) is true only on iOS WebKit. */
+        @supports (-webkit-touch-callout: none) {
+          @media print {
+            #receipt .mt-auto {
+              margin-top: 0.5rem !important;
+            }
+          }
         }
         @media screen {
           #receipt {
