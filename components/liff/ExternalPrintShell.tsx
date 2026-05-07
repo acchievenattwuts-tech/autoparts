@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 
 export const EXTERNAL_A4_PRINT_ROOT_CLASS =
-  "mx-auto flex h-[285mm] w-[198mm] max-w-none flex-col overflow-hidden bg-white p-[6mm] text-[10px] leading-tight text-gray-900";
+  "mx-auto flex h-[297mm] w-[210mm] max-w-none flex-col overflow-hidden bg-white p-[8mm] text-[10px] leading-tight text-gray-900";
 
 export default function ExternalPrintShell({
   buttonLabel,
@@ -15,13 +15,14 @@ export default function ExternalPrintShell({
   return (
     <>
       <style>{`
-        @page { size: A4; margin: 6mm; }
+        @page { size: A4; margin: 0; }
         :root,
         html,
         body {
           background: #ffffff !important;
           color: #111827 !important;
           color-scheme: only light !important;
+          forced-color-adjust: none !important;
         }
         body {
           margin: 0 !important;
@@ -31,6 +32,16 @@ export default function ExternalPrintShell({
           color-scheme: only light !important;
         }
         @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 0 !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
+          }
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
           #receipt, #receipt * {
@@ -43,16 +54,20 @@ export default function ExternalPrintShell({
             position: absolute;
             left: 0;
             top: 0;
-            width: 198mm !important;
-            height: 285mm !important;
-            min-height: 285mm !important;
-            max-height: 285mm !important;
+            width: 210mm !important;
+            height: 297mm !important;
+            min-height: 0 !important;
+            max-height: 297mm !important;
             overflow: hidden !important;
             display: flex;
             flex-direction: column;
             background: #ffffff !important;
             color: #111827 !important;
             box-sizing: border-box;
+            page-break-inside: avoid !important;
+            page-break-after: avoid !important;
+            break-inside: avoid !important;
+            break-after: avoid !important;
           }
           #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
           #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
@@ -65,17 +80,17 @@ export default function ExternalPrintShell({
         }
         @media screen {
           #receipt {
-            width: 198mm;
-            min-width: 198mm;
-            min-height: 285mm;
-            max-height: 285mm;
+            width: 210mm;
+            min-width: 210mm;
+            min-height: 297mm;
+            max-height: 297mm;
             background: #ffffff !important;
             color: #111827 !important;
           }
         }
       `}</style>
 
-      <main className="min-h-dvh bg-white text-slate-950 [color-scheme:light]">
+      <main className="min-h-dvh bg-white text-slate-950 [color-scheme:light]" style={{ colorScheme: "only light", backgroundColor: "#ffffff" }}>
         <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
           <div className="mx-auto flex max-w-[900px] justify-end">
             <PrintToPdfButton label={buttonLabel} />
