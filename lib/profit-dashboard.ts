@@ -813,7 +813,7 @@ async function computeProfitDashboardData(
 
 const cachedProfitDashboardData = unstable_cache(
   async (input?: ProfitDashboardQueryInput) => computeProfitDashboardData(input),
-  ["profit-dashboard-data-v1"],
+  ["profit-dashboard-data-v2"],
   {
     tags: [PROFIT_DASHBOARD_CACHE_TAG],
     revalidate: PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS,
