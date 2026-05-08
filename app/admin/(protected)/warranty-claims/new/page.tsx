@@ -122,9 +122,9 @@ const NewClaimPage = async ({ searchParams }: Props) => {
       <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-2">เปิดใบเคลมสินค้า</h1>
 
       {/* Warranty info card */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6 text-sm">
-        <p className="font-semibold text-blue-800 mb-2">{warranty.product.name}</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-blue-700">
+      <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800/60 rounded-xl p-4 mb-6 text-sm">
+        <p className="font-semibold text-blue-800 dark:text-blue-100 mb-2">{warranty.product.name}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-blue-700 dark:text-blue-200">
           <span>รหัส: <strong>{warranty.product.code}</strong></span>
           <span>Lot: <strong>{warranty.lotNo ?? "-"}</strong></span>
           <span>ลำดับ: <strong>#{warranty.unitSeq}</strong></span>

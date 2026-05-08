@@ -348,7 +348,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
             <button
               type="submit"
               disabled={isPending}
-              className="flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
+              className="flex items-center gap-1.5 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-60"
             >
               <Plus size={16} />
               {isPending ? "กำลังบันทึก..." : "เพิ่มผู้จำหน่าย"}

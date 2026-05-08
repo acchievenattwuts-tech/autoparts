@@ -307,7 +307,7 @@ const CategoryForm = ({ categories, canCreate, canUpdate, canCancel }: CategoryF
             <button
               type="submit"
               disabled={isPending}
-              className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
+              className="rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-60"
             >
               {isPending ? "กำลังบันทึก..." : "เพิ่ม"}
             </button>

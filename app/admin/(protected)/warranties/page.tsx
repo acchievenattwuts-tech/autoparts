@@ -147,7 +147,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         {canCreate ? (
           <Link
             href="/admin/warranties/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
           >
             <Plus size={16} />
             บันทึกประกันใหม่
