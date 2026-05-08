@@ -84,14 +84,33 @@ export default function ExternalPrintShell({
            so the mt-auto stretched footer overflows onto a blank page 2.
            @supports (-webkit-touch-callout: none) is true only on iOS WebKit. */
         @supports (-webkit-touch-callout: none) {
+          @page { size: A4; margin: 0; }
           @media print {
+            html, body {
+              width: 210mm !important;
+              height: 297mm !important;
+              max-height: 297mm !important;
+              overflow: hidden !important;
+            }
+            #receipt {
+              left: 0 !important;
+              top: 0 !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              min-height: 297mm !important;
+              max-height: 297mm !important;
+              padding: 12mm !important;
+            }
             #receipt .mt-auto {
-              margin-top: 0.5rem !important;
+              margin-top: auto !important;
+            }
+            #receipt .receipt-footer {
+              margin-top: 0 !important;
             }
             #receipt .print-document-verify-badge {
-              position: fixed !important;
-              right: 14mm !important;
-              bottom: 14mm !important;
+              position: absolute !important;
+              right: 12mm !important;
+              bottom: 12mm !important;
               z-index: 20 !important;
               width: 28mm !important;
               break-inside: avoid !important;
