@@ -12,11 +12,21 @@ import {
   getSessionPermissionContext,
   requirePermission,
 } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import {
+  formatDateThai,
+  isDateOnlyString,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
-  searchParams: Promise<{ productId?: string; q?: string }>;
+  searchParams: Promise<{
+    productId?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+  }>;
 }
 
 const sourceLabel: Record<string, string> = {
@@ -68,8 +78,19 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
   const { role, permissions } = await getSessionPermissionContext();
   const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
 
-  const { productId, q } = await searchParams;
+  const { productId, q, from, to } = await searchParams;
   const normalizedQuery = q?.trim() ?? "";
+  const fromKey = isDateOnlyString(from) ? from : "";
+  const toKey = isDateOnlyString(to) ? to : "";
+  const fromDate = fromKey ? parseDateOnlyToStartOfDay(fromKey) : null;
+  const toDate = toKey ? parseDateOnlyToEndOfDay(toKey) : null;
+  const hasDateFilter = Boolean(fromDate || toDate);
+  const dateFilterQS = [
+    fromKey ? `from=${fromKey}` : "",
+    toKey ? `to=${toKey}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
   const productSearchWhere = buildProductSearchWhere(normalizedQuery);
   const productSelect = {
     id: true,
@@ -117,9 +138,20 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
       })
     : null;
 
-  const cards = selectedProduct
-    ? await db.stockCard.findMany({
-        where: { productId: selectedProduct.id },
+  const dateWhere =
+    fromDate || toDate
+      ? {
+          ...(fromDate ? { gte: fromDate } : {}),
+          ...(toDate ? { lte: toDate } : {}),
+        }
+      : undefined;
+
+  const cardsPromise = selectedProduct
+    ? db.stockCard.findMany({
+        where: {
+          productId: selectedProduct.id,
+          ...(dateWhere ? { docDate: dateWhere } : {}),
+        },
         orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
         select: {
           id: true,
@@ -134,7 +166,25 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
           priceBalance: true,
         },
       })
-    : [];
+    : Promise.resolve([]);
+
+  const openingPromise =
+    selectedProduct && fromDate
+      ? db.stockCard.findFirst({
+          where: {
+            productId: selectedProduct.id,
+            docDate: { lt: fromDate },
+          },
+          orderBy: [{ docDate: "desc" }, { sorder: "desc" }],
+          select: {
+            docDate: true,
+            qtyBalance: true,
+            priceBalance: true,
+          },
+        })
+      : Promise.resolve(null);
+
+  const [cards, openingRow] = await Promise.all([cardsPromise, openingPromise]);
 
   const reportStock = selectedProduct && reportUnit
     ? toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale)
@@ -142,6 +192,25 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
   const reportAvgCost = selectedProduct && reportUnit
     ? toReportUnitPrice(Number(selectedProduct.avgCost), reportUnit.scale)
     : 0;
+
+  const openingQty = openingRow && reportUnit
+    ? toReportUnitQty(Number(openingRow.qtyBalance), reportUnit.scale)
+    : 0;
+  const openingPriceBalance = openingRow && reportUnit
+    ? toReportUnitPrice(Number(openingRow.priceBalance), reportUnit.scale)
+    : 0;
+
+  const lastCard = cards.length > 0 ? cards[cards.length - 1] : null;
+  const closingQty = lastCard && reportUnit
+    ? toReportUnitQty(Number(lastCard.qtyBalance), reportUnit.scale)
+    : openingQty;
+  const closingPriceBalance = lastCard && reportUnit
+    ? toReportUnitPrice(Number(lastCard.priceBalance), reportUnit.scale)
+    : openingPriceBalance;
+
+  const footerQty = hasDateFilter ? closingQty : reportStock;
+  const footerPriceBalance = hasDateFilter ? closingPriceBalance : reportAvgCost;
+  const footerLabel = hasDateFilter ? "ยอดยกไป" : "Stock คงเหลือล่าสุด";
 
   return (
     <div>
@@ -154,9 +223,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
       </div>
 
       <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <AdminSearchForm method="GET" className="flex flex-wrap gap-3">
+        <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="min-w-48 flex-1">
+            <label className="mb-1 block text-xs text-gray-500">ค้นหาสินค้า</label>
             <input
               type="text"
               name="q"
@@ -165,12 +235,30 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">จากวันที่</label>
+            <input
+              type="date"
+              name="from"
+              defaultValue={fromKey}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">ถึงวันที่</label>
+            <input
+              type="date"
+              name="to"
+              defaultValue={toKey}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+            />
+          </div>
           <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
           </AdminSearchSubmitButton>
-          {(q || productId) && (
+          {(q || productId || fromKey || toKey) && (
             <Link
               href="/admin/stock/card"
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
@@ -197,7 +285,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                 return (
                   <li key={product.id}>
                     <Link
-                      href={`/admin/stock/card?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}`}
+                      href={`/admin/stock/card?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}${dateFilterQS ? `&${dateFilterQS}` : ""}`}
                       className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
                     >
                       <div>
@@ -252,9 +340,11 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
               </p>
             </div>
 
-            {cards.length === 0 ? (
+            {cards.length === 0 && !openingRow ? (
               <div className="py-12 text-center text-sm text-gray-400">
-                ยังไม่มีการเคลื่อนไหวสต็อกของสินค้านี้
+                {hasDateFilter
+                  ? "ไม่พบการเคลื่อนไหวสต็อกในช่วงวันที่ที่เลือก และไม่มียอดยกมา"
+                  : "ยังไม่มีการเคลื่อนไหวสต็อกของสินค้านี้"}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -276,6 +366,43 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                     </tr>
                   </thead>
                   <tbody>
+                    {hasDateFilter && (
+                      <tr className="border-t border-gray-50 bg-blue-50/40">
+                        <td className="px-3 py-2.5 text-xs text-gray-400">-</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                          {fromKey ? formatDateThai(parseDateOnlyToStartOfDay(fromKey)) : "-"}
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400">-</td>
+                        <td className="px-3 py-2.5">
+                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            ยอดยกมา
+                          </span>
+                        </td>
+                        <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500">
+                          {openingRow
+                            ? `ยอดสะสมก่อน ${formatDateThai(parseDateOnlyToStartOfDay(fromKey))}`
+                            : "ไม่มียอดสะสมก่อนช่วงวันที่นี้"}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-500">{reportUnit.unitName}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                          {fmtQty(openingQty)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
+                        <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f]">
+                          {fmtPrice(openingPriceBalance)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-medium text-gray-700">
+                          {openingQty * openingPriceBalance > 0
+                            ? (openingQty * openingPriceBalance).toLocaleString("th-TH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
+                            : "-"}
+                        </td>
+                      </tr>
+                    )}
                     {cards.map((card, index) => {
                       const qtyIn = toReportUnitQty(Number(card.qtyIn), reportUnit.scale);
                       const qtyOut = toReportUnitQty(Number(card.qtyOut), reportUnit.scale);
@@ -342,19 +469,19 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                   <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                     <tr>
                       <td colSpan={8} className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
-                        Stock คงเหลือล่าสุด
+                        {footerLabel}
                       </td>
                       <td className="px-3 py-3 text-right font-bold text-gray-900">
-                        {fmtQty(reportStock)}
+                        {fmtQty(footerQty)}
                       </td>
                       <td className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
                         ต้นทุนเฉลี่ย
                       </td>
                       <td className="px-3 py-3 text-right font-bold text-[#1e3a5f]">
-                        {fmtPrice(reportAvgCost)}
+                        {fmtPrice(footerPriceBalance)}
                       </td>
                       <td className="px-3 py-3 text-right font-bold text-gray-900">
-                        {(reportStock * reportAvgCost).toLocaleString("th-TH", {
+                        {(footerQty * footerPriceBalance).toLocaleString("th-TH", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}

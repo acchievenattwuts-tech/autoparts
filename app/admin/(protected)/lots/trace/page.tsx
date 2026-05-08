@@ -9,10 +9,20 @@ import { StockCardSource } from "@/lib/generated/prisma";
 import { buildProductSearchWhere } from "@/lib/product-search";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import {
+  formatDateThai,
+  isDateOnlyString,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 interface PageProps {
-  searchParams: Promise<{ productId?: string; q?: string }>;
+  searchParams: Promise<{
+    productId?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+  }>;
 }
 
 type MovementSource =
@@ -75,8 +85,19 @@ const fmt = (value: number) =>
 export default async function LotMovementPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { productId, q } = await searchParams;
+  const { productId, q, from, to } = await searchParams;
   const normalizedQuery = q?.trim() ?? "";
+  const fromKey = isDateOnlyString(from) ? from : "";
+  const toKey = isDateOnlyString(to) ? to : "";
+  const fromDate = fromKey ? parseDateOnlyToStartOfDay(fromKey) : null;
+  const toDate = toKey ? parseDateOnlyToEndOfDay(toKey) : null;
+  const hasDateFilter = Boolean(fromDate || toDate);
+  const dateFilterQS = [
+    fromKey ? `from=${fromKey}` : "",
+    toKey ? `to=${toKey}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
   const productSearchWhere = buildProductSearchWhere(normalizedQuery);
   const productSelect = {
     id: true,
@@ -333,12 +354,39 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
     lotData = lotData.filter((item) => item.movements.length > 0 || item.balance > 0);
   }
 
+  const computeNet = (list: LotMovement[]): number =>
+    list.reduce((sum, movement) => {
+      if (movement.isCancelled) return sum;
+      return sum + (movement.direction === "in" ? movement.qty : -movement.qty);
+    }, 0);
+
+  const lotViews = lotData.map(({ pl, movements, balance }) => {
+    const beforeMovements = hasDateFilter && fromDate
+      ? movements.filter((m) => m.date < fromDate)
+      : [];
+    const inRangeMovements = hasDateFilter
+      ? movements.filter(
+          (m) =>
+            (!fromDate || m.date >= fromDate) && (!toDate || m.date <= toDate),
+        )
+      : movements;
+    const opening = hasDateFilter ? computeNet(beforeMovements) : 0;
+    return { pl, balance, opening, inRangeMovements };
+  });
+
+  const lotViewsFiltered = hasDateFilter
+    ? lotViews.filter(
+        (item) => item.inRangeMovements.length > 0 || item.opening > 0,
+      )
+    : lotViews;
+
   return (
     <div>
       <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-        <AdminSearchForm method="GET" className="flex flex-wrap gap-3">
+        <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="min-w-48 flex-1">
+            <label className="mb-1 block text-xs text-gray-500">ค้นหาสินค้า</label>
             <input
               type="text"
               name="q"
@@ -347,12 +395,30 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
             />
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">จากวันที่</label>
+            <input
+              type="date"
+              name="from"
+              defaultValue={fromKey}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">ถึงวันที่</label>
+            <input
+              type="date"
+              name="to"
+              defaultValue={toKey}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+            />
+          </div>
           <AdminSearchSubmitButton
             className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
           >
             ค้นหา
           </AdminSearchSubmitButton>
-          {(q || productId) && (
+          {(q || productId || fromKey || toKey) && (
             <Link
               href="/admin/lots/trace"
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
@@ -379,7 +445,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                 return (
                   <li key={product.id}>
                     <Link
-                      href={`/admin/lots/trace?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}`}
+                      href={`/admin/lots/trace?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}${dateFilterQS ? `&${dateFilterQS}` : ""}`}
                       className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
                     >
                       <div>
@@ -409,7 +475,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
               [{selectedProduct.code}] {selectedProduct.name}
             </p>
             <p className="mt-0.5 text-sm text-gray-500">
-              พบ <span className="font-medium text-gray-800">{lotData.length} Lot</span>
+              พบ <span className="font-medium text-gray-800">{lotViewsFiltered.length} Lot</span>
               {" | "}Stock รวม:{" "}
               <span className="font-medium text-gray-800">
                 {fmt(toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale))}{" "}
@@ -418,15 +484,19 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
             </p>
           </div>
 
-          {lotData.length === 0 ? (
+          {lotViewsFiltered.length === 0 ? (
             <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-              <p className="text-sm text-gray-400">ไม่พบข้อมูล Lot สำหรับสินค้านี้</p>
+              <p className="text-sm text-gray-400">
+                {hasDateFilter
+                  ? "ไม่พบความเคลื่อนไหว Lot ในช่วงวันที่ที่เลือก"
+                  : "ไม่พบข้อมูล Lot สำหรับสินค้านี้"}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {lotData.map(({ pl, movements, balance }) => {
-                let running = 0;
-                const rows = movements.map((movement) => {
+              {lotViewsFiltered.map(({ pl, balance, opening, inRangeMovements }) => {
+                let running = opening;
+                const rows = inRangeMovements.map((movement) => {
                   if (!movement.isCancelled) {
                     running += movement.direction === "in" ? movement.qty : -movement.qty;
                   }
@@ -436,12 +506,14 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                   };
                 });
 
-                const totalIn = movements
+                const totalIn = inRangeMovements
                   .filter((movement) => !movement.isCancelled && movement.direction === "in")
                   .reduce((sum, movement) => sum + movement.qty, 0);
-                const totalOut = movements
+                const totalOut = inRangeMovements
                   .filter((movement) => !movement.isCancelled && movement.direction === "out")
                   .reduce((sum, movement) => sum + movement.qty, 0);
+                const closing = opening + totalIn - totalOut;
+                const footerBalance = hasDateFilter ? closing : balance;
 
                 return (
                   <div
@@ -474,7 +546,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                       </div>
                     </div>
 
-                    {rows.length === 0 ? (
+                    {rows.length === 0 && !hasDateFilter ? (
                       <div className="px-5 py-6 text-center text-sm text-gray-400">
                         ไม่พบความเคลื่อนไหว
                       </div>
@@ -495,6 +567,31 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                             </tr>
                           </thead>
                           <tbody>
+                            {hasDateFilter && (
+                              <tr className="border-t border-gray-50 bg-blue-50/40">
+                                <td className="px-3 py-2.5 text-xs text-gray-400">-</td>
+                                <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                                  {fromKey
+                                    ? formatDateThai(parseDateOnlyToStartOfDay(fromKey))
+                                    : "-"}
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-xs text-gray-400">-</td>
+                                <td className="px-3 py-2.5">
+                                  <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                    ยอดยกมา
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-gray-500">
+                                  {reportUnit.unitName}
+                                </td>
+                                <td className="px-3 py-2.5 text-right text-gray-300">-</td>
+                                <td className="px-3 py-2.5 text-right text-gray-300">-</td>
+                                <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                                  {fmt(toReportUnitQty(opening, reportUnit.scale))}
+                                </td>
+                                <td className="px-3 py-2.5 text-center text-xs text-gray-400">-</td>
+                              </tr>
+                            )}
                             {rows.map((movement, index) => (
                               <tr
                                 key={index}
@@ -560,7 +657,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                           <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                             <tr>
                               <td colSpan={5} className="px-3 py-2.5 text-right text-xs font-semibold text-gray-600">
-                                รวมทั้งหมด
+                                {hasDateFilter ? "ยอดยกไป" : "รวมทั้งหมด"}
                               </td>
                               <td className="px-3 py-2.5 text-right font-bold text-green-700">
                                 {fmt(toReportUnitQty(totalIn, reportUnit.scale))}
@@ -569,7 +666,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                                 {fmt(toReportUnitQty(totalOut, reportUnit.scale))}
                               </td>
                               <td className="px-3 py-2.5 text-right font-bold text-gray-900">
-                                {fmt(toReportUnitQty(balance, reportUnit.scale))}
+                                {fmt(toReportUnitQty(footerBalance, reportUnit.scale))}
                               </td>
                               <td />
                             </tr>
