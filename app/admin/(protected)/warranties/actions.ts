@@ -8,6 +8,7 @@ import {
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
+import { addThailandDays, startOfThailandDay } from "@/lib/th-date";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -60,9 +61,8 @@ export async function createWarranty(
       return { error: "ไม่สามารถสร้างประกันแบบ manual ได้ เพราะไม่พบ lot snapshot ที่ชัดเจนของรายการขายนี้" };
     }
 
-    const startDate = new Date(saleItem.sale.saleDate);
-    const endDate   = new Date(startDate);
-    endDate.setDate(endDate.getDate() + d.warrantyDays);
+    const startDate = startOfThailandDay(saleItem.sale.saleDate);
+    const endDate = addThailandDays(startDate, d.warrantyDays);
 
     const warranty = await db.warranty.create({
       data: {

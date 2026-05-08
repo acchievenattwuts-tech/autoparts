@@ -15,6 +15,7 @@ import { AuditAction, PaymentMethod, Prisma } from "@/lib/generated/prisma";
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getAvailableReceiptDocuments as getAvailableReceiptDocumentsForAR,
   validateReceiptItemsAgainstAvailable as validateReceiptItemsAgainstAvailableForAR,
@@ -295,7 +296,7 @@ export async function createReceipt(
   const parsed = parsedResult.data;
 
   try {
-    const docDate   = new Date(parsed.receiptDate);
+    const docDate   = parseDateOnlyToDate(parsed.receiptDate);
     const receiptNo = await generateReceiptNo(docDate);
     let createdReceiptId = "";
 
@@ -494,7 +495,7 @@ export async function updateReceipt(
   if (!parsedResult.success) return { error: parsedResult.error };
   const parsed = parsedResult.data;
 
-  const docDate     = new Date(parsed.receiptDate);
+  const docDate     = parseDateOnlyToDate(parsed.receiptDate);
   const totalAmount = calculateReceiptTotalAmount(parsed.items);
   if (totalAmount > 0 && !parsed.cashBankAccountId) {
     return { error: "กรุณาเลือกบัญชีรับเงิน" };

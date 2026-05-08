@@ -32,6 +32,7 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
+import { addThailandDays, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 
 const saleProductOptionSelect = {
   id:                  true,
@@ -390,9 +391,8 @@ async function createWarrantySnapshots(
 ): Promise<void> {
   if (input.warrantyDays <= 0) return;
 
-  const startDate = new Date(input.docDate);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + input.warrantyDays);
+  const startDate = startOfThailandDay(input.docDate);
+  const endDate = addThailandDays(startDate, input.warrantyDays);
 
   const unitCount = Math.min(Math.ceil(input.itemQty), 999);
   const lotSequence = buildWarrantyLotSequence(input.lotItems);
@@ -484,7 +484,7 @@ export async function createSale(
 
   const resolvedCashBankAccountId =
     paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
-  const docDate = new Date(saleDate);
+  const docDate = parseDateOnlyToDate(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
   let createdSaleId = "";
@@ -857,7 +857,7 @@ export async function updateSale(
   }
   const resolvedCashBankAccountId =
     paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
-  const docDate = new Date(saleDate);
+  const docDate = parseDateOnlyToDate(saleDate);
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
@@ -1549,4 +1549,3 @@ export async function fetchProductLots(
     return { error: "ไม่สามารถโหลดข้อมูล Lot ได้" };
   }
 }
-

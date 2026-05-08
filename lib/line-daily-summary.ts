@@ -1,10 +1,14 @@
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
-import { getBangkokDayKey } from "@/lib/storefront-visitor";
-import { formatDateThai, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import {
+  addThailandDays,
+  formatDateThai,
+  getThailandDateKey,
+  isDateOnlyString,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+} from "@/lib/th-date";
 
 type MoneySection = {
   salesTotal: number;
@@ -86,7 +90,7 @@ function isValidDayKey(value: string | undefined): value is string {
 }
 
 export function resolveBangkokDayKey(value?: string): string {
-  return isValidDayKey(value) ? value : getBangkokDayKey();
+  return isValidDayKey(value) ? value : getThailandDateKey();
 }
 
 async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>): Promise<T> {
@@ -100,7 +104,7 @@ async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>): Pr
 
 function getBangkokDayRange(dayKey: string) {
   const start = parseDateOnlyToDate(dayKey);
-  const end = new Date(start.getTime() + DAY_MS - 1);
+  const end = parseDateOnlyToEndOfDay(dayKey);
   return { start, end };
 }
 
@@ -552,7 +556,7 @@ function renderFriendlyLineDailySummaryMessage(summary: {
 }
 
 async function getLotExpiryCounts(reportStart: Date, reportEnd: Date) {
-  const threshold = new Date(reportEnd.getTime() + 30 * DAY_MS);
+  const threshold = addThailandDays(reportEnd, 30);
 
   const productLots = await runSummaryStep("lotCounts.productLots", () =>
     db.productLot.findMany({

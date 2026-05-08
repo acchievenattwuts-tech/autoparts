@@ -19,6 +19,7 @@ import {
 } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { recalculateSupplierAdvanceAmountRemain } from "@/lib/amount-remain";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 
 const supplierAdvanceSchema = z.object({
   supplierId: z.string().min(1, "กรุณาเลือกซัพพลายเออร์"),
@@ -114,7 +115,7 @@ export async function createSupplierAdvance(
     return { success: false, error: "ข้อมูลไม่ถูกต้อง" };
   }
 
-  const advanceDate = new Date(parsed.advanceDate);
+  const advanceDate = parseDateOnlyToDate(parsed.advanceDate);
   const advanceNo = await generateSupplierAdvanceNo(advanceDate);
   let createdAdvanceId = "";
 
@@ -227,7 +228,7 @@ export async function updateSupplierAdvance(
     return { error: "ข้อมูลไม่ถูกต้อง" };
   }
 
-  const advanceDate = new Date(parsed.advanceDate);
+  const advanceDate = parseDateOnlyToDate(parsed.advanceDate);
 
   try {
     const requestContext = await getRequestContext();

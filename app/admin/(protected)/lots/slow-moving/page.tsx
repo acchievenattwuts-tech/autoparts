@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, getThailandDateKey, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 
 interface PageProps {
   searchParams: Promise<{ days?: string }>;
@@ -23,7 +23,7 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
   const { days = "90" } = await searchParams;
   const dayNum = parseInt(days, 10) || 90;
 
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
 
   const balances = await db.lotBalance.findMany({
     where: { qtyOnHand: { gt: 0 } },
@@ -94,7 +94,7 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
       const key = `${balance.productId}:${balance.lotNo}`;
       const lastSale = lastSaleMap.get(key) ?? null;
       const daysSince = lastSale
-        ? Math.floor((today.getTime() - lastSale.getTime()) / 86_400_000)
+        ? Math.floor((today.getTime() - startOfThailandDay(lastSale).getTime()) / 86_400_000)
         : null;
       const productLot = productLotMap.get(key);
       const reportUnit = resolveReportUnit({

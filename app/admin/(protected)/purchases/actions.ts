@@ -21,6 +21,7 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -329,7 +330,7 @@ export async function createPurchase(
 
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
   const purchasePrefix = purchaseType === PurchaseType.CREDIT_PURCHASE ? "RRC" : "RR";
-  const purchaseNo = await generatePurchaseNo(purchasePrefix, new Date(purchaseDate));
+  const purchaseNo = await generatePurchaseNo(purchasePrefix, parseDateOnlyToDate(purchaseDate));
   let createdPurchaseId = "";
 
   try {
@@ -361,7 +362,7 @@ export async function createPurchase(
           subtotalAmount,
           vatAmount,
           referenceNo:   referenceNo ?? null,
-          purchaseDate:  new Date(purchaseDate),
+          purchaseDate:  parseDateOnlyToDate(purchaseDate),
           paymentMethod: resolvedPaymentMethod,
           paymentStatus,
           cashBankAccountId: resolvedCashBankAccountId || null,
@@ -404,7 +405,7 @@ export async function createPurchase(
         const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       purchaseNo,
-          docDate:     new Date(purchaseDate),
+          docDate:     parseDateOnlyToDate(purchaseDate),
           source:      "PURCHASE",
           qtyIn:       qtyInBase,
           qtyOut:      0,
@@ -425,8 +426,8 @@ export async function createPurchase(
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
               unitCostBase: lot.unitCost / scale,
-              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+              expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
             }));
 
             await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
@@ -441,7 +442,7 @@ export async function createPurchase(
         purchaseType === PurchaseType.CASH_PURCHASE && resolvedCashBankAccountId
           ? [{
               accountId: resolvedCashBankAccountId,
-              txnDate: new Date(purchaseDate),
+              txnDate: parseDateOnlyToDate(purchaseDate),
               direction: CashBankDirection.OUT,
               amount: netAmount,
               referenceNo: purchaseNo,
@@ -673,7 +674,7 @@ export async function updatePurchase(
         where: { id },
         data: {
           supplierId:    supplierId || null,
-          purchaseDate:  new Date(purchaseDate),
+          purchaseDate:  parseDateOnlyToDate(purchaseDate),
           discount,
           note:          note ?? null,
           referenceNo:   referenceNo ?? null,
@@ -726,7 +727,7 @@ export async function updatePurchase(
         const stockCardId = await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.purchaseNo,
-          docDate:     new Date(purchaseDate),
+          docDate:     parseDateOnlyToDate(purchaseDate),
           source:      "PURCHASE",
           qtyIn:       qtyInBase,
           qtyOut:      0,
@@ -743,8 +744,8 @@ export async function updatePurchase(
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
               unitCostBase: lot.unitCost / scale,
-              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+              expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
             }));
 
             await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
@@ -759,7 +760,7 @@ export async function updatePurchase(
         purchaseType === PurchaseType.CASH_PURCHASE && resolvedCashBankAccountId
           ? [{
               accountId: resolvedCashBankAccountId,
-              txnDate: new Date(purchaseDate),
+              txnDate: parseDateOnlyToDate(purchaseDate),
               direction: CashBankDirection.OUT,
               amount: netAmount,
               referenceNo: existing.purchaseNo,
@@ -793,4 +794,3 @@ export async function updatePurchase(
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
-

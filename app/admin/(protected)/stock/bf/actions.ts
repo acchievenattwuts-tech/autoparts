@@ -14,6 +14,7 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),
@@ -140,7 +141,8 @@ export async function createBF(
 
   const scale     = Number(unit.scale);
   const qtyInBase = qty * scale;
-  const docNo     = await generateBFNo(new Date(docDate));
+  const parsedDocDate = parseDateOnlyToDate(docDate);
+  const docNo     = await generateBFNo(parsedDocDate);
 
   // Validate lot rows if product uses lot control
   const product = await db.product.findUnique({
@@ -159,7 +161,7 @@ export async function createBF(
       const bf = await tx.balanceForward.create({
         data: {
           docNo,
-          docDate:         new Date(docDate),
+          docDate:         parsedDocDate,
           productId,
           unitName,
           qtyInBase,
@@ -173,7 +175,7 @@ export async function createBF(
       await writeStockCard(tx, {
         productId,
         docNo,
-        docDate:    new Date(docDate),
+        docDate:    parsedDocDate,
         source:     "BF",
         qtyIn:      qtyInBase,
         qtyOut:     0,
@@ -188,8 +190,8 @@ export async function createBF(
           lotNo:        lot.lotNo.trim(),
           qtyInBase:    lot.qty * scale,
           unitCostBase: lot.unitCost / scale,
-          mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-          expDate:      lot.expDate ? new Date(lot.expDate) : null,
+          mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+          expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
         }));
 
         // Use bf.id as purchaseItemId for lot tracking

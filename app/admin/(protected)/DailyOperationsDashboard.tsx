@@ -1,8 +1,8 @@
 import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe } from "lucide-react";
 
 import { db } from "@/lib/db";
-import { getBangkokDayKey } from "@/lib/storefront-visitor";
 import {
+  addThailandDays,
   formatDateThai,
   getThailandDateKey,
   getThailandMonthStartDateKey,
@@ -16,13 +16,12 @@ import type { TopProductsChartDatum } from "./TopProductsChart";
 
 const DailyOperationsDashboard = async () => {
   const now = new Date();
-  const bangkokToday = getBangkokDayKey(now);
+  const bangkokToday = getThailandDateKey(now);
   const bangkokMonthStart = getThailandMonthStartDateKey(now);
   const bangkokStartOfToday = parseDateOnlyToStartOfDay(bangkokToday);
   const bangkokEndOfToday = parseDateOnlyToEndOfDay(bangkokToday);
   const bangkokStartOfMonth = parseDateOnlyToStartOfDay(bangkokMonthStart);
-  const bangkokStartOf30Days = new Date(bangkokStartOfToday);
-  bangkokStartOf30Days.setUTCDate(bangkokStartOf30Days.getUTCDate() - 29);
+  const bangkokStartOf30Days = addThailandDays(bangkokStartOfToday, -29);
 
   const [
     salesTodayAgg,
@@ -154,8 +153,7 @@ const DailyOperationsDashboard = async () => {
 
   const salesByDay = new Map<string, number>();
   for (let index = 0; index < 30; index += 1) {
-    const day = new Date(bangkokStartOf30Days);
-    day.setUTCDate(bangkokStartOf30Days.getUTCDate() + index);
+    const day = addThailandDays(bangkokStartOf30Days, index);
     salesByDay.set(getThailandDateKey(day), 0);
   }
 

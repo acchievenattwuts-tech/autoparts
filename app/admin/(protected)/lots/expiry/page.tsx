@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { addThailandDays, getThailandDateKey, parseDateOnlyToDate, formatDateThai } from "@/lib/th-date";
 import Pagination from "@/components/shared/Pagination";
 
 const LOT_PAGE_SIZE = 50;
@@ -47,16 +47,13 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
   const { days = "30", page: pageParam = "1" } = await searchParams;
   const page = Math.max(1, parseInt(pageParam, 10));
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = parseDateOnlyToDate(getThailandDateKey());
 
   const thresholdDate =
     days === "all"
       ? undefined
       : (() => {
-          const date = new Date(today);
-          date.setDate(date.getDate() + parseInt(days, 10));
-          return date;
+          return addThailandDays(today, parseInt(days, 10));
         })();
 
   const productLots = await db.productLot.findMany({

@@ -52,12 +52,36 @@ export function getThailandMonthStartDateKey(value: Date = new Date()): string {
   return `${year}-${month}-01`;
 }
 
+export function getThailandMonthKey(value: Date = new Date()): string {
+  const year = getThailandDatePart(value, "year");
+  const month = getThailandDatePart(value, "month").padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+export function getThailandWeekdayIndex(value: DateInput): number {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: THAILAND_TIME_ZONE,
+    weekday: "short",
+  }).format(toDate(value));
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+}
+
 export function formatDateOnlyForInput(value: DateInput): string {
   if (typeof value === "string" && isDateOnlyString(value)) {
     return value;
   }
 
   return getThailandDateKey(toDate(value));
+}
+
+export function formatDateTimeLocalForInput(value: DateInput): string {
+  const date = toDate(value);
+  const year = getThailandDatePart(date, "year");
+  const month = getThailandDatePart(date, "month").padStart(2, "0");
+  const day = getThailandDatePart(date, "day").padStart(2, "0");
+  const hour = getThailandDatePart(date, "hour").padStart(2, "0");
+  const minute = getThailandDatePart(date, "minute").padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 export function parseDateOnlyToDate(value: string): Date {
@@ -70,6 +94,10 @@ export function parseDateOnlyToStartOfDay(value: string): Date {
 
 export function parseDateOnlyToEndOfDay(value: string): Date {
   return new Date(`${value}T23:59:59.999${THAILAND_UTC_OFFSET}`);
+}
+
+export function startOfThailandDay(value: DateInput): Date {
+  return parseDateOnlyToStartOfDay(formatDateOnlyForInput(value));
 }
 
 export function addThailandDays(value: DateInput, days: number): Date {

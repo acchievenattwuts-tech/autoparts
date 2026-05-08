@@ -6432,6 +6432,12 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 
 **Spec ของ Flex card (4 templates)** + **PromptPay QR endpoint** + **Permission keys** ใน Phase 1C section ก่อนหน้า — **คงไว้ทั้งหมด** สำหรับ implement ในอนาคต
 
+### Database Date/Time Standard (2026-05-08)
+
+- New Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless the user approves a narrow exception.
+- Date-only document fields, claim dates, report ranges, and business day calculations must parse/format through `lib/th-date.ts`.
+- Do not add bare `DateTime`, PostgreSQL `timestamp without time zone`, manual `setHours`/`setDate`, or `toISOString().slice(...)` date formatting for Thailand business dates.
+
 ### Cost Summary (Final — รอบนี้)
 
 | Phase | Cost/เดือน | สถานะ |

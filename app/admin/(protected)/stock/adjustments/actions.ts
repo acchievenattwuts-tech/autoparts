@@ -13,6 +13,7 @@ import {
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateAdjNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getLotAvailability,
   writeAdjustmentLots,
@@ -191,7 +192,8 @@ export async function createAdjustment(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const { adjustDate, note, items: validItems } = parsed.data;
-  const adjustNo = await generateAdjNo(new Date(adjustDate));
+  const docDate = parseDateOnlyToDate(adjustDate);
+  const adjustNo = await generateAdjNo(docDate);
 
   try {
     await dbTx(async (tx) => {
@@ -200,7 +202,7 @@ export async function createAdjustment(
       const adjustment = await tx.adjustment.create({
         data: {
           adjustNo,
-          adjustDate: new Date(adjustDate),
+          adjustDate: docDate,
           userId: session.user.id,
           note,
           items: {
@@ -228,7 +230,7 @@ export async function createAdjustment(
         const stockCardId = await writeStockCard(tx, {
           productId: adjustmentItem.productId,
           docNo: adjustNo,
-          docDate: new Date(adjustDate),
+          docDate,
           source,
           qtyIn: source === "ADJUST_IN" ? qtyBase : 0,
           qtyOut: source === "ADJUST_OUT" ? qtyBase : 0,
@@ -252,8 +254,8 @@ export async function createAdjustment(
               lotNo: lot.lotNo.trim(),
               qtyInBase: lot.qty * scale,
               unitCostBase: lot.unitCost > 0 ? lot.unitCost / scale : inputItem.price / scale || product.avgCost,
-              mfgDate: lot.mfgDate ? new Date(lot.mfgDate) : null,
-              expDate: lot.expDate ? new Date(lot.expDate) : null,
+              mfgDate: lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+              expDate: lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
             }));
 
             const direction = source === "ADJUST_IN" ? ("in" as const) : ("out" as const);

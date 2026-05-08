@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getThailandDateKey } from "@/lib/th-date";
 
 /**
  * Generate document number: {PREFIX}{YYMM}{4-digit sequence}
@@ -6,9 +7,9 @@ import { db } from "@/lib/db";
  * Sequence resets every month (counts only records with same PREFIX+YYMM pattern)
  */
 export async function generateDocNo(prefix: string, date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy   = String(d.getFullYear()).slice(-2);   // last 2 digits of year
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `${prefix}${yy}${mm}`;
   const last = await db.stockCard.findFirst({
     where: { docNo: { startsWith: pattern } },
@@ -25,9 +26,9 @@ export async function generateDocNo(prefix: string, date?: Date): Promise<string
  * Format: BF{YYMM}{4-digit}
  */
 export async function generateBFNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy   = String(d.getFullYear()).slice(-2);
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `BF${yy}${mm}`;
   const last = await db.balanceForward.findFirst({
     where: { docNo: { startsWith: pattern } },
@@ -43,9 +44,9 @@ export async function generateBFNo(date?: Date): Promise<string> {
  * Format: REC{YYMM}{4-digit}
  */
 export async function generateReceiptNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy   = String(d.getFullYear()).slice(-2);
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `REC${yy}${mm}`;
   const last = await db.receipt.findFirst({
     where: { receiptNo: { startsWith: pattern } },
@@ -61,9 +62,9 @@ export async function generateReceiptNo(date?: Date): Promise<string> {
  * Format: PAY{YYMM}{4-digit}
  */
 export async function generateSupplierPaymentNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `PAY${yy}${mm}`;
   const last = await db.supplierPayment.findFirst({
     where: { paymentNo: { startsWith: pattern } },
@@ -79,9 +80,9 @@ export async function generateSupplierPaymentNo(date?: Date): Promise<string> {
  * Format: OE{YYMM}{4-digit}
  */
 export async function generateExpenseNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy   = String(d.getFullYear()).slice(-2);
-  const mm   = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `OE${yy}${mm}`;
   const last = await db.expense.findFirst({
     where: { expenseNo: { startsWith: pattern } },
@@ -97,9 +98,9 @@ export async function generateExpenseNo(date?: Date): Promise<string> {
  * Format: DCP{YYMM}{4-digit}
  */
 export async function generateDeliveryCommissionRunNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `DCP${yy}${mm}`;
   const last = await db.deliveryCommissionRun.findFirst({
     where: { runNo: { startsWith: pattern } },
@@ -119,9 +120,9 @@ export async function generatePurchaseNo(
   prefix: "RR" | "RRC",
   date?: Date,
 ): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `${prefix}${yy}${mm}`;
   const last = await db.purchase.findFirst({
     where: { purchaseNo: { startsWith: pattern } },
@@ -137,9 +138,9 @@ export async function generatePurchaseNo(
  * Format: ADV{YYMM}{4-digit}
  */
 export async function generateSupplierAdvanceNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `ADV${yy}${mm}`;
   const last = await db.supplierAdvance.findFirst({
     where: { advanceNo: { startsWith: pattern } },
@@ -155,9 +156,9 @@ export async function generateSupplierAdvanceNo(date?: Date): Promise<string> {
  * Format: CNRR{YYMM}{4-digit}
  */
 export async function generatePurchaseReturnNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `CNRR${yy}${mm}`;
   const last = await db.purchaseReturn.findFirst({
     where: { returnNo: { startsWith: pattern } },
@@ -174,9 +175,9 @@ export async function generatePurchaseReturnNo(date?: Date): Promise<string> {
  * Format: {prefix}{YYMM}{4-digit}
  */
 export async function generateSaleNo(prefix: "SA" | "SAC", date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `${prefix}${yy}${mm}`;
   const last = await db.sale.findFirst({
     where: { saleNo: { startsWith: pattern } },
@@ -192,9 +193,9 @@ export async function generateSaleNo(prefix: "SA" | "SAC", date?: Date): Promise
  * Format: CN{YYMM}{4-digit}
  */
 export async function generateCNNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `CN${yy}${mm}`;
   const last = await db.creditNote.findFirst({
     where: { cnNo: { startsWith: pattern } },
@@ -210,9 +211,9 @@ export async function generateCNNo(date?: Date): Promise<string> {
  * Format: ADJ{YYMM}{4-digit}
  */
 export async function generateAdjNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `ADJ${yy}${mm}`;
   const last = await db.adjustment.findFirst({
     where: { adjustNo: { startsWith: pattern } },
@@ -228,9 +229,9 @@ export async function generateAdjNo(date?: Date): Promise<string> {
  * Format: WC{YYMM}{4-digit}
  */
 export async function generateClaimNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `WC${yy}${mm}`;
   const last = await db.warrantyClaim.findFirst({
     where: { claimNo: { startsWith: pattern } },
@@ -246,9 +247,9 @@ export async function generateClaimNo(date?: Date): Promise<string> {
  * Format: CBT{YYMM}{4-digit}
  */
 export async function generateCashBankTransferNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `CBT${yy}${mm}`;
   const last = await db.cashBankTransfer.findFirst({
     where: { transferNo: { startsWith: pattern } },
@@ -264,9 +265,9 @@ export async function generateCashBankTransferNo(date?: Date): Promise<string> {
  * Format: CBA{YYMM}{4-digit}
  */
 export async function generateCashBankAdjustmentNo(date?: Date): Promise<string> {
-  const d = date ?? new Date();
-  const yy = String(d.getFullYear()).slice(-2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
   const pattern = `CBA${yy}${mm}`;
   const last = await db.cashBankAdjustment.findFirst({
     where: { adjustNo: { startsWith: pattern } },

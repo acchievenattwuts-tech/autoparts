@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { requirePermission } from "@/lib/require-auth";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { addThailandDays } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
@@ -177,7 +178,7 @@ const DeliveryPrintPage = async ({
             netAmount: Number(sale.netAmount),
             primaryTransferAccount,
           });
-          const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
+          const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
           const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
           const receivedTransferAccount =
             sale.paymentType === "CASH_SALE" && sale.paymentMethod === "TRANSFER"

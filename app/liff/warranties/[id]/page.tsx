@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getCustomerClaimStatusBadgeClass,
   getCustomerClaimStatusLabel,
@@ -47,7 +47,7 @@ export default async function LiffWarrantyDetailPage({
 
   if (!warranty) notFound();
 
-  const expired = warranty.endDate < new Date();
+  const expired = warranty.endDate < parseDateOnlyToDate(getThailandDateKey());
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-10">

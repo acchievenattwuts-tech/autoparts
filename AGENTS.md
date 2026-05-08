@@ -27,4 +27,8 @@ When introducing a new admin menu, admin page entrypoint, or user-facing admin w
 # Admin Search / Report Submit Rule
 
 When adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, you must use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern in the same round. These flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not regress back to a full page refresh.
+
+# Database Date/Time Schema Rule
+
+All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless a narrower PostgreSQL type is deliberately approved for that exact field. Do not add bare `DateTime` or PostgreSQL `timestamp without time zone`; date/time storage must preserve the instant semantics used by `lib/th-date.ts`.
 <!-- END:nextjs-agent-rules -->

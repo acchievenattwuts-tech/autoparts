@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, getThailandDateKey, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 import Pagination from "@/components/shared/Pagination";
 
 const LOT_PAGE_SIZE = 50;
@@ -84,7 +84,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
     productLots.map((productLot) => [`${productLot.productId}:${productLot.lotNo}`, productLot]),
   );
 
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   type RowStatus = "ok" | "expiring" | "expired" | "no-exp";
 
   const rows = balances.map((balance) => {
@@ -92,7 +92,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
     const expDate = productLot?.expDate ?? null;
     const mfgDate = productLot?.mfgDate ?? null;
     const daysUntil = expDate
-      ? Math.ceil((expDate.getTime() - today.getTime()) / 86_400_000)
+      ? Math.ceil((startOfThailandDay(expDate).getTime() - today.getTime()) / 86_400_000)
       : null;
     let rowStatus: RowStatus = "no-exp";
     if (daysUntil !== null) {

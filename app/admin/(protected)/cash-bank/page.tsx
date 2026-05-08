@@ -38,7 +38,7 @@ export default async function CashBankPage({ searchParams }: PageProps) {
   const { role, permissions } = await getSessionPermissionContext();
   const params = await searchParams;
 
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   const firstOfMonth = getThailandMonthStartDateKey(today);
   const fromInput = parseDate(params.from, firstOfMonth);
   const toInput = parseDate(params.to, getThailandDateKey(today));

@@ -25,7 +25,7 @@ import {
   replaceCashBankSourceMovements,
 } from "@/lib/cash-bank";
 import { getPrimaryTransferRuleViolation, type PrimaryTransferRuleCode } from "@/lib/cash-bank-primary-transfer";
-import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
+import { isDateOnlyString, parseDateOnlyToDate, getThailandDateKey } from "@/lib/th-date";
 
 const parseBoolean = (value: FormDataEntryValue | null): boolean => value === "true" || value === "on";
 
@@ -211,8 +211,7 @@ export async function seedDefaultCashBankAccounts() {
     const session = await requirePermission("cash_bank.manage");
     const requestContext = await getRequestContext();
 
-    const openingDate = new Date();
-    openingDate.setHours(0, 0, 0, 0);
+    const openingDate = parseDateOnlyToDate(getThailandDateKey());
 
     const summary = await dbTx(async (tx) => {
       let created = 0;

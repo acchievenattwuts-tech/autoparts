@@ -21,6 +21,7 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -332,7 +333,7 @@ export async function createCreditNote(
 
   const resolvedCashBankAccountId =
     settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
-  const docDate = new Date(cnDate);
+  const docDate = parseDateOnlyToDate(cnDate);
   const cnNo    = await generateCNNo(docDate);
   let createdCreditNoteId = "";
 
@@ -422,8 +423,8 @@ export async function createCreditNote(
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
               unitCostBase: lot.unitCost / scale,
-              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+              expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
               isReturnLot:  lot.isReturnLot,
             }));
 
@@ -652,7 +653,7 @@ export async function updateCreditNote(
 
   const resolvedCashBankAccountId =
     settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
-  const docDate = new Date(cnDate);
+  const docDate = parseDateOnlyToDate(cnDate);
   const oldProductIds = [
     ...new Set(existing.items.map((i) => i.productId).filter((pid): pid is string => pid !== null)),
   ];
@@ -756,8 +757,8 @@ export async function updateCreditNote(
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
               unitCostBase: lot.unitCost / scale,
-              mfgDate:      lot.mfgDate ? new Date(lot.mfgDate) : null,
-              expDate:      lot.expDate ? new Date(lot.expDate) : null,
+              mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+              expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
               isReturnLot:  lot.isReturnLot,
             }));
 

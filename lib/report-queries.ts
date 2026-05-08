@@ -47,7 +47,7 @@ export type ReportFilters = {
 export function parseReportQueryFilters(
   params: Record<string, string | undefined>,
 ): ReportFilters {
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   const firstOfMonth = parseDateOnlyToDate(getThailandMonthStartDateKey(today));
   const from = parseDate(params.from, firstOfMonth);
   const to = parseDate(params.to, today);

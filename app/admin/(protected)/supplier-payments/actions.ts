@@ -26,6 +26,7 @@ import {
   recalculateSupplierAdvanceAmountRemain,
 } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 
 type TxClient = Prisma.TransactionClient;
 type SupplierDocumentClient = Pick<
@@ -444,7 +445,7 @@ export async function createSupplierPayment(
     return { success: false, error: "กรุณาเลือกบัญชีจ่ายเงิน" };
   }
 
-  const paymentDate = new Date(parsed.paymentDate);
+  const paymentDate = parseDateOnlyToDate(parsed.paymentDate);
   const paymentNo = await generateSupplierPaymentNo(paymentDate);
   let createdPaymentId = "";
 
@@ -576,6 +577,7 @@ export async function updateSupplierPayment(
     purchaseReturnIds: [...new Set([...oldAffectedIds.purchaseReturnIds, ...newAffectedIds.purchaseReturnIds])],
     advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds])],
   };
+  const paymentDate = parseDateOnlyToDate(parsed.paymentDate);
 
   try {
     const requestContext = await getRequestContext();
@@ -591,7 +593,7 @@ export async function updateSupplierPayment(
       await tx.supplierPayment.update({
         where: { id },
         data: {
-          paymentDate: new Date(parsed.paymentDate),
+          paymentDate,
           supplierId: parsed.supplierId,
           totalAmount: totalCashPaid,
           paymentMethod,
@@ -619,7 +621,7 @@ export async function updateSupplierPayment(
           ? [
               {
                 accountId: parsed.cashBankAccountId,
-                txnDate: new Date(parsed.paymentDate),
+                txnDate: paymentDate,
                 direction: CashBankDirection.OUT,
                 amount: totalCashPaid,
                 referenceNo: existing.paymentNo,

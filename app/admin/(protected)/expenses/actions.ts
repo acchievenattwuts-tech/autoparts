@@ -15,6 +15,7 @@ import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
+import { parseDateOnlyToDate } from "@/lib/th-date";
 
 const expenseItemSchema = z.object({
   expenseCodeId: z.string().min(1, "กรุณาเลือกรหัสค่าใช้จ่าย"),
@@ -123,7 +124,7 @@ export async function createExpense(
   const d = parsed.data;
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
-  const docDate   = new Date(d.expenseDate);
+  const docDate   = parseDateOnlyToDate(d.expenseDate);
   const expenseNo = await generateExpenseNo(docDate);
 
   try {
@@ -286,7 +287,7 @@ export async function updateExpense(
   const d = parsed.data;
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
-  const docDate = new Date(d.expenseDate);
+  const docDate = parseDateOnlyToDate(d.expenseDate);
 
   try {
     const beforeSnapshot = await getExpenseAuditSnapshot(id);

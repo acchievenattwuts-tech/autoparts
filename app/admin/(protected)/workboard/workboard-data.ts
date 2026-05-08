@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
-import { getBangkokDayKey } from "@/lib/storefront-visitor";
 import {
   addThailandDays,
+  getThailandDateKey,
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
@@ -140,7 +140,7 @@ export type WorkboardData = {
 const DAY_MS = 86_400_000;
 
 function toStartOfDay(date: Date): Date {
-  return parseDateOnlyToStartOfDay(getBangkokDayKey(date));
+  return parseDateOnlyToStartOfDay(getThailandDateKey(date));
 }
 
 function getDayDiff(from: Date, to: Date): number {
@@ -560,7 +560,7 @@ async function queryCashBankBelow() {
 
 export async function getWorkboardData(): Promise<WorkboardData> {
   const now = new Date();
-  const todayKey = getBangkokDayKey(now);
+  const todayKey = getThailandDateKey(now);
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
   const todayEnd = parseDateOnlyToEndOfDay(todayKey);
 

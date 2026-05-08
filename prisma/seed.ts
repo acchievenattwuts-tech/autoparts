@@ -1,6 +1,7 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db } from "../lib/db";
+import { getThailandDateKey, parseDateOnlyToDate } from "../lib/th-date";
 
 async function ensureSeedAdminUser() {
   const seedAdminUsername = process.env.SEED_ADMIN_USERNAME?.trim().toLowerCase();
@@ -48,8 +49,7 @@ async function ensureDefaultCashBankAccounts() {
     { code: "BANK-KTB", name: "ธนาคารกรุงไทย", type: "BANK" as const, bankName: "Krung Thai Bank" },
   ];
 
-  const openingDate = new Date();
-  openingDate.setHours(0, 0, 0, 0);
+  const openingDate = parseDateOnlyToDate(getThailandDateKey());
 
   let created = 0;
   for (const account of defaults) {

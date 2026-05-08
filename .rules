@@ -112,6 +112,7 @@
 
 ### Schema Decisions
 - Use `prisma db push` only (not `migrate dev`) — Supabase Transaction pooler does not support shadow databases.
+- All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless the human approves a narrower PostgreSQL type for a specific field. Never introduce bare `DateTime` or PostgreSQL `timestamp without time zone`; the database type must preserve the instant semantics used by `lib/th-date.ts`.
 - Price/cost Decimal fields: always use `@db.Decimal(10,2)`.
 - Quantity Decimal fields (qty): use `@db.Decimal(12,4)` to support fractional unit counts.
 - All quantities in StockCard must be in **base unit** (scale=1) — convert to display units only in the UI layer.

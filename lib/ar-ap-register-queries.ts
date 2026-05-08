@@ -1,6 +1,12 @@
 import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
-import { formatDateThai } from "@/lib/th-date";
+import {
+  addThailandDays,
+  formatDateThai,
+  getThailandDateKey,
+  parseDateOnlyToDate,
+  startOfThailandDay,
+} from "@/lib/th-date";
 import type { ARAPStockFilters } from "@/lib/ar-ap-stock-report-queries";
 
 const BOM = "﻿";
@@ -40,16 +46,8 @@ function styleHeader(ws: ExcelJS.Worksheet) {
   row.height = 22;
 }
 
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
 function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
+  return startOfThailandDay(d);
 }
 
 export type ARRegisterStatus =
@@ -154,7 +152,7 @@ export async function queryARRegisterRows(
     }),
   ]);
 
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   const rows: ARRegisterRow[] = [];
 
   for (const s of sales) {
@@ -163,7 +161,7 @@ export async function queryARRegisterRows(
     const paidAmount = Math.max(0, netAmount - amountRemain);
     const dueDate =
       s.paymentType === "CREDIT_SALE"
-        ? addDays(s.saleDate, s.creditTerm ?? 0)
+        ? addThailandDays(s.saleDate, s.creditTerm ?? 0)
         : null;
     const { status, daysOverdue } = deriveSaleStatus({
       cancelled: s.status === "CANCELLED",
@@ -406,7 +404,7 @@ export async function queryAPRegisterRows(
     }),
   ]);
 
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   const rows: APRegisterRow[] = [];
 
   for (const p of purchases) {
@@ -414,7 +412,7 @@ export async function queryAPRegisterRows(
     const amountRemain = Number(p.amountRemain);
     const paidAmount = Math.max(0, netAmount - amountRemain);
     const term = p.creditTerm ?? 0;
-    const dueDate = addDays(p.purchaseDate, term);
+    const dueDate = addThailandDays(p.purchaseDate, term);
     const cancelled = p.status === "CANCELLED";
     const { status, daysOverdue } = deriveSaleStatus({
       cancelled,

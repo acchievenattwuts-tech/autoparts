@@ -11,14 +11,18 @@ import {
   WarrantyClaimStatus,
 } from "@/lib/generated/prisma";
 import {
+  addThailandDays,
   formatDateOnlyForInput,
   formatDateThai,
   getThailandDateKey,
+  getThailandMonthKey,
   getThailandMonthStartDateKey,
+  getThailandWeekdayIndex,
   isDateOnlyString,
   parseDateOnlyToDate,
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
+  startOfThailandDay,
 } from "@/lib/th-date";
 
 type ReportRange = { from: Date; to: Date };
@@ -263,24 +267,18 @@ function toNumber(value: unknown): number {
 }
 
 function startOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
+  return startOfThailandDay(date);
 }
 
 function startOfWeek(date: Date): Date {
   const next = startOfDay(date);
-  const day = next.getDay();
+  const day = getThailandWeekdayIndex(next);
   const diff = day === 0 ? -6 : 1 - day;
-  next.setDate(next.getDate() + diff);
-  return next;
+  return addThailandDays(next, diff);
 }
 
 function formatDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatDateOnlyForInput(date);
 }
 
 function formatDateShort(date: Date): string {
@@ -292,7 +290,7 @@ function formatDateShort(date: Date): string {
 }
 
 function formatMonthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return getThailandMonthKey(date);
 }
 
 function parseDateInput(value: string | undefined, fallback: Date): Date {
@@ -400,8 +398,7 @@ function buildSalesBuckets(
       sortDate = startOfDay(transaction.docDate);
     } else if (mode === "week") {
       const weekStart = startOfWeek(transaction.docDate);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
+      const weekEnd = addThailandDays(weekStart, 6);
       key = formatDateInput(weekStart);
       label = `${formatDateShort(weekStart)} - ${formatDateShort(weekEnd)}`;
       sortDate = weekStart;
@@ -411,7 +408,7 @@ function buildSalesBuckets(
         month: "long",
         year: "numeric",
       });
-      sortDate = new Date(transaction.docDate.getFullYear(), transaction.docDate.getMonth(), 1);
+      sortDate = parseDateOnlyToDate(`${key}-01`);
     }
 
     const existing = bucketMap.get(key) ?? {
@@ -509,7 +506,7 @@ export function buildReportQuery(filters: ParsedReportFilters): string {
 
 export async function getReportsData(filters: ParsedReportFilters): Promise<ReportsData> {
   const now = new Date();
-  const soonDate = new Date(now.getTime() + 30 * DAY_MS);
+  const soonDate = addThailandDays(startOfDay(now), 30);
   const customerCodeRange = buildStringRange(filters.customerCodeFrom, filters.customerCodeTo);
   const supplierCodeRange = buildStringRange(filters.supplierCodeFrom, filters.supplierCodeTo);
   const productCodeRange = buildStringRange(filters.productCodeFrom, filters.productCodeTo);

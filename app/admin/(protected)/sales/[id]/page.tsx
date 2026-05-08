@@ -15,7 +15,7 @@ import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/pris
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
-import { formatDateThai } from "@/lib/th-date";
+import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
 
@@ -154,7 +154,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   if (!sale) notFound();
   const cfg = mapSiteConfig(siteContents);
 
-  const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
+  const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
   const signerSignatureUrl = sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null;
   const transferDocumentState = getTransferDocumentState({

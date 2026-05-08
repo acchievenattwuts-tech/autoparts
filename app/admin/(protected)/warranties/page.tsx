@@ -10,7 +10,14 @@ import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
-import { formatDateThai, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import {
+  addThailandDays,
+  formatDateThai,
+  getThailandDateKey,
+  parseDateOnlyToDate,
+  parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
 
@@ -45,9 +52,8 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
 
   const { status, q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
-  const now = new Date();
-  const soonDate = new Date();
-  soonDate.setDate(now.getDate() + 30);
+  const now = parseDateOnlyToDate(getThailandDateKey());
+  const soonDate = addThailandDays(now, 30);
   const from = fromParam ?? "";
   const to   = toParam   ?? "";
   const normalizedQuery = q?.trim() ?? "";

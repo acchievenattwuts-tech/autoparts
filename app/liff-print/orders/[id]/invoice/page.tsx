@@ -5,6 +5,7 @@ import ExternalPrintShell, { EXTERNAL_A4_PRINT_ROOT_CLASS } from "@/components/l
 import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { addThailandDays } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge, verifyLiffPrintDocumentToken } from "@/lib/verify-token";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +82,7 @@ export default async function ExternalLiffOrderInvoicePage({
 
   if (!sale) notFound();
 
-  const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
+  const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
   const transferDocumentState = getTransferDocumentState({
     paymentType: sale.paymentType,

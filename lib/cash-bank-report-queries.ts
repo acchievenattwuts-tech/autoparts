@@ -104,7 +104,7 @@ export function formatCashBankDateInput(date: Date): string {
 export function parseCashBankReportFilters(
   params: Record<string, string | undefined>,
 ): CashBankReportFilters {
-  const today = new Date();
+  const today = parseDateOnlyToDate(getThailandDateKey());
   const firstOfMonth = parseDateOnlyToDate(getThailandMonthStartDateKey(today));
   const from = parseDate(params.from, firstOfMonth);
   const to = parseDate(params.to, today);

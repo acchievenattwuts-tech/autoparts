@@ -5,12 +5,12 @@ import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ShieldCheck, ChevronRight } from "lucide-react";
 import NewWarrantyForm from "./NewWarrantyForm";
+import { addThailandDays, getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 
 const NewWarrantyPage = async () => {
   await requirePermission("warranties.create");
 
-  const since = new Date();
-  since.setDate(since.getDate() - 60);
+  const since = addThailandDays(parseDateOnlyToDate(getThailandDateKey()), -60);
 
   const recentSales = await db.sale.findMany({
     where: {

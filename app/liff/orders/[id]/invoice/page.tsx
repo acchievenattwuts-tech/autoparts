@@ -10,6 +10,7 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { addThailandDays } from "@/lib/th-date";
 import {
   buildLiffPrintDocumentUrl,
   buildPrintDocumentVerifyBadge,
@@ -94,7 +95,7 @@ export default async function LiffOrderInvoicePage({
 
   if (!sale) notFound();
 
-  const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
+  const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
   const transferDocumentState = getTransferDocumentState({
     paymentType: sale.paymentType,

@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { addThailandDays } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge, verifyLiffPrintDocumentToken } from "@/lib/verify-token";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +103,7 @@ export default async function ExternalLiffOrderReceiptPage({
   if (!sale) notFound();
 
   if (sale.paymentType === SalePaymentType.CASH_SALE) {
-    const dueDate = new Date(new Date(sale.saleDate).getTime() + (sale.creditTerm ?? 0) * 24 * 60 * 60 * 1000);
+    const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
     const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
     const transferDocumentState = getTransferDocumentState({
       paymentType: sale.paymentType,
