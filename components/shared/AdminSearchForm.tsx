@@ -35,7 +35,8 @@ const AdminSearchForm = ({
     event.preventDefault();
 
     const form = event.currentTarget;
-    const actionUrl = new URL(form.action || window.location.href, window.location.href);
+    const action = form.getAttribute("action");
+    const actionUrl = new URL(action && action.length > 0 ? action : window.location.href, window.location.href);
     const formData = new FormData(form);
     const nextParams = new URLSearchParams();
 
