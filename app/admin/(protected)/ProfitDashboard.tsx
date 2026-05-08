@@ -17,6 +17,7 @@ import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton
 import {
   getProfitDashboardData,
   getRevenueAmountByBasis,
+  LOW_MARGIN_THRESHOLD_PCT,
   type ProfitRevenueBasis,
 } from "@/lib/profit-dashboard";
 import { ProfitSourceType } from "@/lib/generated/prisma";
@@ -724,12 +725,17 @@ const ProfitDashboard = async ({
             <div>
               <h2 className="font-kanit text-xl font-semibold text-gray-900">สินค้าเสี่ยงกำไรต่ำ</h2>
               <p className="text-xs text-gray-500">
-                Watchlist สำหรับตัวที่ควรเฝ้าระวังเป็นพิเศษ เพราะกำไรบางหรือเริ่มติดลบ
+                Watchlist เฉพาะสินค้าที่ margin ต่ำกว่า {LOW_MARGIN_THRESHOLD_PCT}% หรือขาดทุน
               </p>
             </div>
             <ArrowDownRight className="text-rose-500" size={18} />
           </div>
           <div className="grid grid-cols-1 gap-3">
+            {data.lowProducts.length === 0 ? (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-sm text-emerald-700">
+                ไม่มีสินค้าที่กำไรต่ำกว่าเกณฑ์ ({LOW_MARGIN_THRESHOLD_PCT}%) หรือขาดทุนในช่วงนี้
+              </div>
+            ) : null}
             {data.lowProducts.map((row, index) => (
               <div key={row.productId} className="rounded-2xl border border-rose-100 bg-rose-50/60 p-4">
                 <div className="flex items-start justify-between gap-3">

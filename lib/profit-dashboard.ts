@@ -125,6 +125,7 @@ type ProfitDashboardQueryInput = Partial<ProfitDashboardFilters> & {
 };
 
 const ANALYSIS_PAGE_SIZE = 10;
+export const LOW_MARGIN_THRESHOLD_PCT = 20;
 
 function asNumber(value: unknown): number {
   return Number(value ?? 0);
@@ -332,13 +333,18 @@ async function getProductSpotlights(
       },
       where,
       orderBy: [{ _sum: { grossProfit: "asc" } }, { productName: "asc" }],
-      take: 5,
+      take: 50,
     }),
   ]);
 
+  const lowProducts = lowGrouped
+    .map(mapProductRow)
+    .filter((row) => row.grossProfit <= 0 || row.marginPct < LOW_MARGIN_THRESHOLD_PCT)
+    .slice(0, 5);
+
   return {
     topProducts: topGrouped.map(mapProductRow),
-    lowProducts: lowGrouped.map(mapProductRow),
+    lowProducts,
   };
 }
 

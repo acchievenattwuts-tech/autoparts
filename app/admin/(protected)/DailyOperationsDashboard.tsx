@@ -71,7 +71,7 @@ const DailyOperationsDashboard = async () => {
         status: "ACTIVE",
         paymentType: "CREDIT_SALE",
         fulfillmentType: "DELIVERY",
-        shippingStatus: { not: "DELIVERED" },
+        amountRemain: { gt: 0 },
       },
     }),
     db.expense.aggregate({
