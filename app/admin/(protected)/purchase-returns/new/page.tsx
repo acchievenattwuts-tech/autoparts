@@ -128,6 +128,17 @@ const NewPurchaseReturnPage = async ({
           ],
         }
       : undefined;
+  const claimContext =
+    linkedClaim && claimProduct
+      ? {
+          id: linkedClaim.id,
+          claimNo: linkedClaim.claimNo,
+          supplierName: linkedClaim.supplier?.name ?? null,
+          productId: claimProduct.id,
+          productCode: claimProduct.code,
+          productName: claimProduct.name,
+        }
+      : null;
 
   return (
     <div>
@@ -151,6 +162,7 @@ const NewPurchaseReturnPage = async ({
         defaultVatRate={config.vatRate}
         prefillData={prefillData}
         claimId={claimId}
+        claimContext={claimContext}
       />
     </div>
   );

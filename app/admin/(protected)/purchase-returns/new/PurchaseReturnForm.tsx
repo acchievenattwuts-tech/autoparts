@@ -2,8 +2,9 @@
 
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnSuppliers } from "../actions";
-import { Plus, Trash2, CheckCircle } from "lucide-react";
+import { CheckCircle, ExternalLink, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -70,6 +71,15 @@ interface InitialData {
 
 type PrefillData = Omit<InitialData, "id">;
 
+interface ClaimContext {
+  id: string;
+  claimNo: string;
+  supplierName?: string | null;
+  productId: string;
+  productCode?: string | null;
+  productName?: string | null;
+}
+
 const RETURN_TYPE_LABELS: Record<string, string> = {
   RETURN: "ส่งคืนสินค้า",
   DISCOUNT: "ส่วนลดราคา",
@@ -91,6 +101,7 @@ const PurchaseReturnForm = ({
   initialData,
   prefillData,
   claimId,
+  claimContext,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -101,6 +112,7 @@ const PurchaseReturnForm = ({
   initialData?: InitialData;
   prefillData?: PrefillData;
   claimId?: string;
+  claimContext?: ClaimContext | null;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -135,6 +147,7 @@ const PurchaseReturnForm = ({
   const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
+  const linkedClaimProductId = claimContext?.productId ?? "";
 
   const loadLots = async (itemIdx: number, productId: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -412,6 +425,39 @@ const PurchaseReturnForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {claimContext && (
+        <div className="overflow-hidden rounded-xl border border-orange-200 bg-orange-50 shadow-sm dark:border-orange-300/25 dark:bg-orange-400/10">
+          <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-orange-500 p-2 text-white shadow-sm">
+                <ShieldAlert size={18} />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-kanit text-base font-semibold text-orange-950 dark:text-orange-100">
+                    ใบลดหนี้ซื้อนี้ผูกกับใบเคลม
+                  </p>
+                  <span className="rounded-full border border-orange-300 bg-white px-2.5 py-0.5 font-mono text-xs font-semibold text-orange-700 dark:border-orange-300/30 dark:bg-orange-950/40 dark:text-orange-100">
+                    {claimContext.claimNo}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-orange-800 dark:text-orange-100/80">
+                  {[claimContext.productCode, claimContext.productName].filter(Boolean).join(" | ") || "สินค้าจากใบเคลม"}
+                  {claimContext.supplierName ? ` · ${claimContext.supplierName}` : ""}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/admin/warranty-claims/${claimContext.id}`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm font-medium text-orange-700 transition hover:border-orange-400 hover:text-orange-800 dark:border-orange-300/30 dark:bg-orange-950/30 dark:text-orange-100 dark:hover:border-orange-200/50"
+            >
+              เปิดใบเคลม
+              <ExternalLink size={14} />
+            </Link>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
           ข้อมูลการคืนสินค้า
@@ -608,11 +654,23 @@ const PurchaseReturnForm = ({
                 const product = productMap.get(item.productId);
                 const isLot = !!product?.isLotControl;
                 const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
+                const isLinkedClaimItem = !!linkedClaimProductId && item.productId === linkedClaimProductId;
 
                 return (
                   <Fragment key={i}>
-                    <tr className="border-b border-gray-50">
+                    <tr
+                      className={`border-b transition-colors ${
+                        isLinkedClaimItem
+                          ? "border-orange-100 bg-orange-50/70 dark:border-orange-300/20 dark:bg-orange-400/10"
+                          : "border-gray-50"
+                      }`}
+                    >
                       <td className="py-2 px-2">
+                        {isLinkedClaimItem && (
+                          <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700 dark:bg-orange-400/20 dark:text-orange-100">
+                            จากใบเคลม {claimContext?.claimNo}
+                          </div>
+                        )}
                         <ProductSearchSelect
                           products={productOptions}
                           value={item.productId}
@@ -647,8 +705,14 @@ const PurchaseReturnForm = ({
                           className={inputCls}
                         />
                       </td>
-                      <td className="py-2 px-2 text-right text-gray-500 bg-gray-50 rounded">
-                        {displayCost.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      <td className="py-2 px-2">
+                        <AdminNumberInput
+                          value={displayCost}
+                          min={0}
+                          step={0.01}
+                          onValueChange={(value) => updateItem(i, "costPrice", value)}
+                          className={`${inputCls} text-right`}
+                        />
                       </td>
                       <td className="py-2 px-2 text-right font-medium text-gray-700">
                         {(item.qty * displayCost).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -773,7 +837,7 @@ const PurchaseReturnForm = ({
           </table>
         </div>
         <p className="mt-3 text-xs text-gray-400">
-          * ต้นทุน/หน่วย คำนวณจาก avgCost ปัจจุบัน ณ เวลาที่บันทึก
+          * ต้นทุน/หน่วย สามารถแก้ไขได้ ถ้าไม่ระบุ ระบบจะใช้ avgCost ปัจจุบัน ณ เวลาที่บันทึก
         </p>
       </div>
 

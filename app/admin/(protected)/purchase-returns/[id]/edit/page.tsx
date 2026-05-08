@@ -26,6 +26,19 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
           lotItems: { select: { lotNo: true, qty: true } },
         },
       },
+      claim: {
+        select: {
+          id: true,
+          claimNo: true,
+          supplier: { select: { name: true } },
+          warranty: {
+            select: {
+              productId: true,
+              product: { select: { code: true, name: true } },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -106,6 +119,16 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     vatRate:    Number(ret.vatRate),
     items:      initialItems,
   };
+  const claimContext = ret.claim
+    ? {
+        id: ret.claim.id,
+        claimNo: ret.claim.claimNo,
+        supplierName: ret.claim.supplier?.name ?? null,
+        productId: ret.claim.warranty.productId,
+        productCode: ret.claim.warranty.product.code,
+        productName: ret.claim.warranty.product.name,
+      }
+    : null;
 
   return (
     <div>
@@ -126,6 +149,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}
+        claimContext={claimContext}
       />
     </div>
   );
