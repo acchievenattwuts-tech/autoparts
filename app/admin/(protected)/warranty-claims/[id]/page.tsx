@@ -24,11 +24,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  DRAFT: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700 border-blue-200",
-  CLOSED: "bg-green-100 text-green-700 border-green-200",
-  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  CANCELLED: "bg-red-100 text-red-500 border-red-200",
+  DRAFT: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:border-yellow-300/30 dark:bg-yellow-400/20 dark:text-yellow-100",
+  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700 border-blue-200 dark:border-blue-300/30 dark:bg-blue-400/25 dark:text-blue-100",
+  CLOSED: "bg-green-100 text-green-700 border-green-200 dark:border-green-300/30 dark:bg-green-400/20 dark:text-green-100",
+  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:border-emerald-300/30 dark:bg-emerald-400/20 dark:text-emerald-100",
+  CANCELLED: "bg-red-100 text-red-500 border-red-200 dark:border-red-300/30 dark:bg-red-400/20 dark:text-red-100",
 };
 
 const CLAIM_STOCK_MOVEMENT_LABEL: Record<string, string> = {

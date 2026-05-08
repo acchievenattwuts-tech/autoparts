@@ -27,11 +27,11 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<string, string> = {
-  DRAFT: "bg-yellow-100 text-yellow-700",
-  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700",
-  CLOSED: "bg-green-100 text-green-700",
-  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-red-100 text-red-500",
+  DRAFT: "bg-yellow-100 text-yellow-700 dark:bg-yellow-400/20 dark:text-yellow-100",
+  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700 dark:bg-blue-400/25 dark:text-blue-100",
+  CLOSED: "bg-green-100 text-green-700 dark:bg-green-400/20 dark:text-green-100",
+  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100",
+  CANCELLED: "bg-red-100 text-red-500 dark:bg-red-400/20 dark:text-red-100",
 };
 
 const OUTCOME_LABEL: Record<string, string> = {

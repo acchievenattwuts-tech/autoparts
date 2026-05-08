@@ -9,11 +9,11 @@ export const WARRANTY_CLAIM_STATUS_LABEL: Record<WarrantyClaimStatus, string> = 
 };
 
 export const WARRANTY_CLAIM_STATUS_BADGE_CLASS: Record<WarrantyClaimStatus, string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700",
-  CLOSED: "bg-emerald-100 text-emerald-700",
-  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700",
-  CANCELLED: "bg-rose-100 text-rose-700",
+  DRAFT: "bg-slate-100 text-slate-700 dark:bg-slate-400/20 dark:text-slate-100",
+  SENT_TO_SUPPLIER: "bg-blue-100 text-blue-700 dark:bg-blue-400/25 dark:text-blue-100",
+  CLOSED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100",
+  RETURNED_TO_CUSTOMER: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100",
+  CANCELLED: "bg-rose-100 text-rose-700 dark:bg-rose-400/20 dark:text-rose-100",
 };
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
@@ -56,8 +56,8 @@ export function getCustomerClaimStatusBadgeClass({
   status: WarrantyClaimStatus;
 }) {
   if (status === "CANCELLED") return WARRANTY_CLAIM_STATUS_BADGE_CLASS.CANCELLED;
-  if (claimType === "REPLACE_NOW") return "bg-emerald-100 text-emerald-700";
-  if (status === "CLOSED" && outcome === "NO_RESOLUTION") return "bg-amber-100 text-amber-800";
+  if (claimType === "REPLACE_NOW") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100";
+  if (status === "CLOSED" && outcome === "NO_RESOLUTION") return "bg-amber-100 text-amber-800 dark:bg-amber-400/20 dark:text-amber-100";
 
   return WARRANTY_CLAIM_STATUS_BADGE_CLASS[status];
 }
