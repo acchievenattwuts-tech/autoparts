@@ -92,6 +92,16 @@ export default function ExternalPrintShell({
               max-height: 297mm !important;
               overflow: hidden !important;
             }
+            [data-liff-print="true"],
+            .liff-external-print-shell,
+            .liff-external-print-stage {
+              height: 0 !important;
+              min-height: 0 !important;
+              max-height: 0 !important;
+              overflow: visible !important;
+              padding: 0 !important;
+              margin: 0 !important;
+            }
             #receipt {
               left: 0 !important;
               top: 0 !important;
@@ -139,7 +149,7 @@ export default function ExternalPrintShell({
         }
       `}</style>
 
-      <main className="min-h-dvh bg-white text-slate-950 [color-scheme:light]">
+      <main className="liff-external-print-shell min-h-dvh bg-white text-slate-950 [color-scheme:light]">
         <div className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
           <div className="mx-auto flex max-w-[900px] flex-col items-end gap-2">
             <PrintToPdfButton label={buttonLabel} />
@@ -159,7 +169,7 @@ export default function ExternalPrintShell({
             </details>
           </div>
         </div>
-        <div className="overflow-x-auto bg-white px-3 py-3 [color-scheme:light]">{children}</div>
+        <div className="liff-external-print-stage overflow-x-auto bg-white px-3 py-3 [color-scheme:light]">{children}</div>
       </main>
     </>
   );
