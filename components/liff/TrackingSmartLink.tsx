@@ -1,12 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import type { ShippingMethod } from "@/lib/generated/prisma";
-
-const TRACKING_URL: Partial<Record<ShippingMethod, (trackingNo: string) => string>> = {
-  KERRY: (trackingNo) => `https://th.kerryexpress.com/th/track/?track=${encodeURIComponent(trackingNo)}`,
-  FLASH: (trackingNo) => `https://www.flashexpress.co.th/tracking/?se=${encodeURIComponent(trackingNo)}`,
-  JT: (trackingNo) => `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${encodeURIComponent(trackingNo)}`,
-  OTHER: (trackingNo) => `https://www.google.com/search?q=tracking+${encodeURIComponent(trackingNo)}`,
-};
+import { getShippingTrackingUrl } from "@/lib/shipping";
 
 export default function TrackingSmartLink({
   shippingMethod,
@@ -19,7 +13,7 @@ export default function TrackingSmartLink({
     return null;
   }
 
-  const href = TRACKING_URL[shippingMethod]?.(trackingNo);
+  const href = getShippingTrackingUrl(shippingMethod, trackingNo);
 
   if (!href) {
     return (
@@ -30,14 +24,19 @@ export default function TrackingSmartLink({
   }
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-800 px-3 py-2 text-sm font-bold text-white shadow-sm shadow-blue-900/20"
-    >
-      ติดตามพัสดุ
-      <ExternalLink size={14} />
-    </a>
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className="rounded-xl bg-blue-50/60 px-3 py-2 font-mono text-sm text-slate-700">
+        {trackingNo}
+      </span>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-2 rounded-xl bg-blue-800 px-3 py-2 text-sm font-bold text-white shadow-sm shadow-blue-900/20"
+      >
+        ติดตามพัสดุ
+        <ExternalLink size={14} />
+      </a>
+    </div>
   );
 }

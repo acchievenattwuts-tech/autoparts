@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL } from "@/lib/shipping";
+import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL, getShippingTrackingUrl } from "@/lib/shipping";
 import Link from "next/link";
-import { Eye, Smartphone } from "lucide-react";
+import { ExternalLink, Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
@@ -180,6 +180,9 @@ const DeliveryPage = async ({
                         shippingStatus: s.shippingStatus,
                         deliveryStaffName: s.deliveryStaff?.name ?? null,
                       });
+                      const trackingHref = s.trackingNo
+                        ? getShippingTrackingUrl(s.shippingMethod ?? "NONE", s.trackingNo)
+                        : null;
 
                       return (
                         <>
@@ -219,9 +222,22 @@ const DeliveryPage = async ({
                         {SHIPPING_STATUS_LABEL[s.shippingStatus]}
                       </span>
                       {s.trackingNo && (
-                        <p className="text-xs text-gray-500 mt-0.5 font-mono">
-                          {SHIPPING_METHOD_LABEL[s.shippingMethod ?? "NONE"]}: {s.trackingNo}
-                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400">
+                          <span className="font-mono">
+                            {SHIPPING_METHOD_LABEL[s.shippingMethod ?? "NONE"]}: {s.trackingNo}
+                          </span>
+                          {trackingHref ? (
+                            <a
+                              href={trackingHref}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-400/10 dark:text-blue-200 dark:hover:bg-blue-400/20"
+                            >
+                              ติดตาม
+                              <ExternalLink size={11} />
+                            </a>
+                          ) : null}
+                        </div>
                       )}
                       {s._count.deliveryProofs > 0 ? (
                         <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">

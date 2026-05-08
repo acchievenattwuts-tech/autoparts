@@ -10,6 +10,7 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
+import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface ProductOption {
@@ -649,9 +650,10 @@ const SaleForm = ({
                 <select value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value)} className={`${inputCls} bg-white`}>
                   <option value="NONE">-- ไม่ระบุ --</option>
                   <option value="SELF">ส่งเอง</option>
-                  <option value="KERRY">Kerry</option>
-                  <option value="FLASH">Flash</option>
-                  <option value="JT">J&T</option>
+                  <option value="KERRY">{SHIPPING_METHOD_OPTIONS.KERRY}</option>
+                  <option value="FLASH">{SHIPPING_METHOD_OPTIONS.FLASH}</option>
+                  <option value="JT">{SHIPPING_METHOD_OPTIONS.JT}</option>
+                  <option value="THAILAND_POST">{SHIPPING_METHOD_OPTIONS.THAILAND_POST}</option>
                   <option value="OTHER">อื่น ๆ</option>
                 </select>
               </div>

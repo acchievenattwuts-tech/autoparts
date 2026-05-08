@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ClipboardCheck,
   Copy,
+  ExternalLink,
   GripVertical,
   Hourglass,
   Loader2,
@@ -30,6 +31,7 @@ import {
   SHIPPING_METHOD_OPTIONS,
   SHIPPING_STATUS_BADGE,
   SHIPPING_STATUS_LABEL,
+  getShippingTrackingUrl,
 } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
 
@@ -193,6 +195,9 @@ const MobileDeliveryCard = ({
   }
 
   const requiresTracking = isExternalCarrier(shippingMethodInput);
+  const trackingHref = trackingInput.trim()
+    ? getShippingTrackingUrl(shippingMethodInput, trackingInput.trim())
+    : null;
   const trackingChanged =
     trackingInput.trim() !== (trackingNo ?? "") || shippingMethodInput !== shippingMethod;
   const phoneDigits = customerPhone?.replace(/[^0-9+]/g, "") ?? "";
@@ -560,6 +565,17 @@ const MobileDeliveryCard = ({
                   >
                     {copied ? <Check size={16} /> : <Copy size={16} />}
                   </button>
+                  {trackingHref ? (
+                    <a
+                      href={trackingHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200"
+                      aria-label="ติดตามพัสดุ"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                  ) : null}
                 </div>
               </div>
             ) : null}

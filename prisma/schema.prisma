@@ -1502,6 +1502,7 @@ enum ShippingMethod {
   KERRY
   FLASH
   JT
+  THAILAND_POST
   OTHER
 }
 

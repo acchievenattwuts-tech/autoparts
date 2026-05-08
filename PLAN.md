@@ -6397,6 +6397,8 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - [x] LIFF external print isolation fix (2026-05-06): external PDF links now open signed `/liff-print/orders/...` routes outside the LIFF shell, force white/light print rendering without onboarding/contact overlays, and shrink the A4 content box to 198mm x 285mm with safe print margins to avoid iPhone blank page 2 overflow
 - [x] Verification: `npx tsc --noEmit` pass, targeted LIFF lint pass, `npm run build` pass
 - [x] Full `npm run lint` ผ่านแล้วในระดับ error (2026-05-07): แก้ React Compiler rule `react-hooks/set-state-in-effect` ใน `components/shared/QuickSearchLauncher.tsx`, `components/liff/ContactShopButton.tsx`, `components/liff/PrintToPdfButton.tsx`; ยังเหลือ warning เดิมกระจายหลายไฟล์ซึ่งไม่บล็อก lint
+- [x] Carrier tracking refresh (2026-05-08): runtime labels now show KEX instead of Kerry while preserving the legacy `KERRY` enum value, LIFF/admin delivery links use the updated KEX and Flash tracking URLs from `lib/shipping.ts`, mobile delivery cards can open carrier tracking from the tracking field, and storefront carrier copy now says KEX / Flash / J&T.
+- [x] Thailand Post carrier option (2026-05-08): added `THAILAND_POST` shipping method for admin sale/delivery flows, central tracking link to `track.thailandpost.co.th`, LIFF/admin tracking support, and storefront copy including ไปรษณีย์ไทย.
 
 ### Phase 1B Checklist (คงเดิม + เพิ่ม)
 

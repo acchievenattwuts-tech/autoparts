@@ -26,7 +26,7 @@ const reasons = [
     icon: Truck,
     title: "ส่งทั่วประเทศ",
     description:
-      "จัดส่งผ่าน Kerry / Flash / J&T พร้อมเลขพัสดุทันที",
+      "จัดส่งผ่าน KEX / Flash / J&T / ไปรษณีย์ไทย พร้อมเลขพัสดุทันที",
     color: "bg-green-50 text-green-600",
   },
   {
