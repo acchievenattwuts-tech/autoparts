@@ -88,6 +88,24 @@ export default function ExternalPrintShell({
             #receipt .mt-auto {
               margin-top: 0.5rem !important;
             }
+            #receipt .print-document-verify-badge {
+              position: fixed !important;
+              right: 14mm !important;
+              bottom: 14mm !important;
+              z-index: 20 !important;
+              width: 28mm !important;
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+              -webkit-column-break-inside: avoid !important;
+              contain: layout paint !important;
+              transform: translateZ(0);
+            }
+            #receipt .print-document-verify-qr,
+            #receipt .print-document-verify-badge svg,
+            #receipt .print-document-verify-badge p {
+              break-inside: avoid !important;
+              page-break-inside: avoid !important;
+            }
           }
         }
         @media screen {

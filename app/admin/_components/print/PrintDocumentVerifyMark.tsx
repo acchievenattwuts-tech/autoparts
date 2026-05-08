@@ -22,15 +22,15 @@ export default function PrintDocumentVerifyMark({
   const displayUrl = getVerifyDisplayUrl(verify.verifyUrl);
 
   return (
-    <div className="pointer-events-none hidden print:block">
-      <div className="absolute inset-0 z-0 flex items-center justify-center">
+    <div className="print-document-verify-mark pointer-events-none hidden print:block">
+      <div className="print-document-verify-watermark absolute inset-0 z-0 flex items-center justify-center">
         <div className="rotate-[-28deg] select-none font-kanit text-7xl font-black tracking-[0.16em] text-slate-900/5">
           {VERIFY_VARIANT_LABEL[verify.variant]}
         </div>
       </div>
-      <div className="absolute bottom-8 right-8 z-10 w-28 rounded-md border border-gray-300 bg-white/90 p-2 text-center text-[9px] leading-tight text-gray-600">
+      <div className="print-document-verify-badge absolute bottom-8 right-8 z-10 w-28 rounded-md border border-gray-300 bg-white/90 p-2 text-center text-[9px] leading-tight text-gray-600">
         <div
-          className="mx-auto mb-1 h-[84px] w-[84px]"
+          className="print-document-verify-qr mx-auto mb-1 h-[84px] w-[84px]"
           aria-hidden="true"
           dangerouslySetInnerHTML={{ __html: verify.qrSvg }}
         />
