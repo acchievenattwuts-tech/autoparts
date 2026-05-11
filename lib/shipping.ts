@@ -32,10 +32,12 @@ export const SHIPPING_METHOD_OPTIONS: Record<string, string> = {
 };
 
 export const SHIPPING_TRACKING_URL: Partial<Record<string, (trackingNo: string) => string>> = {
-  KERRY: () => "https://th.kex-express.com/en/track-parcel",
+  KERRY: (trackingNo) =>
+    `https://th.kex-express.com/th/track/?action=search&code=${encodeURIComponent(trackingNo)}`,
   FLASH: (trackingNo) => `https://www.flashexpress.com/fle/tracking?se=${encodeURIComponent(trackingNo)}`,
   JT: (trackingNo) => `https://www.jtexpress.co.th/index/query/gzquery.html?bills=${encodeURIComponent(trackingNo)}`,
-  THAILAND_POST: () => "https://track.thailandpost.co.th/",
+  THAILAND_POST: (trackingNo) =>
+    `https://www.google.com/search?q=${encodeURIComponent(`Thailand Post tracking ${trackingNo}`)}`,
   OTHER: (trackingNo) => `https://www.google.com/search?q=tracking+${encodeURIComponent(trackingNo)}`,
 };
 
