@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle, Link2Off } from "lucide-react";
 import TaxIdInput from "@/components/shared/TaxIdInput";
+import LocationPinPicker from "@/components/shared/LocationPinPicker";
 import { formatDateThai } from "@/lib/th-date";
 import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
 import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
@@ -19,6 +20,8 @@ interface CustomerFormProps {
     taxId: string | null;
     note: string | null;
     creditTerm: number | null;
+    defaultLatitude: number | null;
+    defaultLongitude: number | null;
     source?: string | null;
     lineUserId?: string | null;
     lineLinkedAt?: Date | null;
@@ -35,6 +38,8 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
   const [isUnlinkPending, startUnlinkTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [pinLat, setPinLat] = useState<number | null>(customer?.defaultLatitude ?? null);
+  const [pinLon, setPinLon] = useState<number | null>(customer?.defaultLongitude ?? null);
 
   const isEdit = Boolean(customer);
   const hasLineLink = Boolean(customer?.lineUserId);
@@ -45,6 +50,8 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
     setSuccess("");
 
     const formData = new FormData(e.currentTarget);
+    if (pinLat !== null) formData.set("defaultLatitude", String(pinLat));
+    if (pinLon !== null) formData.set("defaultLongitude", String(pinLon));
 
     startTransition(async () => {
       const result = isEdit
@@ -209,6 +216,15 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               defaultValue={customer?.shippingAddress ?? ""}
               className={inputCls}
               placeholder="ที่อยู่จัดส่งสินค้า (ถ้าต่างจากที่อยู่ปกติ)"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <LocationPinPicker
+              lat={pinLat}
+              lon={pinLon}
+              onChange={(lat, lon) => { setPinLat(lat); setPinLon(lon); }}
+              label="ปักหมุดตำแหน่งจัดส่งหลัก"
             />
           </div>
 

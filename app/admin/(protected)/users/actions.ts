@@ -33,6 +33,7 @@ const userSchema = z.object({
     .min(1, "กรุณาระบุชื่อผู้ใช้สำหรับเข้าสู่ระบบ")
     .max(100)
     .transform((value) => value.trim().toLowerCase()),
+  phone: z.string().max(20).optional(),
   role: z.enum(["ADMIN", "STAFF"]),
   appRoleId: z.string().max(50).optional(),
   mustChangePassword: z.boolean().default(false),
@@ -89,6 +90,7 @@ export async function createUser(
     name: formData.get("name"),
     username: formData.get("username"),
     password: formData.get("password"),
+    phone: (formData.get("phone") as string) || undefined,
     role: formData.get("role"),
     appRoleId: formData.get("appRoleId") || undefined,
     mustChangePassword: formData.get("mustChangePassword") === "true",
@@ -99,7 +101,7 @@ export async function createUser(
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, username, password, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
+  const { name, username, password, phone, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
 
   if (role === "ADMIN" && session.user.role !== "ADMIN") {
     return { error: "เฉพาะผู้ดูแลระบบ (ADMIN) เท่านั้นที่กำหนดบทบาท ADMIN ได้" };
@@ -114,6 +116,7 @@ export async function createUser(
         username,
         email: username,
         password: hashedPassword,
+        phone: phone || null,
         role,
         appRoleId: appRoleId || null,
         mustChangePassword,
@@ -172,6 +175,7 @@ export async function updateUser(
     name: formData.get("name"),
     username: formData.get("username"),
     password: (formData.get("password") as string) || undefined,
+    phone: (formData.get("phone") as string) || undefined,
     role: formData.get("role"),
     appRoleId: formData.get("appRoleId") || undefined,
     mustChangePassword: formData.get("mustChangePassword") === "true",
@@ -182,7 +186,7 @@ export async function updateUser(
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, username, password, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
+  const { name, username, password, phone, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
 
   try {
     const requestContext = await getRequestContext();
@@ -224,6 +228,7 @@ export async function updateUser(
         name,
         username,
         email: username,
+        phone: phone || null,
         role,
         appRoleId: appRoleId || null,
         mustChangePassword,

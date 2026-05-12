@@ -24,6 +24,7 @@ import {
   ShippingStatus,
   VatType,
 } from "@/lib/generated/prisma";
+import { generateTrackingToken } from "@/lib/delivery-tracking";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -130,8 +131,10 @@ const saleSchema = z.object({
   fulfillmentType: z.nativeEnum(FulfillmentType).default(FulfillmentType.PICKUP),
   customerName:    z.string().max(100).optional(),
   customerPhone:   z.string().max(20).optional(),
-  shippingAddress: z.string().max(500).optional(),
-  shippingFee:     z.coerce.number().min(0).default(0),
+  shippingAddress:  z.string().max(500).optional(),
+  shippingFee:      z.coerce.number().min(0).default(0),
+  destLatitude:     z.coerce.number().finite().gte(-90).lte(90).optional(),
+  destLongitude:    z.coerce.number().finite().gte(-180).lte(180).optional(),
   discount:        z.coerce.number().min(0).default(0),
   paymentMethod:   z.nativeEnum(PaymentMethod).optional(),
   cashBankAccountId: z.string().optional(),
@@ -432,16 +435,18 @@ export async function createSale(
     fulfillmentType: formData.get("fulfillmentType") || FulfillmentType.PICKUP,
     customerName:    formData.get("customerName")    || undefined,
     customerPhone:   formData.get("customerPhone")   || undefined,
-    shippingAddress: formData.get("shippingAddress") || undefined,
-    shippingFee:     formData.get("shippingFee")     || 0,
-    discount:        formData.get("discount")        || 0,
-    paymentMethod:   formData.get("paymentMethod")   || undefined,
+    shippingAddress:  formData.get("shippingAddress")  || undefined,
+    shippingFee:      formData.get("shippingFee")      || 0,
+    destLatitude:     formData.get("destLatitude")     || undefined,
+    destLongitude:    formData.get("destLongitude")    || undefined,
+    discount:         formData.get("discount")         || 0,
+    paymentMethod:    formData.get("paymentMethod")    || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
-    note:            formData.get("note")            || undefined,
-    vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
-    vatRate:         formData.get("vatRate")         || 0,
-    shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
-    creditTerm:      formData.get("creditTerm") || undefined,
+    note:             formData.get("note")             || undefined,
+    vatType:          (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:          formData.get("vatRate")          || 0,
+    shippingMethod:   (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
+    creditTerm:       formData.get("creditTerm")       || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
@@ -456,6 +461,8 @@ export async function createSale(
     customerPhone,
     shippingAddress,
     shippingFee,
+    destLatitude,
+    destLongitude,
     discount,
     note,
     cashBankAccountId,
@@ -502,18 +509,20 @@ export async function createSale(
       const sale = await tx.sale.create({
         data: {
           saleNo,
-          customerId:      customerId      ?? null,
+          customerId:       customerId       ?? null,
           saleType,
           paymentType,
           fulfillmentType,
-          shippingAddress: shippingAddress ?? null,
+          shippingAddress:  shippingAddress  ?? null,
           shippingFee,
-          customerName:    customerName    ?? null,
-          customerPhone:   customerPhone   ?? null,
-          userId:          session.user!.id!,
-          signerName:      signerSnapshot.signerName,
+          destLatitude:     destLatitude     ?? null,
+          destLongitude:    destLongitude    ?? null,
+          customerName:     customerName     ?? null,
+          customerPhone:    customerPhone    ?? null,
+          userId:           session.user!.id!,
+          signerName:       signerSnapshot.signerName,
           signerSignatureUrl: signerSnapshot.signerSignatureUrl,
-          signedAt:        signerSnapshot.signedAt,
+          signedAt:         signerSnapshot.signedAt,
           totalAmount,
           discount,
           netAmount,
@@ -825,21 +834,23 @@ export async function updateSale(
     fulfillmentType: formData.get("fulfillmentType") || FulfillmentType.PICKUP,
     customerName:    formData.get("customerName")    || undefined,
     customerPhone:   formData.get("customerPhone")   || undefined,
-    shippingAddress: formData.get("shippingAddress") || undefined,
-    shippingFee:     formData.get("shippingFee")     || 0,
-    discount:        formData.get("discount")        || 0,
-    paymentMethod:   formData.get("paymentMethod")   || undefined,
+    shippingAddress:  formData.get("shippingAddress")  || undefined,
+    shippingFee:      formData.get("shippingFee")      || 0,
+    destLatitude:     formData.get("destLatitude")     || undefined,
+    destLongitude:    formData.get("destLongitude")    || undefined,
+    discount:         formData.get("discount")         || 0,
+    paymentMethod:    formData.get("paymentMethod")    || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
-    note:            formData.get("note")            || undefined,
-    vatType:         (formData.get("vatType") as VatType) || VatType.NO_VAT,
-    vatRate:         formData.get("vatRate")         || 0,
-    shippingMethod:  (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
-    creditTerm:      formData.get("creditTerm") || undefined,
+    note:             formData.get("note")             || undefined,
+    vatType:          (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:          formData.get("vatRate")          || 0,
+    shippingMethod:   (formData.get("shippingMethod") as ShippingMethod) || ShippingMethod.NONE,
+    creditTerm:       formData.get("creditTerm")       || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -903,10 +914,12 @@ export async function updateSale(
           signerName:      fallbackSignerName,
           signerSignatureUrl: fallbackSignerSignatureUrl,
           signedAt:        fallbackSignedAt,
-          shippingAddress: shippingAddress ?? null,
+          shippingAddress:  shippingAddress  ?? null,
           shippingFee,
+          destLatitude:     destLatitude     ?? null,
+          destLongitude:    destLongitude    ?? null,
           discount,
-          paymentMethod:   resolvedPaymentMethod,
+          paymentMethod:    resolvedPaymentMethod,
           cashBankAccountId: resolvedCashBankAccountId || null,
           note:            note            ?? null,
           vatType,
@@ -1337,6 +1350,7 @@ export async function updateShippingStatus(
         shippingStatus: true,
         shippingMethod: true,
         trackingNo: true,
+        trackingToken: true,
         deliveryStaffId: true,
         deliveryCommissionItems: {
           where: {
@@ -1379,6 +1393,18 @@ export async function updateShippingStatus(
     const shouldStampDeliveryStaff =
       parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId;
 
+    // Auto-generate tracking token when sale first moves to OUT_FOR_DELIVERY
+    const shouldGenerateToken =
+      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
+      sale.shippingStatus !== ShippingStatus.OUT_FOR_DELIVERY &&
+      !sale.trackingToken;
+
+    // Expire token 48 hours after delivery is marked done
+    const shouldExpireToken =
+      parsed.data.shippingStatus === ShippingStatus.DELIVERED && sale.trackingToken;
+
+    const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
+
     const beforeSnapshot = existingSnapshot;
     await db.sale.update({
       where: { id: saleId },
@@ -1386,6 +1412,15 @@ export async function updateShippingStatus(
         shippingStatus: parsed.data.shippingStatus,
         ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+        ...(shouldGenerateToken
+          ? {
+              trackingToken: generateTrackingToken(),
+              trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS),
+            }
+          : {}),
+        ...(shouldExpireToken
+          ? { trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS) }
+          : {}),
       },
     });
     if (shouldStampDeliveryStaff) {

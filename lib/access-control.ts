@@ -102,7 +102,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "cash_bank.adjustments.cancel", group: "การเงิน", label: "ยกเลิกปรับยอดเงิน" },
 
   { key: "delivery.view",   group: "ระบบงาน", label: "ดูคิวจัดส่ง" },
-  { key: "delivery.update", group: "ระบบงาน", label: "อัปเดตสถานะจัดส่ง" },
+  { key: "delivery.update", group: "ระบบงาน", label: "อัปเดตสถานะจัดส่งและตำแหน่ง GPS" },
   { key: "delivery_commissions.view", group: "การเงิน", label: "ดูทำจ่ายค่าส่งพนักงาน" },
   { key: "delivery_commissions.create", group: "การเงิน", label: "สร้างทำจ่ายค่าส่งพนักงาน" },
   { key: "delivery_commissions.cancel", group: "การเงิน", label: "ยกเลิกทำจ่ายค่าส่งพนักงาน" },

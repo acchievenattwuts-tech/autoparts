@@ -19,6 +19,7 @@ model User {
   appRoleId                     String?
   mustChangePassword            Boolean                    @default(false)
   username                      String?                    @unique
+  phone                         String?
   signatureUrl                  String?
   signatureUpdatedAt            DateTime?                  @db.Timestamptz(3)
   adjustments                   Adjustment[]
@@ -527,11 +528,13 @@ model Customer {
   lineLinkedAt    DateTime?    @db.Timestamptz(3)
   createdAt       DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
-  shippingAddress String?
-  isActive        Boolean      @default(true)
-  creditNotes     CreditNote[]
-  receipts        Receipt[]
-  sales           Sale[]
+  shippingAddress  String?
+  defaultLatitude  Float?
+  defaultLongitude Float?
+  isActive         Boolean      @default(true)
+  creditNotes      CreditNote[]
+  receipts         Receipt[]
+  sales            Sale[]
 
   @@index([name])
 }
@@ -574,6 +577,10 @@ model Sale {
   deliveryStaffId         String?
   creditTerm              Int?
   cashBankAccountId       String?
+  trackingToken           String?                  @unique
+  trackingExpiry          DateTime?                @db.Timestamptz(3)
+  destLatitude            Float?
+  destLongitude           Float?
   cashBankAccount         CashBankAccount?         @relation(fields: [cashBankAccountId], references: [id])
   creditNotes             CreditNote[]
   receipts                ReceiptItem[]
@@ -584,8 +591,11 @@ model Sale {
   warranties              Warranty[]
   deliveryProofs          DeliveryProof[]
   deliveryCommissionItems DeliveryCommissionItem[]
+  deliveryTracking        DeliveryTracking?
 
   @@index([cashBankAccountId])
+  @@index([trackingToken])
+  @@index([trackingExpiry])
   @@index([deliveryStaffId, shippingStatus, status])
   @@index([deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo])
   @@index([fulfillmentType, status, shippingStatus, deliveryQueueOrder])
@@ -610,6 +620,19 @@ model DeliveryProof {
 
   @@index([saleId, capturedAt])
   @@index([capturedByUserId])
+}
+
+model DeliveryTracking {
+  id        String   @id @default(cuid())
+  saleId    String   @unique
+  latitude  Float
+  longitude Float
+  accuracy  Float
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([updatedAt])
 }
 
 model SaleItem {

@@ -13,7 +13,7 @@ const securityHeaders = [
   // Disable unused browser features
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value: "camera=(), microphone=(), geolocation=(self), interest-cohort=()",
   },
   // Force HTTPS (production only — safe to include, browsers ignore on HTTP)
   {
@@ -29,11 +29,11 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.line-scdn.net",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
-      // Allow images from self, Supabase storage, analytics pixels, and data URIs
-      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net",
+      // Allow images from self, Supabase storage, analytics pixels, data URIs, and OpenStreetMap tiles
+      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net",
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net https://router.project-osrm.org https://nominatim.openstreetmap.org",
       // Allow local compression workers without allowing external worker scripts.
       "worker-src 'self' blob:",
       // Allow trusted iframe embeds such as Google Maps on the storefront

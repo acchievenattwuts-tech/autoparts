@@ -17,6 +17,7 @@ interface UserFormProps {
     id: string;
     name: string;
     username: string;
+    phone: string | null;
     role: "ADMIN" | "STAFF";
     appRoleId: string | null;
     mustChangePassword: boolean;
@@ -105,6 +106,18 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
           <div>
             <label className={labelCls}>ชื่อผู้ใช้</label>
             <input name="name" defaultValue={user?.name ?? ""} required maxLength={100} className={inputCls} />
+          </div>
+
+          <div>
+            <label className={labelCls}>เบอร์โทรศัพท์</label>
+            <input
+              name="phone"
+              type="tel"
+              defaultValue={user?.phone ?? ""}
+              maxLength={20}
+              className={inputCls}
+              placeholder="เช่น 0812345678"
+            />
           </div>
 
           <div>

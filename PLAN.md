@@ -6463,3 +6463,132 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 26. **Admin visibility for LINE customers**: ลูกค้าใหม่ที่สมัครผ่าน LIFF ต้องเป็น `Customer` ปกติพร้อม `source = LINE_LIFF`, แสดง badge/filter ใน admin, และให้พนักงานแก้ข้อมูลเพิ่มเติมได้จาก customer edit flow เดิม
 27. **No LIFF product catalog**: ตัดเมนู/หน้าค้นหาสินค้าออกจาก LIFF; `/liff/products` ต้อง redirect ไป public `/products` และห้าม query สินค้าใน LIFF เพื่อใช้หน้าจอ catalog แยก
 
+---
+
+## Phase 8 — Delivery Tracking (GPS + LIFF Real-time)
+
+> **สถานะ**: ✅ Implemented — 2026-05-12
+>
+> ระบบติดตามการจัดส่งแบบ real-time ด้วย GPS + Leaflet + OpenStreetMap + OSRM (ฟรีทั้งหมด) โดยไม่ใช้ WebSocket หรือ Firebase
+
+### Architecture Overview
+
+```
+Driver (Staff) — หน้า /admin/delivery/update (mobile)
+  ↓ browser Geolocation API
+  ↓ Server Action: updateDriverLocationAction()
+  ↓ upsert DeliveryTracking (lat/lon/accuracy per saleId)
+
+Customer (LINE)
+  → เปิด /liff/tracking/{token}
+  → SSR initial render + Nominatim geocode
+  → Client poll GET /api/liff/tracking/{token} ทุก 3 นาที
+  → อัปเดต Leaflet marker.setLatLng() เท่านั้น — map ไม่ flicker
+```
+
+### Database Schema
+
+- [x] เพิ่ม model `DeliveryTracking` — `saleId @unique`, `latitude`, `longitude`, `accuracy`, `updatedAt @db.Timestamptz(3)`
+- [x] เพิ่ม `Sale.trackingToken String? @unique` — UUID สำหรับ customer tracking link
+- [x] เพิ่ม `Sale.trackingExpiry DateTime? @db.Timestamptz(3)` — หมดอายุ 48 ชั่วโมงหลัง DELIVERED
+- [x] เพิ่ม `User.phone String?` — เบอร์โทรพนักงานส่ง แสดงใน LIFF tracking page
+- [x] `prisma db push` + `prisma generate` ผ่านสำเร็จ
+
+### Utility Library (`lib/delivery-tracking.ts`)
+
+- [x] `generateTrackingToken()` → `crypto.randomUUID()`
+- [x] `haversineDistance(lat1, lon1, lat2, lon2)` → ระยะทางกิโลเมตร
+- [x] `isNearby(driverLat, driverLon, destLat, destLon)` → `true` ถ้า ≤ 2 กม.
+- [x] `isStale(updatedAt)` → `true` ถ้าไม่มี update เกิน 30 นาที
+- [x] `shouldRecalcRoute(prev, new)` → `true` ถ้า driver เคลื่อนที่ > 100 เมตร
+- [x] `isTrackingExpired(trackingExpiry)` → เช็ค token หมดอายุ
+- [x] `fetchOsrmRoute()` → OSRM public API, return `coordinates[]`, `durationSeconds`, `distanceMetres`
+- [x] `geocodeAddress()` → Nominatim (OSM) แปลง address → lat/lon สำหรับ destination pin
+- [x] `formatEta()` + `formatDistance()` → แสดงผลภาษาไทย
+
+### Security & Config (`next.config.ts`)
+
+- [x] `Permissions-Policy: geolocation=(self)` — เปิด GPS สำหรับ admin pages
+- [x] CSP `img-src` เพิ่ม `https://*.tile.openstreetmap.org`
+- [x] CSP `connect-src` เพิ่ม `https://router.project-osrm.org` + `https://nominatim.openstreetmap.org`
+- [x] Token-based access — `trackingToken = UUID` ไม่ต้องการ auth เพิ่มเติม
+- [x] Token lifetime 48 ชั่วโมงหลัง delivery สำเร็จ (410 Gone เมื่อ expired)
+
+### Permissions (`lib/access-control.ts`)
+
+- [x] รวม GPS เข้า `delivery.update` — label: "อัปเดตสถานะจัดส่งและตำแหน่ง GPS" (ลบ delivery.track แล้ว)
+
+### Driver GPS Update
+
+- [x] สร้าง `app/admin/(protected)/delivery/track/actions.ts` (Server Action)
+  - [x] `requirePermission("delivery.update")`
+  - [x] Validate ด้วย Zod (lat/lon range, accuracy, saleIds array)
+  - [x] ตรวจสอบ saleIds เป็น `OUT_FOR_DELIVERY` ที่ assign ให้ driver คนนี้จริง
+  - [x] `db.deliveryTracking.upsert()` ทุก saleId ที่ valid
+  - [x] บันทึก `AuditLog` ทุกครั้ง
+- [x] สร้าง `app/admin/(protected)/delivery/update/GpsUpdateBanner.tsx` (Client Component)
+  - [x] แสดงบน delivery/update page เมื่อ driver มี OUT_FOR_DELIVERY ที่ assign ตัวเอง
+  - [x] ปุ่ม "📍 อัปเดต" สีส้ม กด manual ได้ทันที
+  - [x] Auto-update ทุก 10 นาที ด้วย `setInterval` ตลอดที่ page เปิดอยู่
+  - [x] ปฏิเสธ GPS accuracy > 100 เมตร พร้อมข้อความแจ้งเตือน
+  - [x] Error messages ครบ: GPS disabled / Permission denied / ไม่แม่นยำ / Network error
+  - [x] แสดง last update time + accuracy หลัง success
+- [x] อัปเดต `delivery/update/page.tsx` — ส่ง `canTrack` + `myOutForDeliveryIds` ไปที่ queue
+- [x] อัปเดต `MobileDeliveryQueue.tsx` — embed `<GpsUpdateBanner>` บนสุดของ list
+
+### Token Auto-Generation (`sales/actions.ts`)
+
+- [x] `updateShippingStatus()` → เมื่อสถานะเป็น `OUT_FOR_DELIVERY` ครั้งแรก → auto-generate `trackingToken` + `trackingExpiry = now + 48h`
+- [x] เมื่อสถานะเป็น `DELIVERED` → update `trackingExpiry = now + 48h` (ลูกค้าเปิดดูย้อนหลังได้)
+
+### Tracking API (`app/api/liff/tracking/[token]/route.ts`)
+
+- [x] `force-dynamic`, ไม่ต้องการ auth
+- [x] Validate token length, return 404 ถ้าไม่พบ, 410 ถ้า expired
+- [x] Response compact: `{ saleNo, status, destination, driver: { lat, lon, accuracy, updatedAt, stale }, driverName, driverPhone }`
+- [x] `stale: true` ถ้าไม่มี GPS update เกิน 30 นาที
+
+### Customer LIFF Tracking Page
+
+- [x] สร้าง `app/liff/tracking/[token]/page.tsx` (Server Component)
+  - [x] SSR initial data + geocode destination ด้วย Nominatim server-side
+  - [x] แสดงหน้า "ลิงก์หมดอายุ" ถ้า token expired
+- [x] สร้าง `app/liff/tracking/[token]/DeliveryTrackingClient.tsx` (Client Component)
+  - [x] **Single Leaflet instance** — init ครั้งเดียวใน `useEffect([], [])`, cleanup on unmount
+  - [x] `useRef` สำหรับ map / driverMarker / destMarker / routeLayer — ไม่ rerender
+  - [x] Driver marker: 🚚 div icon, Destination marker: 📦 div icon (หลีกเลี่ยง webpack default icon issue)
+  - [x] `fitBounds()` แสดงทั้ง driver + destination ในครั้งแรก
+  - [x] Polling `setInterval` ทุก 3 นาที → `marker.setLatLng()` เท่านั้น (ไม่ flicker)
+  - [x] Recalculate OSRM route เฉพาะเมื่อ driver เคลื่อนที่ > 100 เมตร
+  - [x] Status card (PENDING / กำลังจัดส่ง / จัดส่งแล้ว ✓)
+  - [x] NEARBY badge "🔔 ใกล้แล้ว!" เมื่อ ≤ 2 กม. — client-side เท่านั้น, ไม่แก้ DB enum
+  - [x] ETA card "ถึงใน ~X นาที" + ระยะทาง (จาก OSRM)
+  - [x] Stale warning เมื่อไม่มี update > 30 นาที
+  - [x] Network error fallback
+  - [x] Driver info card: ชื่อ + ปุ่ม "📞 โทรหาคนขับ" (`tel:` link)
+  - [x] "ข้อมูลจะอัปเดตอัตโนมัติทุก 3 นาที"
+
+### Dependencies
+
+- [x] ติดตั้ง `leaflet` + `@types/leaflet`
+
+### Build Verification
+
+- [x] `npm run build` ผ่าน 0 errors
+- [x] TypeScript type check ผ่าน
+- [x] Route `ƒ /api/liff/tracking/[token]` ปรากฏใน build output
+- [x] Route `ƒ /liff/tracking/[token]` ปรากฏใน build output
+
+### สิ่งที่ไม่ได้ทำ (Intentional Out-of-Scope)
+
+- ❌ WebSocket / Firebase Realtime — ใช้ polling เพียงพอ + ฟรี
+- ❌ แก้ `ShippingStatus` enum — NEARBY แสดง UI เท่านั้น
+- ❌ Auto-send tracking link ผ่าน LINE OA — รอ Phase 1C (LINE push)
+- ❌ Driver location history — เก็บเฉพาะตำแหน่งล่าสุด (upsert)
+
+### To-Do ต่อเนื่อง (ยังไม่ทำ)
+
+- [ ] เพิ่ม field `User.phone` ใน admin users new/edit form — field มีใน DB แล้ว แต่ยังไม่ expose ใน UI
+- [ ] แสดง tracking link URL ในหน้า admin sales detail — ให้พนักงาน copy ส่งลูกค้าได้ง่าย
+- [ ] ส่ง tracking link ผ่าน LINE OA อัตโนมัติเมื่อ `OUT_FOR_DELIVERY` — ต้องรอ Phase 1C
+

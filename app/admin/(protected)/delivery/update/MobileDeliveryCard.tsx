@@ -64,6 +64,8 @@ type Props = {
   amountRemain: number;
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
+  destLatitude: number | null;
+  destLongitude: number | null;
   proofCount: number;
   items: DeliveryItem[];
   queueIndex: number;
@@ -74,6 +76,7 @@ type Props = {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onOpenProof: () => void;
+  onOpenPin: () => void;
 };
 
 const STATUS_ACTION = {
@@ -151,6 +154,8 @@ const MobileDeliveryCard = ({
   paymentType,
   amountRemain,
   deliveryStaffName,
+  destLatitude,
+  destLongitude,
   proofCount,
   items,
   queueIndex,
@@ -161,6 +166,7 @@ const MobileDeliveryCard = ({
   onMoveUp,
   onMoveDown,
   onOpenProof,
+  onOpenPin,
 }: Props) => {
   const router = useRouter();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -513,6 +519,21 @@ const MobileDeliveryCard = ({
             ? `มีหลักฐาน ${proofCount.toLocaleString("th-TH")} รายการ`
             : "บันทึกหลักฐานรับของ"}
         </button>
+
+        {canUpdate ? (
+          <button
+            type="button"
+            onClick={onOpenPin}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
+              destLatitude !== null && destLongitude !== null
+                ? "border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300"
+                : "border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:text-orange-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
+            }`}
+          >
+            <MapPin size={16} />
+            {destLatitude !== null && destLongitude !== null ? "แก้ไขหมุดปลายทาง" : "ปักหมุดปลายทาง"}
+          </button>
+        ) : null}
 
         <div className="rounded-2xl border border-gray-200 p-3 dark:border-white/10">
           <div className="grid gap-3">

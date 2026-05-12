@@ -46,7 +46,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
-    db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true } }),
+    db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true } }),
     getSiteConfig(),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getActiveCashBankAccountOptions(),
@@ -176,6 +176,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     vatType:         sale.vatType,
     vatRate:         Number(sale.vatRate),
     creditTerm:      sale.creditTerm ?? null,
+    destLatitude:    sale.destLatitude ?? null,
+    destLongitude:   sale.destLongitude ?? null,
     items:           initialItems,
   };
 

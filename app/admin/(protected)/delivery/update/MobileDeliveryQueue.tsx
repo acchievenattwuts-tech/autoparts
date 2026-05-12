@@ -24,6 +24,8 @@ import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { reorderDeliveryQueue } from "../../sales/actions";
 import DeliveryProofSheet from "./DeliveryProofSheet";
+import DestinationPinSheet from "./DestinationPinSheet";
+import GpsUpdateBanner from "./GpsUpdateBanner";
 import MobileDeliveryCard from "./MobileDeliveryCard";
 import MobileStatusTabs from "./MobileStatusTabs";
 import QueueHeader, { type Mode } from "./QueueHeader";
@@ -57,6 +59,8 @@ type QueueItem = {
   deliveryQueueOrder: number | null;
   deliveryStaffId: string | null;
   deliveryStaffName: string | null;
+  destLatitude: number | null;
+  destLongitude: number | null;
   proofCount: number;
   items: Item[];
 };
@@ -72,6 +76,8 @@ type Props = {
   currentFilter: ShippingStatus | null;
   canUpdate: boolean;
   canReorder: boolean;
+  canTrack: boolean;
+  myOutForDeliveryIds: string[];
   deliveredDate: string | null;
   deliveredDateLabel: string | null;
   currentLimit: number;
@@ -84,6 +90,8 @@ const MobileDeliveryQueue = ({
   currentFilter,
   canUpdate,
   canReorder,
+  canTrack,
+  myOutForDeliveryIds,
   deliveredDate,
   currentLimit,
   hasMore,
@@ -96,6 +104,7 @@ const MobileDeliveryQueue = ({
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
   const [selectedProofSale, setSelectedProofSale] = useState<QueueItem | null>(null);
+  const [selectedPinSale, setSelectedPinSale] = useState<QueueItem | null>(null);
 
   const [prevInitialIds, setPrevInitialIds] = useState(initialIds);
   if (prevInitialIds !== initialIds) {
@@ -197,6 +206,10 @@ const MobileDeliveryQueue = ({
       </div>
 
       <div className="space-y-3 px-3 py-3 sm:px-4">
+        {canTrack && myOutForDeliveryIds.length > 0 ? (
+          <GpsUpdateBanner saleIds={myOutForDeliveryIds} />
+        ) : null}
+
         {!canUpdate ? (
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
@@ -240,6 +253,8 @@ const MobileDeliveryQueue = ({
                   amountRemain={item.amountRemain}
                   deliveryStaffId={item.deliveryStaffId}
                   deliveryStaffName={item.deliveryStaffName}
+                  destLatitude={item.destLatitude}
+                  destLongitude={item.destLongitude}
                   proofCount={item.proofCount}
                   items={item.items}
                   queueIndex={index}
@@ -250,6 +265,7 @@ const MobileDeliveryQueue = ({
                   onMoveUp={() => setDraftOrder((prev) => arrayMove(prev, index, index - 1))}
                   onMoveDown={() => setDraftOrder((prev) => arrayMove(prev, index, index + 1))}
                   onOpenProof={() => setSelectedProofSale(item)}
+                  onOpenPin={() => setSelectedPinSale(item)}
                 />
               ))}
             </SortableContext>
@@ -280,6 +296,21 @@ const MobileDeliveryQueue = ({
         }
         canUpdate={canUpdate}
         onClose={() => setSelectedProofSale(null)}
+      />
+
+      <DestinationPinSheet
+        selectedSale={
+          selectedPinSale
+            ? {
+                saleId: selectedPinSale.saleId,
+                saleNo: selectedPinSale.saleNo,
+                customerName: selectedPinSale.customerName,
+                destLatitude: selectedPinSale.destLatitude,
+                destLongitude: selectedPinSale.destLongitude,
+              }
+            : null
+        }
+        onClose={() => setSelectedPinSale(null)}
       />
     </div>
   );

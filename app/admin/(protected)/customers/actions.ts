@@ -16,8 +16,8 @@ import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
 import { CUSTOMER_PHONE_EXAMPLE, normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const customerSchema = z.object({
-  name:            z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
-  phone:           z.preprocess(
+  name:             z.string().min(1, "กรุณาระบุชื่อลูกค้า").max(100),
+  phone:            z.preprocess(
     (value) => {
       try {
         return normalizeCustomerPhone(value);
@@ -29,11 +29,13 @@ const customerSchema = z.object({
       message: `กรุณาระบุเบอร์โทรศัพท์ในรูปแบบ ${CUSTOMER_PHONE_EXAMPLE}`,
     }).optional(),
   ),
-  address:         z.string().max(300).optional(),
-  shippingAddress: z.string().max(500).optional(),
-  taxId:           z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
-  note:            z.string().max(500).optional(),
-  creditTerm:      z.coerce.number().int().min(0).max(365).optional(),
+  address:          z.string().max(300).optional(),
+  shippingAddress:  z.string().max(500).optional(),
+  taxId:            z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
+  note:             z.string().max(500).optional(),
+  creditTerm:       z.coerce.number().int().min(0).max(365).optional(),
+  defaultLatitude:  z.coerce.number().finite().gte(-90).lte(90).optional(),
+  defaultLongitude: z.coerce.number().finite().gte(-180).lte(180).optional(),
 });
 
 function toAuditCustomer(customer: {
@@ -85,7 +87,7 @@ export async function createCustomer(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note, creditTerm } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude } = parsed.data;
   const code = await generateCustomerCode();
 
   try {
@@ -94,12 +96,14 @@ export async function createCustomer(
       data: {
         code,
         name,
-        phone:           phone           ?? null,
-        address:         address         ?? null,
-        shippingAddress: shippingAddress ?? null,
-        taxId:           taxId           ?? null,
-        note:            note            ?? null,
-        creditTerm:      creditTerm      ?? null,
+        phone:            phone            ?? null,
+        address:          address          ?? null,
+        shippingAddress:  shippingAddress  ?? null,
+        taxId:            taxId            ?? null,
+        note:             note             ?? null,
+        creditTerm:       creditTerm       ?? null,
+        defaultLatitude:  defaultLatitude  ?? null,
+        defaultLongitude: defaultLongitude ?? null,
       },
       select: {
         id: true,
@@ -145,17 +149,19 @@ export async function updateCustomer(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = customerSchema.safeParse({
-    name:            formData.get("name"),
-    phone:           formData.get("phone")           || undefined,
-    address:         formData.get("address")         || undefined,
-    shippingAddress: formData.get("shippingAddress") || undefined,
-    taxId:           normalizeOptionalTaxId(formData.get("taxId")),
-    note:            formData.get("note")            || undefined,
-    creditTerm:      formData.get("creditTerm")      || undefined,
+    name:             formData.get("name"),
+    phone:            formData.get("phone")            || undefined,
+    address:          formData.get("address")          || undefined,
+    shippingAddress:  formData.get("shippingAddress")  || undefined,
+    taxId:            normalizeOptionalTaxId(formData.get("taxId")),
+    note:             formData.get("note")             || undefined,
+    creditTerm:       formData.get("creditTerm")       || undefined,
+    defaultLatitude:  formData.get("defaultLatitude")  || undefined,
+    defaultLongitude: formData.get("defaultLongitude") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note, creditTerm } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude } = parsed.data;
 
   try {
     const requestContext = await getRequestContext();
@@ -185,13 +191,15 @@ export async function updateCustomer(
       where: { id },
       data: {
         name,
-        phone:           phone           ?? null,
-        address:         address         ?? null,
-        shippingAddress: shippingAddress ?? null,
-        taxId:           taxId           ?? null,
-        note:            note            ?? null,
-        creditTerm:      creditTerm      ?? null,
-        isActive:        true,
+        phone:            phone            ?? null,
+        address:          address          ?? null,
+        shippingAddress:  shippingAddress  ?? null,
+        taxId:            taxId            ?? null,
+        note:             note             ?? null,
+        creditTerm:       creditTerm       ?? null,
+        defaultLatitude:  defaultLatitude  ?? null,
+        defaultLongitude: defaultLongitude ?? null,
+        isActive:         true,
       },
       select: {
         id: true,

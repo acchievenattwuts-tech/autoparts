@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Prisma } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getThailandDateKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
@@ -43,8 +44,12 @@ const DeliveryUpdatePage = async ({
         }
       : undefined;
 
-  const { role, permissions } = await getSessionPermissionContext();
+  const [{ role, permissions }, session] = await Promise.all([
+    getSessionPermissionContext(),
+    auth(),
+  ]);
   const canUpdate = hasPermissionAccess(role, permissions, "delivery.update");
+  const canTrack = hasPermissionAccess(role, permissions, "delivery.update");
 
   const salesWhere: Prisma.SaleWhereInput = {
     fulfillmentType: "DELIVERY" as const,
@@ -58,6 +63,10 @@ const DeliveryUpdatePage = async ({
         : { shippingStatus: statusFilter }
       : { shippingStatus: { in: openStatuses } }),
   };
+
+  // Optimize: Use index hint for common query patterns
+  // Note: Prisma doesn't support index hints directly, but proper indexes in schema help
+  // Key indexes needed: (fulfillmentType, status, shippingStatus), (deliveryQueueOrder)
 
   const [sales, statusGroups] = await Promise.all([
     db.sale.findMany({
@@ -86,6 +95,8 @@ const DeliveryUpdatePage = async ({
         amountRemain: true,
         deliveryQueueOrder: true,
         deliveryStaffId: true,
+        destLatitude: true,
+        destLongitude: true,
         customer: { select: { name: true, phone: true } },
         deliveryStaff: { select: { name: true } },
         items: {
@@ -116,6 +127,16 @@ const DeliveryUpdatePage = async ({
   const hasMore = sales.length > limit;
   const visibleSales = hasMore ? sales.slice(0, limit) : sales;
 
+  // Sales assigned to the current driver that are actively out for delivery
+  const myOutForDeliveryIds = canTrack && session?.user?.id
+    ? visibleSales
+        .filter(
+          (s) =>
+            s.shippingStatus === "OUT_FOR_DELIVERY" && s.deliveryStaffId === session.user.id,
+        )
+        .map((s) => s.id)
+    : [];
+
   const counts = {
     PENDING: 0,
     OUT_FOR_DELIVERY: 0,
@@ -142,6 +163,8 @@ const DeliveryUpdatePage = async ({
     deliveryQueueOrder: s.deliveryQueueOrder,
     deliveryStaffId: s.deliveryStaffId,
     deliveryStaffName: s.deliveryStaff?.name ?? null,
+    destLatitude: s.destLatitude ?? null,
+    destLongitude: s.destLongitude ?? null,
     proofCount: s._count.deliveryProofs,
     items: s.items.map((item) => ({
       id: item.id,
@@ -167,6 +190,8 @@ const DeliveryUpdatePage = async ({
       currentFilter={statusFilter ?? null}
       canUpdate={canUpdate}
       canReorder={canReorder}
+      canTrack={canTrack}
+      myOutForDeliveryIds={myOutForDeliveryIds}
       deliveredDate={statusFilter === "DELIVERED" ? deliveredDateKey : null}
       deliveredDateLabel={statusFilter === "DELIVERED" ? deliveredDateKey : null}
       currentLimit={limit}

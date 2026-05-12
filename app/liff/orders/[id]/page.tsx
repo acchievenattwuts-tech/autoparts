@@ -5,8 +5,11 @@ import { notFound } from "next/navigation";
 import OrderStatusTimeline from "@/components/liff/OrderStatusTimeline";
 import TrackingSmartLink from "@/components/liff/TrackingSmartLink";
 import { db } from "@/lib/db";
+import { isTrackingExpired } from "@/lib/delivery-tracking";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
+import InlineDeliveryTracker from "./InlineDeliveryTracker";
+import PaymentHistory from "./PaymentHistory";
 
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("th-TH", {
@@ -28,61 +31,87 @@ export default async function LiffOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const [{ id }, customer] = await Promise.all([params, requireLiffCustomer()]);
-  const order = await db.sale.findFirst({
-    where: {
-      id,
-      customerId: customer.id,
-      status: "ACTIVE",
-    },
-    select: {
-      id: true,
-      saleNo: true,
-      saleDate: true,
-      subtotalAmount: true,
-      discount: true,
-      vatAmount: true,
-      netAmount: true,
-      amountRemain: true,
-      paymentType: true,
-      fulfillmentType: true,
-      shippingMethod: true,
-      shippingStatus: true,
-      trackingNo: true,
-      items: {
-        select: {
-          id: true,
-          product: { select: { name: true, saleUnitName: true } },
-          quantity: true,
-          salePrice: true,
-          totalAmount: true,
-        },
-        orderBy: { id: "asc" },
+  const [order, activeReceipt] = await Promise.all([
+    db.sale.findFirst({
+      where: {
+        id,
+        customerId: customer.id,
+        status: "ACTIVE",
       },
-      receipts: {
-        select: {
-          id: true,
-          paidAmount: true,
-          receipt: {
-            select: {
-              id: true,
-              receiptNo: true,
-              receiptDate: true,
-              paymentMethod: true,
-              status: true,
-              cancelNote: true,
-            },
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        subtotalAmount: true,
+        discount: true,
+        vatAmount: true,
+        netAmount: true,
+        amountRemain: true,
+        paymentType: true,
+        fulfillmentType: true,
+        shippingMethod: true,
+        shippingStatus: true,
+        shippingAddress: true,
+        trackingNo: true,
+        trackingToken: true,
+        trackingExpiry: true,
+        destLatitude: true,
+        destLongitude: true,
+        deliveryTracking: {
+          select: { latitude: true, longitude: true, accuracy: true, updatedAt: true },
+        },
+        deliveryStaff: { select: { name: true, phone: true } },
+        items: {
+          select: {
+            id: true,
+            product: { select: { name: true, saleUnitName: true } },
+            quantity: true,
+            salePrice: true,
+            totalAmount: true,
           },
+          orderBy: { id: "asc" },
         },
-        orderBy: { receipt: { receiptDate: "desc" } },
-        take: 10,
       },
-    },
-  });
+    }),
+    // Query only active receipt for receiptHref (lazy load full history in PaymentHistory)
+    db.receiptItem.findFirst({
+      where: {
+        sale: {
+          id,
+          customerId: customer.id,
+          status: "ACTIVE",
+        },
+        receipt: { status: "ACTIVE" },
+      },
+      select: {
+        receipt: { select: { id: true } },
+      },
+    }),
+  ]);
 
   if (!order) notFound();
 
+  const showLiveTracking =
+    order.fulfillmentType === "DELIVERY" &&
+    order.shippingStatus === "OUT_FOR_DELIVERY" &&
+    !!order.trackingToken &&
+    !isTrackingExpired(order.trackingExpiry) &&
+    order.destLatitude !== null &&
+    order.destLongitude !== null;
+
+  const destLat = order.destLatitude ?? null;
+  const destLon = order.destLongitude ?? null;
+
+  const liveDriver = order.deliveryTracking
+    ? {
+        lat: order.deliveryTracking.latitude,
+        lon: order.deliveryTracking.longitude,
+        accuracy: order.deliveryTracking.accuracy,
+        updatedAt: order.deliveryTracking.updatedAt.toISOString(),
+      }
+    : null;
+
   const remain = Number(order.amountRemain ?? 0);
-  const activeReceipt = order.receipts.find((item) => item.receipt.status === "ACTIVE");
   const receiptHref = `/liff/orders/${order.id}/receipt${
     order.paymentType === "CREDIT_SALE" ? `?receiptId=${activeReceipt?.receipt.id ?? ""}` : ""
   }`;
@@ -172,15 +201,31 @@ export default async function LiffOrderDetailPage({
         <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <Truck className="h-5 w-5 text-blue-700" />
-            <h2 className="font-kanit text-lg font-bold text-slate-950">ข้อมูลจัดส่ง</h2>
+            <h2 className="font-kanit text-lg font-bold text-slate-950">
+              {showLiveTracking ? "ติดตามการจัดส่ง" : "ข้อมูลจัดส่ง"}
+            </h2>
           </div>
-          <p className="text-sm font-semibold text-slate-800">
-            {shippingStatusLabel[order.shippingStatus] ?? order.shippingStatus}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            วิธีรับสินค้า: {order.fulfillmentType === "DELIVERY" ? "จัดส่ง" : "รับหน้าร้าน"}
-          </p>
-          <TrackingSmartLink shippingMethod={order.shippingMethod} trackingNo={order.trackingNo} />
+
+          {showLiveTracking ? (
+            <InlineDeliveryTracker
+              token={order.trackingToken!}
+              destLat={destLat}
+              destLon={destLon}
+              driver={liveDriver}
+              driverName={order.deliveryStaff?.name ?? null}
+              driverPhone={order.deliveryStaff?.phone ?? null}
+            />
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-slate-800">
+                {shippingStatusLabel[order.shippingStatus] ?? order.shippingStatus}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                วิธีรับสินค้า: {order.fulfillmentType === "DELIVERY" ? "จัดส่ง" : "รับหน้าร้าน"}
+              </p>
+              <TrackingSmartLink shippingMethod={order.shippingMethod} trackingNo={order.trackingNo} />
+            </>
+          )}
         </div>
 
         <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
@@ -205,34 +250,7 @@ export default async function LiffOrderDetailPage({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <ReceiptText className="h-5 w-5 text-blue-700" />
-            <h2 className="font-kanit text-lg font-bold text-slate-950">ประวัติการชำระเงิน</h2>
-          </div>
-          {order.receipts.length === 0 ? (
-            <p className="text-sm text-slate-500">ยังไม่มีใบเสร็จรับชำระสำหรับบิลนี้</p>
-          ) : (
-            <div className="space-y-2">
-              {order.receipts.map((receipt) => (
-                <div key={receipt.id} className="rounded-xl bg-blue-50/60 px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-sm font-bold text-slate-900">{receipt.receipt.receiptNo}</p>
-                      <p className="text-xs text-slate-500">{formatDateThai(receipt.receipt.receiptDate)}</p>
-                    </div>
-                    <p className="font-bold text-slate-950">{money(receipt.paidAmount)}</p>
-                  </div>
-                  {receipt.receipt.status === "CANCELLED" ? (
-                    <p className="mt-2 rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
-                      ยกเลิก{receipt.receipt.cancelNote ? `: ${receipt.receipt.cancelNote}` : ""}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <PaymentHistory saleId={order.id} />
       </section>
     </main>
   );

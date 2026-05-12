@@ -12,6 +12,7 @@ import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSO
 import { fetchProductLots } from "../actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import LocationPinPicker from "@/components/shared/LocationPinPicker";
 
 interface ProductOption {
   id: string;
@@ -47,12 +48,14 @@ interface CashBankAccountOption {
 }
 
 interface CustomerOption {
-  id:              string;
-  name:            string;
-  phone:           string | null;
-  code:            string | null;
-  shippingAddress: string | null;
-  creditTerm:      number | null;
+  id:               string;
+  name:             string;
+  phone:            string | null;
+  code:             string | null;
+  shippingAddress:  string | null;
+  creditTerm:       number | null;
+  defaultLatitude:  number | null;
+  defaultLongitude: number | null;
 }
 
 interface LineItem {
@@ -81,10 +84,12 @@ interface InitialData {
   paymentType:     "CASH_SALE" | "CREDIT_SALE";
   paymentMethod:   string;
   cashBankAccountId: string;
-  fulfillmentType: "PICKUP" | "DELIVERY";
-  shippingAddress: string;
-  shippingFee:     number;
-  shippingMethod:  string;
+  fulfillmentType:  "PICKUP" | "DELIVERY";
+  shippingAddress:  string;
+  shippingFee:      number;
+  shippingMethod:   string;
+  destLatitude:     number | null;
+  destLongitude:    number | null;
   discount:        number;
   note:            string;
   vatType:         string;
@@ -133,6 +138,8 @@ const SaleForm = ({
   const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? "");
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
   const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? "NONE");
+  const [destLat, setDestLat] = useState<number | null>(initialData?.destLatitude ?? null);
+  const [destLon, setDestLon] = useState<number | null>(initialData?.destLongitude ?? null);
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
@@ -327,11 +334,15 @@ const SaleForm = ({
       setCustomerPhoneOverride(found?.phone ?? "");
       setShippingAddress(found?.shippingAddress ?? "");
       setCreditTerm(found?.creditTerm ?? 0);
+      setDestLat(found?.defaultLatitude ?? null);
+      setDestLon(found?.defaultLongitude ?? null);
     } else {
       setCustomerNameOverride("");
       setCustomerPhoneOverride("");
       setShippingAddress("");
       setCreditTerm(0);
+      setDestLat(null);
+      setDestLon(null);
     }
   };
 
@@ -377,6 +388,8 @@ const SaleForm = ({
     formData.set("cashBankAccountId", cashBankAccountId);
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
+    if (fulfillmentType === "DELIVERY" && destLat !== null) formData.set("destLatitude", String(destLat));
+    if (fulfillmentType === "DELIVERY" && destLon !== null) formData.set("destLongitude", String(destLon));
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -633,6 +646,14 @@ const SaleForm = ({
                   onChange={(e) => setShippingAddress(e.target.value)}
                   className={inputCls}
                   placeholder="ที่อยู่จัดส่งสินค้า"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <LocationPinPicker
+                  lat={destLat}
+                  lon={destLon}
+                  onChange={(lat, lon) => { setDestLat(lat); setDestLon(lon); }}
+                  label="ปักหมุดตำแหน่งจัดส่ง"
                 />
               </div>
               <div>

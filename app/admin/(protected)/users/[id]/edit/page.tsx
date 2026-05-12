@@ -22,6 +22,7 @@ const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => 
         name: true,
         username: true,
         email: true,
+        phone: true,
         role: true,
         appRoleId: true,
         mustChangePassword: true,

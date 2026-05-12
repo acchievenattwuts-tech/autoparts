@@ -18,6 +18,7 @@ import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } f
 import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
+import TrackingLinkCopy from "./TrackingLinkCopy";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
@@ -307,6 +308,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   <div>
                     <p className="mb-1 text-gray-500">เลข Tracking</p>
                     <p className="font-mono font-medium text-gray-900">{sale.trackingNo}</p>
+                  </div>
+                ) : null}
+                {sale.trackingToken ? (
+                  <div className="col-span-2 md:col-span-3">
+                    <p className="mb-1 text-gray-500">ลิงก์ติดตามสำหรับลูกค้า</p>
+                    <TrackingLinkCopy path={`/liff/tracking/${sale.trackingToken}`} />
                   </div>
                 ) : null}
               </>
