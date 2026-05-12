@@ -224,6 +224,15 @@ const InlineDeliveryTracker = ({
     : false;
   const nearby =
     driver && destLat && destLon ? isNearby(driver.lat, driver.lon, destLat, destLon) : false;
+  const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
+  const routeStatusText =
+    !destLat || !destLon
+      ? "ยังไม่มีหมุดปลายทางสำหรับคำนวณเส้นทาง"
+      : !driver
+        ? "รอรับตำแหน่งผู้ส่งเพื่อคำนวณเส้นทาง"
+        : eta
+          ? null
+          : "กำลังคำนวณเส้นทางและเวลาถึงโดยประมาณ";
 
   return (
     <div className="space-y-3">
@@ -257,12 +266,50 @@ const InlineDeliveryTracker = ({
         )}
       </div>
 
+      {/* Route summary */}
+      {eta && driver ? (
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-100 bg-blue-50/70 p-2.5">
+          <div className="rounded-lg bg-white px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <Clock size={13} className="text-blue-600" />
+              เวลาถึงโดยประมาณ
+            </div>
+            <p className="mt-1 font-kanit text-base font-bold text-blue-950">
+              ~{formatEta(eta.duration)}
+            </p>
+          </div>
+          <div className="rounded-lg bg-white px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <Navigation size={13} className="text-blue-600" />
+              ระยะทางคงเหลือ
+            </div>
+            <p className="mt-1 font-kanit text-base font-bold text-blue-950">
+              {formatDistance(eta.distance)}
+            </p>
+          </div>
+        </div>
+      ) : routeStatusText ? (
+        <div className="rounded-xl border border-blue-100 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+          {routeStatusText}
+        </div>
+      ) : null}
+
       {/* Driver card */}
       {(data.driverName || data.driverPhone) && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-white px-3 py-3">
-          <div>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">ผู้ส่ง</p>
             {data.driverName && (
-              <p className="text-sm font-semibold text-slate-900">{data.driverName}</p>
+              <p className="truncate text-sm font-semibold text-slate-900">{data.driverName}</p>
+            )}
+            {data.driverPhone && driverPhoneHref && (
+              <a
+                href={`tel:${driverPhoneHref}`}
+                className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-green-700 active:text-green-800"
+              >
+                <Phone size={14} />
+                {data.driverPhone}
+              </a>
             )}
             {driver && (
               <p className="mt-0.5 text-xs text-slate-400">
@@ -271,9 +318,9 @@ const InlineDeliveryTracker = ({
               </p>
             )}
           </div>
-          {data.driverPhone && (
+          {data.driverPhone && driverPhoneHref && (
             <a
-              href={`tel:${data.driverPhone}`}
+              href={`tel:${driverPhoneHref}`}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-green-50 px-3 py-2 text-sm font-bold text-green-700 active:bg-green-100"
             >
               <Phone size={15} />

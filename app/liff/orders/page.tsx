@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeDollarSign, ChevronRight, ReceiptText, Truck } from "lucide-react";
+import { BadgeDollarSign, ChevronRight, ReceiptText, Store, Truck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import { db } from "@/lib/db";
@@ -27,6 +27,7 @@ export default async function LiffOrdersPage() {
       netAmount: true,
       amountRemain: true,
       paymentType: true,
+      fulfillmentType: true,
       shippingStatus: true,
       _count: { select: { items: true } },
     },
@@ -75,6 +76,7 @@ export default async function LiffOrdersPage() {
             orders.map((order) => {
               const remain = Number(order.amountRemain ?? 0);
               const isPaidCreditSale = order.paymentType === "CREDIT_SALE" && remain <= 0;
+              const isPickup = order.fulfillmentType === "PICKUP";
               return (
                 <Link
                   key={order.id}
@@ -85,10 +87,17 @@ export default async function LiffOrdersPage() {
                     <div>
                       <p className="font-mono text-sm font-bold text-slate-950">{order.saleNo}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatDateThai(order.saleDate)}</p>
-                      <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${SHIPPING_STATUS_BADGE[order.shippingStatus] ?? "bg-slate-100 text-slate-700"}`}>
-                        <Truck size={12} />
-                        {SHIPPING_STATUS_LABEL[order.shippingStatus] ?? order.shippingStatus}
-                      </span>
+                      {isPickup ? (
+                        <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-800">
+                          <Store size={12} />
+                          รับหน้าร้าน
+                        </span>
+                      ) : (
+                        <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${SHIPPING_STATUS_BADGE[order.shippingStatus] ?? "bg-slate-100 text-slate-700"}`}>
+                          <Truck size={12} />
+                          {SHIPPING_STATUS_LABEL[order.shippingStatus] ?? order.shippingStatus}
+                        </span>
+                      )}
                       {isPaidCreditSale ? (
                         <span className="ml-1 mt-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
                           ชำระเงินแล้ว

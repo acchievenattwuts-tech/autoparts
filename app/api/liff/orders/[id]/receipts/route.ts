@@ -31,21 +31,8 @@ export async function GET(
     return NextResponse.json([], { status: 404 });
   }
 
-  if (sale.paymentType === "CASH_SALE") {
-    return NextResponse.json([
-      {
-        id: `cash-sale-${sale.id}`,
-        paidAmount: Number(sale.netAmount),
-        receipt: {
-          id: sale.id,
-          receiptNo: sale.saleNo,
-          receiptDate: sale.saleDate,
-          paymentMethod: sale.paymentMethod ?? "CASH",
-          status: "ACTIVE",
-          cancelNote: null,
-        },
-      },
-    ]);
+  if (sale.paymentType !== "CREDIT_SALE") {
+    return NextResponse.json([]);
   }
 
   const receipts = await db.receiptItem.findMany({

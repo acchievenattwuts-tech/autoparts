@@ -10,10 +10,33 @@ interface Props {
   label?: string;
 }
 
+type LeafletModule = typeof import("leaflet");
+
 const DEFAULT_CENTER: [number, number] = [13.7563, 100.5018];
 const DEFAULT_ZOOM = 13;
 
-const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุดที่อยู่จัดส่ง" }: Props) => {
+function createPinIcon(L: LeafletModule) {
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="width:36px;height:36px;filter:drop-shadow(0 3px 6px rgba(0,0,0,.45));">
+        <svg viewBox="0 0 24 24" width="36" height="36" aria-hidden="true" focusable="false">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7Z" fill="#ef4444"/>
+          <circle cx="12" cy="9" r="2.8" fill="#ffffff"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [36, 36],
+    iconAnchor: [18, 36],
+  });
+}
+
+const LocationPinPicker = ({
+  lat,
+  lon,
+  onChange,
+  label = "ปักหมุดที่อยู่จัดส่ง",
+}: Props) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markerRef = useRef<import("leaflet").Marker | null>(null);
@@ -22,7 +45,29 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
   const [manualLat, setManualLat] = useState(lat !== null ? lat.toFixed(6) : "");
   const [manualLon, setManualLon] = useState(lon !== null ? lon.toFixed(6) : "");
 
-  // Sync manual inputs with map pin
+  const setMarker = async (nextLat: number, nextLon: number, zoom = 16) => {
+    const L = (await import("leaflet")).default;
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (markerRef.current) {
+      markerRef.current.setLatLng([nextLat, nextLon]);
+    } else {
+      const marker = L.marker([nextLat, nextLon], {
+        draggable: true,
+        icon: createPinIcon(L),
+      }).addTo(map);
+      marker.on("dragend", () => {
+        const pos = marker.getLatLng();
+        onChange(pos.lat, pos.lng);
+      });
+      markerRef.current = marker;
+    }
+
+    map.setView([nextLat, nextLon], Math.max(map.getZoom(), zoom));
+    setHasPin(true);
+  };
+
   useEffect(() => {
     if (lat !== null && lon !== null) {
       setManualLat(lat.toFixed(6));
@@ -36,43 +81,13 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
   }, [lat, lon]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+    if (lat === null || lon === null) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      return;
+    }
 
-    let isMounted = true;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      if (!isMounted) return;
-
-      if (lat === null || lon === null) {
-        markerRef.current?.remove();
-        markerRef.current = null;
-        return;
-      }
-
-      const pinIcon = L.divIcon({
-        className: "",
-        html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">๐“</div>',
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-      });
-
-      if (markerRef.current) {
-        markerRef.current.setLatLng([lat, lon]);
-      } else {
-        const newMarker = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
-        markerRef.current = newMarker;
-        newMarker.on("dragend", () => {
-          const pos = newMarker.getLatLng();
-          onChange(pos.lat, pos.lng);
-        });
-      }
-      map.setView([lat, lon], Math.max(map.getZoom(), 16));
-    })();
-
-    return () => {
-      isMounted = false;
-    };
+    void setMarker(lat, lon);
   }, [lat, lon]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -85,7 +100,6 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
       if (!isMounted || !mapContainerRef.current) return;
 
       const center: [number, number] = lat !== null && lon !== null ? [lat, lon] : DEFAULT_CENTER;
-
       const map = L.map(mapContainerRef.current, {
         center,
         zoom: lat !== null && lon !== null ? 16 : DEFAULT_ZOOM,
@@ -97,39 +111,17 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         maxZoom: 19,
       }).addTo(map);
 
-      const pinIcon = L.divIcon({
-        className: "",
-        html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">📍</div>',
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-      });
-
-      if (lat !== null && lon !== null) {
-        const newMarker = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
-        markerRef.current = newMarker;
-        newMarker.on("dragend", () => {
-          const pos = newMarker.getLatLng();
-          onChange(pos.lat, pos.lng);
-        });
-      }
-
       map.on("click", (e) => {
         const { lat: clickLat, lng: clickLon } = e.latlng;
-        if (markerRef.current) {
-          markerRef.current.setLatLng([clickLat, clickLon]);
-        } else {
-          const newMarker = L.marker([clickLat, clickLon], { icon: pinIcon, draggable: true }).addTo(map);
-          markerRef.current = newMarker;
-          newMarker.on("dragend", () => {
-            const pos = newMarker.getLatLng();
-            onChange(pos.lat, pos.lng);
-          });
-        }
-        setHasPin(true);
+        void setMarker(clickLat, clickLon);
         onChange(clickLat, clickLon);
       });
 
       mapRef.current = map;
+
+      if (lat !== null && lon !== null) {
+        void setMarker(lat, lon);
+      }
     })();
 
     return () => {
@@ -144,32 +136,10 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
     if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         setLocating(false);
         const { latitude, longitude } = pos.coords;
-        const L = (await import("leaflet")).default;
-        const map = mapRef.current;
-        if (!map) return;
-
-        const pinIcon = L.divIcon({
-          className: "",
-          html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">📍</div>',
-          iconSize: [36, 36],
-          iconAnchor: [18, 36],
-        });
-
-        if (markerRef.current) {
-          markerRef.current.setLatLng([latitude, longitude]);
-        } else {
-          const newMarker = L.marker([latitude, longitude], { icon: pinIcon, draggable: true }).addTo(map);
-          markerRef.current = newMarker;
-          newMarker.on("dragend", () => {
-            const pos2 = newMarker.getLatLng();
-            onChange(pos2.lat, pos2.lng);
-          });
-        }
-        map.setView([latitude, longitude], 17);
-        setHasPin(true);
+        void setMarker(latitude, longitude, 17);
         onChange(latitude, longitude);
       },
       () => setLocating(false),
@@ -178,10 +148,8 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
   };
 
   const handleClear = () => {
-    if (markerRef.current && mapRef.current) {
-      markerRef.current.remove();
-      markerRef.current = null;
-    }
+    markerRef.current?.remove();
+    markerRef.current = null;
     setHasPin(false);
     onChange(null, null);
   };
@@ -194,39 +162,23 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
     }
   };
 
-  const handleApplyManualCoords = async () => {
+  const handleApplyManualCoords = () => {
     const parsedLat = parseFloat(manualLat);
     const parsedLon = parseFloat(manualLon);
 
-    if (!isNaN(parsedLat) && !isNaN(parsedLon) && 
-        parsedLat >= -90 && parsedLat <= 90 && 
-        parsedLon >= -180 && parsedLon <= 180) {
-      
-      const L = (await import("leaflet")).default;
-      const map = mapRef.current;
-      if (!map) return;
-
-      const pinIcon = L.divIcon({
-        className: "",
-        html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">📍</div>',
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-      });
-
-      if (markerRef.current) {
-        markerRef.current.setLatLng([parsedLat, parsedLon]);
-      } else {
-        const newMarker = L.marker([parsedLat, parsedLon], { icon: pinIcon, draggable: true }).addTo(map);
-        markerRef.current = newMarker;
-        newMarker.on("dragend", () => {
-          const pos = newMarker.getLatLng();
-          onChange(pos.lat, pos.lng);
-        });
-      }
-      map.setView([parsedLat, parsedLon], 16);
-      setHasPin(true);
-      onChange(parsedLat, parsedLon);
+    if (
+      Number.isNaN(parsedLat) ||
+      Number.isNaN(parsedLon) ||
+      parsedLat < -90 ||
+      parsedLat > 90 ||
+      parsedLon < -180 ||
+      parsedLon > 180
+    ) {
+      return;
     }
+
+    void setMarker(parsedLat, parsedLon);
+    onChange(parsedLat, parsedLon);
   };
 
   return (
@@ -261,7 +213,7 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
             Latitude
           </label>
           <input
@@ -270,11 +222,11 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
             value={manualLat}
             onChange={(e) => handleManualInput("lat", e.target.value)}
             placeholder="13.7563"
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+          <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
             Longitude
           </label>
           <input
@@ -283,7 +235,7 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
             value={manualLon}
             onChange={(e) => handleManualInput("lon", e.target.value)}
             placeholder="100.5018"
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
           />
         </div>
       </div>
@@ -306,7 +258,9 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
           ✓ ปักหมุดแล้ว — แตะแผนที่หรือลากหมุดเพื่อเปลี่ยนตำแหน่ง
         </p>
       ) : (
-        <p className="text-xs text-slate-400 dark:text-gray-500">แตะบนแผนที่เพื่อปักหมุด หรือกด "ตำแหน่งปัจจุบัน" หรือกรอกพิกัดด้านบน</p>
+        <p className="text-xs text-slate-400 dark:text-gray-500">
+          แตะบนแผนที่เพื่อปักหมุด หรือกด "ตำแหน่งปัจจุบัน" หรือกรอกพิกัดด้านบน
+        </p>
       )}
     </div>
   );

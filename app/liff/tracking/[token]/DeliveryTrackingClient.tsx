@@ -298,6 +298,7 @@ export default function DeliveryTrackingClient({
 
   const nearby =
     driver && destLat && destLon ? isNearby(driver.lat, driver.lon, destLat, destLon) : false;
+  const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
 
   return (
     <main className="flex min-h-dvh flex-col bg-gradient-to-b from-white via-sky-50 to-white">
@@ -389,10 +390,19 @@ export default function DeliveryTrackingClient({
         {(data.driverName || data.driverPhone) && (
           <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-slate-500">พนักงานจัดส่ง</p>
                 {data.driverName && (
-                  <p className="mt-0.5 font-semibold text-slate-900">{data.driverName}</p>
+                  <p className="mt-0.5 truncate font-semibold text-slate-900">{data.driverName}</p>
+                )}
+                {data.driverPhone && driverPhoneHref && (
+                  <a
+                    href={`tel:${driverPhoneHref}`}
+                    className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-green-700 active:text-green-800"
+                  >
+                    <Phone size={14} />
+                    {data.driverPhone}
+                  </a>
                 )}
                 {driver && (
                   <p className="mt-0.5 text-xs text-slate-400">
@@ -401,9 +411,9 @@ export default function DeliveryTrackingClient({
                   </p>
                 )}
               </div>
-              {data.driverPhone && (
+              {data.driverPhone && driverPhoneHref && (
                 <a
-                  href={`tel:${data.driverPhone}`}
+                  href={`tel:${driverPhoneHref}`}
                   className="flex shrink-0 items-center gap-2 rounded-xl bg-green-50 px-4 py-3 font-bold text-green-700 active:bg-green-100"
                 >
                   <Phone size={18} />

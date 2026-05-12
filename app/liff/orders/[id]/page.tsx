@@ -250,7 +250,7 @@ export default async function LiffOrderDetailPage({
           </div>
         </div>
 
-        <PaymentHistory saleId={order.id} />
+        {order.paymentType === "CREDIT_SALE" ? <PaymentHistory saleId={order.id} /> : null}
       </section>
     </main>
   );
