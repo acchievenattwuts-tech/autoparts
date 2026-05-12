@@ -1391,7 +1391,8 @@ export async function updateShippingStatus(
     }
 
     const shouldStampDeliveryStaff =
-      parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId;
+      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY ||
+      (parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId);
 
     // Auto-generate tracking token when sale first moves to OUT_FOR_DELIVERY
     const shouldGenerateToken =
@@ -1412,6 +1413,7 @@ export async function updateShippingStatus(
         shippingStatus: parsed.data.shippingStatus,
         ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+        ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
         ...(shouldGenerateToken
           ? {
               trackingToken: generateTrackingToken(),
@@ -1423,17 +1425,6 @@ export async function updateShippingStatus(
           : {}),
       },
     });
-    if (shouldStampDeliveryStaff) {
-      await db.sale.updateMany({
-        where: {
-          id: saleId,
-          deliveryStaffId: null,
-        },
-        data: {
-          deliveryStaffId: session.user.id,
-        },
-      });
-    }
 
     const afterSnapshot = await getSaleDeliveryAuditSnapshot(saleId);
     if (beforeSnapshot && afterSnapshot) {

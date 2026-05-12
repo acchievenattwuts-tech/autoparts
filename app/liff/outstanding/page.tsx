@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertCircle, CheckCircle2, ChevronRight, Landmark } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronRight, Landmark, Truck } from "lucide-react";
 
 import CopyPaymentValueButton from "@/components/liff/CopyPaymentValueButton";
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { addDays, formatLiffMoney, isBeforeToday } from "@/lib/liff-format";
 import { requireLiffCustomer } from "@/lib/liff-data";
 import { getPrimaryTransferAccount } from "@/lib/payment-qr";
+import { SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
 
 export default async function LiffOutstandingPage() {
@@ -26,6 +27,7 @@ export default async function LiffOutstandingPage() {
         netAmount: true,
         amountRemain: true,
         creditTerm: true,
+        shippingStatus: true,
       },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
       take: 50,
@@ -118,6 +120,10 @@ export default async function LiffOutstandingPage() {
                     <p className={sale.overdue ? "mt-1 text-xs font-semibold text-rose-700" : "mt-1 text-xs text-slate-500"}>
                       ครบกำหนด {formatDateThai(sale.dueDate)}
                     </p>
+                    <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${SHIPPING_STATUS_BADGE[sale.shippingStatus] ?? "bg-slate-100 text-slate-700"}`}>
+                      <Truck size={12} />
+                      {SHIPPING_STATUS_LABEL[sale.shippingStatus] ?? sale.shippingStatus}
+                    </span>
                   </div>
                   <ChevronRight className="mt-1 h-5 w-5 text-slate-400" />
                 </div>

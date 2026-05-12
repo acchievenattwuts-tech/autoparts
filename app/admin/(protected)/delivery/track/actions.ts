@@ -66,11 +66,11 @@ export async function updateDriverLocationAction(
     const validSales = await db.sale.findMany({
       where: {
         id: { in: validSaleIds },
-        deliveryStaffId: session.user.id,
+        OR: [{ deliveryStaffId: session.user.id }, { deliveryStaffId: null }],
         shippingStatus: "OUT_FOR_DELIVERY",
         status: "ACTIVE",
       },
-      select: { id: true, saleNo: true },
+      select: { id: true, saleNo: true, deliveryStaffId: true },
     });
 
     if (validSales.length === 0) {
@@ -85,6 +85,13 @@ export async function updateDriverLocationAction(
     // Upsert tracking for each valid sale (transaction ensures atomicity)
     await db.$transaction(async (tx) => {
       for (const sale of validSales) {
+        if (!sale.deliveryStaffId) {
+          await tx.sale.update({
+            where: { id: sale.id },
+            data: { deliveryStaffId: session.user.id },
+          });
+        }
+
         await tx.deliveryTracking.upsert({
           where: { saleId: sale.id },
           create: { saleId: sale.id, latitude: lat, longitude: lon, accuracy: acc },

@@ -1254,6 +1254,7 @@ export async function buildLineDailySummary(
         status: "ACTIVE",
         paymentType: "CREDIT_SALE",
         fulfillmentType: "PICKUP",
+        amountRemain: { gt: 0 },
       },
     })),
     runSummaryStep("money.codOutstanding", () => db.sale.aggregate({
@@ -1262,7 +1263,7 @@ export async function buildLineDailySummary(
         status: "ACTIVE",
         paymentType: "CREDIT_SALE",
         fulfillmentType: "DELIVERY",
-        shippingStatus: { not: "DELIVERED" },
+        amountRemain: { gt: 0 },
       },
     })),
     runSummaryStep("money.apOutstanding", () => db.purchase.aggregate({

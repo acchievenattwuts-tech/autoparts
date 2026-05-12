@@ -132,7 +132,8 @@ const DeliveryUpdatePage = async ({
     ? visibleSales
         .filter(
           (s) =>
-            s.shippingStatus === "OUT_FOR_DELIVERY" && s.deliveryStaffId === session.user.id,
+            s.shippingStatus === "OUT_FOR_DELIVERY" &&
+            (s.deliveryStaffId === session.user.id || s.deliveryStaffId === null),
         )
         .map((s) => s.id)
     : [];

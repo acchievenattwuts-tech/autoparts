@@ -36,6 +36,46 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
   }, [lat, lon]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    let isMounted = true;
+    (async () => {
+      const L = (await import("leaflet")).default;
+      if (!isMounted) return;
+
+      if (lat === null || lon === null) {
+        markerRef.current?.remove();
+        markerRef.current = null;
+        return;
+      }
+
+      const pinIcon = L.divIcon({
+        className: "",
+        html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">๐“</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+      });
+
+      if (markerRef.current) {
+        markerRef.current.setLatLng([lat, lon]);
+      } else {
+        const newMarker = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
+        markerRef.current = newMarker;
+        newMarker.on("dragend", () => {
+          const pos = newMarker.getLatLng();
+          onChange(pos.lat, pos.lng);
+        });
+      }
+      map.setView([lat, lon], Math.max(map.getZoom(), 16));
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [lat, lon]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
     let isMounted = true;
 
@@ -44,11 +84,11 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
       await import("leaflet/dist/leaflet.css");
       if (!isMounted || !mapContainerRef.current) return;
 
-      const center: [number, number] = lat && lon ? [lat, lon] : DEFAULT_CENTER;
+      const center: [number, number] = lat !== null && lon !== null ? [lat, lon] : DEFAULT_CENTER;
 
       const map = L.map(mapContainerRef.current, {
         center,
-        zoom: lat && lon ? 16 : DEFAULT_ZOOM,
+        zoom: lat !== null && lon !== null ? 16 : DEFAULT_ZOOM,
         zoomControl: true,
         attributionControl: false,
       });
@@ -64,10 +104,11 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         iconAnchor: [18, 36],
       });
 
-      if (lat && lon) {
-        markerRef.current = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
-        markerRef.current.on("dragend", () => {
-          const pos = markerRef.current!.getLatLng();
+      if (lat !== null && lon !== null) {
+        const newMarker = L.marker([lat, lon], { icon: pinIcon, draggable: true }).addTo(map);
+        markerRef.current = newMarker;
+        newMarker.on("dragend", () => {
+          const pos = newMarker.getLatLng();
           onChange(pos.lat, pos.lng);
         });
       }
@@ -77,9 +118,10 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         if (markerRef.current) {
           markerRef.current.setLatLng([clickLat, clickLon]);
         } else {
-          markerRef.current = L.marker([clickLat, clickLon], { icon: pinIcon, draggable: true }).addTo(map);
-          markerRef.current.on("dragend", () => {
-            const pos = markerRef.current!.getLatLng();
+          const newMarker = L.marker([clickLat, clickLon], { icon: pinIcon, draggable: true }).addTo(map);
+          markerRef.current = newMarker;
+          newMarker.on("dragend", () => {
+            const pos = newMarker.getLatLng();
             onChange(pos.lat, pos.lng);
           });
         }
@@ -119,9 +161,10 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         if (markerRef.current) {
           markerRef.current.setLatLng([latitude, longitude]);
         } else {
-          markerRef.current = L.marker([latitude, longitude], { icon: pinIcon, draggable: true }).addTo(map);
-          markerRef.current.on("dragend", () => {
-            const pos2 = markerRef.current!.getLatLng();
+          const newMarker = L.marker([latitude, longitude], { icon: pinIcon, draggable: true }).addTo(map);
+          markerRef.current = newMarker;
+          newMarker.on("dragend", () => {
+            const pos2 = newMarker.getLatLng();
             onChange(pos2.lat, pos2.lng);
           });
         }
@@ -151,7 +194,7 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
     }
   };
 
-  const handleApplyManualCoords = () => {
+  const handleApplyManualCoords = async () => {
     const parsedLat = parseFloat(manualLat);
     const parsedLon = parseFloat(manualLon);
 
@@ -159,7 +202,7 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         parsedLat >= -90 && parsedLat <= 90 && 
         parsedLon >= -180 && parsedLon <= 180) {
       
-      const L = require("leaflet").default;
+      const L = (await import("leaflet")).default;
       const map = mapRef.current;
       if (!map) return;
 
@@ -173,9 +216,10 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
       if (markerRef.current) {
         markerRef.current.setLatLng([parsedLat, parsedLon]);
       } else {
-        markerRef.current = L.marker([parsedLat, parsedLon], { icon: pinIcon, draggable: true }).addTo(map);
-        markerRef.current.on("dragend", () => {
-          const pos = markerRef.current!.getLatLng();
+        const newMarker = L.marker([parsedLat, parsedLon], { icon: pinIcon, draggable: true }).addTo(map);
+        markerRef.current = newMarker;
+        newMarker.on("dragend", () => {
+          const pos = newMarker.getLatLng();
           onChange(pos.lat, pos.lng);
         });
       }

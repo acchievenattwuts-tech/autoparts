@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { BadgeDollarSign, ChevronRight, ReceiptText } from "lucide-react";
+import { BadgeDollarSign, ChevronRight, ReceiptText, Truck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import { db } from "@/lib/db";
 import { requireLiffCustomer } from "@/lib/liff-data";
+import { SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
 
 const money = (value: unknown) =>
@@ -73,6 +74,7 @@ export default async function LiffOrdersPage() {
           ) : (
             orders.map((order) => {
               const remain = Number(order.amountRemain ?? 0);
+              const isPaidCreditSale = order.paymentType === "CREDIT_SALE" && remain <= 0;
               return (
                 <Link
                   key={order.id}
@@ -83,6 +85,15 @@ export default async function LiffOrdersPage() {
                     <div>
                       <p className="font-mono text-sm font-bold text-slate-950">{order.saleNo}</p>
                       <p className="mt-1 text-xs text-slate-500">{formatDateThai(order.saleDate)}</p>
+                      <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${SHIPPING_STATUS_BADGE[order.shippingStatus] ?? "bg-slate-100 text-slate-700"}`}>
+                        <Truck size={12} />
+                        {SHIPPING_STATUS_LABEL[order.shippingStatus] ?? order.shippingStatus}
+                      </span>
+                      {isPaidCreditSale ? (
+                        <span className="ml-1 mt-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                          ชำระเงินแล้ว
+                        </span>
+                      ) : null}
                     </div>
                     <ChevronRight className="mt-1 h-5 w-5 text-slate-400" />
                   </div>

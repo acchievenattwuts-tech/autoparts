@@ -207,8 +207,12 @@ const MobileDeliveryCard = ({
   const trackingChanged =
     trackingInput.trim() !== (trackingNo ?? "") || shippingMethodInput !== shippingMethod;
   const phoneDigits = customerPhone?.replace(/[^0-9+]/g, "") ?? "";
-  const mapsHref = shippingAddress
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shippingAddress)}`
+  const mapsQuery =
+    destLatitude !== null && destLongitude !== null
+      ? `${destLatitude},${destLongitude}`
+      : shippingAddress;
+  const mapsHref = mapsQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`
     : null;
   const deliveryStaffLabel = getDeliveryStaffLabel({
     shippingStatus,

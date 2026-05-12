@@ -11,6 +11,43 @@ export async function GET(
   const { id } = await params;
   const customer = await requireLiffCustomer();
 
+  const sale = await db.sale.findFirst({
+    where: {
+      id,
+      customerId: customer.id,
+      status: "ACTIVE",
+    },
+    select: {
+      id: true,
+      saleNo: true,
+      saleDate: true,
+      netAmount: true,
+      paymentMethod: true,
+      paymentType: true,
+    },
+  });
+
+  if (!sale) {
+    return NextResponse.json([], { status: 404 });
+  }
+
+  if (sale.paymentType === "CASH_SALE") {
+    return NextResponse.json([
+      {
+        id: `cash-sale-${sale.id}`,
+        paidAmount: Number(sale.netAmount),
+        receipt: {
+          id: sale.id,
+          receiptNo: sale.saleNo,
+          receiptDate: sale.saleDate,
+          paymentMethod: sale.paymentMethod ?? "CASH",
+          status: "ACTIVE",
+          cancelNote: null,
+        },
+      },
+    ]);
+  }
+
   const receipts = await db.receiptItem.findMany({
     where: {
       sale: {

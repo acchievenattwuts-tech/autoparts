@@ -5,9 +5,9 @@ export const SHIPPING_STATUS_LABEL: Record<string, string> = {
 };
 
 export const SHIPPING_STATUS_BADGE: Record<string, string> = {
-  PENDING:          "bg-yellow-100 text-yellow-700",
-  OUT_FOR_DELIVERY: "bg-blue-100 text-blue-700",
-  DELIVERED:        "bg-green-100 text-green-700",
+  PENDING:          "bg-yellow-100 text-yellow-800 dark:bg-yellow-400/15 dark:text-yellow-200",
+  OUT_FOR_DELIVERY: "bg-sky-100 text-sky-800 dark:bg-sky-400/20 dark:text-sky-100",
+  DELIVERED:        "bg-green-100 text-green-800 dark:bg-green-400/15 dark:text-green-100",
 };
 
 export const SHIPPING_METHOD_LABEL: Record<string, string> = {
