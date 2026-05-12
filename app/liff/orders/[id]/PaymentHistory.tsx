@@ -16,7 +16,7 @@ type ReceiptItem = {
   receipt: {
     id: string;
     receiptNo: string;
-    receiptDate: Date;
+    receiptDate: string;
     paymentMethod: string;
     status: string;
     cancelNote: string | null;
@@ -25,13 +25,16 @@ type ReceiptItem = {
 
 interface PaymentHistoryProps {
   saleId: string;
+  initialReceipts?: ReceiptItem[];
 }
 
-export default function PaymentHistory({ saleId }: PaymentHistoryProps) {
-  const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function PaymentHistory({ saleId, initialReceipts = [] }: PaymentHistoryProps) {
+  const [receipts, setReceipts] = useState<ReceiptItem[]>(initialReceipts);
+  const [loading, setLoading] = useState(initialReceipts.length === 0);
 
   useEffect(() => {
+    if (initialReceipts.length > 0) return;
+
     const fetchReceipts = async () => {
       try {
         const res = await fetch(`/api/liff/orders/${saleId}/receipts`, { cache: "no-store" });
@@ -47,7 +50,7 @@ export default function PaymentHistory({ saleId }: PaymentHistoryProps) {
     };
 
     fetchReceipts();
-  }, [saleId]);
+  }, [initialReceipts.length, saleId]);
 
   if (loading) {
     return (

@@ -5,13 +5,15 @@ const DELIVERY_TRACKING_CONFIG = {
   NEARBY_THRESHOLD_KM: 2, // 2 km
   ROUTE_RECALC_THRESHOLD_KM: 0.1, // 100 metres
   OSRM_TIMEOUT_MS: 15000, // 15 seconds
+  ESTIMATED_ROUTE_FACTOR: 1.25,
+  ESTIMATED_SPEED_KMH: 35,
 } as const;
 
 export function generateTrackingToken(): string {
   return crypto.randomUUID();
 }
 
-/** Haversine formula — returns distance in kilometres */
+/** Haversine formula returns distance in kilometres. */
 export function haversineDistance(
   lat1: number,
   lon1: number,
@@ -59,9 +61,34 @@ export type OsrmRouteResult = {
   coordinates: [number, number][]; // [lat, lon] pairs
   durationSeconds: number;
   distanceMetres: number;
+  estimated?: boolean;
 };
 
-/** Fetch route from OSRM public demo server */
+export function estimateDeliveryRoute(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): OsrmRouteResult {
+  const straightLineKm = haversineDistance(fromLat, fromLon, toLat, toLon);
+  const distanceMetres = Math.max(
+    1,
+    straightLineKm * DELIVERY_TRACKING_CONFIG.ESTIMATED_ROUTE_FACTOR * 1000,
+  );
+  const metresPerSecond = (DELIVERY_TRACKING_CONFIG.ESTIMATED_SPEED_KMH * 1000) / 3600;
+
+  return {
+    coordinates: [
+      [fromLat, fromLon],
+      [toLat, toLon],
+    ],
+    durationSeconds: Math.max(60, distanceMetres / metresPerSecond),
+    distanceMetres,
+    estimated: true,
+  };
+}
+
+/** Fetch route from OSRM public demo server. */
 export async function fetchOsrmRoute(
   fromLat: number,
   fromLon: number,
@@ -82,7 +109,7 @@ export async function fetchOsrmRoute(
     };
     if (data.code !== "Ok" || !data.routes?.[0]) return null;
     const route = data.routes[0];
-    // OSRM returns [lon, lat] — convert to [lat, lon] for Leaflet
+    // OSRM returns [lon, lat], convert to [lat, lon] for Leaflet.
     const coordinates: [number, number][] = route.geometry.coordinates.map(
       ([lon, lat]) => [lat, lon],
     );

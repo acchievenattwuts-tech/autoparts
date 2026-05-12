@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock, Navigation, Phone } from "lucide-react";
 
 import {
+  estimateDeliveryRoute,
   fetchOsrmRoute,
   formatDistance,
   formatEta,
@@ -58,7 +59,7 @@ const InlineDeliveryTracker = ({
     driverPhone,
     destination: null,
   });
-  const [eta, setEta] = useState<{ duration: number; distance: number } | null>(null);
+  const [eta, setEta] = useState<{ duration: number; distance: number; estimated?: boolean } | null>(null);
   const [pollError, setPollError] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -126,13 +127,23 @@ const InlineDeliveryTracker = ({
       mapRef.current = map;
 
       if (initialDriver && destLat && destLon) {
+        const estimatedRoute = estimateDeliveryRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
+        routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
+          color: "#1e3a5f",
+          weight: 4,
+          opacity: 0.55,
+          dashArray: "6 8",
+        }).addTo(map);
+        setEta({
+          duration: estimatedRoute.durationSeconds,
+          distance: estimatedRoute.distanceMetres,
+          estimated: true,
+        });
+
         const route = await fetchOsrmRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
         if (route && isMounted && mapRef.current) {
-          routeLayerRef.current = L.polyline(route.coordinates, {
-            color: "#1e3a5f",
-            weight: 4,
-            opacity: 0.8,
-          }).addTo(map);
+          routeLayerRef.current.setLatLngs(route.coordinates);
+          routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
           setEta({ duration: route.durationSeconds, distance: route.distanceMetres });
         }
       }
@@ -175,10 +186,29 @@ const InlineDeliveryTracker = ({
 
       if (needsRoute && destLat && destLon) {
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
+        const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);
+        if (routeLayerRef.current) {
+          routeLayerRef.current.setLatLngs(estimatedRoute.coordinates);
+          routeLayerRef.current.setStyle({ opacity: 0.55, dashArray: "6 8" });
+        } else {
+          routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
+            color: "#1e3a5f",
+            weight: 4,
+            opacity: 0.55,
+            dashArray: "6 8",
+          }).addTo(map);
+        }
+        setEta({
+          duration: estimatedRoute.durationSeconds,
+          distance: estimatedRoute.distanceMetres,
+          estimated: true,
+        });
+
         const route = await fetchOsrmRoute(driver.lat, driver.lon, destLat, destLon);
         if (route && mapRef.current) {
           if (routeLayerRef.current) {
             routeLayerRef.current.setLatLngs(route.coordinates);
+            routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
           } else {
             routeLayerRef.current = L.polyline(route.coordinates, {
               color: "#1e3a5f",
@@ -242,7 +272,7 @@ const InlineDeliveryTracker = ({
           <div className="flex items-center gap-2">
             <Clock size={15} className="text-blue-600" />
             <span className="font-kanit text-sm font-bold text-blue-900">
-              ถึงใน ~{formatEta(eta.duration)}
+              ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
             </span>
           </div>
           <span className="text-xs text-slate-500">{formatDistance(eta.distance)}</span>
@@ -275,7 +305,7 @@ const InlineDeliveryTracker = ({
               เวลาถึงโดยประมาณ
             </div>
             <p className="mt-1 font-kanit text-base font-bold text-blue-950">
-              ~{formatEta(eta.duration)}
+              ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
             </p>
           </div>
           <div className="rounded-lg bg-white px-3 py-2 shadow-sm">

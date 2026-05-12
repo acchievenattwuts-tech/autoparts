@@ -91,6 +91,55 @@ export default async function LiffOrderDetailPage({
 
   if (!order) notFound();
 
+  const paymentReceiptRows =
+    order.paymentType === "CREDIT_SALE"
+      ? await db.receipt.findMany({
+          where: {
+            status: "ACTIVE",
+            items: {
+              some: {
+                sale: {
+                  id: order.id,
+                  customerId: customer.id,
+                  status: "ACTIVE",
+                },
+              },
+            },
+          },
+          select: {
+            id: true,
+            receiptNo: true,
+            receiptDate: true,
+            paymentMethod: true,
+            status: true,
+            cancelNote: true,
+            items: {
+              where: { saleId: order.id },
+              select: {
+                id: true,
+                paidAmount: true,
+              },
+            },
+          },
+          orderBy: { receiptDate: "desc" },
+          take: 10,
+        })
+      : [];
+  const paymentHistoryReceipts = paymentReceiptRows.flatMap((receipt) =>
+    receipt.items.map((item) => ({
+      id: item.id,
+      paidAmount: Number(item.paidAmount),
+      receipt: {
+        id: receipt.id,
+        receiptNo: receipt.receiptNo,
+        receiptDate: receipt.receiptDate.toISOString(),
+        paymentMethod: receipt.paymentMethod,
+        status: receipt.status,
+        cancelNote: receipt.cancelNote,
+      },
+    })),
+  );
+
   const showLiveTracking =
     order.fulfillmentType === "DELIVERY" &&
     order.shippingStatus === "OUT_FOR_DELIVERY" &&
@@ -250,7 +299,9 @@ export default async function LiffOrderDetailPage({
           </div>
         </div>
 
-        {order.paymentType === "CREDIT_SALE" ? <PaymentHistory saleId={order.id} /> : null}
+        {order.paymentType === "CREDIT_SALE" ? (
+          <PaymentHistory saleId={order.id} initialReceipts={paymentHistoryReceipts} />
+        ) : null}
       </section>
     </main>
   );

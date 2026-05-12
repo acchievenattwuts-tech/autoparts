@@ -4,10 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock, Loader2, MapPin, Navigation, Phone, Truck } from "lucide-react";
 
 import {
+  estimateDeliveryRoute,
   fetchOsrmRoute,
   formatDistance,
   formatEta,
-  haversineDistance,
   isNearby,
   shouldRecalcRoute,
 } from "@/lib/delivery-tracking";
@@ -83,7 +83,7 @@ export default function DeliveryTrackingClient({
     driverPhone: driverPhone ?? null,
   });
   const [pollError, setPollError] = useState(false);
-  const [eta, setEta] = useState<{ duration: number; distance: number } | null>(null);
+  const [eta, setEta] = useState<{ duration: number; distance: number; estimated?: boolean } | null>(null);
   const [pollInterval, setPollInterval] = useState(POLL_INTERVAL_MS);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [mapLoading, setMapLoading] = useState(true);
@@ -181,13 +181,23 @@ export default function DeliveryTrackingClient({
 
       // Draw initial route
       if (initialDriver && destLat && destLon) {
+        const estimatedRoute = estimateDeliveryRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
+        routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
+          color: "#1e3a5f",
+          weight: 4,
+          opacity: 0.55,
+          dashArray: "6 8",
+        }).addTo(map);
+        setEta({
+          duration: estimatedRoute.durationSeconds,
+          distance: estimatedRoute.distanceMetres,
+          estimated: true,
+        });
+
         const route = await fetchOsrmRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
         if (route && isMounted && mapRef.current) {
-          routeLayerRef.current = L.polyline(route.coordinates, {
-            color: "#1e3a5f",
-            weight: 4,
-            opacity: 0.8,
-          }).addTo(map);
+          routeLayerRef.current.setLatLngs(route.coordinates);
+          routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
           setEta({ duration: route.durationSeconds, distance: route.distanceMetres });
         }
       }
@@ -237,10 +247,29 @@ export default function DeliveryTrackingClient({
 
       if (needsRoute && destLat && destLon) {
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
+        const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);
+        if (routeLayerRef.current) {
+          routeLayerRef.current.setLatLngs(estimatedRoute.coordinates);
+          routeLayerRef.current.setStyle({ opacity: 0.55, dashArray: "6 8" });
+        } else {
+          routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
+            color: "#1e3a5f",
+            weight: 4,
+            opacity: 0.55,
+            dashArray: "6 8",
+          }).addTo(map);
+        }
+        setEta({
+          duration: estimatedRoute.durationSeconds,
+          distance: estimatedRoute.distanceMetres,
+          estimated: true,
+        });
+
         const route = await fetchOsrmRoute(driver.lat, driver.lon, destLat, destLon);
         if (route && mapRef.current) {
           if (routeLayerRef.current) {
             routeLayerRef.current.setLatLngs(route.coordinates);
+            routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
           } else {
             routeLayerRef.current = L.polyline(route.coordinates, {
               color: "#1e3a5f",
@@ -335,7 +364,7 @@ export default function DeliveryTrackingClient({
               <p className="text-xs text-slate-500">เวลาโดยประมาณ</p>
             </div>
             <p className="mt-1.5 font-kanit text-2xl font-bold text-slate-900">
-              ถึงใน ~{formatEta(eta.duration)}
+              ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
             </p>
             <p className="mt-0.5 text-sm text-slate-500">
               ระยะทาง {formatDistance(eta.distance)}

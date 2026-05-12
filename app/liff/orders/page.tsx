@@ -75,7 +75,7 @@ export default async function LiffOrdersPage() {
           ) : (
             orders.map((order) => {
               const remain = Number(order.amountRemain ?? 0);
-              const isPaidCreditSale = order.paymentType === "CREDIT_SALE" && remain <= 0;
+              const isPaidSale = remain <= 0;
               const isPickup = order.fulfillmentType === "PICKUP";
               return (
                 <Link
@@ -98,7 +98,7 @@ export default async function LiffOrdersPage() {
                           {SHIPPING_STATUS_LABEL[order.shippingStatus] ?? order.shippingStatus}
                         </span>
                       )}
-                      {isPaidCreditSale ? (
+                      {isPaidSale ? (
                         <span className="ml-1 mt-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
                           ชำระเงินแล้ว
                         </span>

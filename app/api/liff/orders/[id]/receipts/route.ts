@@ -35,31 +35,52 @@ export async function GET(
     return NextResponse.json([]);
   }
 
-  const receipts = await db.receiptItem.findMany({
+  const receipts = await db.receipt.findMany({
     where: {
-      sale: {
-        id,
-        customerId: customer.id,
-        status: "ACTIVE",
+      status: "ACTIVE",
+      items: {
+        some: {
+          sale: {
+            id,
+            customerId: customer.id,
+            status: "ACTIVE",
+          },
+        },
       },
     },
     select: {
       id: true,
-      paidAmount: true,
-      receipt: {
+      receiptNo: true,
+      receiptDate: true,
+      paymentMethod: true,
+      status: true,
+      cancelNote: true,
+      items: {
+        where: { saleId: id },
         select: {
           id: true,
-          receiptNo: true,
-          receiptDate: true,
-          paymentMethod: true,
-          status: true,
-          cancelNote: true,
+          paidAmount: true,
         },
       },
     },
-    orderBy: { receipt: { receiptDate: "desc" } },
+    orderBy: { receiptDate: "desc" },
     take: 10,
   });
 
-  return NextResponse.json(receipts);
+  return NextResponse.json(
+    receipts.flatMap((receipt) =>
+      receipt.items.map((item) => ({
+        id: item.id,
+        paidAmount: Number(item.paidAmount),
+        receipt: {
+          id: receipt.id,
+          receiptNo: receipt.receiptNo,
+          receiptDate: receipt.receiptDate,
+          paymentMethod: receipt.paymentMethod,
+          status: receipt.status,
+          cancelNote: receipt.cancelNote,
+        },
+      })),
+    ),
+  );
 }
