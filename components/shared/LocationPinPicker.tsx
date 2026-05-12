@@ -19,6 +19,21 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
   const markerRef = useRef<import("leaflet").Marker | null>(null);
   const [locating, setLocating] = useState(false);
   const [hasPin, setHasPin] = useState(lat !== null && lon !== null);
+  const [manualLat, setManualLat] = useState(lat !== null ? lat.toFixed(6) : "");
+  const [manualLon, setManualLon] = useState(lon !== null ? lon.toFixed(6) : "");
+
+  // Sync manual inputs with map pin
+  useEffect(() => {
+    if (lat !== null && lon !== null) {
+      setManualLat(lat.toFixed(6));
+      setManualLon(lon.toFixed(6));
+      setHasPin(true);
+    } else {
+      setManualLat("");
+      setManualLon("");
+      setHasPin(false);
+    }
+  }, [lat, lon]);
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
@@ -128,19 +143,61 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
     onChange(null, null);
   };
 
+  const handleManualInput = (field: "lat" | "lon", value: string) => {
+    if (field === "lat") {
+      setManualLat(value);
+    } else {
+      setManualLon(value);
+    }
+  };
+
+  const handleApplyManualCoords = () => {
+    const parsedLat = parseFloat(manualLat);
+    const parsedLon = parseFloat(manualLon);
+
+    if (!isNaN(parsedLat) && !isNaN(parsedLon) && 
+        parsedLat >= -90 && parsedLat <= 90 && 
+        parsedLon >= -180 && parsedLon <= 180) {
+      
+      const L = require("leaflet").default;
+      const map = mapRef.current;
+      if (!map) return;
+
+      const pinIcon = L.divIcon({
+        className: "",
+        html: '<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">📍</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+      });
+
+      if (markerRef.current) {
+        markerRef.current.setLatLng([parsedLat, parsedLon]);
+      } else {
+        markerRef.current = L.marker([parsedLat, parsedLon], { icon: pinIcon, draggable: true }).addTo(map);
+        markerRef.current.on("dragend", () => {
+          const pos = markerRef.current!.getLatLng();
+          onChange(pos.lat, pos.lng);
+        });
+      }
+      map.setView([parsedLat, parsedLon], 16);
+      setHasPin(true);
+      onChange(parsedLat, parsedLon);
+    }
+  };
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-          <MapPin size={14} className="text-blue-600" />
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <MapPin size={14} className="text-blue-600 dark:text-blue-400" />
           {label}
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={handleUseCurrentLocation}
             disabled={locating}
-            className="flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+            className="flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300 dark:hover:bg-blue-400/20"
           >
             <Crosshair size={12} />
             {locating ? "กำลังหาตำแหน่ง..." : "ตำแหน่งปัจจุบัน"}
@@ -149,7 +206,7 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
             <button
               type="button"
               onClick={handleClear}
-              className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-100"
+              className="flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition hover:bg-red-100 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-300 dark:hover:bg-red-400/20"
             >
               <Trash2 size={12} />
               ลบหมุด
@@ -158,17 +215,54 @@ const LocationPinPicker = ({ lat, lon, onChange, label = "ปักหมุด�
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Latitude
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={manualLat}
+            onChange={(e) => handleManualInput("lat", e.target.value)}
+            placeholder="13.7563"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            Longitude
+          </label>
+          <input
+            type="number"
+            step="any"
+            value={manualLon}
+            onChange={(e) => handleManualInput("lon", e.target.value)}
+            placeholder="100.5018"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleApplyManualCoords}
+        className="w-full rounded-md bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#2d4a6f] disabled:opacity-50 dark:bg-sky-600 dark:hover:bg-sky-500"
+      >
+        ใช้พิกัดที่กรอก
+      </button>
+
       <div
         ref={mapContainerRef}
-        className="h-56 w-full cursor-crosshair overflow-hidden rounded-xl border border-gray-200"
+        className="h-64 w-full cursor-crosshair overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700"
       />
 
       {hasPin ? (
-        <p className="text-xs text-green-700">
+        <p className="text-xs text-green-700 dark:text-green-400">
           ✓ ปักหมุดแล้ว — แตะแผนที่หรือลากหมุดเพื่อเปลี่ยนตำแหน่ง
         </p>
       ) : (
-        <p className="text-xs text-slate-400">แตะบนแผนที่เพื่อปักหมุด หรือกด "ตำแหน่งปัจจุบัน"</p>
+        <p className="text-xs text-slate-400 dark:text-gray-500">แตะบนแผนที่เพื่อปักหมุด หรือกด "ตำแหน่งปัจจุบัน" หรือกรอกพิกัดด้านบน</p>
       )}
     </div>
   );
