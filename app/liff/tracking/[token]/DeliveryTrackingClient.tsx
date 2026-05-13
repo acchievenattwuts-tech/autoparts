@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Clock, Loader2, MapPin, Navigation, Phone, Truck } from "lucide-react";
+import {
+  AlertCircle,
+  Clock,
+  Crosshair,
+  Loader2,
+  MapPin,
+  Navigation,
+  Phone,
+  RefreshCw,
+  Truck,
+} from "lucide-react";
 
 import {
   estimateDeliveryRoute,
@@ -14,6 +24,7 @@ import {
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const STALE_MINUTES = 30;
+const RESUME_REFRESH_DEBOUNCE_MS = 5000;
 
 type ShippingStatus = "PENDING" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED";
 
@@ -76,6 +87,11 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
   return formatClockTime(new Date(baseTime + durationSeconds * 1000));
 }
 
+function formatRefreshTime(date: Date | null): string {
+  if (!date) return "ยังไม่ได้รีเฟรช";
+  return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
+}
+
 export default function DeliveryTrackingClient({
   token,
   saleNo,
@@ -100,6 +116,8 @@ export default function DeliveryTrackingClient({
   const [pollInterval, setPollInterval] = useState(POLL_INTERVAL_MS);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const [mapLoading, setMapLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(new Date());
 
   // Map refs — never recreated
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +128,8 @@ export default function DeliveryTrackingClient({
   const prevDriverPosRef = useRef<{ lat: number; lon: number } | null>(null);
   const driverIconRef = useRef<import("leaflet").DivIcon | null>(null);
   const destIconRef = useRef<import("leaflet").DivIcon | null>(null);
+  const refreshInFlightRef = useRef(false);
+  const lastResumeRefreshRef = useRef(0);
 
   // Initialize Leaflet map exactly once
   useEffect(() => {
@@ -148,7 +168,7 @@ export default function DeliveryTrackingClient({
       if (!driverIconRef.current) {
         driverIconRef.current = L.divIcon({
           className: "",
-          html: '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">🚚</div>',
+          html: '<div style="position:relative;width:36px;height:36px;display:grid;place-items:center"><div style="position:absolute;inset:2px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
           iconSize: [36, 36],
           iconAnchor: [18, 18],
         });
@@ -231,23 +251,25 @@ export default function DeliveryTrackingClient({
 
   // Update map markers without recreating the map
   const updateMapMarkers = useCallback(
-    async (driver: Driver) => {
+    async (driver: Driver, options: { forceRoute?: boolean; recenter?: boolean } = {}) => {
       const L = (await import("leaflet")).default;
       const map = mapRef.current;
       if (!map) return;
 
-      const driverIcon = L.divIcon({
-        className: "",
-        html: '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">🚚</div>',
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-      });
+      if (!driverIconRef.current) {
+        driverIconRef.current = L.divIcon({
+          className: "",
+          html: '<div style="position:relative;width:36px;height:36px;display:grid;place-items:center"><div style="position:absolute;inset:2px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
+      }
 
       if (driverMarkerRef.current) {
         driverMarkerRef.current.setLatLng([driver.lat, driver.lon]);
       } else {
         driverMarkerRef.current = L.marker([driver.lat, driver.lon], {
-          icon: driverIcon,
+          icon: driverIconRef.current,
           zIndexOffset: 1000,
         })
           .addTo(map)
@@ -259,7 +281,7 @@ export default function DeliveryTrackingClient({
       const needsRoute =
         destLat &&
         destLon &&
-        (!prev || shouldRecalcRoute(prev.lat, prev.lon, driver.lat, driver.lon));
+        (options.forceRoute || !prev || shouldRecalcRoute(prev.lat, prev.lon, driver.lat, driver.lon));
 
       if (needsRoute && destLat && destLon) {
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
@@ -294,45 +316,91 @@ export default function DeliveryTrackingClient({
           });
         }
       }
+
+      map.invalidateSize();
+      if (options.recenter && destLat && destLon) {
+        map.fitBounds(
+          [
+            [driver.lat, driver.lon],
+            [destLat, destLon],
+          ],
+          { padding: [44, 44] },
+        );
+      }
     },
     [destLat, destLon, token],
   );
 
-  // Poll tracking API every 3 minutes with adaptive backoff on errors
-  useEffect(() => {
-    const abortController = new AbortController();
+  const refreshTracking = useCallback(
+    async (options: { forceRoute?: boolean; recenter?: boolean; showSpinner?: boolean } = {}) => {
+      if (refreshInFlightRef.current) return;
+      refreshInFlightRef.current = true;
+      if (options.showSpinner) setIsRefreshing(true);
 
-    const poll = async () => {
       try {
-        const res = await fetch(`/api/liff/tracking/${token}`, {
-          cache: "no-store",
-          signal: abortController.signal,
-        });
+        const res = await fetch(`/api/liff/tracking/${token}`, { cache: "no-store" });
         if (!res.ok) throw new Error("API error");
         const json = (await res.json()) as TrackingData;
         setPollError(false);
         setConsecutiveErrors(0);
-        setPollInterval(POLL_INTERVAL_MS); // Reset to default on success
+        setPollInterval(POLL_INTERVAL_MS);
         setData(json);
-        if (json.driver) await updateMapMarkers(json.driver);
+        setLastRefreshedAt(new Date());
+        if (json.driver) {
+          await updateMapMarkers(json.driver, {
+            forceRoute: options.forceRoute,
+            recenter: options.recenter,
+          });
+        } else {
+          mapRef.current?.invalidateSize();
+        }
       } catch {
         setPollError(true);
-        setConsecutiveErrors((prev) => prev + 1);
-        // Exponential backoff: double interval on errors, max 10 minutes
-        const newInterval = Math.min(
-          POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors),
-          10 * 60 * 1000,
-        );
-        setPollInterval(newInterval);
+        setConsecutiveErrors((prev) => {
+          const next = prev + 1;
+          setPollInterval(Math.min(POLL_INTERVAL_MS * 2 ** next, 10 * 60 * 1000));
+          return next;
+        });
+      } finally {
+        refreshInFlightRef.current = false;
+        if (options.showSpinner) setIsRefreshing(false);
       }
+    },
+    [token, updateMapMarkers],
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      void refreshTracking();
+    }, pollInterval);
+    return () => clearInterval(id);
+  }, [pollInterval, refreshTracking]);
+
+  useEffect(() => {
+    const refreshAfterResume = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastResumeRefreshRef.current < RESUME_REFRESH_DEBOUNCE_MS) return;
+      lastResumeRefreshRef.current = now;
+      window.setTimeout(() => {
+        mapRef.current?.invalidateSize();
+        void refreshTracking({ forceRoute: true, recenter: true });
+      }, 250);
     };
 
-    const id = setInterval(poll, pollInterval);
+    document.addEventListener("visibilitychange", refreshAfterResume);
+    window.addEventListener("focus", refreshAfterResume);
+    window.addEventListener("pageshow", refreshAfterResume);
+    window.addEventListener("online", refreshAfterResume);
+
     return () => {
-      clearInterval(id);
-      abortController.abort();
+      document.removeEventListener("visibilitychange", refreshAfterResume);
+      window.removeEventListener("focus", refreshAfterResume);
+      window.removeEventListener("pageshow", refreshAfterResume);
+      window.removeEventListener("online", refreshAfterResume);
     };
-  }, [token, updateMapMarkers, pollInterval, consecutiveErrors]);
+  }, [refreshTracking]);
 
   const driver = data.driver;
   const stale = driver
@@ -344,37 +412,60 @@ export default function DeliveryTrackingClient({
   const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
   const driverUpdatedClock = driver ? formatClockTime(new Date(driver.updatedAt)) : "";
   const etaArrivalClock = driver && eta ? formatEtaArrival(driver.updatedAt, eta.duration) : "";
+  const routeSummary =
+    !destLat || !destLon
+      ? "ยังไม่มีหมุดปลายทางสำหรับคำนวณเส้นทาง"
+      : !driver
+        ? "รอรับตำแหน่งพนักงานส่ง"
+        : eta
+          ? null
+          : "กำลังคำนวณเส้นทางและเวลาถึง";
 
   return (
     <main className="flex min-h-dvh flex-col bg-gradient-to-b from-white via-sky-50 to-white">
       {/* Header */}
-      <section className="border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-5 pt-6 shadow-sm">
+      <section className="rounded-b-[32px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 px-5 pb-5 pt-6 shadow-sm">
         <p className="font-mono text-xs text-slate-400">{saleNo}</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold text-[#083a78]">ติดตามการจัดส่ง</h1>
+        <p className="mt-2 text-sm text-slate-600">หน้านี้จะรีเฟรชตำแหน่งให้อัตโนมัติเมื่อกลับมาเปิดดู</p>
       </section>
 
       <div className="flex flex-col gap-4 px-4 py-4">
         {/* Status card */}
-        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">สถานะการจัดส่ง</p>
-          <div className="mt-1.5 flex items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold ${STATUS_COLOR[data.status] ?? "bg-slate-100 text-slate-700"}`}
+        <div className="rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs text-slate-500">สถานะการจัดส่ง</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold ${STATUS_COLOR[data.status] ?? "bg-slate-100 text-slate-700"}`}
+                >
+                  <Truck size={14} />
+                  {STATUS_LABEL[data.status] ?? data.status}
+                </span>
+                {nearby && data.status === "OUT_FOR_DELIVERY" && (
+                  <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-700">
+                    ใกล้ถึงแล้ว
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-xs font-semibold text-slate-500">{formatRefreshTime(lastRefreshedAt)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshTracking({ forceRoute: true, recenter: true, showSpinner: true })}
+              disabled={isRefreshing}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9f8f0] text-[#06c755] transition active:scale-95 disabled:cursor-wait disabled:opacity-70"
+              aria-label="รีเฟรชตำแหน่งล่าสุด"
             >
-              <Truck size={14} />
-              {STATUS_LABEL[data.status] ?? data.status}
-            </span>
-            {nearby && data.status === "OUT_FOR_DELIVERY" && (
-              <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-bold text-orange-700">
-                🔔 ใกล้แล้ว!
-              </span>
-            )}
+              <RefreshCw className={`h-5 w-5 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
           </div>
         </div>
 
         {/* ETA card — only when we have route info */}
         {eta && driver && data.status === "OUT_FOR_DELIVERY" && (
-          <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+          <div className="rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
             <div className="flex items-center gap-2">
               <Clock size={16} className="text-blue-600" />
               <p className="text-xs text-slate-500">เวลาโดยประมาณ</p>
@@ -409,25 +500,45 @@ export default function DeliveryTrackingClient({
         )}
 
         {/* Map */}
-        <div className="overflow-hidden rounded-2xl border border-blue-100 shadow-sm">
+        <div className="relative overflow-hidden rounded-[24px] border border-blue-100 bg-slate-50 shadow-sm shadow-blue-950/5">
+          <div ref={mapContainerRef} className="h-[54vh] min-h-[360px] w-full" />
+          <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+            <div className="max-w-[72%] rounded-2xl bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur">
+              {routeSummary ?? `ตำแหน่งล่าสุด ${driverUpdatedClock || "กำลังตรวจสอบ"}`}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (driver) void updateMapMarkers(driver, { recenter: true });
+                else mapRef.current?.invalidateSize();
+              }}
+              className="pointer-events-auto inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-blue-800 shadow-sm backdrop-blur transition active:scale-95"
+              aria-label="กลับไปดูตำแหน่งบนแผนที่"
+            >
+              <Crosshair className="h-5 w-5" />
+            </button>
+          </div>
           {mapLoading ? (
-            <div className="flex h-[50vh] flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400">
               <Loader2 size={32} className="animate-spin" />
               <p className="text-sm">กำลังโหลดแผนที่...</p>
             </div>
           ) : !driver && !destLat ? (
-            <div className="flex h-[50vh] flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50 text-slate-400">
               <MapPin size={32} />
               <p className="text-sm">รอรับตำแหน่งพนักงานส่ง...</p>
             </div>
-          ) : (
-            <div ref={mapContainerRef} className="h-[50vh] w-full" />
-          )}
+          ) : null}
+        </div>
+
+        <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs leading-relaxed text-slate-600">
+          <AlertCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
+          <span>หากหมุดไม่ตรงกับสถานที่จัดส่ง กรุณาแจ้งพนักงานส่งของหรือทัก LINE OA เพื่อปรับข้อมูล</span>
         </div>
 
         {/* Destination address */}
         {destination && (
-          <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+          <div className="flex items-start gap-3 rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
             <MapPin size={18} className="mt-0.5 shrink-0 text-blue-600" />
             <div>
               <p className="text-xs text-slate-500">ที่อยู่จัดส่ง</p>
@@ -438,7 +549,7 @@ export default function DeliveryTrackingClient({
 
         {/* Driver info card */}
         {(data.driverName || data.driverPhone) && (
-          <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+          <div className="rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs text-slate-500">พนักงานจัดส่ง</p>
@@ -464,7 +575,7 @@ export default function DeliveryTrackingClient({
               {data.driverPhone && driverPhoneHref && (
                 <a
                   href={`tel:${driverPhoneHref}`}
-                  className="flex shrink-0 items-center gap-2 rounded-xl bg-green-50 px-4 py-3 font-bold text-green-700 active:bg-green-100"
+                  className="flex shrink-0 items-center gap-2 rounded-2xl bg-green-50 px-4 py-3 font-bold text-green-700 active:bg-green-100"
                 >
                   <Phone size={18} />
                   โทรหาคนขับ

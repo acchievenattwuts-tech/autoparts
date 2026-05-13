@@ -8,6 +8,7 @@ interface Props {
   lon: number | null;
   onChange: (lat: number | null, lon: number | null) => void;
   label?: string;
+  compact?: boolean;
 }
 
 type LeafletModule = typeof import("leaflet");
@@ -36,6 +37,7 @@ const LocationPinPicker = ({
   lon,
   onChange,
   label = "ปักหมุดที่อยู่จัดส่ง",
+  compact = false,
 }: Props) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -229,8 +231,8 @@ const LocationPinPicker = ({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className={compact ? "space-y-2.5" : "space-y-3"}>
+      <div className={compact ? "flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" : "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"}>
         <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
           <MapPin size={14} className="text-blue-600 dark:text-blue-400" />
           {label}
@@ -297,7 +299,7 @@ const LocationPinPicker = ({
 
       <div
         ref={mapContainerRef}
-        className="h-64 w-full cursor-crosshair overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700"
+        className={`${compact ? "h-[48dvh] min-h-72 max-h-[420px]" : "h-64"} w-full cursor-crosshair overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700`}
       />
 
       {hasPin ? (

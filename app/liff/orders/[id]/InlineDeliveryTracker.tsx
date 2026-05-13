@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Clock, Navigation, Phone } from "lucide-react";
+import { AlertCircle, Clock, Crosshair, Navigation, Phone, RefreshCw } from "lucide-react";
 
 import {
   estimateDeliveryRoute,
@@ -14,6 +14,7 @@ import {
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
+const RESUME_REFRESH_DEBOUNCE_MS = 5000;
 
 type Driver = { lat: number; lon: number; accuracy: number; updatedAt: string };
 
@@ -57,6 +58,11 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
   return formatClockTime(new Date(baseTime + durationSeconds * 1000));
 }
 
+function formatRefreshTime(date: Date | null): string {
+  if (!date) return "ยังไม่ได้รีเฟรช";
+  return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
+}
+
 const InlineDeliveryTracker = ({
   token,
   destLat,
@@ -74,12 +80,16 @@ const InlineDeliveryTracker = ({
   });
   const [eta, setEta] = useState<{ duration: number; distance: number; estimated?: boolean } | null>(null);
   const [pollError, setPollError] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(new Date());
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const driverMarkerRef = useRef<import("leaflet").Marker | null>(null);
   const routeLayerRef = useRef<import("leaflet").Polyline | null>(null);
   const prevDriverPosRef = useRef<{ lat: number; lon: number } | null>(null);
+  const refreshInFlightRef = useRef(false);
+  const lastResumeRefreshRef = useRef(0);
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
@@ -109,7 +119,7 @@ const InlineDeliveryTracker = ({
 
       const driverIcon = L.divIcon({
         className: "",
-        html: '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">🚚</div>',
+        html: '<div style="position:relative;width:32px;height:32px;display:grid;place-items:center"><div style="position:absolute;inset:1px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
         iconSize: [32, 32],
         iconAnchor: [16, 16],
       });
@@ -175,14 +185,14 @@ const InlineDeliveryTracker = ({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateMapMarkers = useCallback(
-    async (driver: Driver) => {
+    async (driver: Driver, options: { forceRoute?: boolean; recenter?: boolean } = {}) => {
       const L = (await import("leaflet")).default;
       const map = mapRef.current;
       if (!map) return;
 
       const driverIcon = L.divIcon({
         className: "",
-        html: '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">🚚</div>',
+        html: '<div style="position:relative;width:32px;height:32px;display:grid;place-items:center"><div style="position:absolute;inset:1px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
         iconSize: [32, 32],
         iconAnchor: [16, 16],
       });
@@ -198,7 +208,9 @@ const InlineDeliveryTracker = ({
 
       const prev = prevDriverPosRef.current;
       const needsRoute =
-        destLat && destLon && (!prev || shouldRecalcRoute(prev.lat, prev.lon, driver.lat, driver.lon));
+        destLat &&
+        destLon &&
+        (options.forceRoute || !prev || shouldRecalcRoute(prev.lat, prev.lon, driver.lat, driver.lon));
 
       if (needsRoute && destLat && destLon) {
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
@@ -233,34 +245,81 @@ const InlineDeliveryTracker = ({
           });
         }
       }
+
+      map.invalidateSize();
+      if (options.recenter && destLat && destLon) {
+        map.fitBounds(
+          [[driver.lat, driver.lon], [destLat, destLon]],
+          { padding: [30, 30] },
+        );
+      }
     },
     [destLat, destLon, token],
   );
 
-  useEffect(() => {
-    const abortController = new AbortController();
+  const refreshTracking = useCallback(
+    async (options: { forceRoute?: boolean; recenter?: boolean; showSpinner?: boolean } = {}) => {
+      if (refreshInFlightRef.current) return;
+      refreshInFlightRef.current = true;
+      if (options.showSpinner) setIsRefreshing(true);
 
-    const poll = async () => {
       try {
-        const res = await fetch(`/api/liff/tracking/${token}`, {
-          cache: "no-store",
-          signal: abortController.signal,
-        });
-        if (!res.ok) return;
+        const res = await fetch(`/api/liff/tracking/${token}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("API error");
         const json = (await res.json()) as TrackingData;
         setPollError(false);
         setData(json);
-        if (json.driver) await updateMapMarkers(json.driver);
+        setLastRefreshedAt(new Date());
+        if (json.driver) {
+          await updateMapMarkers(json.driver, {
+            forceRoute: options.forceRoute,
+            recenter: options.recenter,
+          });
+        } else {
+          mapRef.current?.invalidateSize();
+        }
       } catch {
         setPollError(true);
+      } finally {
+        refreshInFlightRef.current = false;
+        if (options.showSpinner) setIsRefreshing(false);
       }
+    },
+    [token, updateMapMarkers],
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      void refreshTracking();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refreshTracking]);
+
+  useEffect(() => {
+    const refreshAfterResume = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastResumeRefreshRef.current < RESUME_REFRESH_DEBOUNCE_MS) return;
+      lastResumeRefreshRef.current = now;
+      window.setTimeout(() => {
+        mapRef.current?.invalidateSize();
+        void refreshTracking({ forceRoute: true, recenter: true });
+      }, 250);
     };
-    const id = setInterval(poll, POLL_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", refreshAfterResume);
+    window.addEventListener("focus", refreshAfterResume);
+    window.addEventListener("pageshow", refreshAfterResume);
+    window.addEventListener("online", refreshAfterResume);
+
     return () => {
-      clearInterval(id);
-      abortController.abort();
+      document.removeEventListener("visibilitychange", refreshAfterResume);
+      window.removeEventListener("focus", refreshAfterResume);
+      window.removeEventListener("pageshow", refreshAfterResume);
+      window.removeEventListener("online", refreshAfterResume);
     };
-  }, [token, updateMapMarkers]);
+  }, [refreshTracking]);
 
   const driver = data.driver;
   const stale = driver
@@ -282,6 +341,19 @@ const InlineDeliveryTracker = ({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-3 py-2">
+        <p className="text-xs font-semibold text-slate-500">{formatRefreshTime(lastRefreshedAt)}</p>
+        <button
+          type="button"
+          onClick={() => refreshTracking({ forceRoute: true, recenter: true, showSpinner: true })}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-1.5 rounded-full bg-[#e9f8f0] px-3 py-1.5 text-xs font-bold text-[#06c755] transition active:scale-95 disabled:cursor-wait disabled:opacity-70"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          รีเฟรช
+        </button>
+      </div>
+
       {/* ETA row */}
       {eta && driver && (
         <div className="flex items-center justify-between gap-3 rounded-xl bg-blue-50 px-3 py-2.5">
@@ -309,14 +381,36 @@ const InlineDeliveryTracker = ({
       )}
 
       {/* Map */}
-      <div className="overflow-hidden rounded-xl border border-blue-100">
+      <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-slate-50">
+        <div ref={mapContainerRef} className="h-[50vh] min-h-72 w-full" />
+        <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+          {routeStatusText ? (
+            <div className="max-w-[76%] rounded-2xl bg-white/95 px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur">
+              {routeStatusText}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              if (driver) void updateMapMarkers(driver, { recenter: true });
+              else mapRef.current?.invalidateSize();
+            }}
+            className="pointer-events-auto ml-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-blue-800 shadow-sm backdrop-blur transition active:scale-95"
+            aria-label="กลับไปดูตำแหน่งบนแผนที่"
+          >
+            <Crosshair className="h-4 w-4" />
+          </button>
+        </div>
         {!driver && !destLat ? (
-          <div className="flex h-48 items-center justify-center bg-slate-50 text-sm text-slate-400">
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-sm text-slate-400">
             รอรับตำแหน่งพนักงานส่ง...
           </div>
-        ) : (
-          <div ref={mapContainerRef} className="h-[50vh] w-full" />
-        )}
+        ) : null}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs leading-relaxed text-slate-600">
+        <AlertCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
+        <span>หากหมุดไม่ตรงกับสถานที่จัดส่ง กรุณาแจ้งพนักงานส่งของหรือทัก LINE OA เพื่อปรับข้อมูล</span>
       </div>
 
       {/* Route summary */}

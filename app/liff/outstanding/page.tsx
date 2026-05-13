@@ -52,30 +52,33 @@ export default async function LiffOutstandingPage() {
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
-      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
-        <p className="text-sm font-semibold text-blue-700">ยอดค้างชำระ</p>
+      <section className="overflow-hidden rounded-b-[32px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
+        <p className="text-sm font-semibold text-blue-700">ชำระเงิน</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">{customer.name}</h1>
-        <div className="mt-5 rounded-2xl border border-blue-100 bg-white/90 px-4 py-5 text-slate-950 shadow-sm">
-          <p className="text-sm font-semibold text-slate-600">ยอดค้างทั้งหมด</p>
+        <p className="mt-2 text-sm text-slate-600">
+          {rows.length > 0 ? "ตรวจยอดและเลือกบิลที่ต้องการดูรายละเอียดได้เลย" : "ตอนนี้บัญชีของคุณเรียบร้อยดี"}
+        </p>
+        <div className="mt-5 rounded-[24px] border border-blue-100 bg-white/90 px-4 py-5 text-slate-950 shadow-sm">
+          <p className="text-sm font-semibold text-slate-600">ยอดที่ต้องชำระ</p>
           <p className="mt-1 font-kanit text-4xl font-extrabold text-[#06152d] drop-shadow-sm">
             {formatLiffMoney(totalOutstanding)} บาท
           </p>
           <p className="mt-2 text-sm text-slate-600">
-            {rows.length} บิล{overdueCount > 0 ? ` · เกินกำหนด ${overdueCount} บิล` : ""}
+            {rows.length} บิล{overdueCount > 0 ? ` · ควรชำระด่วน ${overdueCount} บิล` : ""}
           </p>
         </div>
       </section>
 
       <section className="space-y-4 px-5 py-5">
-        <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+        <div className="rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5">
           <div className="mb-3 flex items-center gap-2">
             <Landmark className="h-5 w-5 text-blue-700" />
-            <h2 className="font-kanit text-lg font-bold text-slate-950">ช่องทางรับชำระเงิน</h2>
+            <h2 className="font-kanit text-lg font-bold text-slate-950">ช่องทางชำระเงิน</h2>
           </div>
           {transferAccount ? (
             <div className="space-y-2 text-sm">
               <p className="font-semibold text-slate-900">{transferAccount.bankName ?? transferAccount.name}</p>
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-blue-50/60 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2">
                 <p className="text-slate-600">เลขบัญชี {transferAccount.accountNo ?? "-"}</p>
                 {transferAccount.accountNo ? (
                   <CopyPaymentValueButton label="คัดลอกเลขบัญชี" value={transferAccount.accountNo} />
@@ -83,13 +86,13 @@ export default async function LiffOutstandingPage() {
               </div>
               <p className="text-slate-600">ชื่อบัญชี {transferAccount.name}</p>
               {transferAccount.promptPayId ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-blue-50/60 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2">
                   <p className="text-slate-600">PromptPay {transferAccount.promptPayId}</p>
                   <CopyPaymentValueButton label="คัดลอก PromptPay" value={transferAccount.promptPayId} />
                 </div>
               ) : null}
-              <p className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-                หลังโอนเงินกรุณาส่งสลิปในแชท LINE OA นี้ได้เลยค่ะ
+              <p className="rounded-2xl bg-[#e9f8f0] px-3 py-2 text-xs font-semibold text-emerald-800">
+                หลังโอนแล้ว ส่งสลิปในแชท LINE OA นี้ได้เลยค่ะ
               </p>
             </div>
           ) : (
@@ -99,16 +102,16 @@ export default async function LiffOutstandingPage() {
 
         <div className="space-y-3">
           {rows.length === 0 ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-8 text-center text-emerald-800 shadow-sm">
+            <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-8 text-center text-emerald-800 shadow-sm">
               <CheckCircle2 className="mx-auto mb-2 h-7 w-7" />
-              <p className="font-semibold">ขณะนี้ไม่มีบิลค้างชำระ ขอบคุณค่ะ</p>
+              <p className="font-semibold">ไม่มีบิลที่ต้องชำระ ขอบคุณค่ะ</p>
             </div>
           ) : (
             rows.map((sale) => (
               <Link
                 key={sale.id}
                 href={`/liff/orders/${sale.id}`}
-                className="block rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"
+                className="block rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5 transition active:scale-[0.99]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -120,7 +123,7 @@ export default async function LiffOutstandingPage() {
                     </div>
                     <p className="mt-1 text-xs text-slate-500">วันที่ขาย {formatDateThai(sale.saleDate)}</p>
                     <p className={sale.overdue ? "mt-1 text-xs font-semibold text-rose-700" : "mt-1 text-xs text-slate-500"}>
-                      ครบกำหนด {formatDateThai(sale.dueDate)}
+                      ควรชำระภายใน {formatDateThai(sale.dueDate)}
                     </p>
                     <span className={`mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold ${SHIPPING_STATUS_BADGE[sale.shippingStatus] ?? "bg-slate-100 text-slate-700"}`}>
                       <Truck size={12} />
@@ -139,11 +142,17 @@ export default async function LiffOutstandingPage() {
                     <p className="font-bold text-slate-950">{formatLiffMoney(sale.paidAmount)}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500">คงค้าง</p>
+                    <p className="text-slate-500">ต้องชำระ</p>
                     <p className={sale.overdue ? "font-bold text-rose-700" : "font-bold text-amber-700"}>
                       {formatLiffMoney(sale.amountRemain)}
                     </p>
                   </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2 text-xs">
+                  <span className="font-semibold text-slate-600">
+                    {sale.overdue ? "บิลนี้ควรชำระด่วน" : "เปิดบิลเพื่อดูรายละเอียด"}
+                  </span>
+                  <span className="font-bold text-blue-800">ดูบิล</span>
                 </div>
               </Link>
             ))

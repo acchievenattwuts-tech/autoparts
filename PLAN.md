@@ -6438,6 +6438,18 @@ DOC_VERIFY_SECRET=<random 32+ chars>
 - Date-only document fields, claim dates, report ranges, and business day calculations must parse/format through `lib/th-date.ts`.
 - Do not add bare `DateTime`, PostgreSQL `timestamp without time zone`, manual `setHours`/`setDate`, or `toISOString().slice(...)` date formatting for Thailand business dates.
 
+### LIFF Customer UI/UX Polish (2026-05-13)
+
+> Scope: ปรับ presentation ให้หน้าลูกค้าใน LINE ดู friendly/service-like ขึ้น โดยไม่เพิ่ม schema, ไม่เปลี่ยน business logic, และไม่เพิ่ม query ที่ไม่จำเป็น
+
+- [x] ปรับ LIFF app shell / bottom nav / onboarding ให้ soft ขึ้นและเข้ากับ LINE service UI มากขึ้น
+- [x] ปรับหน้า `/liff/orders` ให้เริ่มจาก greeting + summary ยอดที่ต้องชำระ + สถานะจัดส่ง โดยคำนวณจาก query เดิม
+- [x] ปรับ wording บิลจากศัพท์บัญชีแข็ง ๆ เช่น `คงค้าง` เป็น `ต้องชำระ` และเน้น CTA "ดูบิล/ช่องทางชำระ"
+- [x] ปรับหน้า `/liff/outstanding` ให้เป็น flow ชำระเงิน: ยอดที่ต้องชำระ, ช่องทางชำระ, copy account/PromptPay, และข้อความส่งสลิป
+- [x] ปรับการ์ดบิล detail / warranty / claim ให้ rounded, soft shadow, active feedback และรักษา dark mode mapping ใน `globals.css`
+- [x] Performance guard: ไม่เพิ่ม DB query ในหน้า list บิล, ใช้ `select` เดิม, `take` เดิม, และคำนวณ summary จากผล query ที่มีอยู่
+- [x] Verification: `npm run build` ผ่าน 0 errors; dev server เปิดบนพอร์ต 3100 ได้ แต่ in-app browser navigate ไป localhost timeout จึงยืนยัน route ผ่าน HTTP แทน
+
 ### Cost Summary (Final — รอบนี้)
 
 | Phase | Cost/เดือน | สถานะ |
@@ -6612,4 +6624,53 @@ Customer (LINE)
 - [x] แก้ public OSRM route URL ให้ไม่ส่ง query `timeout` ที่ทำให้ `router.project-osrm.org` ตอบ `InvalidQuery`
 - [ ] ทดสอบ 4 กรณีหลัก: self-host success, self-host fail แล้ว backup success, ทั้งคู่ fail, token invalid/expired
 - [x] รัน `npm run build` หลังลงงาน และอัปเดต checklist นี้ทันทีตามสถานะจริง
+
+### Roadmap Update (2026-05-13 - LIFF Tracking Resume UX Hardening)
+
+> Scope: ปรับ UX หน้าติดตามการจัดส่งให้เหมาะกับพฤติกรรมลูกค้าที่เปิดค้างไว้, หน้าจอ sleep, พับแอพ, หรือสลับแอพกลับมา โดยไม่เปลี่ยน schema หรือ business logic การจัดส่งเดิม
+
+- [x] แก้หน้า `/liff/tracking/[token]` ให้ Leaflet map container ถูก render ตลอด ป้องกัน map init ไม่ทำงานตอน state เริ่มเป็น loading/empty
+- [x] เพิ่ม refresh lifecycle สำหรับ tracking page: `visibilitychange`, `focus`, `pageshow`, `online`
+- [x] เพิ่ม debounce กันยิง API ซ้ำหลาย event ตอนลูกค้ากลับเข้าแอพ
+- [x] เพิ่ม manual refresh button พร้อม loading feedback และ `รีเฟรชล่าสุด`
+- [x] เพิ่ม `map.invalidateSize()` หลังกลับจาก sleep/สลับแอพ เพื่อให้ Leaflet วาด map ถูกขนาด
+- [x] เพิ่ม recenter control สำหรับกลับไปดูตำแหน่งรถส่ง/ปลายทางบน map
+- [x] ทำ route refresh แบบบังคับเฉพาะตอน resume/manual refresh; interval ปกติยังคำนวณ route ใหม่เฉพาะเมื่อพนักงานเคลื่อนที่เกิน threshold เดิม
+- [x] ปรับ map UX ให้ friendly ขึ้น: overlay สถานะบน map, marker รถส่งมี pulse เบา ๆ, soft card, ข้อความอธิบายเวลา/ตำแหน่งล่าสุด
+- [x] ปรับ inline tracking ในหน้า order detail ให้ใช้ behavior เดียวกันกับหน้า tracking เต็ม
+- [x] Verification: `npm run build` ผ่าน 0 errors
+
+### Roadmap Update (2026-05-13 - Admin Delivery GPS Refresh Alignment)
+
+> Scope: ปรับการอัปเดตตำแหน่งพนักงานส่งในหน้าคิวจัดส่งให้ถี่ขึ้นและใช้ lifecycle refresh logic เดียวกับฝั่งลูกค้า
+
+- [x] ปรับ `GpsUpdateBanner` จาก auto update ทุก 10 นาทีเป็นทุก 5 นาที
+- [x] เพิ่ม in-flight guard กันการอัปเดตตำแหน่งซ้อนกัน
+- [x] เพิ่ม debounce 5 วินาทีตอนกลับจาก sleep/พับแอพ/สลับแอพ เพื่อกัน event หลายตัวเรียก GPS ซ้ำ
+- [x] ปรับ auto refresh ให้ทำงานเมื่อหน้า visible เท่านั้น
+- [x] เพิ่ม resume lifecycle ให้ตรงกับฝั่งลูกค้า: `visibilitychange`, `focus`, `pageshow`, `online`
+- [x] คง retry network/server action failure สูงสุด 2 ครั้ง พร้อม exponential backoff
+- [x] Verification: `npm run build` ผ่าน 0 errors
+
+### Roadmap Update (2026-05-13 - Destination Pin Save Scope UX)
+
+> Scope: ปรับหน้าแก้ไขหมุดในคิวจัดส่งให้กระชับขึ้น ไม่มี tooltip และเพิ่มทางเลือกบันทึกหมุดได้ทั้งเฉพาะบิลขาย หรือบันทึกเข้าลูกค้า + บิลขาย พร้อมข้อความแจ้งลูกค้าใน LIFF tracking
+
+- [x] เพิ่มปุ่มบันทึก 2 แบบในหน้าแก้ไขหมุด: `เฉพาะบิลนี้` และ `ลูกค้า + บิลนี้`
+- [x] เพิ่ม server action สำหรับบันทึกพิกัดลง `Sale.destLatitude/destLongitude` และ `Customer.defaultLatitude/defaultLongitude` ใน transaction เดียว
+- [x] ให้ action ฝั่ง server lookup ลูกค้าจาก `saleId` เอง และ select เฉพาะ field ที่จำเป็น
+- [x] ปรับ sheet แก้ไขหมุดให้สั้นลง: ตัดข้อความอธิบายยาว คงพื้นที่ map ให้ใหญ่พอสำหรับปักหมุด และย้ายปุ่มบันทึกเป็น footer คงที่
+- [x] เพิ่มข้อความใน LIFF tracking: `หากหมุดไม่ตรงกับสถานที่จัดส่ง กรุณาแจ้งพนักงานส่งของหรือทัก LINE OA เพื่อปรับข้อมูล`
+- [x] Verification: `npm run build` ผ่าน 0 errors
+
+### Roadmap Update (2026-05-13 - Mobile Delivery Queue Friendly UX)
+
+> Scope: ปรับหน้าจัดคิวสำหรับโทรศัพท์ให้เป็น task list ที่เน้นข้อมูลจำเป็น ไม่เพิ่ม query ใหม่ ไม่เปลี่ยน permission และไม่ทำโหมด "กำลังจัดส่งของฉัน"
+
+- [x] ปรับการ์ดคิวให้แสดงข้อมูลหน้าแรกเฉพาะที่จำเป็น: ลำดับคิว, เลขบิล, สถานะ, ลูกค้า, ยอด/COD, ที่อยู่, สถานะหมุด
+- [x] เพิ่มแถวปุ่มด่วนบนการ์ด: โทร, นำทาง, หลักฐาน, ปัก/แก้หมุด
+- [x] ซ่อนข้อมูลรองไว้หลังปุ่ม `รายละเอียดสินค้า/ขนส่ง`: รายการสินค้า, ผู้ส่ง, ประเภทขนส่ง, tracking
+- [x] คงปุ่มเปลี่ยนสถานะไว้หน้าแรกเพื่อไม่เพิ่มขั้นตอนงานหลักของพนักงานส่ง
+- [x] ไม่เพิ่ม query ใหม่ และใช้ข้อมูลเดิมที่หน้าโหลดมาอยู่แล้ว
+- [x] Verification: `npm run build` ผ่าน 0 errors
 

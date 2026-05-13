@@ -32,7 +32,7 @@ export default function LiffStatusTabs({
 
   return (
     <div
-      className="relative grid grid-cols-3 gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 p-1 text-xs font-bold"
+      className="relative grid grid-cols-3 gap-2 rounded-full border border-blue-100 bg-white/80 p-1 text-xs font-bold shadow-sm shadow-blue-950/5"
       aria-busy={isPending}
     >
       {tabs.map((tab) => {
@@ -43,8 +43,8 @@ export default function LiffStatusTabs({
             type="button"
             onClick={() => handleTabClick(tab)}
             disabled={isPending && !isActive}
-            className={`flex min-h-9 items-center justify-center gap-1 rounded-md px-2 py-2 text-center transition ${
-              isActive ? "bg-white text-blue-800 shadow-sm" : "text-slate-500"
+            className={`flex min-h-9 items-center justify-center gap-1 rounded-full px-2 py-2 text-center transition ${
+              isActive ? "bg-blue-800 text-white shadow-sm shadow-blue-900/15" : "text-slate-500"
             } ${isPending ? "cursor-wait" : ""}`}
           >
             {isPending && pendingKey === tab.key ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}

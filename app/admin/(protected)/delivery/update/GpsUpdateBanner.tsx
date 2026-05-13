@@ -6,8 +6,9 @@ import { AlertCircle, CheckCircle2, Loader2, Navigation } from "lucide-react";
 import { formatDateTimeThai } from "@/lib/th-date";
 import { updateDriverLocationAction } from "../track/actions";
 
-const AUTO_UPDATE_MS = 10 * 60 * 1000; // 10 minutes
+const AUTO_UPDATE_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_ACCURACY_M = 100;
+const RESUME_UPDATE_DEBOUNCE_MS = 5000;
 
 type GpsState =
   | { status: "idle" }
@@ -21,15 +22,36 @@ type Props = {
 
 export default function GpsUpdateBanner({ saleIds }: Props) {
   const [gps, setGps] = useState<GpsState>({ status: "idle" });
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryCountRef = useRef(0);
+  const updateInFlightRef = useRef(false);
+  const lastResumeUpdateRef = useRef(0);
 
   const updateLocation = useCallback(async () => {
+    if (updateInFlightRef.current) return;
+    if (saleIds.length === 0) return;
+
     if (!navigator.geolocation) {
       setGps({ status: "error", message: "อุปกรณ์ไม่รองรับ GPS" });
       return;
     }
+
+    updateInFlightRef.current = true;
     setGps({ status: "loading" });
+
+    const scheduleRetry = (message: string) => {
+      if (retryCountRef.current < 2) {
+        retryCountRef.current++;
+        const delay = 2000 * Math.pow(2, retryCountRef.current - 1);
+        updateInFlightRef.current = false;
+        setGps({ status: "loading" });
+        window.setTimeout(() => updateLocation(), delay);
+        return;
+      }
+
+      setGps({ status: "error", message });
+      retryCountRef.current = 0;
+      updateInFlightRef.current = false;
+    };
 
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
@@ -38,28 +60,25 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
             status: "error",
             message: `GPS ไม่แม่นยำพอ (${Math.round(coords.accuracy)} ม.) โปรดออกไปที่โล่งแจ้ง`,
           });
+          updateInFlightRef.current = false;
           return;
         }
-        const res = await updateDriverLocationAction(
-          saleIds,
-          coords.latitude,
-          coords.longitude,
-          coords.accuracy,
-        );
-        if (res.success) {
-          setGps({ status: "success", accuracy: coords.accuracy, updatedAt: new Date() });
-          retryCountRef.current = 0;
-        } else {
-          // Retry on network errors (up to 2 times with exponential backoff)
-          if (retryCountRef.current < 2) {
-            retryCountRef.current++;
-            const delay = 2000 * Math.pow(2, retryCountRef.current - 1);
-            setTimeout(() => updateLocation(), delay);
-            setGps({ status: "loading" });
-          } else {
-            setGps({ status: "error", message: res.error ?? "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+        try {
+          const res = await updateDriverLocationAction(
+            saleIds,
+            coords.latitude,
+            coords.longitude,
+            coords.accuracy,
+          );
+          if (res.success) {
+            setGps({ status: "success", accuracy: coords.accuracy, updatedAt: new Date() });
             retryCountRef.current = 0;
+            updateInFlightRef.current = false;
+          } else {
+            scheduleRetry(res.error ?? "เกิดข้อผิดพลาด กรุณาลองใหม่");
           }
+        } catch {
+          scheduleRetry("เกิดข้อผิดพลาด กรุณาลองใหม่");
         }
       },
       (err) => {
@@ -70,33 +89,42 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
         };
         setGps({ status: "error", message: msg[err.code] ?? "GPS ผิดพลาด" });
         retryCountRef.current = 0;
+        updateInFlightRef.current = false;
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
   }, [saleIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    timerRef.current = setInterval(updateLocation, AUTO_UPDATE_MS);
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void updateLocation();
+    }, AUTO_UPDATE_MS);
 
-    // Pause auto-update when tab is not visible to save battery/data
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-        }
-      } else {
-        // Resume when tab becomes visible
-        updateLocation(); // Update immediately when tab becomes visible
-        timerRef.current = setInterval(updateLocation, AUTO_UPDATE_MS);
-      }
+    return () => window.clearInterval(id);
+  }, [updateLocation]);
+
+  useEffect(() => {
+    const updateAfterResume = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastResumeUpdateRef.current < RESUME_UPDATE_DEBOUNCE_MS) return;
+      lastResumeUpdateRef.current = now;
+      window.setTimeout(() => {
+        void updateLocation();
+      }, 250);
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", updateAfterResume);
+    window.addEventListener("focus", updateAfterResume);
+    window.addEventListener("pageshow", updateAfterResume);
+    window.addEventListener("online", updateAfterResume);
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", updateAfterResume);
+      window.removeEventListener("focus", updateAfterResume);
+      window.removeEventListener("pageshow", updateAfterResume);
+      window.removeEventListener("online", updateAfterResume);
     };
   }, [updateLocation]);
 
@@ -128,7 +156,7 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
           )}
           {gps.status === "idle" && (
             <p className="mt-0.5 text-xs text-blue-600 dark:text-sky-400">
-              กดปุ่มเพื่ออัปเดต · อัตโนมัติทุก 10 นาที
+              กดปุ่มเพื่ออัปเดต · อัตโนมัติทุก 5 นาที
             </p>
           )}
         </div>

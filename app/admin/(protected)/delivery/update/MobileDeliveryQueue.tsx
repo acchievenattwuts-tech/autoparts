@@ -47,6 +47,7 @@ type QueueItem = {
   saleId: string;
   saleNo: string;
   saleDate: string;
+  customerId: string | null;
   customerName: string;
   customerPhone: string | null;
   shippingAddress: string | null;
@@ -304,6 +305,7 @@ const MobileDeliveryQueue = ({
             ? {
                 saleId: selectedPinSale.saleId,
                 saleNo: selectedPinSale.saleNo,
+                customerId: selectedPinSale.customerId,
                 customerName: selectedPinSale.customerName,
                 destLatitude: selectedPinSale.destLatitude,
                 destLongitude: selectedPinSale.destLongitude,

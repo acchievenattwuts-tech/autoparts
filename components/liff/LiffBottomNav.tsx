@@ -3,16 +3,16 @@ import { BadgeDollarSign, ReceiptText, ShieldAlert, ShieldCheck, UserRound } fro
 
 const navItems = [
   { href: "/liff/orders", label: "บิล", icon: ReceiptText },
-  { href: "/liff/outstanding", label: "ค้าง", icon: BadgeDollarSign },
+  { href: "/liff/outstanding", label: "ชำระ", icon: BadgeDollarSign },
   { href: "/liff/warranties", label: "ประกัน", icon: ShieldCheck },
   { href: "/liff/claims", label: "เคลม", icon: ShieldAlert },
-  { href: "/liff/profile", label: "ข้อมูล", icon: UserRound },
+  { href: "/liff/profile", label: "ฉัน", icon: UserRound },
 ];
 
 export default function LiffBottomNav({ active }: { active: string }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-blue-100 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(37,99,235,0.08)] backdrop-blur">
-      <div className="mx-auto grid max-w-md grid-cols-5">
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-blue-100 bg-white/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-14px_34px_rgba(37,99,235,0.10)] backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 px-2 py-1">
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive = active === href;
           return (
@@ -20,13 +20,13 @@ export default function LiffBottomNav({ active }: { active: string }) {
               key={href}
               href={href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex flex-col items-center gap-1 px-1 py-2 text-[11px] font-semibold ${
-                isActive ? "text-blue-800" : "text-slate-500"
+              className={`flex min-h-[58px] flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition active:scale-[0.98] ${
+                isActive ? "text-blue-900" : "text-slate-500"
               }`}
             >
               <span
-                className={`inline-flex min-h-7 min-w-10 items-center justify-center rounded-full transition ${
-                  isActive ? "bg-blue-50 ring-1 ring-blue-100" : "bg-transparent"
+                className={`inline-flex h-8 min-w-12 items-center justify-center rounded-full transition ${
+                  isActive ? "bg-[#e9f8f0] text-[#06c755] ring-1 ring-emerald-100 shadow-sm" : "bg-transparent"
                 }`}
               >
                 <Icon size={18} />

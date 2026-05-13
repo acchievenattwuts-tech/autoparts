@@ -185,6 +185,7 @@ const MobileDeliveryCard = ({
   const [shippingMethodInput, setShippingMethodInput] = useState(shippingMethod);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [showAllItems, setShowAllItems] = useState(false);
 
   const [prevTrackingNo, setPrevTrackingNo] = useState(trackingNo ?? "");
@@ -221,6 +222,8 @@ const MobileDeliveryCard = ({
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
   const previewItems = items.slice(0, 2);
   const hasMoreItems = items.length > previewItems.length;
+  const hasDestinationPin = destLatitude !== null && destLongitude !== null;
+  const itemSummary = `${items.length.toLocaleString("th-TH")} รายการ · รวม ${totalQuantity.toLocaleString("th-TH")} ชิ้น`;
 
   const runUpdate = (nextStatus: ShippingStatus) => {
     setError("");
@@ -359,7 +362,18 @@ const MobileDeliveryCard = ({
 
       <div className="space-y-3 px-4 py-3">
         <div>
-          <p className="text-base font-semibold text-gray-900 dark:text-slate-100">{customerName}</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 text-base font-semibold text-gray-900 dark:text-slate-100">{customerName}</p>
+            <span
+              className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                hasDestinationPin
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200"
+              }`}
+            >
+              {hasDestinationPin ? "มีหมุด" : "ยังไม่มีหมุด"}
+            </span>
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <span className="text-base font-bold text-gray-900 dark:text-slate-100">
               ฿{netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -376,17 +390,23 @@ const MobileDeliveryCard = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {shippingAddress ? (
+          <div className="rounded-2xl bg-gray-50 px-3 py-2 text-sm leading-relaxed text-gray-600 dark:bg-white/5 dark:text-slate-300">
+            {shippingAddress}
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-4 gap-2">
           {phoneDigits ? (
             <a
               href={`tel:${phoneDigits}`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 active:scale-[0.98] dark:bg-blue-400/10 dark:text-blue-300"
+              className="inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-blue-50 px-2 py-2 text-xs font-semibold text-blue-700 active:scale-[0.98] dark:bg-blue-400/10 dark:text-blue-300"
             >
               <Phone size={16} />
-              <span className="truncate">{customerPhone}</span>
+              <span>โทร</span>
             </a>
           ) : (
-            <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-400 dark:bg-white/5 dark:text-slate-500">
+            <span className="inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-400 dark:bg-white/5 dark:text-slate-500">
               <Phone size={16} />
               ไม่มีเบอร์
             </span>
@@ -396,25 +416,70 @@ const MobileDeliveryCard = ({
               href={mapsHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-700 active:scale-[0.98] dark:bg-emerald-400/10 dark:text-emerald-300"
+              className="inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-emerald-50 px-2 py-2 text-xs font-semibold text-emerald-700 active:scale-[0.98] dark:bg-emerald-400/10 dark:text-emerald-300"
             >
               <MapPin size={16} />
-              เปิดแผนที่
+              นำทาง
             </a>
           ) : (
-            <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-sm font-medium text-gray-400 dark:bg-white/5 dark:text-slate-500">
+            <span className="inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-400 dark:bg-white/5 dark:text-slate-500">
               <MapPin size={16} />
               ไม่มีที่อยู่
             </span>
           )}
+          <button
+            type="button"
+            onClick={onOpenProof}
+            disabled={!canUpdate}
+            className={`inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+              proofCount > 0
+                ? "bg-emerald-600 text-white dark:bg-emerald-500"
+                : "bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300"
+            }`}
+          >
+            {proofCount > 0 ? <CheckCircle2 size={16} /> : <ClipboardCheck size={16} />}
+            <span>{proofCount > 0 ? `หลักฐาน ${proofCount.toLocaleString("th-TH")}` : "หลักฐาน"}</span>
+          </button>
+          {canUpdate ? (
+            <button
+              type="button"
+              onClick={onOpenPin}
+              className={`inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-xs font-semibold transition active:scale-[0.98] ${
+                hasDestinationPin
+                  ? "bg-orange-50 text-orange-700 dark:bg-orange-400/10 dark:text-orange-300"
+                  : "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200"
+              }`}
+            >
+              <MapPin size={16} />
+              <span>{hasDestinationPin ? "แก้หมุด" : "ปักหมุด"}</span>
+            </button>
+          ) : (
+            <span className="inline-flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-400 dark:bg-white/5 dark:text-slate-500">
+              <MapPin size={16} />
+              หมุด
+            </span>
+          )}
         </div>
 
-        {shippingAddress ? (
-          <div className="rounded-2xl bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:bg-white/5 dark:text-slate-300">
-            {shippingAddress}
-          </div>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setShowDetails((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition active:scale-[0.99] dark:border-white/10 dark:bg-slate-950"
+        >
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-slate-100">
+              <Package size={16} className="text-blue-700 dark:text-sky-300" />
+              รายละเอียดสินค้า/ขนส่ง
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-slate-400">
+              {itemSummary}
+            </span>
+          </span>
+          {showDetails ? <ChevronUp size={18} className="shrink-0 text-gray-500" /> : <ChevronDown size={18} className="shrink-0 text-gray-500" />}
+        </button>
 
+        {showDetails ? (
+          <div className="space-y-3">
         {items.length > 0 ? (
           <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 dark:border-sky-400/20 dark:bg-sky-400/10">
             <div className="flex items-start justify-between gap-3">
@@ -424,7 +489,7 @@ const MobileDeliveryCard = ({
                   <span>รายการสินค้า</span>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                  {items.length.toLocaleString("th-TH")} รายการ · รวม {totalQuantity.toLocaleString("th-TH")} ชิ้น
+                  {itemSummary}
                 </p>
               </div>
               <button
@@ -508,37 +573,6 @@ const MobileDeliveryCard = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenProof}
-          disabled={!canUpdate}
-          className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-3 py-3.5 text-sm font-semibold shadow-sm transition ${
-            proofCount > 0
-              ? "border-emerald-500 bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-emerald-900/15 hover:from-emerald-700 hover:to-teal-600 dark:border-emerald-300/30 dark:shadow-emerald-950/30"
-              : "border-sky-500 bg-gradient-to-r from-[#1e3a5f] to-sky-600 text-white shadow-sky-900/20 hover:from-[#173151] hover:to-sky-700 dark:border-sky-300/30 dark:shadow-sky-950/30"
-          } disabled:cursor-not-allowed disabled:opacity-50`}
-        >
-          {proofCount > 0 ? <CheckCircle2 size={18} /> : <ClipboardCheck size={18} />}
-          {proofCount > 0
-            ? `มีหลักฐาน ${proofCount.toLocaleString("th-TH")} รายการ`
-            : "บันทึกหลักฐานรับของ"}
-        </button>
-
-        {canUpdate ? (
-          <button
-            type="button"
-            onClick={onOpenPin}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 text-sm font-medium transition active:scale-[0.98] ${
-              destLatitude !== null && destLongitude !== null
-                ? "border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300"
-                : "border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:text-orange-700 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300"
-            }`}
-          >
-            <MapPin size={16} />
-            {destLatitude !== null && destLongitude !== null ? "แก้ไขหมุดปลายทาง" : "ปักหมุดปลายทาง"}
-          </button>
-        ) : null}
-
         <div className="rounded-2xl border border-gray-200 p-3 dark:border-white/10">
           <div className="grid gap-3">
             <div className="flex items-center justify-between gap-2">
@@ -618,6 +652,8 @@ const MobileDeliveryCard = ({
             ) : null}
           </div>
         </div>
+          </div>
+        ) : null}
 
         {canUpdate ? (
           <div className="grid grid-cols-2 gap-2">

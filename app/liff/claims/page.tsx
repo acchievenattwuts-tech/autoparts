@@ -86,10 +86,10 @@ export default async function LiffClaimsPage({
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
-      <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
+      <section className="overflow-hidden rounded-b-[32px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
         <p className="text-sm font-semibold text-blue-700">ประวัติการเคลม</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">เคลมสินค้าของคุณ</h1>
-        <div className="mt-5 rounded-2xl border border-blue-100 bg-white/90 px-4 py-4 shadow-sm">
+        <div className="mt-5 rounded-[24px] border border-blue-100 bg-white/90 px-4 py-4 shadow-sm">
           <p className="text-xs text-slate-500">รายการเคลมทั้งหมด</p>
           <p className="font-kanit text-2xl font-bold">{totalCount}</p>
           <p className="mt-1 text-xs text-slate-600">
@@ -108,7 +108,7 @@ export default async function LiffClaimsPage({
         />
 
         {claims.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
+          <div className="rounded-[24px] border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
             ยังไม่มีประวัติการเคลมสินค้า
           </div>
         ) : (
@@ -116,7 +116,7 @@ export default async function LiffClaimsPage({
             <Link
               key={claim.id}
               href={`/liff/claims/${claim.id}`}
-              className="block rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"
+              className="block rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5 transition active:scale-[0.99]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex gap-3">

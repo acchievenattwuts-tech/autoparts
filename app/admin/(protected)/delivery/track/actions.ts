@@ -39,6 +39,96 @@ export async function updateSaleDestinationPin(
   }
 }
 
+export async function updateSaleAndCustomerDestinationPin(
+  saleId: string,
+  latitude: number,
+  longitude: number,
+): Promise<{ success: boolean; error?: string }> {
+  await requirePermission("delivery.update");
+
+  const parsed = destPinSchema.safeParse({ saleId, latitude, longitude });
+  if (!parsed.success) return { success: false, error: "ข้อมูลตำแหน่งไม่ถูกต้อง" };
+
+  try {
+    await db.$transaction(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: { id: parsed.data.saleId },
+        select: {
+          id: true,
+          saleNo: true,
+          customerId: true,
+          destLatitude: true,
+          destLongitude: true,
+          customer: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              defaultLatitude: true,
+              defaultLongitude: true,
+            },
+          },
+        },
+      });
+
+      if (!sale) throw new Error("SALE_NOT_FOUND");
+      if (!sale.customerId || !sale.customer) throw new Error("CUSTOMER_NOT_FOUND");
+
+      await tx.sale.update({
+        where: { id: sale.id },
+        data: { destLatitude: parsed.data.latitude, destLongitude: parsed.data.longitude },
+      });
+
+      await tx.customer.update({
+        where: { id: sale.customerId },
+        data: {
+          defaultLatitude: parsed.data.latitude,
+          defaultLongitude: parsed.data.longitude,
+        },
+      });
+
+      await writeAuditLogTx(tx, {
+        action: AuditAction.UPDATE,
+        entityType: "Sale",
+        entityId: sale.id,
+        entityRef: sale.saleNo,
+        before: { destLatitude: sale.destLatitude, destLongitude: sale.destLongitude },
+        after: {
+          destLatitude: parsed.data.latitude,
+          destLongitude: parsed.data.longitude,
+          savedToCustomerDefault: true,
+        },
+      });
+
+      await writeAuditLogTx(tx, {
+        action: AuditAction.UPDATE,
+        entityType: "Customer",
+        entityId: sale.customer.id,
+        entityRef: sale.customer.code ?? sale.customer.name,
+        before: {
+          defaultLatitude: sale.customer.defaultLatitude,
+          defaultLongitude: sale.customer.defaultLongitude,
+        },
+        after: {
+          defaultLatitude: parsed.data.latitude,
+          defaultLongitude: parsed.data.longitude,
+          sourceSaleNo: sale.saleNo,
+        },
+      });
+    });
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof Error && error.message === "SALE_NOT_FOUND") {
+      return { success: false, error: "ไม่พบบิลขายนี้" };
+    }
+    if (error instanceof Error && error.message === "CUSTOMER_NOT_FOUND") {
+      return { success: false, error: "บิลขายนี้ยังไม่ได้ผูกข้อมูลลูกค้า จึงบันทึกได้เฉพาะบิลขาย" };
+    }
+    return { success: false, error: "เกิดข้อผิดพลาด กรุณาลองใหม่" };
+  }
+}
+
 const locationSchema = z.object({
   saleIds: z.array(z.string().min(1).max(50)).min(1).max(50),
   latitude: z.number().finite().gte(-90).lte(90),

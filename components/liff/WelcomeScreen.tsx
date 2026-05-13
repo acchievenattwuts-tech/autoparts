@@ -18,11 +18,14 @@ export default function WelcomeScreen() {
   return (
     <div className="fixed inset-0 z-50 bg-blue-950/35 px-5 py-8 backdrop-blur-sm">
       <div className="mx-auto flex min-h-full max-w-sm items-center">
-        <div className="w-full rounded-2xl border border-blue-100 bg-white p-5 shadow-2xl shadow-blue-950/20">
-          <div className="mb-5 rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 p-4">
-            <p className="font-kanit text-xl font-bold text-blue-950">บริการลูกค้าใน LINE</p>
+        <div className="w-full rounded-[28px] border border-blue-100 bg-white p-5 shadow-2xl shadow-blue-950/20">
+          <div className="mb-5 rounded-[24px] border border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 p-4">
+            <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#e9f8f0] text-[#06c755]">
+              <BadgeCheck className="h-5 w-5" />
+            </div>
+            <p className="font-kanit text-xl font-bold text-blue-950">ศูนย์บริการลูกค้าใน LINE</p>
             <p className="mt-1 text-sm text-slate-600">
-              ดูข้อมูลสำคัญของคุณได้เร็วขึ้นจากบัญชี LINE นี้
+              ดูบิล ชำระเงิน ประกัน และเคลมของคุณได้จากที่นี่
             </p>
           </div>
           <div className="space-y-3 text-sm text-slate-700">

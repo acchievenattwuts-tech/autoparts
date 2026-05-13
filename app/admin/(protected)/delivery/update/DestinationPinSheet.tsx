@@ -2,14 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, MapPin, Save, X } from "lucide-react";
+import { Loader2, Save, Users, X } from "lucide-react";
 
-import { updateSaleDestinationPin } from "../track/actions";
+import {
+  updateSaleAndCustomerDestinationPin,
+  updateSaleDestinationPin,
+} from "../track/actions";
 import LocationPinPicker from "@/components/shared/LocationPinPicker";
 
 export type DestinationPinSheetSale = {
   saleId: string;
   saleNo: string;
+  customerId: string | null;
   customerName: string;
   destLatitude: number | null;
   destLongitude: number | null;
@@ -20,9 +24,12 @@ type Props = {
   onClose: () => void;
 };
 
+type SaveScope = "sale" | "saleAndCustomer";
+
 const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [pendingScope, setPendingScope] = useState<SaveScope | null>(null);
   const [pinLat, setPinLat] = useState<number | null>(null);
   const [pinLon, setPinLon] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -32,20 +39,32 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
     setPinLat(selectedSale.destLatitude ?? null);
     setPinLon(selectedSale.destLongitude ?? null);
     setError("");
+    setPendingScope(null);
   }, [selectedSale]);
 
   if (!selectedSale) return null;
 
-  const handleSave = () => {
+  const handleSave = (scope: SaveScope) => {
     if (pinLat === null || pinLon === null) {
       setError("กรุณาปักหมุดตำแหน่งปลายทางก่อนบันทึก");
       return;
     }
+    if (scope === "saleAndCustomer" && !selectedSale.customerId) {
+      setError("บิลขายนี้ยังไม่ได้ผูกข้อมูลลูกค้า จึงบันทึกได้เฉพาะบิลขาย");
+      return;
+    }
+
     setError("");
+    setPendingScope(scope);
     startTransition(async () => {
-      const result = await updateSaleDestinationPin(selectedSale.saleId, pinLat, pinLon);
+      const result =
+        scope === "saleAndCustomer"
+          ? await updateSaleAndCustomerDestinationPin(selectedSale.saleId, pinLat, pinLon)
+          : await updateSaleDestinationPin(selectedSale.saleId, pinLat, pinLon);
+
       if (result?.error) {
         setError(result.error);
+        setPendingScope(null);
         return;
       }
       onClose();
@@ -53,11 +72,13 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
     });
   };
 
+  const isDisabled = isPending || pinLat === null || pinLon === null;
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm">
       <div className="flex min-h-dvh items-end justify-center sm:items-center">
-        <section className="max-h-[96dvh] w-full overflow-y-auto rounded-t-[28px] bg-slate-50 shadow-2xl dark:bg-slate-950 sm:max-w-lg sm:rounded-[28px]">
-          <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
+        <section className="flex max-h-[98dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-slate-50 shadow-2xl dark:bg-slate-950 sm:max-w-lg sm:rounded-3xl">
+          <div className="border-b border-gray-200 bg-white/95 px-4 py-2.5 backdrop-blur dark:border-white/10 dark:bg-slate-900/95">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-mono text-sm font-semibold text-[#1e3a5f] dark:text-sky-300">
@@ -81,12 +102,7 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
             </div>
           </div>
 
-          <div className="space-y-4 px-4 py-4">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-blue-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">
-              <MapPin size={13} className="mr-1 inline" />
-              หากมี Latitude/Longitude ที่บันทึกไว้ ระบบจะใช้พิกัดนั้นกับแผนที่อัตโนมัติแบบเดียวกับปุ่ม &quot;ใช้พิกัดที่กรอก&quot; หากยังไม่มีพิกัด แผนที่จะเริ่มจากตำแหน่งปัจจุบันเป็นจุดอ้างอิงและจะแจ้งว่ายังไม่ได้ปักหมุดจริง
-            </div>
-
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2.5">
             <LocationPinPicker
               lat={pinLat}
               lon={pinLon}
@@ -96,23 +112,39 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
                 setError("");
               }}
               label="ตำแหน่งปลายทาง"
+              compact
             />
 
             {error ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/20 dark:bg-red-500/5 dark:text-red-300">
+              <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/20 dark:bg-red-500/5 dark:text-red-300">
                 {error}
               </div>
             ) : null}
+          </div>
 
-            <div className="sticky bottom-0 -mx-4 border-t border-gray-200 bg-slate-50/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
+          <div className="border-t border-gray-200 bg-slate-50/95 px-4 py-2.5 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={handleSave}
-                disabled={isPending || pinLat === null || pinLon === null}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#1e3a5f] px-4 py-4 text-base font-bold text-white shadow-lg shadow-slate-900/10 transition active:scale-[0.98] disabled:opacity-60 dark:bg-sky-600"
+                onClick={() => handleSave("sale")}
+                disabled={isDisabled}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#1e3a5f] px-3 py-3 text-sm font-bold text-white shadow-lg shadow-slate-900/10 transition active:scale-[0.98] disabled:opacity-60 dark:bg-sky-600"
               >
-                {isPending ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                บันทึกหมุดปลายทาง
+                {pendingScope === "sale" ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
+                <span>เฉพาะบิลนี้</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSave("saleAndCustomer")}
+                disabled={isDisabled || !selectedSale.customerId}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-900/10 transition active:scale-[0.98] disabled:opacity-50 dark:bg-emerald-500"
+              >
+                {pendingScope === "saleAndCustomer" ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <Users size={17} />
+                )}
+                <span>ลูกค้า + บิลนี้</span>
               </button>
             </div>
           </div>
