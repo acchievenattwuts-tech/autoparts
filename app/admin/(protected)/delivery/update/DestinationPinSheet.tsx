@@ -84,7 +84,7 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
           <div className="space-y-4 px-4 py-4">
             <div className="rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs text-blue-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">
               <MapPin size={13} className="mr-1 inline" />
-              แตะบนแผนที่หรือกด &quot;ตำแหน่งปัจจุบัน&quot; เพื่อปักหมุดตำแหน่งบ้านลูกค้า
+              หากมี Latitude/Longitude ที่บันทึกไว้ ระบบจะใช้พิกัดนั้นกับแผนที่อัตโนมัติแบบเดียวกับปุ่ม &quot;ใช้พิกัดที่กรอก&quot; หากยังไม่มีพิกัด แผนที่จะเริ่มจากตำแหน่งปัจจุบันเป็นจุดอ้างอิงและจะแจ้งว่ายังไม่ได้ปักหมุดจริง
             </div>
 
             <LocationPinPicker

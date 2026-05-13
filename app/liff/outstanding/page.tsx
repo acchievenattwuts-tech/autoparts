@@ -56,8 +56,10 @@ export default async function LiffOutstandingPage() {
         <p className="text-sm font-semibold text-blue-700">ยอดค้างชำระ</p>
         <h1 className="mt-1 font-kanit text-2xl font-bold">{customer.name}</h1>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-white/90 px-4 py-5 text-slate-950 shadow-sm">
-          <p className="text-sm text-slate-500">ยอดค้างทั้งหมด</p>
-          <p className="mt-1 font-kanit text-3xl font-bold">{formatLiffMoney(totalOutstanding)} บาท</p>
+          <p className="text-sm font-semibold text-slate-600">ยอดค้างทั้งหมด</p>
+          <p className="mt-1 font-kanit text-4xl font-extrabold text-[#06152d] drop-shadow-sm">
+            {formatLiffMoney(totalOutstanding)} บาท
+          </p>
           <p className="mt-2 text-sm text-slate-600">
             {rows.length} บิล{overdueCount > 0 ? ` · เกินกำหนด ${overdueCount} บิล` : ""}
           </p>

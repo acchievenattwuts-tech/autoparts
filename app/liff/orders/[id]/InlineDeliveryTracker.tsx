@@ -44,6 +44,19 @@ function formatUpdatedAt(iso: string): string {
   });
 }
 
+function formatClockTime(date: Date): string {
+  return date.toLocaleTimeString("th-TH-u-ca-gregory", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
+  const baseTime = new Date(updatedAt).getTime();
+  if (Number.isNaN(baseTime)) return "";
+  return formatClockTime(new Date(baseTime + durationSeconds * 1000));
+}
+
 const InlineDeliveryTracker = ({
   token,
   destLat,
@@ -256,6 +269,8 @@ const InlineDeliveryTracker = ({
   const nearby =
     driver && destLat && destLon ? isNearby(driver.lat, driver.lon, destLat, destLon) : false;
   const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
+  const driverUpdatedClock = driver ? formatClockTime(new Date(driver.updatedAt)) : "";
+  const etaArrivalClock = driver && eta ? formatEtaArrival(driver.updatedAt, eta.duration) : "";
   const routeStatusText =
     !destLat || !destLon
       ? "ยังไม่มีหมุดปลายทางสำหรับคำนวณเส้นทาง"
@@ -272,9 +287,16 @@ const InlineDeliveryTracker = ({
         <div className="flex items-center justify-between gap-3 rounded-xl bg-blue-50 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <Clock size={15} className="text-blue-600" />
-            <span className="font-kanit text-sm font-bold text-blue-900">
-              ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
-            </span>
+            <div>
+              <p className="font-kanit text-sm font-bold text-blue-900">
+                ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
+              </p>
+              {driverUpdatedClock && etaArrivalClock ? (
+                <p className="text-[11px] font-medium text-blue-700">
+                  อัปเดต {driverUpdatedClock} · ถึงประมาณ {etaArrivalClock}
+                </p>
+              ) : null}
+            </div>
           </div>
           <span className="text-xs text-slate-500">{formatDistance(eta.distance)}</span>
         </div>
@@ -308,6 +330,11 @@ const InlineDeliveryTracker = ({
             <p className="mt-1 font-kanit text-base font-bold text-blue-950">
               ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
             </p>
+            {etaArrivalClock ? (
+              <p className="mt-1 text-[11px] font-semibold text-blue-700">
+                ถึงประมาณ {etaArrivalClock}
+              </p>
+            ) : null}
           </div>
           <div className="rounded-lg bg-white px-3 py-2 shadow-sm">
             <div className="flex items-center gap-1.5 text-xs text-slate-500">

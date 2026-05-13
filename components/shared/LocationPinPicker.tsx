@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Crosshair, MapPin, Trash2 } from "lucide-react";
+import { AlertCircle, Crosshair, MapPin, Trash2 } from "lucide-react";
 
 interface Props {
   lat: number | null;
@@ -44,6 +44,9 @@ const LocationPinPicker = ({
   const [hasPin, setHasPin] = useState(lat !== null && lon !== null);
   const [manualLat, setManualLat] = useState(lat !== null ? lat.toFixed(6) : "");
   const [manualLon, setManualLon] = useState(lon !== null ? lon.toFixed(6) : "");
+  const [mapHint, setMapHint] = useState("");
+  const [mapReady, setMapReady] = useState(false);
+  const didAutoCenterRef = useRef(false);
 
   const setMarker = async (nextLat: number, nextLon: number, zoom = 16) => {
     const L = (await import("leaflet")).default;
@@ -59,13 +62,64 @@ const LocationPinPicker = ({
       }).addTo(map);
       marker.on("dragend", () => {
         const pos = marker.getLatLng();
+        setManualLat(pos.lat.toFixed(6));
+        setManualLon(pos.lng.toFixed(6));
+        setHasPin(true);
+        setMapHint("");
         onChange(pos.lat, pos.lng);
       });
       markerRef.current = marker;
     }
 
     map.setView([nextLat, nextLon], Math.max(map.getZoom(), zoom));
+    setManualLat(nextLat.toFixed(6));
+    setManualLon(nextLon.toFixed(6));
     setHasPin(true);
+    setMapHint("");
+  };
+
+  const centerOnCurrentLocation = () => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!navigator.geolocation) {
+      setMapHint("ยังไม่ได้ปักหมุดปลายทาง — กรุณาแตะแผนที่หรือกรอกพิกัด");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const currentMap = mapRef.current;
+        if (!currentMap) return;
+        currentMap.setView([pos.coords.latitude, pos.coords.longitude], 16);
+        setHasPin(false);
+        setMapHint("ยังไม่ได้ปักหมุดปลายทาง — แผนที่แสดงตำแหน่งปัจจุบันเป็นจุดอ้างอิงเท่านั้น ยังไม่ใช่ข้อมูลจัดส่งจริง");
+      },
+      () => {
+        setMapHint("ยังไม่ได้ปักหมุดปลายทาง — กดตำแหน่งปัจจุบันหรือแตะแผนที่เพื่อปักหมุด");
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  };
+
+  const applyCoordsFromInputs = (nextLatText: string, nextLonText: string) => {
+    const parsedLat = parseFloat(nextLatText);
+    const parsedLon = parseFloat(nextLonText);
+
+    if (
+      Number.isNaN(parsedLat) ||
+      Number.isNaN(parsedLon) ||
+      parsedLat < -90 ||
+      parsedLat > 90 ||
+      parsedLon < -180 ||
+      parsedLon > 180
+    ) {
+      setMapHint("พิกัดไม่ถูกต้อง — กรุณาตรวจสอบ Latitude/Longitude อีกครั้ง");
+      return;
+    }
+
+    void setMarker(parsedLat, parsedLon);
+    onChange(parsedLat, parsedLon);
   };
 
   useEffect(() => {
@@ -73,6 +127,7 @@ const LocationPinPicker = ({
       setManualLat(lat.toFixed(6));
       setManualLon(lon.toFixed(6));
       setHasPin(true);
+      setMapHint("");
     } else {
       setManualLat("");
       setManualLon("");
@@ -81,14 +136,21 @@ const LocationPinPicker = ({
   }, [lat, lon]);
 
   useEffect(() => {
+    if (!mapReady) return;
+
     if (lat === null || lon === null) {
       markerRef.current?.remove();
       markerRef.current = null;
+      if (!didAutoCenterRef.current) {
+        didAutoCenterRef.current = true;
+        centerOnCurrentLocation();
+      }
       return;
     }
 
-    void setMarker(lat, lon);
-  }, [lat, lon]); // eslint-disable-line react-hooks/exhaustive-deps
+    didAutoCenterRef.current = false;
+    applyCoordsFromInputs(lat.toFixed(6), lon.toFixed(6));
+  }, [lat, lon, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mapRef.current || !mapContainerRef.current) return;
@@ -118,10 +180,8 @@ const LocationPinPicker = ({
       });
 
       mapRef.current = map;
-
-      if (lat !== null && lon !== null) {
-        void setMarker(lat, lon);
-      }
+      window.setTimeout(() => map.invalidateSize(), 80);
+      if (isMounted) setMapReady(true);
     })();
 
     return () => {
@@ -129,6 +189,7 @@ const LocationPinPicker = ({
       mapRef.current?.remove();
       mapRef.current = null;
       markerRef.current = null;
+      setMapReady(false);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -151,6 +212,7 @@ const LocationPinPicker = ({
     markerRef.current?.remove();
     markerRef.current = null;
     setHasPin(false);
+    setMapHint("ยังไม่ได้ปักหมุดปลายทาง — กดตำแหน่งปัจจุบันหรือแตะแผนที่เพื่อปักหมุด");
     onChange(null, null);
   };
 
@@ -163,22 +225,7 @@ const LocationPinPicker = ({
   };
 
   const handleApplyManualCoords = () => {
-    const parsedLat = parseFloat(manualLat);
-    const parsedLon = parseFloat(manualLon);
-
-    if (
-      Number.isNaN(parsedLat) ||
-      Number.isNaN(parsedLon) ||
-      parsedLat < -90 ||
-      parsedLat > 90 ||
-      parsedLon < -180 ||
-      parsedLon > 180
-    ) {
-      return;
-    }
-
-    void setMarker(parsedLat, parsedLon);
-    onChange(parsedLat, parsedLon);
+    applyCoordsFromInputs(manualLat, manualLon);
   };
 
   return (
@@ -258,8 +305,9 @@ const LocationPinPicker = ({
           ✓ ปักหมุดแล้ว — แตะแผนที่หรือลากหมุดเพื่อเปลี่ยนตำแหน่ง
         </p>
       ) : (
-        <p className="text-xs text-slate-400 dark:text-gray-500">
-          แตะบนแผนที่เพื่อปักหมุด หรือกด "ตำแหน่งปัจจุบัน" หรือกรอกพิกัดด้านบน
+        <p className="flex items-start gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          {mapHint || "ยังไม่ได้ปักหมุดปลายทาง — แตะแผนที่ กดตำแหน่งปัจจุบัน หรือกรอกพิกัดด้านบน"}
         </p>
       )}
     </div>

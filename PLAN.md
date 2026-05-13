@@ -6562,11 +6562,12 @@ Customer (LINE)
   - [x] Recalculate OSRM route เฉพาะเมื่อ driver เคลื่อนที่ > 100 เมตร
   - [x] Status card (PENDING / กำลังจัดส่ง / จัดส่งแล้ว ✓)
   - [x] NEARBY badge "🔔 ใกล้แล้ว!" เมื่อ ≤ 2 กม. — client-side เท่านั้น, ไม่แก้ DB enum
-  - [x] ETA card "ถึงใน ~X นาที" + ระยะทาง (จาก OSRM)
+  - [x] ETA card "ถึงใน ~X นาที" + ระยะทาง (จาก OSRM) + เวลาอัปเดตล่าสุด/เวลาถึงโดยประมาณแบบ clock time
   - [x] Stale warning เมื่อไม่มี update > 30 นาที
   - [x] Network error fallback
   - [x] Driver info card: ชื่อ + ปุ่ม "📞 โทรหาคนขับ" (`tel:` link)
   - [x] "ข้อมูลจะอัปเดตอัตโนมัติทุก 3 นาที"
+- [x] Harden destination pin edit UX — after Leaflet is ready, auto-apply saved Latitude/Longitude through the same path as "ใช้พิกัดที่กรอก"; when no saved pin exists, center on current location as a reference only, keep the sale unpinned, and show "ยังไม่ได้ปักหมุด" helper
 
 ### Dependencies
 

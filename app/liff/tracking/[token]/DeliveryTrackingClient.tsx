@@ -63,6 +63,19 @@ function formatUpdatedAt(iso: string): string {
   return date.toLocaleTimeString("th-TH-u-ca-gregory", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatClockTime(date: Date): string {
+  return date.toLocaleTimeString("th-TH-u-ca-gregory", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
+  const baseTime = new Date(updatedAt).getTime();
+  if (Number.isNaN(baseTime)) return "";
+  return formatClockTime(new Date(baseTime + durationSeconds * 1000));
+}
+
 export default function DeliveryTrackingClient({
   token,
   saleNo,
@@ -329,6 +342,8 @@ export default function DeliveryTrackingClient({
   const nearby =
     driver && destLat && destLon ? isNearby(driver.lat, driver.lon, destLat, destLon) : false;
   const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
+  const driverUpdatedClock = driver ? formatClockTime(new Date(driver.updatedAt)) : "";
+  const etaArrivalClock = driver && eta ? formatEtaArrival(driver.updatedAt, eta.duration) : "";
 
   return (
     <main className="flex min-h-dvh flex-col bg-gradient-to-b from-white via-sky-50 to-white">
@@ -370,6 +385,11 @@ export default function DeliveryTrackingClient({
             <p className="mt-0.5 text-sm text-slate-500">
               ระยะทาง {formatDistance(eta.distance)}
             </p>
+            {driverUpdatedClock && etaArrivalClock ? (
+              <p className="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
+                อัปเดตตำแหน่งล่าสุด {driverUpdatedClock} · ถึงประมาณ {etaArrivalClock}
+              </p>
+            ) : null}
           </div>
         )}
 
