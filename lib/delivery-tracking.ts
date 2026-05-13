@@ -149,7 +149,7 @@ export async function fetchOsrmRoute(
   timeoutMs = getOsrmTimeoutMs(),
 ): Promise<OsrmRouteResult | null> {
   const cleanEndpoint = endpoint.trim().replace(/\/+$/, "");
-  const url = `${cleanEndpoint}/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&timeout=${timeoutMs / 1000}`;
+  const url = `${cleanEndpoint}/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });

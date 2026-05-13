@@ -6609,6 +6609,7 @@ Customer (LINE)
 - [x] ปรับ `app/liff/tracking/[token]/DeliveryTrackingClient.tsx` ให้ใช้ route API เดียวกัน
 - [x] ตอน self-host และ backup fail ทั้งคู่: ไม่วาด polyline บนแผนที่ แต่ยังแสดง `ETA/ระยะทางโดยประมาณ`
 - [x] เพิ่ม logging ขั้นต่ำบน server ที่แยกกรณี `provider=self-host`, `provider=backup`, `provider=estimated`, `provider=none`
+- [x] แก้ public OSRM route URL ให้ไม่ส่ง query `timeout` ที่ทำให้ `router.project-osrm.org` ตอบ `InvalidQuery`
 - [ ] ทดสอบ 4 กรณีหลัก: self-host success, self-host fail แล้ว backup success, ทั้งคู่ fail, token invalid/expired
 - [x] รัน `npm run build` หลังลงงาน และอัปเดต checklist นี้ทันทีตามสถานะจริง
 
