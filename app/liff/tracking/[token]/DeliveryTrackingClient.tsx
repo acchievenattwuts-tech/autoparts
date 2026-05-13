@@ -5,7 +5,7 @@ import { AlertCircle, Clock, Loader2, MapPin, Navigation, Phone, Truck } from "l
 
 import {
   estimateDeliveryRoute,
-  fetchOsrmRoute,
+  fetchTrackingRoute,
   formatDistance,
   formatEta,
   isNearby,
@@ -181,24 +181,27 @@ export default function DeliveryTrackingClient({
 
       // Draw initial route
       if (initialDriver && destLat && destLon) {
-        const estimatedRoute = estimateDeliveryRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
-        routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
-          color: "#1e3a5f",
-          weight: 4,
-          opacity: 0.55,
-          dashArray: "6 8",
-        }).addTo(map);
-        setEta({
-          duration: estimatedRoute.durationSeconds,
-          distance: estimatedRoute.distanceMetres,
-          estimated: true,
-        });
-
-        const route = await fetchOsrmRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
-        if (route && isMounted && mapRef.current) {
-          routeLayerRef.current.setLatLngs(route.coordinates);
-          routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
-          setEta({ duration: route.durationSeconds, distance: route.distanceMetres });
+        const route = await fetchTrackingRoute(token);
+        if (route?.coordinates && isMounted && mapRef.current) {
+          routeLayerRef.current = L.polyline(route.coordinates, {
+            color: "#1e3a5f",
+            weight: 4,
+            opacity: 0.8,
+          }).addTo(map);
+          setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
+        } else if (route?.durationSeconds && route.distanceMetres !== null && isMounted) {
+          setEta({
+            duration: route.durationSeconds,
+            distance: route.distanceMetres,
+            estimated: route.estimated,
+          });
+        } else if (isMounted) {
+          const estimatedRoute = estimateDeliveryRoute(initialDriver.lat, initialDriver.lon, destLat, destLon);
+          setEta({
+            duration: estimatedRoute.durationSeconds,
+            distance: estimatedRoute.distanceMetres,
+            estimated: true,
+          });
         }
       }
     })();
@@ -247,29 +250,10 @@ export default function DeliveryTrackingClient({
 
       if (needsRoute && destLat && destLon) {
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
-        const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);
-        if (routeLayerRef.current) {
-          routeLayerRef.current.setLatLngs(estimatedRoute.coordinates);
-          routeLayerRef.current.setStyle({ opacity: 0.55, dashArray: "6 8" });
-        } else {
-          routeLayerRef.current = L.polyline(estimatedRoute.coordinates, {
-            color: "#1e3a5f",
-            weight: 4,
-            opacity: 0.55,
-            dashArray: "6 8",
-          }).addTo(map);
-        }
-        setEta({
-          duration: estimatedRoute.durationSeconds,
-          distance: estimatedRoute.distanceMetres,
-          estimated: true,
-        });
-
-        const route = await fetchOsrmRoute(driver.lat, driver.lon, destLat, destLon);
-        if (route && mapRef.current) {
+        const route = await fetchTrackingRoute(token);
+        if (route?.coordinates && mapRef.current) {
           if (routeLayerRef.current) {
             routeLayerRef.current.setLatLngs(route.coordinates);
-            routeLayerRef.current.setStyle({ opacity: 0.8, dashArray: "" });
           } else {
             routeLayerRef.current = L.polyline(route.coordinates, {
               color: "#1e3a5f",
@@ -277,11 +261,28 @@ export default function DeliveryTrackingClient({
               opacity: 0.8,
             }).addTo(map);
           }
-          setEta({ duration: route.durationSeconds, distance: route.distanceMetres });
+          setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
+        } else if (route?.durationSeconds && route.distanceMetres !== null) {
+          routeLayerRef.current?.remove();
+          routeLayerRef.current = null;
+          setEta({
+            duration: route.durationSeconds,
+            distance: route.distanceMetres,
+            estimated: route.estimated,
+          });
+        } else {
+          routeLayerRef.current?.remove();
+          routeLayerRef.current = null;
+          const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);
+          setEta({
+            duration: estimatedRoute.durationSeconds,
+            distance: estimatedRoute.distanceMetres,
+            estimated: true,
+          });
         }
       }
     },
-    [destLat, destLon],
+    [destLat, destLon, token],
   );
 
   // Poll tracking API every 3 minutes with adaptive backoff on errors

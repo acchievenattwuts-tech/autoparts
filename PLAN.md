@@ -6592,3 +6592,22 @@ Customer (LINE)
 - [ ] แสดง tracking link URL ในหน้า admin sales detail — ให้พนักงาน copy ส่งลูกค้าได้ง่าย
 - [ ] ส่ง tracking link ผ่าน LINE OA อัตโนมัติเมื่อ `OUT_FOR_DELIVERY` — ต้องรอ Phase 1C
 
+### Roadmap Update (2026-05-13 - OSRM Route Failover Hardening)
+
+> Scope for this follow-up: keep the current LIFF delivery-tracking UI and GPS flow, but harden route lookup so production uses `self-host OSRM` first, `public OSRM` as backup, and shows only `ETA/ระยะทางโดยประมาณ` without drawing a fake line when no real route provider succeeds.
+
+#### Implementation checklist
+
+- [x] ตั้ง config routing provider chain ใน env: `OSRM_ENDPOINTS`, `OSRM_TIMEOUT_MS`, `OSRM_RETRY_PER_ENDPOINT` (`.env.example`; ต้องตั้งค่าจริงบน deploy)
+- [ ] ลบ default fallback `router.project-osrm.org` ออกจาก `lib/delivery-tracking.ts` หลังตั้ง `OSRM_ENDPOINTS` จริงบน production แล้ว
+- [x] เพิ่ม helper ฝั่ง server สำหรับ failover chain: self-host -> backup endpoint -> `null`
+- [x] เพิ่ม route API ใหม่สำหรับ route lookup เช่น `/api/liff/tracking/[token]/route`
+- [x] ให้ route API validate token + load sale/tracking/destination ตาม pattern เดียวกับ `/api/liff/tracking/[token]`
+- [x] ให้ route API return shape คงที่สำหรับ client: `coordinates`, `distanceMetres`, `durationSeconds`, `estimated`, `provider`
+- [x] ปรับ `app/liff/orders/[id]/InlineDeliveryTracker.tsx` ให้เรียก route API ของระบบแทนการยิง OSRM ตรงจาก browser
+- [x] ปรับ `app/liff/tracking/[token]/DeliveryTrackingClient.tsx` ให้ใช้ route API เดียวกัน
+- [x] ตอน self-host และ backup fail ทั้งคู่: ไม่วาด polyline บนแผนที่ แต่ยังแสดง `ETA/ระยะทางโดยประมาณ`
+- [x] เพิ่ม logging ขั้นต่ำบน server ที่แยกกรณี `provider=self-host`, `provider=backup`, `provider=estimated`, `provider=none`
+- [ ] ทดสอบ 4 กรณีหลัก: self-host success, self-host fail แล้ว backup success, ทั้งคู่ fail, token invalid/expired
+- [x] รัน `npm run build` หลังลงงาน และอัปเดต checklist นี้ทันทีตามสถานะจริง
+

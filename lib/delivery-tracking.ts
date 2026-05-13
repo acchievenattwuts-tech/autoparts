@@ -4,7 +4,8 @@ const DELIVERY_TRACKING_CONFIG = {
   STALE_THRESHOLD_MS: 30 * 60 * 1000, // 30 minutes
   NEARBY_THRESHOLD_KM: 2, // 2 km
   ROUTE_RECALC_THRESHOLD_KM: 0.1, // 100 metres
-  OSRM_TIMEOUT_MS: 15000, // 15 seconds
+  OSRM_TIMEOUT_MS: 5000, // 5 seconds
+  OSRM_RETRY_PER_ENDPOINT: 1,
   ESTIMATED_ROUTE_FACTOR: 1.25,
   ESTIMATED_SPEED_KMH: 35,
 } as const;
@@ -64,6 +65,56 @@ export type OsrmRouteResult = {
   estimated?: boolean;
 };
 
+export type RouteProvider = "self-host" | "backup" | "estimated" | "none";
+
+export type TrackingRouteResponse = {
+  status: "ok";
+  coordinates: [number, number][] | null;
+  distanceMetres: number | null;
+  durationSeconds: number | null;
+  estimated: boolean;
+  provider: RouteProvider;
+};
+
+export type OsrmRouteWithProvider = OsrmRouteResult & {
+  provider: Exclude<RouteProvider, "estimated" | "none">;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function getOsrmTimeoutMs(): number {
+  const value = Number(process.env.OSRM_TIMEOUT_MS);
+  return Number.isFinite(value) && value > 0 ? value : DELIVERY_TRACKING_CONFIG.OSRM_TIMEOUT_MS;
+}
+
+function getOsrmRetryPerEndpoint(): number {
+  const value = Number(process.env.OSRM_RETRY_PER_ENDPOINT);
+  if (!Number.isFinite(value) || value < 0) {
+    return DELIVERY_TRACKING_CONFIG.OSRM_RETRY_PER_ENDPOINT;
+  }
+  return Math.min(Math.floor(value), 2);
+}
+
+type OsrmEndpointConfig = {
+  endpoint: string;
+  provider: Exclude<RouteProvider, "estimated" | "none">;
+};
+
+function getOsrmEndpoints(): OsrmEndpointConfig[] {
+  const endpoints = process.env.OSRM_ENDPOINTS?.split(",")
+    .map((endpoint) => endpoint.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+  if (!endpoints?.length) {
+    return [{ endpoint: "https://router.project-osrm.org", provider: "backup" }];
+  }
+
+  return endpoints.map((endpoint, index) => ({
+    endpoint,
+    provider: index === 0 ? "self-host" : "backup",
+  }));
+}
+
 export function estimateDeliveryRoute(
   fromLat: number,
   fromLon: number,
@@ -88,17 +139,22 @@ export function estimateDeliveryRoute(
   };
 }
 
-/** Fetch route from OSRM public demo server. */
+/** Fetch one route attempt from an OSRM-compatible endpoint. */
 export async function fetchOsrmRoute(
+  endpoint: string,
   fromLat: number,
   fromLon: number,
   toLat: number,
   toLon: number,
+  timeoutMs = getOsrmTimeoutMs(),
 ): Promise<OsrmRouteResult | null> {
+  const cleanEndpoint = endpoint.trim().replace(/\/+$/, "");
+  const url = `${cleanEndpoint}/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&timeout=${timeoutMs / 1000}`;
+
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&timeout=${DELIVERY_TRACKING_CONFIG.OSRM_TIMEOUT_MS / 1000}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(DELIVERY_TRACKING_CONFIG.OSRM_TIMEOUT_MS) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
+
     const data = (await res.json()) as {
       code: string;
       routes?: {
@@ -108,6 +164,7 @@ export async function fetchOsrmRoute(
       }[];
     };
     if (data.code !== "Ok" || !data.routes?.[0]) return null;
+
     const route = data.routes[0];
     // OSRM returns [lon, lat], convert to [lat, lon] for Leaflet.
     const coordinates: [number, number][] = route.geometry.coordinates.map(
@@ -118,6 +175,41 @@ export async function fetchOsrmRoute(
       durationSeconds: route.duration,
       distanceMetres: route.distance,
     };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchOsrmRouteWithFailover(
+  fromLat: number,
+  fromLon: number,
+  toLat: number,
+  toLon: number,
+): Promise<OsrmRouteWithProvider | null> {
+  const endpoints = getOsrmEndpoints();
+  const timeoutMs = getOsrmTimeoutMs();
+  const retryPerEndpoint = getOsrmRetryPerEndpoint();
+
+  for (const { endpoint, provider } of endpoints) {
+    for (let attempt = 0; attempt <= retryPerEndpoint; attempt += 1) {
+      const route = await fetchOsrmRoute(endpoint, fromLat, fromLon, toLat, toLon, timeoutMs);
+      if (route) {
+        return { ...route, provider };
+      }
+      if (attempt < retryPerEndpoint) {
+        await sleep(400 * (attempt + 1));
+      }
+    }
+  }
+
+  return null;
+}
+
+export async function fetchTrackingRoute(token: string): Promise<TrackingRouteResponse | null> {
+  try {
+    const res = await fetch(`/api/liff/tracking/${token}/route`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as TrackingRouteResponse;
   } catch {
     return null;
   }
