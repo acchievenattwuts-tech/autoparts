@@ -6704,3 +6704,11 @@ Customer (LINE)
 - [x] ทำข้อความ `ถึงประมาณ` ให้เด่นขึ้นเป็น badge พร้อมเวลาใน ETA card
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Zoom Rollback + ETA Badge Alignment)
+
+> Scope: ปรับตาม feedback หลังใช้งานจริง โดยคืนมุมมองแผนที่ให้เหมือนเวอร์ชันก่อนหน้า และย้าย badge เวลาไปชิดขวาของ ETA card โดยไม่เปลี่ยน logic refresh/tracking
+
+- [x] เอา `MIN_ROUTE_ZOOM` ออกและคืนค่า `fitBounds` ของทั้ง LIFF tracking และ inline tracker ให้เหมือนก่อนรอบล่าสุด
+- [x] จัด badge `ถึงประมาณ` ให้อยู่ชิดขวาของ ETA card และไม่ดันข้อความหลักตกลงมาด้านล่าง
+- [x] Verification: `npm run build` ผ่าน 0 errors
+

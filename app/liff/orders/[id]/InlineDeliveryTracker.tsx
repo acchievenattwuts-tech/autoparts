@@ -15,7 +15,6 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
-const MIN_ROUTE_ZOOM = 13;
 const DRIVER_ICON_HTML =
   '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
@@ -66,10 +65,6 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
-}
-
-function keepRouteReadableZoom(map: import("leaflet").Map) {
-  if (map.getZoom() < MIN_ROUTE_ZOOM) map.setZoom(MIN_ROUTE_ZOOM);
 }
 
 const InlineDeliveryTracker = ({
@@ -162,9 +157,8 @@ const InlineDeliveryTracker = ({
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
           [[initialDriver.lat, initialDriver.lon], [destLat, destLon]],
-          { paddingTopLeft: [28, 40], paddingBottomRight: [64, 40] },
+          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
-        keepRouteReadableZoom(map);
       }
 
       mapRef.current = map;
@@ -303,9 +297,8 @@ const InlineDeliveryTracker = ({
       if (options.recenter && destLat && destLon) {
         map.fitBounds(
           [[driver.lat, driver.lon], [destLat, destLon]],
-          { paddingTopLeft: [28, 40], paddingBottomRight: [64, 40] },
+          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
-        keepRouteReadableZoom(map);
       }
     },
     [destLat, destLon, token],
@@ -410,31 +403,27 @@ const InlineDeliveryTracker = ({
 
       {/* ETA row */}
       {eta && driver && (
-        <div className="grid gap-2 rounded-xl bg-blue-50 px-3 py-2.5 sm:grid-cols-[1fr_auto] sm:items-center">
-          <div className="flex items-center gap-2">
-            <Clock size={15} className="text-blue-600" />
-            <div>
-              <p className="font-kanit text-sm font-bold text-blue-900">
-                ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
-              </p>
-              {driverUpdatedClock && etaArrivalClock ? (
+        <div className="rounded-xl bg-blue-50 px-3 py-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Clock size={15} className="text-blue-600" />
+              <div>
+                <p className="font-kanit text-sm font-bold text-blue-900">
+                  ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
+                </p>
                 <p className="text-[11px] font-medium text-blue-700">
                   ระยะทางคงเหลือ {formatDistance(eta.distance)}
                 </p>
-              ) : (
-                <p className="text-[11px] font-medium text-blue-700">
-                  ระยะทางคงเหลือ {formatDistance(eta.distance)}
-                </p>
-              )}
+              </div>
             </div>
+            {etaArrivalClock ? (
+              <div className="w-fit shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-800 shadow-sm">
+                ถึงประมาณ <span className="font-kanit text-base">{etaArrivalClock}</span>
+              </div>
+            ) : driverUpdatedClock ? (
+              <span className="shrink-0 text-xs text-slate-500">{driverUpdatedClock}</span>
+            ) : null}
           </div>
-          {etaArrivalClock ? (
-            <div className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-800 shadow-sm">
-              ถึงประมาณ <span className="font-kanit text-base">{etaArrivalClock}</span>
-            </div>
-          ) : driverUpdatedClock ? (
-            <span className="text-xs text-slate-500">{driverUpdatedClock}</span>
-          ) : null}
         </div>
       )}
 
