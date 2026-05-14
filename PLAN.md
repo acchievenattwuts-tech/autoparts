@@ -6720,3 +6720,11 @@ Customer (LINE)
 - [x] ปรับ destination marker ให้เหลือเฉพาะ pin และกำหนด `TARGET_ROUTE_ZOOM = 12` หลัง `fitBounds`
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Map Position Rollback to dd33931)
+
+> Scope: คืนเฉพาะ logic ตำแหน่งแผนที่ให้ตรงกับ commit `dd33931` โดยจำกัดแค่เรื่อง zoom/fitBounds และ destination marker เพื่อแก้ framing กับจุดปักปลายทางที่เพี้ยน
+
+- [x] คืน `fitBounds` ของหน้า LIFF tracking และ inline tracker ให้ตรง `dd33931`
+- [x] เอา `TARGET_ROUTE_ZOOM` ออก และคืน destination marker HTML/size/anchor ให้ตรง `dd33931`
+- [x] Verification: `npm run build` ผ่าน 0 errors
+

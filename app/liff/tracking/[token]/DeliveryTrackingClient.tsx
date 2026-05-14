@@ -25,11 +25,10 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
-const TARGET_ROUTE_ZOOM = 12;
 const DRIVER_ICON_HTML =
   '<div class="liff-driver-marker"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
-  '<div class="liff-destination-marker"><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
+  '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📦</div>';
 
 type ShippingStatus = "PENDING" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED";
 
@@ -95,10 +94,6 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
-}
-
-function applyTrackingZoom(map: import("leaflet").Map) {
-  if (map.getZoom() < TARGET_ROUTE_ZOOM) map.setZoom(TARGET_ROUTE_ZOOM);
 }
 
 export default function DeliveryTrackingClient({
@@ -188,8 +183,8 @@ export default function DeliveryTrackingClient({
         destIconRef.current = L.divIcon({
           className: "",
           html: DESTINATION_ICON_HTML,
-          iconSize: [40, 52],
-          iconAnchor: [20, 52],
+          iconSize: [36, 36],
+          iconAnchor: [18, 36],
         });
       }
 
@@ -204,7 +199,9 @@ export default function DeliveryTrackingClient({
       }
 
       if (destLat && destLon) {
-        destMarkerRef.current = L.marker([destLat, destLon], { icon: destIconRef.current }).addTo(map);
+        destMarkerRef.current = L.marker([destLat, destLon], { icon: destIconRef.current })
+          .addTo(map)
+          .bindPopup("ปลายทาง");
       }
 
       // Fit bounds to show both markers
@@ -214,9 +211,8 @@ export default function DeliveryTrackingClient({
             [initialDriver.lat, initialDriver.lon],
             [destLat, destLon],
           ],
-          { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
+          { padding: [40, 40] },
         );
-        applyTrackingZoom(map);
       }
 
       mapRef.current = map;
@@ -364,9 +360,8 @@ export default function DeliveryTrackingClient({
             [driver.lat, driver.lon],
             [destLat, destLon],
           ],
-          { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
+          { padding: [44, 44] },
         );
-        applyTrackingZoom(map);
       }
     },
     [destLat, destLon, token],

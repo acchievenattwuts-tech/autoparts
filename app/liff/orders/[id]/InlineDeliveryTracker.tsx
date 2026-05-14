@@ -15,11 +15,10 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
-const TARGET_ROUTE_ZOOM = 12;
 const DRIVER_ICON_HTML =
   '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
-  '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
+  '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📦</div>';
 
 type Driver = { lat: number; lon: number; accuracy: number; updatedAt: string };
 
@@ -66,10 +65,6 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
-}
-
-function applyTrackingZoom(map: import("leaflet").Map) {
-  if (map.getZoom() < TARGET_ROUTE_ZOOM) map.setZoom(TARGET_ROUTE_ZOOM);
 }
 
 const InlineDeliveryTracker = ({
@@ -136,8 +131,8 @@ const InlineDeliveryTracker = ({
       const destIcon = L.divIcon({
         className: "",
         html: DESTINATION_ICON_HTML,
-        iconSize: [36, 48],
-        iconAnchor: [18, 48],
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
       });
 
       if (initialDriver) {
@@ -150,14 +145,15 @@ const InlineDeliveryTracker = ({
         prevDriverPosRef.current = { lat: initialDriver.lat, lon: initialDriver.lon };
       }
       if (destLat && destLon) {
-        L.marker([destLat, destLon], { icon: destIcon }).addTo(map);
+        L.marker([destLat, destLon], { icon: destIcon })
+          .addTo(map)
+          .bindPopup("ปลายทาง");
       }
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
           [[initialDriver.lat, initialDriver.lon], [destLat, destLon]],
-          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
+          { padding: [30, 30] },
         );
-        applyTrackingZoom(map);
       }
 
       mapRef.current = map;
@@ -296,9 +292,8 @@ const InlineDeliveryTracker = ({
       if (options.recenter && destLat && destLon) {
         map.fitBounds(
           [[driver.lat, driver.lon], [destLat, destLon]],
-          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
+          { padding: [30, 30] },
         );
-        applyTrackingZoom(map);
       }
     },
     [destLat, destLon, token],
