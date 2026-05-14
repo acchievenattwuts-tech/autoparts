@@ -8,7 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Pencil, Eye, Filter } from "lucide-react";
+import { Plus, Pencil, Eye, Filter, MapPin } from "lucide-react";
 import ToggleCustomerButton from "./DeleteCustomerButton";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -174,6 +174,12 @@ const CustomersPage = async ({
                         (!customer.shippingAddress || !customer.taxId) ? (
                           <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                             ข้อมูลยังไม่ครบ
+                          </span>
+                        ) : null}
+                        {customer.defaultLatitude !== null && customer.defaultLongitude !== null ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-400/20 dark:text-blue-300">
+                            <MapPin size={10} />
+                            ปักหมุดแล้ว
                           </span>
                         ) : null}
                       </div>
