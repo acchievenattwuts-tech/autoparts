@@ -4,6 +4,8 @@ Scope: `/admin` ทั้งหมด ยกเว้น `/admin/delivery/update
 
 Objective: ปรับ UI/UX ให้ใช้งานง่ายขึ้น ดูเบาและเป็นมิตรขึ้น โดยไม่กระทบ business logic, permission, routing, data flow, query contract, และ existing actions
 
+Rule reminder: ทุกครั้งที่แตะ UI/admin presentation ต้องตรวจทั้ง light mode และ dark mode ในรอบเดียวกันเสมอ ห้ามปล่อยให้ธีมใดธีมหนึ่ง drift ไปคนละทิศกับอีกธีม
+
 ## Batch 1 Status
 
 - [x] Audited shared admin foundation files

@@ -121,8 +121,8 @@ const TabsBar = () => {
               className={cn(
                 "group flex h-10 flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 px-3.5 text-sm transition-all",
                 isActive
-                  ? "border-slate-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#101b2e] dark:text-sky-200 dark:shadow-none"
-                  : "border-transparent bg-transparent text-slate-500 hover:bg-white/70 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-slate-200"
+                  ? "border-slate-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#101b2e] dark:text-sky-100 dark:shadow-none"
+                  : "border-transparent bg-transparent text-slate-500 hover:bg-white/70 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-100"
               )}
             >
               <span>{tab.label}</span>
