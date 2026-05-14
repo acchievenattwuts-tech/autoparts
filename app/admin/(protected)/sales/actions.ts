@@ -34,6 +34,7 @@ import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { addThailandDays, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
+import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 
 const saleProductOptionSelect = {
   id:                  true,
@@ -44,6 +45,8 @@ const saleProductOptionSelect = {
   saleUnitName:        true,
   warrantyDays:        true,
   preferredSupplierId: true,
+  inventoryTracking:   true,
+  costPrice:           true,
   isLotControl:        true,
   lotIssueMethod:      true,
   allowExpiredIssue:   true,
@@ -92,7 +95,7 @@ export async function searchSaleProducts(query: string) {
     units:                 product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
     preferredSupplierId:   product.preferredSupplierId ?? null,
     preferredSupplierName: product.preferredSupplier?.name ?? null,
-    isLotControl:          product.isLotControl,
+    isLotControl:          isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     lotIssueMethod:        product.lotIssueMethod as string,
     allowExpiredIssue:     product.allowExpiredIssue,
   }));
@@ -135,6 +138,7 @@ const saleSchema = z.object({
   shippingFee:      z.coerce.number().min(0).default(0),
   destLatitude:     z.coerce.number().finite().gte(-90).lte(90).optional(),
   destLongitude:    z.coerce.number().finite().gte(-180).lte(180).optional(),
+  saveAsCustomerDefault: z.enum(["1"]).optional(),
   discount:        z.coerce.number().min(0).default(0),
   paymentMethod:   z.nativeEnum(PaymentMethod).optional(),
   cashBankAccountId: z.string().optional(),
@@ -151,6 +155,8 @@ type SaleItemInput = z.infer<typeof saleItemSchema>;
 
 type SaleProductSnapshot = {
   avgCost: Prisma.Decimal;
+  costPrice: Prisma.Decimal;
+  inventoryTracking: string;
   isLotControl: boolean;
 };
 
@@ -255,6 +261,8 @@ async function preloadSaleDependencies(
           select: {
             id: true,
             avgCost: true,
+            costPrice: true,
+            inventoryTracking: true,
             isLotControl: true,
           },
         }),
@@ -272,7 +280,9 @@ async function preloadSaleDependencies(
         product.id,
         {
           avgCost: product.avgCost,
-          isLotControl: product.isLotControl,
+          costPrice: product.costPrice,
+          inventoryTracking: product.inventoryTracking,
+          isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
         },
       ]),
     ),
@@ -439,6 +449,7 @@ export async function createSale(
     shippingFee:      formData.get("shippingFee")      || 0,
     destLatitude:     formData.get("destLatitude")     || undefined,
     destLongitude:    formData.get("destLongitude")    || undefined,
+    saveAsCustomerDefault: formData.get("saveAsCustomerDefault") || undefined,
     discount:         formData.get("discount")         || 0,
     paymentMethod:    formData.get("paymentMethod")    || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
@@ -463,6 +474,7 @@ export async function createSale(
     shippingFee,
     destLatitude,
     destLongitude,
+    saveAsCustomerDefault,
     discount,
     note,
     cashBankAccountId,
@@ -553,7 +565,8 @@ export async function createSale(
         const scale      = unit.scale;
         const qtyInBase  = item.qty * scale;
 
-        const costPerBase = Number(product.avgCost);
+        const isTracked = isInventoryTracked(product.inventoryTracking);
+        const costPerBase = resolveSaleUnitCost(product);
 
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
@@ -576,7 +589,7 @@ export async function createSale(
 
         // Auto-create Warranty rows - one per display-unit qty (N warranties for N pieces sold)
         // Write StockCard (outgoing)
-        const stockCardId = await writeStockCard(tx, {
+        const stockCardId = isTracked ? await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       saleNo,
           docDate,
@@ -586,10 +599,10 @@ export async function createSale(
           priceIn:     0,
           detail:      `ขาย ${item.qty} ${item.unitName}`,
           referenceId: saleItem.id,
-        });
+        }) : null;
 
         // Lot Control - only if product has isLotControl=true
-        if (item.lotItems.length > 0 && product?.isLotControl) {
+        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
             if (lotErr) throw new Error(lotErr);
 
@@ -635,6 +648,22 @@ export async function createSale(
       );
 
       await rebuildSaleProfitFacts(tx, sale.id);
+
+      if (
+        saveAsCustomerDefault === "1" &&
+        customerId &&
+        fulfillmentType === FulfillmentType.DELIVERY &&
+        destLatitude !== undefined &&
+        destLongitude !== undefined
+      ) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: {
+            defaultLatitude:  destLatitude,
+            defaultLongitude: destLongitude,
+          },
+        });
+      }
     });
 
     const afterSnapshot = createdSaleId
@@ -649,6 +678,28 @@ export async function createSale(
         entityId: afterSnapshot.id,
         entityRef: afterSnapshot.saleNo,
         after: afterSnapshot,
+      });
+    }
+
+    if (
+      saveAsCustomerDefault === "1" &&
+      customerId &&
+      fulfillmentType === FulfillmentType.DELIVERY &&
+      destLatitude !== undefined &&
+      destLongitude !== undefined
+    ) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Customer",
+        entityId: customerId,
+        entityRef: saleNo,
+        after: {
+          defaultLatitude: destLatitude,
+          defaultLongitude: destLongitude,
+          source: `sale:${saleNo}`,
+        },
       });
     }
 
@@ -838,6 +889,7 @@ export async function updateSale(
     shippingFee:      formData.get("shippingFee")      || 0,
     destLatitude:     formData.get("destLatitude")     || undefined,
     destLongitude:    formData.get("destLongitude")    || undefined,
+    saveAsCustomerDefault: formData.get("saveAsCustomerDefault") || undefined,
     discount:         formData.get("discount")         || 0,
     paymentMethod:    formData.get("paymentMethod")    || undefined,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
@@ -850,7 +902,7 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -944,7 +996,8 @@ export async function updateSale(
 
         const scale     = unit.scale;
         const qtyInBase = item.qty * scale;
-        const costPerBase  = Number(product.avgCost);
+        const isTracked = isInventoryTracked(product.inventoryTracking);
+        const costPerBase  = resolveSaleUnitCost(product);
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
@@ -952,7 +1005,7 @@ export async function updateSale(
           data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
         });
 
-        const stockCardId = await writeStockCard(tx, {
+        const stockCardId = isTracked ? await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.saleNo,
           docDate,
@@ -962,9 +1015,9 @@ export async function updateSale(
           priceIn:     0,
           detail:      `ขาย ${item.qty} ${item.unitName}`,
           referenceId: saleItem.id,
-        });
+        }) : null;
 
-        if (item.lotItems.length > 0 && product?.isLotControl) {
+        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
             if (lotErr) throw new Error(lotErr);
 
@@ -1013,6 +1066,22 @@ export async function updateSale(
       );
 
       await rebuildSaleProfitFacts(tx, id);
+
+      if (
+        saveAsCustomerDefault === "1" &&
+        customerId &&
+        fulfillmentType === FulfillmentType.DELIVERY &&
+        destLatitude !== undefined &&
+        destLongitude !== undefined
+      ) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: {
+            defaultLatitude:  destLatitude,
+            defaultLongitude: destLongitude,
+          },
+        });
+      }
     });
 
     const afterSnapshot = await getSaleAuditSnapshot(id);
@@ -1027,6 +1096,28 @@ export async function updateSale(
         entityRef: afterSnapshot.saleNo,
         before: diff.before,
         after: diff.after,
+      });
+    }
+
+    if (
+      saveAsCustomerDefault === "1" &&
+      customerId &&
+      fulfillmentType === FulfillmentType.DELIVERY &&
+      destLatitude !== undefined &&
+      destLongitude !== undefined
+    ) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "Customer",
+        entityId: customerId,
+        entityRef: existing.saleNo,
+        after: {
+          defaultLatitude: destLatitude,
+          defaultLongitude: destLongitude,
+          source: `sale:${existing.saleNo}`,
+        },
       });
     }
 

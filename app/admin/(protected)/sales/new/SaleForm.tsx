@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSale, updateSale } from "../actions";
-import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -12,7 +12,7 @@ import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSO
 import { fetchProductLots } from "../actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
-import LocationPinPicker from "@/components/shared/LocationPinPicker";
+import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
 
 interface ProductOption {
   id: string;
@@ -140,6 +140,8 @@ const SaleForm = ({
   const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? "NONE");
   const [destLat, setDestLat] = useState<number | null>(initialData?.destLatitude ?? null);
   const [destLon, setDestLon] = useState<number | null>(initialData?.destLongitude ?? null);
+  const [pinSheetOpen, setPinSheetOpen] = useState(false);
+  const [saveAsCustomerDefault, setSaveAsCustomerDefault] = useState(false);
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
@@ -390,6 +392,15 @@ const SaleForm = ({
     formData.set("vatRate", String(vatRate));
     if (fulfillmentType === "DELIVERY" && destLat !== null) formData.set("destLatitude", String(destLat));
     if (fulfillmentType === "DELIVERY" && destLon !== null) formData.set("destLongitude", String(destLon));
+    if (
+      fulfillmentType === "DELIVERY" &&
+      destLat !== null &&
+      destLon !== null &&
+      saveAsCustomerDefault &&
+      selectedCustomerId
+    ) {
+      formData.set("saveAsCustomerDefault", "1");
+    }
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -649,11 +660,49 @@ const SaleForm = ({
                 />
               </div>
               <div className="md:col-span-2">
-                <LocationPinPicker
-                  lat={destLat}
-                  lon={destLon}
-                  onChange={(lat, lon) => { setDestLat(lat); setDestLon(lon); }}
-                  label="ปักหมุดตำแหน่งจัดส่ง"
+                <label className={labelCls}>ปักหมุดที่อยู่จัดส่ง</label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-1 text-sm">
+                    {destLat !== null && destLon !== null ? (
+                      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        <CheckCircle2 size={14} />
+                        ปักหมุดแล้ว ({destLat.toFixed(6)}, {destLon.toFixed(6)})
+                      </span>
+                    ) : (
+                      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                        ยังไม่ได้ปักหมุด
+                      </span>
+                    )}
+                    {saveAsCustomerDefault && destLat !== null && destLon !== null ? (
+                      <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                        <Users size={12} />
+                        จะบันทึกเป็นพิกัดเริ่มต้นของลูกค้าด้วย
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPinSheetOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300 dark:hover:bg-blue-400/20"
+                  >
+                    <MapPin size={15} />
+                    {destLat !== null && destLon !== null ? "แก้ไขหมุด" : "ปักหมุดที่อยู่จัดส่ง"}
+                  </button>
+                </div>
+                <LocationPinPickerSheet
+                  mode="sale"
+                  open={pinSheetOpen}
+                  onClose={() => setPinSheetOpen(false)}
+                  initialLat={destLat}
+                  initialLon={destLon}
+                  customerLinked={!!selectedCustomerId}
+                  title="ปักหมุดที่อยู่จัดส่ง"
+                  subtitle={customerNameOverride || undefined}
+                  onConfirm={(lat, lon, options) => {
+                    setDestLat(lat);
+                    setDestLon(lon);
+                    setSaveAsCustomerDefault(lat !== null && lon !== null && options.saveToCustomer);
+                  }}
                 />
               </div>
               <div>

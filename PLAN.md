@@ -6754,3 +6754,15 @@ Customer (LINE)
 - [x] Bias ผลค้นหาให้อยู่ใกล้ศูนย์กลางแผนที่ปัจจุบัน (~50km) ผ่าน Nominatim `viewbox` + `bounded=0` — ยังเห็นผลนอกขอบเขตได้ ไม่กระทบกรณีที่ผู้ใช้เลื่อนแผนที่ไปจุดอื่นก่อนค้นหา
 - [x] Verification: `npx tsc --noEmit` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LocationPin Sheet UX for Customer & Sale)
+
+> Scope: ปรับการปักหมุดในหน้า `ลูกค้า` (CustomerForm) และ `ขาย` (SaleForm) ให้เปิดเป็น popup/sheet แสดงแผนที่กว้างเต็มจอบนมือถือ (เหมือนหน้าคิวจัดส่ง) แทนการแสดง LocationPinPicker inline — เพิ่มทางเลือก `ลูกค้า + บิลนี้` ในหน้าขายให้บันทึกพิกัดเริ่มต้นของลูกค้าใน transaction เดียวกัน หน้าขายจะแสดงปุ่มปักหมุดเฉพาะเมื่อเลือก `จัดส่ง` (FulfillmentType.DELIVERY) เท่านั้น
+
+- [x] สร้าง `components/shared/LocationPinPickerSheet.tsx` — modal/sheet ครอบ `LocationPinPicker` เดิม รองรับ 2 mode: `customer` (1 ปุ่มบันทึก) และ `sale` (2 ปุ่ม: `เฉพาะบิลนี้`, `ลูกค้า + บิลนี้`); responsive end-anchored บนมือถือ / centered modal บน desktop; รองรับ light + dark mode
+- [x] ปรับ `app/admin/(protected)/customers/CustomerForm.tsx` ให้แสดงปุ่ม `ปักหมุดที่อยู่จัดส่ง` + badge สถานะหมุด เปิด sheet `mode=customer` แทนการแสดง LocationPinPicker inline — flow บันทึกเดิม (ผ่าน FormData `defaultLatitude`/`defaultLongitude`) ไม่เปลี่ยน
+- [x] ปรับ `app/admin/(protected)/sales/new/SaleForm.tsx` ใช้ sheet `mode=sale` แสดงปุ่มเฉพาะตอน `FulfillmentType.DELIVERY` พร้อม badge แจ้งว่า `จะบันทึกเป็นพิกัดเริ่มต้นของลูกค้าด้วย` เมื่อผู้ใช้กดปุ่ม `ลูกค้า + บิลนี้`; ปุ่มที่ 2 จะ disable เมื่อยังไม่ได้เลือกลูกค้า
+- [x] แก้ `app/admin/(protected)/sales/actions.ts` (`createSale` + `updateSale`) เพิ่ม Zod field `saveAsCustomerDefault` และ logic อัปเดต `Customer.defaultLatitude/defaultLongitude` ใน transaction เดียวกับ Sale เมื่อ flag=1 + DELIVERY + มี customerId + พิกัดถูกระบุครบ
+- [x] เพิ่ม Audit Log entry แยกสำหรับ Customer pin update ในทั้ง create และ update sale flow (entityRef = saleNo) ตามกฎ §7 Audit Log
+- [x] ไม่กระทบ stock/MAVG/document numbering/AR-AP — แก้ field พิกัดและ schema ของ Sale/Customer เท่านั้น
+- [x] Verification: `npx tsc --noEmit` ผ่าน 0 errors
+

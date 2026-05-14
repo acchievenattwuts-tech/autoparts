@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, Link2Off } from "lucide-react";
+import { CheckCircle, CheckCircle2, Link2Off, MapPin } from "lucide-react";
 import TaxIdInput from "@/components/shared/TaxIdInput";
-import LocationPinPicker from "@/components/shared/LocationPinPicker";
+import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
 import { formatDateThai } from "@/lib/th-date";
 import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
 import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
@@ -40,6 +40,7 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
   const [success, setSuccess] = useState("");
   const [pinLat, setPinLat] = useState<number | null>(customer?.defaultLatitude ?? null);
   const [pinLon, setPinLon] = useState<number | null>(customer?.defaultLongitude ?? null);
+  const [pinSheetOpen, setPinSheetOpen] = useState(false);
 
   const isEdit = Boolean(customer);
   const hasLineLink = Boolean(customer?.lineUserId);
@@ -220,13 +221,44 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
           </div>
 
           <div className="md:col-span-2">
-            <LocationPinPicker
-              lat={pinLat}
-              lon={pinLon}
-              onChange={(lat, lon) => { setPinLat(lat); setPinLon(lon); }}
-              label="ปักหมุดตำแหน่งจัดส่งหลัก"
-            />
+            <label className={labelCls}>ปักหมุดที่อยู่จัดส่ง</label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm">
+                {pinLat !== null && pinLon !== null ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <CheckCircle2 size={14} />
+                    ปักหมุดแล้ว ({pinLat.toFixed(6)}, {pinLon.toFixed(6)})
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                    ยังไม่ได้ปักหมุด
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPinSheetOpen(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-300 dark:hover:bg-blue-400/20"
+              >
+                <MapPin size={15} />
+                {pinLat !== null && pinLon !== null ? "แก้ไขหมุด" : "ปักหมุดที่อยู่จัดส่ง"}
+              </button>
+            </div>
           </div>
+
+          <LocationPinPickerSheet
+            mode="customer"
+            open={pinSheetOpen}
+            onClose={() => setPinSheetOpen(false)}
+            initialLat={pinLat}
+            initialLon={pinLon}
+            title="ปักหมุดที่อยู่จัดส่ง"
+            subtitle={customer ? customer.name : undefined}
+            onConfirm={(lat, lon) => {
+              setPinLat(lat);
+              setPinLon(lon);
+            }}
+          />
 
           <div className="md:col-span-2">
             <label className={labelCls}>หมายเหตุ</label>
