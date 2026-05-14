@@ -25,6 +25,10 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
+const DRIVER_ICON_HTML =
+  '<div class="liff-driver-marker"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
+const DESTINATION_ICON_HTML =
+  '<div class="liff-destination-marker"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
 type ShippingStatus = "PENDING" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED";
 
@@ -124,6 +128,7 @@ export default function DeliveryTrackingClient({
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const driverMarkerRef = useRef<import("leaflet").Marker | null>(null);
   const destMarkerRef = useRef<import("leaflet").Marker | null>(null);
+  const routeHaloLayerRef = useRef<import("leaflet").Polyline | null>(null);
   const routeLayerRef = useRef<import("leaflet").Polyline | null>(null);
   const prevDriverPosRef = useRef<{ lat: number; lon: number } | null>(null);
   const driverIconRef = useRef<import("leaflet").DivIcon | null>(null);
@@ -168,18 +173,18 @@ export default function DeliveryTrackingClient({
       if (!driverIconRef.current) {
         driverIconRef.current = L.divIcon({
           className: "",
-          html: '<div style="position:relative;width:36px;height:36px;display:grid;place-items:center"><div style="position:absolute;inset:2px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
+          html: DRIVER_ICON_HTML,
+          iconSize: [52, 52],
+          iconAnchor: [26, 26],
         });
       }
 
       if (!destIconRef.current) {
         destIconRef.current = L.divIcon({
           className: "",
-          html: '<div style="font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📦</div>',
-          iconSize: [36, 36],
-          iconAnchor: [18, 36],
+          html: DESTINATION_ICON_HTML,
+          iconSize: [136, 62],
+          iconAnchor: [68, 62],
         });
       }
 
@@ -189,14 +194,19 @@ export default function DeliveryTrackingClient({
           zIndexOffset: 1000,
         })
           .addTo(map)
-          .bindPopup("ตำแหน่งพนักงานส่ง");
+          .bindTooltip("ตำแหน่งพนักงานส่ง", { direction: "top", offset: [0, -18] });
         prevDriverPosRef.current = { lat: initialDriver.lat, lon: initialDriver.lon };
       }
 
       if (destLat && destLon) {
         destMarkerRef.current = L.marker([destLat, destLon], { icon: destIconRef.current })
           .addTo(map)
-          .bindPopup("ปลายทาง");
+          .bindTooltip("ปลายทางของคุณ", {
+            permanent: true,
+            direction: "top",
+            offset: [0, -52],
+            className: "liff-destination-tooltip",
+          });
       }
 
       // Fit bounds to show both markers
@@ -216,10 +226,21 @@ export default function DeliveryTrackingClient({
       if (initialDriver && destLat && destLon) {
         const route = await fetchTrackingRoute(token);
         if (route?.coordinates && isMounted && mapRef.current) {
+          routeHaloLayerRef.current = L.polyline(route.coordinates, {
+            color: "#ffffff",
+            weight: 10,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+            className: "liff-route-halo",
+          }).addTo(map);
           routeLayerRef.current = L.polyline(route.coordinates, {
-            color: "#1e3a5f",
-            weight: 4,
-            opacity: 0.8,
+            color: "#0b7cff",
+            weight: 5,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+            className: "liff-route-line",
           }).addTo(map);
           setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
         } else if (route?.durationSeconds && route.distanceMetres !== null && isMounted) {
@@ -245,6 +266,7 @@ export default function DeliveryTrackingClient({
       mapRef.current = null;
       driverMarkerRef.current = null;
       destMarkerRef.current = null;
+      routeHaloLayerRef.current = null;
       routeLayerRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -259,9 +281,9 @@ export default function DeliveryTrackingClient({
       if (!driverIconRef.current) {
         driverIconRef.current = L.divIcon({
           className: "",
-          html: '<div style="position:relative;width:36px;height:36px;display:grid;place-items:center"><div style="position:absolute;inset:2px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:28px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
+          html: DRIVER_ICON_HTML,
+          iconSize: [52, 52],
+          iconAnchor: [26, 26],
         });
       }
 
@@ -273,7 +295,7 @@ export default function DeliveryTrackingClient({
           zIndexOffset: 1000,
         })
           .addTo(map)
-          .bindPopup("ตำแหน่งพนักงานส่ง");
+          .bindTooltip("ตำแหน่งพนักงานส่ง", { direction: "top", offset: [0, -18] });
       }
 
       // Recalculate route only when driver moved > 100 m
@@ -287,17 +309,34 @@ export default function DeliveryTrackingClient({
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
         const route = await fetchTrackingRoute(token);
         if (route?.coordinates && mapRef.current) {
+          if (routeHaloLayerRef.current) {
+            routeHaloLayerRef.current.setLatLngs(route.coordinates);
+          } else {
+            routeHaloLayerRef.current = L.polyline(route.coordinates, {
+              color: "#ffffff",
+              weight: 10,
+              opacity: 0.95,
+              lineCap: "round",
+              lineJoin: "round",
+              className: "liff-route-halo",
+            }).addTo(map);
+          }
           if (routeLayerRef.current) {
             routeLayerRef.current.setLatLngs(route.coordinates);
           } else {
             routeLayerRef.current = L.polyline(route.coordinates, {
-              color: "#1e3a5f",
-              weight: 4,
-              opacity: 0.8,
+              color: "#0b7cff",
+              weight: 5,
+              opacity: 0.95,
+              lineCap: "round",
+              lineJoin: "round",
+              className: "liff-route-line",
             }).addTo(map);
           }
           setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
         } else if (route?.durationSeconds && route.distanceMetres !== null) {
+          routeHaloLayerRef.current?.remove();
+          routeHaloLayerRef.current = null;
           routeLayerRef.current?.remove();
           routeLayerRef.current = null;
           setEta({
@@ -306,6 +345,8 @@ export default function DeliveryTrackingClient({
             estimated: route.estimated,
           });
         } else {
+          routeHaloLayerRef.current?.remove();
+          routeHaloLayerRef.current = null;
           routeLayerRef.current?.remove();
           routeLayerRef.current = null;
           const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);

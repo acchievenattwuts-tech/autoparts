@@ -799,17 +799,118 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
 
 @keyframes liffPulse {
   0% {
-    opacity: 0.7;
-    transform: scale(0.72);
+    opacity: 0.72;
+    transform: scale(0.62);
   }
   70% {
-    opacity: 0;
-    transform: scale(1.45);
+    opacity: 0.08;
+    transform: scale(1.85);
   }
   100% {
     opacity: 0;
-    transform: scale(1.45);
+    transform: scale(1.95);
   }
+}
+
+.liff-driver-marker {
+  position: relative;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  isolation: isolate;
+}
+
+.liff-driver-marker--compact {
+  width: 46px;
+  height: 46px;
+}
+
+.liff-driver-marker__pulse {
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: rgba(6, 199, 85, 0.34);
+  box-shadow: 0 0 0 8px rgba(6, 199, 85, 0.12);
+  animation: liffPulse 1.45s ease-out infinite;
+  z-index: 0;
+}
+
+.liff-driver-marker__ring {
+  position: absolute;
+  inset: 9px;
+  border-radius: 999px;
+  background: #06c755;
+  border: 3px solid #ffffff;
+  box-shadow: 0 8px 18px rgba(6, 57, 28, 0.3);
+  z-index: 1;
+}
+
+.liff-driver-marker__vehicle {
+  position: relative;
+  z-index: 2;
+  font-size: 26px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+}
+
+.liff-driver-marker--compact .liff-driver-marker__vehicle {
+  font-size: 24px;
+}
+
+.liff-destination-marker {
+  display: grid;
+  justify-items: center;
+  width: 136px;
+  pointer-events: none;
+}
+
+.liff-destination-marker--compact {
+  width: 124px;
+}
+
+.liff-destination-marker__label {
+  margin-bottom: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 10px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.22);
+  white-space: nowrap;
+}
+
+.liff-destination-marker__pin {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 14px 14px 14px 4px;
+  background: #f97316;
+  border: 3px solid #ffffff;
+  color: #ffffff;
+  font-size: 21px;
+  line-height: 1;
+  box-shadow: 0 10px 18px rgba(124, 45, 18, 0.28);
+  transform: rotate(-45deg);
+}
+
+.liff-destination-marker__pin > * {
+  transform: rotate(45deg);
+}
+
+.liff-destination-tooltip {
+  display: none;
+}
+
+.liff-route-halo {
+  filter: drop-shadow(0 4px 7px rgba(15, 23, 42, 0.22));
+}
+
+.liff-route-line {
+  filter: drop-shadow(0 2px 4px rgba(11, 124, 255, 0.34));
 }
 
 .liff-theme-root[data-liff-theme="dark"] .print-document-root {

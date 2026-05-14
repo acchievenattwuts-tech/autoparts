@@ -6674,3 +6674,13 @@ Customer (LINE)
 - [x] ไม่เพิ่ม query ใหม่ และใช้ข้อมูลเดิมที่หน้าโหลดมาอยู่แล้ว
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Map Visual Depth)
+
+> Scope: ปรับแผนที่ติดตามการจัดส่งแบบ Leaflet เดิมให้ดูมีมิติขึ้นโดยไม่เปลี่ยน tile provider, ไม่เพิ่ม API key, และไม่เปลี่ยน query/business logic
+
+- [x] ปรับ route line เป็นเส้น 2 ชั้น: halo สีขาวด้านล่าง + เส้นหลักสีน้ำเงินด้านบน พร้อมเงาเบา ๆ
+- [x] ปรับ marker รถส่งให้ pulse ชัดและเด่นขึ้นด้วย CSS class กลาง แทน inline style เดิม
+- [x] ปรับ marker ปลายทางให้แสดง label ถาวร `ปลายทางของคุณ`
+- [x] ใช้ pattern เดียวกันทั้ง `/liff/tracking/[token]` และ inline tracking ในหน้ารายละเอียดออเดอร์
+- [x] Verification: `npm run build` ผ่าน 0 errors
+

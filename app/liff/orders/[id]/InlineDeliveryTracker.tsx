@@ -15,6 +15,10 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
+const DRIVER_ICON_HTML =
+  '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
+const DESTINATION_ICON_HTML =
+  '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
 type Driver = { lat: number; lon: number; accuracy: number; updatedAt: string };
 
@@ -86,6 +90,7 @@ const InlineDeliveryTracker = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const driverMarkerRef = useRef<import("leaflet").Marker | null>(null);
+  const routeHaloLayerRef = useRef<import("leaflet").Polyline | null>(null);
   const routeLayerRef = useRef<import("leaflet").Polyline | null>(null);
   const prevDriverPosRef = useRef<{ lat: number; lon: number } | null>(null);
   const refreshInFlightRef = useRef(false);
@@ -119,26 +124,35 @@ const InlineDeliveryTracker = ({
 
       const driverIcon = L.divIcon({
         className: "",
-        html: '<div style="position:relative;width:32px;height:32px;display:grid;place-items:center"><div style="position:absolute;inset:1px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        html: DRIVER_ICON_HTML,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
       });
       const destIcon = L.divIcon({
         className: "",
-        html: '<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📦</div>',
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
+        html: DESTINATION_ICON_HTML,
+        iconSize: [124, 58],
+        iconAnchor: [62, 58],
       });
 
       if (initialDriver) {
         driverMarkerRef.current = L.marker([initialDriver.lat, initialDriver.lon], {
           icon: driverIcon,
           zIndexOffset: 1000,
-        }).addTo(map);
+        })
+          .addTo(map)
+          .bindTooltip("ตำแหน่งพนักงานส่ง", { direction: "top", offset: [0, -16] });
         prevDriverPosRef.current = { lat: initialDriver.lat, lon: initialDriver.lon };
       }
       if (destLat && destLon) {
-        L.marker([destLat, destLon], { icon: destIcon }).addTo(map);
+        L.marker([destLat, destLon], { icon: destIcon })
+          .addTo(map)
+          .bindTooltip("ปลายทางของคุณ", {
+            permanent: true,
+            direction: "top",
+            offset: [0, -48],
+            className: "liff-destination-tooltip",
+          });
       }
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
@@ -152,10 +166,21 @@ const InlineDeliveryTracker = ({
       if (initialDriver && destLat && destLon) {
         const route = await fetchTrackingRoute(token);
         if (route?.coordinates && isMounted && mapRef.current) {
+          routeHaloLayerRef.current = L.polyline(route.coordinates, {
+            color: "#ffffff",
+            weight: 9,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+            className: "liff-route-halo",
+          }).addTo(map);
           routeLayerRef.current = L.polyline(route.coordinates, {
-            color: "#1e3a5f",
-            weight: 4,
-            opacity: 0.8,
+            color: "#0b7cff",
+            weight: 5,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+            className: "liff-route-line",
           }).addTo(map);
           setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
         } else if (route?.durationSeconds && route.distanceMetres !== null && isMounted) {
@@ -180,6 +205,7 @@ const InlineDeliveryTracker = ({
       mapRef.current?.remove();
       mapRef.current = null;
       driverMarkerRef.current = null;
+      routeHaloLayerRef.current = null;
       routeLayerRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -192,9 +218,9 @@ const InlineDeliveryTracker = ({
 
       const driverIcon = L.divIcon({
         className: "",
-        html: '<div style="position:relative;width:32px;height:32px;display:grid;place-items:center"><div style="position:absolute;inset:1px;border-radius:999px;background:rgba(6,199,85,.22);animation:liffPulse 1.8s ease-out infinite"></div><div style="position:relative;font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))">🚚</div></div>',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        html: DRIVER_ICON_HTML,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23],
       });
 
       if (driverMarkerRef.current) {
@@ -203,7 +229,9 @@ const InlineDeliveryTracker = ({
         driverMarkerRef.current = L.marker([driver.lat, driver.lon], {
           icon: driverIcon,
           zIndexOffset: 1000,
-        }).addTo(map);
+        })
+          .addTo(map)
+          .bindTooltip("ตำแหน่งพนักงานส่ง", { direction: "top", offset: [0, -16] });
       }
 
       const prev = prevDriverPosRef.current;
@@ -216,17 +244,34 @@ const InlineDeliveryTracker = ({
         prevDriverPosRef.current = { lat: driver.lat, lon: driver.lon };
         const route = await fetchTrackingRoute(token);
         if (route?.coordinates && mapRef.current) {
+          if (routeHaloLayerRef.current) {
+            routeHaloLayerRef.current.setLatLngs(route.coordinates);
+          } else {
+            routeHaloLayerRef.current = L.polyline(route.coordinates, {
+              color: "#ffffff",
+              weight: 9,
+              opacity: 0.95,
+              lineCap: "round",
+              lineJoin: "round",
+              className: "liff-route-halo",
+            }).addTo(map);
+          }
           if (routeLayerRef.current) {
             routeLayerRef.current.setLatLngs(route.coordinates);
           } else {
             routeLayerRef.current = L.polyline(route.coordinates, {
-              color: "#1e3a5f",
-              weight: 4,
-              opacity: 0.8,
+              color: "#0b7cff",
+              weight: 5,
+              opacity: 0.95,
+              lineCap: "round",
+              lineJoin: "round",
+              className: "liff-route-line",
             }).addTo(map);
           }
           setEta({ duration: route.durationSeconds ?? 0, distance: route.distanceMetres ?? 0 });
         } else if (route?.durationSeconds && route.distanceMetres !== null) {
+          routeHaloLayerRef.current?.remove();
+          routeHaloLayerRef.current = null;
           routeLayerRef.current?.remove();
           routeLayerRef.current = null;
           setEta({
@@ -235,6 +280,8 @@ const InlineDeliveryTracker = ({
             estimated: route.estimated,
           });
         } else {
+          routeHaloLayerRef.current?.remove();
+          routeHaloLayerRef.current = null;
           routeLayerRef.current?.remove();
           routeLayerRef.current = null;
           const estimatedRoute = estimateDeliveryRoute(driver.lat, driver.lon, destLat, destLon);
