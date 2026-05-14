@@ -36,6 +36,8 @@ import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { addThailandDays, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 
+const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
+
 const saleProductOptionSelect = {
   id:                  true,
   code:                true,
@@ -779,6 +781,7 @@ export async function cancelSale(
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSaleAuditSnapshot(saleId);
+    const cancelledAt = new Date();
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       // Reverse Lot balances before deleting StockCard rows
@@ -793,7 +796,15 @@ export async function cancelSale(
       await tx.warranty.deleteMany({ where: { saleId } });
       await tx.sale.update({
         where: { id: saleId },
-        data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: new Prisma.Decimal(0) },
+        data: {
+          status: "CANCELLED",
+          cancelledAt,
+          cancelNote,
+          amountRemain: new Prisma.Decimal(0),
+          ...(sale.trackingToken
+            ? { trackingExpiry: new Date(cancelledAt.getTime() + TRACKING_TOKEN_TTL_MS) }
+            : {}),
+        },
       });
       await rebuildSaleProfitFacts(tx, saleId);
     });
@@ -1491,11 +1502,13 @@ export async function updateShippingStatus(
       sale.shippingStatus !== ShippingStatus.OUT_FOR_DELIVERY &&
       !sale.trackingToken;
 
+    const shouldClearTrackingExpiry =
+      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
+      Boolean(sale.trackingToken || shouldGenerateToken);
+
     // Expire token 48 hours after delivery is marked done
     const shouldExpireToken =
       parsed.data.shippingStatus === ShippingStatus.DELIVERED && sale.trackingToken;
-
-    const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
     const beforeSnapshot = existingSnapshot;
     await db.sale.update({
@@ -1508,9 +1521,9 @@ export async function updateShippingStatus(
         ...(shouldGenerateToken
           ? {
               trackingToken: generateTrackingToken(),
-              trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS),
             }
           : {}),
+        ...(shouldClearTrackingExpiry ? { trackingExpiry: null } : {}),
         ...(shouldExpireToken
           ? { trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS) }
           : {}),
