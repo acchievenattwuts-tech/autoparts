@@ -15,8 +15,9 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
+const MIN_ROUTE_ZOOM = 13;
 const DRIVER_ICON_HTML =
-  '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__truck"><span class="liff-driver-marker__box"></span><span class="liff-driver-marker__cab"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--left"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--right"></span></div></div>';
+  '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
   '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
@@ -65,6 +66,10 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
+}
+
+function keepRouteReadableZoom(map: import("leaflet").Map) {
+  if (map.getZoom() < MIN_ROUTE_ZOOM) map.setZoom(MIN_ROUTE_ZOOM);
 }
 
 const InlineDeliveryTracker = ({
@@ -157,8 +162,9 @@ const InlineDeliveryTracker = ({
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
           [[initialDriver.lat, initialDriver.lon], [destLat, destLon]],
-          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
+          { paddingTopLeft: [28, 40], paddingBottomRight: [64, 40] },
         );
+        keepRouteReadableZoom(map);
       }
 
       mapRef.current = map;
@@ -297,8 +303,9 @@ const InlineDeliveryTracker = ({
       if (options.recenter && destLat && destLon) {
         map.fitBounds(
           [[driver.lat, driver.lon], [destLat, destLon]],
-          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
+          { paddingTopLeft: [28, 40], paddingBottomRight: [64, 40] },
         );
+        keepRouteReadableZoom(map);
       }
     },
     [destLat, destLon, token],
@@ -403,7 +410,7 @@ const InlineDeliveryTracker = ({
 
       {/* ETA row */}
       {eta && driver && (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-blue-50 px-3 py-2.5">
+        <div className="grid gap-2 rounded-xl bg-blue-50 px-3 py-2.5 sm:grid-cols-[1fr_auto] sm:items-center">
           <div className="flex items-center gap-2">
             <Clock size={15} className="text-blue-600" />
             <div>
@@ -412,7 +419,7 @@ const InlineDeliveryTracker = ({
               </p>
               {driverUpdatedClock && etaArrivalClock ? (
                 <p className="text-[11px] font-medium text-blue-700">
-                  ระยะทางคงเหลือ {formatDistance(eta.distance)} · ถึงประมาณ {etaArrivalClock}
+                  ระยะทางคงเหลือ {formatDistance(eta.distance)}
                 </p>
               ) : (
                 <p className="text-[11px] font-medium text-blue-700">
@@ -421,7 +428,13 @@ const InlineDeliveryTracker = ({
               )}
             </div>
           </div>
-          {driverUpdatedClock ? <span className="text-xs text-slate-500">{driverUpdatedClock}</span> : null}
+          {etaArrivalClock ? (
+            <div className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-800 shadow-sm">
+              ถึงประมาณ <span className="font-kanit text-base">{etaArrivalClock}</span>
+            </div>
+          ) : driverUpdatedClock ? (
+            <span className="text-xs text-slate-500">{driverUpdatedClock}</span>
+          ) : null}
         </div>
       )}
 

@@ -6694,3 +6694,13 @@ Customer (LINE)
 - [x] รวม `ระยะทางคงเหลือ` เข้า ETA card ด้านบน และเอา summary card ล่าง 2 ใบออกเมื่อมี ETA แล้ว
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Marker And Zoom Tuning)
+
+> Scope: ปรับตาม feedback ภาพจริงจากลูกค้า โดยยังใช้ Leaflet เดิมและไม่แก้ปุ่ม LINE floating
+
+- [x] เปลี่ยน marker รถกลับไปใช้ไอคอนรถแบบเดิมบนวง pulse แทน CSS truck ที่อ่านยาก
+- [x] เพิ่ม `MIN_ROUTE_ZOOM` หลัง `fitBounds` เพื่อลดอาการแผนที่ zoom out ไกลเกินไป
+- [x] ลด padding ของ `fitBounds` ให้ route/marker ยังอยู่ในจอแต่เห็นพื้นที่ละเอียดขึ้น
+- [x] ทำข้อความ `ถึงประมาณ` ให้เด่นขึ้นเป็น badge พร้อมเวลาใน ETA card
+- [x] Verification: `npm run build` ผ่าน 0 errors
+

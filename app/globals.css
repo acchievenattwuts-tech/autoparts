@@ -858,65 +858,6 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
   font-size: 24px;
 }
 
-.liff-driver-marker__truck {
-  position: relative;
-  z-index: 2;
-  width: 27px;
-  height: 18px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.22));
-}
-
-.liff-driver-marker__box,
-.liff-driver-marker__cab {
-  position: absolute;
-  bottom: 5px;
-  display: block;
-  background: #ffffff;
-}
-
-.liff-driver-marker__box {
-  left: 1px;
-  width: 15px;
-  height: 10px;
-  border-radius: 3px 2px 2px 3px;
-}
-
-.liff-driver-marker__cab {
-  right: 1px;
-  width: 10px;
-  height: 8px;
-  border-radius: 2px 5px 2px 2px;
-}
-
-.liff-driver-marker__cab::before {
-  content: "";
-  position: absolute;
-  right: 1px;
-  top: 1px;
-  width: 4px;
-  height: 3px;
-  border-radius: 1px;
-  background: #06c755;
-}
-
-.liff-driver-marker__wheel {
-  position: absolute;
-  bottom: 2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: #0f172a;
-  border: 1px solid #ffffff;
-}
-
-.liff-driver-marker__wheel--left {
-  left: 5px;
-}
-
-.liff-driver-marker__wheel--right {
-  right: 4px;
-}
-
 .liff-destination-marker {
   display: grid;
   justify-items: center;
