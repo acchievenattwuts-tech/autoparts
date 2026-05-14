@@ -253,6 +253,16 @@ const LocationPinPicker = ({
           countrycodes: "th",
           "accept-language": "th",
         });
+        const center = mapRef.current?.getCenter();
+        if (center) {
+          const LAT_DELTA = 0.45;
+          const LON_DELTA = 0.46;
+          params.set(
+            "viewbox",
+            `${center.lng - LON_DELTA},${center.lat - LAT_DELTA},${center.lng + LON_DELTA},${center.lat + LAT_DELTA}`,
+          );
+          params.set("bounded", "0");
+        }
         const res = await fetch(
           `https://nominatim.openstreetmap.org/search?${params.toString()}`,
         );

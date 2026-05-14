@@ -6751,5 +6751,6 @@ Customer (LINE)
 - [x] เพิ่ม `handleSelectResult` ใช้ `setMarker()` เดิมเพื่อย้ายแผนที่ + ปักหมุด + เรียก `onChange(lat, lon)` ผ่าน path เดียวกับการแตะแผนที่ ไม่กระทบ flow ปักหมุดเดิม
 - [x] ปิด dropdown เมื่อคลิกนอกกล่อง search ด้วย `mousedown` listener และ cleanup debounce timer เมื่อ unmount
 - [x] วาง UI search ไว้เหนือ Latitude/Longitude inputs (รองรับทั้ง light/dark mode) แสดง spinner ขณะค้นหา และข้อความ `ไม่พบสถานที่` เมื่อไม่มีผลลัพธ์
+- [x] Bias ผลค้นหาให้อยู่ใกล้ศูนย์กลางแผนที่ปัจจุบัน (~50km) ผ่าน Nominatim `viewbox` + `bounded=0` — ยังเห็นผลนอกขอบเขตได้ ไม่กระทบกรณีที่ผู้ใช้เลื่อนแผนที่ไปจุดอื่นก่อนค้นหา
 - [x] Verification: `npx tsc --noEmit` ผ่าน 0 errors
 
