@@ -15,10 +15,11 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
+const TARGET_ROUTE_ZOOM = 12;
 const DRIVER_ICON_HTML =
   '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
-  '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
+  '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
 type Driver = { lat: number; lon: number; accuracy: number; updatedAt: string };
 
@@ -65,6 +66,10 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
+}
+
+function applyTrackingZoom(map: import("leaflet").Map) {
+  if (map.getZoom() < TARGET_ROUTE_ZOOM) map.setZoom(TARGET_ROUTE_ZOOM);
 }
 
 const InlineDeliveryTracker = ({
@@ -131,8 +136,8 @@ const InlineDeliveryTracker = ({
       const destIcon = L.divIcon({
         className: "",
         html: DESTINATION_ICON_HTML,
-        iconSize: [124, 58],
-        iconAnchor: [62, 58],
+        iconSize: [36, 48],
+        iconAnchor: [18, 48],
       });
 
       if (initialDriver) {
@@ -145,20 +150,14 @@ const InlineDeliveryTracker = ({
         prevDriverPosRef.current = { lat: initialDriver.lat, lon: initialDriver.lon };
       }
       if (destLat && destLon) {
-        L.marker([destLat, destLon], { icon: destIcon })
-          .addTo(map)
-          .bindTooltip("ปลายทางของคุณ", {
-            permanent: true,
-            direction: "top",
-            offset: [0, -48],
-            className: "liff-destination-tooltip",
-          });
+        L.marker([destLat, destLon], { icon: destIcon }).addTo(map);
       }
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
           [[initialDriver.lat, initialDriver.lon], [destLat, destLon]],
           { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
+        applyTrackingZoom(map);
       }
 
       mapRef.current = map;
@@ -299,6 +298,7 @@ const InlineDeliveryTracker = ({
           [[driver.lat, driver.lon], [destLat, destLon]],
           { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
+        applyTrackingZoom(map);
       }
     },
     [destLat, destLon, token],

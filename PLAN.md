@@ -6712,3 +6712,11 @@ Customer (LINE)
 - [x] จัด badge `ถึงประมาณ` ให้อยู่ชิดขวาของ ETA card และไม่ดันข้อความหลักตกลงมาด้านล่าง
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Destination Label Removal + Zoom Match)
+
+> Scope: ปรับตามภาพอ้างอิงล่าสุด โดยเอา label ปลายทางออกจาก marker และบังคับ zoom ขั้นต่ำให้ใกล้เคียงมุมมองที่ต้องการมากขึ้นทั้งหน้าติดตามลูกค้าและ inline tracker
+
+- [x] เอา label `ปลายทางของคุณ` ออกจาก destination marker ทั้ง LIFF tracking และ inline delivery tracker
+- [x] ปรับ destination marker ให้เหลือเฉพาะ pin และกำหนด `TARGET_ROUTE_ZOOM = 12` หลัง `fitBounds`
+- [x] Verification: `npm run build` ผ่าน 0 errors
+

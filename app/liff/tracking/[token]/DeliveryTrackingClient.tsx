@@ -25,10 +25,11 @@ import {
 const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
+const TARGET_ROUTE_ZOOM = 12;
 const DRIVER_ICON_HTML =
   '<div class="liff-driver-marker"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
 const DESTINATION_ICON_HTML =
-  '<div class="liff-destination-marker"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
+  '<div class="liff-destination-marker"><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
 type ShippingStatus = "PENDING" | "PREPARING" | "OUT_FOR_DELIVERY" | "DELIVERED" | "CANCELLED";
 
@@ -94,6 +95,10 @@ function formatEtaArrival(updatedAt: string, durationSeconds: number): string {
 function formatRefreshTime(date: Date | null): string {
   if (!date) return "ยังไม่ได้รีเฟรช";
   return `รีเฟรชล่าสุด ${formatClockTime(date)}`;
+}
+
+function applyTrackingZoom(map: import("leaflet").Map) {
+  if (map.getZoom() < TARGET_ROUTE_ZOOM) map.setZoom(TARGET_ROUTE_ZOOM);
 }
 
 export default function DeliveryTrackingClient({
@@ -183,8 +188,8 @@ export default function DeliveryTrackingClient({
         destIconRef.current = L.divIcon({
           className: "",
           html: DESTINATION_ICON_HTML,
-          iconSize: [136, 62],
-          iconAnchor: [68, 62],
+          iconSize: [40, 52],
+          iconAnchor: [20, 52],
         });
       }
 
@@ -199,14 +204,7 @@ export default function DeliveryTrackingClient({
       }
 
       if (destLat && destLon) {
-        destMarkerRef.current = L.marker([destLat, destLon], { icon: destIconRef.current })
-          .addTo(map)
-          .bindTooltip("ปลายทางของคุณ", {
-            permanent: true,
-            direction: "top",
-            offset: [0, -52],
-            className: "liff-destination-tooltip",
-          });
+        destMarkerRef.current = L.marker([destLat, destLon], { icon: destIconRef.current }).addTo(map);
       }
 
       // Fit bounds to show both markers
@@ -218,6 +216,7 @@ export default function DeliveryTrackingClient({
           ],
           { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
         );
+        applyTrackingZoom(map);
       }
 
       mapRef.current = map;
@@ -367,6 +366,7 @@ export default function DeliveryTrackingClient({
           ],
           { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
         );
+        applyTrackingZoom(map);
       }
     },
     [destLat, destLon, token],
