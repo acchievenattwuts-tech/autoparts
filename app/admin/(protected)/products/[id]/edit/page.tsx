@@ -51,6 +51,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
     name:             product.name,
     description:      product.description,
     costPrice:        Number(product.costPrice),
+    inventoryTracking: product.inventoryTracking,
     salePrice:        Number(product.salePrice),
     minStock:         product.minStock,
     warrantyDays:     product.warrantyDays,

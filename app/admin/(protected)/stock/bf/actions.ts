@@ -15,6 +15,7 @@ import { generateBFNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { parseDateOnlyToDate } from "@/lib/th-date";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),
@@ -147,8 +148,11 @@ export async function createBF(
   // Validate lot rows if product uses lot control
   const product = await db.product.findUnique({
     where: { id: productId },
-    select: { isLotControl: true, requireExpiryDate: true },
+    select: { inventoryTracking: true, isLotControl: true, requireExpiryDate: true },
   });
+  if (product && !isInventoryTracked(product.inventoryTracking)) {
+    return { error: "สินค้าไม่คำนวณสต็อกไม่สามารถบันทึกยอดยกมาได้" };
+  }
   if (product?.isLotControl) {
     if (validLots.length === 0) return { error: "สินค้านี้ต้องระบุ Lot" };
     const lotErr = validateLotRows(validLots as LotSubRow[], qty, product.requireExpiryDate);

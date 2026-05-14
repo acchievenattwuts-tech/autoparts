@@ -37,6 +37,7 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const purchaseReturnProductOptionSelect = {
   id: true,
@@ -44,6 +45,8 @@ const purchaseReturnProductOptionSelect = {
   name: true,
   description: true,
   avgCost: true,
+  costPrice: true,
+  inventoryTracking: true,
   isLotControl: true,
   category: { select: { name: true } },
   brand: { select: { name: true } },
@@ -60,6 +63,8 @@ type PurchaseReturnProductOption = {
   name: string;
   description: string | null;
   avgCost: number;
+  costPrice: number;
+  inventoryTracking: string;
   isLotControl: boolean;
   categoryName: string;
   brandName: string | null;
@@ -74,6 +79,7 @@ type LineData = {
   qtyInBase: number;
   costPerBase: number;
   isLotControl: boolean;
+  isTracked: boolean;
   totalAmount: number;
   subtotalAmount: number;
   lotItems: z.infer<typeof lotSubRowSchema>[];
@@ -84,7 +90,7 @@ async function preloadPurchaseReturnLineMaps(
   items: z.infer<typeof returnItemSchema>[],
 ): Promise<{
   unitScaleMap: Map<string, number>;
-  productMap: Map<string, { avgCost: number; isLotControl: boolean }>;
+  productMap: Map<string, { avgCost: number; costPrice: number; inventoryTracking: string; isLotControl: boolean }>;
 }> {
   const productIds = [...new Set(items.map((item) => item.productId))];
   const [units, products] = await Promise.all([
@@ -99,7 +105,7 @@ async function preloadPurchaseReturnLineMaps(
     }),
     tx.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, avgCost: true, isLotControl: true },
+      select: { id: true, avgCost: true, costPrice: true, inventoryTracking: true, isLotControl: true },
     }),
   ]);
 
@@ -110,7 +116,12 @@ async function preloadPurchaseReturnLineMaps(
     productMap: new Map(
       products.map((product) => [
         product.id,
-        { avgCost: Number(product.avgCost), isLotControl: product.isLotControl },
+        {
+          avgCost: Number(product.avgCost),
+          costPrice: Number(product.costPrice),
+          inventoryTracking: product.inventoryTracking,
+          isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+        },
       ]),
     ),
   };
@@ -122,6 +133,8 @@ function serializePurchaseReturnProductOption(product: {
   name: string;
   description: string | null;
   avgCost: unknown;
+  costPrice: unknown;
+  inventoryTracking: string;
   isLotControl: boolean;
   category: { name: string };
   brand: { name: string } | null;
@@ -134,7 +147,9 @@ function serializePurchaseReturnProductOption(product: {
     name: product.name,
     description: product.description,
     avgCost: Number(product.avgCost),
-    isLotControl: product.isLotControl,
+    costPrice: Number(product.costPrice),
+    inventoryTracking: product.inventoryTracking,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     categoryName: product.category.name,
     brandName: product.brand?.name ?? null,
     aliases: product.aliases.map((alias) => alias.alias),
@@ -287,7 +302,9 @@ async function buildLineData(
       throw new Error("ไม่พบสินค้า");
     }
 
-    const costPerBase = item.costPrice && item.costPrice > 0 ? item.costPrice / scale : product.avgCost;
+    const isTracked = isInventoryTracked(product.inventoryTracking);
+    const fallbackCost = isTracked ? product.avgCost : product.costPrice;
+    const costPerBase = item.costPrice && item.costPrice > 0 ? item.costPrice / scale : fallbackCost;
     const totalAmount = Math.round(qtyInBase) * costPerBase;
     const subtotalAmount = calcItemSubtotal(totalAmount, vatType, vatRate);
 
@@ -298,6 +315,7 @@ async function buildLineData(
       qtyInBase,
       costPerBase,
       isLotControl: product.isLotControl,
+      isTracked,
       totalAmount,
       subtotalAmount,
       lotItems: item.lotItems,
@@ -335,7 +353,7 @@ async function writePurchaseReturnLines(
       },
     });
 
-    if (writeStock) {
+    if (writeStock && line.isTracked) {
       const stockCardId = await writeStockCard(tx, {
         productId: line.productId,
         docNo: returnNo,
@@ -989,6 +1007,8 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
               name: true,
               description: true,
               avgCost: true,
+              costPrice: true,
+              inventoryTracking: true,
               isLotControl: true,
               purchaseUnitName: true,
               category: { select: { name: true } },

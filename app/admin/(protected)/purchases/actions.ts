@@ -26,6 +26,7 @@ import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, v
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const purchaseProductOptionSelect = {
   id: true,
@@ -34,6 +35,7 @@ const purchaseProductOptionSelect = {
   description: true,
   purchaseUnitName: true,
   costPrice: true,
+  inventoryTracking: true,
   isLotControl: true,
   requireExpiryDate: true,
   category: { select: { name: true } },
@@ -77,7 +79,7 @@ export async function searchPurchaseProducts(query: string) {
     brandName: product.brand?.name ?? null,
     aliases: product.aliases.map((alias) => alias.alias),
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
-    isLotControl: product.isLotControl,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     requireExpiryDate: product.requireExpiryDate,
   }));
 }
@@ -119,6 +121,7 @@ type PurchaseItemInput = z.infer<typeof purchaseItemSchema>;
 type PurchaseProductSnapshot = {
   isLotControl: boolean;
   requireExpiryDate: boolean;
+  inventoryTracking: string;
 };
 
 const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
@@ -157,6 +160,7 @@ async function preloadPurchaseDependencies(
           where: { id: { in: productIds } },
           select: {
             id: true,
+            inventoryTracking: true,
             isLotControl: true,
             requireExpiryDate: true,
           },
@@ -174,8 +178,9 @@ async function preloadPurchaseDependencies(
       products.map((product) => [
         product.id,
         {
-          isLotControl: product.isLotControl,
+          isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
           requireExpiryDate: product.requireExpiryDate,
+          inventoryTracking: product.inventoryTracking,
         },
       ]),
     ),
@@ -383,6 +388,7 @@ export async function createPurchase(
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;  // convert to base unit cost
         const lcPerBase   = item.landedCost / scale;  // landed cost per base unit
+        const isTracked   = isInventoryTracked(product.inventoryTracking);
 
         const itemTotal    = item.qty * item.costPrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
@@ -402,7 +408,7 @@ export async function createPurchase(
         });
 
         // 3. Write StockCard with MAVG
-        const stockCardId = await writeStockCard(tx, {
+        const stockCardId = isTracked ? await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       purchaseNo,
           docDate:     parseDateOnlyToDate(purchaseDate),
@@ -413,10 +419,10 @@ export async function createPurchase(
           landedCost:  lcPerBase * qtyInBase, // total landed cost for this line
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
-        });
+        }) : null;
 
         // 4. Lot Control - only if product has isLotControl=true
-        if (item.lotItems.length > 0 && product?.isLotControl) {
+        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
             // Validate lot rows (server-side)
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
@@ -708,6 +714,7 @@ export async function updatePurchase(
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;
         const lcPerBase   = item.landedCost / scale;
+        const isTracked   = isInventoryTracked(product.inventoryTracking);
         const itemTotal   = item.qty * item.costPrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
@@ -724,7 +731,7 @@ export async function updatePurchase(
           },
         });
 
-        const stockCardId = await writeStockCard(tx, {
+        const stockCardId = isTracked ? await writeStockCard(tx, {
           productId:   item.productId,
           docNo:       existing.purchaseNo,
           docDate:     parseDateOnlyToDate(purchaseDate),
@@ -735,8 +742,8 @@ export async function updatePurchase(
           landedCost:  lcPerBase * qtyInBase,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
-        });
-        if (item.lotItems.length > 0 && product?.isLotControl) {
+        }) : null;
+        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
 

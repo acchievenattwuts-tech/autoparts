@@ -7,6 +7,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewSalePage = async () => {
   await requirePermission("sales.create");
@@ -18,7 +19,7 @@ const NewSalePage = async () => {
       select: {
         id: true, code: true, name: true, description: true,
         salePrice: true, saleUnitName: true, warrantyDays: true,
-        preferredSupplierId: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
+        preferredSupplierId: true, inventoryTracking: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
         category:          { select: { name: true } },
         brand:             { select: { name: true } },
         aliases:           { select: { alias: true } },
@@ -49,7 +50,7 @@ const NewSalePage = async () => {
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
     preferredSupplierId:   p.preferredSupplierId ?? null,
     preferredSupplierName: p.preferredSupplier?.name ?? null,
-    isLotControl:          p.isLotControl,
+    isLotControl:          isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     lotIssueMethod:        p.lotIssueMethod as string,
     allowExpiredIssue:     p.allowExpiredIssue,
   }));

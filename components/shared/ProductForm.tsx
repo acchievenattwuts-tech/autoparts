@@ -6,6 +6,11 @@ import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2 } from "lucide-react";
 import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import {
+  INVENTORY_TRACKING_NON_TRACKED,
+  INVENTORY_TRACKING_TRACKED,
+  type InventoryTrackingValue,
+} from "@/lib/inventory-tracking";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +33,7 @@ export interface ProductFormData {
   name:            string;
   description:     string | null;
   costPrice:       number;
+  inventoryTracking: InventoryTrackingValue;
   salePrice:       number;
   minStock:        number;
   warrantyDays:    number;
@@ -62,6 +68,7 @@ interface ProductFormProps {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 const sectionCls = "bg-white rounded-xl shadow-sm border border-gray-100 p-6";
+const helpCls = "mt-1 text-xs text-gray-500 dark:text-slate-400";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -105,8 +112,12 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const [categoryId, setCategoryId]               = useState(product?.categoryId ?? "");
   const [brandId, setBrandId]                     = useState(product?.brandId ?? "");
   const [preferredSupplierId, setPreferredSupplierId] = useState(product?.preferredSupplierId ?? "");
+  const [inventoryTracking, setInventoryTracking] = useState<InventoryTrackingValue>(
+    product?.inventoryTracking ?? INVENTORY_TRACKING_TRACKED,
+  );
 
   // Lot Control
+  const isNonStock = inventoryTracking === INVENTORY_TRACKING_NON_TRACKED;
   const [isLotControl, setIsLotControl]         = useState(product?.isLotControl ?? false);
   const [requireExpiryDate, setRequireExpiryDate] = useState(product?.requireExpiryDate ?? false);
   const [allowExpiredIssue, setAllowExpiredIssue] = useState(product?.allowExpiredIssue ?? false);
@@ -226,10 +237,11 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     formData.set("categoryId", categoryId);
     formData.set("brandId", brandId);
     formData.set("preferredSupplierId", preferredSupplierId);
+    formData.set("inventoryTracking", inventoryTracking);
     formData.set("imageUrl", imageUrl);
-    formData.set("isLotControl", String(isLotControl));
-    formData.set("requireExpiryDate", String(requireExpiryDate));
-    formData.set("allowExpiredIssue", String(allowExpiredIssue));
+    formData.set("isLotControl", String(isNonStock ? false : isLotControl));
+    formData.set("requireExpiryDate", String(isNonStock ? false : requireExpiryDate));
+    formData.set("allowExpiredIssue", String(isNonStock ? false : allowExpiredIssue));
     formData.set("lotIssueMethod", lotIssueMethod);
     formData.set("aliases", JSON.stringify(aliases));
     formData.set("carModelIds", JSON.stringify(Array.from(selectedCarModelIds)));
@@ -326,10 +338,30 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div>
+            <label className={labelCls}>การคำนวณสต็อก</label>
+            <select
+              name="inventoryTracking"
+              value={inventoryTracking}
+              onChange={(e) => setInventoryTracking(e.target.value as InventoryTrackingValue)}
+              className={`${inputCls} bg-white dark:border-white/10 dark:bg-slate-950 dark:text-slate-100`}
+            >
+              <option value={INVENTORY_TRACKING_TRACKED}>คำนวณสต็อก</option>
+              <option value={INVENTORY_TRACKING_NON_TRACKED}>ไม่คำนวณสต็อก</option>
+            </select>
+            <p className={helpCls}>
+              สินค้าไม่คำนวณสต็อกจะไม่เข้า Stock Card MAVG หรือ Lot และใช้ราคาทุนด้านล่างเป็นต้นทุนขาย
+            </p>
+          </div>
+          <div>
             <label className={labelCls}>ราคาทุน (บาท)</label>
             <input type="number" name="costPrice"
               defaultValue={product ? Number(product.costPrice) : 0}
               min={0} step={0.01} className={inputCls} />
+            <p className={helpCls}>
+              {isNonStock
+                ? "ใช้เป็นต้นทุนขายสำหรับคำนวณกำไร และระบบจะบันทึก snapshot ลงรายการขาย"
+                : "ใช้เป็นราคาทุนอ้างอิง ส่วนกำไรของสินค้าคำนวณสต็อกใช้ต้นทุนเฉลี่ยจาก Stock Card MAVG"}
+            </p>
           </div>
           <div>
             <label className={labelCls}>ราคาขาย (บาท)</label>
@@ -364,14 +396,21 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         <label className="flex items-center gap-3 cursor-pointer mb-4">
           <input
             type="checkbox"
-            checked={isLotControl}
+            checked={!isNonStock && isLotControl}
+            disabled={isNonStock}
             onChange={(e) => setIsLotControl(e.target.checked)}
             className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
           />
           <span className="text-sm font-medium text-gray-700">เปิดใช้ระบบ Lot Control สำหรับสินค้านี้</span>
         </label>
 
-        {isLotControl && (
+        {isNonStock && (
+          <p className={helpCls}>
+            สินค้าไม่คำนวณสต็อกจะปิด Lot Control อัตโนมัติ และไม่สร้างความเคลื่อนไหวสต็อก
+          </p>
+        )}
+
+        {!isNonStock && isLotControl && (
           <div className="pl-7 space-y-4 border-l-2 border-[#1e3a5f]/20 ml-2">
             <div>
               <label className={labelCls}>วิธีจ่ายออก (Lot Issue Method)</label>

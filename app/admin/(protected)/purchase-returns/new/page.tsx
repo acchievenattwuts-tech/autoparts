@@ -9,6 +9,7 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
 import { getThailandDateKey } from "@/lib/th-date";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchaseReturnPage = async ({
   searchParams,
@@ -24,7 +25,7 @@ const NewPurchaseReturnPage = async ({
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: {
-        id: true, code: true, name: true, description: true, avgCost: true,
+        id: true, code: true, name: true, description: true, avgCost: true, inventoryTracking: true,
         isLotControl: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
@@ -53,6 +54,7 @@ const NewPurchaseReturnPage = async ({
                     name: true,
                     description: true,
                     avgCost: true,
+                    inventoryTracking: true,
                     isLotControl: true,
                     purchaseUnitName: true,
                     category: { select: { name: true } },
@@ -81,7 +83,7 @@ const NewPurchaseReturnPage = async ({
 
   const products = productRows.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
-    avgCost: Number(p.avgCost), isLotControl: p.isLotControl,
+    avgCost: Number(p.avgCost), isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),

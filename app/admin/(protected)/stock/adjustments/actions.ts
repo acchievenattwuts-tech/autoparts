@@ -22,6 +22,7 @@ import {
   type LotSubRow,
 } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const lotSubRowSchema = z.object({
   lotNo: z.string().min(1).max(100),
@@ -52,7 +53,7 @@ async function preloadAdjustmentMaps(
   items: z.infer<typeof adjustItemSchema>[],
 ): Promise<{
   unitScaleMap: Map<string, number>;
-  productMap: Map<string, { isLotControl: boolean; requireExpiryDate: boolean; avgCost: number }>;
+  productMap: Map<string, { inventoryTracking: string; isLotControl: boolean; requireExpiryDate: boolean; avgCost: number }>;
 }> {
   const productIds = [...new Set(items.map((item) => item.productId))];
   const [units, products] = await Promise.all([
@@ -67,7 +68,7 @@ async function preloadAdjustmentMaps(
     }),
     tx.product.findMany({
       where: { id: { in: productIds } },
-      select: { id: true, isLotControl: true, requireExpiryDate: true, avgCost: true },
+      select: { id: true, inventoryTracking: true, isLotControl: true, requireExpiryDate: true, avgCost: true },
     }),
   ]);
 
@@ -77,6 +78,7 @@ async function preloadAdjustmentMaps(
       products.map((product) => [
         product.id,
         {
+          inventoryTracking: product.inventoryTracking,
           isLotControl: product.isLotControl,
           requireExpiryDate: product.requireExpiryDate,
           avgCost: Number(product.avgCost),
@@ -198,6 +200,12 @@ export async function createAdjustment(
   try {
     await dbTx(async (tx) => {
       const { unitScaleMap, productMap } = await preloadAdjustmentMaps(tx, validItems);
+      for (const item of validItems) {
+        const product = productMap.get(item.productId);
+        if (product && !isInventoryTracked(product.inventoryTracking)) {
+          throw new Error("สินค้าไม่คำนวณสต็อกไม่สามารถใช้เอกสารปรับสต็อกได้");
+        }
+      }
 
       const adjustment = await tx.adjustment.create({
         data: {

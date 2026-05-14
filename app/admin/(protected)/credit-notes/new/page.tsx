@@ -7,6 +7,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
@@ -17,7 +18,7 @@ const NewCreditNotePage = async () => {
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true,
-        salePrice: true, saleUnitName: true, isLotControl: true,
+        salePrice: true, saleUnitName: true, inventoryTracking: true, isLotControl: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
         aliases:  { select: { alias: true } },
@@ -31,7 +32,7 @@ const NewCreditNotePage = async () => {
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
-    isLotControl: p.isLotControl,
+    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),

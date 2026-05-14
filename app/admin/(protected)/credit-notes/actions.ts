@@ -27,6 +27,7 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const creditNoteProductOptionSelect = {
   id: true,
@@ -35,6 +36,7 @@ const creditNoteProductOptionSelect = {
   description: true,
   salePrice: true,
   saleUnitName: true,
+  inventoryTracking: true,
   isLotControl: true,
   category: { select: { name: true } },
   brand: { select: { name: true } },
@@ -52,6 +54,7 @@ type CreditNoteProductOption = {
   description: string | null;
   salePrice: number;
   saleUnitName: string;
+  inventoryTracking: string;
   isLotControl: boolean;
   categoryName: string;
   brandName: string | null;
@@ -66,6 +69,7 @@ function serializeCreditNoteProductOption(product: {
   description: string | null;
   salePrice: unknown;
   saleUnitName: string | null;
+  inventoryTracking: string;
   isLotControl: boolean;
   category: { name: string };
   brand: { name: string } | null;
@@ -79,7 +83,8 @@ function serializeCreditNoteProductOption(product: {
     description: product.description,
     salePrice: Number(product.salePrice),
     saleUnitName: product.saleUnitName ?? "",
-    isLotControl: product.isLotControl,
+    inventoryTracking: product.inventoryTracking,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     categoryName: product.category.name,
     brandName: product.brand?.name ?? null,
     aliases: product.aliases.map((alias) => alias.alias),
@@ -383,10 +388,12 @@ export async function createCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true },
+          select: { inventoryTracking: true, isLotControl: true },
         });
         if (!product) throw new Error("Missing product");
-        if (type === CreditNoteType.RETURN && product.isLotControl) {
+        const isTracked = isInventoryTracked(product.inventoryTracking);
+        const isLotControl = isTracked && product.isLotControl;
+        if (type === CreditNoteType.RETURN && isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -404,7 +411,7 @@ export async function createCreditNote(
         });
 
         // Write StockCard only for RETURN type
-        if (type === CreditNoteType.RETURN) {
+        if (type === CreditNoteType.RETURN && isTracked) {
           const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
@@ -418,7 +425,7 @@ export async function createCreditNote(
             referenceId: cnItem.id,
           });
 
-          if (product.isLotControl && item.lotItems.length > 0) {
+          if (isLotControl && item.lotItems.length > 0) {
             const lotsInBase = item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
@@ -719,10 +726,12 @@ export async function updateCreditNote(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
         const product = await tx.product.findUnique({
           where: { id: item.productId },
-          select: { isLotControl: true },
+          select: { inventoryTracking: true, isLotControl: true },
         });
         if (!product) throw new Error("Missing product");
-        if (type === CreditNoteType.RETURN && product.isLotControl) {
+        const isTracked = isInventoryTracked(product.inventoryTracking);
+        const isLotControl = isTracked && product.isLotControl;
+        if (type === CreditNoteType.RETURN && isLotControl) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -738,7 +747,7 @@ export async function updateCreditNote(
           },
         });
 
-        if (type === CreditNoteType.RETURN) {
+        if (type === CreditNoteType.RETURN && isTracked) {
           const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
@@ -752,7 +761,7 @@ export async function updateCreditNote(
             referenceId: cnItem.id,
           });
 
-          if (product.isLotControl && item.lotItems.length > 0) {
+          if (isLotControl && item.lotItems.length > 0) {
             const lotsInBase = item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
@@ -871,6 +880,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
               description: true,
               salePrice: true,
               saleUnitName: true,
+              inventoryTracking: true,
               isLotControl: true,
               category: { select: { name: true } },
               brand: { select: { name: true } },

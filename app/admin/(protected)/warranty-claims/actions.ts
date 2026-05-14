@@ -39,6 +39,7 @@ import {
   parseDateOnlyToDate,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const createClaimSchema = z.object({
   warrantyId: z.string().min(1).max(50),
@@ -244,7 +245,7 @@ export async function createClaim(
       endDate: true,
       lotNo: true,
       productId: true,
-      product: { select: { isLotControl: true } },
+      product: { select: { inventoryTracking: true, isLotControl: true } },
       saleItem: { select: { supplierId: true, supplierName: true } },
       claims: {
         where: { status: { not: WarrantyClaimStatus.CANCELLED } },
@@ -271,19 +272,21 @@ export async function createClaim(
     await dbTx(async (tx) => {
       const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
       const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
+      const isTracked = isInventoryTracked(warranty.product.inventoryTracking);
+      const isLotControl = isTracked && warranty.product.isLotControl;
       const replacementOptions =
-        warranty.product.isLotControl && data.claimType === ClaimType.REPLACE_NOW
+        isLotControl && data.claimType === ClaimType.REPLACE_NOW
           ? await getClaimReplacementLots(tx, warranty.productId)
           : [];
       const autoReplacementLot =
-        warranty.product.isLotControl && data.claimType === ClaimType.REPLACE_NOW
+        isLotControl && data.claimType === ClaimType.REPLACE_NOW
           ? autoAllocateLots(replacementOptions, 1, 1)[0]
           : undefined;
       const selectedReplacementLotNo =
         normalizeOptionalString(data.replacementLotNo) ?? autoReplacementLot?.lotNo;
       const replacementLot = replacementOptions.find((lot) => lot.lotNo === selectedReplacementLotNo);
 
-      if (warranty.product.isLotControl && data.claimType === ClaimType.REPLACE_NOW && !replacementLot?.lotNo) {
+      if (isLotControl && data.claimType === ClaimType.REPLACE_NOW && !replacementLot?.lotNo) {
         throw new Error("ไม่พบ Lot คงเหลือสำหรับส่งสินค้าทดแทน");
       }
 
@@ -307,7 +310,7 @@ export async function createClaim(
       });
       createdClaimId = claim.id;
 
-      await writeClaimStockMovement(tx, {
+      if (isTracked) await writeClaimStockMovement(tx, {
         claimId: claim.id,
         productId: warranty.productId,
         movementType: ClaimStockMovementType.CUSTOMER_RETURN_IN,
@@ -320,7 +323,7 @@ export async function createClaim(
         detail: `รับคืนสินค้าเคลม ${claimNo}`,
       });
 
-      if (data.claimType === ClaimType.REPLACE_NOW) {
+      if (isTracked && data.claimType === ClaimType.REPLACE_NOW) {
         const replaceStockCardId = await writeStockCard(tx, {
           productId: warranty.productId,
           docNo: claimNo,
@@ -333,7 +336,7 @@ export async function createClaim(
           referenceId: claim.id,
         });
 
-        if (warranty.product.isLotControl && replacementLot?.lotNo) {
+        if (isLotControl && replacementLot?.lotNo) {
           await writeClaimLot(tx, claim.id, warranty.productId, {
             lotNo: replacementLot.lotNo,
             qtyInBase: 1,
@@ -482,7 +485,7 @@ export async function sendClaimToSupplier(
           id: true,
           lotNo: true,
           productId: true,
-          product: { select: { isLotControl: true } },
+          product: { select: { inventoryTracking: true, isLotControl: true } },
         },
       },
     },
@@ -497,13 +500,14 @@ export async function sendClaimToSupplier(
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
+      const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
 
       await tx.warrantyClaim.update({
         where: { id },
         data: { status: WarrantyClaimStatus.SENT_TO_SUPPLIER, sentAt: sentDate },
       });
 
-      await writeClaimStockMovement(tx, {
+      if (isTracked) await writeClaimStockMovement(tx, {
         claimId: id,
         productId: claim.warranty.productId,
         movementType: ClaimStockMovementType.SEND_TO_SUPPLIER_OUT,
@@ -579,7 +583,7 @@ export async function closeClaim(
         select: {
           id: true,
           productId: true,
-          product: { select: { isLotControl: true } },
+          product: { select: { inventoryTracking: true, isLotControl: true } },
         },
       },
     },
@@ -595,7 +599,8 @@ export async function closeClaim(
   const receivedMfg = normalizeOptionalDate(receivedLotParsed.data.receivedMfgDate);
   const receivedExp = normalizeOptionalDate(receivedLotParsed.data.receivedExpDate);
 
-  if (parsedOutcome.data === ClaimOutcome.RECEIVED && claim.warranty.product.isLotControl && !receivedLotNoValue) {
+  const claimProductIsTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
+  if (parsedOutcome.data === ClaimOutcome.RECEIVED && claimProductIsTracked && claim.warranty.product.isLotControl && !receivedLotNoValue) {
     return { error: "กรุณาระบุ Lot ที่รับกลับจากซัพพลายเออร์" };
   }
 
@@ -604,6 +609,8 @@ export async function closeClaim(
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
+      const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
+      const isLotControl = isTracked && claim.warranty.product.isLotControl;
 
       await tx.warrantyClaim.update({
         where: { id },
@@ -617,7 +624,7 @@ export async function closeClaim(
       });
 
       if (parsedOutcome.data === ClaimOutcome.RECEIVED) {
-        await writeClaimStockMovement(tx, {
+        if (isTracked) await writeClaimStockMovement(tx, {
           claimId: id,
           productId: claim.warranty.productId,
           movementType: ClaimStockMovementType.SUPPLIER_RECEIVE_IN,
@@ -630,7 +637,7 @@ export async function closeClaim(
           detail: `รับสินค้าทดแทนจากซัพพลายเออร์ ${claim.claimNo}`,
         });
 
-        const stockCardId = await writeStockCard(tx, {
+        const stockCardId = isTracked ? await writeStockCard(tx, {
           productId: claim.warranty.productId,
           docNo,
           docDate: resolvedDate,
@@ -640,9 +647,9 @@ export async function closeClaim(
           priceIn: originalCost.unitCost,
           detail: `ได้รับสินค้าคืนจากซัพพลายเออร์ ${claim.claimNo}`,
           referenceId: id,
-        });
+        }) : null;
 
-        if (claim.warranty.product.isLotControl && receivedLotNoValue) {
+        if (stockCardId && isLotControl && receivedLotNoValue) {
           await writeClaimLot(tx, id, claim.warranty.productId, {
             lotNo: receivedLotNoValue,
             qtyInBase: 1,
@@ -668,7 +675,7 @@ export async function closeClaim(
           );
         }
 
-        await writeClaimStockMovement(tx, {
+        if (isTracked) await writeClaimStockMovement(tx, {
           claimId: id,
           productId: claim.warranty.productId,
           movementType: ClaimStockMovementType.TRANSFER_TO_NORMAL_OUT,
@@ -678,11 +685,11 @@ export async function closeClaim(
           qtyOut: 1,
           unitCost: originalCost.unitCost,
           lotNo: receivedLotNoValue ?? originalCost.lotNo,
-          stockCardId,
+          stockCardId: stockCardId ?? undefined,
           detail: `โอนสินค้าเคลมเข้า stock ปกติ ${claim.claimNo}`,
         });
       } else {
-        await writeClaimStockMovement(tx, {
+        if (isTracked) await writeClaimStockMovement(tx, {
           claimId: id,
           productId: claim.warranty.productId,
           movementType: ClaimStockMovementType.SUPPLIER_REJECT,
@@ -736,7 +743,7 @@ export async function returnClaimToCustomer(
       warranty: {
         select: {
           productId: true,
-          product: { select: { isLotControl: true } },
+          product: { select: { inventoryTracking: true, isLotControl: true } },
         },
       },
     },
@@ -756,6 +763,8 @@ export async function returnClaimToCustomer(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
+      const isLotControl = isTracked && claim.warranty.product.isLotControl;
       await tx.warrantyClaim.update({
         where: { id },
         data: {
@@ -764,7 +773,7 @@ export async function returnClaimToCustomer(
         },
       });
 
-      const stockCardId = await writeStockCard(tx, {
+      const stockCardId = isTracked ? await writeStockCard(tx, {
         productId: claim.warranty.productId,
         docNo,
         docDate: returnedDate,
@@ -774,9 +783,9 @@ export async function returnClaimToCustomer(
         priceIn: 0,
         detail: `ส่งคืนลูกค้าหลังเคลม ${claim.claimNo}`,
         referenceId: id,
-      });
+      }) : null;
 
-      if (claim.warranty.product.isLotControl) {
+      if (stockCardId && isLotControl) {
         const receivedLot = await getReceivedLotSnapshot(tx, claim.claimNo);
         if (!receivedLot) {
           throw new Error("ไม่พบ Lot ที่รับกลับจากซัพพลายเออร์สำหรับส่งคืนลูกค้า");

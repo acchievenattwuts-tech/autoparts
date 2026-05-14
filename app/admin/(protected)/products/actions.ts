@@ -13,6 +13,11 @@ import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
 import { AuditAction } from "@/lib/generated/prisma";
+import {
+  INVENTORY_TRACKING_NON_TRACKED,
+  INVENTORY_TRACKING_TRACKED,
+  isInventoryTracked,
+} from "@/lib/inventory-tracking";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
@@ -36,6 +41,7 @@ const productSchema = z.object({
   brandId: z.string().max(50).optional(),
   preferredSupplierId: z.string().max(50).optional(),
   shelfLocation: z.string().max(50).optional(),
+  inventoryTracking: z.enum([INVENTORY_TRACKING_TRACKED, INVENTORY_TRACKING_NON_TRACKED]).default(INVENTORY_TRACKING_TRACKED),
   costPrice: z.coerce.number().min(0).max(9_999_999).default(0),
   salePrice: z.coerce.number().min(0).max(9_999_999).default(0),
   minStock: z.coerce.number().int().min(0).max(99_999).default(1),
@@ -94,6 +100,7 @@ async function getProductAuditSnapshot(productId: string) {
     brandId: product.brandId,
     preferredSupplierId: product.preferredSupplierId,
     shelfLocation: product.shelfLocation,
+    inventoryTracking: product.inventoryTracking,
     costPrice: product.costPrice,
     salePrice: product.salePrice,
     minStock: product.minStock,
@@ -177,6 +184,7 @@ const parseProductFormData = (
     brandId: formData.get("brandId") || undefined,
     preferredSupplierId: formData.get("preferredSupplierId") || undefined,
     shelfLocation: formData.get("shelfLocation") || undefined,
+    inventoryTracking: formData.get("inventoryTracking") || INVENTORY_TRACKING_TRACKED,
     costPrice: formData.get("costPrice"),
     salePrice: formData.get("salePrice"),
     minStock: formData.get("minStock"),
@@ -201,6 +209,36 @@ const parseProductFormData = (
 
   return { success: true, data: parsed.data };
 };
+
+async function assertCanSetInventoryTracking(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  productId: string,
+  nextInventoryTracking: ProductInput["inventoryTracking"],
+): Promise<void> {
+  if (isInventoryTracked(nextInventoryTracking)) return;
+
+  const currentProduct = await tx.product.findUnique({
+    where: { id: productId },
+    select: { inventoryTracking: true, stock: true },
+  });
+  if (!currentProduct) throw new Error("ไม่พบสินค้า");
+  if (!isInventoryTracked(currentProduct.inventoryTracking)) return;
+
+  const stockCardCount = await tx.stockCard.count({ where: { productId } });
+  if (stockCardCount === 0) return;
+
+  if (currentProduct.stock !== 0) {
+    throw new Error("สินค้านี้มีประวัติสต็อกและยอดคงเหลือยังไม่เป็นศูนย์ กรุณาปรับยอดให้เป็นศูนย์หรือสร้างรหัสสินค้าใหม่");
+  }
+
+  const openLot = await tx.lotBalance.findFirst({
+    where: { productId, qtyOnHand: { not: 0 } },
+    select: { id: true },
+  });
+  if (openLot) {
+    throw new Error("สินค้านี้มี Lot คงเหลือ กรุณาปรับ Lot ให้เป็นศูนย์ก่อนเปลี่ยนเป็นไม่คำนวณสต็อก");
+  }
+}
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
@@ -242,6 +280,7 @@ export const createProduct = async (
           brandId: productData.brandId || null,
           preferredSupplierId: productData.preferredSupplierId || null,
           shelfLocation: productData.shelfLocation,
+          inventoryTracking: productData.inventoryTracking,
           costPrice: productData.costPrice,
           salePrice: productData.salePrice,
           minStock: productData.minStock,
@@ -251,9 +290,9 @@ export const createProduct = async (
           reportUnitName: productData.reportUnitName,
           description: productData.description,
           imageUrl: productData.imageUrl || null,
-          isLotControl: productData.isLotControl,
-          requireExpiryDate: productData.requireExpiryDate,
-          allowExpiredIssue: productData.allowExpiredIssue,
+          isLotControl: isInventoryTracked(productData.inventoryTracking) ? productData.isLotControl : false,
+          requireExpiryDate: isInventoryTracked(productData.inventoryTracking) ? productData.requireExpiryDate : false,
+          allowExpiredIssue: isInventoryTracked(productData.inventoryTracking) ? productData.allowExpiredIssue : false,
           lotIssueMethod: productData.lotIssueMethod,
           stock: 0, // stock เริ่มต้น = 0 เสมอ (ใช้ระบบ BF ใน Phase 3)
         },
@@ -334,6 +373,28 @@ export const updateProduct = async (
 
   const { aliases, carModelIds, units, ...productData } = result.data;
 
+  if (!isInventoryTracked(productData.inventoryTracking)) {
+    const currentProduct = await db.product.findUnique({
+      where: { id },
+      select: { inventoryTracking: true, stock: true },
+    });
+    if (currentProduct && isInventoryTracked(currentProduct.inventoryTracking)) {
+      const stockCardCount = await db.stockCard.count({ where: { productId: id } });
+      if (stockCardCount > 0 && currentProduct.stock !== 0) {
+        return { error: "สินค้านี้มีประวัติสต็อกและยอดคงเหลือยังไม่เป็นศูนย์ กรุณาปรับยอดให้เป็นศูนย์หรือสร้างรหัสสินค้าใหม่" };
+      }
+      if (stockCardCount > 0) {
+        const openLot = await db.lotBalance.findFirst({
+          where: { productId: id, qtyOnHand: { not: 0 } },
+          select: { id: true },
+        });
+        if (openLot) {
+          return { error: "สินค้านี้มี Lot คงเหลือ กรุณาปรับ Lot ให้เป็นศูนย์ก่อนเปลี่ยนเป็นไม่คำนวณสต็อก" };
+        }
+      }
+    }
+  }
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getProductAuditSnapshot(id);
@@ -343,6 +404,8 @@ export const updateProduct = async (
         where: { id },
         select: { slug: true, code: true },
       });
+
+      await assertCanSetInventoryTracking(tx, id, productData.inventoryTracking);
 
       const slug =
         currentProduct?.slug ??
@@ -367,6 +430,7 @@ export const updateProduct = async (
           brandId: productData.brandId || null,
           preferredSupplierId: productData.preferredSupplierId || null,
           shelfLocation: productData.shelfLocation,
+          inventoryTracking: productData.inventoryTracking,
           costPrice: productData.costPrice,
           salePrice: productData.salePrice,
           minStock: productData.minStock,
@@ -376,9 +440,9 @@ export const updateProduct = async (
           reportUnitName: productData.reportUnitName,
           description: productData.description,
           imageUrl: productData.imageUrl || null,
-          isLotControl: productData.isLotControl,
-          requireExpiryDate: productData.requireExpiryDate,
-          allowExpiredIssue: productData.allowExpiredIssue,
+          isLotControl: isInventoryTracked(productData.inventoryTracking) ? productData.isLotControl : false,
+          requireExpiryDate: isInventoryTracked(productData.inventoryTracking) ? productData.requireExpiryDate : false,
+          allowExpiredIssue: isInventoryTracked(productData.inventoryTracking) ? productData.allowExpiredIssue : false,
           lotIssueMethod: productData.lotIssueMethod,
           isActive: true,
         },
