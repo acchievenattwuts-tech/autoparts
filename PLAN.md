@@ -6722,9 +6722,34 @@ Customer (LINE)
 
 ### Roadmap Update (2026-05-14 - LIFF Tracking Map Position Rollback to dd33931)
 
+### Roadmap Update (2026-05-14 - Product Inventory Tracking Mode)
+
+#### Implementation checklist
+- [x] Added `InventoryTracking` enum with `TRACKED` / `NON_TRACKED` and `Product.inventoryTracking @default(TRACKED)`.
+- [x] Synced the database with `npx prisma db push` and regenerated Prisma client.
+- [x] Added an admin product dropdown for stock calculation mode on create/edit product forms; new products default to `TRACKED`.
+- [x] Added cost-field guidance: tracked products use Stock Card MAVG for profit cost, non-tracked products use `Product.costPrice` as the sale cost snapshot.
+- [x] Blocked switching an existing tracked product with stock movement to non-tracked unless normal stock and lot balances are zero.
+- [x] Updated sale create/edit cost logic: tracked products snapshot `Product.avgCost`, non-tracked products snapshot `Product.costPrice`.
+- [x] Prevented non-tracked products from writing normal StockCard MAVG rows or stock-lot movements in sales, purchases, purchase returns, credit notes, and warranty claim stock flows.
+- [x] Blocked stock-only BF and stock adjustment documents for non-tracked products.
+- [x] Kept report/profit logic unchanged because reports already calculate COGS from `SaleItem.costPrice` snapshots.
+- [x] Verified with `npm run build`.
+
 > Scope: คืนเฉพาะ logic ตำแหน่งแผนที่ให้ตรงกับ commit `dd33931` โดยจำกัดแค่เรื่อง zoom/fitBounds และ destination marker เพื่อแก้ framing กับจุดปักปลายทางที่เพี้ยน
 
 - [x] คืน `fitBounds` ของหน้า LIFF tracking และ inline tracker ให้ตรง `dd33931`
 - [x] เอา `TARGET_ROUTE_ZOOM` ออก และคืน destination marker HTML/size/anchor ให้ตรง `dd33931`
 - [x] Verification: `npm run build` ผ่าน 0 errors
+
+### Roadmap Update (2026-05-14 - LocationPinPicker Place Search)
+
+> Scope: เพิ่มช่องค้นหาสถานที่แบบ autocomplete ใน `LocationPinPicker` เพื่อให้ผู้ใช้ค้นหาและปักหมุดได้เร็วขึ้น โดยใช้ Nominatim (OpenStreetMap) ซึ่งเป็นชุดเดียวกับ tile provider เดิม ไม่เพิ่ม dependency, ไม่ต้อง API key, ไม่กระทบ schema/server action/business logic เดิม การเปลี่ยนแปลงส่งผลทุกหน้าที่ใช้ `LocationPinPicker` ได้แก่ ลูกค้า (CustomerForm), ขาย (SaleForm), และคิวจัดส่ง (DestinationPinSheet)
+
+- [x] เพิ่ม state สำหรับ search (query/results/searching/showDropdown) และ refs (debounce, container) ใน `components/shared/LocationPinPicker.tsx`
+- [x] เพิ่ม `handleSearchInput` กับ debounce 500ms เรียก Nominatim `?countrycodes=th&accept-language=th&limit=5` (เริ่มค้นหาเมื่อ ≥ 3 ตัวอักษร)
+- [x] เพิ่ม `handleSelectResult` ใช้ `setMarker()` เดิมเพื่อย้ายแผนที่ + ปักหมุด + เรียก `onChange(lat, lon)` ผ่าน path เดียวกับการแตะแผนที่ ไม่กระทบ flow ปักหมุดเดิม
+- [x] ปิด dropdown เมื่อคลิกนอกกล่อง search ด้วย `mousedown` listener และ cleanup debounce timer เมื่อ unmount
+- [x] วาง UI search ไว้เหนือ Latitude/Longitude inputs (รองรับทั้ง light/dark mode) แสดง spinner ขณะค้นหา และข้อความ `ไม่พบสถานที่` เมื่อไม่มีผลลัพธ์
+- [x] Verification: `npx tsc --noEmit` ผ่าน 0 errors
 

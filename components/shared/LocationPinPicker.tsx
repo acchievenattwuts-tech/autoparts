@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Crosshair, MapPin, Trash2 } from "lucide-react";
+import { AlertCircle, Crosshair, Loader2, MapPin, Search, Trash2 } from "lucide-react";
+
+interface NominatimResult {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+}
 
 interface Props {
   lat: number | null;
@@ -49,6 +56,13 @@ const LocationPinPicker = ({
   const [mapHint, setMapHint] = useState("");
   const [mapReady, setMapReady] = useState(false);
   const didAutoCenterRef = useRef(false);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const setMarker = async (nextLat: number, nextLon: number, zoom = 16) => {
     const L = (await import("leaflet")).default;
@@ -218,6 +232,68 @@ const LocationPinPicker = ({
     onChange(null, null);
   };
 
+  const handleSearchInput = (value: string) => {
+    setSearchQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (value.trim().length < 3) {
+      setSearchResults([]);
+      setShowDropdown(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      setShowDropdown(true);
+      try {
+        const params = new URLSearchParams({
+          q: value,
+          format: "json",
+          limit: "5",
+          countrycodes: "th",
+          "accept-language": "th",
+        });
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+        );
+        if (!res.ok) throw new Error("search failed");
+        const data = (await res.json()) as NominatimResult[];
+        setSearchResults(data);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 500);
+  };
+
+  const handleSelectResult = (result: NominatimResult) => {
+    const selectedLat = parseFloat(result.lat);
+    const selectedLon = parseFloat(result.lon);
+    if (Number.isNaN(selectedLat) || Number.isNaN(selectedLon)) return;
+    void setMarker(selectedLat, selectedLon, 17);
+    onChange(selectedLat, selectedLon);
+    setSearchQuery("");
+    setSearchResults([]);
+    setShowDropdown(false);
+  };
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   const handleManualInput = (field: "lat" | "lon", value: string) => {
     if (field === "lat") {
       setManualLat(value);
@@ -258,6 +334,62 @@ const LocationPinPicker = ({
             </button>
           )}
         </div>
+      </div>
+
+      <div ref={searchContainerRef} className="relative">
+        <div className="relative">
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchInput(e.target.value)}
+            onFocus={() => {
+              if (searchResults.length > 0) setShowDropdown(true);
+            }}
+            placeholder="ค้นหาสถานที่ เช่น เซ็นทรัล บางนา"
+            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          />
+          {searching && (
+            <Loader2
+              size={14}
+              className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-blue-500 dark:text-blue-400"
+            />
+          )}
+        </div>
+        {showDropdown && (
+          <div className="absolute z-[1000] mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
+            {searching && searchResults.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                กำลังค้นหา...
+              </div>
+            ) : searchResults.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                ไม่พบสถานที่
+              </div>
+            ) : (
+              <ul className="max-h-60 overflow-y-auto">
+                {searchResults.map((result) => (
+                  <li key={result.place_id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectResult(result)}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left text-xs text-gray-700 transition hover:bg-blue-50 dark:text-gray-200 dark:hover:bg-blue-400/10"
+                    >
+                      <MapPin
+                        size={12}
+                        className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400"
+                      />
+                      <span className="line-clamp-2">{result.display_name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
