@@ -5,6 +5,7 @@ import BfForm from "./BfForm";
 import BfHistoryTable from "./BfHistoryTable";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { INVENTORY_TRACKING_TRACKED } from "@/lib/inventory-tracking";
 
 const BfPage = async () => {
   await requirePermission("stock.bf.view");
@@ -14,7 +15,7 @@ const BfPage = async () => {
 
   const [products, bfDocs] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true },
+      where: { isActive: true, inventoryTracking: INVENTORY_TRACKING_TRACKED },
       orderBy: { code: "asc" },
       select: {
         id: true,

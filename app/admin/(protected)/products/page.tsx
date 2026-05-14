@@ -14,6 +14,7 @@ import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import ProductFilterForm from "./ProductFilterForm";
+import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 
 const PAGE_SIZE = 30;
 
@@ -84,7 +85,19 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
       },
-      include: {
+      select: {
+        id: true,
+        imageUrl: true,
+        code: true,
+        name: true,
+        shelfLocation: true,
+        salePrice: true,
+        stock: true,
+        minStock: true,
+        reportUnitName: true,
+        warrantyDays: true,
+        isActive: true,
+        inventoryTracking: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
       },
@@ -125,9 +138,9 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         }))}
       />
 
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-100 px-6 py-4">
-          <p className="text-sm text-gray-500">
+      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950">
+        <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             {search ? (
               <>
                 ผลการค้นหา &quot;{search}&quot;:{" "}
@@ -144,24 +157,25 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">รูป</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">รหัส</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อสินค้า</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">หมวดหมู่</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ตำแหน่ง Shelf</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">ราคาขาย</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">Stock</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">ประกัน</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">สถานะ</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รูป</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อสินค้า</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">หมวดหมู่</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">การคำนวณ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ตำแหน่ง Shelf</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ราคาขาย</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">Stock</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">ประกัน</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
               </tr>
             </thead>
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400">
+                  <td colSpan={11} className="py-12 text-center text-gray-400 dark:text-slate-500">
                     {search ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้า"}
                   </td>
                 </tr>
@@ -169,33 +183,44 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 products.map((product) => (
                   <tr
                     key={product.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      product.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+                    className={`border-t border-gray-50 transition-colors dark:border-white/10 ${
+                      product.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
                     }`}
                   >
                     <td className="px-4 py-3">
                       {product.imageUrl ? (
                         <ProductImagePreview src={product.imageUrl} alt={product.name} />
                       ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-white/5">
                           <span className="text-xs text-gray-300">ไม่มี</span>
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono font-medium text-gray-700">
+                    <td className="px-4 py-3 font-mono font-medium text-gray-700 dark:text-slate-200">
                       {product.code}
                     </td>
-                    <td className="px-4 py-3 text-gray-800">
+                    <td className="px-4 py-3 text-gray-800 dark:text-slate-100">
                       <p className="font-medium">{product.name}</p>
                       {product.brand && (
-                        <p className="text-xs text-gray-400">{product.brand.name}</p>
+                        <p className="text-xs text-gray-400 dark:text-slate-500">{product.brand.name}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{product.category.name}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {product.shelfLocation ?? <span className="text-gray-300">-</span>}
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{product.category.name}</td>
+                    <td className="px-4 py-3 text-center">
+                      {product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+                          ไม่คำนวณสต็อก
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-200">
+                          คำนวณสต็อก
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-800">
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
+                      {product.shelfLocation ?? <span className="text-gray-300 dark:text-slate-500">-</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-slate-100">
                       {Number(product.salePrice).toLocaleString("th-TH", {
                         minimumFractionDigits: 2,
                       })}
@@ -203,12 +228,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     <td className="px-4 py-3 text-center">
                       <span
                         className={`font-medium ${
-                          product.stock <= product.minStock ? "text-red-600" : "text-gray-800"
+                          product.stock <= product.minStock ? "text-red-600 dark:text-red-300" : "text-gray-800 dark:text-slate-100"
                         }`}
                       >
                         {product.stock}
                       </span>
-                      <span className="ml-1 text-xs text-gray-400">
+                      <span className="ml-1 text-xs text-gray-400 dark:text-slate-500">
                         {product.reportUnitName}
                       </span>
                     </td>
@@ -223,11 +248,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {product.isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                        <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-200">
                           ใช้งาน
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500">
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-white/10 dark:text-slate-400">
                           ปิดใช้งาน
                         </span>
                       )}

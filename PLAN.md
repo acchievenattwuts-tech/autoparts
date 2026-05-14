@@ -6736,6 +6736,14 @@ Customer (LINE)
 - [x] Kept report/profit logic unchanged because reports already calculate COGS from `SaleItem.costPrice` snapshots.
 - [x] Verified with `npm run build`.
 
+### Roadmap Update (2026-05-14 - Inventory Tracking UI Follow-up)
+
+#### Implementation checklist
+- [x] Filtered `NON_TRACKED` products out of stock-only BF and stock adjustment product pickers at the page-query layer.
+- [x] Added visible inventory-tracking status badges to the admin product list.
+- [x] Added a visible inventory-tracking status badge to the product edit header for quick review before editing.
+- [x] Kept the change UI-only on top of the existing server guards; no stock logic was relaxed or rewritten.
+
 > Scope: คืนเฉพาะ logic ตำแหน่งแผนที่ให้ตรงกับ commit `dd33931` โดยจำกัดแค่เรื่อง zoom/fitBounds และ destination marker เพื่อแก้ framing กับจุดปักปลายทางที่เพี้ยน
 
 - [x] คืน `fitBounds` ของหน้า LIFF tracking และ inline tracker ให้ตรง `dd33931`

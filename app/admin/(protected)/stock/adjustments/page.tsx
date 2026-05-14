@@ -7,6 +7,7 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import { INVENTORY_TRACKING_TRACKED } from "@/lib/inventory-tracking";
 
 const AdjustmentsPage = async ({
   searchParams,
@@ -31,7 +32,7 @@ const AdjustmentsPage = async ({
 
   const [products, adjustments] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true },
+      where: { isActive: true, inventoryTracking: INVENTORY_TRACKING_TRACKED },
       orderBy: { code: "asc" },
       select: {
         id:          true,
