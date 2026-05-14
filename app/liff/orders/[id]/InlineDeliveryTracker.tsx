@@ -16,7 +16,7 @@ const POLL_INTERVAL_MS = 3 * 60 * 1000;
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
 const DRIVER_ICON_HTML =
-  '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
+  '<div class="liff-driver-marker liff-driver-marker--compact"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__truck"><span class="liff-driver-marker__box"></span><span class="liff-driver-marker__cab"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--left"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--right"></span></div></div>';
 const DESTINATION_ICON_HTML =
   '<div class="liff-destination-marker liff-destination-marker--compact"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
@@ -157,7 +157,7 @@ const InlineDeliveryTracker = ({
       if (initialDriver && destLat && destLon) {
         map.fitBounds(
           [[initialDriver.lat, initialDriver.lon], [destLat, destLon]],
-          { padding: [30, 30] },
+          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
       }
 
@@ -297,7 +297,7 @@ const InlineDeliveryTracker = ({
       if (options.recenter && destLat && destLon) {
         map.fitBounds(
           [[driver.lat, driver.lon], [destLat, destLon]],
-          { padding: [30, 30] },
+          { paddingTopLeft: [44, 52], paddingBottomRight: [108, 52] },
         );
       }
     },
@@ -412,12 +412,16 @@ const InlineDeliveryTracker = ({
               </p>
               {driverUpdatedClock && etaArrivalClock ? (
                 <p className="text-[11px] font-medium text-blue-700">
-                  อัปเดต {driverUpdatedClock} · ถึงประมาณ {etaArrivalClock}
+                  ระยะทางคงเหลือ {formatDistance(eta.distance)} · ถึงประมาณ {etaArrivalClock}
                 </p>
-              ) : null}
+              ) : (
+                <p className="text-[11px] font-medium text-blue-700">
+                  ระยะทางคงเหลือ {formatDistance(eta.distance)}
+                </p>
+              )}
             </div>
           </div>
-          <span className="text-xs text-slate-500">{formatDistance(eta.distance)}</span>
+          {driverUpdatedClock ? <span className="text-xs text-slate-500">{driverUpdatedClock}</span> : null}
         </div>
       )}
 
@@ -455,39 +459,13 @@ const InlineDeliveryTracker = ({
         ) : null}
       </div>
 
-      <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs leading-relaxed text-slate-600">
-        <AlertCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
+      <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
+        <AlertCircle size={13} className="mt-0.5 shrink-0 text-slate-400" />
         <span>หากหมุดไม่ตรงกับสถานที่จัดส่ง กรุณาแจ้งพนักงานส่งของหรือทัก LINE OA เพื่อปรับข้อมูล</span>
       </div>
 
       {/* Route summary */}
-      {eta && driver ? (
-        <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-100 bg-blue-50/70 p-2.5">
-          <div className="rounded-lg bg-white px-3 py-2 shadow-sm">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Clock size={13} className="text-blue-600" />
-              เวลาถึงโดยประมาณ
-            </div>
-            <p className="mt-1 font-kanit text-base font-bold text-blue-950">
-              ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
-            </p>
-            {etaArrivalClock ? (
-              <p className="mt-1 text-[11px] font-semibold text-blue-700">
-                ถึงประมาณ {etaArrivalClock}
-              </p>
-            ) : null}
-          </div>
-          <div className="rounded-lg bg-white px-3 py-2 shadow-sm">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Navigation size={13} className="text-blue-600" />
-              ระยะทางคงเหลือ
-            </div>
-            <p className="mt-1 font-kanit text-base font-bold text-blue-950">
-              {formatDistance(eta.distance)}
-            </p>
-          </div>
-        </div>
-      ) : routeStatusText ? (
+      {!eta && routeStatusText ? (
         <div className="rounded-xl border border-blue-100 bg-slate-50 px-3 py-2 text-sm text-slate-500">
           {routeStatusText}
         </div>

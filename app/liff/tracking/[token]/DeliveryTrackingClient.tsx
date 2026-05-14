@@ -26,7 +26,7 @@ const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
 const DRIVER_ICON_HTML =
-  '<div class="liff-driver-marker"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__vehicle">🚚</div></div>';
+  '<div class="liff-driver-marker"><div class="liff-driver-marker__pulse"></div><div class="liff-driver-marker__ring"></div><div class="liff-driver-marker__truck"><span class="liff-driver-marker__box"></span><span class="liff-driver-marker__cab"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--left"></span><span class="liff-driver-marker__wheel liff-driver-marker__wheel--right"></span></div></div>';
 const DESTINATION_ICON_HTML =
   '<div class="liff-destination-marker"><div class="liff-destination-marker__label">ปลายทางของคุณ</div><div class="liff-destination-marker__pin"><span>📦</span></div></div>';
 
@@ -216,7 +216,7 @@ export default function DeliveryTrackingClient({
             [initialDriver.lat, initialDriver.lon],
             [destLat, destLon],
           ],
-          { padding: [40, 40] },
+          { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
         );
       }
 
@@ -365,7 +365,7 @@ export default function DeliveryTrackingClient({
             [driver.lat, driver.lon],
             [destLat, destLon],
           ],
-          { padding: [44, 44] },
+          { paddingTopLeft: [48, 64], paddingBottomRight: [120, 64] },
         );
       }
     },
@@ -514,14 +514,16 @@ export default function DeliveryTrackingClient({
             <p className="mt-1.5 font-kanit text-2xl font-bold text-slate-900">
               ถึงใน ~{formatEta(eta.duration)}{eta.estimated ? " (โดยประมาณ)" : ""}
             </p>
-            <p className="mt-0.5 text-sm text-slate-500">
-              ระยะทาง {formatDistance(eta.distance)}
-            </p>
             {driverUpdatedClock && etaArrivalClock ? (
+              <div className="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
+                <p>ระยะทางคงเหลือ {formatDistance(eta.distance)} · ถึงประมาณ {etaArrivalClock}</p>
+                <p className="mt-0.5 text-xs font-medium text-blue-700">อัปเดตล่าสุด {driverUpdatedClock}</p>
+              </div>
+            ) : (
               <p className="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
-                อัปเดตตำแหน่งล่าสุด {driverUpdatedClock} · ถึงประมาณ {etaArrivalClock}
+                ระยะทางคงเหลือ {formatDistance(eta.distance)}
               </p>
-            ) : null}
+            )}
           </div>
         )}
 
@@ -572,8 +574,8 @@ export default function DeliveryTrackingClient({
           ) : null}
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          <AlertCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
+        <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
+          <AlertCircle size={13} className="mt-0.5 shrink-0 text-slate-400" />
           <span>หากหมุดไม่ตรงกับสถานที่จัดส่ง กรุณาแจ้งพนักงานส่งของหรือทัก LINE OA เพื่อปรับข้อมูล</span>
         </div>
 

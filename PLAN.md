@@ -6684,3 +6684,13 @@ Customer (LINE)
 - [x] ใช้ pattern เดียวกันทั้ง `/liff/tracking/[token]` และ inline tracking ในหน้ารายละเอียดออเดอร์
 - [x] Verification: `npm run build` ผ่าน 0 errors
 
+### Roadmap Update (2026-05-14 - LIFF Tracking Customer View Refinement)
+
+> Scope: ปรับมุมมองลูกค้าในหน้า tracking ให้ลดข้อมูลซ้ำและอ่านง่ายขึ้น โดยไม่แก้ปุ่ม LINE floating ตามคำสั่ง
+
+- [x] เพิ่ม padding ตอน fit bounds เพื่อไม่ให้ label `ปลายทางของคุณ` ถูกตัดขอบแผนที่
+- [x] ปรับ marker รถจาก emoji เป็น marker วงกลมพร้อมไอคอนรถที่วาดด้วย CSS ให้ดูเป็นระบบมากขึ้น
+- [x] ลดน้ำหนักกล่องแจ้งหมุดไม่ตรงให้เป็นข้อความรอง ไม่แย่งสายตาจาก ETA/map
+- [x] รวม `ระยะทางคงเหลือ` เข้า ETA card ด้านบน และเอา summary card ล่าง 2 ใบออกเมื่อมี ETA แล้ว
+- [x] Verification: `npm run build` ผ่าน 0 errors
+
