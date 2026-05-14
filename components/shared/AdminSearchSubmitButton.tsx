@@ -24,7 +24,7 @@ const AdminSearchSubmitButton = ({
       type={type ?? "submit"}
       disabled={disabled || isPending}
       className={cn(
-        "inline-flex items-center gap-2 disabled:cursor-wait disabled:opacity-80",
+        "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#162d4a] disabled:cursor-wait disabled:opacity-80 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400",
         className,
       )}
     >

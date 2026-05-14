@@ -15,7 +15,7 @@ const AdminThemeToggle = () => {
       aria-label={isDark ? "สลับเป็นโหมดสว่าง" : "สลับเป็นโหมดมืด"}
       aria-pressed={isDark}
       title={isDark ? "Dark mode" : "Light mode"}
-      className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+      className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-white/10 sm:px-3"
     >
       <span
         className={cn(
@@ -30,7 +30,7 @@ const AdminThemeToggle = () => {
           )}
         />
       </span>
-      <span className="hidden sm:inline">{theme === "dark" ? "Dark" : "Light"}</span>
+      <span className="hidden md:inline">{theme === "dark" ? "Dark" : "Light"}</span>
       {isDark ? <MoonStar size={16} className="text-sky-300" /> : <SunMedium size={16} className="text-amber-500" />}
     </button>
   );

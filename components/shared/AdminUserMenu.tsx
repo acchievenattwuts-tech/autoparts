@@ -60,9 +60,9 @@ const AdminUserMenu = ({ username }: AdminUserMenuProps) => {
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-          "text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10",
-          open && "bg-gray-100 dark:bg-white/10",
+          "flex h-10 items-center gap-2 rounded-lg border border-transparent px-2.5 text-sm transition-colors sm:px-3",
+          "text-slate-700 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-200 dark:hover:border-white/10 dark:hover:bg-white/10",
+          open && "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/10",
         )}
       >
         <UserCircle size={18} className="text-gray-400 dark:text-slate-400" />
