@@ -49,15 +49,15 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
       <div className="mb-6 flex items-center gap-2">
         <Link
           href={`/admin/supplier-advances/${id}`}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> {advance.advanceNo}
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">แก้ไข</span>
+        <span className="text-gray-300 dark:text-slate-600">/</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
 
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900">แก้ไขเงินมัดจำซัพพลายเออร์</h1>
+      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">แก้ไขเงินมัดจำซัพพลายเออร์</h1>
 
       <SupplierAdvanceForm
         suppliers={suppliers}

@@ -23,18 +23,18 @@ const NewExpensePage = async () => {
 
   return (
     <div>
-      <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-        <Link href="/admin/expenses" className="hover:text-[#1e3a5f]">ค่าใช้จ่าย</Link>
+      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400 mb-4">
+        <Link href="/admin/expenses" className="hover:text-[#1e3a5f] dark:hover:text-sky-300">ค่าใช้จ่าย</Link>
         <ChevronRight size={14} />
-        <span className="text-gray-900">บันทึกรายการใหม่</span>
+        <span className="text-gray-900 dark:text-slate-300">บันทึกรายการใหม่</span>
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Receipt size={22} className="text-[#1e3a5f]" />
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">บันทึกค่าใช้จ่าย</h1>
+        <Receipt size={22} className="text-[#1e3a5f] dark:text-sky-300" />
+        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">บันทึกค่าใช้จ่าย</h1>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 dark:border-white/10 dark:bg-[#101b2e] p-6">
         <NewExpenseForm
           expenseCodes={expenseCodes}
           cashBankAccounts={cashBankAccounts}

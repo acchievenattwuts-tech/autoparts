@@ -38,7 +38,7 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
       )}
     >
       <div
-        className={`hidden flex-shrink-0 overflow-hidden transition-all duration-300 ease-in-out lg:flex ${
+        className={`hidden flex-shrink-0 overflow-hidden border-r border-slate-200/80 bg-slate-50 shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all duration-300 ease-in-out lg:flex dark:border-white/10 dark:bg-[#0b1424] dark:shadow-none ${
           sidebarOpen ? "w-72" : "w-0"
         }`}
       >
@@ -47,24 +47,24 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
 
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <div className="relative z-50">
+          <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-[2px]" onClick={() => setSidebarOpen(false)} />
+          <div className="relative z-50 shadow-2xl shadow-slate-950/30">
             <AdminSidebar permissions={permissions} onClose={() => setSidebarOpen(false)} />
           </div>
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#0d1728]/95 sm:px-4">
+        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#0d1728]/95 sm:px-4 lg:px-5">
           <button
             onClick={() => setSidebarOpen((prev) => !prev)}
             aria-label="Toggle admin navigation"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-transparent text-slate-600 transition-colors hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:border-white/10 dark:hover:bg-white/10 dark:hover:text-white"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/15 dark:hover:bg-white/10 dark:hover:text-white"
           >
             <Menu size={20} />
           </button>
           <div className="flex-1" />
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50 px-2 py-1 dark:border-white/10 dark:bg-white/5">
             <QuickSearchLauncher role={role} permissions={permissions} userId={userId} />
             <AdminThemeToggle />
             <AdminUserMenu username={username} />
@@ -75,7 +75,7 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
 
         <main className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 lg:px-6 lg:py-5">
           {mustChangePassword && (
-            <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200/80 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
               <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
               <div>
                 <p className="font-medium">ควรเปลี่ยนรหัสผ่านก่อนใช้งานต่อ</p>

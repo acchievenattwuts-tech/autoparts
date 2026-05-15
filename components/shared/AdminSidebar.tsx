@@ -42,7 +42,7 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
   };
 
   return (
-    <div className="flex h-full w-72 flex-col border-r border-[#163055]/20 bg-[#17365d] text-white shadow-xl dark:border-white/10 dark:bg-[#0b1424]">
+    <div className="flex h-full w-72 flex-col border-r border-sky-950/15 bg-gradient-to-b from-[#17365d] via-[#163055] to-[#102948] text-white shadow-xl dark:border-white/10 dark:from-[#0b1424] dark:via-[#0b1424] dark:to-[#09101c]">
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-4 dark:border-white/10">
         <div className="min-w-0">
           <p className="font-kanit text-lg font-bold leading-tight text-white dark:text-slate-50">ศรีวรรณ อะไหล่แอร์</p>
@@ -52,7 +52,7 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
           <button
             onClick={onClose}
             aria-label="Close admin navigation"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/10 hover:text-white lg:hidden dark:hover:bg-white/10"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white shadow-sm transition-colors hover:bg-white/20 hover:text-white lg:hidden dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
           >
             <X size={20} />
           </button>
@@ -70,9 +70,9 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
                 type="button"
                 onClick={() => toggleSection(item.section, hasActiveItem)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide transition-colors",
+                  "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold uppercase tracking-wide transition-colors",
                   hasActiveItem
-                    ? "bg-white/10 text-white dark:bg-white/10 dark:text-slate-50"
+                    ? "bg-white/18 text-white shadow-sm shadow-black/10 dark:bg-white/15 dark:text-slate-50"
                     : "text-sky-100/80 hover:bg-white/10 hover:text-white dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-100"
                 )}
               >
@@ -86,9 +86,9 @@ const AdminSidebar = ({ permissions, onClose }: AdminSidebarProps) => {
                     href={sub.href}
                     onClick={onClose}
                     className={cn(
-                      "mt-1 flex min-h-10 items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors",
+                      "mt-1 flex min-h-10 items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-[15px] transition-colors",
                       isActive(sub.href)
-                        ? "bg-white font-medium text-[#17365d] shadow-sm shadow-black/10 dark:bg-sky-300 dark:text-slate-950"
+                        ? "bg-white font-semibold text-[#17365d] shadow-[0_8px_20px_rgba(15,23,42,0.15)] dark:bg-sky-500 dark:text-white dark:shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
                         : "text-sky-50/95 hover:bg-white/10 hover:text-white dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-slate-50"
                     )}
                   >

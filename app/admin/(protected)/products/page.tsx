@@ -239,7 +239,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {product.warrantyDays > 0 ? (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                        <span className="inline-flex items-center rounded-full border border-sky-300 bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:border-sky-400/60 dark:bg-sky-500/25 dark:text-sky-200">
                           {product.warrantyDays} วัน
                         </span>
                       ) : (

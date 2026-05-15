@@ -46,15 +46,15 @@ const EditSupplierPaymentPage = async ({
       <div className="flex items-center gap-2">
         <Link
           href={`/admin/supplier-payments/${payment.id}`}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ArrowLeft size={16} /> กลับไปดูรายละเอียดเอกสาร
         </Link>
       </div>
 
       <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">แก้ไขจ่ายชำระซัพพลายเออร์</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">แก้ไขจ่ายชำระซัพพลายเออร์</h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
           ปรับรายการใบซื้อเชื่อ เครดิต CN ซื้อ เงินมัดจำ และบัญชีจ่ายเงินของเอกสารนี้
         </p>
       </div>

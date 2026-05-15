@@ -206,29 +206,29 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         <div className="mb-6 flex items-center gap-2">
           <Link
             href="/admin/sales"
-            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
+            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
           >
             <ChevronLeft size={16} /> รายการขาย
           </Link>
-          <span className="text-gray-300">/</span>
-          <span className="text-sm font-medium text-gray-700">{sale.saleNo}</span>
+          <span className="text-gray-300 dark:text-slate-600">/</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{sale.saleNo}</span>
         </div>
 
-        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
+        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
             <div className="flex items-center gap-3">
-              <h1 className="font-kanit text-xl font-bold text-gray-900">สรุปข้อมูลใบขาย</h1>
+              <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">สรุปข้อมูลใบขาย</h1>
               {sale.status === "CANCELLED" ? (
-                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">ยกเลิกแล้ว</span>
+                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">ยกเลิกแล้ว</span>
               ) : (
-                <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
+                <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
               )}
             </div>
             <div className="flex items-center gap-2">
               {sale.status === "ACTIVE" && canUpdate ? (
                 <Link
                   href={`/admin/sales/${id}/edit`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
                 >
                   <Pencil size={14} /> แก้ไข
                 </Link>
@@ -243,42 +243,42 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <div>
-              <p className="mb-1 text-gray-500">เลขที่ใบขาย</p>
-              <p className="font-mono font-semibold text-[#1e3a5f]">{sale.saleNo}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">เลขที่ใบขาย</p>
+              <p className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-300">{sale.saleNo}</p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">วันที่</p>
-              <p className="font-medium text-gray-900">{fmtDate(sale.saleDate)}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">วันที่</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{fmtDate(sale.saleDate)}</p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ลูกค้า</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ลูกค้า</p>
               {sale.customer ? (
-                <Link href={`/admin/customers/${sale.customer.id}`} className="font-medium text-[#1e3a5f] hover:underline">
+                <Link href={`/admin/customers/${sale.customer.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200">
                   {sale.customer.name}
                 </Link>
               ) : (
-                <p className="font-medium text-gray-900">{sale.customerName ?? "-"}</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{sale.customerName ?? "-"}</p>
               )}
             </div>
             <div>
-              <p className="mb-1 text-gray-500">เบอร์โทร</p>
-              <p className="font-medium text-gray-900">{sale.customer?.phone ?? sale.customerPhone ?? "-"}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">เบอร์โทร</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{sale.customer?.phone ?? sale.customerPhone ?? "-"}</p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ประเภทการขาย</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ประเภทการขาย</p>
               <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${saleTypeBadge[sale.saleType]}`}>
                 {saleTypeLabel[sale.saleType]}
               </span>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ประเภทการชำระ</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ประเภทการชำระ</p>
               <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${paymentTypeBadge[sale.paymentType]}`}>
                 {paymentTypeLabel[sale.paymentType]}
               </span>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ช่องทางชำระ</p>
-              <p className="font-medium text-gray-900">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ช่องทางชำระ</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
                 {sale.paymentType === "CREDIT_SALE"
                   ? "ขายเชื่อ"
                   : sale.paymentMethod
@@ -287,7 +287,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               </p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">การจัดส่ง</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">การจัดส่ง</p>
               <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${fulfillmentBadge[sale.fulfillmentType]}`}>
                 {fulfillmentLabel[sale.fulfillmentType]}
               </span>
@@ -295,49 +295,49 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             {sale.fulfillmentType === "DELIVERY" ? (
               <>
                 <div>
-                  <p className="mb-1 text-gray-500">สถานะจัดส่ง</p>
+                  <p className="mb-1 text-gray-500 dark:text-slate-400">สถานะจัดส่ง</p>
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${SHIPPING_STATUS_BADGE[sale.shippingStatus]}`}>
                     {SHIPPING_STATUS_LABEL[sale.shippingStatus]}
                   </span>
                 </div>
                 <div>
-                  <p className="mb-1 text-gray-500">ขนส่ง</p>
-                  <p className="font-medium text-gray-900">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</p>
+                  <p className="mb-1 text-gray-500 dark:text-slate-400">ขนส่ง</p>
+                  <p className="font-medium text-gray-900 dark:text-slate-100">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</p>
                 </div>
                 {sale.trackingNo ? (
                   <div>
-                    <p className="mb-1 text-gray-500">เลข Tracking</p>
-                    <p className="font-mono font-medium text-gray-900">{sale.trackingNo}</p>
+                    <p className="mb-1 text-gray-500 dark:text-slate-400">เลข Tracking</p>
+                    <p className="font-mono font-medium text-gray-900 dark:text-slate-100">{sale.trackingNo}</p>
                   </div>
                 ) : null}
                 {sale.trackingToken ? (
                   <div className="col-span-2 md:col-span-3">
-                    <p className="mb-1 text-gray-500">ลิงก์ติดตามสำหรับลูกค้า</p>
+                    <p className="mb-1 text-gray-500 dark:text-slate-400">ลิงก์ติดตามสำหรับลูกค้า</p>
                     <TrackingLinkCopy path={`/liff/tracking/${sale.trackingToken}`} />
                   </div>
                 ) : null}
               </>
             ) : null}
             <div>
-              <p className="mb-1 text-gray-500">ผู้บันทึก</p>
-              <p className="font-medium text-gray-900">{sale.user?.name ?? "-"}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{sale.user?.name ?? "-"}</p>
             </div>
             {sale.fulfillmentType === "DELIVERY" && sale.shippingAddress ? (
               <div className="col-span-2 md:col-span-3">
-                <p className="mb-1 text-gray-500">ที่อยู่จัดส่ง</p>
-                <p className="font-medium text-gray-900">{sale.shippingAddress}</p>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">ที่อยู่จัดส่ง</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{sale.shippingAddress}</p>
               </div>
             ) : null}
             {sale.fulfillmentType === "DELIVERY" && sale.shippingFee !== null && Number(sale.shippingFee) > 0 ? (
               <div>
-                <p className="mb-1 text-gray-500">ค่าจัดส่ง</p>
-                <p className="font-medium text-gray-900">{fmtNum(Number(sale.shippingFee))} บาท</p>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">ค่าจัดส่ง</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{fmtNum(Number(sale.shippingFee))} บาท</p>
               </div>
             ) : null}
             {sale.note ? (
               <div className="col-span-2 md:col-span-3">
-                <p className="mb-1 text-gray-500">หมายเหตุ</p>
-                <p className="font-medium text-gray-900">{sale.note}</p>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">หมายเหตุ</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{sale.note}</p>
               </div>
             ) : null}
           </div>

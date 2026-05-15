@@ -2,13 +2,18 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Plus, Eye, Pencil } from "lucide-react";
+import { Eye, Pencil, Plus } from "lucide-react";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SearchBar from "@/components/shared/SearchBar";
 import PurchaseCancelButton from "./PurchaseCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminTableSection from "@/components/shared/AdminTableSection";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import {
@@ -86,113 +91,85 @@ const PurchasesPage = async ({
   if (to)   paginationParams.to   = to;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบซื้อสินค้า</h1>
-        {canCreate ? (
-          <Link href="/admin/purchases/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors">
-            <Plus size={16} /> สร้างใบซื้อใหม่
-          </Link>
-        ) : null}
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="ใบซื้อสินค้า"
+        description="ค้นหา ดูสถานะ และจัดการใบซื้อสินค้า"
+        actions={
+          canCreate ? (
+            <Link href="/admin/purchases/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
+              <Plus size={16} /> สร้างใบซื้อใหม่
+            </Link>
+          ) : null
+        }
+      />
 
-      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-        <DateRangeFilter from={from} to={to} />
-        <SearchBar placeholder="ค้นหาเลขที่ใบซื้อ, ซัพพลายเออร์, เอกสารอ้างอิง..." />
-      </div>
+      <AdminFilterToolbar
+        className="mb-0"
+        summary={q ? <span className="text-slate-500 dark:text-slate-400">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</span> : null}
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <DateRangeFilter from={from} to={to} />
+          <SearchBar placeholder="ค้นหาเลขที่ใบซื้อ, ซัพพลายเออร์, เอกสารอ้างอิง..." />
+        </div>
+      </AdminFilterToolbar>
 
-      {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+      <AdminTableSection>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
+            <tr>
+              <th className="w-10 px-4 py-3 text-center font-medium">#</th>
+              <th className="px-4 py-3 text-left font-medium">เลขที่ใบซื้อ</th>
+              <th className="px-4 py-3 text-left font-medium">วันที่</th>
+              <th className="px-4 py-3 text-left font-medium">ซัพพลายเออร์</th>
+              <th className="px-4 py-3 text-left font-medium">ประเภทการซื้อ</th>
+              <th className="px-4 py-3 text-right font-medium">จำนวนรายการ</th>
+              <th className="px-4 py-3 text-right font-medium">ยอดสุทธิ</th>
+              <th className="px-4 py-3 text-left font-medium">สถานะ</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {purchases.length === 0 ? (
               <tr>
-                <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบซื้อ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ซัพพลายเออร์</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภทการซื้อ</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">จำนวนรายการ</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                <th className="py-3 px-4" />
+                <td colSpan={9} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                  {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบซื้อ"}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {purchases.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
-                    {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบซื้อ"}
+            ) : (
+              purchases.map((p, idx) => (
+                <tr key={p.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${p.status === "CANCELLED" ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
+                  <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
+                  <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{p.purchaseNo}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(p.purchaseDate)}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.supplier?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}{p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{p.items.length} รายการ</td>
+                  <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3">
+                    {p.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <AdminActionGroup align="end">
+                      <Link href={`/admin/purchases/${p.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200">
+                        <Eye size={14} /> ดู
+                      </Link>
+                      {p.status === "ACTIVE" ? (
+                        <>
+                          {canUpdate ? <Link href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                          {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
+                        </>
+                      ) : null}
+                    </AdminActionGroup>
                   </td>
                 </tr>
-              ) : (
-                purchases.map((p, idx) => (
-                  <tr key={p.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      p.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
-                    }`}>
-                    <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{p.purchaseNo}</td>
-                    <td className="py-3 px-4 text-gray-600">
-                    {formatDateThai(p.purchaseDate)}
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">{p.supplier?.name ?? "-"}</td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}
-                      {p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-600">{p.items.length} รายการ</td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
-                      {Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-4">
-                      {p.status === "CANCELLED" ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                          ยกเลิกแล้ว
-                        </span>
-                      ) : (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          ใช้งาน
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2 justify-end">
-                        <Link href={`/admin/purchases/${p.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
-                          <Eye size={14} /> ดู
-                        </Link>
-                        {p.status === "ACTIVE" && (
-                          <>
-                            {canUpdate ? (
-                              <Link href={`/admin/purchases/${p.id}/edit`}
-                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                                <Pencil size={14} /> แก้ไข
-                              </Link>
-                            ) : null}
-                            {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </AdminTableSection>
 
-      <Pagination
-        currentPage={pageNum}
-        totalPages={totalPages}
-        basePath="/admin/purchases"
-        searchParams={paginationParams}
-      />
+      <Pagination currentPage={pageNum} totalPages={totalPages} basePath="/admin/purchases" searchParams={paginationParams} />
     </div>
   );
 };

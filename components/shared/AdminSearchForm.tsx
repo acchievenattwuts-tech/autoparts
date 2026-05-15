@@ -60,7 +60,7 @@ const AdminSearchForm = ({
       <form
         {...props}
         onSubmit={handleSubmit}
-        className={cn(className, isPending ? pendingClassName : "")}
+        className={cn("space-y-3", className, isPending ? pendingClassName : "")}
       >
         {children}
       </form>

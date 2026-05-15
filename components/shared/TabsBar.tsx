@@ -8,9 +8,9 @@ import { normalizeAdminTabPath } from "@/lib/admin-tabs";
 import { cn } from "@/lib/utils";
 
 const ROUTE_LABELS: Record<string, string> = {
-  "/admin/workboard": "Today Workboard",
-  "/admin/dashboard": "Dashboard",
-  "/admin/audit-log": "Audit Log",
+  "/admin/workboard": "กระดานงานวันนี้",
+  "/admin/dashboard": "ภาพรวม",
+  "/admin/audit-log": "บันทึกการตรวจสอบ",
   "/admin/products": "สินค้า",
   "/admin/customers": "ลูกค้า",
   "/admin/master/categories": "หมวดหมู่สินค้า",
@@ -103,10 +103,10 @@ const TabsBar = () => {
   };
 
   return (
-    <div className="flex-shrink-0 border-b border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-[#0b1424]">
+    <div className="flex-shrink-0 border-b border-slate-200 bg-slate-100/95 dark:border-white/10 dark:bg-[#0b1424]">
       <div
         ref={scrollRef}
-        className="flex gap-1 overflow-x-auto px-2 pt-1.5 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar]:hidden"
+        className="flex gap-1 overflow-x-auto px-2 pb-1 pt-2 [&::-webkit-scrollbar-button]:hidden [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: "none" }}
       >
         {tabs.map((tab) => {
@@ -119,7 +119,7 @@ const TabsBar = () => {
               data-path={tab.path}
               onClick={() => handleNavigate(tab.path)}
               className={cn(
-                "group flex h-10 flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-lg border border-b-0 px-3.5 text-sm transition-all",
+                "group flex h-10 flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-xl border border-b-0 px-3.5 text-sm transition-all",
                 isActive
                   ? "border-slate-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#101b2e] dark:text-sky-100 dark:shadow-none"
                   : "border-transparent bg-transparent text-slate-500 hover:bg-white/70 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-100"

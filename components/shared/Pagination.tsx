@@ -41,9 +41,9 @@ const Pagination = ({
     "inline-flex items-center justify-center min-w-[32px] h-8 px-2 rounded text-xs font-medium transition-colors";
   const activeClass = "bg-[#1e3a5f] text-white";
   const inactiveClass =
-    "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50";
+    "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-white/5 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10";
   const disabledClass =
-    "bg-white border border-gray-200 text-gray-300 pointer-events-none";
+    "bg-white border border-gray-200 text-gray-300 pointer-events-none dark:bg-white/5 dark:border-white/10 dark:text-slate-600";
 
   return (
     <div className="flex items-center justify-center gap-1 mt-4 py-2">
@@ -67,7 +67,7 @@ const Pagination = ({
             1
           </Link>
           {rangeStart > 2 && (
-            <span className={`${baseLinkClass} text-gray-400`}>…</span>
+            <span className={`${baseLinkClass} text-gray-400 dark:text-slate-500`}>…</span>
           )}
         </>
       )}
@@ -87,7 +87,7 @@ const Pagination = ({
       {rangeEnd < totalPages && (
         <>
           {rangeEnd < totalPages - 1 && (
-            <span className={`${baseLinkClass} text-gray-400`}>…</span>
+            <span className={`${baseLinkClass} text-gray-400 dark:text-slate-500`}>…</span>
           )}
           <Link
             href={buildUrl(basePath, totalPages, searchParams)}

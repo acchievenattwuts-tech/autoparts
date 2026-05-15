@@ -215,13 +215,13 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
     <div>
       <div className="flex items-center gap-2 mb-6">
         <Link href={`/admin/receipts/${id}`}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors">
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors dark:text-slate-400 dark:hover:text-sky-300">
           <ChevronLeft size={16} /> {receipt.receiptNo}
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">แก้ไข</span>
+        <span className="text-gray-300 dark:text-slate-600">/</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขใบเสร็จรับเงิน</h1>
+      <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบเสร็จรับเงิน</h1>
       <ReceiptForm
         customers={customerOptions}
         cashBankAccounts={cashBankAccounts}

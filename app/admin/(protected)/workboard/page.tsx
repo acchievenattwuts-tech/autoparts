@@ -133,10 +133,10 @@ const WorkboardPage = async () => {
             </div>
             <div>
               <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">
-                Today Workboard
+                กระดานงานวันนี้
               </h1>
               <p className="text-sm text-gray-500 dark:text-slate-400">
-                งานที่ต้องตามวันนี้ในหน้าเดียว ลดการสลับเมนูและเห็นงานค้างตามลำดับความเร่งด่วน
+                รวมงานที่ต้องดำเนินการวันนี้ไว้ในหน้าเดียว เห็นงานค้างและลำดับความเร่งด่วนได้ทันที
               </p>
             </div>
           </div>
@@ -361,7 +361,7 @@ const WorkboardPage = async () => {
               {data.lowStock.items.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/admin/products/${item.id}`}
+                  href={`/admin/products/${item.id}/edit`}
                   className="block rounded-2xl border border-gray-100 px-4 py-3 transition-colors hover:border-red-200 hover:bg-red-50/60 dark:border-white/10 dark:hover:border-red-400/20 dark:hover:bg-red-500/5"
                 >
                   <div className="flex items-start justify-between gap-3">

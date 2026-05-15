@@ -139,24 +139,24 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         <div className="mb-6 flex items-center gap-2">
           <Link
             href="/admin/receipts"
-            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
+            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
           >
             <ChevronLeft size={16} /> ใบเสร็จรับเงิน
           </Link>
-          <span className="text-gray-300">/</span>
-          <span className="text-sm font-medium text-gray-700">{receipt.receiptNo}</span>
+          <span className="text-gray-300 dark:text-slate-600">/</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{receipt.receiptNo}</span>
         </div>
 
-        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
+        <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
             <div className="flex items-center gap-3">
-              <h1 className="font-kanit text-xl font-bold text-gray-900">สรุปข้อมูลใบเสร็จ</h1>
+              <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">สรุปข้อมูลใบเสร็จ</h1>
               {receipt.status === "CANCELLED" ? (
-                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">
                   ยกเลิกแล้ว
                 </span>
               ) : (
-                <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                   ใช้งาน
                 </span>
               )}
@@ -165,7 +165,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               {receipt.status === "ACTIVE" && canUpdate ? (
                 <Link
                   href={`/admin/receipts/${id}/edit`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
                 >
                   <Pencil size={14} /> แก้ไข
                 </Link>
@@ -180,72 +180,72 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
 
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <div>
-              <p className="mb-1 text-gray-500">เลขที่ใบเสร็จ</p>
-              <p className="font-mono font-semibold text-[#1e3a5f]">{receipt.receiptNo}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">เลขที่ใบเสร็จ</p>
+              <p className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-300">{receipt.receiptNo}</p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">วันที่</p>
-              <p className="font-medium text-gray-900">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">วันที่</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
                 {formatDateThai(receipt.receiptDate)}
               </p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ลูกค้า</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ลูกค้า</p>
               {receipt.customer ? (
                 <Link
                   href={`/admin/customers/${receipt.customer.id}`}
-                  className="font-medium text-[#1e3a5f] hover:underline"
+                  className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200"
                 >
                   {receipt.customer.name}
                 </Link>
               ) : (
-                <p className="font-medium text-gray-900">{receipt.customerName ?? "-"}</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{receipt.customerName ?? "-"}</p>
               )}
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ช่องทางชำระ</p>
-              <p className="font-medium text-gray-900">{paymentMethodLabel[receipt.paymentMethod]}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ช่องทางชำระ</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{paymentMethodLabel[receipt.paymentMethod]}</p>
             </div>
             {receivedTransferAccount ? (
               <div>
-                <p className="mb-1 text-gray-500">บัญชีรับโอน</p>
-                <p className="font-medium text-gray-900">
+                <p className="mb-1 text-gray-500 dark:text-slate-400">บัญชีรับโอน</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">
                   {receivedTransferAccount.bankName ?? receivedTransferAccount.name}
                 </p>
-                <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo ?? "-"}</p>
+                <p className="font-mono text-[#1e3a5f] dark:text-sky-300">{receivedTransferAccount.accountNo ?? "-"}</p>
               </div>
             ) : null}
             <div>
-              <p className="mb-1 text-gray-500">ยอดรับชำระรวม</p>
-              <p className="font-kanit text-lg font-bold text-[#1e3a5f]">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ยอดรับชำระรวม</p>
+              <p className="font-kanit text-lg font-bold text-[#1e3a5f] dark:text-sky-300">
                 {Number(receipt.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
               </p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500">ผู้บันทึก</p>
-              <p className="font-medium text-gray-900">{receipt.user?.name ?? "-"}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{receipt.user?.name ?? "-"}</p>
             </div>
             {receipt.note ? (
               <div className="col-span-2 md:col-span-3">
-                <p className="mb-1 text-gray-500">หมายเหตุ</p>
-                <p className="font-medium text-gray-900">{receipt.note}</p>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">หมายเหตุ</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{receipt.note}</p>
               </div>
             ) : null}
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm no-print">
-          <div className="border-b border-gray-100 px-6 py-4">
-            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการชำระ</h2>
+        <div className="no-print overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">
+            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">รายการชำระ</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">เลขที่ใบขาย</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">วันที่ใบขาย</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดใบขาย</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดที่ชำระ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่ใบขาย</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดใบขาย</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดที่ชำระ</th>
                 </tr>
               </thead>
               <tbody>
@@ -258,11 +258,11 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                   return (
                     <tr
                       key={item.id}
-                      className={`border-t border-gray-50 ${isCreditNote ? "bg-emerald-50/30" : ""}`}
+                      className={`border-t border-gray-50 dark:border-white/5 ${isCreditNote ? "bg-emerald-50/30 dark:bg-emerald-500/5" : ""}`}
                     >
                       <td
                         className={`px-4 py-3 font-mono font-medium ${
-                          isCreditNote ? "text-emerald-700" : "text-[#1e3a5f]"
+                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : "text-[#1e3a5f] dark:text-sky-300"
                         }`}
                       >
                         {item.saleId ? (
@@ -271,23 +271,23 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                           </Link>
                         ) : (
                           <span>
-                            {docNo} <span className="text-xs font-normal text-emerald-600">(เครดิต CN)</span>
+                            {docNo} <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400">(เครดิต CN)</span>
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">
+                      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                         {docDate
                           ? formatDateThai(docDate)
                           : "-"}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-800">
+                      <td className="px-4 py-3 text-right text-gray-800 dark:text-slate-200">
                         {docAmount != null
                           ? Number(docAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
                           : "-"}
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-medium ${
-                          isCreditNote ? "text-emerald-700" : "text-gray-900"
+                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-slate-100"
                         }`}
                       >
                         {isCreditNote ? "-" : ""}

@@ -34,8 +34,8 @@ type InitialData = {
 };
 
 const inputCls =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
-const labelCls = "mb-1.5 block text-sm font-medium text-gray-700";
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
 
 const SupplierAdvanceForm = ({
   suppliers,
@@ -126,8 +126,8 @@ const SupplierAdvanceForm = ({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f]">
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-300">
           ข้อมูลเงินมัดจำซัพพลายเออร์
         </h2>
 
@@ -180,7 +180,7 @@ const SupplierAdvanceForm = ({
               onChange={setCashBankAccountId}
               placeholder="โปรดระบุบัญชีจ่ายเงิน"
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
               ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ
             </p>
           </div>
@@ -199,20 +199,20 @@ const SupplierAdvanceForm = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
         เงินมัดจำซัพพลายเออร์เป็นเอกสารจ่ายล่วงหน้าที่ไม่กระทบสต็อก และยอดคงเหลือจะถูกนำไปหักตอนทำเอกสารจ่ายชำระซัพพลายเออร์ภายหลัง
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-400/30 dark:bg-red-500/10">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       ) : null}
 
       {success ? (
-        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-400/30 dark:bg-green-500/10">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       ) : null}
 

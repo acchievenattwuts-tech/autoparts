@@ -120,7 +120,7 @@ export default async function DeliveryCommissionRunDetailPage({ params }: PagePr
                 {run.expense.expenseNo}
               </Link>
             ) : (
-              <span className="text-gray-400">-</span>
+              <span className="text-gray-400 dark:text-slate-500">-</span>
             )
           }
         />

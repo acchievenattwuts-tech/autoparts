@@ -12,6 +12,11 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import Pagination from "@/components/shared/Pagination";
 import SearchBar from "@/components/shared/SearchBar";
 import SupplierPaymentCancelButton from "./SupplierPaymentCancelButton";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminTableSection from "@/components/shared/AdminTableSection";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -25,6 +30,11 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   TRANSFER: "โอนเงิน",
   CREDIT: "ตัดยอด",
 };
+const paymentMethodTone = {
+  CASH:     "success",
+  TRANSFER: "info",
+  CREDIT:   "pending",
+} as const;
 
 const SupplierPaymentsPage = async ({
   searchParams,
@@ -85,130 +95,83 @@ const SupplierPaymentsPage = async ({
   if (to) paginationParams.to = to;
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">จ่ายชำระซัพพลายเออร์</h1>
-        {canCreate ? (
-          <Link
-            href="/admin/supplier-payments/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
-          >
-            <Plus size={16} /> สร้างเอกสารใหม่
-          </Link>
-        ) : null}
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จ่ายชำระซัพพลายเออร์"
+        description="ค้นหาและตรวจสอบรายการจ่ายชำระซัพพลายเออร์"
+        actions={
+          canCreate ? (
+            <Link href="/admin/supplier-payments/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
+              <Plus size={16} /> สร้างเอกสารใหม่
+            </Link>
+          ) : null
+        }
+      />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <DateRangeFilter from={from} to={to} />
-        <SearchBar placeholder="ค้นหาเลขที่เอกสาร, ซัพพลายเออร์, ใบซื้อ, CN ซื้อ, มัดจำ..." />
-      </div>
+      <AdminFilterToolbar
+        className="mb-0"
+        summary={q ? <span className="text-slate-500 dark:text-slate-400">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</span> : null}
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <DateRangeFilter from={from} to={to} />
+          <SearchBar placeholder="ค้นหาเลขที่เอกสาร, ซัพพลายเออร์, ใบซื้อ, CN ซื้อ, มัดจำ..." />
+        </div>
+      </AdminFilterToolbar>
 
-      {q ? (
-        <p className="mb-3 text-sm text-gray-500">
-          ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ
-        </p>
-      ) : null}
-
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+      <AdminTableSection>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
+            <tr>
+              <th className="w-10 px-4 py-3 text-center font-medium">#</th>
+              <th className="px-4 py-3 text-left font-medium">เลขที่เอกสาร</th>
+              <th className="px-4 py-3 text-left font-medium">วันที่</th>
+              <th className="px-4 py-3 text-left font-medium">ซัพพลายเออร์</th>
+              <th className="px-4 py-3 text-left font-medium">ช่องทาง</th>
+              <th className="px-4 py-3 text-left font-medium">บัญชีจ่ายเงิน</th>
+              <th className="px-4 py-3 text-right font-medium">ยอดจ่ายจริง</th>
+              <th className="px-4 py-3 text-right font-medium">อ้างอิง</th>
+              <th className="px-4 py-3 text-left font-medium">สถานะ</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {payments.length === 0 ? (
               <tr>
-                <th className="w-10 px-4 py-3 text-center font-medium text-gray-600">#</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">เลขที่เอกสาร</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">วันที่</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ซัพพลายเออร์</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ช่องทาง</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">บัญชีจ่ายเงิน</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดจ่ายจริง</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">อ้างอิง</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
-                <th className="px-4 py-3" />
+                <td colSpan={10} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                  {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการจ่ายชำระซัพพลายเออร์"}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {payments.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-gray-400">
-                    {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการจ่ายชำระซัพพลายเออร์"}
+            ) : (
+              payments.map((payment, index) => (
+                <tr key={payment.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${payment.status === "CANCELLED" ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
+                  <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + index + 1}</td>
+                  <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{payment.paymentNo}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(payment.paymentDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{payment.supplier.name}</td>
+                  <td className="px-4 py-3"><AdminStatusBadge tone={paymentMethodTone[payment.paymentMethod]}>{paymentMethodLabel[payment.paymentMethod]}</AdminStatusBadge></td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{payment.cashBankAccount?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(payment.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{payment._count.items} รายการ</td>
+                  <td className="px-4 py-3">{payment.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
+                  <td className="px-4 py-3">
+                    <AdminActionGroup align="end">
+                      <Link href={`/admin/supplier-payments/${payment.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"><Eye size={14} /> ดู</Link>
+                      {payment.status === "ACTIVE" ? (
+                        <>
+                          {canUpdate ? <Link href={`/admin/supplier-payments/${payment.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                          {canCancel ? <SupplierPaymentCancelButton paymentId={payment.id} docNo={payment.paymentNo} /> : null}
+                        </>
+                      ) : null}
+                    </AdminActionGroup>
                   </td>
                 </tr>
-              ) : (
-                payments.map((payment, index) => (
-                  <tr
-                    key={payment.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      payment.status === "CANCELLED" ? "bg-red-50 opacity-50" : "hover:bg-gray-50"
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-center text-xs tabular-nums text-gray-400">
-                      {(pageNum - 1) * PAGE_SIZE + index + 1}
-                    </td>
-                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{payment.paymentNo}</td>
-                    <td className="px-4 py-3 text-gray-600">
-                    {formatDateThai(payment.paymentDate)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-700">{payment.supplier.name}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                        {paymentMethodLabel[payment.paymentMethod]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{payment.cashBankAccount?.name ?? "-"}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">
-                      {Number(payment.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{payment._count.items} รายการ</td>
-                    <td className="px-4 py-3">
-                      {payment.status === "CANCELLED" ? (
-                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                          ยกเลิกแล้ว
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          ใช้งาน
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/admin/supplier-payments/${payment.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] transition-colors hover:text-blue-700"
-                        >
-                          <Eye size={14} /> ดู
-                        </Link>
-                        {payment.status === "ACTIVE" ? (
-                          <>
-                            {canUpdate ? (
-                              <Link
-                                href={`/admin/supplier-payments/${payment.id}/edit`}
-                                className="inline-flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-700"
-                              >
-                                <Pencil size={14} /> แก้ไข
-                              </Link>
-                            ) : null}
-                            {canCancel ? (
-                              <SupplierPaymentCancelButton paymentId={payment.id} docNo={payment.paymentNo} />
-                            ) : null}
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </AdminTableSection>
 
-      <Pagination
-        currentPage={pageNum}
-        totalPages={totalPages}
-        basePath="/admin/supplier-payments"
-        searchParams={paginationParams}
-      />
+      <Pagination currentPage={pageNum} totalPages={totalPages} basePath="/admin/supplier-payments" searchParams={paginationParams} />
     </div>
   );
 };

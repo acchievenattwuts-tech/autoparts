@@ -41,14 +41,14 @@ const SearchBar = ({ placeholder = "ค้นหา..." }: SearchBarProps) => {
   return (
     <div className={`flex w-full flex-col gap-2 transition-opacity sm:w-auto sm:flex-row sm:items-center ${isPending ? "opacity-70" : ""}`}>
       <div className="relative w-full sm:w-auto">
-        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
         <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder={placeholder}
-          className="h-10 w-full rounded-lg border border-slate-200 bg-white py-2 pl-8 pr-8 text-sm text-slate-800 shadow-sm transition-colors placeholder:text-slate-400 focus:border-[#1e3a5f]/50 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/50 dark:focus:ring-sky-400/20 sm:w-72"
+          className="h-10 w-full rounded-xl border border-slate-200 bg-white py-2 pl-8 pr-8 text-sm text-slate-800 shadow-sm transition-colors placeholder:text-slate-400 focus:border-[#1e3a5f]/50 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-400/50 dark:focus:ring-sky-400/20 sm:w-72"
           disabled={isPending}
         />
         {value && (
@@ -66,7 +66,7 @@ const SearchBar = ({ placeholder = "ค้นหา..." }: SearchBarProps) => {
         type="button"
         onClick={submit}
         disabled={isPending}
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#162d4a] disabled:cursor-wait disabled:opacity-80 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#1e3a5f] px-4 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#162d4a] disabled:cursor-wait disabled:opacity-80 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
       >
         {isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
         ค้นหา

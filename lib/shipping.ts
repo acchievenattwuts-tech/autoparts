@@ -10,6 +10,12 @@ export const SHIPPING_STATUS_BADGE: Record<string, string> = {
   DELIVERED:        "bg-green-100 text-green-800 dark:bg-green-400/15 dark:text-green-100",
 };
 
+export const SHIPPING_STATUS_TONE: Record<string, "neutral" | "success" | "warning" | "danger" | "info" | "pending" | "muted"> = {
+  PENDING:          "warning",
+  OUT_FOR_DELIVERY: "info",
+  DELIVERED:        "success",
+};
+
 export const SHIPPING_METHOD_LABEL: Record<string, string> = {
   NONE:  "-",
   SELF:  "ส่งเอง",

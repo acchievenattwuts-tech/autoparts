@@ -92,12 +92,12 @@ const DeliveryPage = async ({
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">คิวจัดส่ง</h1>
+        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">คิวจัดส่ง</h1>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">{sales.length} รายการ</span>
+          <span className="text-sm text-gray-500 dark:text-slate-400">{sales.length} รายการ</span>
           <Link
             href={`/admin/delivery/update${statusFilter ? `?status=${statusFilter}` : ""}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"
           >
             <Smartphone size={14} /> มุมมองมือถือ
           </Link>
@@ -106,9 +106,9 @@ const DeliveryPage = async ({
               href={printAllUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e3a5f] text-white rounded-lg hover:bg-[#162d4a] transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e3a5f] text-white rounded-lg hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600 transition-colors"
             >
-              Print ทั้งหมด ({sales.length})
+              พิมพ์ทั้งหมด ({sales.length})
             </a>
           )}
         </div>
@@ -122,8 +122,8 @@ const DeliveryPage = async ({
             href={tab.value ? `/admin/delivery?status=${tab.value}` : "/admin/delivery"}
             className={`relative inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               statusFilter === tab.value
-                ? "bg-[#1e3a5f] text-white"
-                : "bg-white border border-gray-200 text-gray-600 hover:border-[#1e3a5f]"
+                ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
+                : "bg-white border border-gray-200 text-gray-600 hover:border-[#1e3a5f] dark:bg-white/5 dark:border-white/15 dark:text-slate-300 dark:hover:border-sky-400"
             }`}
           >
             <LinkPendingIndicator
@@ -136,7 +136,7 @@ const DeliveryPage = async ({
         ))}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden dark:border-white/10 dark:bg-[#101b2e]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1760px] table-fixed text-sm">
             <colgroup>
@@ -151,30 +151,30 @@ const DeliveryPage = async ({
               <col className="w-[300px]" />
               <col className="w-[120px]" />
             </colgroup>
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบขาย</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ลูกค้า</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ที่อยู่จัดส่ง</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ชำระ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ผู้ส่ง</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">อัปเดต</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ลูกค้า</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ที่อยู่จัดส่ง</th>
+                <th className="text-right py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ยอดสุทธิ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ชำระ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ผู้ส่ง</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">อัปเดต</th>
                 <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-400">
+                  <td colSpan={10} className="text-center py-12 text-gray-400 dark:text-slate-500">
                     ไม่มีรายการจัดส่ง
                   </td>
                 </tr>
               ) : (
                 sales.map((s) => (
-                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50">
+                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 dark:border-white/5 dark:hover:bg-white/5">
                     {(() => {
                       const deliveryStaffLabel = getDeliveryStaffLabel({
                         shippingStatus: s.shippingStatus,
@@ -186,31 +186,31 @@ const DeliveryPage = async ({
 
                       return (
                         <>
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
-                    <td className="py-3 px-4 text-gray-600 whitespace-nowrap">
+                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium dark:text-sky-300">{s.saleNo}</td>
+                    <td className="py-3 px-4 text-gray-600 whitespace-nowrap dark:text-slate-300">
                       {formatDateThai(s.saleDate)}
                     </td>
                     <td className="py-3 px-4 align-top">
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-gray-900 dark:text-slate-100">
                         {s.customer?.name ?? s.customerName ?? "-"}
                       </p>
                       {s.customer?.phone && (
-                        <p className="text-xs text-gray-400">{s.customer.phone}</p>
+                        <p className="text-xs text-gray-400 dark:text-slate-500">{s.customer.phone}</p>
                       )}
                     </td>
-                    <td className="py-3 px-4 align-top text-gray-600">
+                    <td className="py-3 px-4 align-top text-gray-600 dark:text-slate-300">
                       <p className="whitespace-normal break-words text-xs leading-relaxed">{s.shippingAddress ?? "-"}</p>
                     </td>
-                    <td className="py-3 px-4 align-top text-right font-medium text-gray-900">
+                    <td className="py-3 px-4 align-top text-right font-medium text-gray-900 dark:text-slate-100">
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-3 px-4 align-top">
                       {s.paymentType === "CASH_SALE" ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                           ชำระแล้ว
                         </span>
                       ) : (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-amber-500/20 dark:text-amber-300">
                           COD ฿{Number(s.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                         </span>
                       )}
@@ -240,7 +240,7 @@ const DeliveryPage = async ({
                         </div>
                       )}
                       {s._count.deliveryProofs > 0 ? (
-                        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                           มีหลักฐาน {s._count.deliveryProofs.toLocaleString("th-TH")} รายการ
                         </p>
                       ) : null}
@@ -262,7 +262,7 @@ const DeliveryPage = async ({
                       <div className="flex items-center gap-2">
                         <Link
                           href={`/admin/sales/${s.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700"
+                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
                         >
                           <Eye size={14} /> ดู
                         </Link>

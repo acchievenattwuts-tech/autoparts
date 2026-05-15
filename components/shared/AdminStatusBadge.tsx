@@ -18,13 +18,13 @@ type AdminStatusBadgeProps = {
 };
 
 const toneClass: Record<AdminStatusBadgeTone, string> = {
-  neutral: "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200",
-  warning: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200",
-  danger: "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200",
-  info: "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200",
-  pending: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-200",
-  muted: "border-gray-200 bg-gray-100 text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-400",
+  neutral: "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-400/70 dark:bg-slate-600/40 dark:text-slate-100",
+  success: "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/60 dark:bg-emerald-500/25 dark:text-emerald-200",
+  warning: "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-400/60 dark:bg-amber-500/25 dark:text-amber-200",
+  danger: "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/60 dark:bg-rose-500/25 dark:text-rose-200",
+  info: "border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-400/60 dark:bg-sky-500/25 dark:text-sky-200",
+  pending: "border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-400/60 dark:bg-violet-500/25 dark:text-violet-200",
+  muted: "border-gray-300 bg-gray-200 text-gray-700 dark:border-slate-500/70 dark:bg-slate-600/30 dark:text-slate-200",
 };
 
 const AdminStatusBadge = ({ children, tone = "neutral", className }: AdminStatusBadgeProps) => (

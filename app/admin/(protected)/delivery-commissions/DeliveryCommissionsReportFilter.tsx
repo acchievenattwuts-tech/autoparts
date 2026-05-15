@@ -131,7 +131,7 @@ const DeliveryCommissionsReportFilter = ({
             type="button"
             onClick={apply}
             disabled={isPending}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#162d4a] disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#162d4a] disabled:opacity-50 dark:bg-sky-700 dark:hover:bg-sky-600"
           >
             {isPending ? <LoaderCircle size={16} className="animate-spin" /> : null}
             แสดงรายงาน

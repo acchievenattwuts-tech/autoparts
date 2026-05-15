@@ -44,13 +44,13 @@ const NewPurchasePage = async () => {
     <div>
       <div className="flex items-center gap-2 mb-6">
         <Link href="/admin/purchases"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors">
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors dark:text-slate-400 dark:hover:text-sky-300">
           <ChevronLeft size={16} /> ใบซื้อทั้งหมด
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">สร้างใบซื้อใหม่</span>
+        <span className="text-gray-300 dark:text-slate-600">/</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-slate-300">สร้างใบซื้อใหม่</span>
       </div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">สร้างใบซื้อสินค้า</h1>
+      <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบซื้อสินค้า</h1>
       <PurchaseForm products={products} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );

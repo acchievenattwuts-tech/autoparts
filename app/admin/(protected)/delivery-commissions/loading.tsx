@@ -21,7 +21,7 @@ const AdminLoading = () => (
           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
         />
       </svg>
-      <p className="text-sm text-gray-400 font-sarabun">กำลังโหลด...</p>
+      <p className="font-sarabun text-sm text-gray-400 dark:text-slate-500">กำลังโหลด...</p>
     </div>
   </div>
 );

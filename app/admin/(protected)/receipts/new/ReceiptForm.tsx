@@ -200,7 +200,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
     const checked = isChecked(sale.id);
     const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
     return (
-      <tr key={sale.id} className={`border-t border-gray-50 transition-colors ${checked ? "bg-blue-50/40" : "hover:bg-gray-50"}`}>
+      <tr key={sale.id} className={`border-t border-gray-50 transition-colors dark:border-white/5 ${checked ? "bg-blue-50/40 dark:bg-sky-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"}`}>
         <td className="px-3 py-2">
           <input
             type="checkbox"
@@ -209,17 +209,17 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             className="h-4 w-4 accent-[#1e3a5f]"
           />
         </td>
-        <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f]">{sale.saleNo}</td>
-        <td className="px-3 py-2 text-gray-600">
+        <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{sale.saleNo}</td>
+        <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                           {formatDateThai(sale.saleDate, dateLocale)}
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-2 text-right text-gray-800 dark:text-slate-200">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="px-3 py-2 text-right text-gray-600">
+        <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">
           {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="px-3 py-2 text-right font-medium text-orange-600">
+        <td className="px-3 py-2 text-right font-medium text-orange-600 dark:text-orange-400">
           {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
         <td className="px-3 py-2 text-right">
@@ -230,10 +230,10 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
               onValueChange={(value) => updatePaidAmount(sale.id, value)}
-              className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+              className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
             />
           ) : (
-            <span className="text-sm text-gray-400">-</span>
+            <span className="text-sm text-gray-400 dark:text-slate-500">-</span>
           )}
         </td>
       </tr>
@@ -244,7 +244,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
     const checked = isChecked(sale.id);
     const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
     return (
-      <tr key={sale.id} className={`border-t border-gray-50 transition-colors ${checked ? "bg-emerald-50/40" : "hover:bg-gray-50"}`}>
+      <tr key={sale.id} className={`border-t border-gray-50 transition-colors dark:border-white/5 ${checked ? "bg-emerald-50/40 dark:bg-emerald-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"}`}>
         <td className="px-3 py-2">
           <input
             type="checkbox"
@@ -253,17 +253,17 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             className="h-4 w-4 accent-emerald-600"
           />
         </td>
-        <td className="px-3 py-2 font-mono font-medium text-emerald-700">{sale.saleNo}</td>
-        <td className="px-3 py-2 text-gray-600">
+        <td className="px-3 py-2 font-mono font-medium text-emerald-700 dark:text-emerald-400">{sale.saleNo}</td>
+        <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                           {formatDateThai(sale.saleDate, dateLocale)}
         </td>
-        <td className="px-3 py-2 text-right text-gray-800">
+        <td className="px-3 py-2 text-right text-gray-800 dark:text-slate-200">
           {sale.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="px-3 py-2 text-right text-gray-600">
+        <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">
           {sale.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
-        <td className="px-3 py-2 text-right font-medium text-emerald-600">
+        <td className="px-3 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
           {sale.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
         </td>
         <td className="px-3 py-2 text-right">
@@ -274,10 +274,10 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               step={0.01}
               value={item?.paidAmount ?? sale.outstanding}
               onValueChange={(value) => updatePaidAmount(sale.id, value)}
-              className="w-28 rounded border border-emerald-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              className="w-28 rounded border border-emerald-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30 dark:border-emerald-400/30 dark:bg-slate-900 dark:text-slate-100"
             />
           ) : (
-            <span className="text-sm text-gray-400">-</span>
+            <span className="text-sm text-gray-400 dark:text-slate-500">-</span>
           )}
         </td>
       </tr>
@@ -286,11 +286,11 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">ข้อมูลทั่วไป</h2>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800 dark:text-slate-100">ข้อมูลทั่วไป</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
               ลูกค้า <span className="text-red-500">*</span>
             </label>
             <SearchableSelect
@@ -308,23 +308,23 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
               วันที่รับชำระ <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
               value={receiptDate}
               onChange={(event) => setReceiptDate(event.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
 
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 md:col-span-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 md:col-span-2 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
             ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ และถ้ายอดสุทธิไม่เกิน 0 จะถือว่าเป็นการตัดเครดิตโดยไม่มีการรับเงินจริง
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
               บัญชีรับเงิน {netTotal > 0 && <span className="text-red-500">*</span>}
             </label>
             <SearchableSelect
@@ -342,38 +342,38 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">หมายเหตุ</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">หมายเหตุ</label>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
               rows={2}
               placeholder="หมายเหตุ (ไม่บังคับ)"
-              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
             />
           </div>
         </div>
       </div>
 
       {customerId && (
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">รายการขายเชื่อค้างชำระ</h2>
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800 dark:text-slate-100">รายการขายเชื่อค้างชำระ</h2>
 
           {isLoadingSales ? (
-            <p className="py-6 text-center text-sm text-gray-400">กำลังโหลด...</p>
+            <p className="py-6 text-center text-sm text-gray-400 dark:text-slate-500">กำลังโหลด...</p>
           ) : saleItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-400">ลูกค้ารายนี้ไม่มียอดค้างชำระ</p>
+            <p className="py-6 text-center text-sm text-gray-400 dark:text-slate-500">ลูกค้ารายนี้ไม่มียอดค้างชำระ</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
                     <th className="w-10 px-3 py-3" />
-                    <th className="px-3 py-3 text-left font-medium text-gray-600">เลขที่ใบขาย</th>
-                    <th className="px-3 py-3 text-left font-medium text-gray-600">วันที่</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-600">ยอดทั้งหมด</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-600">ชำระแล้ว</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-600">ค้างชำระ</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-600">รับชำระงวดนี้</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
+                    <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดทั้งหมด</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ชำระแล้ว</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ค้างชำระ</th>
+                    <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">รับชำระงวดนี้</th>
                   </tr>
                 </thead>
                 <tbody>{saleItems.map(renderSaleRow)}</tbody>
@@ -384,20 +384,20 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       )}
 
       {customerId && !isLoadingSales && cnItems.length > 0 && (
-        <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-1 font-kanit text-lg font-semibold text-emerald-800">เครดิตจากใบลดหนี้ที่ยังไม่ใช้</h2>
-          <p className="mb-4 text-xs text-gray-500">เลือกรายการเครดิตที่ต้องการนำมาหักลบกับยอดค้างชำระ</p>
+        <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm dark:border-emerald-400/20 dark:bg-[#101b2e]">
+          <h2 className="mb-1 font-kanit text-lg font-semibold text-emerald-800 dark:text-emerald-300">เครดิตจากใบลดหนี้ที่ยังไม่ใช้</h2>
+          <p className="mb-4 text-xs text-gray-500 dark:text-slate-400">เลือกรายการเครดิตที่ต้องการนำมาหักลบกับยอดค้างชำระ</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-emerald-50">
+              <thead className="bg-emerald-50 dark:bg-emerald-500/10">
                 <tr>
                   <th className="w-10 px-3 py-3" />
-                  <th className="px-3 py-3 text-left font-medium text-emerald-700">เลขที่ใบลดหนี้</th>
-                  <th className="px-3 py-3 text-left font-medium text-emerald-700">วันที่</th>
-                  <th className="px-3 py-3 text-right font-medium text-emerald-700">เครดิตทั้งหมด</th>
-                  <th className="px-3 py-3 text-right font-medium text-emerald-700">ใช้แล้ว</th>
-                  <th className="px-3 py-3 text-right font-medium text-emerald-700">คงเหลือ</th>
-                  <th className="px-3 py-3 text-right font-medium text-emerald-700">นำมาหักงวดนี้</th>
+                  <th className="px-3 py-3 text-left font-medium text-emerald-700 dark:text-emerald-300">เลขที่ใบลดหนี้</th>
+                  <th className="px-3 py-3 text-left font-medium text-emerald-700 dark:text-emerald-300">วันที่</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700 dark:text-emerald-300">เครดิตทั้งหมด</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700 dark:text-emerald-300">ใช้แล้ว</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700 dark:text-emerald-300">คงเหลือ</th>
+                  <th className="px-3 py-3 text-right font-medium text-emerald-700 dark:text-emerald-300">นำมาหักงวดนี้</th>
                 </tr>
               </thead>
               <tbody>{cnItems.map(renderCNRow)}</tbody>
@@ -406,14 +406,14 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </div>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400">
             {error}
           </div>
         )}
         {successMsg && (
-          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-400/30 dark:bg-green-500/10 dark:text-green-400">
             {successMsg}
           </div>
         )}
@@ -422,32 +422,32 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
           <div className="space-y-1">
             {cnTotal > 0 && (
               <>
-                <div className="flex items-center gap-8 text-sm text-gray-600">
+                <div className="flex items-center gap-8 text-sm text-gray-600 dark:text-slate-400">
                   <span>ยอดค้างชำระที่เลือก</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-gray-900 dark:text-slate-200">
                     {saleTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="flex items-center gap-8 text-sm text-emerald-700">
+                <div className="flex items-center gap-8 text-sm text-emerald-700 dark:text-emerald-400">
                   <span>หักเครดิต CN</span>
                   <span className="font-medium">
                     -{cnTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="my-1 h-px bg-gray-200" />
+                <div className="my-1 h-px bg-gray-200 dark:bg-white/10" />
               </>
             )}
-            <p className="text-sm text-gray-500">ยอดสุทธิที่รับชำระ</p>
-            <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
+            <p className="text-sm text-gray-500 dark:text-slate-400">ยอดสุทธิที่รับชำระ</p>
+            <p className="font-kanit text-2xl font-bold text-[#1e3a5f] dark:text-sky-300">
               {netTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              <span className="ml-1 text-sm font-normal text-gray-500">บาท</span>
+              <span className="ml-1 text-sm font-normal text-gray-500 dark:text-slate-400">บาท</span>
             </p>
           </div>
           <button
             type="button"
             onClick={handleSubmit}
             disabled={isPending || selectedItems.length === 0}
-            className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:bg-gray-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
           >
             {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบเสร็จ"}
           </button>

@@ -74,8 +74,8 @@ interface InitialData {
   items: LineItem[];
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, lotItems: [] });
 
@@ -335,8 +335,8 @@ const CreditNoteForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           ข้อมูลใบลดหนี้ (Credit Note)
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -384,12 +384,12 @@ const CreditNoteForm = ({
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />
             <input type="hidden" name="refundMethod" value={settlementType === "CASH_REFUND" ? refundMethod : ""} />
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden dark:border-white/20">
               <button
                 type="button"
                 onClick={() => setSettlementType("CASH_REFUND")}
                 className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-                  settlementType === "CASH_REFUND" ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  settlementType === "CASH_REFUND" ? "bg-emerald-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 คืนเงิน
@@ -397,8 +397,8 @@ const CreditNoteForm = ({
               <button
                 type="button"
                 onClick={() => setSettlementType("CREDIT_DEBT")}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
-                  settlementType === "CREDIT_DEBT" ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 dark:border-white/20 ${
+                  settlementType === "CREDIT_DEBT" ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 ตั้งหนี้
@@ -420,10 +420,10 @@ const CreditNoteForm = ({
                 onChange={setCashBankAccountId}
                 placeholder="โปรดระบุบัญชีจ่ายเงิน"
               />
-              <p className="mt-1 text-xs text-gray-500">ระบบจะระบุช่องทางคืนเงินจากประเภทบัญชีให้อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะระบุช่องทางคืนเงินจากประเภทบัญชีให้อัตโนมัติ</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">
               ตั้งหนี้จะยังไม่สร้างรายการเงินออก และไม่ต้องระบุบัญชีจ่ายเงิน
             </div>
           )}
@@ -451,8 +451,8 @@ const CreditNoteForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
-          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2 dark:border-white/10">
+            <p className="text-sm font-medium text-gray-700 mb-3 dark:text-slate-300">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
@@ -461,8 +461,8 @@ const CreditNoteForm = ({
                   onClick={() => setVatType(value)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     vatType === value
-                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
                   }`}
                 >
                   {VAT_TYPE_LABELS[value]}
@@ -470,16 +470,16 @@ const CreditNoteForm = ({
               ))}
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
-                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">อัตรา</span>
                   <AdminNumberInput
                     value={vatRate}
                     onValueChange={setVatRate}
                     min={0}
                     max={100}
                     step={0.01}
-                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
                   />
-                  <span className="text-sm text-gray-500">%</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
                 </div>
               )}
             </div>
@@ -487,25 +487,25 @@ const CreditNoteForm = ({
         </div>
 
         {cnType === "RETURN" ? (
-          <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+          <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 dark:bg-blue-500/10 dark:border-blue-400/20 dark:text-blue-300">
             <Info size={16} className="mt-0.5 shrink-0" />
             <span>รับคืนสินค้าเข้าสต็อก และถ้าเป็นสินค้า Lot Control ต้องระบุ Lot ของสินค้าที่รับคืนด้วย</span>
           </div>
         ) : (
-          <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+          <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700 dark:bg-yellow-500/10 dark:border-yellow-400/20 dark:text-yellow-300">
             <Info size={16} className="mt-0.5 shrink-0" />
             <span>ไม่กระทบสต็อก เหมาะสำหรับส่วนลดราคาและรายการอื่น ๆ ที่ไม่ได้รับสินค้าคืน</span>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้า</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้า</h2>
           <button
             type="button"
             onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300"
           >
             <Plus size={14} /> เพิ่มรายการ
           </button>
@@ -514,12 +514,12 @@ const CreditNoteForm = ({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">สินค้า</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-36">ราคาขาย/หน่วย</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-36 dark:text-slate-400">ราคาขาย/หน่วย</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">รวม</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -531,7 +531,7 @@ const CreditNoteForm = ({
 
                 return (
                   <>
-                    <tr key={`item-${i}`} className="border-b border-gray-50">
+                    <tr key={`item-${i}`} className="border-b border-gray-50 dark:border-white/5">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
@@ -577,7 +577,7 @@ const CreditNoteForm = ({
                           placeholder="0.00"
                         />
                       </td>
-                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                      <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
                         {(item.qty * item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
@@ -593,14 +593,14 @@ const CreditNoteForm = ({
                       </td>
                     </tr>
                     {showLots && (
-                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50">
+                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50 dark:bg-amber-500/10 dark:border-white/5">
                         <td colSpan={6} className="px-3 py-3">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-medium text-amber-800">Lot Control</div>
+                            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Lot Control</div>
                             <button
                               type="button"
                               onClick={() => addLotRow(i)}
-                              className="text-xs text-amber-700 hover:text-amber-900"
+                              className="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
                             >
                               เพิ่ม Lot
                             </button>
@@ -615,7 +615,7 @@ const CreditNoteForm = ({
                                   className={inputCls}
                                   placeholder="Lot No"
                                 />
-                                <label className="flex items-center gap-2 text-xs text-gray-700">
+                                <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300">
                                   <input
                                     type="checkbox"
                                     checked={lot.isReturnLot}
@@ -649,7 +649,7 @@ const CreditNoteForm = ({
                                   onChange={(e) => updateLotRow(i, lotIdx, "expDate", e.target.value)}
                                   className={inputCls}
                                 />
-                                <div className="text-[11px] text-gray-500">
+                                <div className="text-[11px] text-gray-500 dark:text-slate-400">
                                   {lot.isReturnLot ? "จะบันทึกเป็น RET-lot" : "จะ merge กลับ lot เดิม"}
                                 </div>
                                 <button
@@ -670,9 +670,9 @@ const CreditNoteForm = ({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-100">
-                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">ยอดรวม</td>
-                <td className="py-2 px-2 text-right text-gray-700">
+              <tr className="border-t border-gray-100 dark:border-white/10">
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ยอดรวม</td>
+                <td className="py-2 px-2 text-right text-gray-700 dark:text-slate-200">
                   {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -680,24 +680,24 @@ const CreditNoteForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ยอดก่อนภาษี</td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ยอดก่อนภาษี</td>
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">VAT {vatRate}%</td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">VAT {vatRate}%</td>
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                 </>
               )}
-              <tr className="border-t border-gray-200">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-medium text-gray-600">ยอดรวม CN</td>
-                <td className="py-3 px-2 text-right font-bold text-gray-900">
+              <tr className="border-t border-gray-200 dark:border-white/10">
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-medium text-gray-600 dark:text-slate-300">ยอดรวม CN</td>
+                <td className="py-3 px-2 text-right font-bold text-gray-900 dark:text-slate-100">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -708,14 +708,14 @@ const CreditNoteForm = ({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
 

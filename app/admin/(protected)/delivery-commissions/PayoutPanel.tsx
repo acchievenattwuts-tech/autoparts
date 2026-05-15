@@ -192,7 +192,7 @@ const PayoutPanel = ({
             />
           </label>
           <div className="flex items-end">
-            <AdminSearchSubmitButton className="inline-flex w-full justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a]">
+            <AdminSearchSubmitButton className="inline-flex w-full justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600">
               แสดงรายการ
             </AdminSearchSubmitButton>
           </div>
@@ -257,7 +257,7 @@ const PayoutPanel = ({
                 type="button"
                 onClick={handleCreate}
                 disabled={isCreating || !cashBankAccountId || overBatchLimit}
-                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
+                className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300 dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
               >
                 {isCreating ? "กำลังสร้าง..." : `สร้างทำจ่าย ฿${money(commissionTotal)}`}
               </button>

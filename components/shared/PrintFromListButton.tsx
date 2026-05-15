@@ -45,7 +45,7 @@ const PrintFromListButton = ({ href, label = "พิมพ์" }: Props) => {
       type="button"
       onClick={handlePrint}
       disabled={loading}
-      className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-40"
+      className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-40 dark:text-slate-400 dark:hover:text-slate-200"
     >
       <Printer size={14} />
       {loading ? "กำลังโหลด..." : label}

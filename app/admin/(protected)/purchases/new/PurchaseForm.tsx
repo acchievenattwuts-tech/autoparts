@@ -62,8 +62,8 @@ interface InitialData {
   items:        LineItem[];
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 const PurchaseForm = ({
   products,
   suppliers,
@@ -260,8 +260,8 @@ const PurchaseForm = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           ข้อมูลการซื้อ
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -309,14 +309,14 @@ const PurchaseForm = ({
 
           <div>
             <label className={labelCls}>ประเภทการซื้อ</label>
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+            <div className="flex rounded-lg border border-gray-300 overflow-hidden dark:border-white/20">
               <button
                 type="button"
                 onClick={() => setPurchaseType(PurchaseType.CASH_PURCHASE)}
                 className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                   purchaseType === PurchaseType.CASH_PURCHASE
                     ? "bg-emerald-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 ซื้อสด
@@ -324,10 +324,10 @@ const PurchaseForm = ({
               <button
                 type="button"
                 onClick={() => setPurchaseType(PurchaseType.CREDIT_PURCHASE)}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 dark:border-white/20 ${
                   purchaseType === PurchaseType.CREDIT_PURCHASE
                     ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 ซื้อเชื่อ
@@ -347,7 +347,7 @@ const PurchaseForm = ({
                 onChange={setCashBankAccountId}
                 placeholder="โปรดระบุบัญชีจ่ายเงิน"
               />
-              <p className="mt-1 text-xs text-gray-500">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -362,17 +362,17 @@ const PurchaseForm = ({
                   placeholder="เช่น 30"
                   className={inputCls}
                 />
-                <p className="mt-1 text-xs text-gray-500">ระบบจะดึงค่าเริ่มต้นจากผู้จำหน่าย ถ้าไม่ระบุจะถือว่าครบกำหนด ณ วันที่ซื้อ</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะดึงค่าเริ่มต้นจากผู้จำหน่าย ถ้าไม่ระบุจะถือว่าครบกำหนด ณ วันที่ซื้อ</p>
               </div>
-              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
                 ซื้อเชื่อจะยังไม่ตัดบัญชีจ่ายเงินจากใบซื้อ และยอดค้างจะไปชำระผ่านเอกสารจ่ายชำระเงินภายหลัง
               </div>
             </div>
           )}
 
           {/* VAT Settings */}
-          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2 dark:border-white/10">
+            <p className="text-sm font-medium text-gray-700 mb-3 dark:text-slate-300">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
                 <button
@@ -381,8 +381,8 @@ const PurchaseForm = ({
                   onClick={() => setVatType(t)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     vatType === t
-                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
                   }`}
                 >
                   {VAT_TYPE_LABELS[t]}
@@ -390,14 +390,14 @@ const PurchaseForm = ({
               ))}
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
-                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">อัตรา</span>
                   <AdminNumberInput
                     value={vatRate}
                     onValueChange={setVatRate}
                     min={0} max={100} step={0.01}
-                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
                   />
-                  <span className="text-sm text-gray-500">%</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
                 </div>
               )}
             </div>
@@ -406,11 +406,11 @@ const PurchaseForm = ({
       </div>
 
       {/* Line items */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้า</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้า</h2>
           <button type="button" onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300">
             <Plus size={14} /> เพิ่มรายการ
           </button>
         </div>
@@ -418,12 +418,12 @@ const PurchaseForm = ({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">สินค้า</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32">ทุน/หน่วย</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ทุน/หน่วย</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">รวม</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -436,7 +436,7 @@ const PurchaseForm = ({
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
                   <Fragment key={i}>
-                    <tr key={i} className="border-b border-gray-50">
+                    <tr key={i} className="border-b border-gray-50 dark:border-white/5">
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
@@ -448,7 +448,7 @@ const PurchaseForm = ({
                           }}
                         />
                         {isLot && (
-                          <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400/30">
                             Lot Control
                           </span>
                         )}
@@ -474,7 +474,7 @@ const PurchaseForm = ({
                           onValueChange={(value) => updateItem(i, "costPrice", value)}
                           className={inputCls} placeholder="0.00" />
                       </td>
-                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                      <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
                         {(item.qty * item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
@@ -487,22 +487,22 @@ const PurchaseForm = ({
                       </td>
                     </tr>
                     {isLot && (
-                      <tr className="bg-amber-50/60">
+                      <tr className="bg-amber-50/60 dark:bg-amber-500/10">
                         <td colSpan={6} className="px-4 pb-3 pt-1">
                           {showReadonlyLots ? (
                             /* Read-only lot display in edit mode */
                             <div className="flex flex-wrap gap-2">
                               {item.lotItems.length === 0 ? (
-                                <span className="text-xs text-gray-400 italic">ไม่มีข้อมูล Lot</span>
+                                <span className="text-xs text-gray-400 italic dark:text-slate-500">ไม่มีข้อมูล Lot</span>
                               ) : item.lotItems.map((lot, li) => (
-                                <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1">
-                                  <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
-                                  <span className="text-gray-500">จำนวน</span>
-                                  <span className="font-medium text-gray-700">{lot.qty}</span>
+                                <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1 dark:bg-slate-800 dark:border-amber-400/30">
+                                  <span className="font-mono font-semibold text-amber-800 dark:text-amber-300">{lot.lotNo}</span>
+                                  <span className="text-gray-500 dark:text-slate-400">จำนวน</span>
+                                  <span className="font-medium text-gray-700 dark:text-slate-200">{lot.qty}</span>
                                   {lot.expDate && (
                                     <>
-                                      <span className="text-gray-400">|</span>
-                                      <span className="text-gray-500">EXP {lot.expDate}</span>
+                                      <span className="text-gray-400 dark:text-slate-500">|</span>
+                                      <span className="text-gray-500 dark:text-slate-400">EXP {lot.expDate}</span>
                                     </>
                                   )}
                                 </div>
@@ -512,17 +512,17 @@ const PurchaseForm = ({
                             <>
                               {/* Progress */}
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs text-gray-500">Lot รวม</span>
-                                <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                                <span className="text-xs text-gray-500 dark:text-slate-400">Lot รวม</span>
+                                <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                                   {totalLotQty}
                                 </span>
-                                <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                                {!lotQtyMatch && <span className="text-xs text-red-500">จำนวน Lot ยังไม่ตรง</span>}
+                                <span className="text-xs text-gray-400 dark:text-slate-500">/ {item.qty} {item.unitName}</span>
+                                {!lotQtyMatch && <span className="text-xs text-red-500 dark:text-red-400">จำนวน Lot ยังไม่ตรง</span>}
                               </div>
                               {/* Lot sub-table */}
-                              <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden">
+                              <table className="w-full text-xs border border-amber-200 rounded-lg overflow-hidden dark:border-amber-400/30">
                                 <thead>
-                                  <tr className="bg-amber-100 text-amber-800">
+                                  <tr className="bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
                                     <th className="text-left py-1.5 px-2 font-medium">เลขที่ Lot</th>
                                     <th className="text-left py-1.5 px-2 font-medium w-24">จำนวน</th>
                                     <th className="text-left py-1.5 px-2 font-medium w-28">ต้นทุน/หน่วย</th>
@@ -536,7 +536,7 @@ const PurchaseForm = ({
                                 </thead>
                                 <tbody>
                                   {item.lotItems.map((lot, li) => (
-                                    <tr key={li} className="border-t border-amber-100">
+                                    <tr key={li} className="border-t border-amber-100 dark:border-amber-400/20">
                                       <td className="py-1 px-2">
                                         <input
                                           type="text"
@@ -594,7 +594,7 @@ const PurchaseForm = ({
                               <button
                                 type="button"
                                 onClick={() => addLotRow(i)}
-                                className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                                className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors dark:text-amber-400 dark:hover:text-amber-200 dark:border-amber-400/40"
                               >
                                 <Plus size={11} /> เพิ่ม Lot
                               </button>
@@ -608,16 +608,16 @@ const PurchaseForm = ({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-100">
-                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">รวมก่อนส่วนลด</td>
-                <td className="py-2 px-2 text-right text-gray-700">
+              <tr className="border-t border-gray-100 dark:border-white/10">
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวมก่อนส่วนลด</td>
+                <td className="py-2 px-2 text-right text-gray-700 dark:text-slate-200">
                   {totalBeforeDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>
               <tr>
-                <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ส่วนลด</td>
-                <td className="py-1 px-2 text-right text-red-500">
+                <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ส่วนลด</td>
+                <td className="py-1 px-2 text-right text-red-500 dark:text-red-400">
                   -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -625,28 +625,28 @@ const PurchaseForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       ยอดก่อนภาษี
                     </td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       VAT {vatRate}%
                     </td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                 </>
               )}
-              <tr className="border-t border-gray-200">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
-                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base">
+              <tr className="border-t border-gray-200 dark:border-white/10">
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base dark:text-sky-300">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -657,14 +657,14 @@ const PurchaseForm = ({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
 

@@ -10,6 +10,11 @@ import SearchBar from "@/components/shared/SearchBar";
 import ReceiptCancelButton from "./ReceiptCancelButton";
 import Pagination from "@/components/shared/Pagination";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminTableSection from "@/components/shared/AdminTableSection";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import {
@@ -25,6 +30,11 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   TRANSFER: "โอนเงิน",
   CREDIT:   "เครดิต",
 };
+const paymentMethodTone = {
+  CASH:     "success",
+  TRANSFER: "info",
+  CREDIT:   "warning",
+} as const;
 
 const ReceiptsPage = async ({
   searchParams,
@@ -82,119 +92,81 @@ const ReceiptsPage = async ({
   if (to)   paginationParams.to   = to;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบเสร็จรับเงิน</h1>
-        {canCreate ? (
-          <Link
-            href="/admin/receipts/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Plus size={16} /> สร้างใบเสร็จใหม่
-          </Link>
-        ) : null}
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="ใบเสร็จรับเงิน"
+        description="ค้นหาและตรวจสอบรายการรับชำระเงิน"
+        actions={
+          canCreate ? (
+            <Link href="/admin/receipts/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
+              <Plus size={16} /> สร้างใบเสร็จใหม่
+            </Link>
+          ) : null
+        }
+      />
 
-      <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
-        <DateRangeFilter from={from} to={to} />
-        <SearchBar placeholder="ค้นหาเลขที่ใบเสร็จ, ชื่อลูกค้า..." />
-      </div>
+      <AdminFilterToolbar className="mb-0" summary={q ? <span className="text-slate-500 dark:text-slate-400">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</span> : null}>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <DateRangeFilter from={from} to={to} />
+          <SearchBar placeholder="ค้นหาเลขที่ใบเสร็จ, ชื่อลูกค้า..." />
+        </div>
+      </AdminFilterToolbar>
 
-      {q && (
-        <p className="text-sm text-gray-500 mb-3">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+      <AdminTableSection>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
+            <tr>
+              <th className="w-10 px-4 py-3 text-center font-medium">#</th>
+              <th className="px-4 py-3 text-left font-medium">เลขที่ใบเสร็จ</th>
+              <th className="px-4 py-3 text-left font-medium">วันที่</th>
+              <th className="px-4 py-3 text-left font-medium">ลูกค้า</th>
+              <th className="px-4 py-3 text-right font-medium">รายการ (ใบขาย)</th>
+              <th className="px-4 py-3 text-right font-medium">ยอดรับชำระ</th>
+              <th className="px-4 py-3 text-left font-medium">ช่องทาง</th>
+              <th className="px-4 py-3 text-left font-medium">สถานะ</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody>
+            {receipts.length === 0 ? (
               <tr>
-                <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบเสร็จ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ลูกค้า</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ (ใบขาย)</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรับชำระ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทาง</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                <th className="py-3 px-4" />
+                <td colSpan={9} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                  {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบเสร็จรับเงิน"}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {receipts.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">
-                    {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบเสร็จรับเงิน"}
+            ) : (
+              receipts.map((r, idx) => (
+                <tr key={r.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${r.status === "CANCELLED" ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
+                  <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
+                  <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{r.receiptNo}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(r.receiptDate)}</td>
+                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{r.customer?.name ?? r.customerName ?? "-"}</td>
+                  <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{r._count.items} ใบ</td>
+                  <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(r.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3"><AdminStatusBadge tone={paymentMethodTone[r.paymentMethod]}>{paymentMethodLabel[r.paymentMethod]}</AdminStatusBadge></td>
+                  <td className="px-4 py-3">{r.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
+                  <td className="px-4 py-3">
+                    <AdminActionGroup align="end">
+                      <PrintFromListButton href={`/admin/receipts/${r.id}`} />
+                      <Link href={`/admin/receipts/${r.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200">
+                        <Eye size={14} /> ดู
+                      </Link>
+                      {r.status === "ACTIVE" ? (
+                        <>
+                          {canUpdate ? <Link href={`/admin/receipts/${r.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                          {canCancel ? <ReceiptCancelButton receiptId={r.id} docNo={r.receiptNo} /> : null}
+                        </>
+                      ) : null}
+                    </AdminActionGroup>
                   </td>
                 </tr>
-              ) : (
-                receipts.map((r, idx) => (
-                  <tr key={r.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      r.status === "CANCELLED" ? "opacity-50 bg-red-50" : "hover:bg-gray-50"
-                    }`}>
-                    <td className="py-3 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
-                    <td className="py-3 px-4 text-gray-600">
-                    {formatDateThai(r.receiptDate)}
-                    </td>
-                    <td className="py-3 px-4 text-gray-700">
-                      {r.customer?.name ?? r.customerName ?? "-"}
-                    </td>
-                    <td className="py-3 px-4 text-right text-gray-600">{r._count.items} ใบ</td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
-                      {Number(r.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {paymentMethodLabel[r.paymentMethod]}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {r.status === "CANCELLED" ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                          ยกเลิกแล้ว
-                        </span>
-                      ) : (
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          ใช้งาน
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2 justify-end">
-                        <PrintFromListButton href={`/admin/receipts/${r.id}`} />
-                        <Link href={`/admin/receipts/${r.id}`}
-                          className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
-                          <Eye size={14} /> ดู
-                        </Link>
-                        {r.status === "ACTIVE" && (
-                          <>
-                            {canUpdate ? (
-                              <Link href={`/admin/receipts/${r.id}/edit`}
-                                className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                                <Pencil size={14} /> แก้ไข
-                              </Link>
-                            ) : null}
-                            {canCancel ? <ReceiptCancelButton receiptId={r.id} docNo={r.receiptNo} /> : null}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              ))
+            )}
+          </tbody>
+        </table>
+      </AdminTableSection>
 
-      <Pagination
-        currentPage={pageNum}
-        totalPages={totalPages}
-        basePath="/admin/receipts"
-        searchParams={paginationParams}
-      />
+      <Pagination currentPage={pageNum} totalPages={totalPages} basePath="/admin/receipts" searchParams={paginationParams} />
     </div>
   );
 };

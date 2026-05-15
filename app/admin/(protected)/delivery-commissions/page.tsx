@@ -405,19 +405,19 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-gray-500 dark:text-slate-400">
           พบทั้งหมด {totalCount.toLocaleString("th-TH")} บิล
-          {totalCount > 10000 ? <span className="text-orange-600"> (export จะจำกัดที่ 10,000 แถวแรก)</span> : null}
+          {totalCount > 10000 ? <span className="text-orange-600 dark:text-orange-400"> (export จะจำกัดที่ 10,000 แถวแรก)</span> : null}
         </p>
         <div className="flex gap-2">
           <a
             href={exportCsvHref}
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500"
           >
             <FileText size={14} />
             CSV
           </a>
           <a
             href={exportExcelHref}
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700"
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
           >
             <FileSpreadsheet size={14} />
             Excel
@@ -476,7 +476,7 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
                       <td className="px-3 py-3 whitespace-nowrap text-right text-gray-700 dark:text-slate-200">฿{money(shippingFee)}</td>
                       <td className="px-3 py-3 whitespace-nowrap text-right font-semibold text-orange-600 dark:text-orange-300">
                         ฿{money(commissionAmount)}
-                        {!paidItem ? <span className="ml-1 text-[10px] text-gray-400">*</span> : null}
+                        {!paidItem ? <span className="ml-1 text-[10px] text-gray-400 dark:text-slate-500">*</span> : null}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${SHIPPING_STATUS_BADGE[sale.shippingStatus]}`}>

@@ -47,18 +47,18 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }:
       </button>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900 mb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-[#0f1e33] dark:ring-1 dark:ring-white/10">
+            <h3 className="mb-2 font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">
               ยืนยันการยกเลิกเอกสาร {docNo}
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              เอกสาร <span className="font-mono font-semibold text-gray-700">{docNo}</span> จะถูกยกเลิก
-              ระบบจะ re-calculate Stock MAVG ทันที และไม่สามารถกู้คืนได้
+            <p className="mb-4 text-sm text-gray-500 dark:text-slate-400">
+              เอกสาร <span className="font-mono font-semibold text-gray-700 dark:text-slate-200">{docNo}</span> จะถูกยกเลิก
+              ระบบจะคำนวณสต็อก MAVG ใหม่ทันที และไม่สามารถกู้คืนได้
             </p>
 
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
                 หมายเหตุการยกเลิก (ถ้ามี)
               </label>
               <input
@@ -67,12 +67,12 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }:
                 onChange={(e) => setCancelNote(e.target.value)}
                 maxLength={200}
                 placeholder="ระบุเหตุผลการยกเลิก..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 dark:border-white/15 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-red-500/40"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
+              <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                 {error}
               </p>
             )}
@@ -82,7 +82,7 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }:
                 type="button"
                 onClick={() => { setShowModal(false); setCancelNote(""); setError(""); }}
                 disabled={isPending}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                className="px-4 py-2 text-sm text-gray-600 transition-colors hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100"
               >
                 ปิด
               </button>
@@ -90,7 +90,7 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }:
                 type="button"
                 onClick={handleConfirm}
                 disabled={isPending}
-                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+                className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-700"
               >
                 {isPending ? "กำลังยกเลิก..." : "ยืนยันยกเลิก"}
               </button>

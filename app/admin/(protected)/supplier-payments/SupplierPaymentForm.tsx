@@ -49,9 +49,9 @@ type InitialData = {
 };
 
 const inputCls =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 
-const labelCls = "mb-1.5 block text-sm font-medium text-gray-700";
+const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
 
 const SupplierPaymentForm = ({
   suppliers,
@@ -265,26 +265,26 @@ const SupplierPaymentForm = ({
     docLabel: string;
     amountColor: string;
   }) => (
-    <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-      <h2 className="mb-1 font-kanit text-lg font-semibold text-gray-800">{title}</h2>
-      <p className="mb-4 text-xs text-gray-500">{description}</p>
+    <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+      <h2 className="mb-1 font-kanit text-lg font-semibold text-gray-800 dark:text-slate-100">{title}</h2>
+      <p className="mb-4 text-xs text-gray-500 dark:text-slate-400">{description}</p>
 
       {isLoadingDocs ? (
-        <p className="py-6 text-center text-sm text-gray-400">กำลังโหลดข้อมูล...</p>
+        <p className="py-6 text-center text-sm text-gray-400 dark:text-slate-500">กำลังโหลดข้อมูล...</p>
       ) : rows.length === 0 ? (
-        <p className="py-6 text-center text-sm text-gray-400">ไม่พบรายการที่ใช้งานได้</p>
+        <p className="py-6 text-center text-sm text-gray-400 dark:text-slate-500">ไม่พบรายการที่ใช้งานได้</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className={headClassName}>
               <tr>
                 <th className="w-10 px-3 py-3" />
-                <th className="px-3 py-3 text-left font-medium text-gray-600">{docLabel}</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">วันที่</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-600">ยอดทั้งหมด</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-600">ใช้แล้ว</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-600">คงเหลือ</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-600">ใช้ในงวดนี้</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">{docLabel}</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดทั้งหมด</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ใช้แล้ว</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">คงเหลือ</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ใช้ในงวดนี้</th>
               </tr>
             </thead>
             <tbody>
@@ -294,8 +294,8 @@ const SupplierPaymentForm = ({
                 return (
                   <tr
                     key={`${kind}-${doc.id}`}
-                    className={`border-t border-gray-50 transition-colors ${
-                      checked ? "bg-blue-50/40" : "hover:bg-gray-50"
+                    className={`border-t border-gray-50 transition-colors dark:border-white/5 ${
+                      checked ? "bg-blue-50/40 dark:bg-sky-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"
                     }`}
                   >
                     <td className="px-3 py-2">
@@ -307,13 +307,13 @@ const SupplierPaymentForm = ({
                       />
                     </td>
                     <td className={`px-3 py-2 font-mono font-medium ${amountColor}`}>{doc.docNo}</td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                         {formatDateThai(doc.docDate)}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-800">
+                    <td className="px-3 py-2 text-right text-gray-800 dark:text-slate-200">
                       {doc.totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-600">
+                    <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">
                       {doc.usedAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className={`px-3 py-2 text-right font-medium ${amountColor}`}>
@@ -327,10 +327,10 @@ const SupplierPaymentForm = ({
                           step={0.01}
                           value={selected?.paidAmount ?? doc.outstanding}
                           onValueChange={(value) => updatePaidAmount(kind, doc.id, value)}
-                          className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30"
+                          className="w-28 rounded border border-gray-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
                         />
                       ) : (
-                        <span className="text-sm text-gray-400">-</span>
+                        <span className="text-sm text-gray-400 dark:text-slate-500">-</span>
                       )}
                     </td>
                   </tr>
@@ -345,8 +345,8 @@ const SupplierPaymentForm = ({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f]">
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-300">
           ข้อมูลจ่ายชำระซัพพลายเออร์
         </h2>
 
@@ -375,7 +375,7 @@ const SupplierPaymentForm = ({
             />
           </div>
 
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 md:col-span-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 md:col-span-2 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
             เลือกใบซื้อเชื่อที่ต้องการชำระ และสามารถเลือกใช้เครดิตจาก CN ซื้อหรือเงินมัดจำซัพพลายเออร์เพื่อนำมาหักได้
             หากยอดสุทธิหลังหักเครดิตและมัดจำเท่ากับ 0 ระบบจะบันทึกเป็นการตัดยอดโดยไม่มีการจ่ายเงินจริง
           </div>
@@ -412,9 +412,9 @@ const SupplierPaymentForm = ({
             title: "ใบซื้อเชื่อคงค้าง",
             description: "เลือกรายการซื้อเชื่อที่ต้องการนำมาชำระในงวดนี้",
             documents: documents.purchases,
-            headClassName: "bg-gray-50",
+            headClassName: "bg-gray-50 dark:bg-slate-800/50",
             docLabel: "เลขที่ใบซื้อ",
-            amountColor: "text-[#1e3a5f]",
+            amountColor: "text-[#1e3a5f] dark:text-sky-300",
           })
         : null}
 
@@ -424,9 +424,9 @@ const SupplierPaymentForm = ({
             title: "เครดิตจาก CN ซื้อคงเหลือ",
             description: "เลือกเครดิตซัพพลายเออร์ที่ต้องการนำมาหักกับยอดซื้อเชื่อ",
             documents: documents.credits,
-            headClassName: "bg-emerald-50",
+            headClassName: "bg-emerald-50 dark:bg-emerald-500/10",
             docLabel: "เลขที่ CN ซื้อ",
-            amountColor: "text-emerald-700",
+            amountColor: "text-emerald-700 dark:text-emerald-400",
           })
         : null}
 
@@ -436,51 +436,51 @@ const SupplierPaymentForm = ({
             title: "เงินมัดจำซัพพลายเออร์คงเหลือ",
             description: "เลือกเงินมัดจำที่ต้องการนำมาหักกับยอดซื้อเชื่อ",
             documents: documents.advances,
-            headClassName: "bg-amber-50",
+            headClassName: "bg-amber-50 dark:bg-amber-500/10",
             docLabel: "เลขที่มัดจำ",
-            amountColor: "text-amber-700",
+            amountColor: "text-amber-700 dark:text-amber-400",
           })
         : null}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         {error ? (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400">
             {error}
           </div>
         ) : null}
 
         {success ? (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3">
-            <CheckCircle size={16} className="text-green-600" />
-            <p className="text-sm text-green-600">{success}</p>
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-400/30 dark:bg-green-500/10">
+            <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+            <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
           </div>
         ) : null}
 
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="space-y-1">
-            <div className="flex items-center gap-8 text-sm text-gray-600">
+            <div className="flex items-center gap-8 text-sm text-gray-600 dark:text-slate-400">
               <span>ยอดซื้อเชื่อที่เลือก</span>
-              <span className="font-medium text-gray-900">
+              <span className="font-medium text-gray-900 dark:text-slate-200">
                 {purchaseTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="flex items-center gap-8 text-sm text-emerald-700">
+            <div className="flex items-center gap-8 text-sm text-emerald-700 dark:text-emerald-400">
               <span>หักเครดิต CN ซื้อ</span>
               <span className="font-medium">
                 -{creditTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="flex items-center gap-8 text-sm text-amber-700">
+            <div className="flex items-center gap-8 text-sm text-amber-700 dark:text-amber-400">
               <span>หักเงินมัดจำซัพพลายเออร์</span>
               <span className="font-medium">
                 -{advanceTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
-            <div className="my-1 h-px bg-gray-200" />
-            <p className="text-sm text-gray-500">ยอดสุทธิที่ต้องจ่ายเงินจริง</p>
-            <p className={`font-kanit text-2xl font-bold ${netCashPaid < 0 ? "text-red-600" : "text-[#1e3a5f]"}`}>
+            <div className="my-1 h-px bg-gray-200 dark:bg-white/10" />
+            <p className="text-sm text-gray-500 dark:text-slate-400">ยอดสุทธิที่ต้องจ่ายเงินจริง</p>
+            <p className={`font-kanit text-2xl font-bold ${netCashPaid < 0 ? "text-red-600 dark:text-red-400" : "text-[#1e3a5f] dark:text-sky-300"}`}>
               {netCashPaid.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-              <span className="ml-1 text-sm font-normal text-gray-500">บาท</span>
+              <span className="ml-1 text-sm font-normal text-gray-500 dark:text-slate-400">บาท</span>
             </p>
           </div>
 
@@ -488,7 +488,7 @@ const SupplierPaymentForm = ({
             type="button"
             onClick={handleSubmit}
             disabled={isPending || selectedItems.length === 0}
-            className="inline-flex items-center justify-center rounded-lg bg-[#f97316] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-lg bg-[#f97316] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
           >
             {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกจ่ายชำระ"}
           </button>

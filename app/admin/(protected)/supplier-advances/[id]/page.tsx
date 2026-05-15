@@ -52,24 +52,24 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
       <div className="mb-6 flex items-center gap-2">
         <Link
           href="/admin/supplier-advances"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> เงินมัดจำซัพพลายเออร์
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">{advance.advanceNo}</span>
+        <span className="text-gray-300 dark:text-slate-600">/</span>
+        <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{advance.advanceNo}</span>
       </div>
 
-      <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3">
+      <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
           <div className="flex items-center gap-3">
-            <h1 className="font-kanit text-xl font-bold text-gray-900">รายละเอียดเงินมัดจำซัพพลายเออร์</h1>
+            <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">รายละเอียดเงินมัดจำซัพพลายเออร์</h1>
             {advance.status === "CANCELLED" ? (
-              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">
                 ยกเลิกแล้ว
               </span>
             ) : (
-              <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+              <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                 ใช้งาน
               </span>
             )}
@@ -79,7 +79,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
             {advance.status === "ACTIVE" && canUpdate ? (
               <Link
                 href={`/admin/supplier-advances/${advance.id}/edit`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f]"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
               >
                 <Pencil size={14} /> แก้ไข
               </Link>
@@ -92,109 +92,112 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3">
           <div>
-            <p className="mb-0.5 text-gray-500">เลขที่เอกสาร</p>
-            <p className="font-mono font-semibold text-[#1e3a5f]">{advance.advanceNo}</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">เลขที่เอกสาร</p>
+            <p className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-300">{advance.advanceNo}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">วันที่เอกสาร</p>
-            <p className="font-medium text-gray-900">
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">วันที่เอกสาร</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
               {formatDateThai(advance.advanceDate)}
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ซัพพลายเออร์</p>
-            <Link href={`/admin/suppliers/${advance.supplier.id}`} className="font-medium text-[#1e3a5f] hover:underline">
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ซัพพลายเออร์</p>
+            <Link
+              href={`/admin/suppliers/${advance.supplier.id}`}
+              className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+            >
               {advance.supplier.name}
             </Link>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ช่องทางจ่าย</p>
-            <p className="font-medium text-gray-900">{paymentMethodLabel[advance.paymentMethod]}</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ช่องทางจ่าย</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">{paymentMethodLabel[advance.paymentMethod]}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">บัญชีจ่ายเงิน</p>
-            <p className="font-medium text-gray-900">
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
               {advance.cashBankAccount ? `${advance.cashBankAccount.code} - ${advance.cashBankAccount.name}` : "-"}
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ผู้บันทึก</p>
-            <p className="font-medium text-gray-900">{advance.user?.name ?? "-"}</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">{advance.user?.name ?? "-"}</p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ยอดมัดจำ</p>
-            <p className="font-kanit text-lg font-bold text-[#1e3a5f]">
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ยอดมัดจำ</p>
+            <p className="font-kanit text-lg font-bold text-[#1e3a5f] dark:text-sky-300">
               {Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">ยอดคงเหลือ</p>
-            <p className="font-kanit text-lg font-bold text-amber-700">
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ยอดคงเหลือ</p>
+            <p className="font-kanit text-lg font-bold text-amber-700 dark:text-amber-400">
               {Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500">จำนวนเอกสารที่อ้างอิง</p>
-            <p className="font-medium text-gray-900">{advance.supplierPayments.length} รายการ</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">จำนวนเอกสารที่อ้างอิง</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">{advance.supplierPayments.length} รายการ</p>
           </div>
           {advance.note ? (
             <div className="col-span-2 md:col-span-3">
-              <p className="mb-0.5 text-gray-500">หมายเหตุ</p>
-              <p className="text-gray-700">{advance.note}</p>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">หมายเหตุ</p>
+              <p className="text-gray-700 dark:text-slate-300">{advance.note}</p>
             </div>
           ) : null}
           {advance.status === "CANCELLED" && advance.cancelNote ? (
             <div className="col-span-2 md:col-span-3">
-              <p className="mb-0.5 text-gray-500">เหตุผลยกเลิก</p>
-              <p className="text-red-600">{advance.cancelNote}</p>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">เหตุผลยกเลิก</p>
+              <p className="text-red-600 dark:text-rose-400">{advance.cancelNote}</p>
             </div>
           ) : null}
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f]">
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
           เอกสารจ่ายชำระที่หักเงินมัดจำนี้
         </h2>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">เลขที่เอกสารจ่าย</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">วันที่</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">ยอดที่หัก</th>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">สถานะ</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่เอกสารจ่าย</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ยอดที่หัก</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
               </tr>
             </thead>
             <tbody>
               {advance.supplierPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-10 text-center text-gray-400">
+                  <td colSpan={4} className="py-10 text-center text-gray-400 dark:text-slate-500">
                     ยังไม่มีเอกสารจ่ายชำระที่อ้างอิงเงินมัดจำนี้
                   </td>
                 </tr>
               ) : (
                 advance.supplierPayments.map((item) => (
-                  <tr key={item.id} className="border-t border-gray-50">
-                    <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f]">
+                  <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
+                    <td className="px-3 py-2 font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
                       <Link href={`/admin/supplier-payments/${item.payment.id}`} className="hover:underline">
                         {item.payment.paymentNo}
                       </Link>
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">
                       {formatDateThai(item.payment.paymentDate)}
                     </td>
-                    <td className="px-3 py-2 text-right font-medium text-gray-900">
+                    <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">
                       {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-3 py-2">
                       {item.payment.status === "CANCELLED" ? (
-                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">
                           ยกเลิกแล้ว
                         </span>
                       ) : (
-                        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                           ใช้งาน
                         </span>
                       )}

@@ -6,6 +6,8 @@ Objective: ปรับ UI/UX ให้ใช้งานง่ายขึ้�
 
 Rule reminder: ทุกครั้งที่แตะ UI/admin presentation ต้องตรวจทั้ง light mode และ dark mode ในรอบเดียวกันเสมอ ห้ามปล่อยให้ธีมใดธีมหนึ่ง drift ไปคนละทิศกับอีกธีม
 
+**ห้ามแตะ LIFF** — ไฟล์ใดก็ตามที่เกี่ยวข้องกับ LINE Front-end Framework (LIFF) หรือ LINE miniapp ห้ามแก้ไขภายใต้แผนงานนี้โดยเด็ดขาด ทั้ง logic, UI, และ routing
+
 ## Batch 1 Status
 
 - [x] Audited shared admin foundation files
@@ -56,27 +58,27 @@ Batch 1 changed files:
 ## Real Execution Order
 
 ### Step 1: Baseline Audit
-- [ ] อ่านและสรุปข้อจำกัดจากโค้ด shared admin ปัจจุบัน
-  - [ ] `components/shared/AdminShell.tsx`
-  - [ ] `components/shared/AdminSidebar.tsx`
-  - [ ] `components/shared/TabsBar.tsx`
-  - [ ] `components/shared/SearchBar.tsx`
-  - [ ] `components/shared/AdminSearchForm.tsx`
-  - [ ] `components/shared/AdminSearchSubmitButton.tsx`
-  - [ ] `lib/admin-navigation.ts`
-  - [ ] `lib/quick-search-commands.ts`
-- [ ] จด visual issues หลักที่เจอจริง
-  - [ ] spacing แน่น
-  - [ ] table/list pattern ไม่สม่ำเสมอ
-  - [ ] page header/action area ไม่คงเส้นคงวา
-  - [ ] filter toolbar กระจัดกระจาย
-  - [ ] status badge และ action button หลายหน้าไม่ใช้ภาษาเดียวกัน
+- [x] อ่านและสรุปข้อจำกัดจากโค้ด shared admin ปัจจุบัน
+  - [x] `components/shared/AdminShell.tsx`
+  - [x] `components/shared/AdminSidebar.tsx`
+  - [x] `components/shared/TabsBar.tsx`
+  - [x] `components/shared/SearchBar.tsx`
+  - [x] `components/shared/AdminSearchForm.tsx`
+  - [x] `components/shared/AdminSearchSubmitButton.tsx`
+  - [x] `lib/admin-navigation.ts`
+  - [x] `lib/quick-search-commands.ts`
+- [x] จด visual issues หลักที่เจอจริง
+  - [x] spacing แน่น
+  - [x] table/list pattern ไม่สม่ำเสมอ
+  - [x] page header/action area ไม่คงเส้นคงวา
+  - [x] filter toolbar กระจัดกระจาย
+  - [x] status badge และ action button หลายหน้าไม่ใช้ภาษาเดียวกัน
 
 ### Step 2: Shared Foundation First
-- [ ] ปรับ shared shell, navigation, tabs, search, filter primitives ให้เสร็จก่อนแตะหน้ารายกลุ่ม
+- [x] ปรับ shared shell, navigation, tabs, search, filter primitives ให้เสร็จก่อนแตะหน้ารายกลุ่ม
 
 ### Step 3: High-Traffic Pages
-- [ ] ทำกลุ่ม operations ที่คนใช้บ่อยก่อน
+- [x] ทำกลุ่ม operations ที่คนใช้บ่อยก่อน (3A–3I เสร็จครบ)
 
 ### Step 4: Master Data / Config
 - [ ] ทำกลุ่ม products, customers, users, roles, settings
@@ -96,88 +98,89 @@ Batch 1 changed files:
 ## Step 1 Checklist: Baseline Audit
 
 ### Shared Components To Inspect
-- [ ] [components/shared/AdminShell.tsx](/D:/autoparts/components/shared/AdminShell.tsx)
-- [ ] [components/shared/AdminSidebar.tsx](/D:/autoparts/components/shared/AdminSidebar.tsx)
-- [ ] [components/shared/TabsBar.tsx](/D:/autoparts/components/shared/TabsBar.tsx)
-- [ ] [components/shared/SearchBar.tsx](/D:/autoparts/components/shared/SearchBar.tsx)
-- [ ] [components/shared/AdminSearchForm.tsx](/D:/autoparts/components/shared/AdminSearchForm.tsx)
-- [ ] [components/shared/AdminSearchSubmitButton.tsx](/D:/autoparts/components/shared/AdminSearchSubmitButton.tsx)
-- [ ] [lib/admin-navigation.ts](/D:/autoparts/lib/admin-navigation.ts)
-- [ ] [lib/quick-search-commands.ts](/D:/autoparts/lib/quick-search-commands.ts)
+- [x] [components/shared/AdminShell.tsx](/D:/autoparts/components/shared/AdminShell.tsx)
+- [x] [components/shared/AdminSidebar.tsx](/D:/autoparts/components/shared/AdminSidebar.tsx)
+- [x] [components/shared/TabsBar.tsx](/D:/autoparts/components/shared/TabsBar.tsx)
+- [x] [components/shared/SearchBar.tsx](/D:/autoparts/components/shared/SearchBar.tsx)
+- [x] [components/shared/AdminSearchForm.tsx](/D:/autoparts/components/shared/AdminSearchForm.tsx)
+- [x] [components/shared/AdminSearchSubmitButton.tsx](/D:/autoparts/components/shared/AdminSearchSubmitButton.tsx)
+- [x] [lib/admin-navigation.ts](/D:/autoparts/lib/admin-navigation.ts)
+- [x] [lib/quick-search-commands.ts](/D:/autoparts/lib/quick-search-commands.ts)
 
 ### Visual Rules To Define Before Editing
-- [ ] page header pattern
-- [ ] section card pattern
-- [ ] filter toolbar pattern
-- [ ] summary stat pattern
-- [ ] data table pattern
-- [ ] empty state pattern
-- [ ] action button priority pattern
-- [ ] badge/status color pattern
-- [ ] light/dark parity rules
+- [x] page header pattern
+- [x] section card pattern
+- [x] filter toolbar pattern
+- [x] summary stat pattern
+- [x] data table pattern
+- [x] empty state pattern
+- [x] action button priority pattern
+- [x] badge/status color pattern
+- [x] light/dark parity rules
 
 ---
 
 ## Step 2 Checklist: Shared Foundation
 
 ### 2.1 Admin Shell
-- [ ] [components/shared/AdminShell.tsx](/D:/autoparts/components/shared/AdminShell.tsx)
-  - [ ] ปรับ top header spacing
-  - [ ] ปรับ control grouping ของ quick search / theme / user menu
-  - [ ] ปรับ main padding strategy ให้คงที่
-  - [ ] ปรับ warning banner visual hierarchy
-  - [ ] ตรวจ responsive sidebar overlay behavior
+- [x] [components/shared/AdminShell.tsx](/D:/autoparts/components/shared/AdminShell.tsx)
+  - [x] ปรับ top header spacing
+  - [x] ปรับ control grouping ของ quick search / theme / user menu
+  - [x] ปรับ main padding strategy ให้คงที่
+  - [x] ปรับ warning banner visual hierarchy
+  - [x] ตรวจ responsive sidebar overlay behavior
 
 ### 2.2 Admin Sidebar
-- [ ] [components/shared/AdminSidebar.tsx](/D:/autoparts/components/shared/AdminSidebar.tsx)
-  - [ ] ปรับ section header spacing
-  - [ ] ปรับ active nav state
-  - [ ] ปรับ hover state
-  - [ ] ปรับ contrast ทั้ง light/dark
-  - [ ] ปรับ icon/text alignment
-  - [ ] ตรวจ mobile close behavior
+- [x] [components/shared/AdminSidebar.tsx](/D:/autoparts/components/shared/AdminSidebar.tsx)
+  - [x] ปรับ section header spacing
+  - [x] ปรับ active nav state
+  - [x] ปรับ hover state
+  - [x] ปรับ contrast ทั้ง light/dark
+  - [x] ปรับ icon/text alignment
+  - [x] ตรวจ mobile close behavior
+  - [x] แก้ active text color ใน dark mode ให้ชัดอ่านได้
 
 ### 2.3 Tabs
-- [ ] [components/shared/TabsBar.tsx](/D:/autoparts/components/shared/TabsBar.tsx)
-  - [ ] ปรับ active tab emphasis
-  - [ ] ลดความแน่นของ inactive tabs
-  - [ ] ปรับ close button affordance
-  - [ ] ตรวจ overflow scroll ใช้งานได้ดี
+- [x] [components/shared/TabsBar.tsx](/D:/autoparts/components/shared/TabsBar.tsx)
+  - [x] ปรับ active tab emphasis
+  - [x] ลดความแน่นของ inactive tabs
+  - [x] ปรับ close button affordance
+  - [x] ตรวจ overflow scroll ใช้งานได้ดี
 
 ### 2.4 Search / Filter Core
-- [ ] [components/shared/SearchBar.tsx](/D:/autoparts/components/shared/SearchBar.tsx)
-  - [ ] ปรับ input density
-  - [ ] ปรับ search action button style
-  - [ ] ปรับ pending/clear behavior visual
-- [ ] [components/shared/AdminSearchForm.tsx](/D:/autoparts/components/shared/AdminSearchForm.tsx)
-  - [ ] review pending state class usage
-  - [ ] รองรับ layout wrapper pattern ใหม่
-- [ ] [components/shared/AdminSearchSubmitButton.tsx](/D:/autoparts/components/shared/AdminSearchSubmitButton.tsx)
-  - [ ] ปรับ default button baseline classes
-  - [ ] ตรวจ loading icon alignment
+- [x] [components/shared/SearchBar.tsx](/D:/autoparts/components/shared/SearchBar.tsx)
+  - [x] ปรับ input density
+  - [x] ปรับ search action button style
+  - [x] ปรับ pending/clear behavior visual
+- [x] [components/shared/AdminSearchForm.tsx](/D:/autoparts/components/shared/AdminSearchForm.tsx)
+  - [x] review pending state class usage
+  - [x] รองรับ layout wrapper pattern ใหม่
+- [x] [components/shared/AdminSearchSubmitButton.tsx](/D:/autoparts/components/shared/AdminSearchSubmitButton.tsx)
+  - [x] ปรับ default button baseline classes
+  - [x] ตรวจ loading icon alignment
 
 ### 2.5 Shared Admin Primitives To Create Or Refactor
-- [ ] สร้าง `components/shared/AdminPageHeader.tsx`
-- [ ] สร้าง `components/shared/AdminSectionCard.tsx`
-- [ ] สร้าง `components/shared/AdminStatCard.tsx`
-- [ ] สร้าง `components/shared/AdminEmptyState.tsx`
-- [ ] สร้าง `components/shared/AdminStatusBadge.tsx`
-- [ ] สร้าง `components/shared/AdminActionGroup.tsx`
-- [ ] สร้าง `components/shared/AdminFilterToolbar.tsx`
-- [ ] ถ้าจำเป็น สร้าง `components/shared/AdminTableSection.tsx`
+- [x] สร้าง `components/shared/AdminPageHeader.tsx`
+- [x] สร้าง `components/shared/AdminSectionCard.tsx`
+- [x] สร้าง `components/shared/AdminStatCard.tsx`
+- [x] สร้าง `components/shared/AdminEmptyState.tsx`
+- [x] สร้าง `components/shared/AdminStatusBadge.tsx`
+- [x] สร้าง `components/shared/AdminActionGroup.tsx`
+- [x] สร้าง `components/shared/AdminFilterToolbar.tsx`
+- [x] ถ้าจำเป็น สร้าง `components/shared/AdminTableSection.tsx`
 
 ### 2.6 Navigation / Command Consistency
-- [ ] [lib/admin-navigation.ts](/D:/autoparts/lib/admin-navigation.ts)
-- [ ] [lib/quick-search-commands.ts](/D:/autoparts/lib/quick-search-commands.ts)
-  - [ ] ยืนยันว่าไม่มี menu change ที่กระทบ Quick Search
-  - [ ] ถ้ามี label หรือ entrypoint เปลี่ยน ต้อง sync ทั้งคู่
+- [x] [lib/admin-navigation.ts](/D:/autoparts/lib/admin-navigation.ts)
+- [x] [lib/quick-search-commands.ts](/D:/autoparts/lib/quick-search-commands.ts)
+  - [x] ยืนยันว่าไม่มี menu change ที่กระทบ Quick Search
+  - [x] ถ้ามี label หรือ entrypoint เปลี่ยน ต้อง sync ทั้งคู่
 
 ### 2.7 Shared Foundation QA
-- [ ] ตรวจ light mode
-- [ ] ตรวจ dark mode
-- [ ] ตรวจ mobile sidebar
-- [ ] ตรวจ tab overflow
-- [ ] ตรวจ search pending state
+- [x] ตรวจ light mode
+- [x] ตรวจ dark mode
+- [x] ตรวจ mobile sidebar
+- [x] ตรวจ tab overflow
+- [x] ตรวจ search pending state
 
 ---
 
@@ -186,86 +189,97 @@ Batch 1 changed files:
 ## 3A. Sales
 
 ### List / Filters
-- [ ] [app/admin/(protected)/sales/page.tsx](/D:/autoparts/app/admin/(protected)/sales/page.tsx)
-  - [ ] ย้าย header เข้า pattern กลาง
-  - [ ] จัด search/filter/date range ให้เป็น toolbar เดียว
-  - [ ] จัด drilldown context ให้เป็น summary strip
-  - [ ] ปรับ table density
-  - [ ] ปรับ action column layout
-  - [ ] ปรับ empty state
-- [ ] [app/admin/(protected)/sales/SalesFilterBar.tsx](/D:/autoparts/app/admin/(protected)/sales/SalesFilterBar.tsx)
-  - [ ] ปรับ segmented filter visual
-  - [ ] ปรับ pending state
-- [ ] ตรวจ [components/shared/DateRangeFilter.tsx](/D:/autoparts/components/shared/DateRangeFilter.tsx) ถ้าต้องใช้ style ร่วม
-- [ ] ตรวจ [components/shared/Pagination.tsx](/D:/autoparts/components/shared/Pagination.tsx) ถ้าหน้าตาไม่เข้าชุด
-- [ ] ตรวจ [components/shared/PrintFromListButton.tsx](/D:/autoparts/components/shared/PrintFromListButton.tsx) ถ้าปุ่ม action ยังแข็ง
+- [x] [app/admin/(protected)/sales/page.tsx](/D:/autoparts/app/admin/(protected)/sales/page.tsx)
+  - [x] ย้าย header เข้า pattern กลาง
+  - [x] จัด search/filter/date range ให้เป็น toolbar เดียว
+  - [x] จัด drilldown context ให้เป็น summary strip
+  - [x] ปรับ table density
+  - [x] ปรับ action column layout
+  - [x] ปรับ empty state
+- [x] [app/admin/(protected)/sales/SalesFilterBar.tsx](/D:/autoparts/app/admin/(protected)/sales/SalesFilterBar.tsx)
+  - [x] ปรับ segmented filter visual
+  - [x] ปรับ pending state
+- [x] ตรวจ [components/shared/DateRangeFilter.tsx](/D:/autoparts/components/shared/DateRangeFilter.tsx) ถ้าต้องใช้ style ร่วม
+- [x] ตรวจ [components/shared/Pagination.tsx](/D:/autoparts/components/shared/Pagination.tsx) ถ้าหน้าตาไม่เข้าชุด
+- [x] ตรวจ [components/shared/PrintFromListButton.tsx](/D:/autoparts/components/shared/PrintFromListButton.tsx) ถ้าปุ่ม action ยังแข็ง
+- [x] [components/shared/CancelDocButton.tsx](/D:/autoparts/components/shared/CancelDocButton.tsx) — dark mode ครบ, ข้อความ non-production แก้เป็นภาษาผู้ใช้แล้ว
 
 ### Detail / Form
-- [ ] [app/admin/(protected)/sales/new/SaleForm.tsx](/D:/autoparts/app/admin/(protected)/sales/new/SaleForm.tsx)
-- [ ] [app/admin/(protected)/sales/new/page.tsx](/D:/autoparts/app/admin/(protected)/sales/new/page.tsx)
-- [ ] [app/admin/(protected)/sales/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/page.tsx)
-- [ ] [app/admin/(protected)/sales/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/sales/SaleCancelButton.tsx](/D:/autoparts/app/admin/(protected)/sales/SaleCancelButton.tsx)
-- [ ] [app/admin/(protected)/sales/[id]/PrintButton.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/PrintButton.tsx)
+- [x] [app/admin/(protected)/sales/new/SaleForm.tsx](/D:/autoparts/app/admin/(protected)/sales/new/SaleForm.tsx)
+- [x] [app/admin/(protected)/sales/new/page.tsx](/D:/autoparts/app/admin/(protected)/sales/new/page.tsx)
+- [x] [app/admin/(protected)/sales/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/page.tsx)
+- [x] [app/admin/(protected)/sales/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/sales/SaleCancelButton.tsx](/D:/autoparts/app/admin/(protected)/sales/SaleCancelButton.tsx)
+- [x] [app/admin/(protected)/sales/[id]/PrintButton.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/PrintButton.tsx)
 
 ## 3B. Purchases
-- [ ] [app/admin/(protected)/purchases/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/page.tsx)
-- [ ] [app/admin/(protected)/purchases/new/PurchaseForm.tsx](/D:/autoparts/app/admin/(protected)/purchases/new/PurchaseForm.tsx)
-- [ ] [app/admin/(protected)/purchases/new/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/new/page.tsx)
-- [ ] [app/admin/(protected)/purchases/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/page.tsx)
-- [ ] [app/admin/(protected)/purchases/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/purchases/PurchaseCancelButton.tsx](/D:/autoparts/app/admin/(protected)/purchases/PurchaseCancelButton.tsx)
+- [x] [app/admin/(protected)/purchases/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/page.tsx)
+- [x] [app/admin/(protected)/purchases/new/PurchaseForm.tsx](/D:/autoparts/app/admin/(protected)/purchases/new/PurchaseForm.tsx)
+- [x] [app/admin/(protected)/purchases/new/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/new/page.tsx)
+- [x] [app/admin/(protected)/purchases/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/page.tsx)
+- [x] [app/admin/(protected)/purchases/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/purchases/PurchaseCancelButton.tsx](/D:/autoparts/app/admin/(protected)/purchases/PurchaseCancelButton.tsx)
 
 ## 3C. Receipts
-- [ ] [app/admin/(protected)/receipts/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/page.tsx)
-- [ ] [app/admin/(protected)/receipts/new/ReceiptForm.tsx](/D:/autoparts/app/admin/(protected)/receipts/new/ReceiptForm.tsx)
-- [ ] [app/admin/(protected)/receipts/new/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/new/page.tsx)
-- [ ] [app/admin/(protected)/receipts/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/page.tsx)
-- [ ] [app/admin/(protected)/receipts/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/receipts/ReceiptCancelButton.tsx](/D:/autoparts/app/admin/(protected)/receipts/ReceiptCancelButton.tsx)
-- [ ] [app/admin/(protected)/receipts/[id]/PrintButton.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/PrintButton.tsx)
+- [x] [app/admin/(protected)/receipts/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/page.tsx)
+- [x] [app/admin/(protected)/receipts/new/ReceiptForm.tsx](/D:/autoparts/app/admin/(protected)/receipts/new/ReceiptForm.tsx)
+- [x] [app/admin/(protected)/receipts/new/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/new/page.tsx)
+- [x] [app/admin/(protected)/receipts/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/page.tsx)
+- [x] [app/admin/(protected)/receipts/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/receipts/ReceiptCancelButton.tsx](/D:/autoparts/app/admin/(protected)/receipts/ReceiptCancelButton.tsx)
+- [x] [app/admin/(protected)/receipts/[id]/PrintButton.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/PrintButton.tsx)
 
 ## 3D. Credit Notes
-- [ ] [app/admin/(protected)/credit-notes/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/page.tsx)
-- [ ] [app/admin/(protected)/credit-notes/new/CreditNoteForm.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/new/CreditNoteForm.tsx)
-- [ ] [app/admin/(protected)/credit-notes/new/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/new/page.tsx)
-- [ ] [app/admin/(protected)/credit-notes/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/page.tsx)
-- [ ] [app/admin/(protected)/credit-notes/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/credit-notes/CreditNoteCancelButton.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/CreditNoteCancelButton.tsx)
+- [x] [app/admin/(protected)/credit-notes/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/page.tsx)
+- [x] [app/admin/(protected)/credit-notes/new/CreditNoteForm.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/new/CreditNoteForm.tsx)
+- [x] [app/admin/(protected)/credit-notes/new/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/new/page.tsx)
+- [x] [app/admin/(protected)/credit-notes/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/page.tsx)
+- [x] [app/admin/(protected)/credit-notes/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/credit-notes/CreditNoteCancelButton.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/CreditNoteCancelButton.tsx)
 
 ## 3E. Expenses
-- [ ] [app/admin/(protected)/expenses/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/page.tsx)
-- [ ] [app/admin/(protected)/expenses/new/NewExpenseForm.tsx](/D:/autoparts/app/admin/(protected)/expenses/new/NewExpenseForm.tsx)
-- [ ] [app/admin/(protected)/expenses/new/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/new/page.tsx)
-- [ ] [app/admin/(protected)/expenses/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/page.tsx)
-- [ ] [app/admin/(protected)/expenses/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/expenses/CancelExpenseButton.tsx](/D:/autoparts/app/admin/(protected)/expenses/CancelExpenseButton.tsx)
+- [x] [app/admin/(protected)/expenses/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/page.tsx)
+- [x] [app/admin/(protected)/expenses/new/NewExpenseForm.tsx](/D:/autoparts/app/admin/(protected)/expenses/new/NewExpenseForm.tsx)
+- [x] [app/admin/(protected)/expenses/new/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/new/page.tsx)
+- [x] [app/admin/(protected)/expenses/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/page.tsx)
+- [x] [app/admin/(protected)/expenses/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/expenses/CancelExpenseButton.tsx](/D:/autoparts/app/admin/(protected)/expenses/CancelExpenseButton.tsx)
 
 ## 3F. Supplier Advances
-- [ ] [app/admin/(protected)/supplier-advances/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/page.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/SupplierAdvanceForm.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/SupplierAdvanceForm.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/new/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/new/page.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/SupplierAdvanceCancelButton.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/SupplierAdvanceCancelButton.tsx)
+- [x] [app/admin/(protected)/supplier-advances/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/page.tsx)
+- [x] [app/admin/(protected)/supplier-advances/SupplierAdvanceForm.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/SupplierAdvanceForm.tsx)
+- [x] [app/admin/(protected)/supplier-advances/new/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/new/page.tsx)
+- [x] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
+- [x] [app/admin/(protected)/supplier-advances/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/supplier-advances/SupplierAdvanceCancelButton.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/SupplierAdvanceCancelButton.tsx)
 
 ## 3G. Supplier Payments
-- [ ] [app/admin/(protected)/supplier-payments/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/page.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/SupplierPaymentForm.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/SupplierPaymentForm.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/new/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/new/page.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/SupplierPaymentCancelButton.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/SupplierPaymentCancelButton.tsx)
+- [x] [app/admin/(protected)/supplier-payments/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/page.tsx)
+- [x] [app/admin/(protected)/supplier-payments/SupplierPaymentForm.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/SupplierPaymentForm.tsx)
+- [x] [app/admin/(protected)/supplier-payments/new/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/new/page.tsx)
+- [x] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
+- [x] [app/admin/(protected)/supplier-payments/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/supplier-payments/SupplierPaymentCancelButton.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/SupplierPaymentCancelButton.tsx)
 
-## 3H. Delivery Commissions / Delivery Main
-- [ ] [app/admin/(protected)/delivery-commissions/page.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/page.tsx)
-- [ ] [app/admin/(protected)/delivery-commissions/PayoutPanel.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/PayoutPanel.tsx)
-- [ ] [app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx)
-- [ ] [app/admin/(protected)/delivery-commissions/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/[id]/page.tsx)
-- [ ] [app/admin/(protected)/delivery/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/page.tsx)
-- [ ] [app/admin/(protected)/delivery/DeliveryStaffPicker.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryStaffPicker.tsx)
-- [ ] [app/admin/(protected)/delivery/DeliveryUpdateButton.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryUpdateButton.tsx)
-- [ ] ยืนยันว่าไม่มีการแก้ [app/admin/(protected)/delivery/update/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/update/page.tsx)
+## 3H. Purchase Returns (ตรวจพบระหว่าง audit)
+- [x] [app/admin/(protected)/purchase-returns/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/page.tsx) — refactored to shared components
+- [x] [app/admin/(protected)/purchase-returns/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/[id]/page.tsx)
+- [x] [app/admin/(protected)/purchase-returns/PurchaseReturnCancelButton.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/PurchaseReturnCancelButton.tsx)
+- [x] [app/admin/(protected)/purchase-returns/new/PurchaseReturnForm.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/new/PurchaseReturnForm.tsx)
+- [x] [app/admin/(protected)/purchase-returns/new/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/new/page.tsx)
+- [x] [app/admin/(protected)/purchase-returns/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/[id]/edit/page.tsx)
+
+## 3I. Delivery Commissions / Delivery Main
+- [x] [app/admin/(protected)/delivery-commissions/page.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/page.tsx)
+- [x] [app/admin/(protected)/delivery-commissions/PayoutPanel.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/PayoutPanel.tsx)
+- [x] [app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx)
+- [x] [app/admin/(protected)/delivery-commissions/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/[id]/page.tsx)
+- [x] [app/admin/(protected)/delivery/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/page.tsx)
+- [x] [app/admin/(protected)/delivery/DeliveryStaffPicker.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryStaffPicker.tsx)
+- [x] [app/admin/(protected)/delivery/DeliveryUpdateButton.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryUpdateButton.tsx)
+- [x] [app/admin/(protected)/delivery-commissions/loading.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/loading.tsx) — dark mode text fix
+- [x] [app/admin/(protected)/delivery-commissions/[id]/loading.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/[id]/loading.tsx) — dark mode text fix
+- [x] ยืนยันว่าไม่มีการแก้ [app/admin/(protected)/delivery/update/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/update/page.tsx)
 
 ### Step 3 QA
 - [ ] ตรวจทุก list page ว่า filter/search ยังทำงานเหมือนเดิม
@@ -406,14 +420,15 @@ Batch 1 changed files:
 ## Step 7 Checklist: Detail Sweep
 
 ### Detail Pages To Normalize
-- [ ] [app/admin/(protected)/sales/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/page.tsx)
-- [ ] [app/admin/(protected)/purchases/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/page.tsx)
-- [ ] [app/admin/(protected)/receipts/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/page.tsx)
-- [ ] [app/admin/(protected)/credit-notes/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/page.tsx)
-- [ ] [app/admin/(protected)/expenses/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/page.tsx)
+- [x] [app/admin/(protected)/sales/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/sales/[id]/page.tsx)
+- [x] [app/admin/(protected)/purchases/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchases/[id]/page.tsx)
+- [x] [app/admin/(protected)/receipts/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/page.tsx)
+- [x] [app/admin/(protected)/credit-notes/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/page.tsx)
+- [x] [app/admin/(protected)/expenses/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/page.tsx)
 - [ ] [app/admin/(protected)/customers/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/page.tsx)
-- [ ] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
-- [ ] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
+- [x] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
+- [x] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
+- [x] [app/admin/(protected)/purchase-returns/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/[id]/page.tsx)
 - [ ] [app/admin/(protected)/warranty-claims/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/warranty-claims/[id]/page.tsx)
 
 ### Common Tasks

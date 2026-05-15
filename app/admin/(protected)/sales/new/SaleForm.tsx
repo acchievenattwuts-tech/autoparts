@@ -69,8 +69,8 @@ interface LineItem {
   lotItems:     LotSubRow[];
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0, supplierId: "", supplierName: "", lotItems: [] });
 
@@ -422,8 +422,8 @@ const SaleForm = ({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Header card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           ข้อมูลการขาย
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -499,14 +499,14 @@ const SaleForm = ({
           <div>
             <label className={labelCls}>ประเภทการชำระ</label>
             <input type="hidden" name="paymentType" value={paymentType} />
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+            <div className="flex rounded-lg border border-gray-300 dark:border-white/20 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setPaymentType("CASH_SALE")}
                 className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                   paymentType === "CASH_SALE"
                     ? "bg-emerald-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 ขายสด
@@ -514,10 +514,10 @@ const SaleForm = ({
               <button
                 type="button"
                 onClick={() => setPaymentType("CREDIT_SALE")}
-                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                className={`flex-1 px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 dark:border-white/20 ${
                   paymentType === "CREDIT_SALE"
                     ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 ขายเชื่อ
@@ -539,10 +539,10 @@ const SaleForm = ({
               onChange={setCashBankAccountId}
               placeholder="โปรดระบุบัญชีรับเงิน"
             />
-            <p className="mt-1 text-xs text-gray-500">ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ</p>
           </div>
           ) : (
-          <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+          <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">
             ขายเชื่อจะยังไม่สร้างรายการเงินรับ และไม่ต้องระบุบัญชีรับเงิน
           </div>
           )}
@@ -570,8 +570,8 @@ const SaleForm = ({
           </div>
 
           {/* VAT Settings */}
-          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+          <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
                 <button
@@ -580,8 +580,8 @@ const SaleForm = ({
                   onClick={() => setVatType(t)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     vatType === t
-                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
                   }`}
                 >
                   {VAT_TYPE_LABELS[t]}
@@ -589,14 +589,14 @@ const SaleForm = ({
               ))}
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
-                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">อัตรา</span>
                   <AdminNumberInput
                     value={vatRate}
                     onValueChange={setVatRate}
                     min={0} max={100} step={0.01}
-                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
                   />
-                  <span className="text-sm text-gray-500">%</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
                 </div>
               )}
             </div>
@@ -605,21 +605,21 @@ const SaleForm = ({
       </div>
 
       {/* Fulfillment section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           การจัดส่ง
         </h2>
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700 w-24 shrink-0">การจัดส่ง</label>
-            <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+            <label className="text-sm font-medium text-gray-700 dark:text-slate-300 w-24 shrink-0">การจัดส่ง</label>
+            <div className="flex rounded-lg border border-gray-300 dark:border-white/20 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setFulfillmentType("PICKUP")}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   fulfillmentType === "PICKUP"
-                    ? "bg-[#1e3a5f] text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 หน้าร้าน (รับเอง)
@@ -627,10 +627,10 @@ const SaleForm = ({
               <button
                 type="button"
                 onClick={() => setFulfillmentType("DELIVERY")}
-                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 dark:border-white/20 ${
                   fulfillmentType === "DELIVERY"
                     ? "bg-purple-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 จัดส่ง
@@ -639,7 +639,7 @@ const SaleForm = ({
           </div>
 
           {paymentType === "CREDIT_SALE" && fulfillmentType === "DELIVERY" && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 dark:bg-amber-500/10 dark:border-amber-400/30 dark:text-amber-300">
               ขายเชื่อ + จัดส่ง: ระบบจะเปิดยอดค้างชำระใน AR และค่อยบันทึกใบเสร็จเมื่อได้รับเงินจริง
             </p>
           )}
@@ -733,13 +733,13 @@ const SaleForm = ({
       </div>
 
       {/* Line items */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้า</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้า</h2>
           <button
             type="button"
             onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300"
           >
             <Plus size={14} /> เพิ่มรายการ
           </button>
@@ -748,16 +748,16 @@ const SaleForm = ({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">สินค้า</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-36">ราคาขาย/หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-36 dark:text-slate-400">ราคาขาย/หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">
                   ประกัน (วัน)
-                  <span className="block text-xs font-normal text-gray-400">0 = ไม่มี</span>
+                  <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">0 = ไม่มี</span>
                 </th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">รวม</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -770,7 +770,7 @@ const SaleForm = ({
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
                   <>
-                  <tr key={i} className="border-b border-gray-50">
+                  <tr key={i} className="border-b border-gray-50 dark:border-white/5">
                     <td className="py-2 px-2">
                       <ProductSearchSelect
                         products={productOptions}
@@ -835,11 +835,11 @@ const SaleForm = ({
                         min={0}
                         step={1}
                         onValueChange={(value) => updateItem(i, "warrantyDays", value)}
-                        className={`${inputCls} ${item.warrantyDays > 0 ? "border-green-400 bg-green-50" : ""}`}
+                        className={`${inputCls} ${item.warrantyDays > 0 ? "border-green-400 bg-green-50 dark:border-green-500/50 dark:bg-green-500/10" : ""}`}
                         placeholder="0"
                       />
                     </td>
-                    <td className="py-2 px-2 text-right font-medium text-gray-700">
+                    <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
                       {(item.qty * item.salePrice).toLocaleString("th-TH", {
                         minimumFractionDigits: 2,
                       })}
@@ -857,29 +857,29 @@ const SaleForm = ({
                     </td>
                   </tr>
                   {isLot && (
-                    <tr key={`lot-${i}`} className="bg-amber-50/60">
+                    <tr key={`lot-${i}`} className="bg-amber-50/60 dark:bg-amber-500/10">
                       <td colSpan={7} className="px-4 pb-3 pt-1">
                         {/* Lot header */}
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-400/40">
                             Lot Control
                           </span>
                           {!showReadonlyLots && (
                             <>
-                              <span className="text-xs text-gray-500">จัดสรรรวม</span>
-                              <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600" : "text-red-600"}`}>
+                              <span className="text-xs text-gray-500 dark:text-slate-400">จัดสรรรวม</span>
+                              <span className={`text-xs font-semibold ${lotQtyMatch ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                                 {totalLotQty}
                               </span>
-                              <span className="text-xs text-gray-400">/ {item.qty} {item.unitName}</span>
-                              {!lotQtyMatch && <span className="text-xs text-red-500">จำนวน Lot ยังไม่ครบ</span>}
+                              <span className="text-xs text-gray-400 dark:text-slate-500">/ {item.qty} {item.unitName}</span>
+                              {!lotQtyMatch && <span className="text-xs text-red-500 dark:text-red-400">จำนวน Lot ยังไม่ครบ</span>}
                               <button
                                 type="button"
                                 onClick={() => handleAutoAllocate(i)}
-                                className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                                className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors dark:text-indigo-300 dark:hover:text-indigo-100 dark:border-indigo-400/30 dark:bg-indigo-500/10"
                               >
                                 <Zap size={11} /> Auto จัดสรร
                               </button>
-                              {lotsLoading[i] && <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>}
+                              {lotsLoading[i] && <span className="text-xs text-gray-400 dark:text-slate-500 animate-pulse">กำลังโหลด...</span>}
                             </>
                           )}
                         </div>
@@ -888,17 +888,17 @@ const SaleForm = ({
                           /* Read-only display in edit mode */
                           <div className="flex flex-wrap gap-2">
                             {item.lotItems.length === 0 ? (
-                              <span className="text-xs text-gray-400 italic">ไม่มีข้อมูล Lot</span>
+                              <span className="text-xs text-gray-400 italic dark:text-slate-500">ไม่มีข้อมูล Lot</span>
                             ) : item.lotItems.map((lot, li) => (
-                              <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1">
-                                <span className="font-mono font-semibold text-amber-800">{lot.lotNo}</span>
-                                <span className="text-gray-500">จำนวน</span>
-                                <span className="font-medium text-gray-700">{lot.qty}</span>
+                              <div key={li} className="inline-flex items-center gap-1.5 text-xs bg-white border border-amber-200 rounded-md px-2 py-1 dark:bg-slate-800 dark:border-amber-400/30">
+                                <span className="font-mono font-semibold text-amber-800 dark:text-amber-300">{lot.lotNo}</span>
+                                <span className="text-gray-500 dark:text-slate-400">จำนวน</span>
+                                <span className="font-medium text-gray-700 dark:text-slate-200">{lot.qty}</span>
                                 {lot.expDate && (
                                   <>
-                                    <span className="text-gray-300">|</span>
-                                    <span className="text-gray-500">EXP</span>
-                                    <span className="text-gray-700">
+                                    <span className="text-gray-300 dark:text-slate-600">|</span>
+                                    <span className="text-gray-500 dark:text-slate-400">EXP</span>
+                                    <span className="text-gray-700 dark:text-slate-200">
                                           {formatDateThai(lot.expDate)}
                                     </span>
                                   </>
@@ -915,12 +915,12 @@ const SaleForm = ({
                                 (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
                               );
                               return (
-                                <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5">
+                                <div key={li} className="flex items-center gap-2 bg-white border border-amber-200 rounded-lg px-2 py-1.5 dark:bg-slate-800/50 dark:border-amber-400/30">
                                   <div className="flex-1 min-w-0">
                                     <select
                                       value={lot.lotNo}
                                       onChange={(e) => handleLotSelect(i, li, e.target.value)}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-amber-400 dark:bg-slate-900 dark:border-amber-400/30 dark:text-slate-100"
                                     >
                                       <option value="">-- เลือก Lot --</option>
                                       {lotOptions.length === 0 && lot.lotNo === "" && (
@@ -944,12 +944,12 @@ const SaleForm = ({
                                       value={lot.qty}
                                       min={0.0001} step={0.0001}
                                       onValueChange={(value) => updateLotRow(i, li, "qty", value)}
-                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right"
+                                      className="w-full px-2 py-1 border border-amber-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 text-right dark:bg-slate-900 dark:border-amber-400/30 dark:text-slate-100"
                                       placeholder="จำนวน"
                                     />
                                   </div>
                                   {lot.expDate && (
-                                    <span className="text-xs text-gray-500 whitespace-nowrap shrink-0">
+                                    <span className="text-xs text-gray-500 whitespace-nowrap shrink-0 dark:text-slate-400">
                                       EXP {formatDateThai(lot.expDate)}
                                     </span>
                                   )}
@@ -968,7 +968,7 @@ const SaleForm = ({
                           <button
                             type="button"
                             onClick={() => addLotRow(i)}
-                            className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors"
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-dashed border-amber-300 px-2 py-1 rounded transition-colors dark:text-amber-400 dark:hover:text-amber-200 dark:border-amber-400/40"
                           >
                             <Plus size={11} /> เพิ่ม Lot
                           </button>
@@ -986,45 +986,45 @@ const SaleForm = ({
         {/* Totals summary */}
         <div className="mt-4 flex justify-end">
           <div className="w-64 space-y-2 text-sm">
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-gray-600 dark:text-slate-400">
               <span>ยอดรวม</span>
-              <span className="font-medium">
+              <span className="font-medium dark:text-slate-200">
                 {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
             {fulfillmentType === "DELIVERY" && shippingFee > 0 && (
-              <div className="flex justify-between text-gray-600">
+              <div className="flex justify-between text-gray-600 dark:text-slate-400">
                 <span>ค่าจัดส่ง</span>
-                <span className="font-medium text-purple-600">
+                <span className="font-medium text-purple-600 dark:text-purple-400">
                   +{shippingFee.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}
-            <div className="flex justify-between text-gray-600">
+            <div className="flex justify-between text-gray-600 dark:text-slate-400">
               <span>ส่วนลด</span>
-              <span className="font-medium text-red-500">
+              <span className="font-medium text-red-500 dark:text-red-400">
                 -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
             {vatType !== "NO_VAT" && (
               <>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between text-gray-600 dark:text-slate-400">
                   <span>ยอดก่อนภาษี</span>
-                  <span className="font-medium">
+                  <span className="font-medium dark:text-slate-200">
                     {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between text-gray-600 dark:text-slate-400">
                   <span>VAT {vatRate}%</span>
-                  <span className="font-medium">
+                  <span className="font-medium dark:text-slate-200">
                     +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </>
             )}
-            <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
+            <div className="flex justify-between border-t border-gray-200 dark:border-white/10 pt-2 font-semibold text-gray-900 dark:text-slate-100">
               <span>ยอดสุทธิ</span>
-              <span className="text-[#1e3a5f]">
+              <span className="text-[#1e3a5f] dark:text-sky-300">
                 {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
@@ -1033,14 +1033,14 @@ const SaleForm = ({
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
 
@@ -1048,7 +1048,7 @@ const SaleForm = ({
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
         >
           {isPending ? (
             <span className="inline-flex items-center gap-2">

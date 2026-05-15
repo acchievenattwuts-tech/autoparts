@@ -48,8 +48,8 @@ interface Props {
   initialData?: InitialData;
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1 dark:text-slate-300";
 
 const emptyItem = (): LineItem => ({ expenseCodeId: "", description: "", amount: 0 });
 
@@ -119,12 +119,12 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg dark:bg-red-500/10 dark:border-red-400/30 dark:text-red-400">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-lg flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30 dark:text-green-400">
           <CheckCircle size={16} /> {success}
         </div>
       )}
@@ -161,8 +161,8 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
       </div>
 
       {/* VAT Settings */}
-      <div className="border-t border-gray-100 pt-4">
-        <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+      <div className="border-t border-gray-100 pt-4 dark:border-white/10">
+        <p className="text-sm font-medium text-gray-700 mb-3 dark:text-slate-300">ภาษี (VAT)</p>
         <div className="flex flex-wrap gap-2 items-center">
           {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((t) => (
             <button
@@ -171,8 +171,8 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
               onClick={() => setVatType(t)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                 vatType === t
-                  ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                  : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                  ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
               }`}
             >
               {VAT_TYPE_LABELS[t]}
@@ -180,14 +180,14 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
           ))}
           {vatType !== "NO_VAT" && (
             <div className="flex items-center gap-1.5 ml-2">
-              <span className="text-sm text-gray-500">อัตรา</span>
+              <span className="text-sm text-gray-500 dark:text-slate-400">อัตรา</span>
               <AdminNumberInput
                 value={vatRate}
                 onValueChange={setVatRate}
                 min={0} max={100} step={0.01}
-                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
               />
-              <span className="text-sm text-gray-500">%</span>
+              <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
             </div>
           )}
         </div>
@@ -196,9 +196,9 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
       {/* Line Items */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-gray-700">รายการค่าใช้จ่าย</p>
+          <p className="text-sm font-medium text-gray-700 dark:text-slate-300">รายการค่าใช้จ่าย</p>
           {expenseCodes.length === 0 ? (
-            <p className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded-lg">
+            <p className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded-lg dark:bg-amber-500/15 dark:text-amber-300">
               ยังไม่มีรหัสค่าใช้จ่าย —{" "}
               <a href="/admin/master/expense-codes" className="underline">เพิ่มรหัส</a>
             </p>
@@ -206,7 +206,7 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
             <button
               type="button"
               onClick={addItem}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300"
             >
               <Plus size={14} /> เพิ่มรายการ
             </button>
@@ -216,16 +216,16 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">รหัสค่าใช้จ่าย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">รายละเอียด</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-40">จำนวนเงิน (บาท)</th>
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">รหัสค่าใช้จ่าย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">รายละเอียด</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-40 dark:text-slate-400">จำนวนเงิน (บาท)</th>
                 <th className="w-8" />
               </tr>
             </thead>
             <tbody>
               {items.map((item, i) => (
-                <tr key={i} className="border-b border-gray-50">
+                <tr key={i} className="border-b border-gray-50 dark:border-white/5">
                   <td className="py-2 px-2 w-56">
                     <SearchableSelect
                       options={expenseCodes.map((c): SelectOption => ({ id: c.id, label: c.name, sublabel: c.code }))}
@@ -269,9 +269,9 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-100">
-                <td colSpan={2} className="py-2 px-2 text-right text-sm text-gray-500">รวม</td>
-                <td className="py-2 px-2 font-medium text-gray-700">
+              <tr className="border-t border-gray-100 dark:border-white/10">
+                <td colSpan={2} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวม</td>
+                <td className="py-2 px-2 font-medium text-gray-700 dark:text-slate-200">
                   {totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -279,24 +279,24 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={2} className="py-1 px-2 text-right text-sm text-gray-500">ยอดก่อนภาษี</td>
-                    <td className="py-1 px-2 text-gray-700">
+                    <td colSpan={2} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ยอดก่อนภาษี</td>
+                    <td className="py-1 px-2 text-gray-700 dark:text-slate-200">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={2} className="py-1 px-2 text-right text-sm text-gray-500">VAT {vatRate}%</td>
-                    <td className="py-1 px-2 text-gray-700">
+                    <td colSpan={2} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">VAT {vatRate}%</td>
+                    <td className="py-1 px-2 text-gray-700 dark:text-slate-200">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                 </>
               )}
-              <tr className="border-t border-gray-200">
-                <td colSpan={2} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
-                <td className="py-3 px-2 font-bold text-[#1e3a5f] text-base">
+              <tr className="border-t border-gray-200 dark:border-white/10">
+                <td colSpan={2} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td className="py-3 px-2 font-bold text-[#1e3a5f] text-base dark:text-sky-300">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -318,7 +318,7 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
         <button
           type="button"
           onClick={() => router.push("/admin/expenses")}
-          className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+          className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200"
         >
           ยกเลิก
         </button>

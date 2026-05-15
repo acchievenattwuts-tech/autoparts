@@ -86,8 +86,8 @@ const RETURN_TYPE_LABELS: Record<string, string> = {
   OTHER: "อื่นๆ",
 };
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
 const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, lotItems: [] });
 
@@ -458,8 +458,8 @@ const PurchaseReturnForm = ({
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           ข้อมูลการคืนสินค้า
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -507,18 +507,18 @@ const PurchaseReturnForm = ({
           </div>
           <div>
             <label className={labelCls}>ประเภทการคืน <span className="text-red-500">*</span></label>
-            <div className="overflow-hidden rounded-lg border border-gray-300">
+            <div className="overflow-hidden rounded-lg border border-gray-300 dark:border-white/20">
               {(["RETURN", "DISCOUNT", "OTHER"] as const).map((value, idx) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setReturnType(value)}
                   className={`w-1/3 px-3 py-2 text-sm font-medium transition-colors ${
-                    idx > 0 ? "border-l border-gray-300" : ""
+                    idx > 0 ? "border-l border-gray-300 dark:border-white/20" : ""
                   } ${
                     returnType === value
-                      ? "bg-[#1e3a5f] text-white"
-                      : "bg-white text-gray-600 hover:bg-gray-50"
+                      ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
+                      : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                   }`}
                 >
                   {RETURN_TYPE_LABELS[value]}
@@ -526,19 +526,19 @@ const PurchaseReturnForm = ({
               ))}
             </div>
             {returnType === "RETURN" && (
-              <p className="mt-1 text-xs text-[#1e3a5f]">ส่งคืนสินค้า: ระบบจะหักสต็อก + Lot อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-[#1e3a5f] dark:text-sky-400">ส่งคืนสินค้า: ระบบจะหักสต็อก + Lot อัตโนมัติ</p>
             )}
           </div>
           <div>
             <label className={labelCls}>รูปแบบการรับชดเชย</label>
-            <div className="overflow-hidden rounded-lg border border-gray-300">
+            <div className="overflow-hidden rounded-lg border border-gray-300 dark:border-white/20">
               <button
                 type="button"
                 onClick={() => setSettlementType("CASH_REFUND")}
                 className={`w-1/2 px-4 py-2 text-sm font-medium transition-colors ${
                   settlementType === "CASH_REFUND"
                     ? "bg-emerald-600 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 รับเงินคืน
@@ -546,10 +546,10 @@ const PurchaseReturnForm = ({
               <button
                 type="button"
                 onClick={() => setSettlementType("SUPPLIER_CREDIT")}
-                className={`w-1/2 border-l border-gray-300 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`w-1/2 border-l border-gray-300 dark:border-white/20 px-4 py-2 text-sm font-medium transition-colors ${
                   settlementType === "SUPPLIER_CREDIT"
                     ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-50"
+                    : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
                 เครดิตซัพพลายเออร์
@@ -567,10 +567,10 @@ const PurchaseReturnForm = ({
                 onChange={setCashBankAccountId}
                 placeholder="โปรดระบุบัญชีรับเงิน"
               />
-              <p className="mt-1 text-xs text-gray-500">ระบบจะบันทึกเงินเข้า cash/bank ให้อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะบันทึกเงินเข้า cash/bank ให้อัตโนมัติ</p>
             </div>
           ) : (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">
               ระบบจะเก็บยอดคงเหลือไว้เพื่อนำไปหักในเอกสารจ่ายชำระซัพพลายเออร์ภายหลัง
             </div>
           )}
@@ -585,8 +585,8 @@ const PurchaseReturnForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
-          <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">ภาษี (VAT)</p>
+          <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">ภาษี (VAT)</p>
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
@@ -595,8 +595,8 @@ const PurchaseReturnForm = ({
                   onClick={() => setVatType(value)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     vatType === value
-                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f]"
-                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"
+                      ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
                   }`}
                 >
                   {VAT_TYPE_LABELS[value]}
@@ -604,16 +604,16 @@ const PurchaseReturnForm = ({
               ))}
               {vatType !== "NO_VAT" && (
                 <div className="flex items-center gap-1.5 ml-2">
-                  <span className="text-sm text-gray-500">อัตรา</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">อัตรา</span>
                   <AdminNumberInput
                     value={vatRate}
                     onValueChange={setVatRate}
                     min={0}
                     max={100}
                     step={0.01}
-                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center"
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
                   />
-                  <span className="text-sm text-gray-500">%</span>
+                  <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
                 </div>
               )}
             </div>
@@ -621,13 +621,13 @@ const PurchaseReturnForm = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการสินค้าที่คืน</h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
+        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้าที่คืน</h2>
           <button
             type="button"
             onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300"
           >
             <Plus size={14} /> เพิ่มรายการ
           </button>
@@ -636,12 +636,12 @@ const PurchaseReturnForm = ({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2 text-gray-500 font-medium">สินค้า</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28">หน่วย</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24">จำนวน</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-36">ต้นทุน/หน่วย</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28">รวม</th>
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-36 dark:text-slate-400">ต้นทุน/หน่วย</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">รวม</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -662,7 +662,7 @@ const PurchaseReturnForm = ({
                       className={`border-b transition-colors ${
                         isLinkedClaimItem
                           ? "border-orange-100 bg-orange-50/70 dark:border-orange-300/20 dark:bg-orange-400/10"
-                          : "border-gray-50"
+                          : "border-gray-50 dark:border-white/5"
                       }`}
                     >
                       <td className="py-2 px-2">
@@ -714,7 +714,7 @@ const PurchaseReturnForm = ({
                           className={`${inputCls} text-right`}
                         />
                       </td>
-                      <td className="py-2 px-2 text-right font-medium text-gray-700">
+                      <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
                         {(item.qty * displayCost).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
@@ -730,14 +730,14 @@ const PurchaseReturnForm = ({
                       </td>
                     </tr>
                     {isLot && returnType === "RETURN" && (
-                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50">
+                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50 dark:bg-amber-500/10 dark:border-white/5">
                         <td colSpan={6} className="px-3 py-3">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-medium text-amber-800">Lot Control</div>
+                            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Lot Control</div>
                             <button
                               type="button"
                               onClick={() => addLotRow(i)}
-                              className="text-xs text-amber-700 hover:text-amber-900"
+                              className="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
                             >
                               เพิ่ม Lot
                             </button>
@@ -801,9 +801,9 @@ const PurchaseReturnForm = ({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-gray-100">
-                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500">ยอดรวม</td>
-                <td className="py-2 px-2 text-right text-gray-700">
+              <tr className="border-t border-gray-100 dark:border-white/10">
+                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ยอดรวม</td>
+                <td className="py-2 px-2 text-right text-gray-700 dark:text-slate-200">
                   {totalBeforeVat.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -811,24 +811,24 @@ const PurchaseReturnForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">ยอดก่อนภาษี</td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ยอดก่อนภาษี</td>
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       {subtotalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500">VAT {vatRate}%</td>
-                    <td className="py-1 px-2 text-right text-gray-700">
+                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">VAT {vatRate}%</td>
+                    <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                       +{vatAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td />
                   </tr>
                 </>
               )}
-              <tr className="border-t border-gray-200">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700">ยอดสุทธิ</td>
-                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base">
+              <tr className="border-t border-gray-200 dark:border-white/10">
+                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base dark:text-sky-300">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
@@ -836,20 +836,20 @@ const PurchaseReturnForm = ({
             </tfoot>
           </table>
         </div>
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-gray-400 dark:text-slate-500">
           * ต้นทุน/หน่วย สามารถแก้ไขได้ ถ้าไม่ระบุ ระบบจะใช้ avgCost ปัจจุบัน ณ เวลาที่บันทึก
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
 
@@ -857,7 +857,7 @@ const PurchaseReturnForm = ({
         <button
           type="submit"
           disabled={isPending}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกการคืนสินค้า"}
         </button>
