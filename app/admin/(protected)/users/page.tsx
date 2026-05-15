@@ -6,6 +6,10 @@ import { ensureAccessControlSetupOnce } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import ToggleUserButton from "./ToggleUserButton";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const UsersPage = async () => {
   await ensureAccessControlSetupOnce().catch(() => { /* non-fatal: setup runs on next request */ });
@@ -20,72 +24,68 @@ const UsersPage = async () => {
   });
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-kanit text-2xl font-bold text-gray-900">ผู้ใช้งานระบบ</h1>
-          <p className="text-sm text-gray-500 mt-1">จัดการบัญชีผู้ใช้และบทบาทการใช้งาน</p>
-        </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="ผู้ใช้งานระบบ"
+        description="จัดการบัญชีผู้ใช้และบทบาทการใช้งาน"
+        actions={
         <Link
           href="/admin/users/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
         >
           <Plus size={16} />
           เพิ่มผู้ใช้
         </Link>
-      </div>
+        }
+      />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
+      <AdminTableSection>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ชื่อผู้ใช้</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Username</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Legacy Role</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">บทบาท</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-600">เปลี่ยนรหัสผ่าน</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">จัดการ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อผู้ใช้</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">Username</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">Legacy Role</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">บทบาท</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">เปลี่ยนรหัสผ่าน</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
-                <tr key={user.id} className="border-t border-gray-50 hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium text-gray-900">{user.name}</td>
-                  <td className="py-3 px-4 text-gray-600 font-mono">{user.username ?? user.email}</td>
-                  <td className="py-3 px-4 text-gray-600">{user.role}</td>
-                  <td className="py-3 px-4 text-gray-600">{user.appRole?.name ?? "-"}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        user.isActive ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"
-                      }`}
-                    >
-                      {user.isActive ? "ใช้งาน" : "ปิดใช้งาน"}
-                    </span>
+                <tr key={user.id} className="border-t border-gray-50 hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-slate-100">{user.name}</td>
+                  <td className="px-4 py-3 font-mono text-gray-600 dark:text-slate-300">{user.username ?? user.email}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{user.role}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{user.appRole?.name ?? "-"}</td>
+                  <td className="px-4 py-3 text-center">
+                    {user.isActive ? (
+                      <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+                    ) : (
+                      <AdminStatusBadge tone="muted">ปิดใช้งาน</AdminStatusBadge>
+                    )}
                   </td>
-                  <td className="py-3 px-4 text-center text-gray-600">
+                  <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-300">
                     {user.mustChangePassword ? "ค้างเปลี่ยน" : "-"}
                   </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="px-4 py-3">
+                    <AdminActionGroup align="end">
                       <Link
                         href={`/admin/users/${user.id}/edit`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-medium rounded-lg transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#162d4a]"
                       >
                         <Pencil size={12} />
                         แก้ไข
                       </Link>
                       <ToggleUserButton id={user.id} name={user.name} isActive={user.isActive} />
-                    </div>
+                    </AdminActionGroup>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

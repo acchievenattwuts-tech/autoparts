@@ -8,6 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import CarBrandsClient from "./CarBrandsClient";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const CarBrandsPage = async () => {
   await requirePermission("master.view");
@@ -27,8 +28,11 @@ const CarBrandsPage = async () => {
   });
 
   return (
-    <div>
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900">จัดการยี่ห้อและรุ่นรถ</h1>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จัดการยี่ห้อและรุ่นรถ"
+        description="จัดการยี่ห้อรถ รุ่นรถ และสถานะการใช้งาน"
+      />
       <CarBrandsClient
         carBrands={carBrands}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}

@@ -25,8 +25,8 @@ const ToggleCustomerButton = ({ id, name, isActive }: Props) => {
     <button
       onClick={handleToggle}
       disabled={isPending}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-60 ${
-        isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-60 ${
+        isActive ? "bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500" : "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
       }`}
     >
       {isPending ? "..." : isActive ? "ยกเลิก" : "เปิดใช้งาน"}

@@ -4,6 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { createCarBrand, toggleCarBrand, createCarModel, toggleCarModel } from "./actions";
 import { CarBrand, CarModel } from "@/lib/generated/prisma";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 type CarBrandWithModels = CarBrand & { carModels: CarModel[] };
 
@@ -12,6 +14,9 @@ interface CarBrandsClientProps {
   canCreate: boolean;
   canCancel: boolean;
 }
+
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
 const AddModelForm = ({ brandId }: { brandId: string }) => {
   const formRef = useRef<HTMLFormElement>(null);
@@ -39,9 +44,9 @@ const AddModelForm = ({ brandId }: { brandId: string }) => {
           name="name"
           placeholder="ชื่อรุ่นรถ เช่น Civic, Vios"
           required
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
-        {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+        {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
       </div>
       <button
         type="submit"
@@ -88,20 +93,20 @@ const BrandAccordion = ({
   };
 
   return (
-    <div className={`overflow-hidden rounded-xl border ${brand.isActive ? "border-gray-200" : "border-gray-200 opacity-60"}`}>
-      <div className={`flex items-center justify-between px-5 py-4 transition-colors ${brand.isActive ? "bg-gray-50 hover:bg-gray-100" : "bg-gray-100"}`}>
+    <div className={`overflow-hidden rounded-xl border ${brand.isActive ? "border-gray-200 dark:border-white/10" : "border-gray-200 opacity-60 dark:border-white/10"}`}>
+      <div className={`flex items-center justify-between px-5 py-4 transition-colors ${brand.isActive ? "bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10" : "bg-gray-100 dark:bg-white/5"}`}>
         <button type="button" className="flex flex-1 items-center gap-3 text-left" onClick={() => setIsOpen(!isOpen)}>
           {isOpen ? (
-            <ChevronDown size={18} className="shrink-0 text-gray-500" />
+            <ChevronDown size={18} className="shrink-0 text-gray-500 dark:text-slate-400" />
           ) : (
-            <ChevronRight size={18} className="shrink-0 text-gray-500" />
+            <ChevronRight size={18} className="shrink-0 text-gray-500 dark:text-slate-400" />
           )}
-          <span className="font-kanit font-semibold text-gray-800">{brand.name}</span>
-          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs text-gray-500">
+          <span className="font-kanit font-semibold text-gray-800 dark:text-slate-100">{brand.name}</span>
+          <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-xs text-gray-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
             {brand.carModels.length} รุ่น
           </span>
           {!brand.isActive && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500">ยกเลิก</span>
+            <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
           )}
         </button>
         {canCancel && (
@@ -109,7 +114,7 @@ const BrandAccordion = ({
             onClick={handleToggleBrand}
             disabled={togglingBrand || isPending}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-              brand.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+              brand.isActive ? "bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500" : "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
             }`}
           >
             {togglingBrand ? "..." : brand.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
@@ -118,20 +123,20 @@ const BrandAccordion = ({
       </div>
 
       {isOpen && (
-        <div className="bg-white px-5 py-4">
+        <div className="bg-white px-5 py-4 dark:bg-slate-950/80">
           {brand.carModels.length === 0 ? (
-            <p className="mb-3 text-sm text-gray-500">ยังไม่มีรุ่นรถในยี่ห้อนี้</p>
+            <p className="mb-3 text-sm text-gray-500 dark:text-slate-400">ยังไม่มีรุ่นรถในยี่ห้อนี้</p>
           ) : (
             <div className="mb-3 flex flex-wrap gap-2">
               {brand.carModels.map((model) => (
                 <div
                   key={model.id}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${
-                    model.isActive ? "bg-gray-100" : "bg-gray-50 opacity-60"
+                    model.isActive ? "bg-gray-100 dark:bg-white/10" : "bg-gray-50 opacity-60 dark:bg-white/5"
                   }`}
                 >
-                  <span className="text-sm text-gray-700">{model.name}</span>
-                  {!model.isActive && <span className="text-xs text-gray-400">(ยกเลิก)</span>}
+                  <span className="text-sm text-gray-700 dark:text-slate-200">{model.name}</span>
+                  {!model.isActive && <span className="text-xs text-gray-400 dark:text-slate-500">(ยกเลิก)</span>}
                   {canCancel && (
                     <button
                       onClick={() => handleToggleModel(model.id, model.isActive)}
@@ -177,8 +182,7 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientPro
   return (
     <div className="space-y-6">
       {canCreate && (
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">เพิ่มยี่ห้อรถใหม่</h2>
+        <AdminSectionCard title="เพิ่มยี่ห้อรถใหม่">
           <form ref={formRef} action={handleCreateBrand}>
             <div className="flex gap-3">
               <div className="flex-1">
@@ -187,9 +191,9 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientPro
                   name="name"
                   placeholder="ชื่อยี่ห้อรถ เช่น Toyota, Honda"
                   required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
-                {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+                {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
               </div>
               <button
                 type="submit"
@@ -201,15 +205,12 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientPro
               </button>
             </div>
           </form>
-        </div>
+        </AdminSectionCard>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-          รายการยี่ห้อรถ ({carBrands.length} ยี่ห้อ)
-        </h2>
+      <AdminSectionCard title={`รายการยี่ห้อรถ (${carBrands.length} ยี่ห้อ)`}>
         {carBrands.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">ยังไม่มียี่ห้อรถ</p>
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-slate-400">ยังไม่มียี่ห้อรถ</p>
         ) : (
           <div className="space-y-3">
             {carBrands.map((brand) => (
@@ -222,7 +223,7 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientPro
             ))}
           </div>
         )}
-      </div>
+      </AdminSectionCard>
     </div>
   );
 };

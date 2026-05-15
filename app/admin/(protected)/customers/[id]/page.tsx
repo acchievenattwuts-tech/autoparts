@@ -7,15 +7,20 @@ import { notFound } from "next/navigation";
 import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatCard from "@/components/shared/AdminStatCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
   WHOLESALE: "ส่ง",
 };
 
-const saleTypeBadge: Record<SaleType, string> = {
-  RETAIL:    "bg-green-100 text-green-700",
-  WHOLESALE: "bg-blue-100 text-blue-700",
+const saleTypeTone: Record<SaleType, "success" | "info"> = {
+  RETAIL:    "success",
+  WHOLESALE: "info",
 };
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -32,10 +37,10 @@ const statusLabel: Record<SaleStatus, string> = {
   PAID:    "ชำระครบ",
 };
 
-const statusBadge: Record<SaleStatus, string> = {
-  UNPAID:  "bg-red-100 text-red-700",
-  PARTIAL: "bg-yellow-100 text-yellow-700",
-  PAID:    "bg-green-100 text-green-700",
+const statusTone: Record<SaleStatus, "danger" | "warning" | "success"> = {
+  UNPAID:  "danger",
+  PARTIAL: "warning",
+  PAID:    "success",
 };
 
 const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -114,265 +119,230 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   const totalSpent = customer.sales.reduce((sum, s) => sum + Number(s.netAmount), 0);
 
   return (
-    <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <Link
           href="/admin/customers"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> รายการลูกค้า
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">{customer.name}</span>
       </div>
 
-      {/* Info card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="flex items-start justify-between mb-5 pb-3 border-b border-gray-100">
-          <div>
-            <h1 className="font-kanit text-xl font-bold text-gray-900">{customer.name}</h1>
-            <div className="mt-2 flex flex-wrap gap-2">
+      <AdminPageHeader
+        title={customer.name}
+        description={`รหัสลูกค้า: ${customer.code ?? "-"}`}
+        meta={
+          <div className="flex flex-wrap gap-2">
               {customer.source === "LINE_LIFF" ? (
-                <span className="inline-flex items-center rounded-full bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700">
-                  สมัครผ่าน LINE
-                </span>
+              <AdminStatusBadge tone="info">สมัครผ่าน LINE</AdminStatusBadge>
               ) : null}
               {customer.lineUserId ? (
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                  ผูก LINE แล้ว
-                </span>
+              <AdminStatusBadge tone="success">ผูก LINE แล้ว</AdminStatusBadge>
               ) : null}
               {customer.source === "LINE_LIFF" && (!customer.shippingAddress || !customer.taxId) ? (
-                <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                  ข้อมูลยังไม่ครบ
-                </span>
+              <AdminStatusBadge tone="warning">ข้อมูลยังไม่ครบ</AdminStatusBadge>
               ) : null}
             </div>
-          </div>
+        }
+        actions={
           <Link
             href={`/admin/customers/${id}/edit`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs font-medium rounded-lg transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#162d4a]"
           >
             <Pencil size={12} /> แก้ไข
           </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+        }
+      />
+
+      <AdminSectionCard title="ข้อมูลลูกค้า">
+        <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
           <div>
-            <p className="text-gray-500 mb-1">รหัสลูกค้า</p>
-            <p className="font-medium text-gray-900 font-mono">{customer.code ?? "-"}</p>
+            <p className="mb-1 text-gray-500 dark:text-slate-400">รหัสลูกค้า</p>
+            <p className="font-mono font-medium text-gray-900 dark:text-slate-100">{customer.code ?? "-"}</p>
           </div>
           <div>
-            <p className="text-gray-500 mb-1">เบอร์โทร</p>
-            <p className="font-medium text-gray-900">{customer.phone ?? "-"}</p>
+            <p className="mb-1 text-gray-500 dark:text-slate-400">เบอร์โทร</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">{customer.phone ?? "-"}</p>
           </div>
           <div>
-            <p className="text-gray-500 mb-1">เลขผู้เสียภาษี</p>
-            <p className="font-medium text-gray-900">{customer.taxId ?? "-"}</p>
+            <p className="mb-1 text-gray-500 dark:text-slate-400">เลขผู้เสียภาษี</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">{customer.taxId ?? "-"}</p>
           </div>
           <div>
-            <p className="text-gray-500 mb-1">แหล่งที่มา</p>
-            <p className="font-medium text-gray-900">
+            <p className="mb-1 text-gray-500 dark:text-slate-400">แหล่งที่มา</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
               {customer.source === "LINE_LIFF" ? "สมัครผ่าน LINE" : "พนักงานเพิ่มในระบบ"}
             </p>
           </div>
           <div>
-            <p className="text-gray-500 mb-1">วันที่ผูก LINE</p>
-            <p className="font-medium text-gray-900">
+            <p className="mb-1 text-gray-500 dark:text-slate-400">วันที่ผูก LINE</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
               {customer.lineLinkedAt ? formatDateThai(customer.lineLinkedAt) : "-"}
             </p>
           </div>
           {customer.address && (
             <div className="sm:col-span-2 md:col-span-3">
-              <p className="text-gray-500 mb-1">ที่อยู่</p>
-              <p className="font-medium text-gray-900">{customer.address}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ที่อยู่</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{customer.address}</p>
             </div>
           )}
           {customer.shippingAddress && (
             <div className="sm:col-span-2 md:col-span-3">
-              <p className="text-gray-500 mb-1">ที่อยู่จัดส่ง</p>
-              <p className="font-medium text-gray-900">{customer.shippingAddress}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ที่อยู่จัดส่ง</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{customer.shippingAddress}</p>
             </div>
           )}
           {customer.note && (
             <div className="sm:col-span-2 md:col-span-3">
-              <p className="text-gray-500 mb-1">หมายเหตุ</p>
-              <p className="font-medium text-gray-900">{customer.note}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">หมายเหตุ</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{customer.note}</p>
             </div>
           )}
         </div>
-      </div>
+      </AdminSectionCard>
 
-      {/* AR balance */}
       {arBalance > 0 && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6">
-          <p className="text-sm text-orange-600 font-medium">ยอดค้างชำระ (AR)</p>
-          <p className="text-2xl font-bold text-orange-700">
+        <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-400/20 dark:bg-orange-400/10">
+          <p className="text-sm font-medium text-orange-600 dark:text-orange-200">ยอดค้างชำระ (AR)</p>
+          <p className="text-2xl font-bold text-orange-700 dark:text-orange-100">
             {arBalance.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
           </p>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">ยอดซื้อทั้งหมด</p>
-          <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
-            {totalSpent.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">บาท</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <p className="text-sm text-gray-500 mb-1">จำนวนครั้งที่ซื้อ</p>
-          <p className="font-kanit text-2xl font-bold text-[#1e3a5f]">
-            {customer.sales.length}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">ครั้ง</p>
-        </div>
+      <div className="grid grid-cols-2 gap-4">
+        <AdminStatCard
+          label="ยอดซื้อทั้งหมด"
+          value={totalSpent.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+          hint="บาท"
+        />
+        <AdminStatCard
+          label="จำนวนครั้งที่ซื้อ"
+          value={customer.sales.length}
+          hint="ครั้ง"
+        />
       </div>
 
-      {/* Credit sales with status */}
       {salesWithStatus.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รายการขายเชื่อ</h2>
-          </div>
-          <div className="overflow-x-auto">
+        <AdminTableSection title="รายการขายเชื่อ">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบขาย</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรวม</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ชำระแล้ว</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ค้างชำระ</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">สถานะ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดรวม</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ชำระแล้ว</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ค้างชำระ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
                 </tr>
               </thead>
               <tbody>
                 {salesWithStatus.map((s) => (
-                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 font-mono">
-                      <Link href={`/admin/sales/${s.id}`} className="text-[#1e3a5f] hover:underline font-medium">
+                  <tr key={s.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                    <td className="px-4 py-3 font-mono">
+                      <Link href={`/admin/sales/${s.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300">
                         {s.saleNo}
                       </Link>
                     </td>
-                    <td className="py-3 px-4 text-gray-600">
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {formatDateThai(s.saleDate)}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-800">
+                    <td className="px-4 py-3 text-right text-gray-800 dark:text-slate-100">
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-600">
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">
                       {s.paid.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3 px-4 text-right font-medium text-orange-600">
+                    <td className="px-4 py-3 text-right font-medium text-orange-600 dark:text-orange-300">
                       {s.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge[s.status]}`}>
-                        {statusLabel[s.status]}
-                      </span>
+                    <td className="px-4 py-3">
+                      <AdminStatusBadge tone={statusTone[s.status]}>{statusLabel[s.status]}</AdminStatusBadge>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+        </AdminTableSection>
       )}
 
-      {/* Recent receipts */}
       {receipts.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">ประวัติใบเสร็จรับเงิน</h2>
-          </div>
-          <div className="overflow-x-auto">
+        <AdminTableSection title="ประวัติใบเสร็จรับเงิน">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่ใบเสร็จ</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทาง</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดรับชำระ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ใบเสร็จ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ช่องทาง</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดรับชำระ</th>
                 </tr>
               </thead>
               <tbody>
                 {receipts.slice(0, 10).map((r) => (
-                  <tr key={r.receiptNo} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{r.receiptNo}</td>
-                    <td className="py-3 px-4 text-gray-600">
+                  <tr key={r.receiptNo} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{r.receiptNo}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {formatDateThai(r.receiptDate)}
                     </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        {paymentMethodLabel[r.paymentMethod]}
-                      </span>
+                    <td className="px-4 py-3">
+                      <AdminStatusBadge tone="neutral">{paymentMethodLabel[r.paymentMethod]}</AdminStatusBadge>
                     </td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-slate-100">
                       {Number(r.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
+        </AdminTableSection>
       )}
 
-      {/* Purchase history */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">ประวัติการซื้อ</h2>
-        </div>
-        <div className="overflow-x-auto">
+      <AdminTableSection title="ประวัติการซื้อ">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ประเภท</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">ช่องทางชำระ</th>
-                <th className="text-right py-3 px-4 font-medium text-gray-600">รายการ</th>
-                <th className="py-3 px-4" />
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ประเภท</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดสุทธิ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ช่องทางชำระ</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">รายการ</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {customer.sales.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-gray-400">
+                  <td colSpan={7} className="py-10 text-center text-gray-400 dark:text-slate-500">
                     ยังไม่มีประวัติการซื้อ
                   </td>
                 </tr>
               ) : (
                 customer.sales.map((s) => (
-                  <tr key={s.id} className="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium">{s.saleNo}</td>
-                    <td className="py-3 px-4 text-gray-600">
+                  <tr key={s.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{s.saleNo}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {formatDateThai(s.saleDate)}
                     </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${saleTypeBadge[s.saleType]}`}>
-                        {saleTypeLabel[s.saleType]}
-                      </span>
+                    <td className="px-4 py-3">
+                      <AdminStatusBadge tone={saleTypeTone[s.saleType]}>{saleTypeLabel[s.saleType]}</AdminStatusBadge>
                     </td>
-                    <td className="py-3 px-4 text-right font-medium text-gray-900">
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-slate-100">
                       {Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
-                    <td className="py-3 px-4 text-gray-600">
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {s.paymentType === SalePaymentType.CREDIT_SALE
-                        ? <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">เชื่อ</span>
+                        ? <AdminStatusBadge tone="warning">เชื่อ</AdminStatusBadge>
                         : s.paymentMethod
                           ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod)
                           : "-"}
                     </td>
-                    <td className="py-3 px-4 text-right text-gray-600">{s._count.items} รายการ</td>
-                    <td className="py-3 px-4">
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">{s._count.items} รายการ</td>
+                    <td className="px-4 py-3">
                       <Link
                         href={`/admin/sales/${s.id}`}
-                        className="text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors"
+                        className="text-xs text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
                       >
                         ดูใบเสร็จ
                       </Link>
@@ -382,8 +352,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               )}
             </tbody>
           </table>
-        </div>
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

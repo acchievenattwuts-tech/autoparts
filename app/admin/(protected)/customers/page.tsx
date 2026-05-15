@@ -15,6 +15,11 @@ import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton
 import Pagination from "@/components/shared/Pagination";
 import type { Prisma } from "@/lib/generated/prisma";
 import { normalizeCustomerPhone } from "@/lib/customer-phone";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const PAGE_SIZE = 50;
 
@@ -74,29 +79,36 @@ const CustomersPage = async ({
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">รายการลูกค้า</h1>
-        {canCreate && (
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="รายการลูกค้า"
+        description="ค้นหา ตรวจสอบแหล่งที่มา และจัดการข้อมูลลูกค้า"
+        actions={
+          canCreate ? (
           <Link
             href="/admin/customers/new"
             className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
           >
             <Plus size={16} /> เพิ่มลูกค้า
           </Link>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
-      <AdminSearchForm method="GET" className="mb-4">
+      <AdminFilterToolbar
+        className="mb-0"
+        summary={<span>{total.toLocaleString("th-TH")} รายการ</span>}
+      >
+      <AdminSearchForm method="GET">
         <div className="flex flex-col gap-2 md:flex-row">
           <input
             type="text"
             name="search"
             defaultValue={search ?? ""}
             placeholder="ค้นหาชื่อ รหัส หรือเบอร์โทร"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] md:max-w-md"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 md:max-w-md"
           />
-          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600">
+          <label className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200">
             <Filter size={14} />
             <select
               name="source"
@@ -122,29 +134,25 @@ const CustomersPage = async ({
           )}
         </div>
       </AdminSearchForm>
+      </AdminFilterToolbar>
 
-      <p className="text-sm text-gray-500">
-        {total} รายการ
-      </p>
-
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+      <AdminTableSection>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">รหัส</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อลูกค้า</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">เบอร์โทร</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">ที่อยู่</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600">ยอดซื้อ</th>
-                <th className="px-4 py-3 text-center font-medium text-gray-600">สถานะ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อลูกค้า</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เบอร์โทร</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ที่อยู่</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดซื้อ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                  <td colSpan={7} className="py-12 text-center text-gray-400 dark:text-slate-500">
                     {search ? "ไม่พบลูกค้าที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
                   </td>
                 </tr>
@@ -152,12 +160,12 @@ const CustomersPage = async ({
                 customers.map((customer) => (
                   <tr
                     key={customer.id}
-                    className={`border-t border-gray-50 transition-colors ${
-                      customer.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+                    className={`border-t border-gray-50 transition-colors dark:border-white/10 ${
+                      customer.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{customer.code ?? "-"}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">{customer.code ?? "-"}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-slate-100">
                       <div className="flex flex-wrap items-center gap-2">
                         <span>{customer.name}</span>
                         {customer.source === "LINE_LIFF" ? (
@@ -184,18 +192,18 @@ const CustomersPage = async ({
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{customer.phone ?? "-"}</td>
-                    <td className="max-w-xs truncate px-4 py-3 text-gray-500">{customer.address ?? "-"}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">{customer._count.sales} ครั้ง</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{customer.phone ?? "-"}</td>
+                    <td className="max-w-xs truncate px-4 py-3 text-gray-500 dark:text-slate-400">{customer.address ?? "-"}</td>
+                    <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">{customer._count.sales} ครั้ง</td>
                     <td className="px-4 py-3 text-center">
                       {customer.isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
+                        <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">ยกเลิก</span>
+                        <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
+                      <AdminActionGroup align="end">
                         <Link
                           href={`/admin/customers/${customer.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] transition-colors hover:text-blue-700"
@@ -217,15 +225,14 @@ const CustomersPage = async ({
                             isActive={customer.isActive}
                           />
                         )}
-                      </div>
+                      </AdminActionGroup>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
-        </div>
-      </div>
+      </AdminTableSection>
 
       <Pagination
         currentPage={page}

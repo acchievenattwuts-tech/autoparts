@@ -4,15 +4,18 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import CompanySettingsForm from "@/components/shared/CompanySettingsForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const CompanySettingsPage = async () => {
   await requirePermission("settings.company.view");
   const { role, permissions } = await getSessionPermissionContext();
   const config = await getSiteConfig();
   return (
-    <div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-2">ตั้งค่าร้านค้า</h1>
-      <p className="text-sm text-gray-500 mb-6">ข้อมูลร้านที่แก้ไขแล้วจะอัปเดตหน้าเว็บไซต์ทันที</p>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="ตั้งค่าร้านค้า"
+        description="ข้อมูลร้านที่แก้ไขแล้วจะอัปเดตหน้าเว็บไซต์ทันที"
+      />
       <CompanySettingsForm
         config={config}
         canManage={hasPermissionAccess(role, permissions, "settings.company.manage")}

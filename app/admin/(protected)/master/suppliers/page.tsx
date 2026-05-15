@@ -8,6 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import SuppliersClient from "./SuppliersClient";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const SuppliersPage = async () => {
   await requirePermission("master.view");
@@ -22,8 +23,11 @@ const SuppliersPage = async () => {
   });
 
   return (
-    <div>
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900">จัดการผู้จำหน่าย</h1>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จัดการผู้จำหน่าย"
+        description="จัดการข้อมูลผู้จำหน่าย เครดิตเทอม และสถานะการใช้งาน"
+      />
       <SuppliersClient
         suppliers={suppliers}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}

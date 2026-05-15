@@ -5,6 +5,10 @@ import { Check, Pencil, X } from "lucide-react";
 import type { PartsBrand } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import { createPartsBrand, togglePartsBrand, updatePartsBrand } from "./actions";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 type PartsBrandRow = Pick<PartsBrand, "id" | "name" | "isActive" | "createdAt">;
 
@@ -14,6 +18,9 @@ interface PartsBrandFormProps {
   canUpdate: boolean;
   canCancel: boolean;
 }
+
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
 const PartsBrandRowEditor = ({
   brand,
@@ -46,9 +53,9 @@ const PartsBrandRowEditor = ({
 
   if (isEditing && canUpdate) {
     return (
-      <tr className="border-b border-gray-100 bg-blue-50">
+      <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={4} className="px-4 py-4">
-          {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
           <form action={handleUpdate} className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="flex-1">
               <input
@@ -57,9 +64,9 @@ const PartsBrandRowEditor = ({
                 defaultValue={brand.name}
                 placeholder="ชื่อแบรนด์อะไหล่"
                 required
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                className={inputClassName}
               />
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 แก้เฉพาะชื่อแบรนด์ ระบบจะคงสถานะใช้งาน/ยกเลิกเดิมไว้
               </p>
             </div>
@@ -76,7 +83,7 @@ const PartsBrandRowEditor = ({
                 type="button"
                 onClick={() => setIsEditing(false)}
                 disabled={isPending}
-                className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
               >
                 <X size={15} />
                 ยกเลิก
@@ -91,24 +98,20 @@ const PartsBrandRowEditor = ({
   return (
     <tr
       className={`border-b border-gray-50 transition-colors ${
-        brand.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+        brand.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
       }`}
     >
-      <td className="px-4 py-3 font-medium text-gray-800">{brand.name}</td>
+      <td className="px-4 py-3 font-medium text-gray-800 dark:text-slate-100">{brand.name}</td>
       <td className="px-4 py-3">
         {brand.isActive ? (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            ใช้งาน
-          </span>
+          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
         ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">
-            ยกเลิก
-          </span>
+          <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
         )}
       </td>
-      <td className="px-4 py-3 text-gray-500">{formatDateThai(brand.createdAt)}</td>
+      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{formatDateThai(brand.createdAt)}</td>
       <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
+        <AdminActionGroup align="end">
           {canUpdate && (
             <button
               type="button"
@@ -126,15 +129,15 @@ const PartsBrandRowEditor = ({
               onClick={() => onToggle(brand.id, brand.isActive)}
               disabled={isBusy}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                brand.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+                brand.isActive ? "bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500" : "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
               }`}
             >
               {isBusy ? "..." : brand.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
             </button>
           ) : !canUpdate ? (
-            <span className="text-xs text-gray-300">-</span>
+            <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
           ) : null}
-        </div>
+        </AdminActionGroup>
       </td>
     </tr>
   );
@@ -166,10 +169,7 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
   return (
     <div className="space-y-6">
       {canCreate && (
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-            เพิ่มแบรนด์อะไหล่ใหม่
-          </h2>
+        <AdminSectionCard title="เพิ่มแบรนด์อะไหล่ใหม่">
           <form ref={formRef} action={handleCreate}>
             <div className="flex gap-3">
               <div className="flex-1">
@@ -178,9 +178,9 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
                   name="name"
                   placeholder="เช่น Denso, NRF, Bosch, Sanden"
                   required
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
-                {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+                {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
               </div>
               <button
                 type="submit"
@@ -191,24 +191,20 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
               </button>
             </div>
           </form>
-        </div>
+        </AdminSectionCard>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-          รายการแบรนด์อะไหล่ ({brands.length} รายการ)
-        </h2>
+      <AdminTableSection title={`รายการแบรนด์อะไหล่ (${brands.length} รายการ)`}>
         {brands.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">ยังไม่มีแบรนด์อะไหล่</p>
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-slate-400">ยังไม่มีแบรนด์อะไหล่</p>
         ) : (
-          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อแบรนด์</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">วันที่เพิ่ม</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr className="border-b border-gray-100 dark:border-white/10">
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อแบรนด์</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่เพิ่ม</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,9 +220,8 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
                 ))}
               </tbody>
             </table>
-          </div>
         )}
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

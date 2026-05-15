@@ -282,6 +282,7 @@ Batch 1 changed files:
 - [x] ยืนยันว่าไม่มีการแก้ [app/admin/(protected)/delivery/update/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/update/page.tsx)
 
 ### Step 3 QA
+- [x] ตรวจ GET-filter submit ที่เหลือใน delivery commissions ให้ใช้ `AdminSearchForm` + `AdminSearchSubmitButton`
 - [ ] ตรวจทุก list page ว่า filter/search ยังทำงานเหมือนเดิม
 - [ ] ตรวจทุก cancel/action button ว่า state และ confirmation logic ไม่เปลี่ยน
 - [ ] ตรวจ table overflow ทั้ง desktop และ mobile
@@ -291,50 +292,50 @@ Batch 1 changed files:
 ## Step 4 Checklist: Master Data And Config
 
 ## 4A. Products
-- [ ] [app/admin/(protected)/products/page.tsx](/D:/autoparts/app/admin/(protected)/products/page.tsx)
-- [ ] [app/admin/(protected)/products/ProductFilterForm.tsx](/D:/autoparts/app/admin/(protected)/products/ProductFilterForm.tsx)
-- [ ] [app/admin/(protected)/products/new/page.tsx](/D:/autoparts/app/admin/(protected)/products/new/page.tsx)
-- [ ] [app/admin/(protected)/products/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/products/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/products/ProductImagePreview.tsx](/D:/autoparts/app/admin/(protected)/products/ProductImagePreview.tsx)
-- [ ] [app/admin/(protected)/products/DeleteProductButton.tsx](/D:/autoparts/app/admin/(protected)/products/DeleteProductButton.tsx)
+- [x] [app/admin/(protected)/products/page.tsx](/D:/autoparts/app/admin/(protected)/products/page.tsx)
+- [x] [app/admin/(protected)/products/ProductFilterForm.tsx](/D:/autoparts/app/admin/(protected)/products/ProductFilterForm.tsx)
+- [x] [app/admin/(protected)/products/new/page.tsx](/D:/autoparts/app/admin/(protected)/products/new/page.tsx)
+- [x] [app/admin/(protected)/products/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/products/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/products/ProductImagePreview.tsx](/D:/autoparts/app/admin/(protected)/products/ProductImagePreview.tsx)
+- [x] [app/admin/(protected)/products/DeleteProductButton.tsx](/D:/autoparts/app/admin/(protected)/products/DeleteProductButton.tsx)
 
 ## 4B. Customers
-- [ ] [app/admin/(protected)/customers/page.tsx](/D:/autoparts/app/admin/(protected)/customers/page.tsx)
-- [ ] [app/admin/(protected)/customers/CustomerForm.tsx](/D:/autoparts/app/admin/(protected)/customers/CustomerForm.tsx)
-- [ ] [app/admin/(protected)/customers/new/page.tsx](/D:/autoparts/app/admin/(protected)/customers/new/page.tsx)
-- [ ] [app/admin/(protected)/customers/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/page.tsx)
-- [ ] [app/admin/(protected)/customers/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/customers/DeleteCustomerButton.tsx](/D:/autoparts/app/admin/(protected)/customers/DeleteCustomerButton.tsx)
+- [x] [app/admin/(protected)/customers/page.tsx](/D:/autoparts/app/admin/(protected)/customers/page.tsx)
+- [x] [app/admin/(protected)/customers/CustomerForm.tsx](/D:/autoparts/app/admin/(protected)/customers/CustomerForm.tsx)
+- [x] [app/admin/(protected)/customers/new/page.tsx](/D:/autoparts/app/admin/(protected)/customers/new/page.tsx)
+- [x] [app/admin/(protected)/customers/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/page.tsx)
+- [x] [app/admin/(protected)/customers/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/customers/DeleteCustomerButton.tsx](/D:/autoparts/app/admin/(protected)/customers/DeleteCustomerButton.tsx)
 
 ## 4C. Master Data Pages
-- [ ] [app/admin/(protected)/master/suppliers/page.tsx](/D:/autoparts/app/admin/(protected)/master/suppliers/page.tsx)
-- [ ] [app/admin/(protected)/master/suppliers/SuppliersClient.tsx](/D:/autoparts/app/admin/(protected)/master/suppliers/SuppliersClient.tsx)
-- [ ] [app/admin/(protected)/master/categories/page.tsx](/D:/autoparts/app/admin/(protected)/master/categories/page.tsx)
-- [ ] [app/admin/(protected)/master/categories/CategoryForm.tsx](/D:/autoparts/app/admin/(protected)/master/categories/CategoryForm.tsx)
-- [ ] [app/admin/(protected)/master/parts-brands/page.tsx](/D:/autoparts/app/admin/(protected)/master/parts-brands/page.tsx)
-- [ ] [app/admin/(protected)/master/parts-brands/PartsBrandForm.tsx](/D:/autoparts/app/admin/(protected)/master/parts-brands/PartsBrandForm.tsx)
-- [ ] [app/admin/(protected)/master/car-brands/page.tsx](/D:/autoparts/app/admin/(protected)/master/car-brands/page.tsx)
-- [ ] [app/admin/(protected)/master/car-brands/CarBrandsClient.tsx](/D:/autoparts/app/admin/(protected)/master/car-brands/CarBrandsClient.tsx)
-- [ ] [app/admin/(protected)/master/expense-codes/page.tsx](/D:/autoparts/app/admin/(protected)/master/expense-codes/page.tsx)
-- [ ] [app/admin/(protected)/master/expense-codes/ExpenseCodeClient.tsx](/D:/autoparts/app/admin/(protected)/master/expense-codes/ExpenseCodeClient.tsx)
+- [x] [app/admin/(protected)/master/suppliers/page.tsx](/D:/autoparts/app/admin/(protected)/master/suppliers/page.tsx)
+- [x] [app/admin/(protected)/master/suppliers/SuppliersClient.tsx](/D:/autoparts/app/admin/(protected)/master/suppliers/SuppliersClient.tsx)
+- [x] [app/admin/(protected)/master/categories/page.tsx](/D:/autoparts/app/admin/(protected)/master/categories/page.tsx)
+- [x] [app/admin/(protected)/master/categories/CategoryForm.tsx](/D:/autoparts/app/admin/(protected)/master/categories/CategoryForm.tsx)
+- [x] [app/admin/(protected)/master/parts-brands/page.tsx](/D:/autoparts/app/admin/(protected)/master/parts-brands/page.tsx)
+- [x] [app/admin/(protected)/master/parts-brands/PartsBrandForm.tsx](/D:/autoparts/app/admin/(protected)/master/parts-brands/PartsBrandForm.tsx)
+- [x] [app/admin/(protected)/master/car-brands/page.tsx](/D:/autoparts/app/admin/(protected)/master/car-brands/page.tsx)
+- [x] [app/admin/(protected)/master/car-brands/CarBrandsClient.tsx](/D:/autoparts/app/admin/(protected)/master/car-brands/CarBrandsClient.tsx)
+- [x] [app/admin/(protected)/master/expense-codes/page.tsx](/D:/autoparts/app/admin/(protected)/master/expense-codes/page.tsx)
+- [x] [app/admin/(protected)/master/expense-codes/ExpenseCodeClient.tsx](/D:/autoparts/app/admin/(protected)/master/expense-codes/ExpenseCodeClient.tsx)
 
 ## 4D. Users / Roles / Settings / Audit
-- [ ] [app/admin/(protected)/users/page.tsx](/D:/autoparts/app/admin/(protected)/users/page.tsx)
-- [ ] [app/admin/(protected)/users/UserForm.tsx](/D:/autoparts/app/admin/(protected)/users/UserForm.tsx)
-- [ ] [app/admin/(protected)/users/new/page.tsx](/D:/autoparts/app/admin/(protected)/users/new/page.tsx)
-- [ ] [app/admin/(protected)/users/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/users/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/users/ToggleUserButton.tsx](/D:/autoparts/app/admin/(protected)/users/ToggleUserButton.tsx)
-- [ ] [app/admin/(protected)/roles/page.tsx](/D:/autoparts/app/admin/(protected)/roles/page.tsx)
-- [ ] [app/admin/(protected)/roles/RoleForm.tsx](/D:/autoparts/app/admin/(protected)/roles/RoleForm.tsx)
-- [ ] [app/admin/(protected)/roles/new/page.tsx](/D:/autoparts/app/admin/(protected)/roles/new/page.tsx)
-- [ ] [app/admin/(protected)/roles/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/roles/[id]/edit/page.tsx)
-- [ ] [app/admin/(protected)/settings/company/page.tsx](/D:/autoparts/app/admin/(protected)/settings/company/page.tsx)
-- [ ] [app/admin/(protected)/audit-log/page.tsx](/D:/autoparts/app/admin/(protected)/audit-log/page.tsx)
-- [ ] [app/admin/(protected)/audit-log/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/audit-log/[id]/page.tsx)
+- [x] [app/admin/(protected)/users/page.tsx](/D:/autoparts/app/admin/(protected)/users/page.tsx)
+- [x] [app/admin/(protected)/users/UserForm.tsx](/D:/autoparts/app/admin/(protected)/users/UserForm.tsx)
+- [x] [app/admin/(protected)/users/new/page.tsx](/D:/autoparts/app/admin/(protected)/users/new/page.tsx)
+- [x] [app/admin/(protected)/users/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/users/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/users/ToggleUserButton.tsx](/D:/autoparts/app/admin/(protected)/users/ToggleUserButton.tsx)
+- [x] [app/admin/(protected)/roles/page.tsx](/D:/autoparts/app/admin/(protected)/roles/page.tsx)
+- [x] [app/admin/(protected)/roles/RoleForm.tsx](/D:/autoparts/app/admin/(protected)/roles/RoleForm.tsx)
+- [x] [app/admin/(protected)/roles/new/page.tsx](/D:/autoparts/app/admin/(protected)/roles/new/page.tsx)
+- [x] [app/admin/(protected)/roles/[id]/edit/page.tsx](/D:/autoparts/app/admin/(protected)/roles/[id]/edit/page.tsx)
+- [x] [app/admin/(protected)/settings/company/page.tsx](/D:/autoparts/app/admin/(protected)/settings/company/page.tsx)
+- [x] [app/admin/(protected)/audit-log/page.tsx](/D:/autoparts/app/admin/(protected)/audit-log/page.tsx)
+- [x] [app/admin/(protected)/audit-log/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/audit-log/[id]/page.tsx)
 
 ### Step 4 QA
-- [ ] ตรวจ forms ยาวทุกตัวว่าจัด section แล้วอ่านง่ายขึ้น
-- [ ] ตรวจ permission-heavy pages เช่น roles/users/audit-log ว่าไม่มี behavior change
+- [x] ตรวจ forms ยาวทุกตัวว่าจัด section แล้วอ่านง่ายขึ้น
+- [x] ตรวจ permission-heavy pages เช่น roles/users/audit-log ว่าไม่มี behavior change
 
 ---
 
@@ -425,7 +426,7 @@ Batch 1 changed files:
 - [x] [app/admin/(protected)/receipts/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/receipts/[id]/page.tsx)
 - [x] [app/admin/(protected)/credit-notes/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/credit-notes/[id]/page.tsx)
 - [x] [app/admin/(protected)/expenses/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/expenses/[id]/page.tsx)
-- [ ] [app/admin/(protected)/customers/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/page.tsx)
+- [x] [app/admin/(protected)/customers/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/customers/[id]/page.tsx)
 - [x] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
 - [x] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
 - [x] [app/admin/(protected)/purchase-returns/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/[id]/page.tsx)

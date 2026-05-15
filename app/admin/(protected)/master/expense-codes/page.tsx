@@ -8,6 +8,8 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import { ExpenseCodeForm, ExpenseCodeRow } from "./ExpenseCodeClient";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const ExpenseCodesPage = async () => {
   await requirePermission("master.view");
@@ -27,34 +29,33 @@ const ExpenseCodesPage = async () => {
   });
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">รหัสค่าใช้จ่าย</h1>
-        <p className="mt-1 text-sm text-gray-500">จัดการรหัสค่าใช้จ่ายที่ใช้ในระบบบันทึกค่าใช้จ่าย</p>
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="รหัสค่าใช้จ่าย"
+        description="จัดการรหัสค่าใช้จ่ายที่ใช้ในระบบบันทึกค่าใช้จ่าย"
+      />
 
       {canCreate && <ExpenseCodeForm />}
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+      <AdminTableSection>
         <div className="border-b border-gray-100 px-5 py-3">
-          <p className="text-sm text-gray-500">
-            รหัสทั้งหมด: <span className="font-medium text-gray-700">{codes.length} รายการ</span>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
+            รหัสทั้งหมด: <span className="font-medium text-gray-700 dark:text-slate-200">{codes.length} รายการ</span>
           </p>
         </div>
 
         {codes.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">ยังไม่มีรหัสค่าใช้จ่าย</div>
+          <div className="py-12 text-center text-sm text-gray-400 dark:text-slate-500">ยังไม่มีรหัสค่าใช้จ่าย</div>
         ) : (
-          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">รหัส</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อ</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">คำอธิบาย</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-600">ใช้งาน</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-600">รายการ</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">คำอธิบาย</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">ใช้งาน</th>
+                  <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">รายการ</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -68,9 +69,8 @@ const ExpenseCodesPage = async () => {
                 ))}
               </tbody>
             </table>
-          </div>
         )}
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

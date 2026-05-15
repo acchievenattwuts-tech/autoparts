@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import { CheckCircle, Upload, X } from "lucide-react";
 import { createUser, updateUser, uploadUserSignature } from "./actions";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
 
 type RoleOption = {
   id: string;
@@ -28,8 +29,8 @@ interface UserFormProps {
 }
 
 const inputCls =
-  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-orange-400/30";
+const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
 
 const UserForm = ({ user, roleOptions }: UserFormProps) => {
   const router = useRouter();
@@ -97,11 +98,7 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          ข้อมูลผู้ใช้
-        </h2>
-
+      <AdminSectionCard title="ข้อมูลผู้ใช้">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className={labelCls}>ชื่อผู้ใช้</label>
@@ -149,16 +146,16 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
 
           <div>
             <label className={labelCls}>Legacy Role</label>
-            <select name="role" defaultValue={user?.role ?? "STAFF"} className={`${inputCls} bg-white`}>
+            <select name="role" defaultValue={user?.role ?? "STAFF"} className={inputCls}>
               <option value="ADMIN">ADMIN</option>
               <option value="STAFF">STAFF</option>
             </select>
-            <p className="text-xs text-gray-400 mt-1">ใช้เพื่อ compatibility กับระบบเดิมในช่วงเปลี่ยนผ่าน</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">ใช้เพื่อ compatibility กับระบบเดิมในช่วงเปลี่ยนผ่าน</p>
           </div>
 
           <div className="md:col-span-2">
             <label className={labelCls}>บทบาทการใช้งาน</label>
-            <select name="appRoleId" defaultValue={user?.appRoleId ?? ""} className={`${inputCls} bg-white`}>
+            <select name="appRoleId" defaultValue={user?.appRoleId ?? ""} className={inputCls}>
               <option value="">ยังไม่กำหนด</option>
               {roleOptions.map((role) => (
                 <option key={role.id} value={role.id}>
@@ -176,15 +173,15 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
                 onChange={(event) => setMustChangePassword(event.target.checked)}
                 className="w-4 h-4 text-[#1e3a5f] rounded border-gray-300 focus:ring-[#1e3a5f]"
               />
-              <span className="text-sm text-gray-700">บังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าระบบ</span>
+              <span className="text-sm text-gray-700 dark:text-slate-300">บังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าระบบ</span>
             </label>
           </div>
 
           <div className="md:col-span-2">
             <label className={labelCls}>ลายเซ็นอิเล็กทรอนิก</label>
             <input type="hidden" name="signatureUrl" value={signatureUrl} />
-            <div className="flex flex-col gap-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-start">
-              <div className="relative flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white sm:w-56">
+            <div className="flex flex-col gap-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-900/60 sm:flex-row sm:items-start">
+              <div className="relative flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950 sm:w-56">
                 {signatureUrl ? (
                   <>
                     <Image
@@ -197,13 +194,13 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
                     <button
                       type="button"
                       onClick={() => setSignatureUrl("")}
-                      className="absolute right-1 top-1 rounded-full border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500"
+                      className="absolute right-1 top-1 rounded-full border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                     >
                       <X size={12} />
                     </button>
                   </>
                 ) : (
-                  <p className="px-3 text-center text-sm text-gray-400">ยังไม่ได้อัปโหลดลายเซ็น</p>
+                  <p className="px-3 text-center text-sm text-gray-400 dark:text-slate-500">ยังไม่ได้อัปโหลดลายเซ็น</p>
                 )}
               </div>
 
@@ -220,34 +217,34 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
                   htmlFor="user-signature-upload"
                   className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors ${
                     signatureUploading
-                      ? "cursor-not-allowed bg-gray-100 text-gray-400"
-                      : "bg-white text-gray-700 hover:bg-gray-50"
+                      ? "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-500"
+                      : "bg-white text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   }`}
                 >
                   <Upload size={14} />
                   {signatureUploading ? "กำลังอัปโหลด..." : "เลือกลายเซ็น"}
                 </label>
-                <div className="space-y-1 text-xs text-gray-400">
+                <div className="space-y-1 text-xs text-gray-400 dark:text-slate-500">
                   <p>รองรับไฟล์ JPG, PNG, WebP ขนาดไม่เกิน 3MB</p>
                   <p>แนะนำ PNG พื้นหลังโปร่งใส เพื่อให้แสดงผลบนเอกสารได้คมชัด</p>
                 </div>
-                {signatureError && <p className="text-xs text-red-500">{signatureError}</p>}
+                {signatureError && <p className="text-xs text-red-500 dark:text-red-300">{signatureError}</p>}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </AdminSectionCard>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-500/20 dark:bg-red-500/10">
+          <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <CheckCircle size={16} className="text-green-600" />
-          <p className="text-sm text-green-600">{success}</p>
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-500/20 dark:bg-green-500/10">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-300" />
+          <p className="text-sm text-green-600 dark:text-green-300">{success}</p>
         </div>
       )}
 

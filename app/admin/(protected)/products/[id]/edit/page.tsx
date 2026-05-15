@@ -7,6 +7,8 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import ProductForm, { type ProductFormData } from "@/components/shared/ProductForm";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
@@ -74,37 +76,28 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
   };
 
   return (
-    <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <Link
           href="/admin/products"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} />
           สินค้าทั้งหมด
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">แก้ไขสินค้า</span>
       </div>
 
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="font-kanit text-2xl font-bold text-gray-900">{product.name}</h1>
-          <div className="mt-2">
-            {product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
-                ไม่คำนวณสต็อก
-              </span>
-            ) : (
-              <span className="inline-flex items-center rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-200">
-                คำนวณสต็อก
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-gray-500 mt-1">รหัส: {product.code}</p>
-        </div>
-      </div>
+      <AdminPageHeader
+        title={product.name}
+        description={`รหัส: ${product.code}`}
+        meta={
+          product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
+            <AdminStatusBadge tone="warning">ไม่คำนวณสต็อก</AdminStatusBadge>
+          ) : (
+            <AdminStatusBadge tone="info">คำนวณสต็อก</AdminStatusBadge>
+          )
+        }
+      />
 
       <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} product={productData} />
     </div>

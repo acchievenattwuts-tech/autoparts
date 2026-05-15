@@ -5,6 +5,10 @@ import { Plus, Pencil, X, Check } from "lucide-react";
 import { createSupplier, updateSupplier, toggleSupplier } from "./actions";
 import { Supplier } from "@/lib/generated/prisma";
 import TaxIdInput from "@/components/shared/TaxIdInput";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 interface SuppliersClientProps {
   suppliers: Supplier[];
@@ -31,6 +35,10 @@ const emptyFields: SupplierFormFields = {
   creditTerm: "",
 };
 
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
+const labelClassName = "mb-1 block text-xs font-medium text-gray-600 dark:text-slate-300";
+
 const SupplierFormRow = ({
   onSubmit,
   onCancel,
@@ -47,7 +55,7 @@ const SupplierFormRow = ({
   <form action={onSubmit}>
     <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">
+        <label className={labelClassName}>
           ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
         </label>
         <input
@@ -56,50 +64,50 @@ const SupplierFormRow = ({
           defaultValue={defaultValues.name}
           placeholder="ชื่อบริษัท / ร้านค้า"
           required
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">ชื่อผู้ติดต่อ</label>
+        <label className={labelClassName}>ชื่อผู้ติดต่อ</label>
         <input
           type="text"
           name="contactName"
           defaultValue={defaultValues.contactName}
           placeholder="ชื่อผู้ติดต่อ"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">เบอร์โทรศัพท์</label>
+        <label className={labelClassName}>เบอร์โทรศัพท์</label>
         <input
           type="tel"
           name="phone"
           defaultValue={defaultValues.phone}
           placeholder="0xx-xxx-xxxx"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">ที่อยู่</label>
+        <label className={labelClassName}>ที่อยู่</label>
         <input
           type="text"
           name="address"
           defaultValue={defaultValues.address}
           placeholder="ที่อยู่"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">เลขผู้เสียภาษี</label>
+        <label className={labelClassName}>เลขผู้เสียภาษี</label>
         <TaxIdInput
           name="taxId"
           defaultValue={defaultValues.taxId}
           placeholder="13 หลัก"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">เครดิตเทอม (วัน)</label>
+        <label className={labelClassName}>เครดิตเทอม (วัน)</label>
         <input
           type="number"
           name="creditTerm"
@@ -107,7 +115,7 @@ const SupplierFormRow = ({
           max={365}
           defaultValue={defaultValues.creditTerm}
           placeholder="เช่น 30"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+          className={inputClassName}
         />
       </div>
     </div>
@@ -125,7 +133,7 @@ const SupplierFormRow = ({
           type="button"
           onClick={onCancel}
           disabled={isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
         >
           <X size={15} />
           ยกเลิก
@@ -176,9 +184,9 @@ const EditableRow = ({
 
   if (isEditing && canUpdate) {
     return (
-      <tr className="border-b border-gray-100 bg-blue-50">
+      <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={9} className="px-4 py-4">
-          {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
           <SupplierFormRow
             onSubmit={handleUpdate}
             onCancel={() => setIsEditing(false)}
@@ -201,33 +209,33 @@ const EditableRow = ({
   return (
     <tr
       className={`border-b border-gray-50 transition-colors ${
-        supplier.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+        supplier.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
       }`}
     >
       <td className="px-4 py-3">
         {supplier.code ? (
-          <span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-xs font-medium text-[#1e3a5f]">
+          <span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-xs font-medium text-[#1e3a5f] dark:bg-sky-500/10 dark:text-sky-300">
             {supplier.code}
           </span>
         ) : (
-          <span className="text-xs text-gray-400">-</span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">-</span>
         )}
       </td>
-      <td className="px-4 py-3 font-medium text-gray-800">{supplier.name}</td>
-      <td className="px-4 py-3 text-gray-600">{supplier.contactName ?? "-"}</td>
-      <td className="px-4 py-3 text-gray-600">{supplier.phone ?? "-"}</td>
-      <td className="px-4 py-3 text-gray-600">{supplier.taxId ?? "-"}</td>
-      <td className="px-4 py-3 text-gray-600">{supplier.creditTerm != null ? `${supplier.creditTerm} วัน` : "-"}</td>
-      <td className="max-w-xs truncate px-4 py-3 text-gray-600">{supplier.address ?? "-"}</td>
+      <td className="px-4 py-3 font-medium text-gray-800 dark:text-slate-100">{supplier.name}</td>
+      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{supplier.contactName ?? "-"}</td>
+      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{supplier.phone ?? "-"}</td>
+      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{supplier.taxId ?? "-"}</td>
+      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{supplier.creditTerm != null ? `${supplier.creditTerm} วัน` : "-"}</td>
+      <td className="max-w-xs truncate px-4 py-3 text-gray-600 dark:text-slate-300">{supplier.address ?? "-"}</td>
       <td className="px-4 py-3">
         {supplier.isActive ? (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
+          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
         ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">ยกเลิก</span>
+          <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
+        <AdminActionGroup align="end">
           {canUpdate && (
             <button
               onClick={() => setIsEditing(true)}
@@ -243,13 +251,13 @@ const EditableRow = ({
               onClick={handleToggle}
               disabled={isPending}
               className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                supplier.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+                supplier.isActive ? "bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500" : "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
               }`}
             >
               {isToggling ? "กำลังบันทึก..." : supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
             </button>
           )}
-        </div>
+        </AdminActionGroup>
       </td>
     </tr>
   );
@@ -277,11 +285,10 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
   return (
     <div className="space-y-6">
       {canCreate && (
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">เพิ่มผู้จำหน่ายใหม่</h2>
+        <AdminSectionCard title="เพิ่มผู้จำหน่ายใหม่">
           {error && (
-            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2">
-              <p className="text-sm text-red-600">{error}</p>
+            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 dark:border-red-400/30 dark:bg-red-500/10">
+              <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
             </div>
           )}
           <form key={createFormVersion} ref={formRef} action={handleCreate}>
@@ -295,7 +302,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   name="name"
                   placeholder="ชื่อบริษัท / ร้านค้า"
                   required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -304,7 +311,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   type="text"
                   name="contactName"
                   placeholder="ชื่อผู้ติดต่อ"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -313,7 +320,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   type="tel"
                   name="phone"
                   placeholder="0xx-xxx-xxxx"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -322,7 +329,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   type="text"
                   name="address"
                   placeholder="ที่อยู่"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -330,7 +337,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 <TaxIdInput
                   name="taxId"
                   placeholder="13 หลัก"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
               <div>
@@ -341,7 +348,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                   min={0}
                   max={365}
                   placeholder="เช่น 30"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
               </div>
             </div>
@@ -354,29 +361,25 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
               {isPending ? "กำลังบันทึก..." : "เพิ่มผู้จำหน่าย"}
             </button>
           </form>
-        </div>
+        </AdminSectionCard>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-          รายการผู้จำหน่าย ({suppliers.length} ราย)
-        </h2>
+      <AdminTableSection title={`รายการผู้จำหน่าย (${suppliers.length} ราย)`}>
         {suppliers.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">ยังไม่มีผู้จำหน่าย</p>
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-slate-400">ยังไม่มีผู้จำหน่าย</p>
         ) : (
-          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="w-24 px-4 py-3 text-left font-medium text-gray-600">รหัส</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อผู้จำหน่าย</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อผู้ติดต่อ</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">เบอร์โทรศัพท์</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">เลขผู้เสียภาษี</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">เครดิตเทอม</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ที่อยู่</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr className="border-b border-gray-100 dark:border-white/10">
+                  <th className="w-24 px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อผู้จำหน่าย</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อผู้ติดต่อ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เบอร์โทรศัพท์</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขผู้เสียภาษี</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เครดิตเทอม</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ที่อยู่</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -390,9 +393,8 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 ))}
               </tbody>
             </table>
-          </div>
         )}
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

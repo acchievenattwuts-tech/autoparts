@@ -8,6 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import PartsBrandForm from "./PartsBrandForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const PartsBrandsPage = async () => {
   await requirePermission("master.view");
@@ -28,8 +29,11 @@ const PartsBrandsPage = async () => {
   });
 
   return (
-    <div>
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900">จัดการแบรนด์อะไหล่</h1>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จัดการแบรนด์อะไหล่"
+        description="เพิ่ม แก้ไข และควบคุมสถานะแบรนด์อะไหล่"
+      />
       <PartsBrandForm
         brands={brands}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}

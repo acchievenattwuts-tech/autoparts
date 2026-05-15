@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ProductForm from "@/components/shared/ProductForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const NewProductPage = async () => {
   await requirePermission("products.create");
@@ -27,21 +28,21 @@ const NewProductPage = async () => {
   ]);
 
   return (
-    <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <Link
           href="/admin/products"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} />
           สินค้าทั้งหมด
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">เพิ่มสินค้าใหม่</span>
       </div>
 
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">เพิ่มสินค้าใหม่</h1>
+      <AdminPageHeader
+        title="เพิ่มสินค้าใหม่"
+        description="บันทึกรายละเอียดสินค้า หน่วยนับ สต็อก และการผูกกับรถ"
+      />
 
       <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} />
     </div>

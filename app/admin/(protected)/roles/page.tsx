@@ -5,6 +5,7 @@ import { Plus, Shield } from "lucide-react";
 import { ensureAccessControlSetupOnce } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const RolesPage = async () => {
   await ensureAccessControlSetupOnce().catch(() => {});
@@ -23,16 +24,11 @@ const RolesPage = async () => {
   });
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">
-            บทบาทและสิทธิ์
-          </h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            ตั้งค่าสิทธิ์ตามเมนูและ action หลักของระบบ
-          </p>
-        </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="บทบาทและสิทธิ์"
+        description="ตั้งค่าสิทธิ์ตามเมนูและ action หลักของระบบ"
+        actions={
         <Link
           href="/admin/roles/new"
           className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
@@ -40,7 +36,8 @@ const RolesPage = async () => {
           <Plus size={16} />
           เพิ่มบทบาท
         </Link>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {roles.map((role) => (

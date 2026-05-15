@@ -7,6 +7,7 @@ import { ensureAccessControlSetupOnce, PERMISSION_CATALOG } from "@/lib/access-c
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import RoleForm from "../../RoleForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const EditRolePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await ensureAccessControlSetupOnce();
@@ -40,8 +41,8 @@ const EditRolePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   if (!role) notFound();
 
   return (
-    <div>
-      <div className="mb-6 flex items-center gap-2">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <Link
           href="/admin/roles"
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
@@ -49,9 +50,10 @@ const EditRolePage = async ({ params }: { params: Promise<{ id: string }> }) => 
           <ChevronLeft size={16} /> รายการบทบาท
         </Link>
       </div>
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">
-        แก้ไขบทบาท
-      </h1>
+      <AdminPageHeader
+        title="แก้ไขบทบาท"
+        description={role.name}
+      />
       <RoleForm
         role={{
           id: role.id,

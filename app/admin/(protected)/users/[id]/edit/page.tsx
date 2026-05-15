@@ -7,6 +7,7 @@ import { ensureAccessControlSetupOnce } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import UserForm from "../../UserForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await ensureAccessControlSetupOnce();
@@ -39,13 +40,16 @@ const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => 
   if (!user) notFound();
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6">
-        <Link href="/admin/users" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Link href="/admin/users" className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300">
           <ChevronLeft size={16} /> รายการผู้ใช้
         </Link>
       </div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขผู้ใช้</h1>
+      <AdminPageHeader
+        title="แก้ไขผู้ใช้"
+        description={user.name}
+      />
       <UserForm
         user={{
           ...user,

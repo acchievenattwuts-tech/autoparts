@@ -3,9 +3,13 @@
 import { useState, useTransition } from "react";
 import { createExpenseCode, toggleExpenseCode, updateExpenseCode } from "./actions";
 import { Plus, CheckCircle, Pencil, Check, X } from "lucide-react";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-orange-400/30";
+const labelCls = "mb-1 block text-xs font-medium text-gray-600 dark:text-slate-300";
 
 export const ExpenseCodeForm = () => {
   const [isPending, startTransition] = useTransition();
@@ -31,17 +35,18 @@ export const ExpenseCodeForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 font-kanit text-base font-semibold text-[#1e3a5f]">เพิ่มรหัสค่าใช้จ่ายใหม่</h2>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <AdminSectionCard>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <h2 className="font-kanit text-base font-semibold text-[#1e3a5f] dark:text-slate-50">เพิ่มรหัสค่าใช้จ่ายใหม่</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">
+          <label className={labelCls}>
             ชื่อ <span className="text-red-500">*</span>
           </label>
           <input name="name" required maxLength={100} placeholder="เช่น ค่าไฟฟ้า" className={inputCls} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">คำอธิบาย</label>
+          <label className={labelCls}>คำอธิบาย</label>
           <input name="description" maxLength={200} placeholder="(ไม่บังคับ)" className={inputCls} />
         </div>
       </div>
@@ -54,20 +59,21 @@ export const ExpenseCodeForm = () => {
           </span>
         </span>
       </label>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
       {success && (
-        <div className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
+        <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-300">
           <CheckCircle size={14} /> {success}
         </div>
       )}
       <button
         type="submit"
         disabled={isPending}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-60"
       >
         <Plus size={14} /> {isPending ? "กำลังบันทึก..." : "เพิ่มรหัส"}
       </button>
-    </form>
+      </form>
+    </AdminSectionCard>
   );
 };
 
@@ -99,12 +105,14 @@ export const ExpenseCodeToggleButton = ({
         onClick={handleToggle}
         disabled={isPending}
         className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
-          isActive ? "text-red-500 hover:bg-red-50" : "text-green-600 hover:bg-green-50"
+          isActive
+            ? "text-red-500 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+            : "text-green-600 hover:bg-green-50 dark:text-green-300 dark:hover:bg-green-500/10"
         }`}
       >
         {isPending ? "..." : isActive ? "ยกเลิก" : "เปิดใช้งาน"}
       </button>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
     </div>
   );
 };
@@ -147,16 +155,16 @@ export const ExpenseCodeRow = ({
 
   if (isEditing && canUpdate) {
     return (
-      <tr className="border-t border-gray-100 bg-blue-50">
+      <tr className="border-t border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={6} className="px-4 py-4">
           <form onSubmit={handleUpdate} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-[160px_1fr_1fr]">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">รหัส</label>
-                <input value={expenseCode.code} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} />
+                <label className={labelCls}>รหัส</label>
+                <input value={expenseCode.code} readOnly className={`${inputCls} bg-gray-50 text-gray-500 dark:bg-slate-800 dark:text-slate-400`} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label className={labelCls}>
                   ชื่อ <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -168,7 +176,7 @@ export const ExpenseCodeRow = ({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">คำอธิบาย</label>
+                <label className={labelCls}>คำอธิบาย</label>
                 <input
                   name="description"
                   maxLength={200}
@@ -177,7 +185,7 @@ export const ExpenseCodeRow = ({
                 />
               </div>
             </div>
-            <label className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900">
+            <label className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-200">
               <input
                 type="checkbox"
                 name="isDeliveryCommission"
@@ -186,13 +194,13 @@ export const ExpenseCodeRow = ({
               />
               <span>
                 ใช้เป็นรหัสค่าใช้จ่ายสำหรับทำจ่ายค่าส่งพนักงาน
-                <span className="block text-xs text-orange-700">
+                <span className="block text-xs text-orange-700 dark:text-orange-200/80">
                   เลือกได้เพียง 1 รหัส หากต้องการเปลี่ยนต้องเอาเครื่องหมายออกจากรหัสเดิมก่อน
                 </span>
               </span>
             </label>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <div className="flex items-center gap-2">
+            {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
+            <AdminActionGroup align="start">
               <button
                 type="submit"
                 disabled={isPending}
@@ -205,12 +213,12 @@ export const ExpenseCodeRow = ({
                 type="button"
                 onClick={() => setIsEditing(false)}
                 disabled={isPending}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 <X size={14} />
                 ยกเลิก
               </button>
-            </div>
+            </AdminActionGroup>
           </form>
         </td>
       </tr>
@@ -220,38 +228,38 @@ export const ExpenseCodeRow = ({
   return (
     <tr
       className={`border-t border-gray-50 transition-colors ${
-        expenseCode.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+        expenseCode.isActive
+          ? "hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/[0.03]"
+          : "bg-gray-50 opacity-60 dark:border-white/10 dark:bg-slate-900/50"
       }`}
     >
-      <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f]">{expenseCode.code}</td>
-      <td className="px-4 py-3 font-medium text-gray-800">
+      <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-orange-200">{expenseCode.code}</td>
+      <td className="px-4 py-3 font-medium text-gray-800 dark:text-slate-100">
         <div className="space-y-1">
           <p>{expenseCode.name}</p>
           {expenseCode.isDeliveryCommission && (
-            <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700">
+            <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-700 dark:bg-orange-400/10 dark:text-orange-200">
               ค่าส่งพนักงาน
             </span>
           )}
         </div>
       </td>
-      <td className="px-4 py-3 text-gray-500">
-        {expenseCode.description ?? <span className="text-gray-300">-</span>}
+      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">
+        {expenseCode.description ?? <span className="text-gray-300 dark:text-slate-600">-</span>}
       </td>
       <td className="px-4 py-3 text-center">
-        {expenseCode.isActive ? (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">ใช้งาน</span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">ยกเลิก</span>
-        )}
+        <AdminStatusBadge tone={expenseCode.isActive ? "success" : "muted"}>
+          {expenseCode.isActive ? "ใช้งาน" : "ยกเลิก"}
+        </AdminStatusBadge>
       </td>
-      <td className="px-4 py-3 text-center text-gray-500">{expenseCode._count.items}</td>
+      <td className="px-4 py-3 text-center text-gray-500 dark:text-slate-400">{expenseCode._count.items}</td>
       <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-1">
+        <AdminActionGroup>
           {canUpdate && (
             <button
               onClick={() => setIsEditing(true)}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#1e3a5f] transition-colors hover:bg-blue-50 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[#1e3a5f] transition-colors hover:bg-blue-50 disabled:opacity-40 dark:text-sky-200 dark:hover:bg-sky-500/10"
             >
               <Pencil size={12} />
               แก้ไข
@@ -264,9 +272,9 @@ export const ExpenseCodeRow = ({
               isActive={expenseCode.isActive}
             />
           ) : !canUpdate ? (
-            <span className="text-xs text-gray-300">-</span>
+            <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
           ) : null}
-        </div>
+        </AdminActionGroup>
       </td>
     </tr>
   );

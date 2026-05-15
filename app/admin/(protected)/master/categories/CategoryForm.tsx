@@ -16,6 +16,10 @@ import {
 import type { Category } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import { createCategory, toggleCategory, updateCategory } from "./actions";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 type CategoryRow = Pick<Category, "id" | "name" | "slug" | "isActive" | "createdAt">;
 
@@ -36,7 +40,9 @@ const getOptionLabel = <Key extends string>(
 ) => options.find((option) => option.key === key)?.label ?? key;
 
 const selectClassName =
-  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
+const inputClassName =
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
 const VisualFields = ({
   defaultVisual = DEFAULT_CATEGORY_VISUAL,
@@ -49,7 +55,7 @@ const VisualFields = ({
   const previewVisual: CategoryVisualSetting = { iconKey, toneKey, motionKey };
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5">
       <div className="group mb-3 flex items-center gap-3">
         <CategoryVisualIcon
           visual={previewVisual}
@@ -57,13 +63,13 @@ const VisualFields = ({
           iconClassName="h-5 w-5"
         />
         <div>
-          <p className="text-xs font-semibold text-gray-700">พรีวิวไอคอนหน้าร้าน</p>
-          <p className="text-xs text-gray-500">เลือกไอคอน สี และโมชั่น hover ได้จากตรงนี้</p>
+          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">พรีวิวไอคอนหน้าร้าน</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">เลือกไอคอน สี และโมชั่น hover ได้จากตรงนี้</p>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="space-y-1 text-xs font-medium text-gray-600">
+        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           <span>ไอคอน</span>
           <select
             name="iconKey"
@@ -79,7 +85,7 @@ const VisualFields = ({
           </select>
         </label>
 
-        <label className="space-y-1 text-xs font-medium text-gray-600">
+        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           <span>โทนสี</span>
           <select
             name="toneKey"
@@ -95,7 +101,7 @@ const VisualFields = ({
           </select>
         </label>
 
-        <label className="space-y-1 text-xs font-medium text-gray-600">
+        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           <span>โมชั่น</span>
           <select
             name="motionKey"
@@ -148,9 +154,9 @@ const EditableRow = ({
 
   if (isEditing && canUpdate) {
     return (
-      <tr className="border-b border-gray-100 bg-blue-50">
+      <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={5} className="px-4 py-4">
-          {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
           <form action={handleUpdate} className="space-y-4">
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(420px,1.2fr)_auto] xl:items-start">
               <div>
@@ -160,9 +166,9 @@ const EditableRow = ({
                   defaultValue={category.name}
                   placeholder="ชื่อหมวดหมู่"
                   required
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                   แก้เฉพาะชื่อหมวดหมู่ โดยคง slug เดิมไว้เพื่อไม่ให้ลิงก์หน้าร้านเปลี่ยน
                 </p>
               </div>
@@ -182,7 +188,7 @@ const EditableRow = ({
                   type="button"
                   onClick={() => setIsEditing(false)}
                   disabled={isPending}
-                  className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60"
+                  className="flex items-center gap-1.5 rounded-lg bg-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
                 >
                   <X size={15} />
                   ยกเลิก
@@ -198,10 +204,10 @@ const EditableRow = ({
   return (
     <tr
       className={`border-b border-gray-50 transition-colors ${
-        category.isActive ? "hover:bg-gray-50" : "bg-gray-50 opacity-60"
+        category.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
       }`}
     >
-      <td className="px-4 py-3 text-gray-800">{category.name}</td>
+      <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
       <td className="px-4 py-3">
         <div className="group inline-flex items-center gap-2">
           <CategoryVisualIcon
@@ -209,8 +215,8 @@ const EditableRow = ({
             className="h-10 w-10 rounded-xl"
             iconClassName="h-5 w-5"
           />
-          <div className="min-w-[120px] text-xs text-gray-500">
-            <p className="font-medium text-gray-700">
+          <div className="min-w-[120px] text-xs text-gray-500 dark:text-slate-400">
+            <p className="font-medium text-gray-700 dark:text-slate-200">
               {getOptionLabel(CATEGORY_ICON_OPTIONS, category.visual.iconKey)}
             </p>
             <p>
@@ -222,18 +228,14 @@ const EditableRow = ({
       </td>
       <td className="px-4 py-3">
         {category.isActive ? (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-            ใช้งาน
-          </span>
+          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
         ) : (
-          <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-500">
-            ยกเลิก
-          </span>
+          <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
         )}
       </td>
-      <td className="px-4 py-3 text-gray-500">{formatDateThai(category.createdAt)}</td>
+      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{formatDateThai(category.createdAt)}</td>
       <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
+        <AdminActionGroup align="end">
           {canUpdate && (
             <button
               onClick={() => setIsEditing(true)}
@@ -249,15 +251,15 @@ const EditableRow = ({
               onClick={handleToggle}
               disabled={isPending}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                category.isActive ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
+                category.isActive ? "bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500" : "bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-500"
               }`}
             >
               {category.isActive ? "ยกเลิก" : "เปิดใช้งาน"}
             </button>
           ) : !canUpdate ? (
-            <span className="text-xs text-gray-300">-</span>
+            <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
           ) : null}
-        </div>
+        </AdminActionGroup>
       </td>
     </tr>
   );
@@ -285,10 +287,7 @@ const CategoryForm = ({ categories, canCreate, canUpdate, canCancel }: CategoryF
   return (
     <div className="space-y-6">
       {canCreate && (
-        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-            เพิ่มหมวดหมู่ใหม่
-          </h2>
+        <AdminSectionCard title="เพิ่มหมวดหมู่ใหม่">
           <form ref={formRef} action={handleCreate} className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(460px,1.2fr)]">
               <div>
@@ -297,9 +296,9 @@ const CategoryForm = ({ categories, canCreate, canUpdate, canCancel }: CategoryF
                   name="name"
                   placeholder="ชื่อหมวดหมู่"
                   required
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]"
+                  className={inputClassName}
                 />
-                {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+                {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
               </div>
               <VisualFields key={formResetKey} />
             </div>
@@ -312,25 +311,21 @@ const CategoryForm = ({ categories, canCreate, canUpdate, canCancel }: CategoryF
               {isPending ? "กำลังบันทึก..." : "เพิ่ม"}
             </button>
           </form>
-        </div>
+        </AdminSectionCard>
       )}
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800">
-          รายการหมวดหมู่ ({categories.length} รายการ)
-        </h2>
+      <AdminTableSection title={`รายการหมวดหมู่ (${categories.length} รายการ)`}>
         {categories.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">ยังไม่มีหมวดหมู่</p>
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-slate-400">ยังไม่มีหมวดหมู่</p>
         ) : (
-          <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ชื่อหมวดหมู่</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">ไอคอนหน้าร้าน</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">สถานะ</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">วันที่เพิ่ม</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600">จัดการ</th>
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr className="border-b border-gray-100 dark:border-white/10">
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อหมวดหมู่</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ไอคอนหน้าร้าน</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่เพิ่ม</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -344,9 +339,8 @@ const CategoryForm = ({ categories, canCreate, canUpdate, canCancel }: CategoryF
                 ))}
               </tbody>
             </table>
-          </div>
         )}
-      </div>
+      </AdminTableSection>
     </div>
   );
 };

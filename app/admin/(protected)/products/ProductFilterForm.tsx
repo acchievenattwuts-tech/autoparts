@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 
@@ -39,7 +40,7 @@ export default function ProductFilterForm({
   const hasFilters = Boolean(search || categoryId || brandId || carBrandId || carModelId);
 
   return (
-    <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900">
+    <AdminFilterToolbar className="mb-0">
       <AdminSearchForm method="GET" className="grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(150px,1fr))_auto_auto]">
         <div className="relative">
           <Search
@@ -122,6 +123,6 @@ export default function ProductFilterForm({
           </Link>
         ) : null}
       </AdminSearchForm>
-    </div>
+    </AdminFilterToolbar>
   );
 }

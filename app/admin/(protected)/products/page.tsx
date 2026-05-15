@@ -15,6 +15,10 @@ import Pagination from "@/components/shared/Pagination";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import ProductFilterForm from "./ProductFilterForm";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
+import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const PAGE_SIZE = 30;
 
@@ -109,10 +113,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">จัดการสินค้า</h1>
-        {canCreate && (
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จัดการสินค้า"
+        description="ค้นหา กรอง และจัดการข้อมูลสินค้าในระบบสต็อก"
+        actions={
+          canCreate ? (
           <Link
             href="/admin/products/new"
             className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
@@ -120,8 +126,9 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             <Plus size={16} />
             เพิ่มสินค้า
           </Link>
-        )}
-      </div>
+          ) : null
+        }
+      />
 
       <ProductFilterForm
         search={search}
@@ -138,24 +145,23 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         }))}
       />
 
-      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950">
+      <AdminTableSection>
         <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">
           <p className="text-sm text-gray-500 dark:text-slate-400">
             {search ? (
               <>
                 ผลการค้นหา &quot;{search}&quot;:{" "}
-                <span className="font-medium text-gray-700">{total} รายการ</span>
+                <span className="font-medium text-gray-700 dark:text-slate-200">{total} รายการ</span>
               </>
             ) : (
               <>
                 สินค้าทั้งหมด:{" "}
-                <span className="font-medium text-gray-700">{total} รายการ</span>
+                <span className="font-medium text-gray-700 dark:text-slate-200">{total} รายการ</span>
               </>
             )}
           </p>
         </div>
 
-        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
@@ -248,17 +254,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {product.isActive ? (
-                        <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-200">
-                          ใช้งาน
-                        </span>
+                        <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
                       ) : (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-white/10 dark:text-slate-400">
-                          ปิดใช้งาน
-                        </span>
+                        <AdminStatusBadge tone="muted">ปิดใช้งาน</AdminStatusBadge>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
+                      <AdminActionGroup align="end">
                         {canUpdate && (
                           <Link
                             href={`/admin/products/${product.id}/edit`}
@@ -275,15 +277,14 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                             isActive={product.isActive}
                           />
                         )}
-                      </div>
+                      </AdminActionGroup>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
-        </div>
-      </div>
+      </AdminTableSection>
 
       <Pagination
         currentPage={pageNum}

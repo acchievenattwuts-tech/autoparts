@@ -10,6 +10,7 @@ import { resolveCategoryVisual } from "@/lib/category-visual-config";
 import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { requirePermission } from "@/lib/require-auth";
 import CategoryForm from "./CategoryForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const CategoriesPage = async () => {
   await requirePermission("master.view");
@@ -39,8 +40,11 @@ const CategoriesPage = async () => {
   }));
 
   return (
-    <div>
-      <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900">จัดการหมวดหมู่สินค้า</h1>
+    <div className="space-y-4">
+      <AdminPageHeader
+        title="จัดการหมวดหมู่สินค้า"
+        description="จัดการหมวดหมู่ สถานะ และภาพลักษณ์หมวดหมู่บนหน้าร้าน"
+      />
       <CategoryForm
         categories={categoriesWithVisual}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}

@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import { notFound } from "next/navigation";
 import CustomerForm from "../../CustomerForm";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const EditCustomerPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("customers.update");
@@ -16,18 +17,19 @@ const EditCustomerPage = async ({ params }: { params: Promise<{ id: string }> })
   if (!customer) notFound();
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <Link
           href="/admin/customers"
-          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> รายการลูกค้า
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm font-medium text-gray-700">แก้ไขลูกค้า</span>
       </div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-6">แก้ไขข้อมูลลูกค้า</h1>
+      <AdminPageHeader
+        title="แก้ไขข้อมูลลูกค้า"
+        description={customer.name}
+      />
       <CustomerForm customer={customer} />
     </div>
   );

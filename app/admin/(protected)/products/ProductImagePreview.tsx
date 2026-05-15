@@ -24,7 +24,7 @@ const ProductImagePreview = ({ src, alt }: Props) => {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="relative w-10 h-10 rounded-lg overflow-hidden border border-gray-100 flex-shrink-0 hover:ring-2 hover:ring-[#1e3a5f] transition-all cursor-zoom-in"
+        className="relative h-10 w-10 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-gray-100 transition-all hover:ring-2 hover:ring-[#1e3a5f] dark:border-white/10 dark:hover:ring-sky-400"
       >
         <Image src={src} alt={alt} fill className="object-cover" sizes="40px" />
       </button>
@@ -41,11 +41,11 @@ const ProductImagePreview = ({ src, alt }: Props) => {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors"
+              className="absolute -top-10 right-0 text-white transition-colors hover:text-gray-300"
             >
               <X size={28} />
             </button>
-            <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-white">
+            <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white dark:bg-slate-950">
               <Image
                 src={src}
                 alt={alt}
@@ -54,7 +54,7 @@ const ProductImagePreview = ({ src, alt }: Props) => {
                 sizes="(max-width: 768px) 100vw, 672px"
               />
             </div>
-            <p className="text-center text-white text-sm mt-3 opacity-70">{alt}</p>
+            <p className="mt-3 text-center text-sm text-white opacity-70">{alt}</p>
           </div>
         </div>
       )}

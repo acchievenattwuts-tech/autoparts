@@ -2,8 +2,11 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import AdminTableSection from "@/components/shared/AdminTableSection";
 import { db } from "@/lib/db";
 import {
   AUDIT_ACTION_OPTIONS,
@@ -61,16 +64,13 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">
-          บันทึกการใช้งาน
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-slate-400">
-          ตรวจสอบว่าใครสร้าง แก้ไข ยกเลิก เปลี่ยนสิทธิ์ เข้าสู่ระบบ หรือสั่งงานสำคัญอะไรไว้ในระบบ
-        </p>
-      </div>
+      <AdminPageHeader
+        title="บันทึกการใช้งาน"
+        description="ตรวจสอบว่าใครสร้าง แก้ไข ยกเลิก เปลี่ยนสิทธิ์ เข้าสู่ระบบ หรือสั่งงานสำคัญอะไรไว้ในระบบ"
+      />
 
-      <AdminSearchForm className="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40 md:grid-cols-2 xl:grid-cols-6">
+      <AdminFilterToolbar className="mb-0">
+      <AdminSearchForm className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <input type="hidden" name="ready" value="1" />
         <input
           type="text"
@@ -131,6 +131,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
           </Link>
         </div>
       </AdminSearchForm>
+      </AdminFilterToolbar>
 
       {!filters.ready ? (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-6 py-12 text-center shadow-sm dark:border-white/15 dark:bg-slate-950/40">
@@ -151,7 +152,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
             </span>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+          <AdminTableSection>
             {rows.length === 0 ? (
               <div className="px-6 py-12 text-center text-sm text-gray-500 dark:text-slate-400">
                 ไม่พบบันทึกที่ตรงกับเงื่อนไขที่ค้นหา
@@ -244,7 +245,7 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
                 </table>
               </div>
             )}
-          </div>
+          </AdminTableSection>
 
           <div className="flex items-center justify-between">
             <div>
