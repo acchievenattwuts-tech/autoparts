@@ -19,6 +19,7 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+
 const PAGE_SIZE = 30;
 
 interface ExpensePageProps {
@@ -35,14 +36,16 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   const { q, status, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
-  const to   = toParam   ?? "";
+  const to = toParam ?? "";
 
-  const dateFilter = (from || to) ? {
-    expenseDate: {
-      ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
-      ...(to   ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
-    },
-  } : {};
+  const dateFilter = (from || to)
+    ? {
+        expenseDate: {
+          ...(from ? { gte: parseDateOnlyToStartOfDay(from) } : {}),
+          ...(to ? { lte: parseDateOnlyToEndOfDay(to) } : {}),
+        },
+      }
+    : {};
 
   const whereCondition = {
     AND: [
@@ -68,22 +71,22 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
       take: PAGE_SIZE,
       skip: (pageNum - 1) * PAGE_SIZE,
       select: {
-        id:            true,
-        expenseNo:     true,
-        expenseDate:   true,
-        totalAmount:   true,
+        id: true,
+        expenseNo: true,
+        expenseDate: true,
+        totalAmount: true,
         subtotalAmount: true,
-        vatAmount:     true,
-        vatType:       true,
-        vatRate:       true,
-        netAmount:     true,
-        note:          true,
-        status:        true,
-        cancelNote:    true,
+        vatAmount: true,
+        vatType: true,
+        vatRate: true,
+        netAmount: true,
+        note: true,
+        status: true,
+        cancelNote: true,
         items: {
           select: {
-            id:          true,
-            amount:      true,
+            id: true,
+            amount: true,
             description: true,
             expenseCode: { select: { code: true, name: true } },
           },
@@ -99,10 +102,10 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   const totalNet = activeExpenses.reduce((s, e) => s + Number(e.netAmount), 0);
 
   const paginationParams: Record<string, string> = {};
-  if (q)      paginationParams.q      = q;
+  if (q) paginationParams.q = q;
   if (status) paginationParams.status = status;
-  if (from)   paginationParams.from   = from;
-  if (to)     paginationParams.to     = to;
+  if (from) paginationParams.from = from;
+  if (to) paginationParams.to = to;
 
   return (
     <div className="space-y-4">
@@ -125,8 +128,15 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
         className="mb-0"
         summary={
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-slate-700 dark:text-slate-200">ทั้งหมด <span className="font-semibold text-slate-900 dark:text-slate-100">{totalCount} เอกสาร</span></span>
-            <span className="text-slate-500 dark:text-slate-400">ยอดสุทธิ (ACTIVE) <span className="font-semibold text-[#1e3a5f] dark:text-sky-300">{totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</span></span>
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              ทั้งหมด <span className="font-semibold text-slate-900 dark:text-slate-100">{totalCount} เอกสาร</span>
+            </span>
+            <span className="text-slate-500 dark:text-slate-400">
+              ยอดสุทธิ (ACTIVE){" "}
+              <span className="font-semibold text-[#1e3a5f] dark:text-sky-300">
+                {totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+              </span>
+            </span>
           </div>
         }
       >
@@ -168,7 +178,10 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
               ค้นหา
             </AdminSearchSubmitButton>
             {(q || from || to || (status && status !== "ACTIVE")) && (
-              <Link href="/admin/expenses" className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10">
+              <Link
+                href="/admin/expenses"
+                className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+              >
                 ล้าง
               </Link>
             )}
@@ -194,38 +207,75 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
           <tbody>
             {expenses.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">ไม่พบรายการค่าใช้จ่าย</td>
+                <td colSpan={9} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                  ไม่พบรายการค่าใช้จ่าย
+                </td>
               </tr>
             ) : (
               expenses.map((exp, idx) => {
                 const isCancelled = exp.status === "CANCELLED";
                 return (
-                  <tr key={exp.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${isCancelled ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
-                    <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="px-4 py-3 font-mono text-xs font-medium text-[#1e3a5f] dark:text-sky-200">{exp.expenseNo}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">{formatDateThai(exp.expenseDate)}</td>
+                  <tr
+                    key={exp.id}
+                    className={`border-t border-slate-100 transition-colors dark:border-white/5 ${isCancelled ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}
+                  >
+                    <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">
+                      {(pageNum - 1) * PAGE_SIZE + idx + 1}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs font-medium text-[#1e3a5f] dark:text-sky-200">
+                      {exp.expenseNo}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                      {formatDateThai(exp.expenseDate)}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="space-y-0.5">
                         {exp.items.map((it) => (
                           <div key={it.id} className="flex items-center gap-1.5">
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-400 dark:bg-white/5">{it.expenseCode.code}</span>
-                            <span className="text-xs text-slate-700 dark:text-slate-300">{it.description ?? it.expenseCode.name}</span>
-                            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">{Number(it.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-400 dark:bg-white/5">
+                              {it.expenseCode.code}
+                            </span>
+                            <span className="text-xs text-slate-700 dark:text-slate-300">
+                              {it.description ?? it.expenseCode.name}
+                            </span>
+                            <span className="ml-auto text-xs text-slate-400 dark:text-slate-500">
+                              {Number(it.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            </span>
                           </div>
                         ))}
                         {exp.note ? <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">({exp.note})</p> : null}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{Number(exp.vatAmount) > 0 ? Number(exp.subtotalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{Number(exp.vatAmount) > 0 ? Number(exp.vatAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-slate-100">{Number(exp.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-4 py-3 text-center">{isCancelled ? <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
+                      {Number(exp.vatAmount) > 0 ? Number(exp.subtotalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
+                      {Number(exp.vatAmount) > 0 ? Number(exp.vatAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 }) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-slate-100">
+                      {Number(exp.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {isCancelled ? <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}
+                    </td>
                     <td className="px-4 py-3">
                       <AdminActionGroup align="end">
-                        <Link href={`/admin/expenses/${exp.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"><Eye size={14} /> ดู</Link>
+                        <Link
+                          href={`/admin/expenses/${exp.id}`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
+                        >
+                          <Eye size={14} /> ดู
+                        </Link>
                         {!isCancelled ? (
                           <>
-                            {canUpdate ? <Link href={`/admin/expenses/${exp.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                            {canUpdate ? (
+                              <Link
+                                href={`/admin/expenses/${exp.id}/edit`}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                              >
+                                <Pencil size={14} /> แก้ไข
+                              </Link>
+                            ) : null}
                             {canCancel ? <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} /> : null}
                           </>
                         ) : null}
@@ -238,8 +288,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
           </tbody>
           <tfoot className="border-t-2 border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
             <tr>
-              <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold text-slate-700 dark:text-slate-200">รวมยอดสุทธิ (ACTIVE)</td>
-              <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-slate-100">{totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })}<span className="ml-1 text-xs font-normal text-slate-500">บาท</span></td>
+              <td colSpan={6} className="px-4 py-3 text-right text-sm font-semibold text-slate-700 dark:text-slate-200">
+                รวมยอดสุทธิ (ACTIVE)
+              </td>
+              <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-slate-100">
+                {totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                <span className="ml-1 text-xs font-normal text-slate-500">บาท</span>
+              </td>
               <td colSpan={2} />
             </tr>
           </tfoot>
@@ -247,137 +302,6 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
       </AdminTableSection>
 
       <Pagination currentPage={pageNum} totalPages={totalPages} basePath="/admin/expenses" searchParams={paginationParams} />
-    </div>
-  );" "}
-            <span className="text-[#1e3a5f] font-semibold">
-              {totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
-            </span>
-          </p>
-        </div>
-
-        {expenses.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">ไม่พบรายการค่าใช้จ่าย</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-center py-3 px-4 font-medium text-gray-600 w-10">#</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">เลขที่</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">วันที่</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-600">รายการ</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ก่อน VAT</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">VAT</th>
-                  <th className="text-right py-3 px-4 font-medium text-gray-600">ยอดสุทธิ</th>
-                  <th className="text-center py-3 px-4 font-medium text-gray-600">สถานะ</th>
-                  <th className="py-3 px-4 w-20" />
-                </tr>
-              </thead>
-              <tbody>
-                {expenses.map((exp, idx) => {
-                  const isCancelled = exp.status === "CANCELLED";
-                  return (
-                    <tr
-                      key={exp.id}
-                      className={`border-t border-gray-50 transition-colors ${isCancelled ? "opacity-50" : "hover:bg-gray-50"}`}
-                    >
-                      <td className="py-2.5 px-4 text-center text-gray-400 text-xs tabular-nums">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                      <td className="py-2.5 px-4 font-mono text-xs text-[#1e3a5f] font-medium">
-                        {exp.expenseNo}
-                      </td>
-                      <td className="py-2.5 px-4 text-gray-600 whitespace-nowrap">
-                    {formatDateThai(exp.expenseDate)}
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <div className="space-y-0.5">
-                          {exp.items.map((it) => (
-                            <div key={it.id} className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                                {it.expenseCode.code}
-                              </span>
-                              <span className="text-gray-700 text-xs">
-                                {it.description ?? it.expenseCode.name}
-                              </span>
-                              <span className="text-gray-400 text-xs ml-auto">
-                                {Number(it.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          ))}
-                          {exp.note && (
-                            <p className="text-xs text-gray-400 mt-0.5">({exp.note})</p>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-right text-gray-600">
-                        {Number(exp.vatAmount) > 0
-                          ? Number(exp.subtotalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
-                          : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="py-2.5 px-4 text-right text-gray-600">
-                        {Number(exp.vatAmount) > 0
-                          ? Number(exp.vatAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
-                          : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="py-2.5 px-4 text-right font-semibold text-gray-900">
-                        {Number(exp.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-2.5 px-4 text-center">
-                        {isCancelled ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
-                            ยกเลิก
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                            ใช้งาน
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <div className="flex items-center gap-2 justify-end">
-                          <Link href={`/admin/expenses/${exp.id}`}
-                            className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 transition-colors">
-                            <Eye size={14} /> ดู
-                          </Link>
-                          {!isCancelled && (
-                            <>
-                              {canUpdate ? (
-                                <Link href={`/admin/expenses/${exp.id}/edit`}
-                                  className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors">
-                                  <Pencil size={14} /> แก้ไข
-                                </Link>
-                              ) : null}
-                              {canCancel ? <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} /> : null}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-gray-50 border-t-2 border-gray-200">
-                <tr>
-                  <td colSpan={6} className="py-3 px-4 text-right text-sm font-semibold text-gray-700">
-                    รวมยอดสุทธิ (ACTIVE)
-                  </td>
-                  <td className="py-3 px-4 text-right font-bold text-gray-900">
-                    {totalNet.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
-                    <span className="ml-1 text-xs font-normal text-gray-500">บาท</span>
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <Pagination
-        currentPage={pageNum}
-        totalPages={totalPages}
-        basePath="/admin/expenses"
-        searchParams={paginationParams}
-      />
     </div>
   );
 };
