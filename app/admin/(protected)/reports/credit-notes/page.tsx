@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
@@ -51,12 +52,11 @@ export default async function CreditNotesReportPage({ searchParams }: PageProps)
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">Credit Note Register</h1>
-        <p className="text-sm text-gray-500">
-          ดูรายการเครดิตโน้ตแบบรายบรรทัด พร้อมรูปแบบการตั้งหนี้หรือคืนเงิน ช่องทางคืนเงิน และบัญชีที่กระทบจริง
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow="รายงาน"
+        title="Credit Note Register"
+        description="ดูรายการเครดิตโน้ตแบบรายบรรทัด พร้อมรูปแบบการตั้งหนี้หรือคืนเงิน ช่องทางคืนเงิน และบัญชีที่กระทบจริง"
+      />
 
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

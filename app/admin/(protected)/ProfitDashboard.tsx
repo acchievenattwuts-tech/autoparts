@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 
 import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanel";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import {
@@ -398,12 +399,11 @@ const ProfitDashboard = async ({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">Profit Dashboard</h1>
-        <p className="text-sm text-gray-500">
-          โฟกัสกำไรที่เจ้าของต้องใช้ตัดสินใจ: วันนี้กำไรไหม, ตัวไหนทำเงินหรือขาดทุน, และช่วงที่เลือกกำลังดีขึ้นหรือแย่ลง
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow="Dashboard"
+        title="Profit Dashboard"
+        description="โฟกัสกำไรที่เจ้าของต้องใช้ตัดสินใจ: วันนี้กำไรไหม, ตัวไหนทำเงินหรือขาดทุน, และช่วงที่เลือกกำลังดีขึ้นหรือแย่ลง"
+      />
 
       <section className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-5 shadow-sm dark:border-emerald-400/20">
         <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
@@ -411,10 +411,10 @@ const ProfitDashboard = async ({
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
               Snapshot Today
             </p>
-            <h2 className="font-kanit text-xl font-semibold text-gray-900">
+            <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">
               มุมมองวันนี้แบบไม่ติด filter
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               การ์ดชุดนี้ยึดตามวันนี้เสมอ เพื่อให้เห็นภาพกำไรของวันทันที
             </p>
           </div>
@@ -456,7 +456,7 @@ const ProfitDashboard = async ({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-gray-900">ช่วงวิเคราะห์กำไร</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               ส่วนล่างของ dashboard จะอิงช่วงวันที่นี้ ส่วน Snapshot ด้านบนยังคงแสดงตามวันนี้
             </p>
           </div>
@@ -526,8 +526,8 @@ const ProfitDashboard = async ({
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-kanit text-xl font-semibold text-gray-900">แนวโน้มกำไร</h2>
-              <p className="text-xs text-gray-500">
+              <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">แนวโน้มกำไร</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
                 ช่วง {formatDateThai(parseDateOnlyToStartOfDay(data.filters.from))} ถึง{" "}
                 {formatDateThai(parseDateOnlyToStartOfDay(data.filters.to))}
               </p>
@@ -557,8 +557,8 @@ const ProfitDashboard = async ({
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-kanit text-xl font-semibold text-gray-900">Alert / จุดผิดปกติ</h2>
-              <p className="text-xs text-gray-500">
+              <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">Alert / จุดผิดปกติ</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
                 เรียงเคสตามความรุนแรง สูง ไป กลาง ไป ต่ำ เพื่อให้ไล่แก้จากเรื่องที่กระทบกำไรที่สุดก่อน
               </p>
             </div>
@@ -666,8 +666,8 @@ const ProfitDashboard = async ({
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-kanit text-xl font-semibold text-gray-900">สินค้าเด่นทำกำไร</h2>
-              <p className="text-xs text-gray-500">
+              <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">สินค้าเด่นทำกำไร</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
                 Spotlight เฉพาะตัวที่ทำกำไรเด่นสุด เพื่อดูเร็วว่าช่วงนี้อะไรเป็นตัวขับกำไร
               </p>
             </div>
@@ -682,10 +682,10 @@ const ProfitDashboard = async ({
                       Top {index + 1}
                     </p>
                     <p className="mt-1 font-medium text-gray-900">{row.productName}</p>
-                    <p className="text-xs text-gray-500">{row.productCode ?? "-"}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">{row.productCode ?? "-"}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-gray-500">กำไร</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">กำไร</p>
                     <p className="font-kanit text-xl font-semibold text-emerald-700">
                       {formatMoney(row.grossProfit)}
                     </p>
@@ -723,8 +723,8 @@ const ProfitDashboard = async ({
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-kanit text-xl font-semibold text-gray-900">สินค้าเสี่ยงกำไรต่ำ</h2>
-              <p className="text-xs text-gray-500">
+              <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">สินค้าเสี่ยงกำไรต่ำ</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
                 Watchlist เฉพาะสินค้าที่ margin ต่ำกว่า {LOW_MARGIN_THRESHOLD_PCT}% หรือขาดทุน
               </p>
             </div>
@@ -744,10 +744,10 @@ const ProfitDashboard = async ({
                       Watch {index + 1}
                     </p>
                     <p className="mt-1 font-medium text-gray-900">{row.productName}</p>
-                    <p className="text-xs text-gray-500">{row.productCode ?? "-"}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">{row.productCode ?? "-"}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-gray-500">กำไร</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">กำไร</p>
                     <p
                       className={`font-kanit text-xl font-semibold ${
                         row.grossProfit >= 0 ? "text-amber-700" : "text-rose-700"
@@ -787,11 +787,11 @@ const ProfitDashboard = async ({
         </section>
       </div>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Stock</h2>
-            <p className="text-xs text-gray-500">
+            <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">Profit by Stock</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               มุมมองกำไรรวมแยกตามสินค้า จากยอดขายและคืนขายที่เกิดขึ้นจริงในช่วงวิเคราะห์
             </p>
           </div>
@@ -800,13 +800,13 @@ const ProfitDashboard = async ({
         <div className="mb-3 rounded-2xl bg-sky-50 p-4 text-xs text-sky-900">
           นิยามรอบนี้: `Profit by Stock` หมายถึงกำไรรวมแยกตามสินค้า ไม่ใช่กำไรระดับ lot หรือ stock movement
         </div>
-        <div className="mb-3 text-xs text-gray-500">
+        <div className="mb-3 text-xs text-gray-500 dark:text-slate-400">
           ตารางนี้เหมาะกับการวิเคราะห์ทั้งชุด ถ้ารายการยาวจะเปิดเป็นหลายหน้าเพื่อลดภาระการดึงข้อมูลและการอ่านบนหน้าเดียว
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-xs text-gray-500">
-              <tr className="border-b border-gray-100">
+            <thead className="text-left text-xs text-gray-500 dark:text-slate-400">
+              <tr className="border-b border-gray-100 dark:border-white/10">
                 <th className="pb-3">สินค้า</th>
                 <th className="pb-3 text-right">จำนวนขายสุทธิ</th>
                 <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
@@ -818,10 +818,10 @@ const ProfitDashboard = async ({
             </thead>
             <tbody>
               {data.stockProducts.items.map((row) => (
-                <tr key={`stock-${row.productId}`} className="border-b border-gray-50">
+                <tr key={`stock-${row.productId}`} className="border-b border-gray-50 dark:border-white/5">
                   <td className="py-3">
-                    <p className="font-medium text-gray-900">{row.productName}</p>
-                    <p className="text-xs text-gray-400">{row.productCode ?? "-"}</p>
+                    <p className="font-medium text-gray-900 dark:text-slate-100">{row.productName}</p>
+                    <p className="text-xs text-gray-400 dark:text-slate-500">{row.productCode ?? "-"}</p>
                     <div className="mt-1 flex gap-3 text-xs">
                       <Link
                         href={buildSalesDrilldownHref({
@@ -890,26 +890,26 @@ const ProfitDashboard = async ({
         />
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Customer</h2>
-            <p className="text-xs text-gray-500">
+            <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">Profit by Customer</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               ดูว่าลูกค้ากลุ่มไหนช่วยทำกำไรสูง และใครที่มาร์จิ้นบางจนควรทบทวนราคา ส่วนลด หรือเงื่อนไขขาย
             </p>
           </div>
           <ArrowUpRight className="text-sky-500" size={18} />
         </div>
-        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600 dark:bg-white/5 dark:text-slate-300">
           ยอดขายสลับตาม dropdown ส่วนกำไรและ % Margin ใช้ฐานก่อน VAT และกดชื่อลูกค้าเพื่อ drill down ไปดูเอกสารต้นเหตุได้
         </div>
-        <div className="mb-3 text-xs text-gray-500">
+        <div className="mb-3 text-xs text-gray-500 dark:text-slate-400">
           ตารางนี้แบ่งหน้าเมื่อรายการเยอะ เพื่อให้เปิดวิเคราะห์ลูกค้าได้เร็วขึ้นและไม่ต้องโหลดข้อมูลยาวเกินจำเป็นในรอบเดียว
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-xs text-gray-500">
-              <tr className="border-b border-gray-100">
+            <thead className="text-left text-xs text-gray-500 dark:text-slate-400">
+              <tr className="border-b border-gray-100 dark:border-white/10">
                 <th className="pb-3">ลูกค้า</th>
                 <th className="pb-3 text-right">จำนวนบิล</th>
                 <th className="pb-3 text-right">จำนวนขายสุทธิ</th>
@@ -924,7 +924,7 @@ const ProfitDashboard = async ({
                 const customerHref = buildCustomerHref(row.customerId);
 
                 return (
-                  <tr key={`${row.customerId ?? row.customerName}-customer-profit`} className="border-b border-gray-50">
+                  <tr key={`${row.customerId ?? row.customerName}-customer-profit`} className="border-b border-gray-50 dark:border-white/5">
                     <td className="py-3">
                       {customerHref ? (
                         <Link
@@ -1010,26 +1010,26 @@ const ProfitDashboard = async ({
         />
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-kanit text-xl font-semibold text-gray-900">Profit by Invoice</h2>
-            <p className="text-xs text-gray-500">
+            <h2 className="font-kanit text-xl font-semibold text-gray-900 dark:text-slate-100">Profit by Invoice</h2>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               Drill down กลับไปดูเอกสารที่ทำเงิน หรือเอกสารที่ทำให้กำไรหายได้โดยตรง
             </p>
           </div>
           <ReceiptText className="text-gray-400" size={18} />
         </div>
-        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600">
+        <div className="mb-3 rounded-2xl bg-gray-50 p-4 text-xs text-gray-600 dark:bg-white/5 dark:text-slate-300">
           ยอดขายในตารางนี้สลับตาม dropdown ส่วนกำไรและ % Margin ยังใช้ฐานก่อน VAT เสมอ
         </div>
-        <div className="mb-3 text-xs text-gray-500">
+        <div className="mb-3 text-xs text-gray-500 dark:text-slate-400">
           ตารางนี้แบ่งหน้าเมื่อจำนวนเอกสารมากขึ้น เพื่อให้เลือกดูบิลต้นเหตุได้เร็วและไม่ต้องดึงทั้งช่วงมาทีเดียว
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="text-left text-xs text-gray-500">
-              <tr className="border-b border-gray-100">
+            <thead className="text-left text-xs text-gray-500 dark:text-slate-400">
+              <tr className="border-b border-gray-100 dark:border-white/10">
                 <th className="pb-3">เลขที่เอกสาร</th>
                 <th className="pb-3">วันที่</th>
                 <th className="pb-3">ลูกค้า</th>
@@ -1041,7 +1041,7 @@ const ProfitDashboard = async ({
             </thead>
             <tbody>
               {data.invoices.items.map((row) => (
-                <tr key={`${row.sourceType}-${row.sourceId}`} className="border-b border-gray-50">
+                <tr key={`${row.sourceType}-${row.sourceId}`} className="border-b border-gray-50 dark:border-white/5">
                   <td className="py-3">
                     <Link
                       href={buildInvoiceHref(row.sourceType, row.sourceId)}

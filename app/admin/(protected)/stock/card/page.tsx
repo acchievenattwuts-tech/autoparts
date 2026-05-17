@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
@@ -213,16 +214,19 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
   const footerLabel = hasDateFilter ? "ยอดยกไป" : "Stock คงเหลือล่าสุด";
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ClipboardList size={22} className="text-[#1e3a5f]" />
-          <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock Card MAVG</h1>
-        </div>
-        {canManage ? <RecalculateButton /> : null}
-      </div>
+    <div className="space-y-4">
+      <AdminPageHeader
+        eyebrow="สต็อก"
+        title={
+          <span className="flex items-center gap-2">
+            <ClipboardList size={22} className="text-[#1e3a5f] dark:text-sky-300" />
+            Stock Card MAVG
+          </span>
+        }
+        actions={canManage ? <RecalculateButton /> : null}
+      />
 
-      <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
         <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="min-w-48 flex-1">

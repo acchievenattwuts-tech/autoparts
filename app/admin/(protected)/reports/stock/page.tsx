@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
@@ -53,12 +54,11 @@ export default async function StockReportPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">Stock คงเหลือ</h1>
-        <p className="text-sm text-gray-500">
-          ยอดสินค้าคงเหลือปัจจุบันตามหน่วยนับรายงาน พร้อมต้นทุนเฉลี่ยและมูลค่าสต็อก
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow="รายงาน"
+        title="Stock คงเหลือ"
+        description="ยอดสินค้าคงเหลือปัจจุบันตามหน่วยนับรายงาน พร้อมต้นทุนเฉลี่ยและมูลค่าสต็อก"
+      />
 
       <AdminSearchForm
         method="GET"

@@ -73,8 +73,8 @@ function SectionHeader({
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1e3a5f]/70">{eyebrow}</p>
-      <h2 className="font-kanit text-2xl font-semibold text-gray-900">{title}</h2>
-      <p className="text-sm text-gray-500">{subtitle}</p>
+      <h2 className="font-kanit text-2xl font-semibold text-gray-900 dark:text-slate-100">{title}</h2>
+      <p className="text-sm text-gray-500 dark:text-slate-400">{subtitle}</p>
     </div>
   );
 }
@@ -108,10 +108,10 @@ function SummaryCard({
   className?: string;
 }) {
   return (
-    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-sm ${className}`}>
-      <p className="text-sm text-gray-500">{label}</p>
+    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80 ${className}`}>
+      <p className="text-sm text-gray-500 dark:text-slate-400">{label}</p>
       <p className={`mt-1 font-kanit text-2xl font-bold ${accent}`}>{value}</p>
-      <p className="mt-2 text-xs text-gray-400">{hint}</p>
+      <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">{hint}</p>
     </div>
   );
 }
@@ -126,10 +126,10 @@ function TableCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-4 py-3">
-        <h3 className="font-kanit text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="text-xs text-gray-500">{subtitle}</p>
+    <div className="rounded-2xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80">
+      <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
+        <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">{title}</h3>
+        <p className="text-xs text-gray-500 dark:text-slate-400">{subtitle}</p>
       </div>
       {children}
     </div>
@@ -303,33 +303,33 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
           <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl bg-gray-50 p-3">
-                <p className="text-xs text-gray-500">รวมรับเงิน</p>
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-4 dark:border-white/10">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
+                <p className="text-xs text-gray-500 dark:text-slate-400">รวมรับเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">ขายสด</p>
                 <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyReceipts.cashSaleAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รับชำระหนี้</p>
                 <p className="font-kanit text-xl font-bold text-emerald-600">฿{formatCurrency(data.dailyReceipts.receiptAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รับเงินคืนซื้อ</p>
                 <p className="font-kanit text-xl font-bold text-cyan-700">฿{formatCurrency(data.dailyReceipts.purchaseReturnRefundAmount)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">คู่ค้า/รายละเอียด</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ช่องทาง</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">บัญชี</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">เอกสาร</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">คู่ค้า/รายละเอียด</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ช่องทาง</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">บัญชี</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนเงิน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -341,7 +341,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.dailyReceipts.items.slice(0, maxRows).map((item) => (
-                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
+                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
                           <p className="text-xs text-gray-400">
@@ -364,41 +364,41 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           </TableCard>
 
           <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-xl bg-gray-50 p-3">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5 dark:border-white/10">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รวมจ่ายเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyPayments.totalAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">ซื้อสินค้า</p>
                 <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.dailyPayments.purchaseAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">ค่าใช้จ่าย</p>
                 <p className="font-kanit text-xl font-bold text-rose-600">฿{formatCurrency(data.dailyPayments.expenseAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">คืนเงิน CN</p>
                 <p className="font-kanit text-xl font-bold text-orange-600">฿{formatCurrency(data.dailyPayments.creditNoteRefundAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">มัดจำซัพพลายเออร์</p>
                 <p className="font-kanit text-xl font-bold text-emerald-700">฿{formatCurrency(data.dailyPayments.supplierAdvanceAmount)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">จ่ายซัพพลายเออร์</p>
                 <p className="font-kanit text-xl font-bold text-rose-700">฿{formatCurrency(data.dailyPayments.supplierPaymentAmount)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">เอกสาร</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">คู่ค้า/รายละเอียด</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ช่องทาง</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">บัญชี</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนเงิน</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">เอกสาร</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">คู่ค้า/รายละเอียด</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ช่องทาง</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">บัญชี</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนเงิน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -410,7 +410,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.dailyPayments.items.slice(0, maxRows).map((item) => (
-                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50">
+                      <tr key={`${item.source}-${item.docNo}`} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
                           <p className="text-xs text-gray-400">
@@ -445,28 +445,28 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         </div>
         <div className="grid gap-4">
           <TableCard title="ลูกหนี้คงค้าง (A/R)" subtitle="ยอดค้างชำระและอายุหนี้ของใบขาย active">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3">
-              <div className="rounded-xl bg-gray-50 p-3">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-3 dark:border-white/10">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รวมลูกหนี้</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.receivables.totalOutstanding)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">ลูกหนี้ทั่วไป</p>
                 <p className="font-kanit text-xl font-bold text-gray-900">฿{formatCurrency(data.receivables.regularOutstanding)}</p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-3">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">COD ค้างรับ</p>
                 <p className="font-kanit text-xl font-bold text-amber-600">฿{formatCurrency(data.receivables.codPendingOutstanding)}</p>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">เลขที่ขาย</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">ยอดค้าง</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">อายุหนี้</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ลูกค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ยอดค้าง</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">อายุหนี้</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -478,7 +478,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.receivables.items.slice(0, maxRows).map((item) => (
-                      <tr key={item.id} className="border-t border-gray-50">
+                      <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.saleNo}</p>
                           <p className="text-xs text-gray-400">{formatDate(item.saleDate)}</p>
@@ -502,11 +502,11 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <TableCard title="สรุปซื้อแยกซัพพลายเออร์" subtitle="ภาพรวมคู่ค้าและยอดซื้อสุทธิ">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ซัพพลายเออร์</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">เอกสารซื้อ</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">สุทธิ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ซัพพลายเออร์</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">เอกสารซื้อ</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">สุทธิ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -518,7 +518,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.suppliers.items.slice(0, maxRows).map((item) => (
-                      <tr key={item.supplierKey} className="border-t border-gray-50">
+                      <tr key={item.supplierKey} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.supplierName}</p>
                           <p className="text-xs text-gray-400">
@@ -538,12 +538,12 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <TableCard title="สรุปขายแยกลูกค้า" subtitle="มุมมองลูกค้าแบบ accounting-oriented">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">จำนวนบิล</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">Net sale</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">ค้างชำระ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ลูกค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนบิล</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">Net sale</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ค้างชำระ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -555,7 +555,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.customers.items.slice(0, maxRows).map((item) => (
-                      <tr key={item.customerKey} className="border-t border-gray-50">
+                      <tr key={item.customerKey} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.customerName}</p>
                           <p className="text-xs text-gray-400">{item.customerCode || "-"}</p>
@@ -614,11 +614,11 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <TableCard title="สินค้าใกล้ขั้นต่ำ" subtitle="รายการที่ควรติดตามและวางแผนสั่งซื้อ">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">คงเหลือ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">คงเหลือ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -630,7 +630,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.stock.lowStockItems.slice(0, maxRows).map((item) => (
-                      <tr key={item.id} className="border-t border-gray-50">
+                      <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td>
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.name}</p>
@@ -648,11 +648,11 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <TableCard title="มูลค่าสต็อกสูงสุด" subtitle="สินค้าที่ถือมูลค่าในคลังสูงสุด">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">รหัส</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
-                    <th className="px-4 py-2 text-right font-medium text-gray-600">มูลค่า</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">มูลค่า</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -664,7 +664,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.stock.highestValueItems.slice(0, maxRows).map((item) => (
-                      <tr key={item.id} className="border-t border-gray-50">
+                      <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2 font-mono text-xs text-[#1e3a5f]">{item.code}</td>
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.name}</p>
@@ -687,14 +687,14 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">เลขที่เคลม / วันที่เคลม</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">สินค้า</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ลูกค้า / ใบขาย</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ประเภทเคลม</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">ชื่อซัพ</th>
-                    <th className="px-4 py-2 text-left font-medium text-gray-600">สถานะ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่เคลม / วันที่เคลม</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ลูกค้า / ใบขาย</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ประเภทเคลม</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อซัพ</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -706,7 +706,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     </tr>
                   ) : (
                     data.openClaims.items.slice(0, maxRows).map((item) => (
-                      <tr key={item.id} className="border-t border-gray-50">
+                      <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.claimNo}</p>
                           <p className="text-xs text-gray-400">{formatDate(item.claimDate)}</p>

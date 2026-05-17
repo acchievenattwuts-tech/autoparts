@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { db } from "@/lib/db";
 import BfForm from "./BfForm";
 import BfHistoryTable from "./BfHistoryTable";
@@ -66,14 +67,17 @@ const BfPage = async () => {
   }));
 
   return (
-    <div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-2">ยอดยกมา (BF)</h1>
-      <p className="text-sm text-gray-500 mb-6">บันทึกจำนวนสินค้าเริ่มต้นก่อนเริ่มใช้ระบบ</p>
+    <div className="space-y-6">
+      <AdminPageHeader
+        eyebrow="สต็อก"
+        title="ยอดยกมา (BF)"
+        description="บันทึกจำนวนสินค้าเริ่มต้นก่อนเริ่มใช้ระบบ"
+      />
 
       <BfForm products={mapped} canCreate={canCreate} />
 
-      <div className="mt-8">
-        <h2 className="font-kanit text-lg font-semibold text-gray-800 mb-4">ประวัติเอกสารยอดยกมา</h2>
+      <div>
+        <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100 mb-4">ประวัติเอกสารยอดยกมา</h2>
         <BfHistoryTable docs={serialized} canCancel={canCancel} />
       </div>
     </div>

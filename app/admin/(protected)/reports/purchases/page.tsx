@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { db } from "@/lib/db";
@@ -76,12 +77,11 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงานซื้อสินค้า</h1>
-        <p className="text-sm text-gray-500">
-          ดูรายการซื้อแบบรายบรรทัดสินค้า พร้อมสถานะการจ่าย ช่องทางจ่าย และบัญชีเงินที่ใช้จริง
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow="รายงาน"
+        title="รายงานซื้อสินค้า"
+        description="ดูรายการซื้อแบบรายบรรทัดสินค้า พร้อมสถานะการจ่าย ช่องทางจ่าย และบัญชีเงินที่ใช้จริง"
+      />
 
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

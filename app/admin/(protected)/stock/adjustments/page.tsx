@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import AdjustmentForm from "./AdjustmentForm";
 import AdjustmentHistoryList from "./AdjustmentHistoryList";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
@@ -104,15 +105,18 @@ const AdjustmentsPage = async ({
   }));
 
   return (
-    <div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 mb-2">ปรับสต็อก</h1>
-      <p className="text-sm text-gray-500 mb-6">ปรับเพิ่ม/ลดจำนวนสินค้าพร้อมระบุเหตุผล</p>
+    <div className="space-y-6">
+      <AdminPageHeader
+        eyebrow="สต็อก"
+        title="ปรับสต็อก"
+        description="ปรับเพิ่ม/ลดจำนวนสินค้าพร้อมระบุเหตุผล"
+      />
 
       <AdjustmentForm products={productOptions} canCreate={canCreate} />
 
-      <div className="mt-8">
+      <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-kanit text-lg font-semibold text-gray-800">ประวัติการปรับสต็อก</h2>
+          <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ประวัติการปรับสต็อก</h2>
           <DateRangeFilter from={from} to={to} />
         </div>
         <AdjustmentHistoryList adjustments={serialized} canCancel={canCancel} />
