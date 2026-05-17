@@ -45,6 +45,8 @@ import {
   buildAPRegisterCsv,
 } from "@/lib/ar-ap-register-queries";
 
+const BOM = "\uFEFF";
+
 export async function GET(request: Request) {
   const session = await requirePermission("reports.view");
 
@@ -179,7 +181,8 @@ export async function GET(request: Request) {
     },
   });
 
-  return new Response(csv, {
+  // Prepend UTF-8 BOM so Excel opens Thai text correctly without manual encoding selection
+  return new Response(BOM + csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${fileName}"`,

@@ -1368,11 +1368,6 @@ export async function saveDeliveryProof(
     if (photoUpload.error) return { error: photoUpload.error };
 
     const requestContext = await getRequestContext();
-    const openQueueWhere = {
-      fulfillmentType: FulfillmentType.DELIVERY,
-      status: "ACTIVE" as const,
-      shippingStatus: { in: [ShippingStatus.PENDING, ShippingStatus.OUT_FOR_DELIVERY] },
-    };
     const proof = await db.deliveryProof.create({
       data: {
         saleId:            sale.id,

@@ -5,6 +5,7 @@ import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -104,18 +105,17 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           บัญชีจ่ายเงิน
-          <select
-            name="accountId"
-            defaultValue={filters.accountId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">ทุกบัญชี</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="accountId"
+              defaultValue={filters.accountId ?? ""}
+              options={accounts.map((account) => ({
+                id: account.id,
+                label: `${account.code} - ${account.name}`,
+              }))}
+              placeholder="ทุกบัญชี"
+            />
+          </div>
         </label>
         <label className="mb-1 flex items-center gap-2 self-end text-sm text-gray-600">
           <input

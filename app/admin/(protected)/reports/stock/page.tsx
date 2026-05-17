@@ -5,6 +5,7 @@ import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -77,18 +78,14 @@ export default async function StockReportPage({ searchParams }: PageProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           หมวดหมู่
-          <select
-            name="categoryId"
-            defaultValue={params.categoryId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">ทุกหมวดหมู่</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="categoryId"
+              defaultValue={params.categoryId ?? ""}
+              options={categories.map((category) => ({ id: category.id, label: category.name }))}
+              placeholder="ทุกหมวดหมู่"
+            />
+          </div>
         </label>
         <label className="flex items-center gap-2 self-end pb-1 text-xs font-medium text-gray-600">
           <input

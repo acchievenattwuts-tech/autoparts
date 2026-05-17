@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -129,18 +130,14 @@ export default async function APReportPage({ searchParams }: PageProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           ซัพพลายเออร์
-          <select
-            name="supplierId"
-            defaultValue={params.supplierId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="">ทั้งหมด</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="supplierId"
+              defaultValue={params.supplierId ?? ""}
+              options={suppliers.map((s) => ({ id: s.id, label: s.name }))}
+              placeholder="ทั้งหมด"
+            />
+          </div>
         </label>
         <AdminSearchSubmitButton className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
           แสดงรายการ

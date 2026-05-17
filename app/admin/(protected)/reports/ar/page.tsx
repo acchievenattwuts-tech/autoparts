@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import {
@@ -109,18 +110,14 @@ export default async function ARReportPage({ searchParams }: PageProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           ลูกค้า
-          <select
-            name="customerId"
-            defaultValue={params.customerId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring dark:border-white/10 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="">ทุกลูกค้า</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="customerId"
+              defaultValue={params.customerId ?? ""}
+              options={customers.map((c) => ({ id: c.id, label: c.name }))}
+              placeholder="ทุกลูกค้า"
+            />
+          </div>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           มุมมอง

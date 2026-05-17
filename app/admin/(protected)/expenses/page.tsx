@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Receipt, Plus, Eye, Pencil } from "lucide-react";
+import { Plus, Eye, Pencil } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import CancelExpenseButton from "./CancelExpenseButton";

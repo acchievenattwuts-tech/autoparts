@@ -32,6 +32,7 @@ export default function PrintDocumentVerifyMark({
         <div
           className="print-document-verify-qr mx-auto mb-1 h-[84px] w-[84px]"
           aria-hidden="true"
+          // Safe: verify.qrSvg มาจาก lib/verify-token ฝั่ง server ที่สร้าง SVG เอง — ไม่ใช่ user input
           dangerouslySetInnerHTML={{ __html: verify.qrSvg }}
         />
         <p className="font-semibold text-gray-900">ตรวจสอบเอกสาร</p>
