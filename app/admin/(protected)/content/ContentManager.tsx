@@ -58,10 +58,10 @@ type TopicSuggestion = {
 const goalOptions = ["ขาย", "ให้ความรู้", "โปรโมชัน", "ปิดการขาย"] as const;
 
 const inputCls =
-  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400";
 
 const textareaCls =
-  "min-h-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "min-h-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400";
 
 export default function ContentManager({
   posts,
@@ -85,8 +85,8 @@ export default function ContentManager({
   const router = useRouter();
   const statusTone = (ready: boolean) =>
     ready
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-      : "border-amber-200 bg-amber-50 text-amber-900";
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+      : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300";
 
   const updateField = (name: keyof typeof formValues, value: string) => {
     setFormValues((current) => ({ ...current, [name]: value }));
@@ -113,10 +113,10 @@ export default function ContentManager({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex flex-col gap-1">
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">สถานะพร้อมใช้งานของระบบโพส</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">สถานะพร้อมใช้งานของระบบโพส</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             ใช้เช็กความพร้อมก่อน generate, approve, schedule และ auto post บน production
           </p>
         </div>
@@ -157,16 +157,16 @@ export default function ContentManager({
           !runtimeStatus.facebookReady ||
           !runtimeStatus.appBaseUrlReady ||
           runtimeStatus.approverCount === 0) && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
             ยังมี config บางส่วนไม่ครบ จึงอาจ generate draft ได้แต่ยัง schedule หรือโพสจริงไม่ได้ครบทุก flow
           </div>
         )}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex flex-col gap-1">
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">สร้างหัวข้อและ draft ด้วย AI</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">สร้างหัวข้อและ draft ด้วย AI</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             รองรับ 2 แบบ: ให้ AI เสนอหัวข้อก่อนแล้วค่อยสร้าง draft 3 แบบ หรือให้ AI คิดหัวข้อและสร้าง draft 3 แบบทันที โดยไม่ใช้ web search
           </p>
         </div>
@@ -186,7 +186,7 @@ export default function ContentManager({
             });
           }}
         >
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             ประเภทธุรกิจ/สินค้า
             <input
               name="businessType"
@@ -196,7 +196,7 @@ export default function ContentManager({
               placeholder="เช่น อะไหล่แอร์รถยนต์"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             กลุ่มลูกค้า
             <input
               name="audience"
@@ -206,7 +206,7 @@ export default function ContentManager({
               placeholder="เช่น เจ้าของรถเก๋งและอู่ซ่อมรถ"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             เป้าหมายโพส
             <select
               name="goal"
@@ -221,7 +221,7 @@ export default function ContentManager({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             ช่วงเวลา/เทศกาล
             <input
               name="seasonOrFestival"
@@ -231,7 +231,7 @@ export default function ContentManager({
               placeholder="เช่น หน้าร้อน, สงกรานต์, เปิดเทอม"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300 lg:col-span-2">
             หัวข้อโพส
             <input
               name="topic"
@@ -242,7 +242,7 @@ export default function ContentManager({
               placeholder="เช่น โปรเช็กรถแอร์ไม่เย็นก่อนสงกรานต์"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             Call to action
             <input
               name="callToAction"
@@ -252,7 +252,7 @@ export default function ContentManager({
               placeholder="เช่น ทักแชทพร้อมแจ้งรุ่นรถได้เลย"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300 lg:col-span-2">
             หมายเหตุเพิ่มเติม
             <textarea
               name="notes"
@@ -286,7 +286,7 @@ export default function ContentManager({
             <button
               type="button"
               disabled={pending}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
               onClick={() => {
                 setMessage("");
                 startTransition(async () => {
@@ -313,7 +313,7 @@ export default function ContentManager({
             >
               {pending ? "กำลังประมวลผล..." : "สร้าง draft 3 แบบจากหัวข้อ"}
             </button>
-            {message && <p className="text-sm text-[#1e3a5f]">{message}</p>}
+            {message && <p className="text-sm text-[#1e3a5f] dark:text-blue-400">{message}</p>}
           </div>
         </form>
 
@@ -325,13 +325,13 @@ export default function ContentManager({
                 type="button"
                 className={`rounded-xl border p-4 text-left transition ${
                   formValues.topic === suggestion.topic
-                    ? "border-[#1e3a5f] bg-[#eef4fb]"
-                    : "border-gray-200 bg-gray-50 hover:border-[#1e3a5f]"
+                    ? "border-[#1e3a5f] bg-[#eef4fb] dark:border-blue-500 dark:bg-blue-950/40"
+                    : "border-gray-200 bg-gray-50 hover:border-[#1e3a5f] dark:border-slate-700 dark:bg-slate-800 dark:hover:border-blue-500"
                 }`}
                 onClick={() => updateField("topic", suggestion.topic)}
               >
-                <p className="font-kanit text-base font-semibold text-gray-900">{suggestion.topic}</p>
-                <p className="mt-1 text-sm text-gray-600">{suggestion.angle}</p>
+                <p className="font-kanit text-base font-semibold text-gray-900 dark:text-white">{suggestion.topic}</p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">{suggestion.angle}</p>
                 <p className="mt-2 text-xs text-[#1e3a5f]">
                   {formValues.topic === suggestion.topic ? "เลือกหัวข้อนี้แล้ว" : "กดเพื่อใช้หัวข้อนี้"}
                 </p>
@@ -341,15 +341,15 @@ export default function ContentManager({
         )}
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-kanit text-lg font-semibold text-gray-900">รายการโพสล่าสุด</h2>
-            <p className="text-sm text-gray-500">แสดง draft ล่าสุดและสถานะ approval/schedule/post</p>
+            <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">รายการโพสล่าสุด</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400">แสดง draft ล่าสุดและสถานะ approval/schedule/post</p>
           </div>
           <Link
             href="/admin/content/approval-queue"
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             เปิดคิวอนุมัติ
           </Link>
@@ -357,7 +357,7 @@ export default function ContentManager({
 
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50 text-left text-gray-500">
+            <thead className="bg-gray-50 text-left text-gray-500 dark:bg-slate-800 dark:text-slate-400">
               <tr>
                 <th className="px-3 py-2 font-medium">หัวข้อ / พรีวิว</th>
                 <th className="px-3 py-2 font-medium">สถานะ</th>
@@ -372,35 +372,35 @@ export default function ContentManager({
                 const latestApproval = post.approvals[0];
                 const latestJob = post.scheduledJobs[0];
                 return (
-                  <tr key={post.id} className="border-t border-gray-100 align-top">
-                    <td className="px-3 py-2 text-gray-700">
+                  <tr key={post.id} className="border-t border-gray-100 align-top dark:border-white/10">
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-200">
                       <div className="space-y-1">
                         <p className="font-medium">
                           {post.title || `ตัวเลือกโพส ${post.variantNo ?? "-"}`}
                           {post.variantNo ? ` · แบบที่ ${post.variantNo}` : ""}
                           {post.isSelectedVariant ? " · เลือกใช้งาน" : ""}
                         </p>
-                        <p className="text-xs text-gray-500">{truncateText(post.caption.replace(/\s+/g, " ").trim(), 140)}</p>
-                        {post.variantGroupId && <p className="text-[11px] text-gray-400">ชุด draft: {post.variantGroupId}</p>}
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{truncateText(post.caption.replace(/\s+/g, " ").trim(), 140)}</p>
+                        {post.variantGroupId && <p className="text-[11px] text-gray-400 dark:text-slate-500">ชุด draft: {post.variantGroupId}</p>}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">
                       <div className="space-y-1">
                         <p>{post.status}</p>
-                        {latestJob ? <p className="text-xs text-gray-400">job: {latestJob.status}</p> : null}
+                        {latestJob ? <p className="text-xs text-gray-400 dark:text-slate-500">job: {latestJob.status}</p> : null}
                       </div>
                     </td>
-                    <td className="px-3 py-2 text-gray-600">{post.createdByUser.name}</td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">{post.createdByUser.name}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">
                       {latestApproval ? latestApproval.approverUser.name : post.approvedByUser?.name ?? "-"}
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">
                       {post.scheduledAt ? formatThaiDateTime(post.scheduledAt) : post.postedAt ? formatThaiDateTime(post.postedAt) : "-"}
                     </td>
                     <td className="px-3 py-2">
                       <Link
                         href={`/admin/content/${post.id}`}
-                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         เปิดรายละเอียด
                       </Link>
@@ -410,7 +410,7 @@ export default function ContentManager({
               })}
               {posts.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                  <td colSpan={6} className="px-3 py-4 text-center text-gray-500 dark:text-slate-400">
                     ยังไม่มี draft คอนเทนต์ Facebook
                   </td>
                 </tr>

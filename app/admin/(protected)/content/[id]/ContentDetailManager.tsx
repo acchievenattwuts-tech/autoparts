@@ -82,9 +82,9 @@ type ContentDetailData = {
 };
 
 const inputCls =
-  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400";
 const textareaCls =
-  "min-h-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "min-h-28 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400";
 
 function toFriendlyMessage(message: string) {
   switch (message) {
@@ -152,66 +152,66 @@ export default function ContentDetailManager({
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="font-kanit text-lg font-semibold text-gray-900">
+            <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">
               {post.title || "รายละเอียดคอนเทนต์ Facebook"}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-slate-400">
               สถานะปัจจุบัน: {post.status} | ผู้สร้าง: {post.createdByUser.name}
             </p>
           </div>
           <Link
             href="/admin/content"
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             กลับไปหน้ารายการ
           </Link>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <p className="text-xs font-medium text-gray-500">สร้างเมื่อ</p>
-            <p className="mt-1 font-kanit text-base text-gray-900">{formatThaiDateTime(post.createdAt)}</p>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+            <p className="text-xs font-medium text-gray-500 dark:text-slate-400">สร้างเมื่อ</p>
+            <p className="mt-1 font-kanit text-base text-gray-900 dark:text-white">{formatThaiDateTime(post.createdAt)}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <p className="text-xs font-medium text-gray-500">เวลาโพสต์</p>
-            <p className="mt-1 font-kanit text-base text-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+            <p className="text-xs font-medium text-gray-500 dark:text-slate-400">เวลาโพสต์</p>
+            <p className="mt-1 font-kanit text-base text-gray-900 dark:text-white">
               {post.scheduledAt ? formatThaiDateTime(post.scheduledAt) : "-"}
             </p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <p className="text-xs font-medium text-gray-500">อนุมัติโดย</p>
-            <p className="mt-1 font-kanit text-base text-gray-900">{post.approvedByUser?.name ?? "-"}</p>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+            <p className="text-xs font-medium text-gray-500 dark:text-slate-400">อนุมัติโดย</p>
+            <p className="mt-1 font-kanit text-base text-gray-900 dark:text-white">{post.approvedByUser?.name ?? "-"}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <p className="text-xs font-medium text-gray-500">โพสต์จริงเมื่อ</p>
-            <p className="mt-1 font-kanit text-base text-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+            <p className="text-xs font-medium text-gray-500 dark:text-slate-400">โพสต์จริงเมื่อ</p>
+            <p className="mt-1 font-kanit text-base text-gray-900 dark:text-white">
               {post.postedAt ? formatThaiDateTime(post.postedAt) : "-"}
             </p>
           </div>
         </div>
 
         {post.lastError && (
-          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
             <p className="font-medium">ข้อผิดพลาดล่าสุด</p>
             <p className="mt-1 whitespace-pre-wrap break-words">{post.lastError}</p>
           </div>
         )}
 
         {message && (
-          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
             {message}
           </div>
         )}
       </section>
 
       {variants.length > 1 && (
-        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
           <div className="flex flex-col gap-1">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ชุด draft 3 ตัวเลือก</h3>
-            <p className="text-sm text-gray-500">เลือกตัวที่ต้องการใช้ก่อนส่งอนุมัติหรือโพสต์จริง</p>
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">ชุด draft 3 ตัวเลือก</h3>
+            <p className="text-sm text-gray-500 dark:text-slate-400">เลือกตัวที่ต้องการใช้ก่อนส่งอนุมัติหรือโพสต์จริง</p>
           </div>
 
           <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -220,16 +220,16 @@ export default function ContentDetailManager({
                 key={variant.id}
                 className={`rounded-2xl border p-4 ${
                   variant.isSelectedVariant
-                    ? "border-[#1e3a5f] bg-[#1e3a5f]/5"
-                    : "border-gray-200 bg-white"
+                    ? "border-[#1e3a5f] bg-[#1e3a5f]/5 dark:border-blue-500 dark:bg-blue-950/30"
+                    : "border-gray-200 bg-white dark:border-white/10 dark:bg-slate-800"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900 dark:text-white">
                       แบบที่ {variant.variantNo ?? "-"} {variant.title ? `| ${variant.title}` : ""}
                     </p>
-                    <p className="mt-1 text-xs text-gray-500">สถานะ: {variant.status}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">สถานะ: {variant.status}</p>
                   </div>
                   {variant.isSelectedVariant && (
                     <span className="rounded-full bg-[#1e3a5f] px-2.5 py-1 text-xs font-medium text-white">
@@ -237,14 +237,14 @@ export default function ContentDetailManager({
                     </span>
                   )}
                 </div>
-                <p className="mt-3 text-sm text-gray-600">
+                <p className="mt-3 text-sm text-gray-600 dark:text-slate-300">
                   {truncateText(variant.caption.replace(/\s+/g, " ").trim(), 180)}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {variant.id !== post.id && (
                     <Link
                       href={`/admin/content/${variant.id}`}
-                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                      className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
                     >
                       เปิดแบบนี้
                     </Link>
@@ -276,10 +276,10 @@ export default function ContentDetailManager({
         </section>
       )}
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="flex flex-col gap-1">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">แก้ไข draft</h3>
-          <p className="text-sm text-gray-500">ปรับข้อความ รูป และเวลาที่ต้องการก่อนส่งอนุมัติ</p>
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">แก้ไข draft</h3>
+          <p className="text-sm text-gray-500 dark:text-slate-400">ปรับข้อความ รูป และเวลาที่ต้องการก่อนส่งอนุมัติ</p>
         </div>
 
         <form
@@ -293,7 +293,7 @@ export default function ContentDetailManager({
             );
           }}
         >
-          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300 lg:col-span-2">
             หัวข้อโพสต์
             <input
               name="title"
@@ -302,7 +302,7 @@ export default function ContentDetailManager({
               disabled={!canUpdate || savePending}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700 lg:col-span-2">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300 lg:col-span-2">
             แคปชัน
             <textarea
               name="caption"
@@ -311,7 +311,7 @@ export default function ContentDetailManager({
               disabled={!canUpdate || savePending}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             รูปภาพ URL
             <input
               name="imageUrl"
@@ -320,7 +320,7 @@ export default function ContentDetailManager({
               disabled={!canUpdate || savePending}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             ลิงก์แนบ
             <input
               name="linkUrl"
@@ -329,7 +329,7 @@ export default function ContentDetailManager({
               disabled={!canUpdate || savePending}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
             เวลาโพสต์ที่ต้องการ
             <input
               type="datetime-local"
@@ -351,11 +351,11 @@ export default function ContentDetailManager({
         </form>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
         <div className="grid gap-5 xl:grid-cols-2">
           <div>
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ส่งอนุมัติ</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">ส่งอนุมัติ</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               ระบบจะ reuse LINE OA เดิม แล้วส่งข้อความไปยังผู้อนุมัติที่ผูก LINE ไว้แล้ว
             </p>
 
@@ -373,7 +373,7 @@ export default function ContentDetailManager({
                 );
               }}
             >
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                 ผู้อนุมัติ
                 <select
                   name="approverUserId"
@@ -399,8 +399,8 @@ export default function ContentDetailManager({
           </div>
 
           <div>
-            <h3 className="font-kanit text-lg font-semibold text-gray-900">ตัดสินใจอนุมัติ</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">ตัดสินใจอนุมัติ</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               ใช้สำหรับผู้อนุมัติ schedule โพสต์ หรือโพสต์ทันทีเมื่อพร้อม
             </p>
 
@@ -418,7 +418,7 @@ export default function ContentDetailManager({
                 );
               }}
             >
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <label className="flex flex-col gap-1 text-sm text-gray-700 dark:text-slate-300">
                 เวลาโพสต์
                 <input
                   type="datetime-local"
@@ -449,7 +449,7 @@ export default function ContentDetailManager({
                       )
                     );
                   }}
-                  className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60"
+                  className="rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
                 >
                   โพสต์ทันที
                 </button>
@@ -468,7 +468,7 @@ export default function ContentDetailManager({
                       )
                     );
                   }}
-                  className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60"
+                  className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
                 >
                   ขอแก้ไข
                 </button>
@@ -482,7 +482,7 @@ export default function ContentDetailManager({
                       runAction(() => cancelContentPostAction(formData), "ยกเลิกโพสต์แล้ว")
                     );
                   }}
-                  className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+                  className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
                 >
                   ยกเลิกโพสต์
                 </button>
@@ -503,7 +503,7 @@ export default function ContentDetailManager({
                         )
                       );
                     }}
-                    className="rounded-lg border border-sky-300 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-60"
+                    className="rounded-lg border border-sky-300 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-60 dark:border-sky-700 dark:text-sky-400 dark:hover:bg-sky-950/40"
                   >
                     Requeue งานที่ fail
                   </button>
@@ -515,55 +515,55 @@ export default function ContentDetailManager({
       </section>
 
       <section className="grid gap-5 xl:grid-cols-2">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">ประวัติการอนุมัติ</h3>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">ประวัติการอนุมัติ</h3>
           <div className="mt-4 space-y-3">
             {post.approvals.map((approval) => (
-              <div key={approval.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <p className="font-medium text-gray-900">
+              <div key={approval.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+                <p className="font-medium text-gray-900 dark:text-white">
                   {approval.status} | ผู้อนุมัติ {approval.approverUser.name}
                 </p>
-                <p className="mt-1 text-sm text-gray-500">
+                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                   ขออนุมัติโดย {approval.requestedByUser.name} เมื่อ {formatThaiDateTime(approval.requestedAt)}
                 </p>
                 {approval.actedAt && (
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                     ตัดสินใจเมื่อ {formatThaiDateTime(approval.actedAt)}
                   </p>
                 )}
                 {approval.decisionNote && (
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{approval.decisionNote}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-slate-300">{approval.decisionNote}</p>
                 )}
               </div>
             ))}
-            {post.approvals.length === 0 && <p className="text-sm text-gray-500">ยังไม่มีประวัติการอนุมัติ</p>}
+            {post.approvals.length === 0 && <p className="text-sm text-gray-500 dark:text-slate-400">ยังไม่มีประวัติการอนุมัติ</p>}
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="font-kanit text-lg font-semibold text-gray-900">งาน schedule และ audit log</h3>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
+          <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-white">งาน schedule และ audit log</h3>
           <div className="mt-4 space-y-3">
             {post.scheduledJobs.map((job) => (
-              <div key={job.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <p className="font-medium text-gray-900">
+              <div key={job.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-800/50">
+                <p className="font-medium text-gray-900 dark:text-white">
                   {job.status} | {formatThaiDateTime(job.runAt)}
                 </p>
-                <p className="mt-1 text-sm text-gray-500">พยายามส่งแล้ว {job.attemptCount} ครั้ง</p>
-                {job.lastError && <p className="mt-2 whitespace-pre-wrap text-sm text-rose-700">{job.lastError}</p>}
+                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">พยายามส่งแล้ว {job.attemptCount} ครั้ง</p>
+                {job.lastError && <p className="mt-2 whitespace-pre-wrap text-sm text-rose-700 dark:text-rose-400">{job.lastError}</p>}
               </div>
             ))}
             {post.auditLogs.map((log) => (
-              <div key={log.id} className="rounded-xl border border-dashed border-gray-200 p-4">
-                <p className="font-medium text-gray-900">{log.action}</p>
-                <p className="mt-1 text-sm text-gray-500">
+              <div key={log.id} className="rounded-xl border border-dashed border-gray-200 p-4 dark:border-white/10">
+                <p className="font-medium text-gray-900 dark:text-white">{log.action}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                   {formatThaiDateTime(log.createdAt)}
                   {log.actorUser ? ` | ${log.actorUser.name}` : ""}
                 </p>
-                {log.detail && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{log.detail}</p>}
+                {log.detail && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-slate-300">{log.detail}</p>}
               </div>
             ))}
             {post.scheduledJobs.length === 0 && post.auditLogs.length === 0 && (
-              <p className="text-sm text-gray-500">ยังไม่มีงาน schedule หรือ audit log</p>
+              <p className="text-sm text-gray-500 dark:text-slate-400">ยังไม่มีงาน schedule หรือ audit log</p>
             )}
           </div>
         </div>

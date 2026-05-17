@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import ContentDetailManager from "@/app/admin/(protected)/content/[id]/ContentDetailManager";
 import { ensureAccessControlSetup } from "@/lib/access-control";
 import { db } from "@/lib/db";
@@ -53,7 +54,13 @@ export default async function ContentDetailPage({ params }: PageProps) {
   ]);
 
   return (
-    <ContentDetailManager
+    <div className="space-y-4">
+      <AdminPageHeader
+        eyebrow="คอนเทนต์ Facebook"
+        title={post.title ?? "รายละเอียดโพสต์"}
+        description={`สถานะ: ${post.status}`}
+      />
+      <ContentDetailManager
       post={{
         id: post.id,
         title: post.title,
@@ -105,6 +112,7 @@ export default async function ContentDetailPage({ params }: PageProps) {
         permissionContext.session.user.role === "ADMIN" ||
         permissionContext.permissions.includes("content.manage")
       }
-    />
+      />
+    </div>
   );
 }

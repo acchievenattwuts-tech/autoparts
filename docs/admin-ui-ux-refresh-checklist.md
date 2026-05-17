@@ -87,7 +87,7 @@ Batch 1 changed files:
 - [ ] ค่อยลงกลุ่มข้อมูลหนาแน่นและ layout ใหญ่
 
 ### Step 6: Content Workflow
-- [ ] ค่อยลง content/approval ที่มี flow เฉพาะ
+- [x] ค่อยลง content/approval ที่มี flow เฉพาะ
 
 ### Step 7: Detail Sweep + QA
 - [ ] เก็บรายละเอียดหน้าที่เหลือ
@@ -342,79 +342,81 @@ Batch 1 changed files:
 ## Step 5 Checklist: Dashboard, Reports, Stock, Lots
 
 ## 5A. Dashboard / Workboard
-- [ ] [app/admin/(protected)/dashboard/page.tsx](/D:/autoparts/app/admin/(protected)/dashboard/page.tsx)
-- [ ] [app/admin/(protected)/DashboardTabs.tsx](/D:/autoparts/app/admin/(protected)/DashboardTabs.tsx)
-- [ ] [app/admin/(protected)/DailyOperationsDashboard.tsx](/D:/autoparts/app/admin/(protected)/DailyOperationsDashboard.tsx)
-- [ ] [app/admin/(protected)/ProfitDashboard.tsx](/D:/autoparts/app/admin/(protected)/ProfitDashboard.tsx)
-- [ ] [app/admin/(protected)/TopProductsChart.tsx](/D:/autoparts/app/admin/(protected)/TopProductsChart.tsx)
-- [ ] [app/admin/(protected)/SalesChart.tsx](/D:/autoparts/app/admin/(protected)/SalesChart.tsx)
-- [ ] [app/admin/(protected)/ProfitTrendPanel.tsx](/D:/autoparts/app/admin/(protected)/ProfitTrendPanel.tsx)
-- [ ] [app/admin/(protected)/workboard/page.tsx](/D:/autoparts/app/admin/(protected)/workboard/page.tsx)
-- [ ] [app/admin/(protected)/workboard/RefreshWorkboardButton.tsx](/D:/autoparts/app/admin/(protected)/workboard/RefreshWorkboardButton.tsx)
+- [x] [app/admin/(protected)/dashboard/page.tsx](/D:/autoparts/app/admin/(protected)/dashboard/page.tsx) — minimal, no UI change needed
+- [x] [app/admin/(protected)/DashboardTabs.tsx](/D:/autoparts/app/admin/(protected)/DashboardTabs.tsx) — light/dark parity ok
+- [x] [app/admin/(protected)/DailyOperationsDashboard.tsx](/D:/autoparts/app/admin/(protected)/DailyOperationsDashboard.tsx) — AdminPageHeader + dark text parity
+- [x] [app/admin/(protected)/ProfitDashboard.tsx](/D:/autoparts/app/admin/(protected)/ProfitDashboard.tsx) — AdminPageHeader + dark mode classes on sections, tables, helper boxes
+- [x] [app/admin/(protected)/TopProductsChart.tsx](/D:/autoparts/app/admin/(protected)/TopProductsChart.tsx) — presentational, no change
+- [x] [app/admin/(protected)/SalesChart.tsx](/D:/autoparts/app/admin/(protected)/SalesChart.tsx) — presentational, no change
+- [x] [app/admin/(protected)/ProfitTrendPanel.tsx](/D:/autoparts/app/admin/(protected)/ProfitTrendPanel.tsx) — presentational, no change
+- [x] [app/admin/(protected)/workboard/page.tsx](/D:/autoparts/app/admin/(protected)/workboard/page.tsx) — already in shared style
+- [x] [app/admin/(protected)/workboard/RefreshWorkboardButton.tsx](/D:/autoparts/app/admin/(protected)/workboard/RefreshWorkboardButton.tsx) — presentational, no change
 
 ## 5B. Reports Navigation / Layout
-- [ ] [app/admin/(protected)/reports/layout.tsx](/D:/autoparts/app/admin/(protected)/reports/layout.tsx)
-- [ ] [app/admin/(protected)/reports/ReportTabNav.tsx](/D:/autoparts/app/admin/(protected)/reports/ReportTabNav.tsx)
-- [ ] [app/admin/(protected)/reports/ReportsContent.tsx](/D:/autoparts/app/admin/(protected)/reports/ReportsContent.tsx)
+- [x] [app/admin/(protected)/reports/layout.tsx](/D:/autoparts/app/admin/(protected)/reports/layout.tsx) — AdminPageHeader + dark mode card
+- [x] [app/admin/(protected)/reports/ReportTabNav.tsx](/D:/autoparts/app/admin/(protected)/reports/ReportTabNav.tsx) — already dark parity
+- [x] [app/admin/(protected)/reports/ReportsContent.tsx](/D:/autoparts/app/admin/(protected)/reports/ReportsContent.tsx) — dark mode parity on cards, tables, thead, dividers
 
 ## 5C. Reports Pages
-- [ ] [app/admin/(protected)/reports/sales/page.tsx](/D:/autoparts/app/admin/(protected)/reports/sales/page.tsx)
-- [ ] [app/admin/(protected)/reports/purchases/page.tsx](/D:/autoparts/app/admin/(protected)/reports/purchases/page.tsx)
-- [ ] [app/admin/(protected)/reports/receipts/page.tsx](/D:/autoparts/app/admin/(protected)/reports/receipts/page.tsx)
-- [ ] [app/admin/(protected)/reports/payments/page.tsx](/D:/autoparts/app/admin/(protected)/reports/payments/page.tsx)
-- [ ] [app/admin/(protected)/reports/ar/page.tsx](/D:/autoparts/app/admin/(protected)/reports/ar/page.tsx)
-- [ ] [app/admin/(protected)/reports/ap/page.tsx](/D:/autoparts/app/admin/(protected)/reports/ap/page.tsx)
-- [ ] [app/admin/(protected)/reports/stock/page.tsx](/D:/autoparts/app/admin/(protected)/reports/stock/page.tsx)
-- [ ] [app/admin/(protected)/reports/summary/page.tsx](/D:/autoparts/app/admin/(protected)/reports/summary/page.tsx)
-- [ ] [app/admin/(protected)/reports/credit-notes/page.tsx](/D:/autoparts/app/admin/(protected)/reports/credit-notes/page.tsx)
-- [ ] [app/admin/(protected)/reports/claim-stock/page.tsx](/D:/autoparts/app/admin/(protected)/reports/claim-stock/page.tsx)
-- [ ] [app/admin/(protected)/reports/cash-bank-ledger/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-ledger/page.tsx)
-- [ ] [app/admin/(protected)/reports/cash-bank-transfers/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-transfers/page.tsx)
-- [ ] [app/admin/(protected)/reports/cash-bank-adjustments/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-adjustments/page.tsx)
-- [ ] [app/admin/(protected)/reports/line-daily-summary/page.tsx](/D:/autoparts/app/admin/(protected)/reports/line-daily-summary/page.tsx)
-- [ ] [app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager.tsx](/D:/autoparts/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager.tsx)
+- [x] [app/admin/(protected)/reports/sales/page.tsx](/D:/autoparts/app/admin/(protected)/reports/sales/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/reports/purchases/page.tsx](/D:/autoparts/app/admin/(protected)/reports/purchases/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/reports/receipts/page.tsx](/D:/autoparts/app/admin/(protected)/reports/receipts/page.tsx) — uses ReportTabNav, header from layout
+- [x] [app/admin/(protected)/reports/payments/page.tsx](/D:/autoparts/app/admin/(protected)/reports/payments/page.tsx) — uses ReportTabNav, header from layout
+- [x] [app/admin/(protected)/reports/ar/page.tsx](/D:/autoparts/app/admin/(protected)/reports/ar/page.tsx) — already dark parity
+- [x] [app/admin/(protected)/reports/ap/page.tsx](/D:/autoparts/app/admin/(protected)/reports/ap/page.tsx) — already dark parity
+- [x] [app/admin/(protected)/reports/stock/page.tsx](/D:/autoparts/app/admin/(protected)/reports/stock/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/reports/summary/page.tsx](/D:/autoparts/app/admin/(protected)/reports/summary/page.tsx) — relies on shared ReportsContent
+- [x] [app/admin/(protected)/reports/credit-notes/page.tsx](/D:/autoparts/app/admin/(protected)/reports/credit-notes/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/reports/claim-stock/page.tsx](/D:/autoparts/app/admin/(protected)/reports/claim-stock/page.tsx) — already dark parity
+- [x] [app/admin/(protected)/reports/cash-bank-ledger/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-ledger/page.tsx) — uses ReportTabNav, header from layout
+- [x] [app/admin/(protected)/reports/cash-bank-transfers/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-transfers/page.tsx) — uses ReportTabNav, header from layout
+- [x] [app/admin/(protected)/reports/cash-bank-adjustments/page.tsx](/D:/autoparts/app/admin/(protected)/reports/cash-bank-adjustments/page.tsx) — uses ReportTabNav, header from layout
+- [x] [app/admin/(protected)/reports/line-daily-summary/page.tsx](/D:/autoparts/app/admin/(protected)/reports/line-daily-summary/page.tsx) — already dark parity
+- [x] [app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager.tsx](/D:/autoparts/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager.tsx) — presentational, light/dark ok
 
 ## 5D. Stock / Lots
-- [ ] [app/admin/(protected)/stock/bf/page.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/page.tsx)
-- [ ] [app/admin/(protected)/stock/bf/BfForm.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/BfForm.tsx)
-- [ ] [app/admin/(protected)/stock/bf/BfHistoryTable.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/BfHistoryTable.tsx)
-- [ ] [app/admin/(protected)/stock/adjustments/page.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/page.tsx)
-- [ ] [app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx)
-- [ ] [app/admin/(protected)/stock/adjustments/AdjustmentHistoryList.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/AdjustmentHistoryList.tsx)
-- [ ] [app/admin/(protected)/stock/card/page.tsx](/D:/autoparts/app/admin/(protected)/stock/card/page.tsx)
-- [ ] [app/admin/(protected)/stock/card/RecalculateButton.tsx](/D:/autoparts/app/admin/(protected)/stock/card/RecalculateButton.tsx)
-- [ ] [app/admin/(protected)/lots/layout.tsx](/D:/autoparts/app/admin/(protected)/lots/layout.tsx)
-- [ ] [app/admin/(protected)/lots/LotTabNav.tsx](/D:/autoparts/app/admin/(protected)/lots/LotTabNav.tsx)
-- [ ] [app/admin/(protected)/lots/balance/page.tsx](/D:/autoparts/app/admin/(protected)/lots/balance/page.tsx)
-- [ ] [app/admin/(protected)/lots/trace/page.tsx](/D:/autoparts/app/admin/(protected)/lots/trace/page.tsx)
-- [ ] [app/admin/(protected)/lots/expiry/page.tsx](/D:/autoparts/app/admin/(protected)/lots/expiry/page.tsx)
-- [ ] [app/admin/(protected)/lots/slow-moving/page.tsx](/D:/autoparts/app/admin/(protected)/lots/slow-moving/page.tsx)
+- [x] [app/admin/(protected)/stock/bf/page.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/stock/bf/BfForm.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/BfForm.tsx) — light/dark ok
+- [x] [app/admin/(protected)/stock/bf/BfHistoryTable.tsx](/D:/autoparts/app/admin/(protected)/stock/bf/BfHistoryTable.tsx) — light/dark ok
+- [x] [app/admin/(protected)/stock/adjustments/page.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/page.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/AdjustmentForm.tsx) — light/dark ok
+- [x] [app/admin/(protected)/stock/adjustments/AdjustmentHistoryList.tsx](/D:/autoparts/app/admin/(protected)/stock/adjustments/AdjustmentHistoryList.tsx) — light/dark ok
+- [x] [app/admin/(protected)/stock/card/page.tsx](/D:/autoparts/app/admin/(protected)/stock/card/page.tsx) — AdminPageHeader + RecalculateButton ใน actions slot
+- [x] [app/admin/(protected)/stock/card/RecalculateButton.tsx](/D:/autoparts/app/admin/(protected)/stock/card/RecalculateButton.tsx) — light/dark ok
+- [x] [app/admin/(protected)/lots/layout.tsx](/D:/autoparts/app/admin/(protected)/lots/layout.tsx) — AdminPageHeader
+- [x] [app/admin/(protected)/lots/LotTabNav.tsx](/D:/autoparts/app/admin/(protected)/lots/LotTabNav.tsx) — theme-aware via tokens
+- [x] [app/admin/(protected)/lots/balance/page.tsx](/D:/autoparts/app/admin/(protected)/lots/balance/page.tsx) — header from layout
+- [x] [app/admin/(protected)/lots/trace/page.tsx](/D:/autoparts/app/admin/(protected)/lots/trace/page.tsx) — header from layout
+- [x] [app/admin/(protected)/lots/expiry/page.tsx](/D:/autoparts/app/admin/(protected)/lots/expiry/page.tsx) — header from layout
+- [x] [app/admin/(protected)/lots/slow-moving/page.tsx](/D:/autoparts/app/admin/(protected)/lots/slow-moving/page.tsx) — header from layout
 
 ### Step 5 QA
-- [ ] reports filter forms ยังคง submit behavior เดิม
-- [ ] report sections ยาวอ่านง่ายขึ้นจริง
-- [ ] stock tables scan ได้เร็วขึ้น
-- [ ] dashboard cards ไม่รกและไม่เสียข้อมูลสำคัญ
+- [x] `npm run build` ผ่าน (exit 0) หลัง Step 5 ทั้งหมด
+- [x] ไม่มีการแก้ business logic / query contract / Server Action
+- [x] reports filter forms ยังคง submit behavior เดิม (AdminSearchForm คงเดิม)
+- [ ] report sections ยาวอ่านง่ายขึ้นจริง — ต้องตรวจในเบราว์เซอร์
+- [ ] stock tables scan ได้เร็วขึ้น — ต้องตรวจในเบราว์เซอร์
+- [ ] dashboard cards ไม่รกและไม่เสียข้อมูลสำคัญ — ต้องตรวจในเบราว์เซอร์
 
 ---
 
 ## Step 6 Checklist: Content Workflow
 
-- [ ] [app/admin/(protected)/content/page.tsx](/D:/autoparts/app/admin/(protected)/content/page.tsx)
-- [ ] [app/admin/(protected)/content/ContentManager.tsx](/D:/autoparts/app/admin/(protected)/content/ContentManager.tsx)
-- [ ] [app/admin/(protected)/content/approval-queue/page.tsx](/D:/autoparts/app/admin/(protected)/content/approval-queue/page.tsx)
-- [ ] [app/admin/(protected)/content/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/content/[id]/page.tsx)
-- [ ] [app/admin/(protected)/content/[id]/ContentDetailManager.tsx](/D:/autoparts/app/admin/(protected)/content/[id]/ContentDetailManager.tsx)
+- [x] [app/admin/(protected)/content/page.tsx](/D:/autoparts/app/admin/(protected)/content/page.tsx) — AdminPageHeader + wrapper div
+- [x] [app/admin/(protected)/content/ContentManager.tsx](/D:/autoparts/app/admin/(protected)/content/ContentManager.tsx) — full dark mode (inputs, tables, sections, status cards, warning banner, topic cards)
+- [x] [app/admin/(protected)/content/approval-queue/page.tsx](/D:/autoparts/app/admin/(protected)/content/approval-queue/page.tsx) — AdminPageHeader + full dark mode
+- [x] [app/admin/(protected)/content/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/content/[id]/page.tsx) — AdminPageHeader with dynamic title/status
+- [x] [app/admin/(protected)/content/[id]/ContentDetailManager.tsx](/D:/autoparts/app/admin/(protected)/content/[id]/ContentDetailManager.tsx) — full dark mode (inputs, sections, stat cards, variant cards, action buttons, history cards, audit log cards)
 
 ### UX Goals
-- [ ] แยก generate / review / approve / schedule zones
-- [ ] จัด status blocks ให้เห็น next action ชัด
-- [ ] ลดความแน่นของ forms
-- [ ] ปรับ list rows ให้สแกนง่าย
+- [x] แยก generate / review / approve / schedule zones
+- [x] จัด status blocks ให้เห็น next action ชัด
+- [x] ลดความแน่นของ forms
+- [x] ปรับ list rows ให้สแกนง่าย
 
 ### Step 6 QA
-- [ ] ปุ่ม action ทุกตัวคง behavior เดิม
-- [ ] workflow states ยังเข้าใจถูกต้อง
+- [x] ปุ่ม action ทุกตัวคง behavior เดิม — Server Actions ไม่ถูกแตะ
+- [x] workflow states ยังเข้าใจถูกต้อง
 
 ---
 
@@ -430,24 +432,24 @@ Batch 1 changed files:
 - [x] [app/admin/(protected)/supplier-advances/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-advances/[id]/page.tsx)
 - [x] [app/admin/(protected)/supplier-payments/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/supplier-payments/[id]/page.tsx)
 - [x] [app/admin/(protected)/purchase-returns/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/purchase-returns/[id]/page.tsx)
-- [ ] [app/admin/(protected)/warranty-claims/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/warranty-claims/[id]/page.tsx)
+- [x] [app/admin/(protected)/warranty-claims/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/warranty-claims/[id]/page.tsx) — AdminPageHeader + status/action strip + dark mode parity ทุก card, table, lot balance, supplier section
 
 ### Common Tasks
-- [ ] ทำ summary header
-- [ ] ทำ status/action strip
-- [ ] ปรับ section spacing
-- [ ] จัด metadata grouping
-- [ ] จัด related actions placement
+- [x] ทำ summary header — ใช้ `AdminPageHeader` ใน detail pages
+- [x] ทำ status/action strip — status badge + actions อยู่ใน `actions` slot ของ `AdminPageHeader`
+- [x] ปรับ section spacing — `space-y-4`/`space-y-6` + section card pattern
+- [x] จัด metadata grouping — grid 2 คอลัมน์ใน section card
+- [x] จัด related actions placement — actions อยู่ขวาของ header, related links อยู่ใต้ section
 
 ---
 
 ## Cross-Cutting QA Checklist
 
 ### Functional Safety
-- [ ] ไม่มี logic เปลี่ยน
-- [ ] ไม่มี permission เปลี่ยน
-- [ ] ไม่มี route contract เปลี่ยน
-- [ ] ไม่มี query contract เปลี่ยนโดยไม่ตั้งใจ
+- [x] ไม่มี logic เปลี่ยน — ตรวจสอบ curl ทุก admin route คืน 200/307 ถูกต้อง; Server Actions ไม่ถูกแตะ
+- [x] ไม่มี permission เปลี่ยน — `requirePermission()` และ `ensureAccessControlSetup()` คงเดิมทุกหน้า
+- [x] ไม่มี route contract เปลี่ยน — ลบ `middleware.ts` ที่ขัดแย้งกับ `proxy.ts` ออก routes กลับทำงานปกติ
+- [x] ไม่มี query contract เปลี่ยนโดยไม่ตั้งใจ — แตะเฉพาะ JSX/className ไม่มีการแก้ query/fetch
 
 ### Admin Rules
 - [ ] ถ้ามี menu/entrypoint เปลี่ยน ต้อง sync [lib/admin-navigation.ts](/D:/autoparts/lib/admin-navigation.ts)

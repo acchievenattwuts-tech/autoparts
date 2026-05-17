@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import ContentManager from "@/app/admin/(protected)/content/ContentManager";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { ensureAccessControlSetup } from "@/lib/access-control";
 import { getContentRuntimeStatus } from "@/lib/content-config";
 import { getContentApproverUsers } from "@/lib/content-line";
@@ -18,7 +19,13 @@ export default async function ContentPage() {
   ]);
 
   return (
-    <ContentManager
+    <div className="space-y-4">
+      <AdminPageHeader
+        eyebrow="การตลาด"
+        title="คอนเทนต์ Facebook"
+        description="สร้าง draft ด้วย AI อนุมัติ จัดตารางโพส และติดตามสถานะ"
+      />
+      <ContentManager
       runtimeStatus={{
         ...runtimeStatus,
         approverCount: approvers.length,
@@ -47,6 +54,7 @@ export default async function ContentPage() {
           runAt: job.runAt.toISOString(),
         })),
       }))}
-    />
+      />
+    </div>
   );
 }
