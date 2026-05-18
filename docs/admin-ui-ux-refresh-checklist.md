@@ -394,7 +394,8 @@ Batch 1 changed files:
 - [x] `npm run build` ผ่าน (exit 0) หลัง Step 5 ทั้งหมด
 - [x] ไม่มีการแก้ business logic / query contract / Server Action
 - [x] reports filter forms ยังคง submit behavior เดิม (AdminSearchForm คงเดิม)
-- [ ] report sections ยาวอ่านง่ายขึ้นจริง — ต้องตรวจในเบราว์เซอร์
+- [x] report sections ยาวอ่านง่ายขึ้นจริง — เพิ่ม `ReportTableShell` ให้ sales / purchases / receipts / payments / credit-notes ใช้ mobile horizontal scroll, stable min-width, และ dark-mode table surface
+- [x] report account filters ของ receipts / payments / credit-notes ใช้ `SearchableSelectFilter` ตาม dropdown standard
 - [ ] stock tables scan ได้เร็วขึ้น — ต้องตรวจในเบราว์เซอร์
 - [ ] dashboard cards ไม่รกและไม่เสียข้อมูลสำคัญ — ต้องตรวจในเบราว์เซอร์
 

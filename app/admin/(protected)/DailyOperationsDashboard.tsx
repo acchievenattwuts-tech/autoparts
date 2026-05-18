@@ -35,10 +35,10 @@ const DailyOperationsDashboard = async () => {
     supplierAdvanceOutstandingAgg,
     purchaseReturnCreditOutstandingAgg,
     storefrontVisitorsToday,
-    storefrontVisitorsMonth,
-    storefrontVisitorsTotal,
+    storefrontVisitorsMonthRows,
+    storefrontVisitorsTotalRows,
     recentSales,
-    monthSaleItems,
+    topProductGroups,
   ] = await Promise.all([
     db.sale.aggregate({
       _count: { id: true },
@@ -105,17 +105,15 @@ const DailyOperationsDashboard = async () => {
     db.storefrontVisitDaily.count({
       where: { visitDay: bangkokToday },
     }),
-    db.storefrontVisitDaily
-      .groupBy({
-        by: ["visitorKey"],
-        where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
-      })
-      .then((rows) => rows.length),
-    db.storefrontVisitDaily
-      .groupBy({
-        by: ["visitorKey"],
-      })
-      .then((rows) => rows.length),
+    db.storefrontVisitDaily.findMany({
+      distinct: ["visitorKey"],
+      where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
+      select: { visitorKey: true },
+    }),
+    db.storefrontVisitDaily.findMany({
+      distinct: ["visitorKey"],
+      select: { visitorKey: true },
+    }),
     db.sale.findMany({
       where: {
         status: "ACTIVE",
@@ -124,19 +122,15 @@ const DailyOperationsDashboard = async () => {
       select: { saleDate: true, netAmount: true },
       orderBy: { saleDate: "asc" },
     }),
-    db.saleItem.findMany({
+    db.saleItem.groupBy({
+      by: ["productId"],
       where: {
         sale: {
           status: "ACTIVE",
           saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
         },
       },
-      select: {
-        quantity: true,
-        totalAmount: true,
-        productId: true,
-        product: { select: { name: true } },
-      },
+      _sum: { quantity: true, totalAmount: true },
     }),
   ]);
 
@@ -168,19 +162,23 @@ const DailyOperationsDashboard = async () => {
     amount,
   }));
 
-  const topProductsMap = new Map<string, TopProductsChartDatum>();
-  for (const item of monthSaleItems) {
-    const existing = topProductsMap.get(item.productId) ?? {
-      name: item.product.name,
-      qty: 0,
-      revenue: 0,
-    };
-    existing.qty += Number(item.quantity);
-    existing.revenue += Number(item.totalAmount);
-    topProductsMap.set(item.productId, existing);
-  }
+  const storefrontVisitorsMonth = storefrontVisitorsMonthRows.length;
+  const storefrontVisitorsTotal = storefrontVisitorsTotalRows.length;
+  const productNameMap = new Map(
+    (
+      await db.product.findMany({
+        where: { id: { in: topProductGroups.map((item) => item.productId) } },
+        select: { id: true, name: true },
+      })
+    ).map((product) => [product.id, product.name]),
+  );
 
-  const topProductsData = Array.from(topProductsMap.values())
+  const topProductsData = topProductGroups
+    .map((item): TopProductsChartDatum => ({
+      name: productNameMap.get(item.productId) ?? item.productId,
+      qty: Number(item._sum.quantity ?? 0),
+      revenue: Number(item._sum.totalAmount ?? 0),
+    }))
     .sort((left, right) => right.revenue - left.revenue || right.qty - left.qty || left.name.localeCompare(right.name))
     .slice(0, 10);
 

@@ -5,6 +5,8 @@ import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import ReportTableShell from "@/components/shared/ReportTableShell";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -92,18 +94,17 @@ export default async function CreditNotesReportPage({ searchParams }: PageProps)
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           บัญชีที่กระทบเงิน
-          <select
-            name="accountId"
-            defaultValue={filters.accountId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">ทุกบัญชี</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="accountId"
+              defaultValue={filters.accountId ?? ""}
+              options={accounts.map((account) => ({
+                id: account.id,
+                label: `${account.code} - ${account.name}`,
+              }))}
+              placeholder="ทุกบัญชี"
+            />
+          </div>
         </label>
         <label className="mb-1 flex items-center gap-2 self-end text-sm text-gray-600">
           <input
@@ -153,8 +154,7 @@ export default async function CreditNotesReportPage({ searchParams }: PageProps)
         {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
       </p>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+      <ReportTableShell tableClassName="min-w-[1680px]">
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
@@ -244,8 +244,7 @@ export default async function CreditNotesReportPage({ searchParams }: PageProps)
               </tr>
             </tfoot>
           )}
-        </table>
-      </div>
+      </ReportTableShell>
       </>
       )}
     </div>

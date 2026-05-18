@@ -4,6 +4,8 @@ import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import ReportTableShell from "@/components/shared/ReportTableShell";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import {
@@ -100,18 +102,17 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           Account
-          <select
-            name="accountId"
-            defaultValue={filters.accountId ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">ทุกบัญชี</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.code} - {account.name}
-              </option>
-            ))}
-          </select>
+          <div className="min-w-[14rem]">
+            <SearchableSelectFilter
+              name="accountId"
+              defaultValue={filters.accountId ?? ""}
+              options={accounts.map((account) => ({
+                id: account.id,
+                label: `${account.code} - ${account.name}`,
+              }))}
+              placeholder="ทุกบัญชี"
+            />
+          </div>
         </label>
         <label className="mb-1 flex items-center gap-2 self-end text-sm text-gray-600">
           <input
@@ -150,7 +151,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         </div>
       </AdminSearchForm>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
           <p className="text-xs text-gray-500">รวมจ่ายเงิน (เฉพาะที่ใช้งาน)</p>
           <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
@@ -180,8 +181,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
       </p>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+      <ReportTableShell>
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
@@ -256,8 +256,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
               </tr>
             </tfoot>
           )}
-        </table>
-      </div>
+      </ReportTableShell>
       </>
       )}
     </div>

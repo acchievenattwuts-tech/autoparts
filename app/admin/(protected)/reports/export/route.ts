@@ -136,32 +136,32 @@ export async function GET(request: Request) {
       break;
     }
     case "purchases": {
-      const rows = await queryPurchaseRows(filters);
+      const rows = await queryPurchaseRows(filters, null);
       csv = buildPurchasesCsv(rows);
       fileName = `purchase-report-${dateRange}.csv`;
       break;
     }
     case "credit-notes": {
-      const rows = await queryCreditNoteRows(filters);
+      const rows = await queryCreditNoteRows(filters, null);
       csv = buildCreditNotesCsv(rows);
       fileName = `credit-note-report-${dateRange}.csv`;
       break;
     }
     case "daily-receipt": {
-      const rows = await queryDailyReceiptRows(filters);
+      const rows = await queryDailyReceiptRows(filters, null);
       csv = buildDailyReceiptCsv(rows);
       fileName = `daily-receipt-${dateRange}.csv`;
       break;
     }
     case "daily-payment": {
-      const rows = await queryDailyPaymentRows(filters);
+      const rows = await queryDailyPaymentRows(filters, null);
       csv = buildDailyPaymentCsv(rows);
       fileName = `daily-payment-${dateRange}.csv`;
       break;
     }
     default: {
       // sales
-      const rows = await querySalesRows(filters);
+      const rows = await querySalesRows(filters, null);
       csv = buildSalesCsv(rows);
       fileName = `sale-report-${dateRange}.csv`;
       break;

@@ -524,31 +524,31 @@ export async function GET(request: Request) {
       break;
     }
     case "purchases": {
-      const rows = await queryPurchaseRows(filters);
+      const rows = await queryPurchaseRows(filters, null);
       buffer = await buildPurchasesExcel(rows, "รายงานซื้อ");
       fileName = `purchase-report-${dateRange}.xlsx`;
       break;
     }
     case "credit-notes": {
-      const rows = await queryCreditNoteRows(filters);
+      const rows = await queryCreditNoteRows(filters, null);
       buffer = await buildCreditNotesExcel(rows, "รายงานใบลดหนี้");
       fileName = `credit-note-report-${dateRange}.xlsx`;
       break;
     }
     case "daily-receipt": {
-      const rows = await queryDailyReceiptRows(filters);
+      const rows = await queryDailyReceiptRows(filters, null);
       buffer = await buildDailyReceiptExcel(rows, "รับเงินประจำวัน");
       fileName = `daily-receipt-${dateRange}.xlsx`;
       break;
     }
     case "daily-payment": {
-      const rows = await queryDailyPaymentRows(filters);
+      const rows = await queryDailyPaymentRows(filters, null);
       buffer = await buildDailyPaymentExcel(rows, "จ่ายเงินประจำวัน");
       fileName = `daily-payment-${dateRange}.xlsx`;
       break;
     }
     default: {
-      const rows = await querySalesRows(filters);
+      const rows = await querySalesRows(filters, null);
       buffer = await buildSalesExcel(rows, "รายงานขาย");
       fileName = `sale-report-${dateRange}.xlsx`;
       break;

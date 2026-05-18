@@ -7,6 +7,7 @@ import {
   CreditNoteType,
   PaymentMethod,
   PurchaseType,
+  type Prisma,
 } from "@/lib/generated/prisma";
 import {
   formatDateOnlyForInput,
@@ -220,27 +221,31 @@ export type PaymentRow = {
 
 // Query: Sales Register
 
-export async function querySalesRows(
-  filters: ReportFilters,
-  pageSize: number = 100,
-  pageNo: number = 0,
-): Promise<SaleRow[]> {
+function buildSalesReportWhere(filters: ReportFilters): Prisma.SaleWhereInput {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
 
+  return {
+    saleDate: { gte: filters.from, lte: filters.to },
+    ...statusFilter,
+    ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+    ...(filters.paymentType && filters.paymentType !== "ALL"
+      ? { paymentType: filters.paymentType as SalePaymentType }
+      : {}),
+    ...(filters.saleType && filters.saleType !== "ALL"
+      ? { saleType: filters.saleType as SaleType }
+      : {}),
+  };
+}
+
+export async function querySalesRows(
+  filters: ReportFilters,
+  pageSize: number | null = 100,
+  pageNo: number = 0,
+): Promise<SaleRow[]> {
   const sales = await db.sale.findMany({
-    where: {
-      saleDate: { gte: filters.from, lte: filters.to },
-      ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-      ...(filters.paymentType && filters.paymentType !== "ALL"
-        ? { paymentType: filters.paymentType as SalePaymentType }
-        : {}),
-      ...(filters.saleType && filters.saleType !== "ALL"
-        ? { saleType: filters.saleType as SaleType }
-        : {}),
-    },
+    where: buildSalesReportWhere(filters),
     select: {
         saleNo: true,
         saleDate: true,
@@ -266,12 +271,11 @@ export async function querySalesRows(
         },
       },
     orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-    skip: pageNo * pageSize,
-    take: pageSize,
+    ...(pageSize === null ? {} : { skip: pageNo * pageSize, take: pageSize }),
   });
 
   const rows: SaleRow[] = [];
-  let rowNo = pageNo * pageSize + 1;
+  let rowNo = pageSize === null ? 1 : pageNo * pageSize + 1;
   for (const sale of sales) {
     const saleSubtotal = Number(sale.subtotalAmount);
     const saleVat = Number(sale.vatAmount);
@@ -313,63 +317,46 @@ export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
   vat: number;
   total: number;
 }> {
-  const statusFilter: { status?: DocStatus } = filters.showCancelled
-    ? {}
-    : { status: "ACTIVE" };
+  const where = buildSalesReportWhere(filters);
+  const [documentTotals, itemTotals] = await Promise.all([
+    db.sale.aggregate({
+      where,
+      _sum: { subtotalAmount: true, vatAmount: true },
+    }),
+    db.saleItem.aggregate({
+      where: { sale: where },
+      _sum: { totalAmount: true },
+    }),
+  ]);
 
-  const sales = await db.sale.findMany({
-    where: {
-      saleDate: { gte: filters.from, lte: filters.to },
-      ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-      ...(filters.paymentType && filters.paymentType !== "ALL"
-        ? { paymentType: filters.paymentType as SalePaymentType }
-        : {}),
-      ...(filters.saleType && filters.saleType !== "ALL"
-        ? { saleType: filters.saleType as SaleType }
-        : {}),
-    },
-    select: {
-      subtotalAmount: true,
-      vatAmount: true,
-      items: {
-        select: { totalAmount: true },
-      },
-    },
-  });
-
-  let subtotal = 0;
-  let vat = 0;
-  let total = 0;
-
-  for (const sale of sales) {
-    subtotal += Number(sale.subtotalAmount);
-    vat += Number(sale.vatAmount);
-    for (const item of sale.items) {
-      total += Number(item.totalAmount);
-    }
-  }
-
-  return { subtotal, vat, total };
+  return {
+    subtotal: Number(documentTotals._sum.subtotalAmount ?? 0),
+    vat: Number(documentTotals._sum.vatAmount ?? 0),
+    total: Number(itemTotals._sum.totalAmount ?? 0),
+  };
 }
 
 // Query: Purchase Register
 
-export async function queryPurchaseRows(
-  filters: ReportFilters,
-  pageSize: number = 100,
-  pageNo: number = 0,
-): Promise<PurchaseRow[]> {
+function buildPurchaseReportWhere(filters: ReportFilters): Prisma.PurchaseWhereInput {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
 
+  return {
+    purchaseDate: { gte: filters.from, lte: filters.to },
+    ...statusFilter,
+    ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+  };
+}
+
+export async function queryPurchaseRows(
+  filters: ReportFilters,
+  pageSize: number | null = 100,
+  pageNo: number = 0,
+): Promise<PurchaseRow[]> {
   const purchases = await db.purchase.findMany({
-    where: {
-      purchaseDate: { gte: filters.from, lte: filters.to },
-      ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-    },
+    where: buildPurchaseReportWhere(filters),
     select: {
       purchaseNo: true,
       purchaseDate: true,
@@ -394,12 +381,11 @@ export async function queryPurchaseRows(
         },
       },
     orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-    skip: pageNo * pageSize,
-    take: pageSize,
+    ...(pageSize === null ? {} : { skip: pageNo * pageSize, take: pageSize }),
   });
 
   const rows: PurchaseRow[] = [];
-  let rowNo = pageNo * pageSize + 1;
+  let rowNo = pageSize === null ? 1 : pageNo * pageSize + 1;
   for (const p of purchases) {
     const pSubtotal = Number(p.subtotalAmount);
     const pVat = Number(p.vatAmount);
@@ -444,43 +430,31 @@ export async function queryPurchaseRowsTotals(filters: ReportFilters): Promise<{
   vat: number;
   total: number;
 }> {
-  const statusFilter: { status?: DocStatus } = filters.showCancelled
-    ? {}
-    : { status: "ACTIVE" };
+  const where = buildPurchaseReportWhere(filters);
+  const [documentTotals, itemTotals] = await Promise.all([
+    db.purchase.aggregate({
+      where,
+      _sum: { subtotalAmount: true, vatAmount: true },
+    }),
+    db.purchaseItem.aggregate({
+      where: { purchase: where },
+      _sum: { totalAmount: true },
+    }),
+  ]);
 
-  const purchases = await db.purchase.findMany({
-    where: {
-      purchaseDate: { gte: filters.from, lte: filters.to },
-      ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-    },
-    select: {
-      subtotalAmount: true,
-      vatAmount: true,
-      items: {
-        select: { totalAmount: true },
-      },
-    },
-  });
-
-  let subtotal = 0;
-  let vat = 0;
-  let total = 0;
-
-  for (const p of purchases) {
-    subtotal += Number(p.subtotalAmount);
-    vat += Number(p.vatAmount);
-    for (const item of p.items) {
-      total += Number(item.totalAmount);
-    }
-  }
-
-  return { subtotal, vat, total };
+  return {
+    subtotal: Number(documentTotals._sum.subtotalAmount ?? 0),
+    vat: Number(documentTotals._sum.vatAmount ?? 0),
+    total: Number(itemTotals._sum.totalAmount ?? 0),
+  };
 }
 
 // Query: Credit Note Register
 
-export async function queryCreditNoteRows(filters: ReportFilters): Promise<CreditNoteRow[]> {
+export async function queryCreditNoteRows(
+  filters: ReportFilters,
+  maxDocs: number | null = 2000,
+): Promise<CreditNoteRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -520,7 +494,7 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
         },
       },
     orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
-    take: 2000,
+    ...(maxDocs === null ? {} : { take: maxDocs }),
   });
 
   const rows: CreditNoteRow[] = [];
@@ -563,7 +537,10 @@ export async function queryCreditNoteRows(filters: ReportFilters): Promise<Credi
 
 // Query: Receipt Register
 
-export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptRow[]> {
+export async function queryReceiptRows(
+  filters: ReportFilters,
+  maxRows: number | null = 2000,
+): Promise<ReceiptRow[]> {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -595,7 +572,7 @@ export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptR
       },
     },
     orderBy: [{ receiptDate: "asc" }, { receiptNo: "asc" }],
-    take: 2000,
+    ...(maxRows === null ? {} : { take: maxRows }),
   });
 
   const rows: ReceiptRow[] = [];
@@ -622,7 +599,10 @@ export async function queryReceiptRows(filters: ReportFilters): Promise<ReceiptR
 
 // Query: Payment Register
 
-export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentRow[]> {
+export async function queryPaymentRows(
+  filters: ReportFilters,
+  maxRows: number | null = 2000,
+): Promise<PaymentRow[]> {
   const showCancelled = filters.showCancelled;
   const docType = filters.docType ?? "ALL";
   const rows: PaymentRow[] = [];
@@ -651,7 +631,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
         supplier: { select: { name: true } },
       },
       orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const p of purchases) {
       rows.push({
@@ -697,7 +677,7 @@ export async function queryPaymentRows(filters: ReportFilters): Promise<PaymentR
         cashBankAccount: { select: { name: true } },
       },
       orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const e of expenses) {
       const codeName = e.items[0]?.expenseCode?.name ?? "";
@@ -847,6 +827,7 @@ export type DailyReceiptRow = {
 
 export async function queryDailyReceiptRows(
   filters: ReportFilters,
+  maxRows: number | null = 2000,
 ): Promise<DailyReceiptRow[]> {
   const showCancelled = filters.showCancelled;
   const docType = filters.docType ?? "ALL";
@@ -873,7 +854,7 @@ export async function queryDailyReceiptRows(
         customer: { select: { code: true } },
       },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const s of sales) {
       rows.push({
@@ -912,7 +893,7 @@ export async function queryDailyReceiptRows(
         customer: { select: { code: true } },
       },
       orderBy: [{ receiptDate: "asc" }, { receiptNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const r of receipts) {
       rows.push({
@@ -959,6 +940,7 @@ export type DailyPaymentRow = {
 
 export async function queryDailyPaymentRows(
   filters: ReportFilters,
+  maxRows: number | null = 2000,
 ): Promise<DailyPaymentRow[]> {
   const showCancelled = filters.showCancelled;
   const docType = filters.docType ?? "ALL";
@@ -984,7 +966,7 @@ export async function queryDailyPaymentRows(
         supplier: { select: { code: true, name: true } },
       },
       orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const p of purchases) {
       rows.push({
@@ -1024,7 +1006,7 @@ export async function queryDailyPaymentRows(
         },
       },
       orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const e of expenses) {
       const codeName = e.items[0]?.expenseCode?.name ?? "";
@@ -1065,7 +1047,7 @@ export async function queryDailyPaymentRows(
         customer: { select: { code: true } },
       },
       orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
-      take: 2000,
+      ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const cn of cns) {
       const pmLabel =

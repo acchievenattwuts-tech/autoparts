@@ -5,6 +5,7 @@ import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import ReportTableShell from "@/components/shared/ReportTableShell";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
@@ -240,8 +241,7 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+      <ReportTableShell tableClassName="min-w-[1680px]">
           <thead className="bg-[#1e3a5f] text-white">
             <tr>
               <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
@@ -329,8 +329,7 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
               </tr>
             </tfoot>
           )}
-        </table>
-      </div>
+      </ReportTableShell>
       </>
       )}
     </div>

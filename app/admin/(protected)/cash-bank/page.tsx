@@ -13,12 +13,24 @@ import {
   getThailandMonthStartDateKey,
   isDateOnlyString,
   parseDateOnlyToDate,
-  parseDateOnlyToEndOfDay,
 } from "@/lib/th-date";
 import CashBankAccountManager, { type CashBankAccountRow } from "./CashBankAccountManager";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
+};
+
+type HiddenMovementRow = {
+  id: string;
+  txnDate: Date;
+  direction: "IN" | "OUT";
+  amount: number;
+  balanceAfter: number;
+  sourceType: CashBankSourceType;
+  sourceId: string;
+  referenceNo: string | null;
+  note: string | null;
+  account: { id: string; code: string; name: string };
 };
 
 function parseDate(value: string | undefined, fallback: string): string {
@@ -59,9 +71,6 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     params.sourceType && allowedSourceTypes.has(params.sourceType)
       ? (params.sourceType as CashBankSourceType)
       : "ALL";
-
-  const from = parseDateOnlyToDate(fromInput);
-  const to = parseDateOnlyToEndOfDay(toInput);
 
   const accountsRaw = await db.cashBankAccount.findMany({
     orderBy: [{ type: "asc" }, { code: "asc" }],
@@ -106,62 +115,11 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     currentBalance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
   }));
 
-  const movements = await db.cashBankMovement.findMany({
-    where: {
-      txnDate: { gte: from, lte: to },
-      ...(accountId ? { accountId } : {}),
-      ...(sourceType !== "ALL" ? { sourceType } : {}),
-    },
-    orderBy: [
-      { txnDate: "asc" },
-      { account: { code: "asc" } },
-      { sorder: "asc" },
-      { createdAt: "asc" },
-      { id: "asc" },
-    ],
-    select: {
-      id: true,
-      txnDate: true,
-      direction: true,
-      amount: true,
-      balanceAfter: true,
-      sourceType: true,
-      sourceId: true,
-      referenceNo: true,
-      note: true,
-      account: { select: { id: true, code: true, name: true } },
-    },
-    take: 500,
-  });
-
-  let openingBalance: number | null = null;
-  let endingBalance: number | null = null;
-
-  if (accountId) {
-    const account = accountsRaw.find((item) => item.id === accountId);
-    if (account) {
-      const previousMovement = await db.cashBankMovement.findFirst({
-        where: { accountId, txnDate: { lt: from } },
-        orderBy: [
-          { txnDate: "desc" },
-          { sorder: "desc" },
-          { createdAt: "desc" },
-          { id: "desc" },
-        ],
-        select: { balanceAfter: true },
-      });
-      openingBalance = Number(previousMovement?.balanceAfter ?? account.openingBalance);
-      const lastMovement = movements[movements.length - 1];
-      endingBalance = Number(lastMovement?.balanceAfter ?? openingBalance);
-    }
-  }
-
-  const totalIn = movements
-    .filter((movement) => movement.direction === "IN")
-    .reduce((sum, movement) => sum + Number(movement.amount), 0);
-  const totalOut = movements
-    .filter((movement) => movement.direction === "OUT")
-    .reduce((sum, movement) => sum + Number(movement.amount), 0);
+  const movements: HiddenMovementRow[] = [];
+  const openingBalance: number | null = null;
+  const endingBalance: number | null = null;
+  const totalIn = 0;
+  const totalOut = 0;
 
   const canManage = hasPermissionAccess(role, permissions, "cash_bank.manage");
 

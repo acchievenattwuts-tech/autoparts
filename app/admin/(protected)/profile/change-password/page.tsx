@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 
-import { requirePermission } from "@/lib/require-auth";
+import { getRequiredSession } from "@/lib/require-auth";
 import ChangePasswordForm from "./ChangePasswordForm";
 
 const ChangePasswordPage = async () => {
-  await requirePermission("dashboard.view");
+  await getRequiredSession();
 
   return (
     <div>
