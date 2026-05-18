@@ -3,6 +3,7 @@
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { signOut } from "next-auth/react";
 import {
   ArrowRight,
@@ -107,6 +108,7 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [shortcutLabel, setShortcutLabel] = useState("Ctrl+K");
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -119,6 +121,10 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
   );
 
   // Capture focus + load recents when opening; restore focus on close
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       previouslyFocusedRef.current = (document.activeElement as HTMLElement | null) ?? null;
@@ -270,9 +276,9 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
     searchValue.length > 0 &&
     !hasResults;
 
-  if (!isOpen) return null;
+  if (!isOpen || portalTarget === null) return null;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -462,7 +468,8 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
           </span>
         </div>
       </Command>
-    </div>
+    </div>,
+    portalTarget,
   );
 };
 
