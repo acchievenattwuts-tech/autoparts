@@ -95,6 +95,7 @@ const AdminLineCustomerNotifications = ({
   const [latestLinkedAt, setLatestLinkedAt] = useState<string | null>(null);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [openedLastSeenAt, setOpenedLastSeenAt] = useState<string | null>(null);
+  const [pendingReadAt, setPendingReadAt] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [listError, setListError] = useState(false);
@@ -171,7 +172,7 @@ const AdminLineCustomerNotifications = ({
       setItems(data.items);
       setLatestLinkedAt(data.latestLinkedAt);
       if (open) {
-        markReadTo(data.latestLinkedAt);
+        setPendingReadAt(data.latestLinkedAt);
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -179,7 +180,7 @@ const AdminLineCustomerNotifications = ({
     } finally {
       setLoadingList(false);
     }
-  }, [markReadTo, open]);
+  }, [open]);
 
   useEffect(() => {
     void fetchSummary();
@@ -227,12 +228,23 @@ const AdminLineCustomerNotifications = ({
     };
   }, [fetchList, open]);
 
+  useEffect(() => {
+    if (!open || loadingList || listError || !pendingReadAt) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      markReadTo(pendingReadAt);
+      setPendingReadAt(null);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [listError, loadingList, markReadTo, open, pendingReadAt]);
+
   const handleOpen = () => {
     setOpen((prev) => {
       const nextOpen = !prev;
       if (nextOpen) {
         setOpenedLastSeenAt(readLastSeenAt(userId));
-        markReadTo(latestLinkedAt);
+        setPendingReadAt(null);
       }
       return nextOpen;
     });
