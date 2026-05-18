@@ -548,6 +548,7 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 - [x] เก็บข้อความหน้าจอเป็นภาษาไทย (2026-05-07): แก้ข้อความอังกฤษที่เพิ่มใน flow สต็อกเคลม / ใบลดหนี้ซื้อ / รายงาน ให้เป็นภาษาไทย และเพิ่มคำสั่งค้นหาด่วนสำหรับรายงานสต็อกเคลม
 - [x] Claim/LIFF hardening (2026-05-07): LIFF claims/warranties ย้าย filter/count ไป query DB ก่อน `take`, mutation ปิด/ส่งคืน/ย้อนกลับ/ยกเลิกเคลมเขียน `AuditLog`, และ date-only ของ claim/CN purchase ใช้ helper Thailand date policy
 - [x] Claim stock report hardening (2026-05-07): ยอดสรุปรายงานคำนวณจากข้อมูลทั้งหมดตาม filter ไม่ใช่เฉพาะ 300 แถวที่แสดง, แจ้งเมื่อผลลัพธ์ถูกจำกัดบนตาราง, และเพิ่ม index `ClaimStockMovement(docDate, movementType)` สำหรับรายงาน
+- [x] Admin LINE customer-link notifications (2026-05-18): เพิ่มกระดิ่งแจ้งเตือนใน admin header สำหรับลูกค้าใหม่จาก LIFF และลูกค้าเดิมที่เพิ่งผูก LINE โดยใช้ polling เบา ๆ ทุก 60 วินาทีเฉพาะตอน tab active; summary API query แค่ unread count + latest timestamp, list API โหลด 5 รายการล่าสุดเฉพาะตอนเปิด dropdown, สถานะอ่านแล้วเก็บใน `localStorage` ต่อ admin user, บังคับ `customers.view` ที่ API/UI และแสดงปุ่มแก้ไขเฉพาะ `customers.update`.
 
 ---
 

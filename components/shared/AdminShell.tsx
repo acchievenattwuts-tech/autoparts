@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AlertTriangle, Menu } from "lucide-react";
 
 import AdminSidebar from "@/components/shared/AdminSidebar";
+import AdminLineCustomerNotifications from "@/components/shared/AdminLineCustomerNotifications";
 import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
 import AdminUserMenu from "@/components/shared/AdminUserMenu";
@@ -25,9 +26,14 @@ type AdminShellProps = {
 
 type AdminShellContentProps = Omit<AdminShellProps, "initialTheme">;
 
+const hasPermission = (role: string, permissions: readonly string[], permission: string) =>
+  role === "ADMIN" || permissions.includes(permission);
+
 const AdminShellContent = ({ children, permissions, mustChangePassword, username, userId, role }: AdminShellContentProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme } = useAdminTheme();
+  const canViewCustomerNotifications = hasPermission(role, permissions, "customers.view");
+  const canUpdateCustomer = hasPermission(role, permissions, "customers.update");
 
   return (
     <div
@@ -66,6 +72,9 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
           <div className="flex-1" />
           <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50 px-2 py-1 dark:border-white/10 dark:bg-white/5">
             <QuickSearchLauncher role={role} permissions={permissions} userId={userId} />
+            {canViewCustomerNotifications ? (
+              <AdminLineCustomerNotifications userId={userId} canUpdateCustomer={canUpdateCustomer} />
+            ) : null}
             <AdminThemeToggle />
             <AdminUserMenu username={username} />
           </div>
