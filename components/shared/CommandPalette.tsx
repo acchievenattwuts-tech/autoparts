@@ -100,7 +100,7 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
   const router = useRouter();
   const isOpen = useQuickSearchStore((s) => s.isOpen);
   const close = useQuickSearchStore((s) => s.close);
-  const { toggleTheme } = useAdminTheme();
+  const { isDark, toggleTheme } = useAdminTheme();
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -283,7 +283,7 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
       role="dialog"
       aria-modal="true"
       aria-label="ค้นหาด่วน"
-      className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[10vh] sm:pt-[15vh]"
+      className={`fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[10vh] sm:pt-[15vh] ${isDark ? "dark" : ""}`}
     >
       <button
         type="button"

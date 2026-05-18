@@ -13,9 +13,11 @@ import {
   PackageSearch,
   ShieldAlert,
   Truck,
+  UserRoundCheck,
   Wallet,
 } from "lucide-react";
 
+import { hasPermissionAccess } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
@@ -120,8 +122,13 @@ const EmptyState = () => (
 );
 
 const WorkboardPage = async () => {
-  await requirePermission("workboard.view");
-  const data = await getWorkboardData();
+  const session = await requirePermission("workboard.view");
+  const canViewCustomers = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "customers.view",
+  );
+  const data = await getWorkboardData({ includeIncompleteLineCustomers: canViewCustomers });
 
   return (
     <div className="space-y-4">
@@ -154,6 +161,53 @@ const WorkboardPage = async () => {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
+        {data.incompleteLineCustomers.canView ? (
+          <SectionCard
+            icon={UserRoundCheck}
+            title="ลูกค้าจาก LINE ข้อมูลยังไม่ครบ"
+            href="/admin/customers?source=LINE_LIFF"
+            count={data.incompleteLineCustomers.count}
+            tone="emerald"
+            summary="ลูกค้าที่สมัครผ่าน LINE แล้ว แต่ยังขาดที่อยู่จัดส่งหรือเลขผู้เสียภาษี"
+          >
+            {data.incompleteLineCustomers.items.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="space-y-3">
+                {data.incompleteLineCustomers.items.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/admin/customers/${item.id}`}
+                    className="block rounded-2xl border border-gray-100 px-4 py-3 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60 dark:border-white/10 dark:hover:border-emerald-400/20 dark:hover:bg-emerald-500/5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{item.name}</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                          {[item.code ?? null, item.phone ?? null].filter(Boolean).join(" · ") || "ไม่มีรหัส/เบอร์โทร"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {item.missingShippingAddress ? (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                              ขาดที่อยู่จัดส่ง
+                            </span>
+                          ) : null}
+                          {item.missingTaxId ? (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                              ขาดเลขผู้เสียภาษี
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <ArrowRight size={16} className="mt-1 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        ) : null}
+
         <SectionCard
           icon={Truck}
           title="ใบขายรอจัดส่งวันนี้"

@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, CheckCheck, Eye, LoaderCircle, Pencil, RefreshCw, UserRoundCheck } from "lucide-react";
 
+import { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import { formatDateTimeThai } from "@/lib/th-date";
 import { cn } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 60_000;
 const STORAGE_PREFIX = "adminLineCustomerNotifLastSeenAt";
+
+type LineCustomerLinkKind =
+  | "LINE_NEW_CUSTOMER"
+  | "OLD_CUSTOMER_LINKED"
+  | "OLD_CUSTOMER_RELINKED";
 
 type SummaryResponse = {
   unreadCount: number;
@@ -21,7 +28,9 @@ type NotificationItem = {
   name: string;
   phone: string | null;
   source: string;
+  linkKind: LineCustomerLinkKind;
   hasLineLink: boolean;
+  isProfileIncomplete: boolean;
   lineLinkedAt: string | null;
 };
 
@@ -61,13 +70,21 @@ const formatLinkedAt = (value: string | null) => {
   });
 };
 
-const getCustomerKindLabel = (item: NotificationItem) =>
-  item.source === "LINE_LIFF" ? "ลูกค้าใหม่จาก LINE" : "ลูกค้าเก่าผูก LINE";
+const getCustomerKindLabel = (item: NotificationItem) => {
+  if (item.linkKind === "OLD_CUSTOMER_RELINKED") return "ลูกค้าเก่าผูก LINE ใหม่";
+  if (item.linkKind === "OLD_CUSTOMER_LINKED") return "ลูกค้าเก่าผูก LINE";
+  return "ลูกค้าใหม่จาก LINE";
+};
 
-const getCustomerKindClass = (item: NotificationItem) =>
-  item.source === "LINE_LIFF"
-    ? "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-400/30 dark:bg-teal-400/10 dark:text-teal-200"
-    : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200";
+const getCustomerKindClass = (item: NotificationItem) => {
+  if (item.linkKind === "OLD_CUSTOMER_RELINKED") {
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200";
+  }
+  if (item.linkKind === "OLD_CUSTOMER_LINKED") {
+    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200";
+  }
+  return "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-400/30 dark:bg-teal-400/10 dark:text-teal-200";
+};
 
 const AdminLineCustomerNotifications = ({
   userId,
@@ -77,12 +94,15 @@ const AdminLineCustomerNotifications = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestLinkedAt, setLatestLinkedAt] = useState<string | null>(null);
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [openedLastSeenAt, setOpenedLastSeenAt] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [listError, setListError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
   const listAbortRef = useRef<AbortController | null>(null);
+  const { isDark } = useAdminTheme();
 
   const markReadTo = useCallback(
     (value: string | null) => {
@@ -150,13 +170,16 @@ const AdminLineCustomerNotifications = ({
       const data = (await response.json()) as ListResponse;
       setItems(data.items);
       setLatestLinkedAt(data.latestLinkedAt);
+      if (open) {
+        markReadTo(data.latestLinkedAt);
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setListError(true);
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [markReadTo, open]);
 
   useEffect(() => {
     void fetchSummary();
@@ -187,7 +210,9 @@ const AdminLineCustomerNotifications = ({
 
     const handleClick = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+        if (!menuRef.current?.contains(event.target as Node)) {
+          setOpen(false);
+        }
       }
     };
     const handleKey = (event: KeyboardEvent) => {
@@ -202,11 +227,24 @@ const AdminLineCustomerNotifications = ({
     };
   }, [fetchList, open]);
 
-  const handleOpen = () => setOpen((prev) => !prev);
+  const handleOpen = () => {
+    setOpen((prev) => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        setOpenedLastSeenAt(readLastSeenAt(userId));
+        markReadTo(latestLinkedAt);
+      }
+      return nextOpen;
+    });
+  };
   const handleMarkAllRead = () => markReadTo(latestLinkedAt);
   const handleNavigate = () => {
     markReadTo(latestLinkedAt);
     setOpen(false);
+  };
+  const isUnreadItem = (item: NotificationItem) => {
+    if (!item.lineLinkedAt || !openedLastSeenAt) return false;
+    return new Date(item.lineLinkedAt).getTime() > new Date(openedLastSeenAt).getTime();
   };
 
   return (
@@ -235,11 +273,13 @@ const AdminLineCustomerNotifications = ({
         ) : null}
       </button>
 
-      {open && (
+      {open && createPortal(
+        <div className={isDark ? "dark" : ""}>
         <div
+          ref={menuRef}
           role="menu"
           className={cn(
-            "absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border bg-white shadow-xl",
+            "fixed right-3 top-16 z-[120] w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border bg-white shadow-xl sm:right-4",
             "border-slate-200 dark:border-white/10 dark:bg-slate-900",
           )}
         >
@@ -287,56 +327,70 @@ const AdminLineCustomerNotifications = ({
                 ยังไม่มีลูกค้าที่ผูก LINE
               </div>
             ) : (
-              items.map((item) => (
+              items.map((item) => {
+                const isUnread = isUnreadItem(item);
+                return (
                 <div
                   key={item.id}
-                  className="border-b border-slate-100 last:border-b-0 dark:border-white/10"
+                  className={cn(
+                    "border-b border-slate-100 last:border-b-0 dark:border-white/10",
+                    isUnread && "bg-emerald-50/80 dark:bg-emerald-400/10",
+                  )}
                 >
-                  <Link
-                    href={`/admin/customers/${item.id}`}
-                    onClick={handleNavigate}
-                    role="menuitem"
-                    className="block px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {item.name}
-                          </p>
-                          <span
-                            className={cn(
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-                              getCustomerKindClass(item),
-                            )}
-                          >
-                            {getCustomerKindLabel(item)}
+                  <div className="flex items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-white/5">
+                    <Link
+                      href={`/admin/customers/${item.id}`}
+                      onClick={handleNavigate}
+                      role="menuitem"
+                      className="min-w-0 flex-1"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {item.name}
+                        </p>
+                        {isUnread ? (
+                          <span className="inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white dark:bg-emerald-400 dark:text-emerald-950">
+                            ใหม่
                           </span>
-                        </div>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          {[item.code ?? null, item.phone ?? null].filter(Boolean).join(" · ") || "ไม่มีรหัส/เบอร์โทร"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          ผูกเมื่อ {formatLinkedAt(item.lineLinkedAt)}
-                        </p>
+                        ) : null}
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                            getCustomerKindClass(item),
+                          )}
+                        >
+                          {getCustomerKindLabel(item)}
+                        </span>
+                        {item.isProfileIncomplete ? (
+                          <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                            ข้อมูลยังไม่ครบ
+                          </span>
+                        ) : null}
                       </div>
-                      <Eye size={16} className="mt-1 shrink-0 text-slate-400 dark:text-slate-500" />
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {[item.code ?? null, item.phone ?? null].filter(Boolean).join(" · ") || "ไม่มีรหัส/เบอร์โทร"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        ผูกเมื่อ {formatLinkedAt(item.lineLinkedAt)}
+                      </p>
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {canUpdateCustomer ? (
+                        <Link
+                          href={`/admin/customers/${item.id}/edit`}
+                          onClick={handleNavigate}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-400/10 dark:hover:text-emerald-200"
+                        >
+                          <Pencil size={13} />
+                          แก้ไข
+                        </Link>
+                      ) : null}
+                      <Eye size={16} className="text-slate-400 dark:text-slate-500" />
                     </div>
-                  </Link>
-                  {canUpdateCustomer ? (
-                    <div className="flex justify-end px-4 pb-3">
-                      <Link
-                        href={`/admin/customers/${item.id}/edit`}
-                        onClick={handleNavigate}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-emerald-400/30 dark:hover:bg-emerald-400/10 dark:hover:text-emerald-200"
-                      >
-                        <Pencil size={13} />
-                        แก้ไข
-                      </Link>
-                    </div>
-                  ) : null}
+                  </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -350,6 +404,8 @@ const AdminLineCustomerNotifications = ({
             </Link>
           </div>
         </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

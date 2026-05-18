@@ -95,9 +95,24 @@ export type CashBankBelowItem = {
   threshold: number;
 };
 
+export type IncompleteLineCustomerItem = {
+  id: string;
+  code: string | null;
+  name: string;
+  phone: string | null;
+  lineLinkedAt: Date | null;
+  missingShippingAddress: boolean;
+  missingTaxId: boolean;
+};
+
 export type WorkboardData = {
   generatedAt: Date;
   todayStart: Date;
+  incompleteLineCustomers: {
+    canView: boolean;
+    count: number;
+    items: IncompleteLineCustomerItem[];
+  };
   pendingDeliveries: {
     count: number;
     items: PendingDeliveryItem[];
@@ -558,13 +573,56 @@ async function queryCashBankBelow() {
   };
 }
 
-export async function getWorkboardData(): Promise<WorkboardData> {
+async function queryIncompleteLineCustomers() {
+  const where = {
+    source: "LINE_LIFF" as const,
+    OR: [{ shippingAddress: null }, { shippingAddress: "" }, { taxId: null }, { taxId: "" }],
+  };
+
+  const [count, rows] = await Promise.all([
+    db.customer.count({ where }),
+    db.customer.findMany({
+      where,
+      orderBy: [{ lineLinkedAt: "desc" }, { createdAt: "desc" }],
+      take: 5,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        shippingAddress: true,
+        taxId: true,
+        lineLinkedAt: true,
+      },
+    }),
+  ]);
+
+  return {
+    count,
+    items: rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      phone: row.phone,
+      lineLinkedAt: row.lineLinkedAt,
+      missingShippingAddress: !row.shippingAddress,
+      missingTaxId: !row.taxId,
+    })),
+  };
+}
+
+export async function getWorkboardData({
+  includeIncompleteLineCustomers = false,
+}: {
+  includeIncompleteLineCustomers?: boolean;
+} = {}): Promise<WorkboardData> {
   const now = new Date();
   const todayKey = getThailandDateKey(now);
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
   const todayEnd = parseDateOnlyToEndOfDay(todayKey);
 
   const [
+    incompleteLineCustomers,
     pendingDeliveries,
     codWaiting,
     overdueAr,
@@ -574,6 +632,9 @@ export async function getWorkboardData(): Promise<WorkboardData> {
     expiringLots,
     cashBankBelow,
   ] = await Promise.all([
+    includeIncompleteLineCustomers
+      ? queryIncompleteLineCustomers()
+      : Promise.resolve({ count: 0, items: [] }),
     queryPendingDeliveries(todayEnd),
     queryCodWaiting(),
     queryOverdueAr(todayStart, todayEnd),
@@ -587,6 +648,10 @@ export async function getWorkboardData(): Promise<WorkboardData> {
   return {
     generatedAt: now,
     todayStart,
+    incompleteLineCustomers: {
+      canView: includeIncompleteLineCustomers,
+      ...incompleteLineCustomers,
+    },
     pendingDeliveries,
     codWaiting,
     overdueAr,

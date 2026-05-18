@@ -549,6 +549,8 @@ CLAIM_REPLACE_OUT  // ส่งสินค้าออกให้ลูกค�
 - [x] Claim/LIFF hardening (2026-05-07): LIFF claims/warranties ย้าย filter/count ไป query DB ก่อน `take`, mutation ปิด/ส่งคืน/ย้อนกลับ/ยกเลิกเคลมเขียน `AuditLog`, และ date-only ของ claim/CN purchase ใช้ helper Thailand date policy
 - [x] Claim stock report hardening (2026-05-07): ยอดสรุปรายงานคำนวณจากข้อมูลทั้งหมดตาม filter ไม่ใช่เฉพาะ 300 แถวที่แสดง, แจ้งเมื่อผลลัพธ์ถูกจำกัดบนตาราง, และเพิ่ม index `ClaimStockMovement(docDate, movementType)` สำหรับรายงาน
 - [x] Admin LINE customer-link notifications (2026-05-18): เพิ่มกระดิ่งแจ้งเตือนใน admin header สำหรับลูกค้าใหม่จาก LIFF และลูกค้าเดิมที่เพิ่งผูก LINE โดยใช้ polling เบา ๆ ทุก 60 วินาทีเฉพาะตอน tab active; summary API query แค่ unread count + latest timestamp, list API โหลด 5 รายการล่าสุดเฉพาะตอนเปิด dropdown, สถานะอ่านแล้วเก็บใน `localStorage` ต่อ admin user, บังคับ `customers.view` ที่ API/UI และแสดงปุ่มแก้ไขเฉพาะ `customers.update`.
+- [x] Admin LINE customer notification UX hardening (2026-05-18): แก้ dropdown เป็น fixed overlay ชั้นบนเพื่อไม่ให้โดน workboard/tabs บัง, กดกระดิ่งแล้ว mark read ทันที, ไฮไลต์รายการที่ยัง unread จริงจาก `lineLinkedAt > lastSeen`, ย้ายปุ่มแก้ไขมาอยู่ section เดียวกับลูกค้า, เพิ่ม badge `ข้อมูลยังไม่ครบ`, และเพิ่ม workboard card บนสุดสำหรับลูกค้า `LINE_LIFF` ที่ขาด `shippingAddress` หรือ `taxId` โดยแสดงเฉพาะผู้มี `customers.view`.
+- [x] Admin LINE customer notification classification (2026-05-18): แยก badge แจ้งเตือนเป็น `ลูกค้าใหม่จาก LINE` เมื่อ `source = LINE_LIFF`, `ลูกค้าเก่าผูก LINE` เมื่อเป็นลูกค้าเดิมที่มี `lineUserId`, และ `ลูกค้าเก่าผูก LINE ใหม่` เมื่อพบ AuditLog ว่าพนักงานเคยปลด LINE แล้วลูกค้ากลับมาผูกใหม่ โดย query AuditLog เฉพาะรายการล่าสุดใน dropdown เท่านั้น.
 
 ---
 
