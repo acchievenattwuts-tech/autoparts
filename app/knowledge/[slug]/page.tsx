@@ -51,6 +51,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+const compactDescription = (value: string, maxLength = 88) => {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength).trimEnd()}...`;
+};
+
 const KnowledgeArticlePage = async ({ params }: Props) => {
   const [{ slug }, config] = await Promise.all([params, getSiteConfig()]);
   const article = knowledgeArticleMap.get(slug);
@@ -67,7 +75,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
       return scoreB - scoreA;
     })
     .slice(0, 3);
-  const recommendedLinks = [
+  const defaultRecommendedLinks = [
     {
       href: "/products",
       title: "ไปหน้าสินค้าทั้งหมด",
@@ -80,6 +88,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
       description: entry.description,
     })),
   ];
+  const recommendedLinks = article.internalLinks ?? defaultRecommendedLinks;
   const aboutTopics = Array.from(
     new Set([article.category, article.title, ...article.sections.slice(0, 3).map((section) => section.heading)]),
   );
@@ -87,6 +96,7 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
     new Set([
       ...article.relatedSearches,
       ...article.keyTakeaways.slice(0, 3),
+      ...(article.internalLinks?.map((entry) => entry.title) ?? []),
       ...relatedArticles.map((entry) => entry.title),
     ]),
   );
@@ -187,21 +197,36 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
               </div>
             </div>
 
-            <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-6">
+            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
               <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">
                 ทางลัดไปหน้าที่เกี่ยวข้อง
               </h2>
-              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-sm leading-6 text-slate-500">
+                  เลือกหน้าที่ช่วยต่อการหาอะไหล่หรืออ่านข้อมูลเพิ่ม โดยไม่ต้องไล่เปิดหลายกล่องพร้อมกัน
+                </p>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-500">
+                  {recommendedLinks.length} ลิงก์
+                </span>
+              </div>
+              <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 {recommendedLinks.map((entry) => (
                   <Link
                     key={entry.href}
                     href={entry.href}
-                    className="rounded-[24px] border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:bg-slate-50"
+                    className="group flex items-start justify-between gap-4 px-4 py-4 transition hover:bg-slate-50 sm:px-5"
                   >
-                    <h3 className="font-kanit text-xl font-semibold leading-tight text-[#10213d]">
-                      {entry.title}
-                    </h3>
-                    <p className="mt-3 text-sm leading-7 text-slate-600">{entry.description}</p>
+                    <div className="min-w-0">
+                      <h3 className="font-kanit text-lg font-semibold leading-6 text-[#10213d]">
+                        {entry.title}
+                      </h3>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">
+                        {compactDescription(entry.description)}
+                      </p>
+                    </div>
+                    <span className="mt-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-400 transition group-hover:border-slate-300 group-hover:text-[#10213d]">
+                      <ArrowRight className="h-4 w-4" />
+                    </span>
                   </Link>
                 ))}
               </div>

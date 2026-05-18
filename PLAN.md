@@ -3675,7 +3675,172 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 - [x] Reused the same category description for metadata, visible page copy, and `CollectionPageJsonLd` so canonical page content and structured data stay aligned.
 - [x] Verified with `npm run build`; `/products/[categorySlug]` now builds as SSG instead of fully dynamic.
 
-## 2-Month SEO Rollout Plan (April 26 – June 26, 2026)
+## SEO Rollout Source of Truth (Reorganized 2026-05-18)
+
+This section is now the active source of truth for the 2-month SEO plan. It preserves the original goals and targets, but reorganizes the work into:
+
+1. completed baseline
+2. active phase work
+3. review gates
+4. backlog after the current cycle
+
+### Goals To Keep
+
+- Keep the rollout focused on discoverability, AI-citable content, and measurable traffic growth.
+- Preserve the original planning target of roughly `+2,300` additional organic impressions/month over the full rollout horizon.
+- Keep Core Web Vitals, crawlability, metadata, and schema healthy while expanding content.
+- Grow high-intent coverage first, then model-specific coverage, then maintenance/comparison coverage.
+
+### Completed Baseline
+
+- [x] Product image alt text upgraded in `components/shared/ProductCard.tsx`
+- [x] PSI baseline recorded on April 26, 2026 for `/`, `/products`, `/knowledge`
+- [x] CLS issue on `/products` identified and fixed in `app/products/ProductFilterBarFallback.tsx`
+- [x] `ArticleJsonLd` audit completed for `app/knowledge/[slug]/page.tsx`
+- [x] Google Search Console property, sitemap submission, and alerts verified
+- [x] Google Analytics 4 wiring completed with `page_view`, `qualify_lead`, and `product_page_view`
+- [x] Cache-header verification completed on live deployment
+- [x] All active category pages now have long-form SEO descriptions plus `CollectionPageJsonLd`
+- [x] Two new knowledge articles already shipped:
+  - `car-ac-not-cold-5-main-causes-and-fixes`
+  - `how-to-spot-genuine-vs-aftermarket-ac-parts`
+
+### Active Plan Structure
+
+1. Phase 1: strengthen high-intent troubleshooting and buying-intent content
+2. Phase 2: expand model-specific buying guides
+3. Phase 3: expand maintenance/comparison content
+4. Review gates after each phase decide whether to continue, refine, or pause
+
+### Phase 1 - High-Intent Content + Linking
+
+**Objective:** win search demand closest to immediate purchase/support intent while tightening internal links from existing content to category and product pages.
+
+**Already shipped**
+- [x] Category content and schema rollout for all active categories
+- [x] Article: `car-ac-not-cold-5-main-causes-and-fixes`
+- [x] Article: `how-to-spot-genuine-vs-aftermarket-ac-parts`
+- [x] Article: `honda-civic-2020-2024-ac-parts-guide`
+- [x] Article: `abnormal-car-ac-noise-diagnosis`
+- [x] Article: `car-ac-strange-smell-causes-cleaning-checklist`
+- [x] Updated existing article: `compressor-price-and-what-to-check-before-buying`
+  - Consolidated maintenance guide intent into the existing compressor buying page
+  - Consolidated broken compressor repair-vs-replace intent into the existing compressor buying page
+
+**Remaining execution**
+- [x] Article: Honda Civic 2020-2024 buying guide
+  - Target: `Honda Civic ac parts`
+  - Target length: ~1,800 words
+- [x] Article/update: maintenance guide for car AC compressor care
+  - Target: `บำรุงรักษาคอมแอร์`
+  - Target length: ~2,500 words
+  - Execution note: updated `compressor-price-and-what-to-check-before-buying` instead of creating a separate URL to avoid duplicate compressor intent
+- [x] Article/update: broken compressor, repair vs replace
+  - Target: `คอมแอร์หัก ซ่อมได้ไหม`
+  - Target length: ~2,000 words
+  - Execution note: updated `compressor-price-and-what-to-check-before-buying` instead of creating a separate URL to avoid duplicate compressor intent
+- [x] Article: abnormal AC noise diagnosis
+  - Target: `แอร์รถยนต์ดัง`
+  - Target length: ~1,500 words
+- [x] Article: strange smell from car AC
+  - Target: `แอร์รถยนต์มีกลิ่น`
+  - Target length: ~1,800 words
+- [x] Add missing internal links from existing and new Phase 1 articles to relevant category pages, product pages, and related knowledge articles
+  - Implemented with per-article `internalLinks` in `lib/knowledge-content.ts`
+  - Phase 1 articles now link to relevant canonical category pages, product discovery/search paths, and supporting knowledge articles
+
+**Phase 1 review gate**
+- [ ] Check GSC for early impressions on new article clusters
+- [ ] Check GA4 landing pages and engagement on newly published articles
+- [ ] Re-run PSI on key public routes if any large content/layout changes were made
+- [ ] Update `PLAN.md` with actual results before moving deeper into Phase 2
+
+### Phase 2 - Car Model Buying Guides
+
+**Objective:** expand long-tail intent around popular Thailand car models without creating duplicate intent pages.
+
+**Planned article set**
+- [ ] Honda Accord compressor guide
+  - Target: `Honda Accord compressor`
+- [ ] Honda CR-V evaporator guide
+  - Target: `Honda CRV evaporator`
+- [ ] Toyota Altis AC parts guide
+  - Target: `Toyota Altis AC parts`
+- [ ] Toyota Innova condenser guide
+  - Target: `Toyota Innova condenser`
+- [ ] Toyota Fortuner drier receiver guide
+  - Target: `Fortuner drier receiver`
+- [ ] Isuzu D-Max AC parts guide
+  - Target: `D-Max AC parts Thailand`
+- [ ] Mitsubishi Pajero Sport compressor guide
+  - Target: `Pajero AC compressor`
+- [ ] Ford Ranger evaporator guide
+  - Target: `Ford Ranger evaporator`
+- [ ] Nissan Navara compressor guide
+  - Target: `Navara AC compressor`
+
+**Execution rules**
+- [ ] Each article must link to matching category/product paths where inventory context fits
+- [ ] Avoid repeating the same article angle if an existing knowledge article already covers the exact query
+- [ ] If a topic overlaps too heavily with an existing article, update the older article instead of creating a new URL
+
+**Phase 2 review gate**
+- [ ] Review GSC impressions/clicks for model-specific terms
+- [ ] Record which model pages attract impressions but weak CTR
+- [ ] Update `PLAN.md` before moving to Phase 3
+
+### Phase 3 - Maintenance + Comparison Content
+
+**Objective:** widen the site’s answer coverage for support, maintenance, and comparison intent while preserving trust-first messaging.
+
+**Planned article set**
+- [ ] Repair/diagnostic checklist article
+  - Target: `ตรวจสอบระบบแอร์`
+- [ ] Proper car AC cleaning guide
+  - Target: `ล้างแอร์รถยนต์`
+- [ ] Dirty condenser article
+  - Target: `คอนเดนเซอร์สกปรก`
+- [ ] Drier/receiver explainer
+  - Target: `ไดเออร์แอร์คืออะไร`
+- [ ] Service-bay / workshop selection article
+  - Target: `บ่อบริการแอร์`
+- [ ] Refrigerant refill interval article
+  - Target: `เติมน้ำยาแอร์กี่ปี`
+- [ ] Brand comparison article
+  - Target: `คอมแอร์แบรนด์ไหนดี`
+
+**Phase 3 review gate**
+- [ ] Monthly SEO review with GSC top keywords, clicks, CTR, and position deltas
+- [ ] GA4 review of top landing pages and engagement
+- [ ] PSI comparison against April 26 baseline
+- [ ] Identify underperforming articles for refresh before starting a new 2-month cycle
+
+### KPI Framework
+
+- [ ] Track ranking positions and impressions in Google Search Console for all target clusters
+- [ ] Track article landing performance and lead-oriented events in GA4
+- [ ] Keep the original outcome expectation as the planning benchmark:
+  - Week 2-4: `+500` organic impressions/month
+  - Week 6-8: `+1,200` organic impressions/month
+  - Month 3+: `+2,300` organic impressions/month with stronger CTR
+
+### Remaining Real Gaps
+
+- [ ] Create a lightweight monthly SEO reporting template
+- [ ] Keep internal-link maintenance explicit as each new article ships
+- [ ] Use review gates to decide whether to create, merge, or refresh content
+- [ ] Re-run performance checks after meaningful public content/layout changes
+
+### Backlog After This Cycle
+
+- [ ] Seasonal content calendar for July-August and later
+- [ ] Local SEO landing pages such as `อะไหล่แอร์ นครสวรรค์`
+- [ ] Additional Q3 car-model guides based on real search demand
+- [ ] Authority/reference content only after current commercial and troubleshooting clusters mature
+
+---
+
+## Archived SEO Rollout Notes (Original Detailed Checklist)
 
 > **Iron Rule:** Follow phases in order. Deploy → monitor 3-5 days → next phase.
 > Never skip phases or bundle work from multiple phases in one deploy.
@@ -3920,7 +4085,7 @@ Goal: reduce Vercel Fluid Active CPU usage without changing any business logic (
 
 ---
 
-## SEO Improvement Roadmap (sriwanparts.com)
+## Archived SEO Improvement Roadmap (Reference Notes)
 
 ### ✅ Already Implemented (Verified in Codebase)
 
