@@ -107,6 +107,7 @@ const purchaseSchema = z.object({
   purchaseType: z.nativeEnum(PurchaseType).default(PurchaseType.CASH_PURCHASE),
   cashBankAccountId: z.string().optional(),
   discount:     z.coerce.number().min(0).default(0),
+  shippingFee:  z.coerce.number().min(0).default(0),
   note:         z.string().max(500).optional(),
   referenceNo:  z.string().max(100).optional(),
   vatType:      z.nativeEnum(VatType).default(VatType.NO_VAT),
@@ -125,6 +126,40 @@ type PurchaseProductSnapshot = {
 };
 
 const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function allocateShippingByLineValue(
+  items: PurchaseItemInput[],
+  shippingFee: number,
+): Map<number, number> {
+  const allocation = new Map<number, number>();
+  const roundedShippingFee = roundMoney(shippingFee);
+  if (roundedShippingFee <= 0 || items.length === 0) {
+    items.forEach((_, index) => allocation.set(index, 0));
+    return allocation;
+  }
+
+  const lineValues = items.map((item) => roundMoney(item.qty * item.costPrice));
+  const totalLineValue = roundMoney(lineValues.reduce((sum, value) => sum + value, 0));
+  if (totalLineValue <= 0) {
+    items.forEach((_, index) => allocation.set(index, 0));
+    return allocation;
+  }
+
+  let allocatedTotal = 0;
+  lineValues.forEach((lineValue, index) => {
+    const amount = index === lineValues.length - 1
+      ? roundMoney(roundedShippingFee - allocatedTotal)
+      : roundMoney((roundedShippingFee * lineValue) / totalLineValue);
+    allocation.set(index, amount);
+    allocatedTotal = roundMoney(allocatedTotal + amount);
+  });
+
+  return allocation;
+}
 
 async function preloadPurchaseDependencies(
   tx: PurchaseTxClient,
@@ -264,6 +299,7 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
     creditTerm: purchase.creditTerm,
     totalAmount: purchase.totalAmount,
     discount: purchase.discount,
+    shippingFee: purchase.shippingFee,
     subtotalAmount: purchase.subtotalAmount,
     vatAmount: purchase.vatAmount,
     vatType: purchase.vatType,
@@ -306,6 +342,7 @@ export async function createPurchase(
     purchaseType: (formData.get("purchaseType") as PurchaseType) || PurchaseType.CASH_PURCHASE,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     discount:     formData.get("discount") || 0,
+    shippingFee:  formData.get("shippingFee") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
     vatType:      (formData.get("vatType") as VatType) || VatType.NO_VAT,
@@ -315,11 +352,12 @@ export async function createPurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   // Calculate totals
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
-  const discountedTotal = Math.max(0, totalAmount - discount);
+  const shippingAllocations = allocateShippingByLineValue(validItems, shippingFee);
+  const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
     purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
@@ -356,6 +394,7 @@ export async function createPurchase(
           userId:        session.user!.id!,
           totalAmount:   totalAmount,
           discount:      discount,
+          shippingFee,
           netAmount:     netAmount,
           purchaseType,
           amountRemain:  new Prisma.Decimal(
@@ -377,7 +416,7 @@ export async function createPurchase(
       createdPurchaseId = purchase.id;
 
       // 2. Process each line item
-      for (const item of validItems) {
+      for (const [itemIndex, item] of validItems.entries()) {
         // Get unit scale
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
@@ -387,7 +426,8 @@ export async function createPurchase(
         const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;  // convert to base unit cost
-        const lcPerBase   = item.landedCost / scale;  // landed cost per base unit
+        const allocatedShippingForLine = shippingAllocations.get(itemIndex) ?? 0;
+        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedShippingForLine / item.qty : 0;
         const isTracked   = isInventoryTracked(product.inventoryTracking);
 
         const itemTotal    = item.qty * item.costPrice;
@@ -403,7 +443,7 @@ export async function createPurchase(
             costPrice:     costPerBase,
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
-            landedCost:    item.landedCost,
+            landedCost:    landedCostPerSelectedUnit,
           },
         });
 
@@ -416,7 +456,7 @@ export async function createPurchase(
           qtyIn:       qtyInBase,
           qtyOut:      0,
           priceIn:     costPerBase,
-          landedCost:  lcPerBase * qtyInBase, // total landed cost for this line
+          landedCost:  allocatedShippingForLine,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         }) : null;
@@ -621,6 +661,7 @@ export async function updatePurchase(
     purchaseType: (formData.get("purchaseType") as PurchaseType) || existing.purchaseType,
     cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     discount:     formData.get("discount") || 0,
+    shippingFee:  formData.get("shippingFee") || 0,
     note:         formData.get("note") || undefined,
     referenceNo:  formData.get("referenceNo") || undefined,
     vatType:      (formData.get("vatType") as VatType) || VatType.NO_VAT,
@@ -630,10 +671,11 @@ export async function updatePurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
-  const discountedTotal = Math.max(0, totalAmount - discount);
+  const shippingAllocations = allocateShippingByLineValue(validItems, shippingFee);
+  const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
     purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
@@ -687,6 +729,7 @@ export async function updatePurchase(
           vatType,
           vatRate,
           totalAmount,
+          shippingFee,
           subtotalAmount,
           vatAmount,
           netAmount,
@@ -704,7 +747,7 @@ export async function updatePurchase(
       const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
 
       // 3. Re-create items + stock cards
-      for (const item of validItems) {
+      for (const [itemIndex, item] of validItems.entries()) {
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
         if (!product) throw new Error("ไม่พบสินค้า");
@@ -713,7 +756,8 @@ export async function updatePurchase(
         const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;
-        const lcPerBase   = item.landedCost / scale;
+        const allocatedShippingForLine = shippingAllocations.get(itemIndex) ?? 0;
+        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedShippingForLine / item.qty : 0;
         const isTracked   = isInventoryTracked(product.inventoryTracking);
         const itemTotal   = item.qty * item.costPrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
@@ -727,7 +771,7 @@ export async function updatePurchase(
             costPrice:     costPerBase,
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
-            landedCost:    item.landedCost,
+            landedCost:    landedCostPerSelectedUnit,
           },
         });
 
@@ -739,7 +783,7 @@ export async function updatePurchase(
           qtyIn:       qtyInBase,
           qtyOut:      0,
           priceIn:     costPerBase,
-          landedCost:  lcPerBase * qtyInBase,
+          landedCost:  allocatedShippingForLine,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         }) : null;

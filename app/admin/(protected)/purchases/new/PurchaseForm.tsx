@@ -55,6 +55,7 @@ interface InitialData {
   cashBankAccountId: string;
   referenceNo:  string;
   discount:     number;
+  shippingFee:  number;
   note:         string;
   vatType:      string;
   vatRate:      number;
@@ -64,6 +65,28 @@ interface InitialData {
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
+
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const allocateShippingByLineValue = (items: LineItem[], shippingFee: number) => {
+  const roundedShippingFee = roundMoney(shippingFee);
+  const allocations = items.map(() => 0);
+  if (roundedShippingFee <= 0 || items.length === 0) return allocations;
+
+  const lineValues = items.map((item) => roundMoney(item.qty * item.costPrice));
+  const totalLineValue = roundMoney(lineValues.reduce((sum, value) => sum + value, 0));
+  if (totalLineValue <= 0) return allocations;
+
+  let allocatedTotal = 0;
+  return lineValues.map((lineValue, index) => {
+    const amount = index === lineValues.length - 1
+      ? roundMoney(roundedShippingFee - allocatedTotal)
+      : roundMoney((roundedShippingFee * lineValue) / totalLineValue);
+    allocatedTotal = roundMoney(allocatedTotal + amount);
+    return amount;
+  });
+};
+
 const PurchaseForm = ({
   products,
   suppliers,
@@ -103,6 +126,7 @@ const PurchaseForm = ({
     if (sup && sup.creditTerm != null) setCreditTerm(String(sup.creditTerm));
   };
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
+  const [shippingFee, setShippingFee] = useState(initialData?.shippingFee ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
   );
@@ -209,7 +233,9 @@ const PurchaseForm = ({
     productMap.get(productId)?.units ?? [];
 
   const totalBeforeDiscount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
-  const discountedTotal = Math.max(0, totalBeforeDiscount - discount);
+  const shippingAllocations = allocateShippingByLineValue(items, shippingFee);
+  const totalLandedCost = shippingAllocations.reduce((sum, value) => sum + value, 0);
+  const discountedTotal = Math.max(0, totalBeforeDiscount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -238,6 +264,7 @@ const PurchaseForm = ({
     }
     formData.set("items", JSON.stringify(items));
     formData.set("discount", String(discount));
+    formData.set("shippingFee", String(shippingFee));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -302,7 +329,21 @@ const PurchaseForm = ({
               className={inputCls}
             />
           </div>
-          <div className="md:col-span-2">
+          <div>
+            <label className={labelCls}>ค่าจัดส่ง (บาท)</label>
+            <AdminNumberInput
+              name="shippingFee"
+              min={0}
+              step={0.01}
+              value={shippingFee}
+              onValueChange={setShippingFee}
+              className={inputCls}
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              ระบบจะกระจายตามมูลค่าสินค้าก่อนส่วนลดและบันทึกเป็น landed cost
+            </p>
+          </div>
+          <div>
             <label className={labelCls}>หมายเหตุ</label>
             <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} className={inputCls} placeholder="หมายเหตุ" />
           </div>
@@ -423,7 +464,8 @@ const PurchaseForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ทุน/หน่วย</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">รวม</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ค่าจัดส่งปันส่วน</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">รวมต้นทุน</th>
                 <th className="w-8" />
               </tr>
             </thead>
@@ -432,6 +474,8 @@ const PurchaseForm = ({
                 const units = getUnits(item.productId);
                 const prod  = productMap.get(item.productId);
                 const isLot = prod?.isLotControl ?? false;
+                const allocatedShipping = shippingAllocations[i] ?? 0;
+                const itemTotal = item.qty * item.costPrice;
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
@@ -475,7 +519,10 @@ const PurchaseForm = ({
                           className={inputCls} placeholder="0.00" />
                       </td>
                       <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
-                        {(item.qty * item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                        {allocatedShipping.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
+                        {(itemTotal + allocatedShipping).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
                         {items.length > 1 && (
@@ -488,7 +535,7 @@ const PurchaseForm = ({
                     </tr>
                     {isLot && (
                       <tr className="bg-amber-50/60 dark:bg-amber-500/10">
-                        <td colSpan={6} className="px-4 pb-3 pt-1">
+                        <td colSpan={7} className="px-4 pb-3 pt-1">
                           {showReadonlyLots ? (
                             /* Read-only lot display in edit mode */
                             <div className="flex flex-wrap gap-2">
@@ -609,14 +656,23 @@ const PurchaseForm = ({
             </tbody>
             <tfoot>
               <tr className="border-t border-gray-100 dark:border-white/10">
-                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวมก่อนส่วนลด</td>
+                <td colSpan={5} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวมค่าสินค้าก่อนส่วนลด</td>
                 <td className="py-2 px-2 text-right text-gray-700 dark:text-slate-200">
                   {totalBeforeDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
                 <td />
               </tr>
+              {shippingFee > 0 && (
+                <tr>
+                  <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ค่าจัดส่ง</td>
+                  <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
+                    +{totalLandedCost.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </td>
+                  <td />
+                </tr>
+              )}
               <tr>
-                <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ส่วนลด</td>
+                <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ส่วนลด</td>
                 <td className="py-1 px-2 text-right text-red-500 dark:text-red-400">
                   -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
@@ -625,7 +681,7 @@ const PurchaseForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
+                    <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       ยอดก่อนภาษี
                     </td>
                     <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
@@ -634,7 +690,7 @@ const PurchaseForm = ({
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
+                    <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       VAT {vatRate}%
                     </td>
                     <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
@@ -645,7 +701,7 @@ const PurchaseForm = ({
                 </>
               )}
               <tr className="border-t border-gray-200 dark:border-white/10">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td colSpan={5} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
                 <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base dark:text-sky-300">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>

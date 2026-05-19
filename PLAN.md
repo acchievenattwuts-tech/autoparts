@@ -99,6 +99,7 @@
 
 #### ✅ 3.3 ระบบซื้อสินค้า
 - `/admin/purchases` — ใบซื้อ + MAVG + VAT (NoVAT/ExclVAT/InclVAT) + referenceNo + auto-fill ราคาทุน
+- [x] Purchase shipping landed cost allocation (2026-05-20): added `Purchase.shippingFee`, included it in purchase `netAmount` / `amountRemain` / cash-bank movement, and auto-allocated it to each `PurchaseItem.landedCost` by pre-discount line value so StockCard MAVG absorbs freight-in cost per item.
 - `/admin/purchase-returns` — คืนให้ซัพพลายเออร์ (RETURN_OUT) + VAT
 
 #### ✅ 3.4 ระบบขาย

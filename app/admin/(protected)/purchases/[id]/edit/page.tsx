@@ -80,6 +80,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       })),
     };
   });
+  const existingAllocatedShipping = initialItems.reduce((sum, item) => sum + item.landedCost, 0);
 
   const initialData = {
     id,
@@ -89,6 +90,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     cashBankAccountId: purchase.cashBankAccountId ?? "",
     referenceNo: purchase.referenceNo ?? "",
     discount: Number(purchase.discount),
+    shippingFee: Number(purchase.shippingFee) || existingAllocatedShipping,
     note: purchase.note ?? "",
     vatType: purchase.vatType,
     vatRate: Number(purchase.vatRate),
