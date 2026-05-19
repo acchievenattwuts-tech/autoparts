@@ -234,7 +234,6 @@ const PurchaseForm = ({
 
   const totalBeforeDiscount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
   const shippingAllocations = allocateShippingByLineValue(items, shippingFee);
-  const totalLandedCost = shippingAllocations.reduce((sum, value) => sum + value, 0);
   const discountedTotal = Math.max(0, totalBeforeDiscount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
@@ -666,7 +665,7 @@ const PurchaseForm = ({
                 <tr>
                   <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ค่าจัดส่ง</td>
                   <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
-                    +{totalLandedCost.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    +{shippingFee.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </td>
                   <td />
                 </tr>
