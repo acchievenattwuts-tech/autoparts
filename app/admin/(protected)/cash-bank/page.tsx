@@ -110,10 +110,12 @@ export default async function CashBankPage({ searchParams }: PageProps) {
     lowBalanceThreshold: Number(account.lowBalanceThreshold),
   }));
 
-  const summaryCards = accountsRaw.map((account) => ({
-    ...account,
-    currentBalance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
-  }));
+  const summaryCards = accountsRaw
+    .map((account) => ({
+      ...account,
+      currentBalance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
+    }))
+    .filter((account) => account.isActive || Math.round(account.currentBalance * 100) !== 0);
 
   const movements: HiddenMovementRow[] = [];
   const openingBalance: number | null = null;
