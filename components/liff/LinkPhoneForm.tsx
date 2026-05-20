@@ -101,16 +101,6 @@ export default function LinkPhoneForm() {
         <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
           กรอกเบอร์โทรที่ใช้ติดต่อกับร้าน หากยังไม่พบข้อมูล ระบบจะสร้างบัญชีลูกค้าใหม่ให้โดยอัตโนมัติ
         </p>
-        {profile?.userId ? (
-          <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              LINE userId
-            </p>
-            <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-800 dark:text-slate-100">
-              {profile.userId}
-            </p>
-          </div>
-        ) : null}
       </div>
 
       {message ? (
