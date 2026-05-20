@@ -30,7 +30,7 @@ function completeLiffSessionNavigation(sessionToken: string) {
 }
 
 export default function LinkPhoneForm() {
-  const { idToken, profile, isReady } = useLiff();
+  const { accessToken, idToken, profile, isReady } = useLiff();
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
@@ -42,7 +42,7 @@ export default function LinkPhoneForm() {
     setIsSuccess(false);
 
     startTransition(async () => {
-      if (!idToken) {
+      if (!accessToken && !idToken) {
         setMessage("ยังไม่พบข้อมูลยืนยันจาก LINE กรุณาปิดแล้วเปิดใหม่อีกครั้ง");
         return;
       }
@@ -50,7 +50,7 @@ export default function LinkPhoneForm() {
       const response = await fetch("/api/liff/verify-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, phone }),
+        body: JSON.stringify({ accessToken, idToken, phone }),
       });
       const payload = (await response.json().catch(() => ({}))) as VerifyLinkResponse;
 

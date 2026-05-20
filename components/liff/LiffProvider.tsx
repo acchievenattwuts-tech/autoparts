@@ -20,6 +20,7 @@ type LiffProfile = {
 };
 
 type LiffContextValue = {
+  accessToken: string | null;
   idToken: string | null;
   profile: LiffProfile | null;
   isReady: boolean;
@@ -34,6 +35,7 @@ declare global {
       init: (options: { liffId: string }) => Promise<void>;
       isLoggedIn: () => boolean;
       login: (options?: { redirectUri?: string }) => void;
+      getAccessToken: () => string | null;
       getIDToken: () => string | null;
       getProfile: () => Promise<LiffProfile>;
       isInClient?: () => boolean;
@@ -78,6 +80,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
   const initialPathnameRef = useRef(pathname);
   const [isPrintTokenRequest] = useState(isExternalPrintRequest);
   const [scriptReady, setScriptReady] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
   const [profile, setProfile] = useState<LiffProfile | null>(null);
   const [isReady, setIsReady] = useState(isPrintTokenRequest);
@@ -86,14 +89,15 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     const token = window.liff?.getIDToken() ?? idToken;
-    if (!token) return;
+    const nextAccessToken = window.liff?.getAccessToken() ?? accessToken;
+    if (!token && !nextAccessToken) return;
 
     const response = await fetch("/api/liff/session", {
       method: "POST",
       cache: "no-store",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken: token }),
+      body: JSON.stringify({ accessToken: nextAccessToken, idToken: token }),
     });
     const payload = (await response.json().catch(() => ({}))) as {
       linked?: boolean;
@@ -109,7 +113,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     } else if (linked) {
       router.refresh();
     }
-  }, [idToken, pathname, router]);
+  }, [accessToken, idToken, pathname, router]);
 
   useEffect(() => {
     if (isPrintTokenRequest) return;
@@ -131,17 +135,19 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const [nextProfile, nextIdToken] = await Promise.all([
+        const [nextProfile, nextAccessToken, nextIdToken] = await Promise.all([
           window.liff!.getProfile(),
+          Promise.resolve(window.liff!.getAccessToken()),
           Promise.resolve(window.liff!.getIDToken()),
         ]);
 
-        if (!nextIdToken) {
-          throw new Error("ไม่พบ LINE ID token");
+        if (!nextAccessToken && !nextIdToken) {
+          throw new Error("ไม่พบ LINE token");
         }
 
         if (!isMounted) return;
         setProfile(nextProfile);
+        setAccessToken(nextAccessToken);
         setIdToken(nextIdToken);
 
         const response = await fetch("/api/liff/session", {
@@ -149,7 +155,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
           cache: "no-store",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken: nextIdToken }),
+          body: JSON.stringify({ accessToken: nextAccessToken, idToken: nextIdToken }),
         });
         const payload = (await response.json().catch(() => ({}))) as {
           linked?: boolean;
@@ -187,8 +193,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
   }, [isPrintTokenRequest, router, scriptReady]);
 
   const value = useMemo(
-    () => ({ idToken, profile, isReady, isLinked, error, refreshSession }),
-    [error, idToken, isLinked, isReady, profile, refreshSession],
+    () => ({ accessToken, idToken, profile, isReady, isLinked, error, refreshSession }),
+    [accessToken, error, idToken, isLinked, isReady, profile, refreshSession],
   );
 
   return (

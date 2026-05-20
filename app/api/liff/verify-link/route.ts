@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { verifyLiffIdToken } from "@/lib/liff-auth";
+import { verifyLiffIdentity } from "@/lib/liff-auth";
 import {
   getLiffPhoneLookupThrottleKeys,
   isLiffCustomerVisibleError,
@@ -20,10 +20,11 @@ function getVerifyLinkErrorMessage(error: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { idToken?: unknown; phone?: unknown };
+    const body = (await request.json()) as { accessToken?: unknown; idToken?: unknown; phone?: unknown };
+    const accessToken = typeof body.accessToken === "string" ? body.accessToken : "";
     const idToken = typeof body.idToken === "string" ? body.idToken : "";
     const phone = typeof body.phone === "string" ? body.phone : "";
-    const identity = await verifyLiffIdToken(idToken);
+    const identity = await verifyLiffIdentity({ accessToken, idToken });
     const result = await resolveLiffCustomerFromPhone({
       lineUserId: identity.lineUserId,
       displayName: identity.displayName,
