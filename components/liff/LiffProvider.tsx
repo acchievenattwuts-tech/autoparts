@@ -85,7 +85,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
     if (!linked && pathname !== "/liff/link") {
       router.replace("/liff/link");
-    } else if (linked && pathname === "/liff/link") {
+    } else if (linked && (pathname === "/liff" || pathname === "/liff/link")) {
       window.location.replace("/liff/orders");
     } else if (linked) {
       router.refresh();
@@ -142,7 +142,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
         if (!linked && initialPathname !== "/liff/link") {
           setIsReady(true);
           router.replace("/liff/link");
-        } else if (linked && initialPathname === "/liff/link") {
+        } else if (linked && (initialPathname === "/liff" || initialPathname === "/liff/link")) {
           window.location.replace("/liff/orders");
         } else if (linked) {
           setIsReady(true);
