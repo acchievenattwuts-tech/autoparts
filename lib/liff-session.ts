@@ -29,6 +29,16 @@ function safeEqual(left: string, right: string) {
 }
 
 function getLiffSessionCookieOptions() {
+  return {
+    httpOnly: true,
+    priority: "high" as const,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/liff",
+  };
+}
+
+function getLiffPartitionedSessionCookieOptions() {
   const isProduction = process.env.NODE_ENV === "production";
 
   return {
@@ -37,13 +47,7 @@ function getLiffSessionCookieOptions() {
     sameSite: isProduction ? ("none" as const) : ("lax" as const),
     secure: isProduction,
     path: "/",
-  };
-}
-
-function getLiffPartitionedSessionCookieOptions() {
-  return {
-    ...getLiffSessionCookieOptions(),
-    partitioned: process.env.NODE_ENV === "production",
+    partitioned: isProduction,
   };
 }
 
