@@ -85,6 +85,16 @@ export default function LinkPhoneForm() {
         <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
           ถ้าเบอร์นี้มีในระบบ ร้านจะผูกให้ทันที ถ้ายังไม่มี ระบบจะสร้างข้อมูลลูกค้าใหม่ให้พนักงานตรวจต่อใน admin
         </p>
+        {profile?.userId ? (
+          <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              LINE userId
+            </p>
+            <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-800 dark:text-slate-100">
+              {profile.userId}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {message ? (

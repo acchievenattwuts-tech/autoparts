@@ -181,6 +181,14 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               {customer.lineLinkedAt ? formatDateThai(customer.lineLinkedAt) : "-"}
             </p>
           </div>
+          {customer.lineUserId ? (
+            <div className="sm:col-span-2 md:col-span-3">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">LINE userId</p>
+              <p className="break-all font-mono text-xs font-semibold text-gray-900 dark:text-slate-100">
+                {customer.lineUserId}
+              </p>
+            </div>
+          ) : null}
           {customer.address && (
             <div className="sm:col-span-2 md:col-span-3">
               <p className="mb-1 text-gray-500 dark:text-slate-400">ที่อยู่</p>

@@ -287,6 +287,14 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
               <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
                 หลังปลดการเชื่อมต่อ ลูกค้าต้องเปิดบริการผ่าน LINE และยืนยันเบอร์ {customer.phone ?? "เดิม"} ใหม่อีกครั้ง
               </p>
+              <div className="mt-3 rounded-lg border border-amber-200 bg-white/70 px-3 py-2 dark:border-amber-400/30 dark:bg-slate-950/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  LINE userId
+                </p>
+                <p className="mt-1 break-all font-mono text-xs font-semibold text-amber-950 dark:text-amber-50">
+                  {customer.lineUserId}
+                </p>
+              </div>
             </div>
             <button
               type="button"
