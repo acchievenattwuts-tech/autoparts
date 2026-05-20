@@ -27,6 +27,19 @@ function safeEqual(left: string, right: string) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function getLiffSessionCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    partitioned: isProduction,
+    priority: "high" as const,
+    sameSite: isProduction ? ("none" as const) : ("lax" as const),
+    secure: isProduction,
+    path: "/",
+  };
+}
+
 export function createLiffSessionValue(session: LiffCustomerSession) {
   const issuedAt = Math.floor(Date.now() / 1000);
   const payload = Buffer.from(
@@ -78,15 +91,15 @@ export async function getLiffCustomerSession() {
 export async function setLiffCustomerSession(session: LiffCustomerSession) {
   const cookieStore = await cookies();
   cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, createLiffSessionValue(session), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/liff",
+    ...getLiffSessionCookieOptions(),
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
 }
 
 export async function clearLiffCustomerSession() {
   const cookieStore = await cookies();
-  cookieStore.delete(LIFF_CUSTOMER_SESSION_COOKIE);
+  cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, "", {
+    ...getLiffSessionCookieOptions(),
+    maxAge: 0,
+  });
 }
