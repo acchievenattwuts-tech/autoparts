@@ -170,7 +170,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     <LiffContext.Provider value={value}>
       {isPrintTokenRequest ? null : (
         <Script
-          src="https://static.line-scdn.net/liff/edge/2/sdk.js"
+          src="https://static.line-scdn.net/liff/2/sdk.js"
           strategy="afterInteractive"
           onLoad={() => setScriptReady(true)}
           onError={() => {
