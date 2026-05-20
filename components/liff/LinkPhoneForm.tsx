@@ -75,8 +75,7 @@ export default function LinkPhoneForm() {
         completeLiffSessionNavigation(payload.sessionToken);
         return;
       }
-      router.replace("/liff/orders");
-      router.refresh();
+      window.location.replace("/liff/orders");
     });
   };
 
