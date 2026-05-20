@@ -86,7 +86,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     if (!linked && pathname !== "/liff/link") {
       router.replace("/liff/link");
     } else if (linked && pathname === "/liff/link") {
-      router.replace("/liff/orders");
+      window.location.replace("/liff/orders");
     } else if (linked) {
       router.refresh();
     }
@@ -124,7 +124,6 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return;
         setProfile(nextProfile);
         setIdToken(nextIdToken);
-        setIsReady(true);
 
         const response = await fetch("/api/liff/session", {
           method: "POST",
@@ -141,11 +140,15 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
         const initialPathname = initialPathnameRef.current;
         if (!linked && initialPathname !== "/liff/link") {
+          setIsReady(true);
           router.replace("/liff/link");
         } else if (linked && initialPathname === "/liff/link") {
-          router.replace("/liff/orders");
+          window.location.replace("/liff/orders");
         } else if (linked) {
+          setIsReady(true);
           router.refresh();
+        } else {
+          setIsReady(true);
         }
       } catch (initError) {
         if (!isMounted) return;

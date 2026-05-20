@@ -83,7 +83,7 @@ export default function LinkPhoneForm() {
           className="w-full rounded-xl border border-blue-100 px-3 py-3 text-base font-semibold text-slate-950 outline-none transition focus:border-blue-700 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-900/30"
         />
         <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          ถ้าเบอร์นี้มีในระบบ ร้านจะผูกให้ทันที ถ้ายังไม่มี ระบบจะสร้างข้อมูลลูกค้าใหม่ให้พนักงานตรวจต่อใน admin
+          กรอกเบอร์โทรที่ใช้ติดต่อกับร้าน หากยังไม่พบข้อมูล ระบบจะสร้างบัญชีลูกค้าใหม่ให้โดยอัตโนมัติ
         </p>
         {profile?.userId ? (
           <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/60">
