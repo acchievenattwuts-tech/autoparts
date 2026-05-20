@@ -1,8 +1,10 @@
-import { redirect } from "next/navigation";
+import LiffPageLoading from "@/components/liff/LiffPageLoading";
 
-import { getLiffCustomerSession } from "@/lib/liff-session";
-
-export default async function LiffHomePage() {
-  const session = await getLiffCustomerSession();
-  redirect(session ? "/liff/orders" : "/liff/link");
+export default function LiffHomePage() {
+  return (
+    <LiffPageLoading
+      title="กำลังตรวจสอบบัญชี LINE"
+      subtitle="ระบบกำลังเชื่อมข้อมูลลูกค้าของคุณ"
+    />
+  );
 }
