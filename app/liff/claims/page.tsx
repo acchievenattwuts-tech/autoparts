@@ -85,14 +85,14 @@ export default async function LiffClaimsPage({
   ]);
 
   return (
-    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24">
-      <section className="overflow-hidden rounded-b-[32px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 px-5 pb-6 pt-6 text-[#083a78] shadow-sm">
-        <p className="text-sm font-semibold text-blue-700">ประวัติการเคลม</p>
-        <h1 className="mt-1 font-kanit text-2xl font-bold">เคลมสินค้าของคุณ</h1>
-        <div className="mt-5 rounded-[24px] border border-blue-100 bg-white/90 px-4 py-4 shadow-sm">
-          <p className="text-xs text-slate-500">รายการเคลมทั้งหมด</p>
-          <p className="font-kanit text-2xl font-bold">{totalCount}</p>
-          <p className="mt-1 text-xs text-slate-600">
+    <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <section className="overflow-hidden rounded-b-[32px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-emerald-50 px-5 pb-6 pt-6 text-[#083a78] shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 dark:text-sky-200">
+        <p className="text-sm font-semibold text-blue-700 dark:text-sky-400">ประวัติการเคลม</p>
+        <h1 className="mt-1 font-kanit text-2xl font-bold dark:text-slate-100">เคลมสินค้าของคุณ</h1>
+        <div className="mt-5 rounded-[24px] border border-blue-100 bg-white/90 px-4 py-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/90">
+          <p className="text-xs text-slate-500 dark:text-slate-400">รายการเคลมทั้งหมด</p>
+          <p className="font-kanit text-2xl font-bold dark:text-slate-100">{totalCount}</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
             กำลังดำเนินการ {openCount} · จบแล้ว {closedCount}
           </p>
         </div>
@@ -108,7 +108,7 @@ export default async function LiffClaimsPage({
         />
 
         {claims.length === 0 ? (
-          <div className="rounded-[24px] border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm">
+          <div className="rounded-[24px] border border-dashed border-blue-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             ยังไม่มีประวัติการเคลมสินค้า
           </div>
         ) : (
@@ -116,22 +116,22 @@ export default async function LiffClaimsPage({
             <Link
               key={claim.id}
               href={`/liff/claims/${claim.id}`}
-              className="block rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5 transition active:scale-[0.99]"
+              className="block rounded-[24px] border border-blue-100 bg-white p-4 shadow-sm shadow-blue-950/5 transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-slate-800 dark:text-sky-400">
                     <ShieldAlert size={20} />
                   </div>
                   <div>
-                    <p className="font-mono text-sm font-bold text-slate-950">{claim.claimNo}</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{claim.warranty.product.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="font-mono text-sm font-bold text-slate-950 dark:text-slate-100">{claim.claimNo}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-200">{claim.warranty.product.name}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       {formatDateThai(claim.claimDate)} · {CLAIM_TYPE_LABEL[claim.claimType]}
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="mt-1 h-5 w-5 text-slate-400" />
+                <ChevronRight className="mt-1 h-5 w-5 text-slate-400 dark:text-slate-500" />
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <span
@@ -148,7 +148,7 @@ export default async function LiffClaimsPage({
                   })}
                 </span>
                 {claim.symptom ? (
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     {claim.symptom}
                   </span>
                 ) : null}

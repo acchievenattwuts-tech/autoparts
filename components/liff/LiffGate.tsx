@@ -12,8 +12,8 @@ export default function LiffGate({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
         <div>
-          <LoaderCircle className="mx-auto mb-3 h-7 w-7 animate-spin text-blue-700" />
-          <p className="text-sm font-medium text-slate-700">กำลังเปิดบริการลูกค้า LINE</p>
+          <LoaderCircle className="mx-auto mb-3 h-7 w-7 animate-spin text-blue-700 dark:text-sky-400" />
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">กำลังเปิดบริการลูกค้า LINE</p>
         </div>
       </div>
     );
@@ -22,7 +22,7 @@ export default function LiffGate({ children }: { children: React.ReactNode }) {
   if (error) {
     return (
       <div className="mx-auto max-w-sm px-5 py-10 text-center">
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5 text-rose-800 shadow-sm">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5 text-rose-800 shadow-sm dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
           <p className="font-semibold">เปิดบริการไม่สำเร็จ</p>
           <p className="mt-1 text-sm">{error}</p>
         </div>
