@@ -48,6 +48,22 @@ const LiffContext = createContext<LiffContextValue | null>(null);
 const isExternalPrintRequest = () =>
   typeof window !== "undefined" && new URLSearchParams(window.location.search).has("printToken");
 
+function completeLiffSessionNavigation(idToken: string) {
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+
+  form.method = "POST";
+  form.action = "/api/liff/session/complete";
+  form.target = "_top";
+  form.style.display = "none";
+  input.type = "hidden";
+  input.name = "idToken";
+  input.value = idToken;
+  form.append(input);
+  document.body.append(form);
+  form.submit();
+}
+
 export function useLiff() {
   const value = useContext(LiffContext);
   if (!value) {
@@ -86,7 +102,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
     if (!linked && pathname !== "/liff/link") {
       router.replace("/liff/link");
     } else if (linked && (pathname === "/liff" || pathname === "/liff/link")) {
-      window.location.replace("/liff/orders");
+      completeLiffSessionNavigation(token);
     } else if (linked) {
       router.refresh();
     }
@@ -143,7 +159,7 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
           setIsReady(true);
           router.replace("/liff/link");
         } else if (linked && (initialPathname === "/liff" || initialPathname === "/liff/link")) {
-          window.location.replace("/liff/orders");
+          completeLiffSessionNavigation(nextIdToken);
         } else if (linked) {
           setIsReady(true);
           router.refresh();
