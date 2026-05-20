@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CheckCircle2, LoaderCircle, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { useLiff } from "./LiffProvider";
 import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
@@ -29,7 +30,12 @@ function completeLiffSessionNavigation(sessionToken: string) {
   form.submit();
 }
 
+function shouldCompleteSessionWithTopLevelPost() {
+  return window.liff?.isInClient?.() !== true;
+}
+
 export default function LinkPhoneForm() {
+  const router = useRouter();
   const { accessToken, idToken, profile, isReady } = useLiff();
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
@@ -65,9 +71,12 @@ export default function LinkPhoneForm() {
           ? "สมัครใช้งานเรียบร้อยแล้ว"
           : "ผูกบัญชีลูกค้าเรียบร้อยแล้ว",
       );
-      if (payload.sessionToken) {
+      if (payload.sessionToken && shouldCompleteSessionWithTopLevelPost()) {
         completeLiffSessionNavigation(payload.sessionToken);
+        return;
       }
+      router.replace("/liff/orders");
+      router.refresh();
     });
   };
 

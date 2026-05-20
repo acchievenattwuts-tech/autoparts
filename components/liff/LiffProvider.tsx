@@ -66,6 +66,10 @@ function completeLiffSessionNavigation(sessionToken: string) {
   form.submit();
 }
 
+function shouldCompleteSessionWithTopLevelPost() {
+  return window.liff?.isInClient?.() !== true;
+}
+
 export function useLiff() {
   const value = useContext(LiffContext);
   if (!value) {
@@ -108,8 +112,15 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
 
     if (!linked && pathname !== "/liff/link") {
       router.replace("/liff/link");
-    } else if (linked && payload.sessionToken && (pathname === "/liff" || pathname === "/liff/link")) {
+    } else if (
+      linked &&
+      payload.sessionToken &&
+      shouldCompleteSessionWithTopLevelPost() &&
+      (pathname === "/liff" || pathname === "/liff/link")
+    ) {
       completeLiffSessionNavigation(payload.sessionToken);
+    } else if (linked && pathname === "/liff/link") {
+      router.replace("/liff/orders");
     } else if (linked) {
       router.refresh();
     }
@@ -170,8 +181,16 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
         if (!linked && initialPathname !== "/liff/link") {
           setIsReady(true);
           router.replace("/liff/link");
-        } else if (linked && payload.sessionToken && (initialPathname === "/liff" || initialPathname === "/liff/link")) {
+        } else if (
+          linked &&
+          payload.sessionToken &&
+          shouldCompleteSessionWithTopLevelPost() &&
+          (initialPathname === "/liff" || initialPathname === "/liff/link")
+        ) {
           completeLiffSessionNavigation(payload.sessionToken);
+        } else if (linked && initialPathname === "/liff/link") {
+          setIsReady(true);
+          router.replace("/liff/orders");
         } else if (linked) {
           setIsReady(true);
           router.refresh();
