@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 
 const LIFF_CUSTOMER_SESSION_COOKIE = "sriwan_liff_customer";
+const LIFF_CUSTOMER_PARTITIONED_SESSION_COOKIE = "sriwan_liff_customer_partitioned";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 export type LiffCustomerSession = {
@@ -32,11 +33,17 @@ function getLiffSessionCookieOptions() {
 
   return {
     httpOnly: true,
-    partitioned: isProduction,
     priority: "high" as const,
     sameSite: isProduction ? ("none" as const) : ("lax" as const),
     secure: isProduction,
     path: "/",
+  };
+}
+
+function getLiffPartitionedSessionCookieOptions() {
+  return {
+    ...getLiffSessionCookieOptions(),
+    partitioned: process.env.NODE_ENV === "production",
   };
 }
 
@@ -85,13 +92,22 @@ export function parseLiffSessionValue(value?: string | null): LiffCustomerSessio
 
 export async function getLiffCustomerSession() {
   const cookieStore = await cookies();
-  return parseLiffSessionValue(cookieStore.get(LIFF_CUSTOMER_SESSION_COOKIE)?.value);
+  return (
+    parseLiffSessionValue(cookieStore.get(LIFF_CUSTOMER_SESSION_COOKIE)?.value) ??
+    parseLiffSessionValue(cookieStore.get(LIFF_CUSTOMER_PARTITIONED_SESSION_COOKIE)?.value)
+  );
 }
 
 export async function setLiffCustomerSession(session: LiffCustomerSession) {
   const cookieStore = await cookies();
-  cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, createLiffSessionValue(session), {
+  const sessionValue = createLiffSessionValue(session);
+
+  cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, sessionValue, {
     ...getLiffSessionCookieOptions(),
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
+  cookieStore.set(LIFF_CUSTOMER_PARTITIONED_SESSION_COOKIE, sessionValue, {
+    ...getLiffPartitionedSessionCookieOptions(),
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
 }
@@ -100,6 +116,10 @@ export async function clearLiffCustomerSession() {
   const cookieStore = await cookies();
   cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, "", {
     ...getLiffSessionCookieOptions(),
+    maxAge: 0,
+  });
+  cookieStore.set(LIFF_CUSTOMER_PARTITIONED_SESSION_COOKIE, "", {
+    ...getLiffPartitionedSessionCookieOptions(),
     maxAge: 0,
   });
 }
