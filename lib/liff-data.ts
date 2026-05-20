@@ -3,14 +3,14 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getLiffCustomerSession } from "@/lib/liff-session";
 
-export async function requireLiffCustomer() {
+export async function getLiffCustomer() {
   const session = await getLiffCustomerSession();
 
   if (!session) {
-    redirect("/liff/link");
+    return null;
   }
 
-  const customer = await db.customer.findFirst({
+  return db.customer.findFirst({
     where: {
       id: session.customerId,
       lineUserId: session.lineUserId,
@@ -29,6 +29,10 @@ export async function requireLiffCustomer() {
       lineLinkedAt: true,
     },
   });
+}
+
+export async function requireLiffCustomer() {
+  const customer = await getLiffCustomer();
 
   if (!customer) {
     redirect("/liff/link");
