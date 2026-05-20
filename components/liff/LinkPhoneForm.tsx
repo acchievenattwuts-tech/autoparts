@@ -10,9 +10,10 @@ type VerifyLinkResponse = {
   status?: "LINKED" | "REGISTERED" | "BLOCKED" | "AMBIGUOUS" | "ERROR";
   message?: string;
   customerName?: string;
+  sessionToken?: string;
 };
 
-function completeLiffSessionNavigation(idToken: string) {
+function completeLiffSessionNavigation(sessionToken: string) {
   const form = document.createElement("form");
   const input = document.createElement("input");
 
@@ -21,8 +22,8 @@ function completeLiffSessionNavigation(idToken: string) {
   form.target = "_top";
   form.style.display = "none";
   input.type = "hidden";
-  input.name = "idToken";
-  input.value = idToken;
+  input.name = "sessionToken";
+  input.value = sessionToken;
   form.append(input);
   document.body.append(form);
   form.submit();
@@ -64,7 +65,9 @@ export default function LinkPhoneForm() {
           ? "สมัครใช้งานเรียบร้อยแล้ว"
           : "ผูกบัญชีลูกค้าเรียบร้อยแล้ว",
       );
-      completeLiffSessionNavigation(idToken);
+      if (payload.sessionToken) {
+        completeLiffSessionNavigation(payload.sessionToken);
+      }
     });
   };
 

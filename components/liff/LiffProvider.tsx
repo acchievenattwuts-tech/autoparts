@@ -48,7 +48,7 @@ const LiffContext = createContext<LiffContextValue | null>(null);
 const isExternalPrintRequest = () =>
   typeof window !== "undefined" && new URLSearchParams(window.location.search).has("printToken");
 
-function completeLiffSessionNavigation(idToken: string) {
+function completeLiffSessionNavigation(sessionToken: string) {
   const form = document.createElement("form");
   const input = document.createElement("input");
 
@@ -57,8 +57,8 @@ function completeLiffSessionNavigation(idToken: string) {
   form.target = "_top";
   form.style.display = "none";
   input.type = "hidden";
-  input.name = "idToken";
-  input.value = idToken;
+  input.name = "sessionToken";
+  input.value = sessionToken;
   form.append(input);
   document.body.append(form);
   form.submit();
@@ -95,14 +95,17 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken: token }),
     });
-    const payload = (await response.json().catch(() => ({}))) as { linked?: boolean };
+    const payload = (await response.json().catch(() => ({}))) as {
+      linked?: boolean;
+      sessionToken?: string;
+    };
     const linked = response.ok && payload.linked === true;
     setIsLinked(linked);
 
     if (!linked && pathname !== "/liff/link") {
       router.replace("/liff/link");
-    } else if (linked && (pathname === "/liff" || pathname === "/liff/link")) {
-      completeLiffSessionNavigation(token);
+    } else if (linked && payload.sessionToken && (pathname === "/liff" || pathname === "/liff/link")) {
+      completeLiffSessionNavigation(payload.sessionToken);
     } else if (linked) {
       router.refresh();
     }
@@ -148,7 +151,10 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ idToken: nextIdToken }),
         });
-        const payload = (await response.json().catch(() => ({}))) as { linked?: boolean };
+        const payload = (await response.json().catch(() => ({}))) as {
+          linked?: boolean;
+          sessionToken?: string;
+        };
         const linked = response.ok && payload.linked === true;
 
         if (!isMounted) return;
@@ -158,8 +164,8 @@ export default function LiffProvider({ children }: { children: ReactNode }) {
         if (!linked && initialPathname !== "/liff/link") {
           setIsReady(true);
           router.replace("/liff/link");
-        } else if (linked && (initialPathname === "/liff" || initialPathname === "/liff/link")) {
-          completeLiffSessionNavigation(nextIdToken);
+        } else if (linked && payload.sessionToken && (initialPathname === "/liff" || initialPathname === "/liff/link")) {
+          completeLiffSessionNavigation(payload.sessionToken);
         } else if (linked) {
           setIsReady(true);
           router.refresh();

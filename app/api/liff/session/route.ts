@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 
 import { verifyLiffIdToken } from "@/lib/liff-auth";
 import { resolveCustomerByLineUserId } from "@/lib/liff-customer";
-import { clearLiffCustomerSession, setLiffCustomerSession } from "@/lib/liff-session";
+import {
+  clearLiffCustomerSession,
+  createLiffSessionTransferToken,
+  setLiffCustomerSession,
+} from "@/lib/liff-session";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +22,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ linked: false });
     }
 
-    await setLiffCustomerSession({
+    const session = {
       customerId: customer.id,
       lineUserId: identity.lineUserId,
-    });
+    };
+
+    await setLiffCustomerSession(session);
 
     return NextResponse.json({
       linked: true,
+      sessionToken: createLiffSessionTransferToken(session),
       customer: {
         id: customer.id,
         name: customer.name,

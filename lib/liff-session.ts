@@ -56,6 +56,10 @@ export function createLiffSessionValue(session: LiffCustomerSession) {
   return `${payload}.${signature}`;
 }
 
+export function createLiffSessionTransferToken(session: LiffCustomerSession) {
+  return createLiffSessionValue(session);
+}
+
 export function parseLiffSessionValue(value?: string | null): LiffCustomerSession | null {
   if (!value) return null;
 
@@ -90,6 +94,10 @@ export function parseLiffSessionValue(value?: string | null): LiffCustomerSessio
   }
 }
 
+export function parseLiffSessionTransferToken(value?: string | null) {
+  return parseLiffSessionValue(value);
+}
+
 export async function getLiffCustomerSession() {
   const cookieStore = await cookies();
   return (
@@ -98,9 +106,8 @@ export async function getLiffCustomerSession() {
   );
 }
 
-export async function setLiffCustomerSession(session: LiffCustomerSession) {
+async function setLiffCustomerSessionValue(sessionValue: string) {
   const cookieStore = await cookies();
-  const sessionValue = createLiffSessionValue(session);
 
   cookieStore.set(LIFF_CUSTOMER_SESSION_COOKIE, sessionValue, {
     ...getLiffSessionCookieOptions(),
@@ -110,6 +117,20 @@ export async function setLiffCustomerSession(session: LiffCustomerSession) {
     ...getLiffPartitionedSessionCookieOptions(),
     maxAge: SESSION_MAX_AGE_SECONDS,
   });
+}
+
+export async function setLiffCustomerSession(session: LiffCustomerSession) {
+  await setLiffCustomerSessionValue(createLiffSessionValue(session));
+}
+
+export async function setLiffCustomerSessionFromTransferToken(value: string) {
+  const session = parseLiffSessionTransferToken(value);
+  if (!session) {
+    throw new Error("INVALID_LIFF_SESSION_TRANSFER_TOKEN");
+  }
+
+  await setLiffCustomerSessionValue(value);
+  return session;
 }
 
 export async function clearLiffCustomerSession() {

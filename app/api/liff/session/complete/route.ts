@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { verifyLiffIdToken } from "@/lib/liff-auth";
-import { resolveCustomerByLineUserId } from "@/lib/liff-customer";
-import { clearLiffCustomerSession, setLiffCustomerSession } from "@/lib/liff-session";
+import { db } from "@/lib/db";
+import {
+  clearLiffCustomerSession,
+  setLiffCustomerSessionFromTransferToken,
+} from "@/lib/liff-session";
 
 export const dynamic = "force-dynamic";
 
@@ -12,19 +14,23 @@ export async function POST(request: Request) {
 
   try {
     const formData = await request.formData();
-    const idToken = formData.get("idToken");
-    const identity = await verifyLiffIdToken(typeof idToken === "string" ? idToken : "");
-    const customer = await resolveCustomerByLineUserId(identity.lineUserId);
+    const sessionToken = formData.get("sessionToken");
+    const session = await setLiffCustomerSessionFromTransferToken(
+      typeof sessionToken === "string" ? sessionToken : "",
+    );
+    const customer = await db.customer.findFirst({
+      where: {
+        id: session.customerId,
+        lineUserId: session.lineUserId,
+        isActive: true,
+      },
+      select: { id: true },
+    });
 
     if (!customer) {
       await clearLiffCustomerSession();
       return NextResponse.redirect(linkUrl, 303);
     }
-
-    await setLiffCustomerSession({
-      customerId: customer.id,
-      lineUserId: identity.lineUserId,
-    });
 
     return NextResponse.redirect(redirectUrl, 303);
   } catch (error) {

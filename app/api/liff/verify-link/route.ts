@@ -6,7 +6,7 @@ import {
   isLiffCustomerVisibleError,
   resolveLiffCustomerFromPhone,
 } from "@/lib/liff-customer";
-import { setLiffCustomerSession } from "@/lib/liff-session";
+import { createLiffSessionTransferToken, setLiffCustomerSession } from "@/lib/liff-session";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +32,17 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "LINKED" || result.status === "REGISTERED") {
-      await setLiffCustomerSession({
+      const session = {
         customerId: result.customerId,
         lineUserId: identity.lineUserId,
-      });
+      };
+
+      await setLiffCustomerSession(session);
+
+      return NextResponse.json(
+        { ...result, sessionToken: createLiffSessionTransferToken(session) },
+        { status: 200 },
+      );
     }
 
     return NextResponse.json(result, {
