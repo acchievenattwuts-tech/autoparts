@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2 } from "lucide-react";
@@ -11,6 +11,38 @@ import {
   INVENTORY_TRACKING_TRACKED,
   type InventoryTrackingValue,
 } from "@/lib/inventory-tracking";
+
+// ─── Alias kind catalog ───────────────────────────────────────────────────────
+
+const ALIAS_KINDS = [
+  "ALIAS",
+  "OEM",
+  "PART_NO",
+  "CROSS_REF",
+  "KEYWORD",
+  "MISSPELL",
+  "EN",
+  "TH",
+] as const;
+export type AliasKindValue = (typeof ALIAS_KINDS)[number];
+
+interface AliasKindMeta {
+  label: string;
+  placeholder: string;
+  chipLight: string;
+  chipDark: string;
+}
+
+const ALIAS_KIND_META: Record<AliasKindValue, AliasKindMeta> = {
+  OEM:       { label: "OEM",         placeholder: "กรอกเบอร์ OEM แล้วกด Enter",            chipLight: "bg-blue-50 text-blue-700 border-blue-100",        chipDark: "dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30" },
+  PART_NO:   { label: "Part No.",    placeholder: "กรอก Part Number แล้วกด Enter",         chipLight: "bg-indigo-50 text-indigo-700 border-indigo-100",  chipDark: "dark:bg-indigo-500/10 dark:text-indigo-300 dark:border-indigo-500/30" },
+  CROSS_REF: { label: "เบอร์เทียบ",   placeholder: "กรอกเบอร์เทียบยี่ห้ออื่น",                   chipLight: "bg-cyan-50 text-cyan-700 border-cyan-100",        chipDark: "dark:bg-cyan-500/10 dark:text-cyan-300 dark:border-cyan-500/30" },
+  ALIAS:     { label: "คำเรียกอื่น",   placeholder: "กรอกชื่อเรียกอื่น เช่น คอมแอร์",            chipLight: "bg-slate-100 text-slate-700 border-slate-200",    chipDark: "dark:bg-slate-700/40 dark:text-slate-200 dark:border-slate-600" },
+  KEYWORD:   { label: "Keyword",     placeholder: "กรอกคำค้นที่ลูกค้าใช้บ่อย",                    chipLight: "bg-emerald-50 text-emerald-700 border-emerald-100", chipDark: "dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30" },
+  MISSPELL:  { label: "สะกดผิด",      placeholder: "กรอกคำสะกดผิดที่พบบ่อย",                     chipLight: "bg-amber-50 text-amber-700 border-amber-100",     chipDark: "dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30" },
+  EN:        { label: "EN",          placeholder: "กรอกชื่ออังกฤษ เช่น compressor",            chipLight: "bg-purple-50 text-purple-700 border-purple-100",  chipDark: "dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/30" },
+  TH:        { label: "TH",          placeholder: "กรอกชื่อไทย",                                chipLight: "bg-pink-50 text-pink-700 border-pink-100",        chipDark: "dark:bg-pink-500/10 dark:text-pink-300 dark:border-pink-500/30" },
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +56,21 @@ interface UnitRow {
   name: string;
   scale: number;
   isBase: boolean;
+}
+
+interface AliasRow {
+  alias: string;
+  kind: AliasKindValue;
+}
+
+export interface FitmentRow {
+  carModelId: string;
+  submodel: string | null;
+  yearStart: number | null;
+  yearEnd: number | null;
+  engineCode: string | null;
+  engineSize: string | null;
+  note: string | null;
 }
 
 /** Serializable product data — all Decimal fields converted to number */
@@ -50,8 +97,8 @@ export interface ProductFormData {
   requireExpiryDate:  boolean;
   lotIssueMethod:     string;
   allowExpiredIssue:  boolean;
-  aliases:         { alias: string }[];
-  carModels:       { carModelId: string }[];
+  aliases:         AliasRow[];
+  fitments:        FitmentRow[];
   units:           UnitRow[];
 }
 
@@ -63,12 +110,30 @@ interface ProductFormProps {
   product?:    ProductFormData;
 }
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
+// ─── Shared styles (light + dark) ─────────────────────────────────────────────
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
-const sectionCls = "bg-white rounded-xl shadow-sm border border-gray-100 p-6";
-const helpCls = "mt-1 text-xs text-gray-500 dark:text-slate-400";
+const inputCls =
+  "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm " +
+  "bg-white text-gray-900 placeholder:text-gray-400 " +
+  "dark:bg-slate-900 dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-sky-500";
+
+const labelCls =
+  "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-200";
+
+const sectionCls =
+  "bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6 " +
+  "dark:bg-slate-900/60 dark:border-white/10 dark:shadow-none";
+
+const sectionHeadingCls =
+  "font-kanit text-base sm:text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 " +
+  "dark:text-sky-200 dark:border-white/10";
+
+const helpCls =
+  "mt-1 text-xs text-gray-500 dark:text-slate-400";
+
+const checkboxCls =
+  "w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] " +
+  "dark:border-slate-500 dark:bg-slate-800 dark:focus:ring-sky-500";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -83,24 +148,38 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
-  // Aliases
-  const [aliases, setAliases] = useState<string[]>(
-    product?.aliases.map((a) => a.alias) ?? []
+  // Aliases (with kind)
+  const [aliases, setAliases] = useState<AliasRow[]>(
+    product?.aliases.map((a) => ({ alias: a.alias, kind: (a.kind ?? "ALIAS") as AliasKindValue })) ?? []
   );
   const [aliasInput, setAliasInput] = useState("");
+  // Active kind: "ALL" = แสดงทั้งหมด, otherwise filter
+  const [activeKind, setActiveKind] = useState<AliasKindValue | "ALL">("OEM");
 
-  // Car models
-  const [selectedCarModelIds, setSelectedCarModelIds] = useState<Set<string>>(
-    new Set(product?.carModels.map((cm) => cm.carModelId) ?? [])
-  );
-  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
+  // Fitments (compatible car models with year range / engine / submodel)
+  const [fitments, setFitments] = useState<FitmentRow[]>(product?.fitments ?? []);
+
+  // Flattened car model options (brand / model) for SearchableSelect
+  const carModelOptions = useMemo<SelectOption[]>(() => {
+    const opts: SelectOption[] = [];
+    for (const brand of carBrands) {
+      for (const model of brand.carModels) {
+        opts.push({
+          id: model.id,
+          label: `${brand.name} / ${model.name}`,
+          sublabel: brand.name,
+        });
+      }
+    }
+    return opts;
+  }, [carBrands]);
 
   // ── Units ──────────────────────────────────────────────────────────────────
   const initUnits = (): UnitRow[] => {
     if (product?.units && product.units.length > 0) {
       return product.units
         .slice()
-        .sort((a, b) => (b.isBase ? 1 : 0) - (a.isBase ? 1 : 0)) // base first
+        .sort((a, b) => (b.isBase ? 1 : 0) - (a.isBase ? 1 : 0))
         .map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase }));
     }
     return [{ name: "ชิ้น", scale: 1, isBase: true }];
@@ -109,30 +188,38 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const [units, setUnits] = useState<UnitRow[]>(initUnits);
   const baseUnit = units.find((u) => u.isBase) ?? units[0];
 
-  const [categoryId, setCategoryId]               = useState(product?.categoryId ?? "");
-  const [brandId, setBrandId]                     = useState(product?.brandId ?? "");
+  const [categoryId, setCategoryId]                   = useState(product?.categoryId ?? "");
+  const [brandId, setBrandId]                         = useState(product?.brandId ?? "");
   const [preferredSupplierId, setPreferredSupplierId] = useState(product?.preferredSupplierId ?? "");
-  const [inventoryTracking, setInventoryTracking] = useState<InventoryTrackingValue>(
+  const [inventoryTracking, setInventoryTracking]     = useState<InventoryTrackingValue>(
     product?.inventoryTracking ?? INVENTORY_TRACKING_TRACKED,
   );
 
   // Lot Control
   const isNonStock = inventoryTracking === INVENTORY_TRACKING_NON_TRACKED;
-  const [isLotControl, setIsLotControl]         = useState(product?.isLotControl ?? false);
+  const [isLotControl, setIsLotControl]           = useState(product?.isLotControl ?? false);
   const [requireExpiryDate, setRequireExpiryDate] = useState(product?.requireExpiryDate ?? false);
   const [allowExpiredIssue, setAllowExpiredIssue] = useState(product?.allowExpiredIssue ?? false);
   const [lotIssueMethod, setLotIssueMethod]       = useState(product?.lotIssueMethod ?? "FIFO");
 
-  const [saleUnitName, setSaleUnitName] = useState(
-    product?.saleUnitName ?? baseUnit.name
-  );
-  const [purchaseUnitName, setPurchaseUnitName] = useState(
-    product?.purchaseUnitName ?? baseUnit.name
-  );
-  const [reportUnitName, setReportUnitName] = useState(
-    product?.reportUnitName ?? baseUnit.name
-  );
+  const [saleUnitName, setSaleUnitName]         = useState(product?.saleUnitName ?? baseUnit.name);
+  const [purchaseUnitName, setPurchaseUnitName] = useState(product?.purchaseUnitName ?? baseUnit.name);
+  const [reportUnitName, setReportUnitName]     = useState(product?.reportUnitName ?? baseUnit.name);
 
+  // ── Counts per kind for chip badges ───────────────────────────────────────
+  const kindCounts = useMemo(() => {
+    const map: Record<AliasKindValue, number> = {
+      ALIAS: 0, OEM: 0, PART_NO: 0, CROSS_REF: 0, KEYWORD: 0, MISSPELL: 0, EN: 0, TH: 0,
+    };
+    for (const a of aliases) map[a.kind] = (map[a.kind] ?? 0) + 1;
+    return map;
+  }, [aliases]);
+
+  const visibleAliases = activeKind === "ALL"
+    ? aliases
+    : aliases.filter((a) => a.kind === activeKind);
+
+  // ── Unit handlers ──────────────────────────────────────────────────────────
   const handleUnitNameChange = (index: number, name: string) => {
     const old = units[index].name;
     setUnits((prev) => prev.map((u, i) => (i === index ? { ...u, name } : u)));
@@ -158,38 +245,31 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     if (reportUnitName === removed) setReportUnitName(baseName);
   };
 
-  // ── Car models ─────────────────────────────────────────────────────────────
+  // ── Fitment handlers ───────────────────────────────────────────────────────
+  const addFitment = () => {
+    setFitments((prev) => [
+      ...prev,
+      { carModelId: "", submodel: null, yearStart: null, yearEnd: null, engineCode: null, engineSize: null, note: null },
+    ]);
+  };
 
-  const toggleCarModel = (id: string) =>
-    setSelectedCarModelIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const updateFitment = <K extends keyof FitmentRow>(index: number, field: K, value: FitmentRow[K]) => {
+    setFitments((prev) => prev.map((f, i) => (i === index ? { ...f, [field]: value } : f)));
+  };
 
-  const toggleBrand = (id: string) =>
-    setExpandedBrands((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const removeFitment = (index: number) =>
+    setFitments((prev) => prev.filter((_, i) => i !== index));
 
-  const selectAllModels = (brand: CarBrandOption) =>
-    setSelectedCarModelIds((prev) => {
-      const next = new Set(prev);
-      brand.carModels.forEach((m) => next.add(m.id));
-      return next;
-    });
+  const parseYear = (raw: string): number | null => {
+    if (!raw.trim()) return null;
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n) || n < 1900 || n > 2200) return null;
+    return n;
+  };
 
-  const deselectAllModels = (brand: CarBrandOption) =>
-    setSelectedCarModelIds((prev) => {
-      const next = new Set(prev);
-      brand.carModels.forEach((m) => next.delete(m.id));
-      return next;
-    });
+  const parseOptStr = (raw: string): string | null => (raw.trim() === "" ? null : raw);
 
   // ── Image upload ───────────────────────────────────────────────────────────
-
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -205,21 +285,27 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   };
 
   // ── Aliases ────────────────────────────────────────────────────────────────
-
   const addAlias = () => {
     const v = aliasInput.trim();
-    if (!v || aliases.includes(v)) return;
-    setAliases((prev) => [...prev, v]);
+    if (!v) return;
+    const targetKind: AliasKindValue = activeKind === "ALL" ? "ALIAS" : activeKind;
+    // dedupe by (alias, kind)
+    if (aliases.some((a) => a.alias === v && a.kind === targetKind)) {
+      setAliasInput("");
+      return;
+    }
+    setAliases((prev) => [...prev, { alias: v, kind: targetKind }]);
     setAliasInput("");
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
+  const removeAlias = (alias: string, kind: AliasKindValue) =>
+    setAliases((prev) => prev.filter((a) => !(a.alias === alias && a.kind === kind)));
 
+  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
 
-    // Client-side unit validation
     for (const u of units) {
       if (!u.name.trim()) {
         setError("ชื่อหน่วยนับต้องไม่ว่าง");
@@ -243,8 +329,17 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     formData.set("requireExpiryDate", String(isNonStock ? false : requireExpiryDate));
     formData.set("allowExpiredIssue", String(isNonStock ? false : allowExpiredIssue));
     formData.set("lotIssueMethod", lotIssueMethod);
+    // Drop fitment rows with no carModel selected (incomplete)
+    const cleanFitments = fitments.filter((f) => f.carModelId);
+    // Validate year ranges
+    for (const f of cleanFitments) {
+      if (f.yearStart !== null && f.yearEnd !== null && f.yearStart > f.yearEnd) {
+        setError("ปีเริ่มต้องไม่มากกว่าปีจบในรายการรุ่นรถ");
+        return;
+      }
+    }
     formData.set("aliases", JSON.stringify(aliases));
-    formData.set("carModelIds", JSON.stringify(Array.from(selectedCarModelIds)));
+    formData.set("fitments", JSON.stringify(cleanFitments));
     formData.set("units", JSON.stringify(units));
     formData.set("saleUnitName", saleUnitName);
     formData.set("purchaseUnitName", purchaseUnitName);
@@ -262,19 +357,50 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
 
   const unitNameOptions = units.map((u) => u.name).filter((n) => n.trim() !== "");
 
+  // ── Chip styling helpers ───────────────────────────────────────────────────
+  const renderChipFilter = (kind: AliasKindValue | "ALL", label: string, count?: number) => {
+    const isActive = activeKind === kind;
+    return (
+      <button
+        key={kind}
+        type="button"
+        onClick={() => setActiveKind(kind)}
+        className={
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium border transition-colors " +
+          (isActive
+            ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-500 dark:border-sky-500"
+            : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 " +
+              "dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 dark:hover:bg-slate-700")
+        }
+      >
+        <span>{label}</span>
+        {typeof count === "number" && count > 0 && (
+          <span
+            className={
+              "inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-semibold px-1 " +
+              (isActive
+                ? "bg-white/20 text-white"
+                : "bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-slate-200")
+            }
+          >
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
 
-      {/* ── ข้อมูลพื้นฐาน ─────────────────────────────────────────────────── */}
+      {/* ── 1. ข้อมูลพื้นฐาน ─────────────────────────────────────────────────── */}
       <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          ข้อมูลพื้นฐาน
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <h2 className={sectionHeadingCls}>ข้อมูลพื้นฐาน</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
           {product && (
             <div>
               <label className={labelCls}>รหัสสินค้า</label>
-              <div className="inline-flex items-center px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-[#1e3a5f] font-medium">
+              <div className="inline-flex items-center px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-[#1e3a5f] font-medium dark:bg-slate-800 dark:border-white/10 dark:text-sky-200">
                 {product.code}
               </div>
             </div>
@@ -331,19 +457,323 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         </div>
       </div>
 
-      {/* ── ราคา ───────────────────────────────────────────────────────────── */}
+      {/* ── 2. รหัสค้นหา / OEM / Part No. / Keyword ────────────────────────── */}
       <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          ราคา
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-          <div>
+        <h2 className={sectionHeadingCls}>รหัสค้นหา / OEM / Part No. / คำพ้อง</h2>
+
+        <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">
+          ค่าเหล่านี้ใช้ค้นหาทั้งฝั่งลูกค้าและฝั่งแอดมิน — เลือก tab เพื่อสลับประเภทแล้วเพิ่มรายการเข้าไป
+        </p>
+
+        {/* Filter chips */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {renderChipFilter("ALL", "ทั้งหมด", aliases.length)}
+          {ALIAS_KINDS.map((k) =>
+            renderChipFilter(k, ALIAS_KIND_META[k].label, kindCounts[k])
+          )}
+        </div>
+
+        {/* Input row */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4">
+          <input
+            type="text"
+            value={aliasInput}
+            onChange={(e) => setAliasInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAlias(); } }}
+            placeholder={activeKind === "ALL" ? "เลือก tab แล้วกรอกรายการเพิ่ม" : ALIAS_KIND_META[activeKind].placeholder}
+            className={`flex-1 ${inputCls}`}
+          />
+          <button
+            type="button"
+            onClick={addAlias}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors dark:bg-sky-600 dark:hover:bg-sky-500"
+          >
+            <Plus size={14} />เพิ่ม
+          </button>
+        </div>
+
+        {/* Chip list (filtered) */}
+        {visibleAliases.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {visibleAliases.map((a) => {
+              const meta = ALIAS_KIND_META[a.kind];
+              return (
+                <span
+                  key={`${a.kind}::${a.alias}`}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 text-sm rounded-full border ${meta.chipLight} ${meta.chipDark}`}
+                >
+                  {activeKind === "ALL" && (
+                    <span className="text-[10px] uppercase tracking-wide opacity-70">
+                      {meta.label}
+                    </span>
+                  )}
+                  {a.alias}
+                  <button
+                    type="button"
+                    onClick={() => removeAlias(a.alias, a.kind)}
+                    className="opacity-60 hover:opacity-100 transition-opacity"
+                    aria-label="ลบ"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 dark:text-slate-500">
+            {activeKind === "ALL"
+              ? "ยังไม่มีรายการ"
+              : `ยังไม่มี ${ALIAS_KIND_META[activeKind].label}`}
+          </p>
+        )}
+      </div>
+
+      {/* ── 3. ความเข้ากันได้กับรถยนต์ (Fitment) ──────────────────────────── */}
+      <div className={sectionCls}>
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-base sm:text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">
+            ความเข้ากันได้กับรถยนต์
+          </h2>
+          <span className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">
+            {fitments.length} รายการ
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+          ระบุรุ่นรถ พร้อมโฉม/ปีเริ่ม/ปีจบ/รหัสเครื่อง — ใช้ค้นหาแบบละเอียดเช่น &quot;วีออส 2010&quot;
+        </p>
+
+        {carModelOptions.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-slate-500">ยังไม่มีข้อมูลรุ่นรถในระบบ</p>
+        ) : fitments.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-slate-500 mb-4">ยังไม่มีรายการ กดปุ่มด้านล่างเพื่อเพิ่ม</p>
+        ) : (
+          <>
+            {/* Desktop / tablet: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-white/10 text-left">
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[200px]">รุ่นรถ <span className="text-red-500">*</span></th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[120px]">โฉม</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">ปีเริ่ม</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">ปีจบ</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-32">รหัสเครื่อง</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">CC</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[140px]">โน้ต</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {fitments.map((f, i) => (
+                    <tr key={i} className="border-b border-gray-50 dark:border-white/5 align-top">
+                      <td className="py-2 pr-3">
+                        <SearchableSelect
+                          options={carModelOptions}
+                          value={f.carModelId}
+                          onChange={(id) => updateFitment(i, "carModelId", id)}
+                          placeholder="เลือกยี่ห้อ / รุ่น"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.submodel ?? ""}
+                          onChange={(e) => updateFitment(i, "submodel", parseOptStr(e.target.value))}
+                          placeholder="เช่น Gen 3"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          value={f.yearStart ?? ""}
+                          onChange={(e) => updateFitment(i, "yearStart", parseYear(e.target.value))}
+                          placeholder="2007"
+                          min={1900}
+                          max={2200}
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          value={f.yearEnd ?? ""}
+                          onChange={(e) => updateFitment(i, "yearEnd", parseYear(e.target.value))}
+                          placeholder="2013"
+                          min={1900}
+                          max={2200}
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.engineCode ?? ""}
+                          onChange={(e) => updateFitment(i, "engineCode", parseOptStr(e.target.value))}
+                          placeholder="2NZ-FE"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.engineSize ?? ""}
+                          onChange={(e) => updateFitment(i, "engineSize", parseOptStr(e.target.value))}
+                          placeholder="1.5L"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.note ?? ""}
+                          onChange={(e) => updateFitment(i, "note", parseOptStr(e.target.value))}
+                          placeholder="หมายเหตุ"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => removeFitment(i)}
+                          className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
+                          title="ลบรายการนี้"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: card stack */}
+            <div className="md:hidden space-y-3">
+              {fitments.map((f, i) => (
+                <div key={i} className="rounded-lg border border-gray-200 dark:border-white/10 p-3 space-y-2.5 bg-gray-50/40 dark:bg-slate-800/30">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-medium text-gray-500 dark:text-slate-400">#{i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFitment(i)}
+                      className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
+                      aria-label="ลบ"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">รุ่นรถ <span className="text-red-500">*</span></label>
+                    <SearchableSelect
+                      options={carModelOptions}
+                      value={f.carModelId}
+                      onChange={(id) => updateFitment(i, "carModelId", id)}
+                      placeholder="เลือกยี่ห้อ / รุ่น"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โฉม</label>
+                      <input type="text" value={f.submodel ?? ""}
+                        onChange={(e) => updateFitment(i, "submodel", parseOptStr(e.target.value))}
+                        placeholder="Gen 3" className={`${inputCls} py-1.5`} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">รหัสเครื่อง</label>
+                      <input type="text" value={f.engineCode ?? ""}
+                        onChange={(e) => updateFitment(i, "engineCode", parseOptStr(e.target.value))}
+                        placeholder="2NZ-FE" className={`${inputCls} py-1.5`} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีเริ่ม</label>
+                      <input type="number" value={f.yearStart ?? ""}
+                        onChange={(e) => updateFitment(i, "yearStart", parseYear(e.target.value))}
+                        placeholder="2007" min={1900} max={2200} className={`${inputCls} py-1.5`} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีจบ</label>
+                      <input type="number" value={f.yearEnd ?? ""}
+                        onChange={(e) => updateFitment(i, "yearEnd", parseYear(e.target.value))}
+                        placeholder="2013" min={1900} max={2200} className={`${inputCls} py-1.5`} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">CC</label>
+                      <input type="text" value={f.engineSize ?? ""}
+                        onChange={(e) => updateFitment(i, "engineSize", parseOptStr(e.target.value))}
+                        placeholder="1.5L" className={`${inputCls} py-1.5`} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โน้ต</label>
+                      <input type="text" value={f.note ?? ""}
+                        onChange={(e) => updateFitment(i, "note", parseOptStr(e.target.value))}
+                        placeholder="หมายเหตุ" className={`${inputCls} py-1.5`} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {carModelOptions.length > 0 && (
+          <button
+            type="button"
+            onClick={addFitment}
+            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-slate-600 dark:hover:border-sky-400 dark:text-slate-300 dark:hover:text-sky-300"
+          >
+            <Plus size={14} />
+            เพิ่มรุ่นรถที่ใช้ได้
+          </button>
+        )}
+      </div>
+
+      {/* ── 4. รูปภาพสินค้า ──────────────────────────────────────────────── */}
+      <div className={sectionCls}>
+        <h2 className={sectionHeadingCls}>รูปภาพสินค้า</h2>
+        <div className="flex flex-col sm:flex-row items-start gap-5">
+          <div className="flex-shrink-0">
+            {imageUrl ? (
+              <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
+                <Image src={imageUrl} alt="preview" fill className="object-cover" sizes="128px" />
+                <button type="button" onClick={() => setImageUrl("")}
+                  className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors">
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50 dark:bg-slate-800 dark:border-slate-700">
+                <p className="text-xs text-gray-400 dark:text-slate-500 text-center px-2">ยังไม่มีรูปภาพ</p>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 space-y-3">
+            <input ref={fileInputRef} type="file" accept="image/*"
+              onChange={handleImageChange} className="hidden" id="imageUpload" />
+            <label htmlFor="imageUpload"
+              className={`inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium cursor-pointer transition-colors ${isUploading ? "opacity-60 cursor-not-allowed" : ""} border-gray-300 hover:bg-gray-50 bg-white dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800`}>
+              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              {isUploading ? "กำลังอัปโหลด..." : "อัปโหลดรูปภาพ"}
+            </label>
+            <p className="text-xs text-gray-400 dark:text-slate-500">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 3MB</p>
+            {uploadError && <p className="text-xs text-red-500 dark:text-red-400">{uploadError}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 5. ราคา & สต็อก ──────────────────────────────────────────────── */}
+      <div className={sectionCls}>
+        <h2 className={sectionHeadingCls}>ราคา &amp; สต็อก</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          <div className="sm:col-span-2 lg:col-span-1">
             <label className={labelCls}>การคำนวณสต็อก</label>
             <select
               name="inventoryTracking"
               value={inventoryTracking}
               onChange={(e) => setInventoryTracking(e.target.value as InventoryTrackingValue)}
-              className={`${inputCls} bg-white dark:border-white/10 dark:bg-slate-950 dark:text-slate-100`}
+              className={inputCls}
             >
               <option value={INVENTORY_TRACKING_TRACKED}>คำนวณสต็อก</option>
               <option value={INVENTORY_TRACKING_NON_TRACKED}>ไม่คำนวณสต็อก</option>
@@ -360,7 +790,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
             <p className={helpCls}>
               {isNonStock
                 ? "ใช้เป็นต้นทุนขายสำหรับคำนวณกำไร และระบบจะบันทึก snapshot ลงรายการขาย"
-                : "ใช้เป็นราคาทุนอ้างอิง ส่วนกำไรของสินค้าคำนวณสต็อกใช้ต้นทุนเฉลี่ยจาก Stock Card MAVG"}
+                : "ใช้เป็นราคาทุนอ้างอิง ส่วนกำไรใช้ MAVG จาก Stock Card"}
             </p>
           </div>
           <div>
@@ -383,113 +813,52 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
               placeholder="0 = ไม่มีประกัน" />
           </div>
         </div>
-        <p className="mt-3 text-xs text-gray-400">
-          * จำนวน Stock เริ่มต้นกำหนดได้ที่ระบบ BF (ยอดยกมา) ใน Phase 3
+        <p className="mt-3 text-xs text-gray-400 dark:text-slate-500">
+          * จำนวน Stock เริ่มต้นกำหนดได้ที่ระบบ BF (ยอดยกมา)
         </p>
       </div>
 
-      {/* ── Lot Control ────────────────────────────────────────────────────── */}
+      {/* ── 6. หน่วยนับ ───────────────────────────────────────────────────── */}
       <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          Lot Control
-        </h2>
-        <label className="flex items-center gap-3 cursor-pointer mb-4">
-          <input
-            type="checkbox"
-            checked={!isNonStock && isLotControl}
-            disabled={isNonStock}
-            onChange={(e) => setIsLotControl(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
-          />
-          <span className="text-sm font-medium text-gray-700">เปิดใช้ระบบ Lot Control สำหรับสินค้านี้</span>
-        </label>
-
-        {isNonStock && (
-          <p className={helpCls}>
-            สินค้าไม่คำนวณสต็อกจะปิด Lot Control อัตโนมัติ และไม่สร้างความเคลื่อนไหวสต็อก
-          </p>
-        )}
-
-        {!isNonStock && isLotControl && (
-          <div className="pl-7 space-y-4 border-l-2 border-[#1e3a5f]/20 ml-2">
-            <div>
-              <label className={labelCls}>วิธีจ่ายออก (Lot Issue Method)</label>
-              <select
-                value={lotIssueMethod}
-                onChange={(e) => setLotIssueMethod(e.target.value)}
-                className={`${inputCls} bg-white max-w-xs`}
-              >
-                <option value="FIFO">FIFO — เข้าก่อนออกก่อน (เรียงตามวันผลิต)</option>
-                <option value="FEFO">FEFO — หมดอายุก่อนออกก่อน (เรียงตามวันหมดอายุ)</option>
-                <option value="MANUAL">MANUAL — เลือกเองทุกครั้ง</option>
-              </select>
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={requireExpiryDate}
-                onChange={(e) => setRequireExpiryDate(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
-              />
-              <span className="text-sm text-gray-700">บังคับกรอกวันหมดอายุ (EXP) ตอนรับสินค้าเข้า</span>
-            </label>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={allowExpiredIssue}
-                onChange={(e) => setAllowExpiredIssue(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
-              />
-              <span className="text-sm text-gray-700">อนุญาตให้จ่ายสินค้าหมดอายุแล้วออกได้</span>
-            </label>
-          </div>
-        )}
-      </div>
-
-      {/* ── หน่วยนับ ───────────────────────────────────────────────────────── */}
-      <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-1 pb-0">
+        <h2 className="font-kanit text-base sm:text-lg font-semibold text-[#1e3a5f] mb-1 pb-0 dark:text-sky-200">
           หน่วยนับสินค้า
         </h2>
-        <p className="text-xs text-gray-400 mb-5 pb-3 border-b border-gray-100">
+        <p className="text-xs text-gray-400 dark:text-slate-500 mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
           หน่วยหลัก (isBase) ต้องมี Scale = 1 เสมอ · Scale ของหน่วยอื่น = จำนวนหน่วยย่อยต่อ 1 หน่วยนั้น
         </p>
 
-        {/* Units table */}
         <div className="overflow-x-auto mb-4">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 pr-4 text-gray-500 font-medium w-10">#</th>
-                <th className="text-left py-2 pr-4 text-gray-500 font-medium">ชื่อหน่วย</th>
-                <th className="text-left py-2 pr-4 text-gray-500 font-medium w-32">Scale</th>
-                <th className="text-left py-2 pr-4 text-gray-500 font-medium w-24">ประเภท</th>
+              <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-left py-2 pr-4 text-gray-500 dark:text-slate-400 font-medium w-10">#</th>
+                <th className="text-left py-2 pr-4 text-gray-500 dark:text-slate-400 font-medium">ชื่อหน่วย</th>
+                <th className="text-left py-2 pr-4 text-gray-500 dark:text-slate-400 font-medium w-32">Scale</th>
+                <th className="text-left py-2 pr-4 text-gray-500 dark:text-slate-400 font-medium w-28">ประเภท</th>
                 <th className="w-10" />
               </tr>
             </thead>
             <tbody>
               {units.map((unit, i) => (
-                <tr key={i} className="border-b border-gray-50">
-                  <td className="py-2 pr-4 text-gray-400">{i + 1}</td>
+                <tr key={i} className="border-b border-gray-50 dark:border-white/5">
+                  <td className="py-2 pr-4 text-gray-400 dark:text-slate-500">{i + 1}</td>
                   <td className="py-2 pr-4">
                     <input
                       type="text"
                       value={unit.name}
                       onChange={(e) => handleUnitNameChange(i, e.target.value)}
                       placeholder="เช่น ชิ้น, โหล, กล่อง"
-                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] text-sm"
+                      className={`${inputCls} py-1.5`}
                     />
                   </td>
                   <td className="py-2 pr-4">
                     {unit.isBase ? (
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          value={1}
-                          disabled
-                          className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-md text-sm bg-gray-50 text-gray-400"
-                        />
-                      </div>
+                      <input
+                        type="number"
+                        value={1}
+                        disabled
+                        className="w-24 px-2.5 py-1.5 border border-gray-200 rounded-md text-sm bg-gray-50 text-gray-400 dark:border-white/10 dark:bg-slate-800 dark:text-slate-500"
+                      />
                     ) : (
                       <input
                         type="number"
@@ -497,17 +866,17 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         onChange={(e) => handleUnitScaleChange(i, Number(e.target.value))}
                         min={0.001}
                         step={0.001}
-                        className="w-24 px-2.5 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#1e3a5f] text-sm"
+                        className={`${inputCls} w-24 py-1.5`}
                       />
                     )}
                   </td>
                   <td className="py-2 pr-4">
                     {unit.isBase ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#1e3a5f]/10 text-[#1e3a5f]">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#1e3a5f]/10 text-[#1e3a5f] dark:bg-sky-500/15 dark:text-sky-300">
                         หน่วยหลัก
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300">
                         หน่วยเพิ่มเติม
                       </span>
                     )}
@@ -517,7 +886,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                       <button
                         type="button"
                         onClick={() => removeUnit(i)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
+                        className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
                         title="ลบหน่วยนี้"
                       >
                         <Trash2 size={15} />
@@ -533,190 +902,104 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         <button
           type="button"
           onClick={addUnit}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-slate-600 dark:hover:border-sky-400 dark:text-slate-300 dark:hover:text-sky-300"
         >
           <Plus size={14} />
           เพิ่มหน่วยนับ
         </button>
 
-        {/* Unit selects */}
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-gray-100">
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-white/10">
           <div>
             <label className={labelCls}>หน่วยขาย <span className="text-red-500">*</span></label>
-            <select
-              value={saleUnitName}
-              onChange={(e) => setSaleUnitName(e.target.value)}
-              className={`${inputCls} bg-white`}
-            >
-              {unitNameOptions.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={saleUnitName} onChange={(e) => setSaleUnitName(e.target.value)} className={inputCls}>
+              {unitNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div>
             <label className={labelCls}>หน่วยซื้อ <span className="text-red-500">*</span></label>
-            <select
-              value={purchaseUnitName}
-              onChange={(e) => setPurchaseUnitName(e.target.value)}
-              className={`${inputCls} bg-white`}
-            >
-              {unitNameOptions.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={purchaseUnitName} onChange={(e) => setPurchaseUnitName(e.target.value)} className={inputCls}>
+              {unitNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
           <div>
             <label className={labelCls}>หน่วยรายงาน <span className="text-red-500">*</span></label>
-            <select
-              value={reportUnitName}
-              onChange={(e) => setReportUnitName(e.target.value)}
-              className={`${inputCls} bg-white`}
-            >
-              {unitNameOptions.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={reportUnitName} onChange={(e) => setReportUnitName(e.target.value)} className={inputCls}>
+              {unitNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         </div>
       </div>
 
-      {/* ── รูปภาพ ─────────────────────────────────────────────────────────── */}
-      <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          รูปภาพสินค้า
-        </h2>
-        <div className="flex flex-col sm:flex-row items-start gap-5">
-          <div className="flex-shrink-0">
-            {imageUrl ? (
-              <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200">
-                <Image src={imageUrl} alt="preview" fill className="object-cover" sizes="128px" />
-                <button type="button" onClick={() => setImageUrl("")}
-                  className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors">
-                  <X size={12} />
-                </button>
-              </div>
-            ) : (
-              <div className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center bg-gray-50">
-                <p className="text-xs text-gray-400 text-center px-2">ยังไม่มีรูปภาพ</p>
-              </div>
-            )}
-          </div>
-          <div className="flex-1 space-y-3">
-            <input ref={fileInputRef} type="file" accept="image/*"
-              onChange={handleImageChange} className="hidden" id="imageUpload" />
-            <label htmlFor="imageUpload"
-              className={`inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium cursor-pointer transition-colors ${isUploading ? "opacity-60 cursor-not-allowed bg-gray-50" : "hover:bg-gray-50 bg-white"}`}>
-              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {isUploading ? "กำลังอัปโหลด..." : "อัปโหลดรูปภาพ"}
-            </label>
-            <p className="text-xs text-gray-400">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 5MB</p>
-            {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
-          </div>
-        </div>
-      </div>
+      {/* ── 7. Lot Control (conditional) ─────────────────────────────────── */}
+      {!isNonStock && (
+        <div className={sectionCls}>
+          <h2 className={sectionHeadingCls}>Lot Control</h2>
+          <label className="flex items-center gap-3 cursor-pointer mb-4">
+            <input
+              type="checkbox"
+              checked={isLotControl}
+              onChange={(e) => setIsLotControl(e.target.checked)}
+              className={checkboxCls}
+            />
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-200">
+              เปิดใช้ระบบ Lot Control สำหรับสินค้านี้
+            </span>
+          </label>
 
-      {/* ── ชื่อเรียกอื่น ───────────────────────────────────────────────────── */}
-      <div className={sectionCls}>
-        <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100">
-          ชื่อเรียกอื่น / รหัสอื่น
-        </h2>
-        <div className="flex gap-3 mb-4">
-          <input type="text" value={aliasInput}
-            onChange={(e) => setAliasInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAlias(); } }}
-            placeholder="กรอกชื่อเรียกอื่น แล้วกด Enter หรือ เพิ่ม"
-            className={`flex-1 ${inputCls}`} />
-          <button type="button" onClick={addAlias}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors">
-            <Plus size={14} />เพิ่ม
-          </button>
+          {isLotControl && (
+            <div className="pl-7 space-y-4 border-l-2 border-[#1e3a5f]/20 ml-2 dark:border-sky-500/20">
+              <div>
+                <label className={labelCls}>วิธีจ่ายออก (Lot Issue Method)</label>
+                <select
+                  value={lotIssueMethod}
+                  onChange={(e) => setLotIssueMethod(e.target.value)}
+                  className={`${inputCls} max-w-sm`}
+                >
+                  <option value="FIFO">FIFO — เข้าก่อนออกก่อน (เรียงตามวันผลิต)</option>
+                  <option value="FEFO">FEFO — หมดอายุก่อนออกก่อน (เรียงตามวันหมดอายุ)</option>
+                  <option value="MANUAL">MANUAL — เลือกเองทุกครั้ง</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={requireExpiryDate}
+                  onChange={(e) => setRequireExpiryDate(e.target.checked)}
+                  className={checkboxCls}
+                />
+                <span className="text-sm text-gray-700 dark:text-slate-200">
+                  บังคับกรอกวันหมดอายุ (EXP) ตอนรับสินค้าเข้า
+                </span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allowExpiredIssue}
+                  onChange={(e) => setAllowExpiredIssue(e.target.checked)}
+                  className={checkboxCls}
+                />
+                <span className="text-sm text-gray-700 dark:text-slate-200">
+                  อนุญาตให้จ่ายสินค้าหมดอายุแล้วออกได้
+                </span>
+              </label>
+            </div>
+          )}
         </div>
-        {aliases.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {aliases.map((alias) => (
-              <span key={alias}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full border border-blue-100">
-                {alias}
-                <button type="button" onClick={() => setAliases((p) => p.filter((a) => a !== alias))}
-                  className="text-blue-400 hover:text-blue-700 transition-colors">
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">ยังไม่มีชื่อเรียกอื่น</p>
-        )}
-      </div>
-
-      {/* ── รุ่นรถที่ใช้ได้ ────────────────────────────────────────────────── */}
-      <div className={sectionCls}>
-        <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100">
-          <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f]">รุ่นรถที่ใช้ได้</h2>
-          <span className="text-sm text-gray-500">เลือกแล้ว {selectedCarModelIds.size} รุ่น</span>
-        </div>
-        {carBrands.length === 0 ? (
-          <p className="text-sm text-gray-400">ยังไม่มีข้อมูลรุ่นรถ</p>
-        ) : (
-          <div className="space-y-3">
-            {carBrands.map((brand) => {
-              const isExpanded = expandedBrands.has(brand.id);
-              const selectedCount = brand.carModels.filter((m) => selectedCarModelIds.has(m.id)).length;
-              return (
-                <div key={brand.id} className="border border-gray-100 rounded-lg overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                    <button type="button" onClick={() => toggleBrand(brand.id)}
-                      className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-[#1e3a5f] transition-colors">
-                      <span className={`transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}>▶</span>
-                      {brand.name}
-                      {selectedCount > 0 && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#1e3a5f] text-white">
-                          {selectedCount}
-                        </span>
-                      )}
-                    </button>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => selectAllModels(brand)}
-                        className="text-xs text-[#1e3a5f] hover:underline">เลือกทั้งหมด</button>
-                      <span className="text-gray-300">|</span>
-                      <button type="button" onClick={() => deselectAllModels(brand)}
-                        className="text-xs text-red-500 hover:underline">ยกเลิก</button>
-                    </div>
-                  </div>
-                  {isExpanded && (
-                    <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                      {brand.carModels.map((model) => (
-                        <label key={model.id} className="flex items-center gap-2 cursor-pointer group">
-                          <input type="checkbox" checked={selectedCarModelIds.has(model.id)}
-                            onChange={() => toggleCarModel(model.id)}
-                            className="w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] cursor-pointer" />
-                          <span className="text-sm text-gray-700 group-hover:text-[#1e3a5f] transition-colors">
-                            {model.name}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* ── Error & Submit ─────────────────────────────────────────────────── */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-500/30">
+          <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
         </div>
       )}
-      <div className="flex items-center justify-end gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 pt-2">
         <button type="button" onClick={() => router.push("/admin/products")}
-          className="px-5 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors">
+          className="px-5 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
           ยกเลิก
         </button>
         <button type="submit" disabled={isPending || isUploading}
-          className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60">
+          className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60">
           {isPending ? (
             <><Loader2 size={16} className="animate-spin" />กำลังบันทึก...</>
           ) : product ? "บันทึกการแก้ไข" : "เพิ่มสินค้า"}

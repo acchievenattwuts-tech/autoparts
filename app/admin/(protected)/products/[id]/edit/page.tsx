@@ -24,7 +24,19 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
       where: { id },
       include: {
         aliases: true,
-        carModels: { select: { carModelId: true } },
+        carModels: {
+          select: {
+            id: true,
+            carModelId: true,
+            submodel: true,
+            yearStart: true,
+            yearEnd: true,
+            engineCode: true,
+            engineSize: true,
+            note: true,
+          },
+          orderBy: [{ carModelId: "asc" }, { yearStart: "asc" }],
+        },
         units: { orderBy: { isBase: "desc" } },
       },
     }),
@@ -70,8 +82,16 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
     requireExpiryDate:    product.requireExpiryDate,
     lotIssueMethod:       product.lotIssueMethod,
     allowExpiredIssue:    product.allowExpiredIssue,
-    aliases:              product.aliases.map((a) => ({ alias: a.alias })),
-    carModels:        product.carModels.map((cm) => ({ carModelId: cm.carModelId })),
+    aliases:              product.aliases.map((a) => ({ alias: a.alias, kind: a.kind })),
+    fitments:         product.carModels.map((cm) => ({
+      carModelId: cm.carModelId,
+      submodel: cm.submodel,
+      yearStart: cm.yearStart,
+      yearEnd: cm.yearEnd,
+      engineCode: cm.engineCode,
+      engineSize: cm.engineSize,
+      note: cm.note,
+    })),
     units:            product.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   };
 

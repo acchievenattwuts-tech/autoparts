@@ -18,6 +18,8 @@
     "test:roadmap-2026-04-27": "tsx scripts/test-roadmap-2026-04-27.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",
     "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts",
+    "db:push": "prisma db push --accept-data-loss && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
+    "db:setup-search-v2": "tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",
     "backfill:claim-stock": "tsx --env-file=.env prisma/scripts/backfill-claim-stock.ts",
     "reconcile:fact-profit": "tsx --env-file=.env prisma/scripts/reconcile-fact-profit.ts",

@@ -33,6 +33,12 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "master.cancel", group: "ข้อมูลหลัก", label: "ยกเลิกข้อมูลหลัก" },
   { key: "master.manage", group: "ข้อมูลหลัก", label: "จัดการข้อมูลหลัก" },
 
+  { key: "search_synonyms.view", group: "ข้อมูลหลัก", label: "ดูคลังคำพ้อง" },
+  { key: "search_synonyms.create", group: "ข้อมูลหลัก", label: "เพิ่มคำพ้อง" },
+  { key: "search_synonyms.update", group: "ข้อมูลหลัก", label: "แก้ไขคำพ้อง" },
+  { key: "search_synonyms.cancel", group: "ข้อมูลหลัก", label: "ยกเลิกคำพ้อง" },
+  { key: "search_synonyms.manage", group: "ข้อมูลหลัก", label: "จัดการคลังคำพ้อง" },
+
   { key: "stock.bf.view", group: "สต็อก", label: "ดู BF" },
   { key: "stock.bf.create", group: "สต็อก", label: "เพิ่ม BF" },
   { key: "stock.bf.cancel", group: "สต็อก", label: "ยกเลิก BF" },
@@ -195,6 +201,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "products.view",
   "customers.view",
   "master.view",
+  "search_synonyms.view",
   "stock.bf.view",
   "stock.adjustments.view",
   "stock.card.view",
@@ -250,6 +257,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/dashboard", permission: "dashboard.view" },
   { prefix: "/admin/products", permission: "products.view" },
   { prefix: "/admin/customers", permission: "customers.view" },
+  { prefix: "/admin/master/search-synonyms", permission: "search_synonyms.view" },
   { prefix: "/admin/master", permission: "master.view" },
   { prefix: "/admin/stock/bf", permission: "stock.bf.view" },
   { prefix: "/admin/stock/adjustments", permission: "stock.adjustments.view" },

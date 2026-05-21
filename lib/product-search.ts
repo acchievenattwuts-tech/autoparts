@@ -2,10 +2,12 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
+import { expandQueryTokens } from "@/lib/search-synonyms";
 
 const SEARCH_V2_CODE_SIMILARITY = 0.2;
 const SEARCH_V2_NAME_SIMILARITY = 0.18;
 const SEARCH_V2_TEXT_SIMILARITY = 0.12;
+const SEARCH_V2_OEM_SIMILARITY = 0.2;
 
 type ProductSearchOrder = "createdAtDesc" | "codeDesc";
 
@@ -20,6 +22,8 @@ type ProductSearchInput = {
   carBrandName?: string | null;
   carModelName?: string | null;
   carModelNames?: string[] | null;
+  /** Optional explicit fitment year filter (e.g. user selected from dropdown) */
+  fitmentYear?: number | null;
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
@@ -46,6 +50,15 @@ const normalizeSearchQuery = (query?: string | null): string | undefined => {
   return normalized ? normalized : undefined;
 };
 
+/** Auto-detect a 4-digit year (1900-2200) in the user query. */
+export const extractYearFromQuery = (query?: string | null): number | null => {
+  if (!query) return null;
+  const match = query.match(/\b(19|20|21)\d{2}\b/);
+  if (!match) return null;
+  const y = parseInt(match[0], 10);
+  return y >= 1900 && y <= 2200 ? y : null;
+};
+
 const normalizeCarModelNames = (input: ProductSearchInput): string[] => {
   const names = input.carModelNames ?? (input.carModelName ? [input.carModelName] : []);
 
@@ -59,6 +72,7 @@ const buildContainsCondition = (
     { name: { contains: query, mode: "insensitive" } },
     { code: { contains: query, mode: "insensitive" } },
     { description: { contains: query, mode: "insensitive" } },
+    // ProductAlias covers ALIAS / OEM / PART_NO / CROSS_REF / KEYWORD / MISSPELL / EN / TH
     { aliases: { some: { alias: { contains: query, mode: "insensitive" } } } },
     {
       carModels: {
@@ -179,6 +193,38 @@ const buildProductFilterWhere = ({
   };
 };
 
+/**
+ * Build a year-aware filter for the Prisma fallback path.
+ * Lenient (Q3=B): match fitment rows where year is in range OR all year fields are null.
+ */
+const applyYearFilter = (
+  where: PrismaTypes.ProductWhereInput,
+  targetYear: number | null,
+): PrismaTypes.ProductWhereInput => {
+  if (targetYear === null) return where;
+
+  const yearCondition: PrismaTypes.ProductWhereInput = {
+    carModels: {
+      some: {
+        OR: [
+          { yearStart: null, yearEnd: null },
+          { yearStart: null, yearEnd: { gte: targetYear } },
+          { yearEnd: null, yearStart: { lte: targetYear } },
+          {
+            AND: [
+              { yearStart: { lte: targetYear } },
+              { yearEnd: { gte: targetYear } },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+  return { ...where, AND: [...existingAnd, yearCondition] };
+};
+
 const getFallbackOrderBy = (
   order: ProductSearchOrder,
 ): PrismaTypes.ProductOrderByWithRelationInput => {
@@ -204,7 +250,9 @@ const coerceCount = (value: bigint | number | string): number => {
 async function searchProductIdsFallback(
   input: ProductSearchInput,
 ): Promise<ProductSearchResult> {
-  const where = buildProductFilterWhere(input);
+  const baseWhere = buildProductFilterWhere(input);
+  const targetYear = input.fitmentYear ?? extractYearFromQuery(input.query);
+  const where = applyYearFilter(baseWhere, targetYear);
   const skip = input.skip ?? 0;
   const take = input.take ?? 30;
   const order = input.order ?? "createdAtDesc";
@@ -241,7 +289,66 @@ async function searchProductIdsV2(
   const take = input.take ?? 30;
   const prefixQuery = `${normalizedQuery}%`;
   const containsQuery = `%${normalizedQuery}%`;
-  const tsQuery = Prisma.sql`plainto_tsquery('simple', ${normalizedQuery})`;
+
+  // Phase D: expand user query through the synonym dictionary so search covers
+  // bi-directional matches (e.g. "คอมแอร์" → also tries "compressor"/"คอมเพรสเซอร์").
+  const expandedTokens = await expandQueryTokens(normalizedQuery);
+
+  // Build a single OR-tsquery from all expanded tokens. We sanitize each token
+  // into the simple `to_tsquery` lexeme form (alphanumeric and Thai chars only;
+  // anything else becomes a space) so user input can never inject tsquery syntax.
+  const sanitizedTsTokens = expandedTokens
+    .map((token) => token.replace(/[^\p{L}\p{N}_-]+/gu, " ").trim())
+    .map((token) => token.replace(/\s+/g, " "))
+    .filter((token) => token.length > 0)
+    .map((token) => token.split(" ").map((word) => `${word}:*`).join(" & "))
+    .filter((expr) => expr.length > 0);
+
+  const tsQueryExpression = sanitizedTsTokens.length > 0
+    ? sanitizedTsTokens.map((expr) => `(${expr})`).join(" | ")
+    : normalizedQuery.replace(/[^\p{L}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
+
+  const tsQuery = Prisma.sql`to_tsquery('simple', ${tsQueryExpression})`;
+
+  // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
+  const targetYear = input.fitmentYear ?? extractYearFromQuery(normalizedQuery);
+
+  // Lenient year filter (Q3=B): match fitments where year falls in range
+  // OR where year fields are NULL (legacy/unspecified rows). Falls back to no filter.
+  const yearFilterClause = targetYear !== null
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          WHERE pcm."productId" = psd.product_id
+            AND (
+              (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
+              OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+              OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+              OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+            )
+        )
+      `
+    : Prisma.empty;
+
+  // Year boost (Q3=C): +700 when a fitment row covers the requested year explicitly
+  const yearBoostExpr = targetYear !== null
+    ? Prisma.sql`
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM "ProductCarModel" pcm
+            WHERE pcm."productId" = psd.product_id
+              AND (
+                (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+                OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+              )
+          ) THEN 700
+          ELSE 0
+        END
+      `
+    : Prisma.sql`0`;
 
   const isActiveClause =
     typeof input.isActive === "boolean"
@@ -332,13 +439,21 @@ async function searchProductIdsV2(
       ${carModelIdClause}
       ${carBrandClause}
       ${carModelClause}
+      ${yearFilterClause}
   `;
 
   const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
     SELECT psd.product_id, COUNT(*) OVER() AS total_count
     FROM product_search_documents psd
     ${exactScope}
-      AND lower(psd.product_code) = lower(${normalizedQuery})
+      AND (
+        lower(psd.product_code) = lower(${normalizedQuery})
+        OR psd.oem_text ILIKE ${`%${normalizedQuery}%`}
+           AND EXISTS (
+             SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
+             WHERE lower(tok.tok) = lower(${normalizedQuery})
+           )
+      )
     ORDER BY psd.product_created_at DESC, psd.product_id DESC
     OFFSET ${skip}
     LIMIT ${take}
@@ -376,20 +491,37 @@ async function searchProductIdsV2(
         psd.product_id,
         psd.product_created_at,
         (
-          CASE WHEN lower(psd.product_code) = lower(${normalizedQuery}) THEN 1200 ELSE 0 END +
+          -- Exact matches (highest priority)
+          CASE WHEN lower(psd.product_code) = lower(${normalizedQuery}) THEN 1500 ELSE 0 END +
+          CASE WHEN lower(psd.oem_text) ~ ('(^|\s)' || lower(${normalizedQuery}) || '($|\s)') THEN 1400 ELSE 0 END +
           CASE WHEN lower(psd.product_name) = lower(${normalizedQuery}) THEN 1000 ELSE 0 END +
           CASE WHEN lower(psd.search_text) = lower(${normalizedQuery}) THEN 800 ELSE 0 END +
+
+          -- Prefix / contains
           CASE WHEN lower(psd.product_code) LIKE lower(${prefixQuery}) THEN 380 ELSE 0 END +
           CASE WHEN lower(psd.product_name) LIKE lower(${prefixQuery}) THEN 320 ELSE 0 END +
-          CASE WHEN lower(psd.search_text) LIKE lower(${containsQuery}) THEN 140 ELSE 0 END +
+          CASE WHEN lower(psd.oem_text) LIKE lower(${containsQuery}) THEN 600 ELSE 0 END +
+          CASE WHEN lower(psd.keyword_text) LIKE lower(${containsQuery}) THEN 250 ELSE 0 END +
+          CASE WHEN lower(psd.alias_text) LIKE lower(${containsQuery}) THEN 250 ELSE 0 END +
+          CASE WHEN lower(psd.fitment_text) LIKE lower(${containsQuery}) THEN 200 ELSE 0 END +
+          CASE WHEN lower(psd.product_description) LIKE lower(${containsQuery}) THEN 80 ELSE 0 END +
+
+          -- Full-text rank
           CASE
             WHEN psd.search_document @@ ${tsQuery}
             THEN ts_rank_cd(psd.search_document, ${tsQuery}) * 220
             ELSE 0
           END +
+
+          -- Year-match boost (Phase C Q3=C)
+          ${yearBoostExpr} +
+
+          -- Trigram fuzzy
           GREATEST(
             similarity(lower(psd.product_code), lower(${normalizedQuery})) * 420,
+            similarity(lower(psd.oem_text), lower(${normalizedQuery})) * 380,
             similarity(lower(psd.product_name), lower(${normalizedQuery})) * 250,
+            similarity(lower(psd.keyword_text), lower(${normalizedQuery})) * 180,
             similarity(lower(psd.search_text), lower(${normalizedQuery})) * 120
           )
         ) AS score
@@ -400,9 +532,13 @@ async function searchProductIdsV2(
           OR lower(psd.product_name) = lower(${normalizedQuery})
           OR lower(psd.product_code) LIKE lower(${prefixQuery})
           OR lower(psd.product_name) LIKE lower(${prefixQuery})
+          OR lower(psd.oem_text) LIKE lower(${containsQuery})
+          OR lower(psd.keyword_text) LIKE lower(${containsQuery})
+          OR lower(psd.alias_text) LIKE lower(${containsQuery})
           OR lower(psd.search_text) LIKE lower(${containsQuery})
           OR psd.search_document @@ ${tsQuery}
           OR similarity(lower(psd.product_code), lower(${normalizedQuery})) >= ${SEARCH_V2_CODE_SIMILARITY}
+          OR similarity(lower(psd.oem_text), lower(${normalizedQuery})) >= ${SEARCH_V2_OEM_SIMILARITY}
           OR similarity(lower(psd.product_name), lower(${normalizedQuery})) >= ${SEARCH_V2_NAME_SIMILARITY}
           OR similarity(lower(psd.search_text), lower(${normalizedQuery})) >= ${SEARCH_V2_TEXT_SIMILARITY}
         )
@@ -437,6 +573,7 @@ export async function searchProductIds(
     carModelId: input.carModelId ?? "",
     carBrandName: input.carBrandName ?? "",
     carModelNames: normalizeCarModelNames(input),
+    fitmentYear: input.fitmentYear ?? null,
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",

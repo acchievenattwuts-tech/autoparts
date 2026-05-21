@@ -18,6 +18,7 @@ import ProductFilterBar from "../ProductFilterBar";
 import ProductFilterBarFallback from "../ProductFilterBarFallback";
 import ProductsHero from "../ProductsHero";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
@@ -31,9 +32,18 @@ interface Props {
     category?: string;
     brand?: string;
     model?: QueryValue;
+    /** Optional explicit fitment year (Phase C Q4=C). Auto-detect happens inside the search engine if blank. */
+    year?: string;
     page?: string;
   }>;
 }
+
+const parseYearParam = (value?: string): number | null => {
+  if (!value) return null;
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 1900 || n > 2200) return null;
+  return n;
+};
 
 const parsePage = (value?: string) => {
   const parsed = Number.parseInt(value ?? "1", 10);
@@ -119,11 +129,12 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 }
 
 const ProductsPage = async ({ searchParams }: Props) => {
-  const { q, category, brand, model, page } = await searchParams;
+  const { q, category, brand, model, year, page } = await searchParams;
   const models = normalizeQueryValues(model);
+  const explicitYear = parseYearParam(year);
   const config = await getSiteConfig();
   const currentPage = parsePage(page);
-  const hasSearchState = Boolean(q || category || brand || models.length > 0 || currentPage > 1);
+  const hasSearchState = Boolean(q || category || brand || models.length > 0 || explicitYear || currentPage > 1);
 
   if (!hasSearchState) {
     redirect("/products");
@@ -131,15 +142,25 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   const skip = (currentPage - 1) * PRODUCTS_PER_PAGE;
 
-  const searchResult = await searchProductIds({
+  const searchInput = {
     query: q,
     isActive: true,
     categoryName: category,
     carBrandName: brand,
     carModelNames: models,
+    fitmentYear: explicitYear,
     skip,
     take: PRODUCTS_PER_PAGE,
     order: "createdAtDesc",
+  } as const;
+
+  const searchResult = await searchProductIds(searchInput);
+
+  await logProductSearchTelemetry({
+    input: searchInput,
+    resultCount: searchResult.total,
+    source: "storefront",
+    path: "/products/search",
   });
 
   const [products, filterData] = await Promise.all([

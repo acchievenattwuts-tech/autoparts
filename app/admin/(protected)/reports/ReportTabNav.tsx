@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 
 const TABS = [
+  { label: "Product Search", href: "/admin/reports/product-search" },
   { label: "รายงานขาย", href: "/admin/reports/sales" },
   { label: "รายงานซื้อ", href: "/admin/reports/purchases" },
   { label: "คืนขาย (CN)", href: "/admin/reports/credit-notes" },

@@ -18,6 +18,7 @@ import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 
 const PAGE_SIZE = 30;
@@ -48,17 +49,19 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const { search, page, categoryId, brandId, carBrandId, carModelId } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
+  const productSearchInput = {
+    query: search,
+    categoryId,
+    brandId,
+    carBrandId,
+    carModelId,
+    skip: (pageNum - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
+    order: "codeDesc",
+  } as const;
+
   const [searchResult, categories, partsBrands, carBrands] = await Promise.all([
-    searchProductIds({
-      query: search,
-      categoryId,
-      brandId,
-      carBrandId,
-      carModelId,
-      skip: (pageNum - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      order: "codeDesc",
-    }),
+    searchProductIds(productSearchInput),
     db.category.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
@@ -83,6 +86,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       },
     }),
   ]);
+
+  await logProductSearchTelemetry({
+    input: productSearchInput,
+    resultCount: searchResult.total,
+    source: "admin",
+    path: "/admin/products",
+  });
 
   const products = sortProductsByIds(
     await db.product.findMany({

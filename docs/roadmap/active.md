@@ -17,6 +17,11 @@
   - [ ] สรุป impact กับรายงานปัจจุบัน
   - [ ] แยก spec ลง [docs/specs/cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
 
+### Product Search Overhaul (OEM / Fitment / Synonym)
+- สถานะ: Phase A + B + C + D + E เสร็จ
+- เอกสาร spec: [docs/specs/product-search-overhaul.md](/D:/autoparts/docs/specs/product-search-overhaul.md)
+- Phase E: no-result telemetry + dashboard/report เสร็จแล้ว
+
 ### Phase 7 - SEO Follow-up
 - สถานะ: mostly complete with ongoing follow-up
 - สิ่งที่ยังเป็นงานต่อเนื่อง:

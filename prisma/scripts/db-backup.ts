@@ -41,7 +41,9 @@ async function main() {
     products: await db.product.findMany(),
     productUnits: await db.productUnit.findMany(),
     productAliases: await db.productAlias.findMany(),
-    productCarModels: await db.productCarModel.findMany(),
+    productCarModels: await db.productFitment.findMany(),
+    searchSynonyms: await db.searchSynonym.findMany(),
+    productSearchLogs: await db.productSearchLog.findMany(),
 
     // ─── Transactional Data ───────────────────────────────
     stockCards: await db.stockCard.findMany(),

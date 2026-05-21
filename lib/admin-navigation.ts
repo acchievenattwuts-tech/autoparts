@@ -17,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   ScrollText,
+  SearchX,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -26,6 +27,7 @@ import {
   Truck,
   Users,
   Wallet,
+  Languages,
 } from "lucide-react";
 
 import type { PermissionKey } from "@/lib/access-control";
@@ -99,6 +101,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
     section: "รายงาน",
     items: [
       { label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view", keywords: "reports รายงาน" },
+      { label: "Product Search No Result", href: "/admin/reports/product-search", icon: SearchX, permission: "reports.view", keywords: "product search no result telemetry คำค้นหา ไม่พบผลลัพธ์" },
     ],
   },
   {
@@ -111,6 +114,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award, permission: "master.view", keywords: "parts brands แบรนด์อะไหล่ master" },
       { label: "ยี่ห้อ / รุ่นรถ", href: "/admin/master/car-brands", icon: Car, permission: "master.view", keywords: "car brands car models ยี่ห้อ รุ่นรถ master" },
       { label: "รหัสค่าใช้จ่าย", href: "/admin/master/expense-codes", icon: Wallet, permission: "master.view", keywords: "expense codes รหัสค่าใช้จ่าย master" },
+      { label: "คลังคำพ้อง", href: "/admin/master/search-synonyms", icon: Languages, permission: "search_synonyms.view", keywords: "synonym search คำพ้อง คลังคำพ้อง dictionary master" },
     ],
   },
   {

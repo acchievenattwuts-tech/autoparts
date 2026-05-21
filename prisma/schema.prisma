@@ -289,7 +289,7 @@ model CarModel {
   createdAt  DateTime          @default(now()) @db.Timestamptz(3)
   isActive   Boolean           @default(true)
   carBrand   CarBrand          @relation(fields: [carBrandId], references: [id])
-  products   ProductCarModel[]
+  products   ProductFitment[]
 
   @@unique([name, carBrandId])
   @@index([carBrandId])
@@ -370,7 +370,7 @@ model Product {
   category            Category             @relation(fields: [categoryId], references: [id])
   preferredSupplier   Supplier?            @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   aliases             ProductAlias[]
-  carModels           ProductCarModel[]
+  carModels           ProductFitment[]
   lots                ProductLot[]
   units               ProductUnit[]
   purchaseItems       PurchaseItem[]
@@ -395,25 +395,77 @@ model ProductUnit {
   @@unique([productId, name])
 }
 
-model ProductAlias {
-  id        String   @id @default(cuid())
-  productId String
-  alias     String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, alias])
-  @@index([alias])
+enum AliasKind {
+  ALIAS
+  OEM
+  PART_NO
+  CROSS_REF
+  KEYWORD
+  MISSPELL
+  EN
+  TH
 }
 
-model ProductCarModel {
+model ProductAlias {
+  id        String    @id @default(cuid())
+  productId String
+  alias     String
+  kind      AliasKind @default(ALIAS)
+  weight    Int?
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, alias, kind])
+  @@index([alias])
+  @@index([kind])
+}
+
+/// Global search synonym dictionary (Phase D).
+/// Bi-directional: a query matching `term` OR any item in `synonyms[]` will expand to cover all related terms.
+model SearchSynonym {
+  id        String   @id @default(cuid())
+  term      String   @unique
+  synonyms  String[] @default([])
+  language  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([isActive])
+}
+
+model ProductSearchLog {
+  id          String   @id @default(cuid())
+  query       String   @db.VarChar(200)
+  filters     Json?
+  resultCount Int      @default(0)
+  source      String   @db.VarChar(30)
+  path        String?  @db.VarChar(200)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([source, createdAt(sort: Desc)])
+  @@index([resultCount, createdAt(sort: Desc)])
+}
+
+model ProductFitment {
+  id         String   @id @default(cuid())
   productId  String
   carModelId String
+  submodel   String?
+  yearStart  Int?
+  yearEnd    Int?
+  engineCode String?
+  engineSize String?
+  note       String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
   carModel   CarModel @relation(fields: [carModelId], references: [id])
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@id([productId, carModelId])
+  @@unique([productId, carModelId, submodel, yearStart, yearEnd, engineCode])
   @@index([carModelId, productId])
+  @@index([carModelId, yearStart, yearEnd])
+  @@map("ProductCarModel")
 }
 
 model StockCard {
@@ -1374,6 +1426,8 @@ model product_search_documents {
   category_name       String                  @default("")
   brand_name          String                  @default("")
   alias_text          String                  @default("")
+  oem_text            String                  @default("")
+  keyword_text        String                  @default("")
   car_brand_text      String                  @default("")
   car_model_text      String                  @default("")
   fitment_text        String                  @default("")

@@ -12,7 +12,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
-import { AuditAction } from "@/lib/generated/prisma";
+import { AliasKind, AuditAction } from "@/lib/generated/prisma";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -56,8 +56,29 @@ const productSchema = z.object({
   requireExpiryDate: z.preprocess((v) => v === "true", z.boolean()).default(false),
   allowExpiredIssue: z.preprocess((v) => v === "true", z.boolean()).default(false),
   lotIssueMethod: z.enum(["FIFO", "FEFO", "MANUAL"]).default("FIFO"),
-  aliases: z.array(z.string().max(100)).max(20).default([]),
-  carModelIds: z.array(z.string().max(50)).max(100).default([]),
+  aliases: z
+    .array(
+      z.object({
+        alias: z.string().min(1).max(100),
+        kind: z.nativeEnum(AliasKind).default(AliasKind.ALIAS),
+      }),
+    )
+    .max(100)
+    .default([]),
+  fitments: z
+    .array(
+      z.object({
+        carModelId: z.string().min(1).max(50),
+        submodel: z.string().max(100).nullable().optional(),
+        yearStart: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
+        yearEnd: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
+        engineCode: z.string().max(50).nullable().optional(),
+        engineSize: z.string().max(30).nullable().optional(),
+        note: z.string().max(200).nullable().optional(),
+      }),
+    )
+    .max(500)
+    .default([]),
   units: z.array(productUnitSchema).min(1, "ต้องมีหน่วยนับอย่างน้อย 1 หน่วย").max(20),
 });
 
@@ -73,16 +94,25 @@ async function getProductAuditSnapshot(productId: string) {
     where: { id: productId },
     include: {
       aliases: {
-        select: { alias: true },
-        orderBy: { alias: "asc" },
+        select: { alias: true, kind: true },
+        orderBy: [{ kind: "asc" }, { alias: "asc" }],
       },
       units: {
         select: { name: true, scale: true, isBase: true },
         orderBy: [{ isBase: "desc" }, { scale: "asc" }, { name: "asc" }],
       },
       carModels: {
-        select: { carModelId: true },
-        orderBy: { carModelId: "asc" },
+        select: {
+          id: true,
+          carModelId: true,
+          submodel: true,
+          yearStart: true,
+          yearEnd: true,
+          engineCode: true,
+          engineSize: true,
+          note: true,
+        },
+        orderBy: [{ carModelId: "asc" }, { yearStart: "asc" }],
       },
     },
   });
@@ -115,8 +145,16 @@ async function getProductAuditSnapshot(productId: string) {
     allowExpiredIssue: product.allowExpiredIssue,
     lotIssueMethod: product.lotIssueMethod,
     isActive: product.isActive,
-    aliases: product.aliases.map((item) => item.alias),
-    carModelIds: product.carModels.map((item) => item.carModelId),
+    aliases: product.aliases.map((item) => ({ alias: item.alias, kind: item.kind })),
+    fitments: product.carModels.map((item) => ({
+      carModelId: item.carModelId,
+      submodel: item.submodel,
+      yearStart: item.yearStart,
+      yearEnd: item.yearEnd,
+      engineCode: item.engineCode,
+      engineSize: item.engineSize,
+      note: item.note,
+    })),
     units: product.units,
   };
 }
@@ -126,22 +164,79 @@ async function getProductAuditSnapshot(productId: string) {
 const parseProductFormData = (
   formData: FormData
 ): { success: true; data: ProductInput } | { success: false; error: string } => {
-  let aliases: string[] = [];
-  let carModelIds: string[] = [];
+  let aliases: ProductInput["aliases"] = [];
+  let fitments: ProductInput["fitments"] = [];
   let units: z.infer<typeof productUnitSchema>[] = [];
 
   try {
     const raw = formData.get("aliases");
-    if (typeof raw === "string" && raw) aliases = JSON.parse(raw) as string[];
+    if (typeof raw === "string" && raw) {
+      const parsedAliases = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsedAliases)) {
+        // Backward-compat: accept legacy string[] form
+        aliases = parsedAliases.map((item) => {
+          if (typeof item === "string") {
+            return { alias: item, kind: AliasKind.ALIAS };
+          }
+          if (item && typeof item === "object" && "alias" in item) {
+            const rec = item as { alias: unknown; kind?: unknown };
+            const kindCandidate = typeof rec.kind === "string" ? rec.kind : AliasKind.ALIAS;
+            const kind = (Object.values(AliasKind) as string[]).includes(kindCandidate)
+              ? (kindCandidate as AliasKind)
+              : AliasKind.ALIAS;
+            return { alias: String(rec.alias ?? ""), kind };
+          }
+          return { alias: "", kind: AliasKind.ALIAS };
+        });
+      }
+    }
   } catch {
     return { success: false, error: "รูปแบบข้อมูล aliases ไม่ถูกต้อง" };
   }
 
   try {
-    const raw = formData.get("carModelIds");
-    if (typeof raw === "string" && raw) carModelIds = JSON.parse(raw) as string[];
+    const raw = formData.get("fitments");
+    if (typeof raw === "string" && raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        fitments = parsed.map((item) => {
+          // Backward-compat: legacy string carModelId
+          if (typeof item === "string") {
+            return { carModelId: item };
+          }
+          if (item && typeof item === "object") {
+            const rec = item as Record<string, unknown>;
+            return {
+              carModelId: String(rec.carModelId ?? ""),
+              submodel: typeof rec.submodel === "string" && rec.submodel.trim() !== "" ? rec.submodel : null,
+              yearStart: rec.yearStart === null || rec.yearStart === undefined || rec.yearStart === "" ? null : Number(rec.yearStart),
+              yearEnd: rec.yearEnd === null || rec.yearEnd === undefined || rec.yearEnd === "" ? null : Number(rec.yearEnd),
+              engineCode: typeof rec.engineCode === "string" && rec.engineCode.trim() !== "" ? rec.engineCode : null,
+              engineSize: typeof rec.engineSize === "string" && rec.engineSize.trim() !== "" ? rec.engineSize : null,
+              note: typeof rec.note === "string" && rec.note.trim() !== "" ? rec.note : null,
+            };
+          }
+          return { carModelId: "" };
+        }).filter((f) => f.carModelId);
+      }
+    }
   } catch {
-    return { success: false, error: "รูปแบบข้อมูล carModelIds ไม่ถูกต้อง" };
+    return { success: false, error: "รูปแบบข้อมูลรุ่นรถ/ปีไม่ถูกต้อง" };
+  }
+
+  // Legacy fallback: old carModelIds payload (Phase B and earlier)
+  if (fitments.length === 0) {
+    try {
+      const raw = formData.get("carModelIds");
+      if (typeof raw === "string" && raw) {
+        const ids = JSON.parse(raw) as string[];
+        if (Array.isArray(ids)) {
+          fitments = ids.filter((s) => typeof s === "string" && s).map((id) => ({ carModelId: id }));
+        }
+      }
+    } catch {
+      // ignore — fitments stays empty
+    }
   }
 
   try {
@@ -199,7 +294,7 @@ const parseProductFormData = (
     allowExpiredIssue: formData.get("allowExpiredIssue") ?? "false",
     lotIssueMethod: formData.get("lotIssueMethod") ?? "FIFO",
     aliases,
-    carModelIds,
+    fitments,
     units,
   });
 
@@ -255,7 +350,7 @@ export const createProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, carModelIds, units, ...productData } = result.data;
+  const { aliases, fitments, units, ...productData } = result.data;
   const code = await generateProductCode();
   let createdProductId = "";
 
@@ -311,16 +406,24 @@ export const createProduct = async (
 
       if (aliases.length > 0) {
         await tx.productAlias.createMany({
-          data: aliases.map((alias) => ({ productId: product.id, alias })),
+          data: aliases
+            .filter((a) => a.alias.trim() !== "")
+            .map(({ alias, kind }) => ({ productId: product.id, alias, kind })),
           skipDuplicates: true,
         });
       }
 
-      if (carModelIds.length > 0) {
-        await tx.productCarModel.createMany({
-          data: carModelIds.map((carModelId) => ({
+      if (fitments.length > 0) {
+        await tx.productFitment.createMany({
+          data: fitments.map((f) => ({
             productId: product.id,
-            carModelId,
+            carModelId: f.carModelId,
+            submodel: f.submodel ?? null,
+            yearStart: f.yearStart ?? null,
+            yearEnd: f.yearEnd ?? null,
+            engineCode: f.engineCode ?? null,
+            engineSize: f.engineSize ?? null,
+            note: f.note ?? null,
           })),
           skipDuplicates: true,
         });
@@ -371,7 +474,7 @@ export const updateProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, carModelIds, units, ...productData } = result.data;
+  const { aliases, fitments, units, ...productData } = result.data;
 
   if (!isInventoryTracked(productData.inventoryTracking)) {
     const currentProduct = await db.product.findUnique({
@@ -459,22 +562,30 @@ export const updateProduct = async (
         })),
       });
 
-      // Sync aliases
+      // Sync aliases (delete-and-recreate with kind)
       await tx.productAlias.deleteMany({ where: { productId: id } });
       if (aliases.length > 0) {
         await tx.productAlias.createMany({
-          data: aliases.map((alias) => ({ productId: id, alias })),
+          data: aliases
+            .filter((a) => a.alias.trim() !== "")
+            .map(({ alias, kind }) => ({ productId: id, alias, kind })),
           skipDuplicates: true,
         });
       }
 
-      // Sync car models
-      await tx.productCarModel.deleteMany({ where: { productId: id } });
-      if (carModelIds.length > 0) {
-        await tx.productCarModel.createMany({
-          data: carModelIds.map((carModelId) => ({
+      // Sync fitments (delete-and-recreate)
+      await tx.productFitment.deleteMany({ where: { productId: id } });
+      if (fitments.length > 0) {
+        await tx.productFitment.createMany({
+          data: fitments.map((f) => ({
             productId: id,
-            carModelId,
+            carModelId: f.carModelId,
+            submodel: f.submodel ?? null,
+            yearStart: f.yearStart ?? null,
+            yearEnd: f.yearEnd ?? null,
+            engineCode: f.engineCode ?? null,
+            engineSize: f.engineSize ?? null,
+            note: f.note ?? null,
           })),
           skipDuplicates: true,
         });

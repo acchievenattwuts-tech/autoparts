@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS product_search_documents (
   category_name text NOT NULL DEFAULT '',
   brand_name text NOT NULL DEFAULT '',
   alias_text text NOT NULL DEFAULT '',
+  oem_text text NOT NULL DEFAULT '',
+  keyword_text text NOT NULL DEFAULT '',
   car_brand_text text NOT NULL DEFAULT '',
   car_model_text text NOT NULL DEFAULT '',
   fitment_text text NOT NULL DEFAULT '',
@@ -26,6 +28,12 @@ CREATE TABLE IF NOT EXISTS product_search_documents (
   product_created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Phase B: ensure new columns exist when upgrading from older schemas
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS oem_text text NOT NULL DEFAULT '';
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS keyword_text text NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_is_active
   ON product_search_documents (is_active);
@@ -47,6 +55,17 @@ CREATE INDEX IF NOT EXISTS idx_product_search_documents_text_trgm
   ON product_search_documents
   USING GIN (search_text gin_trgm_ops);
 
+CREATE INDEX IF NOT EXISTS idx_product_search_documents_oem_trgm
+  ON product_search_documents
+  USING GIN (oem_text gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_product_search_documents_keyword_trgm
+  ON product_search_documents
+  USING GIN (keyword_text gin_trgm_ops);
+
+-- Phase B: return-type changed (added oem_text, keyword_text) — must drop first
+DROP FUNCTION IF EXISTS build_product_search_text(text);
+
 CREATE OR REPLACE FUNCTION build_product_search_text(target_product_id text)
 RETURNS TABLE (
   is_active boolean,
@@ -56,6 +75,8 @@ RETURNS TABLE (
   category_name text,
   brand_name text,
   alias_text text,
+  oem_text text,
+  keyword_text text,
   car_brand_text text,
   car_model_text text,
   fitment_text text,
@@ -68,7 +89,9 @@ AS $$
   WITH alias_docs AS (
     SELECT
       pa."productId" AS product_id,
-      COALESCE(string_agg(pa.alias, ' '), '') AS alias_text
+      COALESCE(string_agg(CASE WHEN pa.kind = 'ALIAS' THEN pa.alias END, ' '), '') AS alias_text,
+      COALESCE(string_agg(CASE WHEN pa.kind IN ('OEM', 'PART_NO', 'CROSS_REF') THEN pa.alias END, ' '), '') AS oem_text,
+      COALESCE(string_agg(CASE WHEN pa.kind IN ('KEYWORD', 'MISSPELL', 'EN', 'TH') THEN pa.alias END, ' '), '') AS keyword_text
     FROM "ProductAlias" pa
     WHERE pa."productId" = target_product_id
     GROUP BY pa."productId"
@@ -78,7 +101,30 @@ AS $$
       pcm."productId" AS product_id,
       COALESCE(string_agg(DISTINCT cb.name, ' '), '') AS car_brand_text,
       COALESCE(string_agg(DISTINCT cm.name, ' '), '') AS car_model_text,
-      COALESCE(string_agg(DISTINCT concat_ws(' ', cb.name, cm.name), ' '), '') AS fitment_text
+      COALESCE(
+        string_agg(
+          DISTINCT concat_ws(
+            ' ',
+            cb.name,
+            cm.name,
+            pcm.submodel,
+            CASE
+              WHEN pcm."yearStart" IS NOT NULL AND pcm."yearEnd" IS NOT NULL
+                THEN pcm."yearStart"::text || '-' || pcm."yearEnd"::text
+              WHEN pcm."yearStart" IS NOT NULL
+                THEN pcm."yearStart"::text || '+'
+              WHEN pcm."yearEnd" IS NOT NULL
+                THEN '-' || pcm."yearEnd"::text
+              ELSE NULL
+            END,
+            pcm."engineCode",
+            pcm."engineSize",
+            pcm.note
+          ),
+          ' '
+        ),
+        ''
+      ) AS fitment_text
     FROM "ProductCarModel" pcm
     INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
     INNER JOIN "CarBrand" cb ON cb.id = cm."carBrandId"
@@ -94,6 +140,8 @@ AS $$
       COALESCE(c.name, '') AS category_name,
       COALESCE(pb.name, '') AS brand_name,
       COALESCE(ad.alias_text, '') AS alias_text,
+      COALESCE(ad.oem_text, '') AS oem_text,
+      COALESCE(ad.keyword_text, '') AS keyword_text,
       COALESCE(fd.car_brand_text, '') AS car_brand_text,
       COALESCE(fd.car_model_text, '') AS car_model_text,
       COALESCE(fd.fitment_text, '') AS fitment_text,
@@ -113,6 +161,8 @@ AS $$
     base.category_name,
     base.brand_name,
     base.alias_text,
+    base.oem_text,
+    base.keyword_text,
     base.car_brand_text,
     base.car_model_text,
     base.fitment_text,
@@ -124,6 +174,8 @@ AS $$
       base.category_name,
       base.brand_name,
       base.alias_text,
+      base.oem_text,
+      base.keyword_text,
       base.car_brand_text,
       base.car_model_text,
       base.fitment_text
@@ -138,6 +190,8 @@ AS $$
         base.category_name,
         base.brand_name,
         base.alias_text,
+        base.oem_text,
+        base.keyword_text,
         base.car_brand_text,
         base.car_model_text,
         base.fitment_text
@@ -165,6 +219,8 @@ BEGIN
     category_name,
     brand_name,
     alias_text,
+    oem_text,
+    keyword_text,
     car_brand_text,
     car_model_text,
     fitment_text,
@@ -182,6 +238,8 @@ BEGIN
     built.category_name,
     built.brand_name,
     built.alias_text,
+    built.oem_text,
+    built.keyword_text,
     built.car_brand_text,
     built.car_model_text,
     built.fitment_text,
@@ -198,6 +256,8 @@ BEGIN
     category_name = EXCLUDED.category_name,
     brand_name = EXCLUDED.brand_name,
     alias_text = EXCLUDED.alias_text,
+    oem_text = EXCLUDED.oem_text,
+    keyword_text = EXCLUDED.keyword_text,
     car_brand_text = EXCLUDED.car_brand_text,
     car_model_text = EXCLUDED.car_model_text,
     fitment_text = EXCLUDED.fitment_text,
@@ -373,58 +433,93 @@ AFTER UPDATE ON "CarBrand"
 FOR EACH ROW
 EXECUTE FUNCTION trg_refresh_product_search_car_brand();
 
-TRUNCATE TABLE product_search_documents;
+-- Phase B mini-step: zero-downtime batch rebuild (no TRUNCATE)
+-- Removes only orphan rows; upserts active products in batches of BATCH_SIZE.
+DELETE FROM product_search_documents
+WHERE product_id NOT IN (SELECT id FROM "Product");
 
-INSERT INTO product_search_documents (
-  product_id,
-  is_active,
-  product_code,
-  product_name,
-  product_description,
-  category_name,
-  brand_name,
-  alias_text,
-  car_brand_text,
-  car_model_text,
-  fitment_text,
-  search_text,
-  search_document,
-  product_created_at,
-  updated_at
-)
-SELECT
-  p.id,
-  built.is_active,
-  built.product_code,
-  built.product_name,
-  built.product_description,
-  built.category_name,
-  built.brand_name,
-  built.alias_text,
-  built.car_brand_text,
-  built.car_model_text,
-  built.fitment_text,
-  built.search_text,
-  built.search_document,
-  built.product_created_at,
-  now()
-FROM "Product" p
-INNER JOIN LATERAL build_product_search_text(p.id) built ON TRUE
-ON CONFLICT (product_id) DO UPDATE SET
-  is_active = EXCLUDED.is_active,
-  product_code = EXCLUDED.product_code,
-  product_name = EXCLUDED.product_name,
-  product_description = EXCLUDED.product_description,
-  category_name = EXCLUDED.category_name,
-  brand_name = EXCLUDED.brand_name,
-  alias_text = EXCLUDED.alias_text,
-  car_brand_text = EXCLUDED.car_brand_text,
-  car_model_text = EXCLUDED.car_model_text,
-  fitment_text = EXCLUDED.fitment_text,
-  search_text = EXCLUDED.search_text,
-  search_document = EXCLUDED.search_document,
-  product_created_at = EXCLUDED.product_created_at,
-  updated_at = now();
+DO $rebuild$
+DECLARE
+  BATCH_SIZE CONSTANT INT := 500;
+  last_id TEXT := '';
+  processed INT;
+BEGIN
+  LOOP
+    WITH next_batch AS (
+      SELECT p.id
+      FROM "Product" p
+      WHERE p.id > last_id
+      ORDER BY p.id
+      LIMIT BATCH_SIZE
+    ),
+    inserted AS (
+      INSERT INTO product_search_documents (
+        product_id,
+        is_active,
+        product_code,
+        product_name,
+        product_description,
+        category_name,
+        brand_name,
+        alias_text,
+        oem_text,
+        keyword_text,
+        car_brand_text,
+        car_model_text,
+        fitment_text,
+        search_text,
+        search_document,
+        product_created_at,
+        updated_at
+      )
+      SELECT
+        nb.id,
+        built.is_active,
+        built.product_code,
+        built.product_name,
+        built.product_description,
+        built.category_name,
+        built.brand_name,
+        built.alias_text,
+        built.oem_text,
+        built.keyword_text,
+        built.car_brand_text,
+        built.car_model_text,
+        built.fitment_text,
+        built.search_text,
+        built.search_document,
+        built.product_created_at,
+        now()
+      FROM next_batch nb
+      INNER JOIN LATERAL build_product_search_text(nb.id) built ON TRUE
+      ON CONFLICT (product_id) DO UPDATE SET
+        is_active = EXCLUDED.is_active,
+        product_code = EXCLUDED.product_code,
+        product_name = EXCLUDED.product_name,
+        product_description = EXCLUDED.product_description,
+        category_name = EXCLUDED.category_name,
+        brand_name = EXCLUDED.brand_name,
+        alias_text = EXCLUDED.alias_text,
+        oem_text = EXCLUDED.oem_text,
+        keyword_text = EXCLUDED.keyword_text,
+        car_brand_text = EXCLUDED.car_brand_text,
+        car_model_text = EXCLUDED.car_model_text,
+        fitment_text = EXCLUDED.fitment_text,
+        search_text = EXCLUDED.search_text,
+        search_document = EXCLUDED.search_document,
+        product_created_at = EXCLUDED.product_created_at,
+        updated_at = now()
+      RETURNING product_id
+    )
+    SELECT COUNT(*), COALESCE(MAX(product_id), last_id)
+      INTO processed, last_id
+    FROM inserted;
+
+    EXIT WHEN processed = 0;
+    RAISE NOTICE 'product_search_documents: processed batch up to id=%, count=%', last_id, processed;
+  END LOOP;
+END
+$rebuild$;
 `;
 
 async function main() {
@@ -437,11 +532,20 @@ async function main() {
 
   try {
     await pool.query(setupSql);
-    const { rows } = await pool.query<{ total: string }>(
-      "SELECT COUNT(*)::text AS total FROM product_search_documents",
+    const { rows } = await pool.query<{ doc_total: string; product_total: string }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM product_search_documents) AS doc_total,
+         (SELECT COUNT(*)::text FROM "Product") AS product_total`,
     );
+    const docTotal = rows[0]?.doc_total ?? "0";
+    const productTotal = rows[0]?.product_total ?? "0";
+    if (docTotal !== productTotal) {
+      console.warn(
+        `Search V2 setup WARNING: docs=${docTotal} but products=${productTotal} — counts do not match.`,
+      );
+    }
     console.log(
-      `Search V2 setup complete. Indexed products: ${rows[0]?.total ?? "0"}`,
+      `Search V2 setup complete. Indexed products: ${docTotal} (of ${productTotal})`,
     );
   } finally {
     await pool.end();

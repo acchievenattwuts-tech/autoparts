@@ -109,7 +109,8 @@ async function main() {
   await db.stockCard.deleteMany();
 
   // Product relations
-  await db.productCarModel.deleteMany();
+  await db.productSearchLog.deleteMany();
+  await db.productFitment.deleteMany();
   await db.productAlias.deleteMany();
   await db.productUnit.deleteMany();
   await db.product.deleteMany();
@@ -121,6 +122,7 @@ async function main() {
   await db.partsBrand.deleteMany();
   await db.supplier.deleteMany();
   await db.siteContent.deleteMany();
+  await db.searchSynonym.deleteMany();
   await db.user.deleteMany();
 
   console.log("✅ All tables cleared.\n");
@@ -134,11 +136,13 @@ async function main() {
   if (snap.carModels?.length)      { await db.carModel.createMany({ data: snap.carModels }); console.log(`   ✓ carModels (${snap.carModels.length})`); }
   if (snap.suppliers?.length)      { await db.supplier.createMany({ data: snap.suppliers }); console.log(`   ✓ suppliers (${snap.suppliers.length})`); }
   if (snap.siteContents?.length)   { await db.siteContent.createMany({ data: snap.siteContents }); console.log(`   ✓ siteContents (${snap.siteContents.length})`); }
+  if (snap.searchSynonyms?.length) { await db.searchSynonym.createMany({ data: snap.searchSynonyms }); console.log(`   ✓ searchSynonyms (${snap.searchSynonyms.length})`); }
 
   if (snap.products?.length)       { await db.product.createMany({ data: snap.products }); console.log(`   ✓ products (${snap.products.length})`); }
   if (snap.productUnits?.length)   { await db.productUnit.createMany({ data: snap.productUnits }); console.log(`   ✓ productUnits (${snap.productUnits.length})`); }
   if (snap.productAliases?.length) { await db.productAlias.createMany({ data: snap.productAliases }); console.log(`   ✓ productAliases (${snap.productAliases.length})`); }
-  if (snap.productCarModels?.length) { await db.productCarModel.createMany({ data: snap.productCarModels }); console.log(`   ✓ productCarModels (${snap.productCarModels.length})`); }
+  if (snap.productCarModels?.length) { await db.productFitment.createMany({ data: snap.productCarModels }); console.log(`   ✓ productCarModels (${snap.productCarModels.length})`); }
+  if (snap.productSearchLogs?.length) { await db.productSearchLog.createMany({ data: snap.productSearchLogs }); console.log(`   ✓ productSearchLogs (${snap.productSearchLogs.length})`); }
 
   if (snap.stockCards?.length)     { await db.stockCard.createMany({ data: snap.stockCards }); console.log(`   ✓ stockCards (${snap.stockCards.length})`); }
 
