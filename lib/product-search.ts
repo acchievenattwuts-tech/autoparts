@@ -313,6 +313,13 @@ async function searchProductIdsV2(
   // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
   const targetYear = input.fitmentYear ?? extractYearFromQuery(normalizedQuery);
 
+  // When the user types a pure 4-digit year (e.g. "1901"), the fitment_text
+  // stores ranges as literal "1900-1904" so substring/FTS won't match interior
+  // years. Skip the AND text-match clause and rely solely on the yearFilter
+  // (already enforced via exactScope) — yearBoost gives score > 0 so results
+  // still pass the ranked.score > 0 cut.
+  const isYearOnlyQuery = targetYear !== null && /^\d{4}$/.test(normalizedQuery);
+
   // Lenient year filter (Q3=B): match fitments where year falls in range
   // OR where year fields are NULL (legacy/unspecified rows). Falls back to no filter.
   const yearFilterClause = targetYear !== null
@@ -527,7 +534,7 @@ async function searchProductIdsV2(
         ) AS score
       FROM product_search_documents psd
       ${exactScope}
-        AND (
+        ${isYearOnlyQuery ? Prisma.empty : Prisma.sql`AND (
           lower(psd.product_code) = lower(${normalizedQuery})
           OR lower(psd.product_name) = lower(${normalizedQuery})
           OR lower(psd.product_code) LIKE lower(${prefixQuery})
@@ -541,7 +548,7 @@ async function searchProductIdsV2(
           OR similarity(lower(psd.oem_text), lower(${normalizedQuery})) >= ${SEARCH_V2_OEM_SIMILARITY}
           OR similarity(lower(psd.product_name), lower(${normalizedQuery})) >= ${SEARCH_V2_NAME_SIMILARITY}
           OR similarity(lower(psd.search_text), lower(${normalizedQuery})) >= ${SEARCH_V2_TEXT_SIMILARITY}
-        )
+        )`}
     )
     SELECT
       ranked.product_id,

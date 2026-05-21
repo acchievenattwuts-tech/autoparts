@@ -110,16 +110,51 @@ const ProductDetailPage = async ({ params }: Props) => {
   const description = buildStorefrontProductDescription(product);
   const displayPrices = getStorefrontDisplayPrices(product.salePrice);
 
-  const carBrandMap = new Map<string, string[]>();
-  for (const { carModel } of product.carModels) {
-    const brandName = carModel.carBrand.name;
+  type FitmentRow = {
+    modelName: string;
+    submodel: string | null;
+    yearStart: number | null;
+    yearEnd: number | null;
+    engineCode: string | null;
+    engineSize: string | null;
+    note: string | null;
+  };
+
+  const carBrandMap = new Map<string, FitmentRow[]>();
+  for (const fitment of product.carModels) {
+    const brandName = fitment.carModel.carBrand.name;
     if (!carBrandMap.has(brandName)) {
       carBrandMap.set(brandName, []);
     }
-    carBrandMap.get(brandName)?.push(carModel.name);
+    carBrandMap.get(brandName)?.push({
+      modelName: fitment.carModel.name,
+      submodel: fitment.submodel,
+      yearStart: fitment.yearStart,
+      yearEnd: fitment.yearEnd,
+      engineCode: fitment.engineCode,
+      engineSize: fitment.engineSize,
+      note: fitment.note,
+    });
   }
 
   const groupedCars = Array.from(carBrandMap.entries());
+
+  const formatYearRange = (start: number | null, end: number | null): string | null => {
+    if (start && end) return `ปี ${start}-${end}`;
+    if (start) return `ปี ${start} เป็นต้นไป`;
+    if (end) return `ถึงปี ${end}`;
+    return null;
+  };
+
+  const formatFitmentLine = (row: FitmentRow): string => {
+    const segments: string[] = [];
+    segments.push(row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName);
+    const year = formatYearRange(row.yearStart, row.yearEnd);
+    if (year) segments.push(year);
+    const engineParts = [row.engineCode, row.engineSize].filter((value): value is string => Boolean(value));
+    if (engineParts.length > 0) segments.push(engineParts.join(" "));
+    return segments.join(" · ");
+  };
   const prepArticles = knowledgeArticles.filter((article) =>
     [
       "how-to-check-oem-part-number-before-ordering",
@@ -132,7 +167,7 @@ const ProductDetailPage = async ({ params }: Props) => {
     groupedCars.length > 0
       ? groupedCars
           .slice(0, 2)
-          .map(([brandName, models]) => `${brandName} ${models.slice(0, 2).join(", ")}`)
+          .map(([brandName, rows]) => `${brandName} ${rows.slice(0, 2).map((r) => r.modelName).join(", ")}`)
           .join(" | ")
       : "ให้ร้านช่วยเช็กจากรุ่นรถหรือรูปชิ้นงานเดิม";
 
@@ -342,10 +377,19 @@ const ProductDetailPage = async ({ params }: Props) => {
               </h2>
               {groupedCars.length > 0 ? (
                 <div className="mt-5 space-y-4">
-                  {groupedCars.map(([brandName, models]) => (
+                  {groupedCars.map(([brandName, rows]) => (
                     <div key={brandName} className="rounded-2xl bg-slate-50 px-4 py-4">
                       <p className="font-semibold text-[#10213d]">{brandName}</p>
-                      <p className="mt-2 text-sm leading-7 text-slate-600">{models.join(", ")}</p>
+                      <div className="mt-2 space-y-2">
+                        {rows.map((row, index) => (
+                          <div key={`${row.modelName}-${index}`}>
+                            <p className="text-sm leading-7 text-slate-600">{formatFitmentLine(row)}</p>
+                            {row.note && (
+                              <p className="text-xs leading-5 text-slate-500">หมายเหตุ: {row.note}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>

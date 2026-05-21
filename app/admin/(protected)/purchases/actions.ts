@@ -131,13 +131,15 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function allocateShippingByLineValue(
+// Allocate signed landed-cost adjustment (shippingFee − discount) by line value.
+// Positive amount raises per-unit cost (shipping); negative lowers it (trade discount).
+function allocateLandedByLineValue(
   items: PurchaseItemInput[],
-  shippingFee: number,
+  netAdjustment: number,
 ): Map<number, number> {
   const allocation = new Map<number, number>();
-  const roundedShippingFee = roundMoney(shippingFee);
-  if (roundedShippingFee <= 0 || items.length === 0) {
+  const roundedAdjustment = roundMoney(netAdjustment);
+  if (roundedAdjustment === 0 || items.length === 0) {
     items.forEach((_, index) => allocation.set(index, 0));
     return allocation;
   }
@@ -152,8 +154,8 @@ function allocateShippingByLineValue(
   let allocatedTotal = 0;
   lineValues.forEach((lineValue, index) => {
     const amount = index === lineValues.length - 1
-      ? roundMoney(roundedShippingFee - allocatedTotal)
-      : roundMoney((roundedShippingFee * lineValue) / totalLineValue);
+      ? roundMoney(roundedAdjustment - allocatedTotal)
+      : roundMoney((roundedAdjustment * lineValue) / totalLineValue);
     allocation.set(index, amount);
     allocatedTotal = roundMoney(allocatedTotal + amount);
   });
@@ -354,9 +356,10 @@ export async function createPurchase(
 
   const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
-  // Calculate totals
+  // Calculate totals — landed adjustment = shippingFee (raises cost) − discount (lowers cost),
+  // allocated to lines by line value so MAVG reflects true net cost (IAS 2 compliant).
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
-  const shippingAllocations = allocateShippingByLineValue(validItems, shippingFee);
+  const landedAllocations = allocateLandedByLineValue(validItems, shippingFee - discount);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
@@ -426,8 +429,8 @@ export async function createPurchase(
         const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;  // convert to base unit cost
-        const allocatedShippingForLine = shippingAllocations.get(itemIndex) ?? 0;
-        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedShippingForLine / item.qty : 0;
+        const allocatedLandedForLine = landedAllocations.get(itemIndex) ?? 0;
+        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
         const isTracked   = isInventoryTracked(product.inventoryTracking);
 
         const itemTotal    = item.qty * item.costPrice;
@@ -456,7 +459,7 @@ export async function createPurchase(
           qtyIn:       qtyInBase,
           qtyOut:      0,
           priceIn:     costPerBase,
-          landedCost:  allocatedShippingForLine,
+          landedCost:  allocatedLandedForLine,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         }) : null;
@@ -674,7 +677,7 @@ export async function updatePurchase(
   const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
-  const shippingAllocations = allocateShippingByLineValue(validItems, shippingFee);
+  const landedAllocations = allocateLandedByLineValue(validItems, shippingFee - discount);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const resolvedCashBankAccountId =
@@ -756,8 +759,8 @@ export async function updatePurchase(
         const scale       = unit.scale;
         const qtyInBase   = item.qty * scale;
         const costPerBase = item.costPrice / scale;
-        const allocatedShippingForLine = shippingAllocations.get(itemIndex) ?? 0;
-        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedShippingForLine / item.qty : 0;
+        const allocatedLandedForLine = landedAllocations.get(itemIndex) ?? 0;
+        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
         const isTracked   = isInventoryTracked(product.inventoryTracking);
         const itemTotal   = item.qty * item.costPrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
@@ -783,7 +786,7 @@ export async function updatePurchase(
           qtyIn:       qtyInBase,
           qtyOut:      0,
           priceIn:     costPerBase,
-          landedCost:  allocatedShippingForLine,
+          landedCost:  allocatedLandedForLine,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
         }) : null;

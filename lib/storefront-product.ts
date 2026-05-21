@@ -29,6 +29,12 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           },
           carModels: {
             select: {
+              submodel: true,
+              yearStart: true,
+              yearEnd: true,
+              engineCode: true,
+              engineSize: true,
+              note: true,
               carModel: {
                 select: {
                   name: true,

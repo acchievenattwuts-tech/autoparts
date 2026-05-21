@@ -155,7 +155,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวน (base)</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ทุน/หน่วย</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ค่าจัดส่งปันส่วน</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ค่าส่ง/ส่วนลดปันส่วน</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">รวมต้นทุน</th>
               </tr>
             </thead>

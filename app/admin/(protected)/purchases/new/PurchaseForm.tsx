@@ -68,10 +68,11 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
-const allocateShippingByLineValue = (items: LineItem[], shippingFee: number) => {
-  const roundedShippingFee = roundMoney(shippingFee);
+// Allocate signed landed adjustment (shippingFee − discount) by line value.
+const allocateLandedByLineValue = (items: LineItem[], netAdjustment: number) => {
+  const roundedAdjustment = roundMoney(netAdjustment);
   const allocations = items.map(() => 0);
-  if (roundedShippingFee <= 0 || items.length === 0) return allocations;
+  if (roundedAdjustment === 0 || items.length === 0) return allocations;
 
   const lineValues = items.map((item) => roundMoney(item.qty * item.costPrice));
   const totalLineValue = roundMoney(lineValues.reduce((sum, value) => sum + value, 0));
@@ -80,8 +81,8 @@ const allocateShippingByLineValue = (items: LineItem[], shippingFee: number) => 
   let allocatedTotal = 0;
   return lineValues.map((lineValue, index) => {
     const amount = index === lineValues.length - 1
-      ? roundMoney(roundedShippingFee - allocatedTotal)
-      : roundMoney((roundedShippingFee * lineValue) / totalLineValue);
+      ? roundMoney(roundedAdjustment - allocatedTotal)
+      : roundMoney((roundedAdjustment * lineValue) / totalLineValue);
     allocatedTotal = roundMoney(allocatedTotal + amount);
     return amount;
   });
@@ -233,7 +234,7 @@ const PurchaseForm = ({
     productMap.get(productId)?.units ?? [];
 
   const totalBeforeDiscount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
-  const shippingAllocations = allocateShippingByLineValue(items, shippingFee);
+  const landedAllocations = allocateLandedByLineValue(items, shippingFee - discount);
   const discountedTotal = Math.max(0, totalBeforeDiscount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
@@ -463,7 +464,7 @@ const PurchaseForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ทุน/หน่วย</th>
-                <th className="text-right py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ค่าจัดส่งปันส่วน</th>
+                <th className="text-right py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">ค่าส่ง/ส่วนลดปันส่วน</th>
                 <th className="text-right py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">รวมต้นทุน</th>
                 <th className="w-8" />
               </tr>
@@ -473,7 +474,7 @@ const PurchaseForm = ({
                 const units = getUnits(item.productId);
                 const prod  = productMap.get(item.productId);
                 const isLot = prod?.isLotControl ?? false;
-                const allocatedShipping = shippingAllocations[i] ?? 0;
+                const allocatedLanded = landedAllocations[i] ?? 0;
                 const itemTotal = item.qty * item.costPrice;
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
@@ -518,10 +519,10 @@ const PurchaseForm = ({
                           className={inputCls} placeholder="0.00" />
                       </td>
                       <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
-                        {allocatedShipping.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                        {allocatedLanded.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2 text-right font-medium text-gray-700 dark:text-slate-200">
-                        {(itemTotal + allocatedShipping).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                        {(itemTotal + allocatedLanded).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
                         {items.length > 1 && (

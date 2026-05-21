@@ -263,8 +263,8 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const parseYear = (raw: string): number | null => {
     if (!raw.trim()) return null;
     const n = parseInt(raw, 10);
-    if (Number.isNaN(n) || n < 1900 || n > 2200) return null;
-    return n;
+    if (Number.isNaN(n)) return null;
+    return n; // range validated on submit so intermediate values (e.g. "20", "200") don't clear the input
   };
 
   const parseOptStr = (raw: string): string | null => (raw.trim() === "" ? null : raw);
@@ -333,6 +333,14 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     const cleanFitments = fitments.filter((f) => f.carModelId);
     // Validate year ranges
     for (const f of cleanFitments) {
+      if (f.yearStart !== null && (f.yearStart < 1900 || f.yearStart > 2200)) {
+        setError("ปีเริ่มต้นต้องอยู่ระหว่าง ค.ศ. 1900–2200");
+        return;
+      }
+      if (f.yearEnd !== null && (f.yearEnd < 1900 || f.yearEnd > 2200)) {
+        setError("ปีจบต้องอยู่ระหว่าง ค.ศ. 1900–2200");
+        return;
+      }
       if (f.yearStart !== null && f.yearEnd !== null && f.yearStart > f.yearEnd) {
         setError("ปีเริ่มต้องไม่มากกว่าปีจบในรายการรุ่นรถ");
         return;
