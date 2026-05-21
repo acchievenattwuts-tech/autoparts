@@ -618,7 +618,8 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
   background-color: #ffffff !important;
 }
 
-.liff-theme-root[data-liff-theme="dark"] {
+.liff-theme-root[data-liff-theme="dark"],
+body[data-liff-theme="dark"] .liff-theme-root {
   --liff-app-bg: #06162d;
   --liff-surface: #081c38;
   --liff-card: #0c2547;
@@ -635,24 +636,34 @@ body[data-admin-theme="dark"] .line-preview-root :is(.bg-sky-50, .ring-sky-100) 
   --liff-brand-strong: #bfdbfe;
 }
 
-.liff-theme-root[data-liff-theme="dark"] {
+.liff-theme-root,
+body[data-liff-theme="dark"] {
+  background-color: var(--liff-app-bg);
+}
+
+.liff-theme-root[data-liff-theme="dark"],
+body[data-liff-theme="dark"] .liff-theme-root {
   background:
     linear-gradient(140deg, rgba(59, 130, 246, 0.22), transparent 30%),
     linear-gradient(180deg, #06162d 0%, #081c38 52%, #0c2547 100%);
 }
 
 .liff-theme-root[data-liff-theme="dark"] .liff-app-shell,
-.liff-theme-root[data-liff-theme="dark"] .liff-app-frame {
+body[data-liff-theme="dark"] .liff-theme-root .liff-app-shell,
+.liff-theme-root[data-liff-theme="dark"] .liff-app-frame,
+body[data-liff-theme="dark"] .liff-theme-root .liff-app-frame {
   background-color: transparent;
 }
 
-.liff-theme-root[data-liff-theme="dark"] .liff-app-shell {
+.liff-theme-root[data-liff-theme="dark"] .liff-app-shell,
+body[data-liff-theme="dark"] .liff-theme-root .liff-app-shell {
   background:
     radial-gradient(circle at top, rgba(16, 185, 129, 0.12), transparent 34%),
     linear-gradient(180deg, #06162d 0%, #081c38 52%, #0c2547 100%);
 }
 
-.liff-theme-root[data-liff-theme="dark"] .liff-app-frame {
+.liff-theme-root[data-liff-theme="dark"] .liff-app-frame,
+body[data-liff-theme="dark"] .liff-theme-root .liff-app-frame {
   background:
     linear-gradient(180deg, rgba(8, 28, 56, 0.96) 0%, rgba(12, 37, 71, 0.98) 100%);
 }

@@ -4,8 +4,24 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 
 type LiffTheme = "light" | "dark";
 
+declare global {
+  interface Window {
+    __liffThemeHydrated?: boolean;
+  }
+}
+
+function getBootstrappedTheme(): LiffTheme | null {
+  if (typeof document === "undefined") return null;
+  const theme = document.documentElement.dataset.liffTheme ?? document.body?.dataset.liffTheme;
+  return theme === "dark" || theme === "light" ? theme : null;
+}
+
 function getSystemTheme(): LiffTheme {
   if (typeof window === "undefined") return "light";
+  if (!window.__liffThemeHydrated) {
+    const bootstrappedTheme = getBootstrappedTheme();
+    if (bootstrappedTheme) return bootstrappedTheme;
+  }
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -31,22 +47,27 @@ export default function LiffThemeProvider({ children }: { children: ReactNode })
   const theme: LiffTheme = isPrintMode ? "light" : systemTheme;
 
   useEffect(() => {
-    if (!isPrintMode) return;
-
-    const previousColorScheme = document.documentElement.style.colorScheme;
-    const previousBackground = document.documentElement.style.backgroundColor;
-    document.documentElement.style.colorScheme = "only light";
-    document.documentElement.style.backgroundColor = "#ffffff";
-    document.body.style.colorScheme = "only light";
-    document.body.style.backgroundColor = "#ffffff";
+    window.__liffThemeHydrated = true;
+    document.documentElement.dataset.liffTheme = theme;
+    document.body.dataset.liffTheme = theme;
+    document.documentElement.style.colorScheme = isPrintMode ? "only light" : theme;
+    document.body.style.colorScheme = isPrintMode ? "only light" : theme;
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.body.classList.toggle("dark", theme === "dark");
+    document.documentElement.style.backgroundColor = isPrintMode ? "#ffffff" : "";
+    document.body.style.backgroundColor = isPrintMode ? "#ffffff" : theme === "dark" ? "#06162d" : "#eef7ff";
 
     return () => {
-      document.documentElement.style.colorScheme = previousColorScheme;
-      document.documentElement.style.backgroundColor = previousBackground;
+      document.documentElement.removeAttribute("data-liff-theme");
+      document.body.removeAttribute("data-liff-theme");
+      document.documentElement.style.colorScheme = "";
+      document.documentElement.style.backgroundColor = "";
       document.body.style.colorScheme = "";
+      document.documentElement.classList.remove("dark");
+      document.body.classList.remove("dark");
       document.body.style.backgroundColor = "";
     };
-  }, [isPrintMode]);
+  }, [isPrintMode, theme]);
 
   return (
     <div

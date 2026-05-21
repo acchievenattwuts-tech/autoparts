@@ -28,8 +28,9 @@ export default function RootLayout({
     <html
       lang="th"
       className={`${kanit.variable} ${sarabun.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col font-sarabun">
+      <body className="flex min-h-full flex-col font-sarabun" suppressHydrationWarning>
         <GoogleAnalytics />
         {children}
       </body>
