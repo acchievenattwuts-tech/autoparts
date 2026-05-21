@@ -320,22 +320,39 @@ async function searchProductIdsV2(
   // still pass the ranked.score > 0 cut.
   const isYearOnlyQuery = targetYear !== null && /^\d{4}$/.test(normalizedQuery);
 
-  // Lenient year filter (Q3=B): match fitments where year falls in range
-  // OR where year fields are NULL (legacy/unspecified rows). Falls back to no filter.
+  // Year filter:
+  //  - Year-only query (e.g. "2010"): strict — require at least one fitment row
+  //    that explicitly covers the year. Exclude NULL/NULL rows so products
+  //    without year info don't flood results.
+  //  - Mixed query (e.g. "ผ้าเบรค Vios 2010"): lenient — also accept NULL/NULL
+  //    because the text-match clause already constrains the candidate set.
   const yearFilterClause = targetYear !== null
-    ? Prisma.sql`
-        AND EXISTS (
-          SELECT 1
-          FROM "ProductCarModel" pcm
-          WHERE pcm."productId" = psd.product_id
-            AND (
-              (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
-              OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
-              OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
-              OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
-            )
-        )
-      `
+    ? isYearOnlyQuery
+      ? Prisma.sql`
+          AND EXISTS (
+            SELECT 1
+            FROM "ProductCarModel" pcm
+            WHERE pcm."productId" = psd.product_id
+              AND (
+                (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+                OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+              )
+          )
+        `
+      : Prisma.sql`
+          AND EXISTS (
+            SELECT 1
+            FROM "ProductCarModel" pcm
+            WHERE pcm."productId" = psd.product_id
+              AND (
+                (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
+                OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+                OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+              )
+          )
+        `
     : Prisma.empty;
 
   // Year boost (Q3=C): +700 when a fitment row covers the requested year explicitly
