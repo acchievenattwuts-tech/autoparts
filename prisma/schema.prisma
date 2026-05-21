@@ -485,6 +485,7 @@ model StockCard {
   referenceId         String?
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   landedCost          Decimal              @default(0) @db.Decimal(10, 2)
+  usesReferenceCost   Boolean              @default(false)
   product             Product              @relation(fields: [productId], references: [id])
   claimStockMovements ClaimStockMovement[]
   lotMovements        StockMovementLot[]

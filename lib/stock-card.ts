@@ -27,10 +27,21 @@ export interface StockCardInput {
   source: StockCardSource;
   qtyIn: number;       // quantity in, base unit
   qtyOut: number;      // quantity out, base unit
-  priceIn: number;     // cost per base unit (for purchase/BF)
+  priceIn: number;     // cost per base unit (for purchase/BF, or explicit reference cost when usesReferenceCost=true)
   landedCost?: number; // additional landed cost to distribute into avgCost
   detail?: string;
   referenceId?: string;
+  /**
+   * When true, `priceIn` carries the explicit per-base cost looked up from a
+   * referenced source document (e.g. PurchaseItem.costPrice for a purchase
+   * return, SaleItem.costPrice for a customer return). The engine then:
+   *   - For IN with a NEUTRAL source: skip the avgCost override and use the
+   *     explicit cost — so MAVG reflects the cost basis of the returned items.
+   *   - For OUT: reduce inventory by qtyOut × priceIn (instead of × baPrice),
+   *     so MAVG mirrors removing items at their original cost.
+   * Default false → existing behaviour is preserved for callers that don't set it.
+   */
+  usesReferenceCost?: boolean;
 }
 
 /**
@@ -67,8 +78,10 @@ export async function recalculateStockCard(
   for (const row of rows) {
     const qIn  = Number(row.qtyIn);
     const qOut = Number(row.qtyOut);
-    // For neutral stock-in entries use the running avgCost, not the stored snapshot
-    const pIn  = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(row.source))
+    const usesRef = row.usesReferenceCost === true;
+    // For neutral stock-in entries use the running avgCost, not the stored
+    // snapshot — UNLESS this row carries an explicit reference cost.
+    const pIn  = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(row.source) && !usesRef)
       ? baPrice
       : Number(row.priceIn);
     const lc   = Number(row.landedCost);
@@ -89,11 +102,24 @@ export async function recalculateStockCard(
         }
       }
     } else {
-      priceOut = baPrice;
-      if (newBaQty >= 0) {
-        newBaPrice = baPrice;
-        newBaTotal = baTotal - (qOut * baPrice);
-        if (newBaTotal < 0) newBaTotal = 0;
+      // Reference-cost OUT: reduce inventory at the linked document's cost
+      // (e.g. purchase return at PurchaseItem.costPrice) so MAVG mirrors
+      // removing those specific units. Stored priceIn holds that explicit cost.
+      if (usesRef && Number(row.priceIn) > 0) {
+        const refCost = Number(row.priceIn);
+        priceOut = refCost;
+        if (newBaQty >= 0) {
+          newBaTotal = baTotal - (qOut * refCost);
+          if (newBaTotal < 0) newBaTotal = 0;
+          newBaPrice = newBaQty > 0 ? newBaTotal / newBaQty : 0;
+        }
+      } else {
+        priceOut = baPrice;
+        if (newBaQty >= 0) {
+          newBaPrice = baPrice;
+          newBaTotal = baTotal - (qOut * baPrice);
+          if (newBaTotal < 0) newBaTotal = 0;
+        }
       }
     }
 
@@ -137,6 +163,7 @@ export async function writeStockCard(
   const qOut = input.qtyOut;
   const pIn = input.priceIn;
   const lc  = input.landedCost ?? 0;
+  const usesRef = input.usesReferenceCost === true;
 
   // Get max sorder and latest docDate (may be different rows)
   const [maxSorderRow, latestDateRow] = await Promise.all([
@@ -173,6 +200,7 @@ export async function writeStockCard(
       priceBalance: new Prisma.Decimal(0),
       detail:       input.detail,
       referenceId:  input.referenceId,
+      usesReferenceCost: usesRef,
     },
     select: { id: true },
   });
@@ -190,9 +218,9 @@ export async function writeStockCard(
     const baPrice = product ? Number(product.avgCost) : 0;
     const baTotal = baQty * baPrice;
 
-    // Use baPrice for neutral stock-in sources
+    // Use baPrice for neutral stock-in sources, unless an explicit reference cost is provided
     const NEUTRAL_IN_SOURCES = ["RETURN_IN", "CLAIM_RETURN_IN", "CLAIM_RECV_IN"];
-    const effectivePIn = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(input.source))
+    const effectivePIn = (qIn > 0 && NEUTRAL_IN_SOURCES.includes(input.source) && !usesRef)
       ? baPrice
       : pIn;
 
@@ -210,6 +238,14 @@ export async function writeStockCard(
           newBaPrice = effectivePIn + (lc / qIn);
           newBaTotal = newBaPrice * newBaQty;
         }
+      }
+    } else if (usesRef && pIn > 0) {
+      // Reference-cost OUT: reduce inventory at linked document's cost
+      priceOut = pIn;
+      if (newBaQty >= 0) {
+        newBaTotal = baTotal - (qOut * pIn);
+        if (newBaTotal < 0) newBaTotal = 0;
+        newBaPrice = newBaQty > 0 ? newBaTotal / newBaQty : 0;
       }
     } else {
       priceOut = baPrice;

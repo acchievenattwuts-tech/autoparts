@@ -227,6 +227,47 @@ async function validateCreditNoteSourceSale(
   }
 }
 
+/**
+ * Build a productId → original per-base cost map from the source Sale's
+ * SaleItem rows. Used when a Credit Note references a Sale so the returned
+ * stock comes back at the cost recorded at sale time, not at current MAVG.
+ * Falls back to current MAVG (via writeStockCard neutral override) when a
+ * productId is missing from the source sale.
+ */
+async function buildSaleReferenceCostMap(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  saleId: string | undefined,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!saleId) return map;
+
+  const sale = await tx.sale.findUnique({
+    where: { id: saleId },
+    select: {
+      items: {
+        select: { productId: true, quantity: true, costPrice: true },
+      },
+    },
+  });
+  if (!sale || sale.items.length === 0) return map;
+
+  // Aggregate by productId (weighted across multiple SaleItems with same productId)
+  const totals = new Map<string, { qty: number; cost: number }>();
+  for (const item of sale.items) {
+    const qty = Number(item.quantity);
+    if (qty <= 0) continue;
+    const lineCost = Number(item.costPrice) * qty;
+    const acc = totals.get(item.productId) ?? { qty: 0, cost: 0 };
+    acc.qty += qty;
+    acc.cost += lineCost;
+    totals.set(item.productId, acc);
+  }
+  for (const [productId, { qty, cost }] of totals) {
+    if (qty > 0) map.set(productId, cost / qty);
+  }
+  return map;
+}
+
 async function getCreditNoteAuditSnapshot(creditNoteId: string) {
   const creditNote = await db.creditNote.findUnique({
     where: { id: creditNoteId },
@@ -346,6 +387,9 @@ export async function createCreditNote(
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       await validateCreditNoteSourceSale(tx, saleId, customerId);
+      const referenceCostMap = type === CreditNoteType.RETURN
+        ? await buildSaleReferenceCostMap(tx, saleId)
+        : new Map<string, number>();
 
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
         tx,
@@ -412,7 +456,8 @@ export async function createCreditNote(
 
         // Write StockCard only for RETURN type
         if (type === CreditNoteType.RETURN && isTracked) {
-          const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
+          const referenceCost = referenceCostMap.get(item.productId);
+          const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       cnNo,
@@ -420,7 +465,11 @@ export async function createCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     returnPriceInBase,
+            // When linked to a source sale: use original sale-time cost so MAVG
+            // reflects the cost basis of returned items. Otherwise priceIn is 0
+            // and the engine's neutral-source override falls back to current avgCost.
+            priceIn:     usesReferenceCost ? referenceCost : 0,
+            usesReferenceCost,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });
@@ -670,6 +719,9 @@ export async function updateCreditNote(
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
       await validateCreditNoteSourceSale(tx, saleId, customerId);
+      const referenceCostMap = type === CreditNoteType.RETURN
+        ? await buildSaleReferenceCostMap(tx, saleId)
+        : new Map<string, number>();
 
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
         tx,
@@ -748,7 +800,8 @@ export async function updateCreditNote(
         });
 
         if (type === CreditNoteType.RETURN && isTracked) {
-          const returnPriceInBase = scale === 0 ? 0 : item.salePrice / scale;
+          const referenceCost = referenceCostMap.get(item.productId);
+          const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
             docNo:       existing.cnNo,
@@ -756,7 +809,8 @@ export async function updateCreditNote(
             source:      "RETURN_IN",
             qtyIn:       qtyInBase,
             qtyOut:      0,
-            priceIn:     returnPriceInBase,
+            priceIn:     usesReferenceCost ? referenceCost : 0,
+            usesReferenceCost,
             detail:      `รับคืน ${item.qty} ${item.unitName}`,
             referenceId: cnItem.id,
           });

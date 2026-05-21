@@ -157,8 +157,10 @@
       "Bash(chmod +x /tmp/test-ar-ap.sh)",
       "Bash(bash /tmp/test-ar-ap.sh)",
       "Bash(awk '{print \"  ✅ \" $NF \" \\\\(\" $5 \" bytes\\\\)\"}')",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "Bash(del \"D:\\\\autoparts\\\\prisma\\\\scripts\\\\_test-year-search.ts\")",
+      "Bash(powershell -Command \"\\(Get-Content 'app/admin/\\(protected\\)/purchases/new/PurchaseForm.tsx' -Raw\\) -replace 'colSpan=\\\\{5\\\\}', 'colSpan={4}' | Set-Content -Encoding UTF8 -NoNewline 'app/admin/\\(protected\\)/purchases/new/PurchaseForm.tsx'\")",
+      "Bash(git checkout *)"
     ]
   }
 }
-

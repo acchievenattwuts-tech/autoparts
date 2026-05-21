@@ -325,6 +325,56 @@ async function buildLineData(
   return lineData;
 }
 
+/**
+ * Build a per-product map of the effective per-base purchase cost from the
+ * source purchase's StockCard PURCHASE rows. Used by purchase returns linked
+ * to a source bill so the OUT cost matches what actually hit MAVG when the
+ * purchase was processed (priceIn + landedCost/qtyIn). Falls back to current
+ * MAVG when a productId has no matching row in the source purchase.
+ */
+async function buildPurchaseReferenceCostMap(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  purchaseId: string | undefined,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!purchaseId) return map;
+
+  const purchase = await tx.purchase.findUnique({
+    where: { id: purchaseId },
+    select: {
+      purchaseNo: true,
+      items: { select: { id: true, productId: true } },
+    },
+  });
+  if (!purchase || purchase.items.length === 0) return map;
+
+  const itemIds = purchase.items.map((i) => i.id);
+  const stockRows = await tx.stockCard.findMany({
+    where: {
+      docNo: purchase.purchaseNo,
+      source: "PURCHASE",
+      referenceId: { in: itemIds },
+    },
+    select: { productId: true, qtyIn: true, priceIn: true, landedCost: true },
+  });
+
+  // Aggregate by productId (weighted across multiple PurchaseItems with same productId)
+  const totals = new Map<string, { qty: number; cost: number }>();
+  for (const row of stockRows) {
+    const qty = Number(row.qtyIn);
+    if (qty <= 0) continue;
+    const lineCost = Number(row.priceIn) * qty + Number(row.landedCost);
+    const acc = totals.get(row.productId) ?? { qty: 0, cost: 0 };
+    acc.qty += qty;
+    acc.cost += lineCost;
+    totals.set(row.productId, acc);
+  }
+  for (const [productId, { qty, cost }] of totals) {
+    if (qty > 0) map.set(productId, cost / qty);
+  }
+  return map;
+}
+
 async function writePurchaseReturnLines(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   purchaseReturnId: string,
@@ -332,8 +382,12 @@ async function writePurchaseReturnLines(
   docDate: Date,
   lineData: LineData[],
   type: PurchaseReturnType,
+  sourcePurchaseId: string | undefined,
 ): Promise<void> {
   const writeStock = type === PurchaseReturnType.RETURN;
+  const referenceCostMap = writeStock
+    ? await buildPurchaseReferenceCostMap(tx, sourcePurchaseId)
+    : new Map<string, number>();
 
   for (const line of lineData) {
     if (writeStock && line.isLotControl) {
@@ -354,6 +408,8 @@ async function writePurchaseReturnLines(
     });
 
     if (writeStock && line.isTracked) {
+      const referenceCost = referenceCostMap.get(line.productId);
+      const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
       const stockCardId = await writeStockCard(tx, {
         productId: line.productId,
         docNo: returnNo,
@@ -361,7 +417,8 @@ async function writePurchaseReturnLines(
         source: "RETURN_OUT",
         qtyIn: 0,
         qtyOut: line.qtyInBase,
-        priceIn: 0,
+        priceIn: usesReferenceCost ? referenceCost : 0,
+        usesReferenceCost,
         detail: `คืน ${line.qty} ${line.unitName}`,
         referenceId: returnItem.id,
       });
@@ -607,7 +664,7 @@ export async function createPurchaseReturn(
       });
       createdPurchaseReturnId = purchaseReturn.id;
 
-      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type);
+      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type, purchaseId);
 
       if (linkedClaim) {
         const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
@@ -902,7 +959,7 @@ export async function updatePurchaseReturn(
         },
       });
 
-      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData, type);
+      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData, type, purchaseId);
 
       if (linkedClaim) {
         const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
