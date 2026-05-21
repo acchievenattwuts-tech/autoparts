@@ -31,4 +31,15 @@ When adding or changing any admin `ค้นหา`, `แสดงรายง�
 # Database Date/Time Schema Rule
 
 All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless a narrower PostgreSQL type is deliberately approved for that exact field. Do not add bare `DateTime` or PostgreSQL `timestamp without time zone`; date/time storage must preserve the instant semantics used by `lib/th-date.ts`.
+
+# Documentation Entry Rule
+
+When you need project context, read documents in this order unless the task clearly requires something else:
+1. `AGENTS.md`
+2. `PLAN.md`
+3. `docs/architecture.md`
+4. `docs/roadmap/active.md`
+5. Relevant files under `docs/decisions/` and `docs/specs/`
+
+Treat `PLAN.md` as the active index and `docs/archive/PLAN-legacy-2026-05-21.md` as historical detail only. Do not use the legacy archive as the default starting point.
 <!-- END:nextjs-agent-rules -->
