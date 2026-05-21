@@ -285,16 +285,32 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   };
 
   // ── Aliases ────────────────────────────────────────────────────────────────
+  // Split on comma, newline, or tab so users can paste multi-item lists from
+  // Excel / Notepad. Trim each segment, drop empties, dedupe within the paste,
+  // and dedupe against existing aliases of the same kind.
   const addAlias = () => {
-    const v = aliasInput.trim();
-    if (!v) return;
     const targetKind: AliasKindValue = activeKind === "ALL" ? "ALIAS" : activeKind;
-    // dedupe by (alias, kind)
-    if (aliases.some((a) => a.alias === v && a.kind === targetKind)) {
+    const segments = aliasInput
+      .split(/[,\n\t]+/)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
+    if (segments.length === 0) {
       setAliasInput("");
       return;
     }
-    setAliases((prev) => [...prev, { alias: v, kind: targetKind }]);
+
+    const existingKeys = new Set(
+      aliases.filter((a) => a.kind === targetKind).map((a) => a.alias),
+    );
+    const newRows: AliasRow[] = [];
+    for (const segment of segments) {
+      if (existingKeys.has(segment)) continue;
+      existingKeys.add(segment);
+      newRows.push({ alias: segment, kind: targetKind });
+    }
+    if (newRows.length > 0) {
+      setAliases((prev) => [...prev, ...newRows]);
+    }
     setAliasInput("");
   };
 
