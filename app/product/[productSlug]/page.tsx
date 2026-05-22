@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CarFront,
+  CheckCircle2,
   FileText,
   MessageCircle,
   Phone,
@@ -144,15 +145,6 @@ const ProductDetailPage = async ({ params }: Props) => {
     return null;
   };
 
-  const formatFitmentLine = (row: FitmentRow): string => {
-    const segments: string[] = [];
-    segments.push(row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName);
-    const year = formatYearRange(row.yearStart, row.yearEnd);
-    if (year) segments.push(year);
-    const engineParts = [row.engineCode, row.engineSize].filter((value): value is string => Boolean(value));
-    if (engineParts.length > 0) segments.push(engineParts.join(" "));
-    return segments.join(" · ");
-  };
   const prepArticles = knowledgeArticles.filter((article) =>
     [
       "how-to-check-oem-part-number-before-ordering",
@@ -170,15 +162,7 @@ const ProductDetailPage = async ({ params }: Props) => {
       : "ให้ร้านช่วยเช็กจากรุ่นรถหรือรูปชิ้นงานเดิม";
   const inStock = product.stock > 0;
   const stockLabel = inStock ? "มีสินค้าในระบบ" : "กรุณายืนยันกับร้าน";
-  const fitmentPreview = groupedCars.flatMap(([brandName, rows]) =>
-    rows.map((row) => ({
-      brandName,
-      label: formatFitmentLine(row),
-      note: row.note,
-    })),
-  );
-  const visibleFitments = fitmentPreview.slice(0, 5);
-  const remainingFitmentCount = Math.max(fitmentPreview.length - visibleFitments.length, 0);
+  const partsBrandName = product.brand?.name ?? "ไม่ระบุแบรนด์";
   const productImages = [
     ...product.images.map((image) => ({ url: image.url, alt: image.alt || product.name })),
     ...(product.imageUrl && !product.images.some((image) => image.url === product.imageUrl)
@@ -285,52 +269,41 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-2xl bg-[#10213d] px-3 py-2.5 text-white">
-                      <p className="text-xs text-white/60">หมวดสินค้า</p>
-                      <p className="mt-1 line-clamp-1 font-semibold">{product.category.name}</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                      <p className="text-xs text-slate-400">หมวดสินค้า</p>
+                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{product.category.name}</p>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                       <p className="text-xs text-slate-400">หน่วย</p>
                       <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{product.reportUnitName}</p>
                     </div>
-                    <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                      <p className="text-xs text-slate-400">สถานะ</p>
-                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{stockLabel}</p>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                      <p className="text-xs text-slate-400">แบรนด์อะไหล่</p>
+                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{partsBrandName}</p>
                     </div>
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-kanit text-lg font-semibold text-[#10213d]">รุ่นรถที่เกี่ยวข้อง</p>
-                        <p className="mt-1 text-sm text-slate-500">เช็กความเข้ากันได้ก่อนทักร้าน</p>
+                    <div
+                      className={`rounded-2xl border px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
+                        inStock ? "border-emerald-200 bg-emerald-50" : "border-orange-200 bg-orange-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span
+                          className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                            inStock ? "bg-emerald-200 text-emerald-800" : "bg-orange-200 text-orange-800"
+                          }`}
+                        >
+                          {inStock ? <CheckCircle2 className="h-3.5 w-3.5" /> : <span className="text-xs font-black">!</span>}
+                        </span>
+                        <div className="min-w-0">
+                          <p className={`text-xs font-bold ${inStock ? "text-emerald-700" : "text-orange-700"}`}>สถานะ</p>
+                          <p className="mt-1 line-clamp-1 font-semibold text-slate-900">{stockLabel}</p>
+                          <p className={`mt-0.5 text-xs font-semibold ${inStock ? "text-emerald-700" : "text-orange-700"}`}>
+                            {inStock ? "พร้อมจำหน่าย" : "เช็กก่อนสั่งซื้อ"}
+                          </p>
+                        </div>
                       </div>
-                      <CarFront className="h-5 w-5 shrink-0 text-[#f97316]" />
                     </div>
-                    {visibleFitments.length > 0 ? (
-                      <div className="mt-3 space-y-2">
-                        {visibleFitments.map((fitment, index) => (
-                          <div
-                            key={`${fitment.brandName}-${fitment.label}-${index}`}
-                            className="rounded-2xl bg-slate-50 px-3 py-2.5"
-                          >
-                            <p className="text-xs font-bold text-[#f97316]">{fitment.brandName}</p>
-                            <p className="mt-0.5 text-sm leading-6 text-slate-700">{fitment.label}</p>
-                            {fitment.note && <p className="mt-1 text-xs leading-5 text-slate-500">หมายเหตุ: {fitment.note}</p>}
-                          </div>
-                        ))}
-                        {remainingFitmentCount > 0 && (
-                          <a href="#fitment-list" className="inline-flex text-sm font-bold text-[#10213d] hover:text-[#f97316]">
-                            ดูรุ่นที่เกี่ยวข้องทั้งหมดอีก {remainingFitmentCount.toLocaleString("th-TH")} รายการ
-                          </a>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
-                        หากยังไม่แน่ใจว่าสินค้านี้ตรงกับรถรุ่นใด สามารถส่งรุ่นรถหรือรูปอะไหล่เดิมให้ร้านช่วยตรวจสอบได้
-                      </p>
-                    )}
                   </div>
 
                   <div className="mt-4 rounded-[24px] bg-[#10213d] p-4 text-white shadow-[0_16px_34px_rgba(16,33,61,0.20)]">
@@ -394,8 +367,10 @@ const ProductDetailPage = async ({ params }: Props) => {
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {groupedCars.map(([brandName, rows]) => (
-                    <div key={brandName} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <p className="break-words font-bold text-[#10213d]">{brandName}</p>
+                    <div key={brandName} className="rounded-[22px] border border-orange-200 bg-white px-4 py-4 shadow-[0_14px_28px_rgba(15,23,42,0.05)]">
+                      <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
+                        {brandName}
+                      </span>
                       <div className="mt-2 space-y-2">
                         {rows.map((row, index) => {
                           const yearLabel = formatYearRange(row.yearStart, row.yearEnd);
@@ -404,8 +379,8 @@ const ProductDetailPage = async ({ params }: Props) => {
                             .join(" ");
                           const metaParts = [yearLabel, engineLabel].filter((value): value is string => Boolean(value));
                           return (
-                            <div key={`${row.modelName}-${index}`} className="border-l-2 border-[#f97316]/30 pl-3">
-                              <p className="break-words text-sm font-semibold leading-6 text-slate-800">
+                            <div key={`${row.modelName}-${index}`} className="border-l-4 border-[#f97316] pl-3">
+                              <p className="break-words text-base font-bold leading-6 text-[#10213d]">
                                 {row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName}
                               </p>
                               {metaParts.length > 0 && (
