@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2, ZoomIn } from "lucide-react";
@@ -150,6 +150,16 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+
+  // Auto-resize textarea
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const autoResize = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => {
+    if (descriptionRef.current) autoResize(descriptionRef.current);
+  }, [autoResize]);
 
   // Image
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -559,9 +569,15 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         </div>
         <div className="mt-5">
           <label className={labelCls}>คำอธิบาย</label>
-          <textarea name="description" defaultValue={product?.description ?? ""} rows={3}
+          <textarea
+            ref={descriptionRef}
+            name="description"
+            defaultValue={product?.description ?? ""}
+            rows={3}
             placeholder="คำอธิบายสินค้าเพิ่มเติม..."
-            className={`${inputCls} resize-none`} />
+            className={`${inputCls} resize-none overflow-hidden`}
+            onInput={(e) => autoResize(e.currentTarget)}
+          />
         </div>
       </div>
 

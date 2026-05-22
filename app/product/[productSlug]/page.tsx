@@ -215,7 +215,7 @@ const ProductDetailPage = async ({ params }: Props) => {
               </ol>
             </nav>
             <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-              <div className="grid lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,1fr)]">
+              <div className="grid lg:min-h-[600px] lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,1fr)]">
                 <div className="group relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-orange-50/40 lg:border-r lg:border-slate-200">
                   <div className="absolute left-5 top-5 z-10 flex flex-wrap gap-2">
                     <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-[#10213d] shadow-sm">
@@ -230,7 +230,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                   <ProductImageGallery images={productImages} productName={product.name} />
                 </div>
 
-                <div className="p-4 sm:p-5 lg:p-6">
+                <div className="flex h-full flex-col p-4 sm:p-5 lg:p-6">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-bold ${
@@ -306,7 +306,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[24px] bg-[#10213d] p-4 text-white shadow-[0_16px_34px_rgba(16,33,61,0.20)]">
+                  <div className="mt-4 rounded-[24px] bg-[#10213d] p-4 text-white shadow-[0_16px_34px_rgba(16,33,61,0.20)] lg:mt-auto">
                     <p className="text-sm font-semibold text-white/70">พร้อมให้ร้านเช็กสินค้านี้</p>
                     <p className="mt-1 text-base font-bold">ส่งรหัส {product.code} พร้อมรุ่นรถหรือรูปอะไหล่เดิม</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -368,7 +368,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {groupedCars.map(([brandName, rows]) => (
                     <div key={brandName} className="rounded-[22px] border border-orange-200 bg-white px-4 py-4 shadow-[0_14px_28px_rgba(15,23,42,0.05)]">
-                      <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
+                      <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-700">
                         {brandName}
                       </span>
                       <div className="mt-2 space-y-2">
@@ -380,16 +380,16 @@ const ProductDetailPage = async ({ params }: Props) => {
                           const metaParts = [yearLabel, engineLabel].filter((value): value is string => Boolean(value));
                           return (
                             <div key={`${row.modelName}-${index}`} className="border-l-4 border-[#f97316] pl-3">
-                              <p className="break-words text-base font-bold leading-6 text-[#10213d]">
+                              <p className="break-words text-lg font-bold leading-7 text-[#10213d]">
                                 {row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName}
                               </p>
                               {metaParts.length > 0 && (
-                                <p className="break-words text-xs leading-5 text-slate-500">
+                                <p className="break-words text-sm leading-6 text-slate-500">
                                   {metaParts.join(" · ")}
                                 </p>
                               )}
                               {row.note && (
-                                <p className="break-words text-xs leading-5 text-slate-500">หมายเหตุ: {row.note}</p>
+                                <p className="break-words text-sm leading-6 text-slate-500">หมายเหตุ: {row.note}</p>
                               )}
                             </div>
                           );
