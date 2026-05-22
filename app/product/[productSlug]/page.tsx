@@ -304,9 +304,11 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[24px] border border-orange-100 bg-gradient-to-br from-orange-50/60 to-slate-50 p-4 shadow-sm lg:mt-auto">
-                    <p className="text-sm font-semibold text-slate-500">พร้อมให้ร้านเช็กสินค้านี้</p>
-                    <p className="mt-1 text-base font-bold text-[#10213d]">ส่งรหัส {product.code} พร้อมรุ่นรถหรือรูปอะไหล่เดิม</p>
+                  <div className="relative mt-4 overflow-hidden rounded-[24px] border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 shadow-[0_16px_40px_-14px_rgba(249,115,22,0.45)] ring-1 ring-orange-100/70 lg:mt-auto">
+                    {/* Brand accent bar */}
+                    <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-[#f97316] to-orange-400" />
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#f97316]">พร้อมให้ร้านเช็กสินค้านี้</p>
+                    <p className="mt-1.5 text-lg font-bold leading-snug text-[#10213d] sm:text-xl">ส่งรหัส {product.code} พร้อมรุ่นรถหรือรูปอะไหล่เดิม</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <a
                         href={config.shopLineUrl}
