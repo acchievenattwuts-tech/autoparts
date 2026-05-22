@@ -101,7 +101,8 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
     section: "รายงาน",
     items: [
       { label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view", keywords: "reports รายงาน" },
-      { label: "Product Search No Result", href: "/admin/reports/product-search", icon: SearchX, permission: "reports.view", keywords: "product search no result telemetry คำค้นหา ไม่พบผลลัพธ์" },
+      { label: "Product Search No Result", href: "/admin/reports/product-search-no-result", icon: SearchX, permission: "product_search_report.view", keywords: "product search no result telemetry คำค้นหา ไม่พบผลลัพธ์" },
+      { label: "Search Coverage Audit", href: "/admin/reports/search-coverage-audit", icon: ListChecks, permission: "search_coverage.view", keywords: "search coverage audit backfill ขาดข้อมูล oem keyword รูป รุ่นรถ fitment" },
     ],
   },
   {

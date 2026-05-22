@@ -8,6 +8,14 @@ if (!connectionString) {
 
 const setupSql = `
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
+-- IMMUTABLE wrapper around unaccent so it can be used in expression indexes.
+-- (unaccent() itself is marked STABLE which prevents direct use in CREATE INDEX.)
+CREATE OR REPLACE FUNCTION f_unaccent(text)
+  RETURNS text
+  LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT
+AS $func$ SELECT public.unaccent('public.unaccent', $1) $func$;
 
 CREATE TABLE IF NOT EXISTS product_search_documents (
   product_id text PRIMARY KEY,
@@ -62,6 +70,23 @@ CREATE INDEX IF NOT EXISTS idx_product_search_documents_oem_trgm
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_keyword_trgm
   ON product_search_documents
   USING GIN (keyword_text gin_trgm_ops);
+
+-- Phase Q2: accent-insensitive trigram indexes (use f_unaccent IMMUTABLE wrapper)
+CREATE INDEX IF NOT EXISTS idx_psd_search_text_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(search_text) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_psd_name_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(product_name) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_psd_oem_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(oem_text) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_psd_keyword_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(keyword_text) gin_trgm_ops);
 
 -- Phase B: return-type changed (added oem_text, keyword_text) — must drop first
 DROP FUNCTION IF EXISTS build_product_search_text(text);
@@ -182,7 +207,7 @@ AS $$
     )) AS search_text,
     to_tsvector(
       'simple',
-      trim(concat_ws(
+      f_unaccent(trim(concat_ws(
         ' ',
         base.product_code,
         base.product_name,
@@ -195,7 +220,7 @@ AS $$
         base.car_brand_text,
         base.car_model_text,
         base.fitment_text
-      ))
+      )))
     ) AS search_document,
     base.product_created_at
   FROM base;

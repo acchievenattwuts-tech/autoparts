@@ -22,6 +22,8 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         brand: { select: { name: true } },
         carModels: {
           select: {
+            yearStart: true,
+            yearEnd: true,
             carModel: {
               select: {
                 name: true,
@@ -32,7 +34,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
           take: 6,
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { saleItems: { _count: "desc" } },
       take: 8,
     }),
   ["storefront-featured-products"],
@@ -66,7 +68,7 @@ const FeaturedProducts = async ({ lineUrl, products }: Props) => {
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {resolvedProducts.map((product, index) => (
-            <ScrollReveal key={product.id} delay={index * 60}>
+            <ScrollReveal key={product.id} delay={index * 60} className="h-full">
               <ProductCard product={product} lineUrl={lineUrl} />
             </ScrollReveal>
           ))}

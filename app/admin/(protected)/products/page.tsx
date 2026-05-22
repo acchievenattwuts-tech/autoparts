@@ -12,7 +12,7 @@ import { Plus, Pencil } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
-import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
 import ProductFilterForm from "./ProductFilterForm";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
@@ -20,6 +20,7 @@ import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import ProductMatchChips from "@/components/shared/ProductMatchChips";
 
 const PAGE_SIZE = 30;
 
@@ -122,6 +123,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Phase Q4 — "Did you mean" suggestions when admin search returns no/few hits
+  const didYouMean = search && total < 3
+    ? await suggestDidYouMean(search, 3)
+    : [];
+
   return (
     <div className="space-y-4">
       <AdminPageHeader
@@ -192,7 +198,23 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
               {products.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="py-12 text-center text-gray-400 dark:text-slate-500">
-                    {search ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้า"}
+                    <p>{search ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้า"}</p>
+                    {didYouMean.length > 0 && (
+                      <div className="mt-3">
+                        <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">คุณหมายถึง:</p>
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {didYouMean.map((suggestion) => (
+                            <Link
+                              key={suggestion}
+                              href={`/admin/products?search=${encodeURIComponent(suggestion)}`}
+                              className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 bg-[#1e3a5f]/5 px-3 py-1 text-xs font-medium text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/10 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:border-sky-400 dark:hover:bg-sky-500/20"
+                            >
+                              {suggestion}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -220,6 +242,14 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       {product.brand && (
                         <p className="text-xs text-gray-400 dark:text-slate-500">{product.brand.name}</p>
                       )}
+                      {search && searchResult.matchReasons?.[product.id]?.length ? (
+                        <div className="mt-1">
+                          <ProductMatchChips
+                            reasons={searchResult.matchReasons[product.id]}
+                            compact
+                          />
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{product.category.name}</td>
                     <td className="px-4 py-3 text-center">

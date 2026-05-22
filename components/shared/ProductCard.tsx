@@ -15,7 +15,11 @@ type ProductForCard = {
   reportUnitName: string;
   category: { name: string; slug?: string | null };
   brand: { name: string } | null;
-  carModels?: { carModel: { name: string; carBrand: { name: string } } }[];
+  carModels?: {
+    yearStart?: number | null;
+    yearEnd?: number | null;
+    carModel: { name: string; carBrand: { name: string } };
+  }[];
 };
 
 interface Props {
@@ -23,6 +27,13 @@ interface Props {
   lineUrl: string;
   prefetchDetail?: boolean;
 }
+
+const formatFitmentYear = (yearStart?: number | null, yearEnd?: number | null) => {
+  if (yearStart && yearEnd) return `${yearStart}-${yearEnd}`;
+  if (yearStart) return `${yearStart}+`;
+  if (yearEnd) return `ถึง ${yearEnd}`;
+  return null;
+};
 
 const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
   const inStock = product.stock > 0;
@@ -36,29 +47,31 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
     product.carModels && product.carModels.length > 0
       ? (() => {
           const firstBrand = product.carModels[0].carModel.carBrand.name;
-          const modelNames = product.carModels
+          const items = product.carModels
             .filter(({ carModel }) => carModel.carBrand.name === firstBrand)
-            .map(({ carModel }) => carModel.name);
-          const uniqueModels = Array.from(new Set(modelNames));
-          const preview = uniqueModels.slice(0, 2).join(", ");
-          const extra = uniqueModels.length > 2 ? ` +${uniqueModels.length - 2}` : "";
-          return `${firstBrand}${preview ? ` โดย ${preview}${extra}` : ""}`;
+            .map((fitment) => {
+              const year = formatFitmentYear(fitment.yearStart, fitment.yearEnd);
+              return `${firstBrand} - ${fitment.carModel.name}${year ? ` ${year}` : ""}`;
+            });
+          return Array.from(new Set(items)).join(", ");
         })()
       : null;
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:border-gray-200 hover:shadow-lg">
+    <div className="group relative flex h-full min-h-[22.25rem] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#f97316]/45 hover:shadow-[0_20px_45px_rgba(15,23,42,0.16)] hover:ring-2 hover:ring-[#f97316]/12 focus-within:border-[#f97316]/55 focus-within:ring-2 focus-within:ring-[#f97316]/20 motion-reduce:transform-none sm:min-h-[25.75rem] lg:min-h-[26.25rem]">
       <Link
         href={productPath}
         prefetch={prefetchDetail}
-        className="relative h-32 shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44"
-      >
+        aria-label={`ดูรายละเอียด ${product.name}`}
+        className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2"
+      />
+      <div className="relative h-32 shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44">
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}
             alt={`${product.name}${product.brand ? ` ${product.brand.name}` : ""} | อะไหล่แอร์รถยนต์ ${product.category.name}`}
             fill
-            className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.08] motion-reduce:transform-none motion-reduce:transition-none"
+            className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.1] motion-reduce:transform-none motion-reduce:transition-none"
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
           />
         ) : (
@@ -71,55 +84,52 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
             สินค้าหมด
           </span>
         )}
-      </Link>
+      </div>
 
       <div className="flex flex-1 flex-col p-3 sm:p-4">
         <span className="self-start rounded-full bg-[#1e3a5f]/10 px-2 py-0.5 text-xs font-medium text-[#1e3a5f]">
           {product.category.name}
         </span>
 
-        <Link href={productPath} prefetch={prefetchDetail} className="mt-2 block flex-1">
+        <div className="mt-2 min-h-[2.15rem] sm:min-h-[2.45rem]">
           <h3 className="line-clamp-2 text-xs font-bold leading-snug text-gray-900 transition-colors group-hover:text-[#1e3a5f] sm:text-sm">
             {product.name}
           </h3>
-        </Link>
+        </div>
 
-        <div className="mt-1 min-h-[2.35rem] space-y-1 sm:min-h-[2.75rem]">
-          {product.brand && <p className="text-xs text-gray-400">{product.brand.name}</p>}
+        <div className="mt-1 overflow-hidden">
+          {product.brand && <p className="line-clamp-1 text-xs text-gray-400">{product.brand.name}</p>}
           {compatibilitySummary && (
-            <p className="line-clamp-1 text-xs text-slate-500">{compatibilitySummary}</p>
+            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-500">
+              {compatibilitySummary}
+            </p>
           )}
         </div>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div>
-            <p className="text-xs text-gray-400">ราคาปกติ</p>
-            <p className="text-xs text-gray-400 line-through">
-              ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
-            </p>
-            <p className="text-[11px] font-medium text-emerald-600">ราคาพิเศษ</p>
-            <p className="text-base font-bold text-[#f97316] sm:text-lg">
-              ฿{displayPrices.salePrice.toLocaleString("th-TH")}
-            </p>
-          </div>
+        <div className="mt-auto pt-1.5">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400">ราคาปกติ</p>
+              <p className="text-xs text-gray-400 line-through">
+                ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
+              </p>
+              <p className="mt-1 text-xs font-bold text-emerald-600 sm:text-sm">ราคาพิเศษ</p>
+              <p className="text-xl font-extrabold leading-none text-[#f97316] sm:text-2xl">
+                ฿{displayPrices.salePrice.toLocaleString("th-TH")}
+              </p>
+            </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <Link
-              href={productPath}
-              prefetch={prefetchDetail}
-              className="rounded-full border border-gray-200 px-2.5 py-2 text-[11px] font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f] sm:px-3 sm:text-xs"
-            >
-              ดูรายละเอียด
-            </Link>
-            <a
-              href={lineUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="sf-shine flex items-center gap-1 rounded-full bg-[#06C755] px-2.5 py-2 text-[11px] font-semibold text-white transition-all hover:scale-105 hover:bg-[#05a847] sm:gap-1.5 sm:px-3 sm:text-xs"
-            >
-              <MessageCircle size={11} />
-              สอบถาม
-            </a>
+            <div className="relative z-20 shrink-0">
+              <a
+                href={lineUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sf-shine flex items-center justify-center gap-1.5 rounded-full bg-[#06C755] px-3 py-2.5 text-[11px] font-semibold text-white shadow-sm transition-all hover:scale-[1.02] hover:bg-[#05a847] hover:shadow-md sm:px-4 sm:text-xs"
+              >
+                <MessageCircle size={11} />
+                สอบถาม
+              </a>
+            </div>
           </div>
         </div>
       </div>

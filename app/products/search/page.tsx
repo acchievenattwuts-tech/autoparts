@@ -17,7 +17,7 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductFilterBar from "../ProductFilterBar";
 import ProductFilterBarFallback from "../ProductFilterBarFallback";
 import ProductsHero from "../ProductsHero";
-import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
@@ -181,6 +181,8 @@ const ProductsPage = async ({ searchParams }: Props) => {
         brand: { select: { name: true } },
         carModels: {
           select: {
+            yearStart: true,
+            yearEnd: true,
             carModel: {
               select: {
                 name: true,
@@ -196,6 +198,11 @@ const ProductsPage = async ({ searchParams }: Props) => {
   ]);
 
   const sortedProducts = sortProductsByIds(products, searchResult.ids);
+
+  // Phase Q4 — "Did you mean" suggestions when results are sparse/empty
+  const didYouMean = q && searchResult.total < 3
+    ? await suggestDidYouMean(q, 3)
+    : [];
   const hasFilter = q || category || brand || models.length > 0;
   const totalPages = Math.max(1, Math.ceil(searchResult.total / PRODUCTS_PER_PAGE));
   const pageStart = searchResult.total === 0 ? 0 : skip + 1;
@@ -257,8 +264,24 @@ const ProductsPage = async ({ searchParams }: Props) => {
               </div>
 
               {sortedProducts.length === 0 ? (
-                <div className="py-24 text-center text-gray-400">
+                <div className="py-16 text-center text-gray-400">
                   <p className="mb-2 text-lg">ไม่พบสินค้าที่ค้นหา</p>
+                  {didYouMean.length > 0 && (
+                    <div className="mb-4">
+                      <p className="mb-2 text-sm text-gray-600">คุณหมายถึง:</p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        {didYouMean.map((suggestion) => (
+                          <Link
+                            key={suggestion}
+                            href={`/products/search?q=${encodeURIComponent(suggestion)}`}
+                            className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 bg-[#1e3a5f]/5 px-3 py-1 text-sm font-medium text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/10"
+                          >
+                            {suggestion}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <Link href="/products" className="text-sm text-[#1e3a5f] underline">
                     ดูสินค้าทั้งหมด
                   </Link>
@@ -267,7 +290,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
                 <>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                     {sortedProducts.map((product, index) => (
-                      <ScrollReveal key={product.id} delay={index * 40}>
+                      <ScrollReveal key={product.id} delay={index * 40} className="h-full">
                         <ProductCard
                           product={product}
                           lineUrl={config.shopLineUrl}

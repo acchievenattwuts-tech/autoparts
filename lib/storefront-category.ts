@@ -63,45 +63,55 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
   return category;
 };
 
-const fetchCategoryProducts = unstable_cache(
-  async (categoryId: string) =>
-    db.product.findMany({
-      where: {
-        isActive: true,
-        categoryId,
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        code: true,
-        imageUrl: true,
-        salePrice: true,
-        stock: true,
-        reportUnitName: true,
-        category: { select: { id: true, name: true, slug: true } },
-        brand: { select: { name: true } },
-        carModels: {
-          select: {
-            carModel: {
-              select: {
-                name: true,
-                carBrand: { select: { name: true } },
+const PAGE_SIZE = 20;
+
+const fetchCategoryProductPage = unstable_cache(
+  async (categoryId: string, page: number) => {
+    const skip = (page - 1) * PAGE_SIZE;
+    const where = { isActive: true, categoryId } as const;
+    const [products, total] = await Promise.all([
+      db.product.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          code: true,
+          imageUrl: true,
+          salePrice: true,
+          stock: true,
+          reportUnitName: true,
+          category: { select: { id: true, name: true, slug: true } },
+          brand: { select: { name: true } },
+          carModels: {
+            select: {
+              yearStart: true,
+              yearEnd: true,
+              carModel: {
+                select: {
+                  name: true,
+                  carBrand: { select: { name: true } },
+                },
               },
             },
+            take: 6,
           },
-          take: 6,
         },
-      },
-      orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
-      take: 8,
-    }),
+        orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
+        skip,
+        take: PAGE_SIZE,
+      }),
+      db.product.count({ where }),
+    ]);
+    return { products, total };
+  },
   ["storefront-category-products"],
   { tags: [...CATEGORY_CACHE_TAGS, "storefront:products"] },
 );
 
-export async function getStorefrontCategoryPageData(categorySlug: string) {
+export async function getStorefrontCategoryPageData(categorySlug: string, page: number = 1) {
   const category = await getActiveStorefrontCategoryBySlug(categorySlug);
-  const products = await fetchCategoryProducts(category.id);
-  return { category, products };
+  const safePage = Math.max(1, page);
+  const { products, total } = await fetchCategoryProductPage(category.id, safePage);
+  return { category, products, total, page: safePage, pageSize: PAGE_SIZE };
 }

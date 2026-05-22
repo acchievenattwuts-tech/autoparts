@@ -51,6 +51,8 @@ export const getStorefrontProductsLandingPageData = unstable_cache(
           carModels: {
             where: { carModel: { isActive: true, carBrand: { isActive: true } } },
             select: {
+              yearStart: true,
+              yearEnd: true,
               carModel: {
                 select: {
                   name: true,

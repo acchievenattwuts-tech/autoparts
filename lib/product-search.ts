@@ -29,15 +29,32 @@ type ProductSearchInput = {
   order?: ProductSearchOrder;
 };
 
+/** Phase Q5 — Match reasons per product (chip labels in UI). */
+export type ProductMatchReason =
+  | "code"
+  | "oem"
+  | "name"
+  | "keyword"
+  | "fitment"
+  | "year";
+
 type ProductSearchResult = {
   ids: string[];
   total: number;
   mode: "v2" | "fallback";
+  /** productId -> match reasons (Phase Q5). Empty map if no query. */
+  matchReasons?: Record<string, ProductMatchReason[]>;
 };
 
 type RankedSearchRow = {
   product_id: string;
   total_count: bigint | number | string;
+  match_code?: boolean | null;
+  match_oem?: boolean | null;
+  match_name?: boolean | null;
+  match_keyword?: boolean | null;
+  match_fitment?: boolean | null;
+  match_year?: boolean | null;
 };
 
 type ExactSearchRow = {
@@ -272,6 +289,7 @@ async function searchProductIdsFallback(
     ids: rows.map((row) => row.id),
     total,
     mode: "fallback",
+    matchReasons: {},
   };
 }
 
@@ -308,7 +326,8 @@ async function searchProductIdsV2(
     ? sanitizedTsTokens.map((expr) => `(${expr})`).join(" | ")
     : normalizedQuery.replace(/[^\p{L}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
 
-  const tsQuery = Prisma.sql`to_tsquery('simple', ${tsQueryExpression})`;
+  // Phase Q2: pass query through f_unaccent so it matches the unaccented tsvector index.
+  const tsQuery = Prisma.sql`to_tsquery('simple', f_unaccent(${tsQueryExpression}))`;
 
   // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
   const targetYear = input.fitmentYear ?? extractYearFromQuery(normalizedQuery);
@@ -471,12 +490,14 @@ async function searchProductIdsV2(
     FROM product_search_documents psd
     ${exactScope}
       AND (
-        lower(psd.product_code) = lower(${normalizedQuery})
-        OR psd.oem_text ILIKE ${`%${normalizedQuery}%`}
-           AND EXISTS (
-             SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
-             WHERE lower(tok.tok) = lower(${normalizedQuery})
-           )
+        f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+        OR (
+          f_unaccent(psd.oem_text) ILIKE f_unaccent(${`%${normalizedQuery}%`})
+          AND EXISTS (
+            SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
+            WHERE f_unaccent(lower(tok.tok)) = f_unaccent(lower(${normalizedQuery}))
+          )
+        )
       )
     ORDER BY psd.product_created_at DESC, psd.product_id DESC
     OFFSET ${skip}
@@ -484,10 +505,18 @@ async function searchProductIdsV2(
   `);
 
   if (exactCodeRows.length > 0) {
+    const reasons: Record<string, ProductMatchReason[]> = {};
+    // Heuristic: exact-code branch hits when query matches product_code OR OEM token.
+    // Without per-row probe we attribute "code" and let the UI dedupe; "oem" added when query looks like a part number.
+    const looksLikeOem = /[-0-9]/.test(normalizedQuery);
+    for (const row of exactCodeRows) {
+      reasons[row.product_id] = looksLikeOem ? ["code", "oem"] : ["code"];
+    }
     return {
       ids: exactCodeRows.map((row) => row.product_id),
       total: coerceCount(exactCodeRows[0].total_count),
       mode: "v2",
+      matchReasons: reasons,
     };
   }
 
@@ -495,17 +524,20 @@ async function searchProductIdsV2(
     SELECT psd.product_id, COUNT(*) OVER() AS total_count
     FROM product_search_documents psd
     ${exactScope}
-      AND lower(psd.product_name) = lower(${normalizedQuery})
+      AND f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
     ORDER BY psd.product_created_at DESC, psd.product_id DESC
     OFFSET ${skip}
     LIMIT ${take}
   `);
 
   if (exactNameRows.length > 0) {
+    const reasons: Record<string, ProductMatchReason[]> = {};
+    for (const row of exactNameRows) reasons[row.product_id] = ["name"];
     return {
       ids: exactNameRows.map((row) => row.product_id),
       total: coerceCount(exactNameRows[0].total_count),
       mode: "v2",
+      matchReasons: reasons,
     };
   }
 
@@ -514,21 +546,33 @@ async function searchProductIdsV2(
       SELECT
         psd.product_id,
         psd.product_created_at,
+        -- Phase Q5: per-row match reasons (booleans) for UI chip display
+        (f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+          OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))) AS match_code,
+        (f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${normalizedQuery})) || '($|\s)')
+          OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_oem,
+        (f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
+          OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
+          OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}) AS match_name,
+        (f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
+          OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_keyword,
+        (f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_fitment,
+        (${yearBoostExpr} > 0) AS match_year,
         (
-          -- Exact matches (highest priority)
-          CASE WHEN lower(psd.product_code) = lower(${normalizedQuery}) THEN 1500 ELSE 0 END +
-          CASE WHEN lower(psd.oem_text) ~ ('(^|\s)' || lower(${normalizedQuery}) || '($|\s)') THEN 1400 ELSE 0 END +
-          CASE WHEN lower(psd.product_name) = lower(${normalizedQuery}) THEN 1000 ELSE 0 END +
-          CASE WHEN lower(psd.search_text) = lower(${normalizedQuery}) THEN 800 ELSE 0 END +
+          -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
+          CASE WHEN f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery})) THEN 1500 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${normalizedQuery})) || '($|\s)') THEN 1400 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery})) THEN 1000 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.search_text)) = f_unaccent(lower(${normalizedQuery})) THEN 800 ELSE 0 END +
 
           -- Prefix / contains
-          CASE WHEN lower(psd.product_code) LIKE lower(${prefixQuery}) THEN 380 ELSE 0 END +
-          CASE WHEN lower(psd.product_name) LIKE lower(${prefixQuery}) THEN 320 ELSE 0 END +
-          CASE WHEN lower(psd.oem_text) LIKE lower(${containsQuery}) THEN 600 ELSE 0 END +
-          CASE WHEN lower(psd.keyword_text) LIKE lower(${containsQuery}) THEN 250 ELSE 0 END +
-          CASE WHEN lower(psd.alias_text) LIKE lower(${containsQuery}) THEN 250 ELSE 0 END +
-          CASE WHEN lower(psd.fitment_text) LIKE lower(${containsQuery}) THEN 200 ELSE 0 END +
-          CASE WHEN lower(psd.product_description) LIKE lower(${containsQuery}) THEN 80 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery})) THEN 380 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery})) THEN 320 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery})) THEN 600 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery})) THEN 250 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery})) THEN 250 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsQuery})) THEN 200 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.product_description)) LIKE f_unaccent(lower(${containsQuery})) THEN 80 ELSE 0 END +
 
           -- Full-text rank
           CASE
@@ -540,35 +584,41 @@ async function searchProductIdsV2(
           -- Year-match boost (Phase C Q3=C)
           ${yearBoostExpr} +
 
-          -- Trigram fuzzy
+          -- Trigram fuzzy (accent-insensitive)
           GREATEST(
-            similarity(lower(psd.product_code), lower(${normalizedQuery})) * 420,
-            similarity(lower(psd.oem_text), lower(${normalizedQuery})) * 380,
-            similarity(lower(psd.product_name), lower(${normalizedQuery})) * 250,
-            similarity(lower(psd.keyword_text), lower(${normalizedQuery})) * 180,
-            similarity(lower(psd.search_text), lower(${normalizedQuery})) * 120
+            similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) * 420,
+            similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) * 380,
+            similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) * 250,
+            similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))) * 180,
+            similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) * 120
           )
         ) AS score
       FROM product_search_documents psd
       ${exactScope}
         ${isYearOnlyQuery ? Prisma.empty : Prisma.sql`AND (
-          lower(psd.product_code) = lower(${normalizedQuery})
-          OR lower(psd.product_name) = lower(${normalizedQuery})
-          OR lower(psd.product_code) LIKE lower(${prefixQuery})
-          OR lower(psd.product_name) LIKE lower(${prefixQuery})
-          OR lower(psd.oem_text) LIKE lower(${containsQuery})
-          OR lower(psd.keyword_text) LIKE lower(${containsQuery})
-          OR lower(psd.alias_text) LIKE lower(${containsQuery})
-          OR lower(psd.search_text) LIKE lower(${containsQuery})
+          f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+          OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
+          OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
+          OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
+          OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
+          OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
+          OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))
+          OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
           OR psd.search_document @@ ${tsQuery}
-          OR similarity(lower(psd.product_code), lower(${normalizedQuery})) >= ${SEARCH_V2_CODE_SIMILARITY}
-          OR similarity(lower(psd.oem_text), lower(${normalizedQuery})) >= ${SEARCH_V2_OEM_SIMILARITY}
-          OR similarity(lower(psd.product_name), lower(${normalizedQuery})) >= ${SEARCH_V2_NAME_SIMILARITY}
-          OR similarity(lower(psd.search_text), lower(${normalizedQuery})) >= ${SEARCH_V2_TEXT_SIMILARITY}
+          OR similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
+          OR similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
+          OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
+          OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
         )`}
     )
     SELECT
       ranked.product_id,
+      ranked.match_code,
+      ranked.match_oem,
+      ranked.match_name,
+      ranked.match_keyword,
+      ranked.match_fitment,
+      ranked.match_year,
       COUNT(*) OVER() AS total_count
     FROM ranked
     WHERE ranked.score > 0
@@ -581,8 +631,83 @@ async function searchProductIdsV2(
     ids: rows.map((row) => row.product_id),
     total: rows.length > 0 ? coerceCount(rows[0].total_count) : 0,
     mode: "v2",
+    matchReasons: buildMatchReasons(rows),
   };
 }
+
+// ─── Phase Q4 — "Did you mean" suggestions ─────────────────────────────────
+
+type DidYouMeanRow = { suggestion: string; score: number };
+
+/**
+ * Suggest up to 3 alternative search terms when the user query returns few
+ * or no results. Pulls candidates from product names, ProductAlias.alias, and
+ * SearchSynonym.term — ranks via trigram similarity (accent-insensitive).
+ */
+export async function suggestDidYouMean(
+  rawQuery?: string | null,
+  limit = 3,
+): Promise<string[]> {
+  const q = normalizeSearchQuery(rawQuery);
+  if (!q || q.length < 2) return [];
+
+  // Minimum trigram similarity for a suggestion to be useful
+  const MIN_SIMILARITY = 0.25;
+
+  try {
+    const rows = await db.$queryRaw<DidYouMeanRow[]>(Prisma.sql`
+      WITH candidates AS (
+        SELECT name AS suggestion FROM "Product" WHERE "isActive" = true
+        UNION ALL
+        SELECT alias AS suggestion FROM "ProductAlias"
+        UNION ALL
+        SELECT term AS suggestion FROM "SearchSynonym" WHERE "isActive" = true
+      ),
+      scored AS (
+        SELECT
+          suggestion,
+          similarity(f_unaccent(lower(suggestion)), f_unaccent(lower(${q}))) AS score
+        FROM candidates
+        WHERE suggestion <> ''
+          AND length(suggestion) >= 2
+          AND f_unaccent(lower(suggestion)) <> f_unaccent(lower(${q}))
+      ),
+      ranked AS (
+        SELECT DISTINCT ON (lower(suggestion))
+          suggestion,
+          score
+        FROM scored
+        WHERE score >= ${MIN_SIMILARITY}
+        ORDER BY lower(suggestion), score DESC
+      )
+      SELECT suggestion, score
+      FROM ranked
+      ORDER BY score DESC
+      LIMIT ${limit}
+    `);
+
+    return rows.map((row) => row.suggestion);
+  } catch (error) {
+    console.error("suggestDidYouMean failed", error);
+    return [];
+  }
+}
+
+/** Convert RankedSearchRow booleans into productId → ProductMatchReason[]. */
+const buildMatchReasons = (rows: RankedSearchRow[]): Record<string, ProductMatchReason[]> => {
+  const map: Record<string, ProductMatchReason[]> = {};
+  for (const row of rows) {
+    const reasons: ProductMatchReason[] = [];
+    if (row.match_code) reasons.push("code");
+    if (row.match_oem) reasons.push("oem");
+    if (row.match_year) reasons.push("year");
+    if (row.match_fitment) reasons.push("fitment");
+    if (row.match_keyword) reasons.push("keyword");
+    if (row.match_name) reasons.push("name");
+    map[row.product_id] = reasons;
+  }
+  return map;
+};
 
 export async function searchProductIds(
   input: ProductSearchInput,

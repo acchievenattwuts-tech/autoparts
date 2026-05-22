@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 type Option = { id: string; name: string };
 type CarBrandOption = Option & { models: Option[] };
@@ -42,19 +42,12 @@ export default function ProductFilterForm({
   return (
     <AdminFilterToolbar className="mb-0">
       <AdminSearchForm method="GET" className="grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(150px,1fr))_auto_auto]">
-        <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            name="search"
-            defaultValue={search ?? ""}
-            placeholder="ค้นหาจากชื่อสินค้า รหัส หรือคำค้นอื่น ๆ"
-            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-          />
-        </div>
+        <ProductAutocomplete
+          initialValue={search ?? ""}
+          placeholder="ค้นหาจากชื่อสินค้า รหัส หรือคำค้นอื่น ๆ"
+          mode="admin"
+          inputName="search"
+        />
 
         <select
           name="categoryId"

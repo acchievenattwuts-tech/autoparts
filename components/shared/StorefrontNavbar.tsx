@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import StorefrontSearchForm from "@/components/shared/StorefrontSearchForm";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-white" aria-hidden="true">
@@ -93,27 +94,7 @@ const StorefrontNavbar = ({
               </div>
             </Link>
 
-            <form action="/products/search" method="GET" className="flex min-w-0 flex-1 items-center md:hidden">
-              <div className="relative w-full">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {SEARCH_ICON}
-                </span>
-                <input
-                  type="text"
-                  name="q"
-                  defaultValue={searchQuery ?? ""}
-                  placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
-                  className="w-full rounded-xl border-2 border-gray-200 bg-white py-2 pl-8 pr-10 text-sm shadow-sm transition-colors focus:border-[#1e3a5f] focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg bg-[#f97316] p-1.5 text-white transition-colors hover:bg-[#ea6c0a]"
-                  aria-label="ค้นหาสินค้า"
-                >
-                  <span aria-hidden="true">{SEARCH_ICON}</span>
-                </button>
-              </div>
-            </form>
+            <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="mobile" />
 
             <nav className="hidden items-center gap-5 md:flex">
               {navLinks.map((link) => (
@@ -127,27 +108,7 @@ const StorefrontNavbar = ({
               ))}
             </nav>
 
-            <form action="/products/search" method="GET" className="hidden max-w-sm flex-1 items-center md:flex">
-              <div className="relative w-full">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  {SEARCH_ICON}
-                </span>
-                <input
-                  type="text"
-                  name="q"
-                  defaultValue={searchQuery ?? ""}
-                  placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
-                  className="w-full rounded-full border-2 border-gray-200 bg-white py-2 pl-8 pr-10 text-sm shadow-sm transition-colors hover:border-[#1e3a5f]/40 focus:border-[#1e3a5f] focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-[#f97316] p-1.5 text-white transition-colors hover:bg-[#ea6c0a]"
-                  aria-label="ค้นหาสินค้า"
-                >
-                  <span aria-hidden="true">{SEARCH_ICON}</span>
-                </button>
-              </div>
-            </form>
+            <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="desktop" />
 
             <div className="hidden shrink-0 items-center gap-3 md:flex">
               {displayPhone && (

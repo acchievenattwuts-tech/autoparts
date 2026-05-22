@@ -17,6 +17,10 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           name: true,
           description: true,
           imageUrl: true,
+          images: {
+            select: { url: true, alt: true, sortOrder: true, isPrimary: true },
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          },
           salePrice: true,
           stock: true,
           reportUnitName: true,
@@ -80,6 +84,8 @@ export const getRelatedStorefrontProductsByCategory = async ({
           brand: { select: { name: true } },
           carModels: {
             select: {
+              yearStart: true,
+              yearEnd: true,
               carModel: {
                 select: {
                   name: true,

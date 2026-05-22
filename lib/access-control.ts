@@ -114,6 +114,8 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "delivery_commissions.cancel", group: "การเงิน", label: "ยกเลิกทำจ่ายค่าส่งพนักงาน" },
 
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
+  { key: "product_search_report.view", group: "รายงานค้นหา", label: "ดู Product Search No Result" },
+  { key: "search_coverage.view", group: "รายงานค้นหา", label: "ดู Search Coverage Audit" },
 
   { key: "content.view", group: "การตลาด", label: "ดูคอนเทนต์ Facebook" },
   { key: "content.create", group: "การตลาด", label: "สร้าง draft คอนเทนต์ Facebook" },
@@ -284,6 +286,10 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/cash-bank/transfers", permission: "cash_bank.transfers.view" },
   { prefix: "/admin/cash-bank/adjustments", permission: "cash_bank.adjustments.view" },
   { prefix: "/admin/cash-bank", permission: "cash_bank.view" },
+  { prefix: "/admin/reports/product-search-no-result", permission: "product_search_report.view" },
+  { prefix: "/admin/reports/product-search", permission: "product_search_report.view" },
+  { prefix: "/admin/reports/search-coverage-audit", permission: "search_coverage.view" },
+  { prefix: "/admin/reports/search-coverage", permission: "search_coverage.view" },
   { prefix: "/admin/reports", permission: "reports.view" },
   { prefix: "/admin/settings/company", permission: "settings.company.view" },
   { prefix: "/admin", permission: "workboard.view" },

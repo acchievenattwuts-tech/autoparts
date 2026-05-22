@@ -371,6 +371,7 @@ model Product {
   preferredSupplier   Supplier?            @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   aliases             ProductAlias[]
   carModels           ProductFitment[]
+  images              ProductImage[]
   lots                ProductLot[]
   units               ProductUnit[]
   purchaseItems       PurchaseItem[]
@@ -381,6 +382,21 @@ model Product {
 
   @@index([categoryId])
   @@index([brandId])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@index([productId, isPrimary])
 }
 
 model ProductUnit {
@@ -708,6 +724,7 @@ model SaleItem {
   warranties     Warranty[]
 
   @@index([saleId])
+  @@index([productId])
 }
 
 model Warranty {

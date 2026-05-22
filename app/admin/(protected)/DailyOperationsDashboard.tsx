@@ -2,7 +2,9 @@ import Link from "next/link";
 import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe, SearchX } from "lucide-react";
 
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { getSessionPermissionContext } from "@/lib/require-auth";
 import {
   addThailandDays,
   formatDateThai,
@@ -18,6 +20,12 @@ import type { SalesChartDatum } from "./SalesChart";
 import type { TopProductsChartDatum } from "./TopProductsChart";
 
 const DailyOperationsDashboard = async () => {
+  const { role, permissions } = await getSessionPermissionContext();
+  const canViewProductSearchReport = hasPermissionAccess(
+    role,
+    permissions,
+    "product_search_report.view",
+  );
   const now = new Date();
   const bangkokToday = getThailandDateKey(now);
   const bangkokMonthStart = getThailandMonthStartDateKey(now);
@@ -117,11 +125,13 @@ const DailyOperationsDashboard = async () => {
       distinct: ["visitorKey"],
       select: { visitorKey: true },
     }),
-    db.productSearchLog.findMany({
-      where: { resultCount: 0 },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    }),
+    canViewProductSearchReport
+      ? db.productSearchLog.findMany({
+          where: { resultCount: 0 },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        })
+      : Promise.resolve([]),
     db.sale.findMany({
       where: {
         status: "ACTIVE",
@@ -291,61 +301,63 @@ const DailyOperationsDashboard = async () => {
         ))}
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white/95 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-        <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl border border-rose-100 bg-rose-50 p-2 text-rose-600 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200">
-              <SearchX size={18} />
+      {canViewProductSearchReport ? (
+        <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white/95 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
+          <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-rose-100 bg-rose-50 p-2 text-rose-600 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200">
+                <SearchX size={18} />
+              </div>
+              <div>
+                <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">
+                  คำค้นหาสินค้าที่ไม่พบผลลัพธ์ล่าสุด
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Top 10 ล่าสุดจากหน้าร้านและหลังบ้าน</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">
-                คำค้นหาสินค้าที่ไม่พบผลลัพธ์ล่าสุด
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Top 10 ล่าสุดจากหน้าร้านและหลังบ้าน</p>
-            </div>
+            <Link
+              href="/admin/reports/product-search-no-result"
+              className="inline-flex items-center justify-center rounded-lg bg-[#1e3a5f] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#163055] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+            >
+              เปิดรายงาน
+            </Link>
           </div>
-          <Link
-            href="/admin/reports/product-search"
-            className="inline-flex items-center justify-center rounded-lg bg-[#1e3a5f] px-3 py-2 text-sm font-medium text-white transition hover:bg-[#163055] dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
-          >
-            เปิดรายงาน
-          </Link>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-white/5 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">คำค้น</th>
-                <th className="px-4 py-2 text-left font-medium">แหล่งที่มา</th>
-                <th className="px-4 py-2 text-left font-medium">เวลา</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentNoResultSearches.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-white/5 dark:text-slate-400">
                 <tr>
-                  <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-500">
-                    ยังไม่มีคำค้นหาที่ไม่พบผลลัพธ์
-                  </td>
+                  <th className="px-4 py-2 text-left font-medium">คำค้น</th>
+                  <th className="px-4 py-2 text-left font-medium">แหล่งที่มา</th>
+                  <th className="px-4 py-2 text-left font-medium">เวลา</th>
                 </tr>
-              ) : (
-                recentNoResultSearches.map((item) => (
-                  <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
-                    <td className="max-w-[28rem] truncate px-4 py-2 font-medium text-gray-900 dark:text-slate-100">
-                      {item.query}
-                    </td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-slate-400">
-                      {item.source === "storefront" ? "หน้าร้าน" : "หลังบ้าน"}
-                    </td>
-                    <td className="px-4 py-2 text-gray-500 dark:text-slate-400">
-                      {formatDateTimeThai(item.createdAt)}
+              </thead>
+              <tbody>
+                {recentNoResultSearches.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-500">
+                      ยังไม่มีคำค้นหาที่ไม่พบผลลัพธ์
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                ) : (
+                  recentNoResultSearches.map((item) => (
+                    <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
+                      <td className="max-w-[28rem] truncate px-4 py-2 font-medium text-gray-900 dark:text-slate-100">
+                        {item.query}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-slate-400">
+                        {item.source === "storefront" ? "หน้าร้าน" : "หลังบ้าน"}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 dark:text-slate-400">
+                        {formatDateTimeThai(item.createdAt)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <AdminDashboardCharts salesData={salesChartData} topProductsData={topProductsData} />
     </div>

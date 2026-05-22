@@ -8,6 +8,7 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
+import Pagination from "@/components/shared/Pagination";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
@@ -22,9 +23,8 @@ import {
 } from "@/lib/storefront-category";
 
 interface Props {
-  params: Promise<{
-    categorySlug: string;
-  }>;
+  params: Promise<{ categorySlug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }
 
 const getCategorySupportArticles = (categoryName: string) => {
@@ -52,7 +52,7 @@ const getCategorySupportArticles = (categoryName: string) => {
     .map(({ article }) => article);
 };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { categorySlug } = await params;
   const category = await getActiveStorefrontCategoryBySlug(categorySlug);
   const canonicalPath = getCategoryPath(category);
@@ -80,14 +80,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-const CategoryPage = async ({ params }: Props) => {
-  const { categorySlug } = await params;
+const CategoryPage = async ({ params, searchParams }: Props) => {
+  const [{ categorySlug }, { page: pageParam }] = await Promise.all([params, searchParams]);
+  const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+
   const [config, categoryData] = await Promise.all([
     getSiteConfig(),
-    getStorefrontCategoryPageData(categorySlug),
+    getStorefrontCategoryPageData(categorySlug, page),
   ]);
 
-  const { category, products } = categoryData;
+  const { category, products, total, pageSize } = categoryData;
+  const totalPages = Math.ceil(total / pageSize);
   const canonicalPath = getCategoryPath(category);
   const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
   const supportArticles = getCategorySupportArticles(category.name);
@@ -109,17 +112,24 @@ const CategoryPage = async ({ params }: Props) => {
         shopPhone={config.shopPhone}
       />
       <main className="min-h-screen bg-slate-50 pt-16">
-        <section className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-            <Link
-              href="/products"
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#10213d]"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              กลับไปหน้าสินค้าทั้งหมด
-            </Link>
-          </div>
-        </section>
+        <div className="mx-auto max-w-7xl px-4 py-2 sm:px-6 lg:px-8">
+          <nav className="overflow-x-auto px-1 py-1">
+            <ol className="flex min-w-max items-center gap-1.5 text-xs font-medium text-slate-500">
+              <li>
+                <Link href="/" className="transition hover:text-[#10213d]">หน้าแรก</Link>
+              </li>
+              <li className="text-slate-300">/</li>
+              <li>
+                <Link href="/products" className="inline-flex items-center gap-1 transition hover:text-[#10213d]">
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  สินค้าทั้งหมด
+                </Link>
+              </li>
+              <li className="text-slate-300">/</li>
+              <li className="max-w-[42vw] truncate text-[#10213d] sm:max-w-sm">{category.name}</li>
+            </ol>
+          </nav>
+        </div>
 
         <section className="relative overflow-hidden bg-[#10213d]">
           <AuroraBackdrop
@@ -140,21 +150,21 @@ const CategoryPage = async ({ params }: Props) => {
             ]}
           />
           <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 lg:py-5">
               <div className="max-w-4xl">
-                <p className="text-sm font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
-                <h1 className="mt-2 font-kanit text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
+                <p className="text-xs font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
+                <h1 className="mt-1 font-kanit text-xl font-bold text-white sm:text-2xl lg:text-3xl">
                   <CharRise text={category.name} stagger={32} />
                 </h1>
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-white/75 sm:text-base">
+                <p className="mt-2 max-w-3xl text-xs leading-6 text-white/70 sm:text-sm">
                   {description}
                 </p>
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <a
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-3 font-semibold text-white transition hover:bg-white/10"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
                   >
                     สอบถามร้านทาง LINE
                   </a>
@@ -170,13 +180,23 @@ const CategoryPage = async ({ params }: Props) => {
               ยังไม่มีสินค้าที่เปิดใช้งานในหมวดนี้ตอนนี้
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {products.map((product, index) => (
-                <ScrollReveal key={product.id} delay={index * 50}>
-                  <ProductCard product={product} lineUrl={config.shopLineUrl} />
-                </ScrollReveal>
-              ))}
-            </div>
+            <>
+              <p className="mb-4 text-sm text-slate-500">
+                แสดง {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} จาก {total.toLocaleString("th-TH")} รายการ
+              </p>
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                {products.map((product, index) => (
+                  <ScrollReveal key={product.id} delay={index * 50} className="h-full">
+                    <ProductCard product={product} lineUrl={config.shopLineUrl} />
+                  </ScrollReveal>
+                ))}
+              </div>
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                basePath={canonicalPath}
+              />
+            </>
           )}
         </section>
 

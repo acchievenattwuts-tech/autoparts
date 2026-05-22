@@ -100,7 +100,7 @@ const ProductsPage = async () => {
                 <>
                   <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
                     {products.map((product, index) => (
-                      <ScrollReveal key={product.id} delay={index * 40}>
+                      <ScrollReveal key={product.id} delay={index * 40} className="h-full">
                         <ProductCard
                           product={product}
                           lineUrl={config.shopLineUrl}

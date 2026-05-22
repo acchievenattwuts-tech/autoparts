@@ -63,6 +63,13 @@ interface AliasRow {
   kind: AliasKindValue;
 }
 
+interface ProductImageRow {
+  url: string;
+  alt: string | null;
+  sortOrder: number;
+  isPrimary: boolean;
+}
+
 export interface FitmentRow {
   carModelId: string;
   submodel: string | null;
@@ -89,6 +96,7 @@ export interface ProductFormData {
   purchaseUnitName: string | null;
   reportUnitName:  string | null;
   imageUrl:             string | null;
+  productImages?:       ProductImageRow[];
   categoryId:           string;
   brandId:              string | null;
   preferredSupplierId:  string | null;
@@ -144,7 +152,14 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
 
   // Image
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imageUrl, setImageUrl] = useState(product?.imageUrl ?? "");
+  const initialImages =
+    product?.productImages && product.productImages.length > 0
+      ? product.productImages
+      : product?.imageUrl
+        ? [{ url: product.imageUrl, alt: product.name, sortOrder: 0, isPrimary: true }]
+        : [];
+  const [productImages, setProductImages] = useState<ProductImageRow[]>(initialImages);
+  const [imageUrl, setImageUrl] = useState(productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? "");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
@@ -271,17 +286,60 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
 
   // ── Image upload ───────────────────────────────────────────────────────────
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
     setUploadError("");
     setIsUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    const result = await uploadProductImage(fd);
+    const uploadedImages: ProductImageRow[] = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const result = await uploadProductImage(fd);
+      if (result.error) {
+        setUploadError(result.error);
+        break;
+      }
+      if (result.url) {
+        uploadedImages.push({
+          url: result.url,
+          alt: file.name.replace(/\.[^.]+$/, ""),
+          sortOrder: 0,
+          isPrimary: false,
+        });
+      }
+    }
     setIsUploading(false);
-    if (result.error) setUploadError(result.error);
-    else if (result.url) setImageUrl(result.url);
+    if (uploadedImages.length > 0) {
+      setProductImages((prev) => {
+        const next = [...prev, ...uploadedImages].map((image, index) => ({
+          ...image,
+          sortOrder: index,
+          isPrimary: prev.length === 0 && index === 0 ? true : image.isPrimary,
+        }));
+        const primaryUrl = next.find((image) => image.isPrimary)?.url ?? next[0]?.url ?? "";
+        setImageUrl(primaryUrl);
+        return next;
+      });
+    }
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const setPrimaryImage = (url: string) => {
+    setProductImages((prev) => prev.map((image) => ({ ...image, isPrimary: image.url === url })));
+    setImageUrl(url);
+  };
+
+  const removeProductImage = (url: string) => {
+    setProductImages((prev) => {
+      const next = prev
+        .filter((image) => image.url !== url)
+        .map((image, index) => ({ ...image, sortOrder: index }));
+      if (next.length > 0 && !next.some((image) => image.isPrimary)) {
+        next[0] = { ...next[0], isPrimary: true };
+      }
+      setImageUrl(next.find((image) => image.isPrimary)?.url ?? next[0]?.url ?? "");
+      return next;
+    });
   };
 
   // ── Aliases ────────────────────────────────────────────────────────────────
@@ -341,6 +399,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     formData.set("preferredSupplierId", preferredSupplierId);
     formData.set("inventoryTracking", inventoryTracking);
     formData.set("imageUrl", imageUrl);
+    formData.set("productImages", JSON.stringify(productImages.map((image, index) => ({ ...image, sortOrder: index }))));
     formData.set("isLotControl", String(isNonStock ? false : isLotControl));
     formData.set("requireExpiryDate", String(isNonStock ? false : requireExpiryDate));
     formData.set("allowExpiredIssue", String(isNonStock ? false : allowExpiredIssue));
@@ -762,7 +821,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
             {imageUrl ? (
               <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
                 <Image src={imageUrl} alt="preview" fill className="object-cover" sizes="128px" />
-                <button type="button" onClick={() => setImageUrl("")}
+                <button type="button" onClick={() => removeProductImage(imageUrl)}
                   className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors">
                   <X size={12} />
                 </button>
@@ -775,14 +834,46 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
           </div>
           <div className="flex-1 space-y-3">
             <input ref={fileInputRef} type="file" accept="image/*"
-              onChange={handleImageChange} className="hidden" id="imageUpload" />
+              onChange={handleImageChange} className="hidden" id="imageUpload" multiple />
             <label htmlFor="imageUpload"
               className={`inline-flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium cursor-pointer transition-colors ${isUploading ? "opacity-60 cursor-not-allowed" : ""} border-gray-300 hover:bg-gray-50 bg-white dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800`}>
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              {isUploading ? "กำลังอัปโหลด..." : "อัปโหลดรูปภาพ"}
+              {isUploading ? "กำลังอัปโหลด..." : "อัปโหลดรูปภาพหลายรูป"}
             </label>
-            <p className="text-xs text-gray-400 dark:text-slate-500">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 3MB</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 3MB ต่อไฟล์ รูปหลักจะถูกใช้แทน imageUrl เดิม</p>
             {uploadError && <p className="text-xs text-red-500 dark:text-red-400">{uploadError}</p>}
+            {productImages.length > 0 && (
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                {productImages.map((image, index) => (
+                  <div key={`${image.url}-${index}`} className="group relative rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => setPrimaryImage(image.url)}
+                      className={`relative block h-20 w-full overflow-hidden rounded-lg ${image.isPrimary ? "ring-2 ring-[#1e3a5f] dark:ring-sky-400" : ""}`}
+                    >
+                      <Image src={image.url} alt={image.alt || `product-${index + 1}`} fill className="object-cover" sizes="96px" />
+                    </button>
+                    <div className="mt-1 flex items-center justify-between gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPrimaryImage(image.url)}
+                        className="truncate text-[11px] font-medium text-[#1e3a5f] dark:text-sky-300"
+                      >
+                        {image.isPrimary ? "รูปหลัก" : "ตั้งเป็นหลัก"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeProductImage(image.url)}
+                        className="rounded-full p-1 text-red-500 transition hover:bg-red-50 dark:hover:bg-red-500/10"
+                        aria-label="ลบรูป"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LoaderCircle, X } from "lucide-react";
+
 import { useTabStore } from "@/hooks/useTabStore";
 import { normalizeAdminTabPath } from "@/lib/admin-tabs";
 import { cn } from "@/lib/utils";
@@ -38,8 +39,10 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/cash-bank/ledger": "Cash / Bank Ledger",
   "/admin/cash-bank/transfers": "โอนเงินระหว่างบัญชี",
   "/admin/cash-bank/adjustments": "ปรับยอดเงิน",
-  "/admin/reports": "รายงาน",
+  "/admin/reports/product-search-no-result": "Product Search No Result",
+  "/admin/reports/search-coverage-audit": "Search Coverage Audit",
   "/admin/reports/claim-stock": "รายงานสต็อกเคลม",
+  "/admin/reports": "รายงาน",
   "/admin/content": "คอนเทนต์ Facebook",
   "/admin/content/approval-queue": "คิวอนุมัติโพสต์",
   "/admin/settings/company": "ตั้งค่าร้านค้า",

@@ -35,6 +35,13 @@ const productUnitSchema = z.object({
   isBase: z.boolean(),
 });
 
+const productImageSchema = z.object({
+  url: z.string().url().max(500),
+  alt: z.string().max(200).optional().nullable(),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isPrimary: z.boolean().default(false),
+});
+
 const productSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อสินค้า").max(200),
   categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่").max(50),
@@ -51,6 +58,7 @@ const productSchema = z.object({
   reportUnitName: z.string().min(1).max(20).default("ชิ้น"),
   description: z.string().max(2000).optional(),
   imageUrl: z.string().url().max(500).optional().or(z.literal("")),
+  productImages: z.array(productImageSchema).max(12).default([]),
   // Lot Control (string "true"/"false" from FormData → boolean)
   isLotControl: z.preprocess((v) => v === "true", z.boolean()).default(false),
   requireExpiryDate: z.preprocess((v) => v === "true", z.boolean()).default(false),
@@ -101,6 +109,10 @@ async function getProductAuditSnapshot(productId: string) {
         select: { name: true, scale: true, isBase: true },
         orderBy: [{ isBase: "desc" }, { scale: "asc" }, { name: "asc" }],
       },
+      images: {
+        select: { url: true, alt: true, sortOrder: true, isPrimary: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
       carModels: {
         select: {
           id: true,
@@ -140,6 +152,7 @@ async function getProductAuditSnapshot(productId: string) {
     reportUnitName: product.reportUnitName,
     description: product.description,
     imageUrl: product.imageUrl,
+    productImages: product.images,
     isLotControl: product.isLotControl,
     requireExpiryDate: product.requireExpiryDate,
     allowExpiredIssue: product.allowExpiredIssue,
@@ -167,6 +180,7 @@ const parseProductFormData = (
   let aliases: ProductInput["aliases"] = [];
   let fitments: ProductInput["fitments"] = [];
   let units: z.infer<typeof productUnitSchema>[] = [];
+  let productImages: z.infer<typeof productImageSchema>[] = [];
 
   try {
     const raw = formData.get("aliases");
@@ -246,6 +260,32 @@ const parseProductFormData = (
     return { success: false, error: "รูปแบบข้อมูลหน่วยนับไม่ถูกต้อง" };
   }
 
+  try {
+    const raw = formData.get("productImages");
+    if (typeof raw === "string" && raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        productImages = parsed
+          .map((item, index) => {
+            const rec = item as { url?: unknown; alt?: unknown; sortOrder?: unknown; isPrimary?: unknown };
+            return {
+              url: String(rec.url ?? ""),
+              alt: typeof rec.alt === "string" ? rec.alt : null,
+              sortOrder: Number.isFinite(Number(rec.sortOrder)) ? Number(rec.sortOrder) : index,
+              isPrimary: rec.isPrimary === true,
+            };
+          })
+          .filter((item) => item.url.trim() !== "");
+      }
+    }
+  } catch {
+    return { success: false, error: "รูปแบบข้อมูลรูปภาพสินค้าไม่ถูกต้อง" };
+  }
+
+  if (productImages.length > 0 && !productImages.some((image) => image.isPrimary)) {
+    productImages = productImages.map((image, index) => ({ ...image, isPrimary: index === 0 }));
+  }
+
   // Validate: exactly one base unit with scale = 1
   const baseUnits = units.filter((u) => u.isBase);
   if (baseUnits.length !== 1) {
@@ -289,6 +329,7 @@ const parseProductFormData = (
     reportUnitName,
     description: formData.get("description") || undefined,
     imageUrl: formData.get("imageUrl") || undefined,
+    productImages,
     isLotControl: formData.get("isLotControl") ?? "false",
     requireExpiryDate: formData.get("requireExpiryDate") ?? "false",
     allowExpiredIssue: formData.get("allowExpiredIssue") ?? "false",
@@ -350,7 +391,9 @@ export const createProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, units, ...productData } = result.data;
+  const { aliases, fitments, units, productImages, ...productData } = result.data;
+  const primaryImageUrl =
+    productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
   const code = await generateProductCode();
   let createdProductId = "";
 
@@ -384,7 +427,7 @@ export const createProduct = async (
           purchaseUnitName: productData.purchaseUnitName,
           reportUnitName: productData.reportUnitName,
           description: productData.description,
-          imageUrl: productData.imageUrl || null,
+          imageUrl: primaryImageUrl || null,
           isLotControl: isInventoryTracked(productData.inventoryTracking) ? productData.isLotControl : false,
           requireExpiryDate: isInventoryTracked(productData.inventoryTracking) ? productData.requireExpiryDate : false,
           allowExpiredIssue: isInventoryTracked(productData.inventoryTracking) ? productData.allowExpiredIssue : false,
@@ -403,6 +446,18 @@ export const createProduct = async (
           isBase: u.isBase,
         })),
       });
+
+      if (productImages.length > 0) {
+        await tx.productImage.createMany({
+          data: productImages.map((image, index) => ({
+            productId: product.id,
+            url: image.url,
+            alt: image.alt || productData.name,
+            sortOrder: index,
+            isPrimary: image.url === primaryImageUrl,
+          })),
+        });
+      }
 
       if (aliases.length > 0) {
         await tx.productAlias.createMany({
@@ -474,7 +529,9 @@ export const updateProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, units, ...productData } = result.data;
+  const { aliases, fitments, units, productImages, ...productData } = result.data;
+  const primaryImageUrl =
+    productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
 
   if (!isInventoryTracked(productData.inventoryTracking)) {
     const currentProduct = await db.product.findUnique({
@@ -542,7 +599,7 @@ export const updateProduct = async (
           purchaseUnitName: productData.purchaseUnitName,
           reportUnitName: productData.reportUnitName,
           description: productData.description,
-          imageUrl: productData.imageUrl || null,
+          imageUrl: primaryImageUrl || null,
           isLotControl: isInventoryTracked(productData.inventoryTracking) ? productData.isLotControl : false,
           requireExpiryDate: isInventoryTracked(productData.inventoryTracking) ? productData.requireExpiryDate : false,
           allowExpiredIssue: isInventoryTracked(productData.inventoryTracking) ? productData.allowExpiredIssue : false,
@@ -561,6 +618,19 @@ export const updateProduct = async (
           isBase: u.isBase,
         })),
       });
+
+      await tx.productImage.deleteMany({ where: { productId: id } });
+      if (productImages.length > 0) {
+        await tx.productImage.createMany({
+          data: productImages.map((image, index) => ({
+            productId: id,
+            url: image.url,
+            alt: image.alt || productData.name,
+            sortOrder: index,
+            isPrimary: image.url === primaryImageUrl,
+          })),
+        });
+      }
 
       // Sync aliases (delete-and-recreate with kind)
       await tx.productAlias.deleteMany({ where: { productId: id } });

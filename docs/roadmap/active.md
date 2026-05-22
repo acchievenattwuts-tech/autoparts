@@ -22,6 +22,12 @@
 - เอกสาร spec: [docs/specs/product-search-overhaul.md](/D:/autoparts/docs/specs/product-search-overhaul.md)
 - Phase E: no-result telemetry + dashboard/report เสร็จแล้ว
 
+### Product Search Quality Improvements (Round 2)
+- สถานะ: Q1 + Q2 + Q3 + Q4 + Q5 เสร็จ
+- เอกสาร spec: [docs/specs/product-search-quality-improvements.md](/D:/autoparts/docs/specs/product-search-quality-improvements.md)
+- งานที่เสร็จ: Autocomplete dropdown (storefront + admin), unaccent extension, Search Coverage Audit report, Did-you-mean suggestions, Match highlighting chips
+- รอ round ถัดไป: LINE Bot (#12) — Flex Message + Rule-based dispatcher
+
 ### Phase 7 - SEO Follow-up
 - สถานะ: mostly complete with ongoing follow-up
 - สิ่งที่ยังเป็นงานต่อเนื่อง:

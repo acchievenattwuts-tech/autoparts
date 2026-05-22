@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
@@ -769,8 +769,8 @@ const SaleForm = ({
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
                 return (
-                  <>
-                  <tr key={i} className="border-b border-gray-50 dark:border-white/5">
+                  <Fragment key={i}>
+                  <tr className="border-b border-gray-50 dark:border-white/5">
                     <td className="py-2 px-2">
                       <ProductSearchSelect
                         products={productOptions}
@@ -857,7 +857,7 @@ const SaleForm = ({
                     </td>
                   </tr>
                   {isLot && (
-                    <tr key={`lot-${i}`} className="bg-amber-50/60 dark:bg-amber-500/10">
+                    <tr className="bg-amber-50/60 dark:bg-amber-500/10">
                       <td colSpan={7} className="px-4 pb-3 pt-1">
                         {/* Lot header */}
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -976,7 +976,7 @@ const SaleForm = ({
                       </td>
                     </tr>
                   )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
