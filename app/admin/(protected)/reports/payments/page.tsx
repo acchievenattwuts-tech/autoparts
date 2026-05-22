@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import ReportTableShell from "@/components/shared/ReportTableShell";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
@@ -30,15 +31,17 @@ function fmtDate(d: Date) {
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  "ซื้อสินค้า": "bg-blue-100 text-blue-700",
-  "ค่าใช้จ่าย": "bg-orange-100 text-orange-700",
-  "คืนเงินลูกค้า": "bg-purple-100 text-purple-700",
+  "ซื้อสินค้า": "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-200",
+  "ค่าใช้จ่าย": "bg-orange-100 text-orange-700 dark:bg-orange-500/25 dark:text-orange-200",
+  "คืนเงินลูกค้า": "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
+  "เงินมัดจำซัพพลายเออร์": "bg-amber-100 text-amber-700 dark:bg-amber-500/25 dark:text-amber-200",
+  "จ่ายชำระซัพพลายเออร์": "bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-200",
 };
 
 const PM_COLORS: Record<string, string> = {
-  "เงินสด": "bg-emerald-100 text-emerald-700",
-  "โอนเงิน": "bg-sky-100 text-sky-700",
-  "เครดิต": "bg-purple-100 text-purple-700",
+  "เงินสด": "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-200",
+  "โอนเงิน": "bg-sky-100 text-sky-700 dark:bg-sky-500/25 dark:text-sky-200",
+  "เครดิต": "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
 };
 
 export default async function DailyPaymentPage({ searchParams }: PageProps) {
@@ -63,6 +66,12 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
     .reduce((s, r) => s + r.amount, 0);
   const cnRefundTotal = rows
     .filter((r) => r.docType === "คืนเงินลูกค้า" && r.status === "ACTIVE")
+    .reduce((s, r) => s + r.amount, 0);
+  const supplierAdvanceTotal = rows
+    .filter((r) => r.docType === "เงินมัดจำซัพพลายเออร์" && r.status === "ACTIVE")
+    .reduce((s, r) => s + r.amount, 0);
+  const supplierPaymentTotal = rows
+    .filter((r) => r.docType === "จ่ายชำระซัพพลายเออร์" && r.status === "ACTIVE")
     .reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
 
@@ -97,6 +106,8 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
             <option value="ALL">ทั้งหมด</option>
             <option value="PURCHASE">ซื้อสินค้า</option>
             <option value="EXPENSE">ค่าใช้จ่าย</option>
+            <option value="SUPPLIER_ADVANCE">เงินมัดจำซัพพลายเออร์</option>
+            <option value="SUPPLIER_PAYMENT">จ่ายชำระซัพพลายเออร์</option>
             <option value="CN_REFUND">คืนเงินลูกค้า (CN)</option>
           </select>
         </label>
@@ -151,7 +162,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         </div>
       </AdminSearchForm>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
           <p className="text-xs text-gray-500">รวมจ่ายเงิน (เฉพาะที่ใช้งาน)</p>
           <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
@@ -163,6 +174,14 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
         <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 shadow-sm">
           <p className="text-xs text-orange-700">ค่าใช้จ่าย</p>
           <p className="mt-0.5 text-xl font-bold text-orange-700 tabular-nums">{fmt(expenseTotal)}</p>
+        </div>
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 shadow-sm">
+          <p className="text-xs text-amber-700">เงินมัดจำซัพพลายเออร์</p>
+          <p className="mt-0.5 text-xl font-bold text-amber-700 tabular-nums">{fmt(supplierAdvanceTotal)}</p>
+        </div>
+        <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 shadow-sm">
+          <p className="text-xs text-teal-700">จ่ายชำระซัพพลายเออร์</p>
+          <p className="mt-0.5 text-xl font-bold text-teal-700 tabular-nums">{fmt(supplierPaymentTotal)}</p>
         </div>
         <div className="rounded-lg border border-purple-100 bg-purple-50 p-3 shadow-sm">
           <p className="text-xs text-purple-700">คืนเงินลูกค้า (CN)</p>
@@ -214,7 +233,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>
                 <td className="whitespace-nowrap px-3 py-2">{fmtDate(row.docDate)}</td>
                 <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TYPE_COLORS[row.docType] ?? "bg-gray-100 text-gray-600"}`}>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TYPE_COLORS[row.docType] ?? "bg-gray-100 text-gray-600 dark:bg-slate-600/40 dark:text-slate-200"}`}>
                     {row.docType}
                   </span>
                 </td>
@@ -222,7 +241,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2">{row.partyName}</td>
                 <td className="px-3 py-2">
                   {row.paymentMethod !== "-" ? (
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PM_COLORS[row.paymentMethod] ?? "bg-gray-100 text-gray-600"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PM_COLORS[row.paymentMethod] ?? "bg-gray-100 text-gray-600 dark:bg-slate-600/40 dark:text-slate-200"}`}>
                       {row.paymentMethod}
                     </span>
                   ) : (
@@ -232,13 +251,9 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
                 <td className="px-3 py-2 text-gray-600">{row.accountName}</td>
                 <td className="max-w-[160px] truncate px-3 py-2 text-gray-500">{row.note}</td>
                 <td className="px-3 py-2 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-                    }`}
-                  >
+                  <AdminStatusBadge tone={row.status === "ACTIVE" ? "success" : "danger"}>
                     {statusLabel(row.status)}
-                  </span>
+                  </AdminStatusBadge>
                 </td>
                 <td className="px-3 py-2 text-right font-medium tabular-nums">{fmt(row.amount)}</td>
               </tr>

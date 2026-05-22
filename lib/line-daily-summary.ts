@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
+import { queryDailyPaymentRows } from "@/lib/report-queries";
 import {
   addThailandDays,
   formatDateThai,
@@ -190,7 +191,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
     "",
     "✨ สรุปเพิ่มเติม",
-    `- ค่าใช้จ่ายวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -488,7 +489,7 @@ function buildLineDailySummaryFlexMessage(summary: {
               },
               {
                 type: "text",
-                text: `ค่าใช้จ่ายวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -550,7 +551,7 @@ function renderFriendlyLineDailySummaryMessage(summary: {
     `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
     "",
     "สรุปเพิ่มเติม",
-    `- ค่าใช้จ่ายวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -663,7 +664,7 @@ function renderLineDailySummaryMessage(summary: {
     `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
     "",
     "สรุปเพิ่มเติม",
-    `- ค่าใช้จ่ายวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -886,7 +887,7 @@ function buildLineDailySummaryFlexMessageV2(summary: {
               },
               {
                 type: "text",
-                text: `ค่าใช้จ่ายวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -1134,7 +1135,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
               },
               {
                 type: "text",
-                text: `ค่าใช้จ่ายวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -1177,7 +1178,7 @@ export async function buildLineDailySummary(
     outOfStockCount,
     openClaimCount,
     adjustmentCount,
-    expensesTodayAgg,
+    paymentsTodayTotal,
     transfersTodayAgg,
     cancelledCounts,
     lotCounts,
@@ -1321,13 +1322,25 @@ export async function buildLineDailySummary(
         adjustDate: { gte: start, lte: end },
       },
     })),
-    runSummaryStep("money.expensesToday", () => db.expense.aggregate({
-      _sum: { netAmount: true },
-      where: {
-        status: "ACTIVE",
-        expenseDate: { gte: start, lte: end },
-      },
-    })),
+    // Use the same query as the "จ่ายเงิน" report so this total stays in sync
+    // with what users see there (cash purchases + expenses + supplier advances +
+    // supplier payments cash portion + CN cash refunds). Active rows only.
+    runSummaryStep("money.paymentsToday", async () => {
+      const rows = await queryDailyPaymentRows(
+        {
+          from: start,
+          to: end,
+          fromStr: reportDayKey,
+          toStr: reportDayKey,
+          hasFilter: true,
+          showCancelled: false,
+        },
+        null,
+      );
+      return rows
+        .filter((r) => r.status === "ACTIVE")
+        .reduce((sum, r) => sum + r.amount, 0);
+    }),
     runSummaryStep("money.transfersToday", () => db.cashBankTransfer.aggregate({
       _sum: { amount: true },
       where: {
@@ -1372,7 +1385,7 @@ export async function buildLineDailySummary(
     arOutstanding: toNumber(arOutstandingAgg._sum.amountRemain),
     codOutstanding: toNumber(codOutstandingAgg._sum.amountRemain),
     apOutstanding: toNumber(apOutstandingAgg._sum.amountRemain),
-    expensesToday: toNumber(expensesTodayAgg._sum.netAmount),
+    expensesToday: toNumber(paymentsTodayTotal),
     transfersToday: toNumber(transfersTodayAgg._sum.amount),
   };
 

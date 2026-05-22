@@ -248,8 +248,6 @@ const ProductDetailPage = async ({ params }: Props) => {
                     {product.name}
                   </h1>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-
                   <div className="mt-4 grid gap-2 sm:grid-cols-[0.95fr_1.05fr]">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">รหัสสินค้า</p>
@@ -306,9 +304,9 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[24px] bg-[#10213d] p-4 text-white shadow-[0_16px_34px_rgba(16,33,61,0.20)] lg:mt-auto">
-                    <p className="text-sm font-semibold text-white/70">พร้อมให้ร้านเช็กสินค้านี้</p>
-                    <p className="mt-1 text-base font-bold">ส่งรหัส {product.code} พร้อมรุ่นรถหรือรูปอะไหล่เดิม</p>
+                  <div className="mt-4 rounded-[24px] border border-orange-100 bg-gradient-to-br from-orange-50/60 to-slate-50 p-4 shadow-sm lg:mt-auto">
+                    <p className="text-sm font-semibold text-slate-500">พร้อมให้ร้านเช็กสินค้านี้</p>
+                    <p className="mt-1 text-base font-bold text-[#10213d]">ส่งรหัส {product.code} พร้อมรุ่นรถหรือรูปอะไหล่เดิม</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <a
                         href={config.shopLineUrl}
@@ -322,7 +320,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                       {config.shopPhone && (
                         <a
                           href={`tel:${config.shopPhone}`}
-                          className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-3 font-bold text-white transition hover:bg-white/15"
+                          className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-3 font-bold text-[#10213d] transition hover:bg-slate-50"
                         >
                           <Phone className="h-4 w-4" />
                           โทรหาร้าน

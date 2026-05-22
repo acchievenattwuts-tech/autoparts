@@ -926,7 +926,7 @@ export type DailyPaymentRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "ซื้อสินค้า" | "ค่าใช้จ่าย" | "คืนเงินลูกค้า"
+  docType: string; // "ซื้อสินค้า" | "ค่าใช้จ่าย" | "คืนเงินลูกค้า" | "เงินมัดจำซัพพลายเออร์" | "จ่ายชำระซัพพลายเออร์"
   partyCode: string;
   partyName: string;
   paymentMethod: string;
@@ -999,7 +999,7 @@ export async function queryDailyPaymentRows(
         netAmount: true,
         note: true,
         status: true,
-        cashBankAccount: { select: { name: true } },
+        cashBankAccount: { select: { name: true, type: true } },
         items: {
           select: { expenseCode: { select: { name: true } } },
           take: 1,
@@ -1010,6 +1010,12 @@ export async function queryDailyPaymentRows(
     });
     for (const e of expenses) {
       const codeName = e.items[0]?.expenseCode?.name ?? "";
+      // Derive payment method from the cash/bank account type used to pay the expense.
+      // Expense schema has no paymentMethod field — the channel is determined by account.type.
+      const pmLabel =
+        e.cashBankAccount?.type === "CASH" ? "เงินสด"
+        : e.cashBankAccount?.type === "BANK" ? "โอนเงิน"
+        : "-";
       rows.push({
         rowNo: 0,
         docNo: e.expenseNo,
@@ -1017,11 +1023,103 @@ export async function queryDailyPaymentRows(
         docType: "ค่าใช้จ่าย",
         partyCode: "",
         partyName: codeName,
-        paymentMethod: "-",
+        paymentMethod: pmLabel,
         accountName: e.cashBankAccount?.name ?? "-",
         note: e.note ?? "",
         status: e.status,
         amount: Number(e.netAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "SUPPLIER_ADVANCE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const advances = await db.supplierAdvance.findMany({
+      where: {
+        advanceDate: { gte: filters.from, lte: filters.to },
+        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...statusFilter,
+      },
+      select: {
+        advanceNo: true,
+        advanceDate: true,
+        totalAmount: true,
+        paymentMethod: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        supplier: { select: { code: true, name: true } },
+      },
+      orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    for (const a of advances) {
+      rows.push({
+        rowNo: 0,
+        docNo: a.advanceNo,
+        docDate: a.advanceDate,
+        docType: "เงินมัดจำซัพพลายเออร์",
+        partyCode: a.supplier?.code ?? "",
+        partyName: a.supplier?.name ?? "(ไม่ระบุ)",
+        paymentMethod: paymentMethodLabel(a.paymentMethod),
+        accountName: a.cashBankAccount?.name ?? "-",
+        note: a.note ?? "",
+        status: a.status,
+        amount: Number(a.totalAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "SUPPLIER_PAYMENT") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const payments = await db.supplierPayment.findMany({
+      where: {
+        paymentDate: { gte: filters.from, lte: filters.to },
+        // Exclude CREDIT payments — they have no real cash outflow (offset by advance/credit only)
+        paymentMethod: { in: ["CASH", "TRANSFER"] },
+        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...statusFilter,
+      },
+      select: {
+        paymentNo: true,
+        paymentDate: true,
+        paymentMethod: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        supplier: { select: { code: true, name: true } },
+        items: {
+          select: {
+            paidAmount: true,
+            purchaseId: true,
+            purchaseReturnId: true,
+            advanceId: true,
+          },
+        },
+      },
+      orderBy: [{ paymentDate: "asc" }, { paymentNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    for (const p of payments) {
+      // Actual cash out = items applied to purchases minus items offset by advance/return credit
+      const cashPaid = p.items.reduce((sum, item) => {
+        const amt = Number(item.paidAmount);
+        if (item.purchaseId) return sum + amt;
+        return sum - amt;
+      }, 0);
+      if (cashPaid <= 0) continue; // safety: skip rows that net to zero (shouldn't happen since CREDIT filtered out)
+      rows.push({
+        rowNo: 0,
+        docNo: p.paymentNo,
+        docDate: p.paymentDate,
+        docType: "จ่ายชำระซัพพลายเออร์",
+        partyCode: p.supplier?.code ?? "",
+        partyName: p.supplier?.name ?? "(ไม่ระบุ)",
+        paymentMethod: paymentMethodLabel(p.paymentMethod),
+        accountName: p.cashBankAccount?.name ?? "-",
+        note: p.note ?? "",
+        status: p.status,
+        amount: cashPaid,
       });
     }
   }

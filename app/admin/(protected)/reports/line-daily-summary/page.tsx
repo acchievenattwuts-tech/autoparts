@@ -447,7 +447,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                   <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
                     <p className="font-semibold">✨ ปิดท้ายวันนี้</p>
                     <p className="mt-1">
-                      ค่าใช้จ่ายวันนี้ ฿{fmtMoney(summary.money.expensesToday)} • เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
+                      จ่ายเงินวันนี้ ฿{fmtMoney(summary.money.expensesToday)} • เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
                     </p>
                   </div>
                 </div>
