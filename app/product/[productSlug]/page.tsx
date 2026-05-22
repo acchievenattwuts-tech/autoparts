@@ -6,11 +6,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
-  BadgeCheck,
   CarFront,
+  FileText,
   MessageCircle,
   Phone,
-  ShieldCheck,
 } from "lucide-react";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
@@ -365,74 +364,67 @@ const ProductDetailPage = async ({ params }: Props) => {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 pb-6 sm:px-6 lg:px-8">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.8fr)]">
-            <div id="fitment-list" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex items-start gap-3">
-                <div className="inline-flex rounded-2xl bg-[#f97316]/10 p-3 text-[#f97316]">
-                  <CarFront className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="font-kanit text-xl font-semibold text-[#10213d]">รุ่นรถที่เกี่ยวข้องทั้งหมด</h2>
-                  <p className="mt-1 text-xs leading-6 text-slate-500">ใช้เป็นข้อมูลประกอบการเช็กอะไหล่ ควรยืนยันกับร้านอีกครั้งก่อนสั่ง</p>
-                </div>
+          <div id="fitment-list" className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-7">
+            <div className="flex items-start gap-3">
+              <div className="inline-flex flex-shrink-0 rounded-2xl bg-[#f97316]/10 p-3 text-[#f97316]">
+                <FileText className="h-5 w-5" />
               </div>
-              {groupedCars.length > 0 ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="min-w-0 flex-1">
+                <h2 className="font-kanit text-lg font-semibold text-[#10213d] sm:text-xl">รายละเอียดสินค้า</h2>
+              </div>
+            </div>
+            <p className="mt-3 whitespace-pre-line break-words text-sm leading-7 text-slate-700">
+              {product.description?.trim() || "สอบถามรายละเอียดเพิ่มเติมที่ร้านค่ะ"}
+            </p>
+
+            {groupedCars.length > 0 && (
+              <>
+                <div className="my-5 border-t border-slate-100 sm:my-6" />
+
+                <div className="flex items-start gap-3">
+                  <div className="inline-flex flex-shrink-0 rounded-2xl bg-[#f97316]/10 p-3 text-[#f97316]">
+                    <CarFront className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-kanit text-lg font-semibold text-[#10213d] sm:text-xl">ใช้กับรถรุ่นไหนได้บ้าง</h2>
+                    <p className="mt-1 text-xs leading-6 text-slate-500 sm:text-sm">
+                      ตัวนี้ใส่ได้กับรถรุ่นต่อไปนี้ ถ้าไม่แน่ใจทักร้านก่อนสั่งได้เลยค่ะ
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {groupedCars.map(([brandName, rows]) => (
                     <div key={brandName} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <p className="font-bold text-[#10213d]">{brandName}</p>
+                      <p className="break-words font-bold text-[#10213d]">{brandName}</p>
                       <div className="mt-2 space-y-2">
-                        {rows.map((row, index) => (
-                          <div key={`${row.modelName}-${index}`} className="border-l-2 border-[#f97316]/30 pl-3">
-                            <p className="text-sm leading-6 text-slate-700">{formatFitmentLine(row)}</p>
-                            {row.note && <p className="text-xs leading-5 text-slate-500">หมายเหตุ: {row.note}</p>}
-                          </div>
-                        ))}
+                        {rows.map((row, index) => {
+                          const yearLabel = formatYearRange(row.yearStart, row.yearEnd);
+                          const engineLabel = [row.engineCode, row.engineSize]
+                            .filter((value): value is string => Boolean(value))
+                            .join(" ");
+                          const metaParts = [yearLabel, engineLabel].filter((value): value is string => Boolean(value));
+                          return (
+                            <div key={`${row.modelName}-${index}`} className="border-l-2 border-[#f97316]/30 pl-3">
+                              <p className="break-words text-sm font-semibold leading-6 text-slate-800">
+                                {row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName}
+                              </p>
+                              {metaParts.length > 0 && (
+                                <p className="break-words text-xs leading-5 text-slate-500">
+                                  {metaParts.join(" · ")}
+                                </p>
+                              )}
+                              {row.note && (
+                                <p className="break-words text-xs leading-5 text-slate-500">หมายเหตุ: {row.note}</p>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                  หากยังไม่แน่ใจว่าสินค้านี้ตรงกับรถรุ่นใด สามารถส่งรุ่นรถหรือรูปอะไหล่เดิมให้ร้านช่วยตรวจสอบได้
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div className="inline-flex rounded-2xl bg-[#f97316]/10 p-3 text-[#f97316]">
-                  <BadgeCheck className="h-5 w-5" />
-                </div>
-                <h2 className="mt-3 font-kanit text-xl font-semibold text-[#10213d]">ก่อนสั่งควรส่งอะไรให้ร้าน</h2>
-                <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                  <li>ส่งรหัสสินค้า {product.code} หรือชื่อสินค้า {product.name}</li>
-                  <li>แจ้งยี่ห้อรถ รุ่นรถ ปีรถ และข้อมูลเครื่องยนต์ถ้ามี</li>
-                  <li>ถ่ายรูปอะไหล่เดิม จุดยึด ปลั๊ก ท่อ หรือจุดสำคัญให้ร้านเทียบ</li>
-                </ul>
-              </div>
-
-              <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-                <div className="inline-flex rounded-2xl bg-[#10213d]/8 p-3 text-[#10213d]">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <h2 className="mt-3 font-kanit text-xl font-semibold text-[#10213d]">ข้อมูลอ้างอิง</h2>
-                <dl className="mt-4 grid gap-2">
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                    <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">หมวดสินค้า</dt>
-                    <dd className="mt-1 text-sm font-medium text-slate-700">{product.category.name}</dd>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                    <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">หน่วยแสดงผล</dt>
-                    <dd className="mt-1 text-sm font-medium text-slate-700">{product.reportUnitName}</dd>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2.5">
-                    <dt className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">รหัสอ้างอิง</dt>
-                    <dd className="mt-1 break-all text-sm font-medium text-slate-700">{product.code}</dd>
-                  </div>
-                </dl>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </section>
 
