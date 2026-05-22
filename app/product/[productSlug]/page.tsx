@@ -2,7 +2,6 @@ export const revalidate = 300;
 
 import type { Metadata } from "next";
 export const dynamic = "force-dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -10,7 +9,6 @@ import {
   BadgeCheck,
   CarFront,
   MessageCircle,
-  PackageSearch,
   Phone,
   ShieldCheck,
 } from "lucide-react";
@@ -18,6 +16,7 @@ import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductCard from "@/components/shared/ProductCard";
+import ProductImageGallery from "@/components/shared/ProductImageGallery";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import ProductPageViewReporter from "@/components/analytics/ProductPageViewReporter";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -187,7 +186,6 @@ const ProductDetailPage = async ({ params }: Props) => {
       ? [{ url: product.imageUrl, alt: product.name }]
       : []),
   ];
-  const primaryImage = productImages[0] ?? null;
 
   return (
     <>
@@ -246,41 +244,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                       </span>
                     )}
                   </div>
-                  <div className="relative aspect-square w-full cursor-zoom-in overflow-hidden">
-                    {primaryImage ? (
-                      <Image
-                        src={primaryImage.url}
-                        alt={primaryImage.alt}
-                        fill
-                        sizes="(max-width: 1024px) 100vw, 45vw"
-                        fetchPriority="high"
-                        loading="eager"
-                        className="object-contain object-top p-5 pt-14 transition-transform duration-700 ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none sm:p-7 sm:pt-16"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-slate-300">
-                        <PackageSearch className="h-20 w-20" />
-                      </div>
-                    )}
-                  </div>
-                  {productImages.length > 1 && (
-                    <div className="flex gap-2 overflow-x-auto border-t border-slate-200 bg-white/80 p-3">
-                      {productImages.map((image, index) => (
-                        <div
-                          key={`${image.url}-${index}`}
-                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white"
-                        >
-                          <Image
-                            src={image.url}
-                            alt={image.alt || `${product.name} รูปที่ ${index + 1}`}
-                            fill
-                            sizes="64px"
-                            className="object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <ProductImageGallery images={productImages} productName={product.name} />
                 </div>
 
                 <div className="p-4 sm:p-5 lg:p-6">
