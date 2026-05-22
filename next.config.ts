@@ -48,10 +48,13 @@ const securityHeaders = [
   },
 ];
 
-const withBundleAnalyzer = bundleAnalyzer({
-  enabled: process.env.ANALYZE === "true",
-  openAnalyzer: false,
-});
+// Only invoke the analyzer wrapper when explicitly requested. Calling it on every
+// build (even when disabled) has been observed to break Vercel's modifyConfig step
+// when @next/bundle-analyzer and next versions are out of sync.
+const withBundleAnalyzer =
+  process.env.ANALYZE === "true"
+    ? bundleAnalyzer({ enabled: true, openAnalyzer: false })
+    : <T,>(config: T): T => config;
 
 const nextConfig: NextConfig = {
   // Remove X-Powered-By header (hides tech stack from attackers)
