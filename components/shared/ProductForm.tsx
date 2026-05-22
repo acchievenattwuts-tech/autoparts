@@ -3,9 +3,10 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Plus, X, Upload, Loader2, Trash2 } from "lucide-react";
+import { Plus, X, Upload, Loader2, Trash2, ZoomIn } from "lucide-react";
 import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import CropImageDialog from "@/components/shared/CropImageDialog";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -162,6 +163,9 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const [imageUrl, setImageUrl] = useState(productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? "");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [cropQueue, setCropQueue] = useState<File[]>([]);
+  const [cropTotal, setCropTotal] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Aliases (with kind)
   const [aliases, setAliases] = useState<AliasRow[]>(
@@ -285,43 +289,64 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   const parseOptStr = (raw: string): string | null => (raw.trim() === "" ? null : raw);
 
   // ── Image upload ───────────────────────────────────────────────────────────
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     setUploadError("");
+    setCropQueue(files);
+    setCropTotal(files.length);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const appendUploadedImage = (url: string, fallbackAlt: string) => {
+    setProductImages((prev) => {
+      const next = [
+        ...prev,
+        {
+          url,
+          alt: fallbackAlt,
+          sortOrder: prev.length,
+          isPrimary: prev.length === 0,
+        },
+      ];
+      const primaryUrl = next.find((image) => image.isPrimary)?.url ?? next[0]?.url ?? "";
+      setImageUrl(primaryUrl);
+      return next;
+    });
+  };
+
+  const handleCropConfirm = async (croppedFile: File) => {
     setIsUploading(true);
-    const uploadedImages: ProductImageRow[] = [];
-    for (const file of files) {
+    setUploadError("");
+    try {
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", croppedFile);
       const result = await uploadProductImage(fd);
       if (result.error) {
         setUploadError(result.error);
-        break;
+        setCropQueue([]);
+        setCropTotal(0);
+        return;
       }
       if (result.url) {
-        uploadedImages.push({
-          url: result.url,
-          alt: file.name.replace(/\.[^.]+$/, ""),
-          sortOrder: 0,
-          isPrimary: false,
-        });
+        appendUploadedImage(result.url, croppedFile.name.replace(/\.[^.]+$/, ""));
       }
-    }
-    setIsUploading(false);
-    if (uploadedImages.length > 0) {
-      setProductImages((prev) => {
-        const next = [...prev, ...uploadedImages].map((image, index) => ({
-          ...image,
-          sortOrder: index,
-          isPrimary: prev.length === 0 && index === 0 ? true : image.isPrimary,
-        }));
-        const primaryUrl = next.find((image) => image.isPrimary)?.url ?? next[0]?.url ?? "";
-        setImageUrl(primaryUrl);
+      setCropQueue((prev) => {
+        const next = prev.slice(1);
+        if (next.length === 0) setCropTotal(0);
         return next;
       });
+    } finally {
+      setIsUploading(false);
     }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCropCancel = () => {
+    setCropQueue((prev) => {
+      const next = prev.slice(1);
+      if (next.length === 0) setCropTotal(0);
+      return next;
+    });
   };
 
   const setPrimaryImage = (url: string) => {
@@ -840,24 +865,28 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               {isUploading ? "กำลังอัปโหลด..." : "อัปโหลดรูปภาพหลายรูป"}
             </label>
-            <p className="text-xs text-gray-400 dark:text-slate-500">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 3MB ต่อไฟล์ รูปหลักจะถูกใช้แทน imageUrl เดิม</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500">รองรับ JPG, PNG, WebP ขนาดไม่เกิน 3MB ต่อไฟล์ ระบบจะให้ครอปเป็น 1:1 (800×800) ก่อนอัปโหลด รูปหลักจะถูกใช้แทน imageUrl เดิม</p>
             {uploadError && <p className="text-xs text-red-500 dark:text-red-400">{uploadError}</p>}
             {productImages.length > 0 && (
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              <div className="flex flex-wrap gap-2">
                 {productImages.map((image, index) => (
-                  <div key={`${image.url}-${index}`} className="group relative rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-slate-900">
+                  <div key={`${image.url}-${index}`} className="group relative w-24 rounded-xl border border-gray-200 bg-white p-1 dark:border-white/10 dark:bg-slate-900">
                     <button
                       type="button"
-                      onClick={() => setPrimaryImage(image.url)}
-                      className={`relative block h-20 w-full overflow-hidden rounded-lg ${image.isPrimary ? "ring-2 ring-[#1e3a5f] dark:ring-sky-400" : ""}`}
+                      onClick={() => setPreviewUrl(image.url)}
+                      className={`relative block aspect-square w-full cursor-zoom-in overflow-hidden rounded-lg ${image.isPrimary ? "ring-2 ring-[#1e3a5f] dark:ring-sky-400" : ""}`}
+                      aria-label="ดูรูปขนาดใหญ่"
                     >
                       <Image src={image.url} alt={image.alt || `product-${index + 1}`} fill className="object-cover" sizes="96px" />
+                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+                        <ZoomIn size={18} />
+                      </span>
                     </button>
                     <div className="mt-1 flex items-center justify-between gap-1">
                       <button
                         type="button"
                         onClick={() => setPrimaryImage(image.url)}
-                        className="truncate text-[11px] font-medium text-[#1e3a5f] dark:text-sky-300"
+                        className="truncate text-[11px] font-medium text-[#1e3a5f] hover:underline dark:text-sky-300"
                       >
                         {image.isPrimary ? "รูปหลัก" : "ตั้งเป็นหลัก"}
                       </button>
@@ -876,6 +905,41 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
             )}
           </div>
         </div>
+
+        {previewUrl && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setPreviewUrl(null)}
+          >
+            <div className="relative w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setPreviewUrl(null)}
+                className="absolute -top-10 right-0 text-white transition-colors hover:text-gray-300"
+                aria-label="ปิด"
+              >
+                <X size={28} />
+              </button>
+              <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white dark:bg-slate-950">
+                <Image
+                  src={previewUrl}
+                  alt="preview"
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 768px) 100vw, 672px"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <CropImageDialog
+          file={cropQueue[0] ?? null}
+          index={cropTotal - cropQueue.length}
+          total={cropTotal}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
       </div>
 
       {/* ── 5. ราคา & สต็อก ──────────────────────────────────────────────── */}

@@ -65,7 +65,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
         aria-label={`ดูรายละเอียด ${product.name}`}
         className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2"
       />
-      <div className="relative h-32 shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50 sm:h-40 lg:h-44">
+      <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50">
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}

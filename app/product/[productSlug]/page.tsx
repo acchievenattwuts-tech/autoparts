@@ -246,7 +246,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                       </span>
                     )}
                   </div>
-                  <div className="relative min-h-[20rem] cursor-zoom-in overflow-hidden sm:min-h-[27rem] lg:min-h-[36rem]">
+                  <div className="relative aspect-square w-full cursor-zoom-in overflow-hidden">
                     {primaryImage ? (
                       <Image
                         src={primaryImage.url}
