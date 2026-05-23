@@ -54,3 +54,9 @@ next-env.d.ts
 # DB snapshots (contains real data)
 prisma/scripts/snapshots/
 env
+
+# One-off production import inputs and execution scripts (contains real supplier/product data)
+/import/
+/scripts/import-products-from-csv.mjs
+/scripts/import-products-k-miu.mjs
+/scripts/import-products-vanichanan.mjs
