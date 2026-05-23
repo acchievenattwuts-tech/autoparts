@@ -11,6 +11,7 @@ import { getSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
+import Pagination from "@/components/shared/Pagination";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -301,51 +302,14 @@ const ProductsPage = async ({ searchParams }: Props) => {
                   </div>
 
                   {totalPages > 1 && (
-                    <div className="mt-8 flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                      <p className="text-sm text-gray-500">
-                        หน้า <span className="font-semibold text-gray-800">{currentPage}</span> จาก{" "}
-                        <span className="font-semibold text-gray-800">{totalPages}</span>
-                      </p>
-
-                      <div className="flex items-center gap-3">
-                        {currentPage > 1 ? (
-                          <Link
-                            href={buildProductsHref({
-                              q,
-                              category,
-                              brand,
-                              model,
-                              page: currentPage - 1,
-                            })}
-                            className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f]"
-                          >
-                            หน้าก่อนหน้า
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center justify-center rounded-full border border-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
-                            หน้าก่อนหน้า
-                          </span>
-                        )}
-
-                        {currentPage < totalPages ? (
-                          <Link
-                            href={buildProductsHref({
-                              q,
-                              category,
-                              brand,
-                              model,
-                              page: currentPage + 1,
-                            })}
-                            className="inline-flex items-center justify-center rounded-full bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16304e]"
-                          >
-                            หน้าถัดไป
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-300">
-                            หน้าถัดไป
-                          </span>
-                        )}
-                      </div>
+                    <div className="mt-8 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        buildHref={(page) =>
+                          buildProductsHref({ q, category, brand, model, page })
+                        }
+                      />
                     </div>
                   )}
                 </>

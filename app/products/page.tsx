@@ -7,6 +7,7 @@ import { getPublicSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import ProductCard from "@/components/shared/ProductCard";
+import Pagination from "@/components/shared/Pagination";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -110,29 +111,20 @@ const ProductsPage = async () => {
                     ))}
                   </div>
 
-                  <div className="mt-8 flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                    <p className="text-sm text-gray-500">
-                      หน้า <span className="font-semibold text-gray-800">1</span> จาก{" "}
-                      <span className="font-semibold text-gray-800">{totalPages}</span>
-                    </p>
-
-                    <div className="flex items-center gap-3">
-                      <Link
-                        href="/products/search"
-                        className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f]"
-                      >
-                        เปิดหน้าค้นหาและตัวกรอง
-                      </Link>
-
-                      {totalPages > 1 && (
-                        <Link
-                          href="/products/search?page=2"
-                          className="inline-flex items-center justify-center rounded-full bg-[#1e3a5f] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#16304e]"
-                        >
-                          หน้าถัดไป
-                        </Link>
-                      )}
-                    </div>
+                  <div className="mt-8 flex flex-col items-center gap-4 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
+                    <Pagination
+                      currentPage={1}
+                      totalPages={totalPages}
+                      buildHref={(page) =>
+                        page <= 1 ? "/products/search" : `/products/search?page=${page}`
+                      }
+                    />
+                    <Link
+                      href="/products/search"
+                      className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/5"
+                    >
+                      เปิดหน้าค้นหาและตัวกรอง
+                    </Link>
                   </div>
                 </>
               )}
