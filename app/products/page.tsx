@@ -111,7 +111,7 @@ const ProductsPage = async () => {
                     ))}
                   </div>
 
-                  <div className="mt-8 flex flex-col items-center gap-4 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
+                  <div className="mt-8 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
                     <Pagination
                       currentPage={1}
                       totalPages={totalPages}
@@ -119,12 +119,6 @@ const ProductsPage = async () => {
                         page <= 1 ? "/products/search" : `/products/search?page=${page}`
                       }
                     />
-                    <Link
-                      href="/products/search"
-                      className="inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/5"
-                    >
-                      เปิดหน้าค้นหาและตัวกรอง
-                    </Link>
                   </div>
                 </>
               )}
