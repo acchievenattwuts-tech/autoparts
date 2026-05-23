@@ -155,7 +155,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
             sizes="(max-width: 1024px) 100vw, 45vw"
             fetchPriority="high"
             loading="eager"
-            className="object-contain object-top p-5 pt-14 transition-transform duration-700 ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none sm:p-7 sm:pt-16"
+            className="object-contain object-top p-5 pt-20 transition-transform duration-700 ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none sm:p-7 sm:pt-16"
           />
         </button>
 
