@@ -185,6 +185,15 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   // Active kind: "ALL" = แสดงทั้งหมด, otherwise filter
   const [activeKind, setActiveKind] = useState<AliasKindValue | "ALL">("OEM");
 
+  // Cross-kind duplicate warning state
+  interface CrossKindConflict {
+    pendingKind: AliasKindValue;
+    clearRows: AliasRow[];
+    conflictRows: AliasRow[];
+    conflicts: Array<{ alias: string; existingKinds: AliasKindValue[] }>;
+  }
+  const [crossKindConflict, setCrossKindConflict] = useState<CrossKindConflict | null>(null);
+
   // Fitments (compatible car models with year range / engine / submodel)
   const [fitments, setFitments] = useState<FitmentRow[]>(product?.fitments ?? []);
 
@@ -381,6 +390,8 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   // Split on comma, newline, or tab so users can paste multi-item lists from
   // Excel / Notepad. Trim each segment, drop empties, dedupe within the paste,
   // and dedupe against existing aliases of the same kind.
+  // If the same alias value already exists under a DIFFERENT kind, show a
+  // warning and ask the user to confirm before adding.
   const addAlias = () => {
     const targetKind: AliasKindValue = activeKind === "ALL" ? "ALIAS" : activeKind;
     const segments = aliasInput
@@ -392,19 +403,56 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
       return;
     }
 
-    const existingKeys = new Set(
+    const sameKindKeys = new Set(
       aliases.filter((a) => a.kind === targetKind).map((a) => a.alias),
     );
-    const newRows: AliasRow[] = [];
-    for (const segment of segments) {
-      if (existingKeys.has(segment)) continue;
-      existingKeys.add(segment);
-      newRows.push({ alias: segment, kind: targetKind });
+
+    // Build map: alias value → kinds it already appears in (excluding targetKind)
+    const crossKindMap = new Map<string, AliasKindValue[]>();
+    for (const a of aliases) {
+      if (a.kind !== targetKind) {
+        if (!crossKindMap.has(a.alias)) crossKindMap.set(a.alias, []);
+        crossKindMap.get(a.alias)!.push(a.kind);
+      }
     }
-    if (newRows.length > 0) {
-      setAliases((prev) => [...prev, ...newRows]);
+
+    const clearRows: AliasRow[] = [];
+    const conflictRows: AliasRow[] = [];
+    const conflicts: Array<{ alias: string; existingKinds: AliasKindValue[] }> = [];
+    const seenInBatch = new Set<string>();
+
+    for (const segment of segments) {
+      if (sameKindKeys.has(segment) || seenInBatch.has(segment)) continue;
+      seenInBatch.add(segment);
+      if (crossKindMap.has(segment)) {
+        conflictRows.push({ alias: segment, kind: targetKind });
+        conflicts.push({ alias: segment, existingKinds: crossKindMap.get(segment)! });
+      } else {
+        clearRows.push({ alias: segment, kind: targetKind });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      setCrossKindConflict({ pendingKind: targetKind, clearRows, conflictRows, conflicts });
+      return;
+    }
+
+    if (clearRows.length > 0) {
+      setAliases((prev) => [...prev, ...clearRows]);
     }
     setAliasInput("");
+  };
+
+  const confirmCrossKindAdd = () => {
+    if (!crossKindConflict) return;
+    const { clearRows, conflictRows } = crossKindConflict;
+    setAliases((prev) => [...prev, ...clearRows, ...conflictRows]);
+    setCrossKindConflict(null);
+    setAliasInput("");
+  };
+
+  const cancelCrossKindAdd = () => {
+    setCrossKindConflict(null);
   };
 
   const removeAlias = (alias: string, kind: AliasKindValue) =>
@@ -615,6 +663,45 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
             <Plus size={14} />เพิ่ม
           </button>
         </div>
+
+        {/* Cross-kind duplicate warning */}
+        {crossKindConflict && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+            <p className="mb-2 text-sm font-semibold text-amber-800 dark:text-amber-300">
+              พบค่าซ้ำข้ามประเภท — ต้องการเพิ่มหรือไม่?
+            </p>
+            <ul className="mb-3 space-y-1">
+              {crossKindConflict.conflicts.map(({ alias, existingKinds }) => (
+                <li key={alias} className="text-sm text-amber-700 dark:text-amber-300">
+                  <span className="font-medium">&quot;{alias}&quot;</span>
+                  {" "}มีอยู่แล้วใน{" "}
+                  <span className="font-medium">
+                    {existingKinds.map((k) => ALIAS_KIND_META[k].label).join(", ")}
+                  </span>
+                  {" "}— ต้องการเพิ่มเป็น{" "}
+                  <span className="font-medium">{ALIAS_KIND_META[crossKindConflict.pendingKind].label}</span>
+                  {" "}ด้วยหรือไม่?
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={confirmCrossKindAdd}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+              >
+                อนุญาต — เพิ่มทั้งหมด
+              </button>
+              <button
+                type="button"
+                onClick={cancelCrossKindAdd}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-4 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-500/10"
+              >
+                ยกเลิก
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Chip list (filtered) */}
         {visibleAliases.length > 0 ? (

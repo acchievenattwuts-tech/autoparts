@@ -87,6 +87,38 @@ const ProductImageGallery = ({ images, productName }: Props) => {
     }
   };
 
+  // ── Swipe gesture for mobile / arrow navigation ─────────────────────────
+  const SWIPE_THRESHOLD_PX = 50;
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const handleMainTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleMainTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    if (Math.abs(dx) > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) selectThumb(Math.min(activeIndex + 1, images.length - 1));
+      else selectThumb(Math.max(activeIndex - 1, 0));
+    }
+  };
+
+  const goPrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectThumb(Math.max(activeIndex - 1, 0));
+  };
+
+  const goNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    selectThumb(Math.min(activeIndex + 1, images.length - 1));
+  };
+
   if (images.length === 0) {
     return (
       <div className="relative aspect-square w-full overflow-hidden">
@@ -99,24 +131,60 @@ const ProductImageGallery = ({ images, productName }: Props) => {
 
   const activeImage = images[activeIndex] ?? images[0];
 
+  const hasMultiple = images.length > 1;
+  const isFirst = activeIndex === 0;
+  const isLast = activeIndex === images.length - 1;
+
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setPopupOpen(true)}
-        className="group relative block aspect-square w-full cursor-zoom-in overflow-hidden"
-        aria-label="ดูรูปขนาดเต็ม"
+      <div
+        className="relative aspect-square w-full select-none"
+        onTouchStart={hasMultiple ? handleMainTouchStart : undefined}
+        onTouchEnd={hasMultiple ? handleMainTouchEnd : undefined}
       >
-        <Image
-          src={activeImage.url}
-          alt={activeImage.alt}
-          fill
-          sizes="(max-width: 1024px) 100vw, 45vw"
-          fetchPriority="high"
-          loading="eager"
-          className="object-contain object-top p-5 pt-14 transition-transform duration-700 ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none sm:p-7 sm:pt-16"
-        />
-      </button>
+        <button
+          type="button"
+          onClick={() => setPopupOpen(true)}
+          className="group relative block h-full w-full cursor-zoom-in overflow-hidden"
+          aria-label="ดูรูปขนาดเต็ม"
+        >
+          <Image
+            src={activeImage.url}
+            alt={activeImage.alt}
+            fill
+            sizes="(max-width: 1024px) 100vw, 45vw"
+            fetchPriority="high"
+            loading="eager"
+            className="object-contain object-top p-5 pt-14 transition-transform duration-700 ease-out group-hover:scale-[1.12] motion-reduce:transform-none motion-reduce:transition-none sm:p-7 sm:pt-16"
+          />
+        </button>
+
+        {hasMultiple && (
+          <>
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={isFirst}
+              className="absolute left-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-md ring-1 ring-slate-200 transition hover:bg-white hover:text-[#f97316] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-800/90 dark:text-slate-200 dark:ring-white/10 dark:hover:text-sky-400 sm:flex"
+              aria-label="รูปก่อนหน้า"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={isLast}
+              className="absolute right-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-md ring-1 ring-slate-200 transition hover:bg-white hover:text-[#f97316] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-800/90 dark:text-slate-200 dark:ring-white/10 dark:hover:text-sky-400 sm:flex"
+              aria-label="รูปถัดไป"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+            <span className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/55 px-2.5 py-0.5 text-[11px] font-medium text-white sm:hidden">
+              {activeIndex + 1} / {images.length}
+            </span>
+          </>
+        )}
+      </div>
 
       {images.length > 1 && (
         <div className="relative border-t border-slate-200 bg-white/80 dark:border-white/10 dark:bg-slate-900/40">
@@ -147,10 +215,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
                   }}
                   onMouseEnter={() => selectThumb(index)}
                   onFocus={() => selectThumb(index)}
-                  onClick={() => {
-                    setActiveIndex(index);
-                    setPopupOpen(true);
-                  }}
+                  onClick={() => selectThumb(index)}
                   className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border bg-white transition dark:bg-slate-800 ${
                     isActive
                       ? "border-[#f97316] ring-2 ring-[#f97316]/40 dark:border-sky-400 dark:ring-sky-400/40"
