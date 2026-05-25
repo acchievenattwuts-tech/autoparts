@@ -90,7 +90,7 @@ export async function resolveLineDailySummaryRecipientIds(targetMode: LineDailyS
           },
         },
         lineRecipientLinks: {
-          some: {
+          is: {
             recipient: {
               type: LineRecipientType.USER,
               status: LineRecipientStatus.ACTIVE,
@@ -118,16 +118,18 @@ export async function resolveLineDailySummaryRecipientIds(targetMode: LineDailyS
     });
 
     const recipients = adminUsers
-      .flatMap((user) =>
-        user.lineRecipientLinks.map((link) => ({
+      .flatMap((user) => {
+        const link = user.lineRecipientLinks;
+        if (!link) return [];
+        return [{
           userId: user.id,
           userName: user.name,
           recipientId: link.recipient.id,
           lineId: link.recipient.lineId,
           label: link.recipient.displayName ?? user.name,
           type: link.recipient.type,
-        }))
-      )
+        }];
+      })
       .filter((recipient) => recipient.type === LineRecipientType.USER);
 
     return {

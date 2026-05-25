@@ -142,7 +142,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
               },
             },
           },
-          take: 1,
         },
       },
       orderBy: { name: "asc" },
@@ -164,7 +163,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
               },
             },
           },
-          take: 1,
         },
       },
     }),
@@ -198,7 +196,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       displayName: recipient.displayName,
       sourceName: recipient.sourceName,
       lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
-      linkedUserName: recipient.userLinks[0]?.user.name ?? null,
+      linkedUserName: recipient.userLinks?.user.name ?? null,
     }));
   const otherRecipients = recipients
     .filter((recipient) => recipient.type !== LineRecipientType.USER)
@@ -209,7 +207,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       displayName: recipient.displayName,
       sourceName: recipient.sourceName,
       lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
-      linkedUserName: recipient.userLinks[0]?.user.name ?? null,
+      linkedUserName: recipient.userLinks?.user.name ?? null,
     }));
   const followUpCount =
     summary.counts.pendingDelivery +
@@ -382,7 +380,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
           id: user.id,
           name: user.name,
           email: user.email,
-          lineRecipient: user.lineRecipientLinks[0]?.recipient ?? null,
+          lineRecipient: user.lineRecipientLinks?.recipient ?? null,
         }))}
         availableUserRecipients={availableUserRecipients}
         otherRecipients={otherRecipients}

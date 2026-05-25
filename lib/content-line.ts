@@ -87,7 +87,7 @@ export async function getContentApproverUsers(): Promise<
       isActive: true,
       OR: [{ role: "ADMIN" }, { appRole: { is: { name: "ADMIN" } } }],
       lineRecipientLinks: {
-        some: {
+        is: {
           recipient: {
             status: LineRecipientStatus.ACTIVE,
             type: LineRecipientType.USER,
@@ -101,12 +101,6 @@ export async function getContentApproverUsers(): Promise<
       email: true,
       role: true,
       lineRecipientLinks: {
-        where: {
-          recipient: {
-            status: LineRecipientStatus.ACTIVE,
-            type: LineRecipientType.USER,
-          },
-        },
         select: {
           recipientId: true,
           recipient: {
@@ -115,7 +109,6 @@ export async function getContentApproverUsers(): Promise<
             },
           },
         },
-        take: 1,
       },
     },
     orderBy: { name: "asc" },
@@ -127,8 +120,8 @@ export async function getContentApproverUsers(): Promise<
       name: user.name,
       email: user.email,
       role: user.role,
-      lineRecipientId: user.lineRecipientLinks[0]?.recipientId ?? "",
-      lineId: user.lineRecipientLinks[0]?.recipient.lineId ?? "",
+      lineRecipientId: user.lineRecipientLinks?.recipientId ?? "",
+      lineId: user.lineRecipientLinks?.recipient.lineId ?? "",
     }))
     .filter((user) => user.lineRecipientId && user.lineId);
 }
