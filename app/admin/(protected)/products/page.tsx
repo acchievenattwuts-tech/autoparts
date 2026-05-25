@@ -22,6 +22,7 @@ import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import ProductMatchChips from "@/components/shared/ProductMatchChips";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
+import ProductFitmentSummary from "./ProductFitmentSummary";
 
 const PAGE_SIZE = 30;
 
@@ -274,22 +275,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                         ) : null}
                       </td>
                       <td className="px-4 py-3 align-top text-gray-600 dark:text-slate-300">
-                        {fitmentSummary.lines.length > 0 ? (
-                          <div className="max-w-64 space-y-1">
-                            {fitmentSummary.lines.map((line) => (
-                              <p key={line} className="line-clamp-1 text-xs leading-5 text-gray-600 dark:text-slate-300">
-                                {line}
-                              </p>
-                            ))}
-                            {fitmentSummary.hiddenCount > 0 ? (
-                              <p className="text-xs font-medium text-[#1e3a5f] dark:text-sky-300">
-                                +{fitmentSummary.hiddenCount} รุ่น
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-300 dark:text-slate-500">-</span>
-                        )}
+                        <ProductFitmentSummary
+                          lines={fitmentSummary.lines}
+                          hiddenCount={fitmentSummary.hiddenCount}
+                        />
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{product.category.name}</td>
                       <td className="px-4 py-3 text-center">

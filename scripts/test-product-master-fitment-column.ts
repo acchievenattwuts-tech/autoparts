@@ -51,6 +51,7 @@ async function run() {
   assert.deepEqual(overflowSummary.lines, [
     "Honda Civic 2012 - 2015",
     "Honda City 2014 - 2019",
+    "Honda Jazz 2010 - 2013",
   ]);
   assert.equal(overflowSummary.hiddenCount, 1);
 
@@ -63,16 +64,26 @@ async function run() {
   assert.deepEqual(openEndedSummary.lines, [
     "Toyota Hilux 2019 - ปัจจุบัน",
     "Isuzu D-Max ถึง 2022",
+    "Mazda BT-50",
   ]);
   assert.equal(openEndedSummary.hiddenCount, 1);
 
   const pageSource = readRepoFile("app/admin/(protected)/products/page.tsx");
+  const summaryComponentSource = readRepoFile("app/admin/(protected)/products/ProductFitmentSummary.tsx");
+
   assert.match(pageSource, /ยี่ห้อรถ/, "Products page must render the fitment column header");
   assert.match(pageSource, /buildAdminProductFitmentSummary/, "Products page must use the fitment summary helper");
   assert.match(pageSource, /carModels:\s*\{/, "Products page query must fetch fitment data");
+  assert.match(pageSource, /ProductFitmentSummary/, "Products page must render the fitment summary component");
   assert.doesNotMatch(pageSource, /เธ/, "Products page must not contain mojibake Thai text");
   assert.match(pageSource, /จัดการสินค้า/, "Products page title must remain readable Thai");
   assert.match(pageSource, /ผลการค้นหา/, "Products page summary text must remain readable Thai");
+
+  assert.match(summaryComponentSource, /"use client"/, "Fitment summary component must be client-side for toggle interaction");
+  assert.match(summaryComponentSource, /useState/, "Fitment summary component must manage expanded state locally");
+  assert.match(summaryComponentSource, /\+\{hiddenCount\} รุ่น/, "Fitment summary component must show hidden count trigger");
+  assert.match(summaryComponentSource, /ซ่อน/, "Fitment summary component must allow collapsing after expand");
+  assert.match(summaryComponentSource, /slice\(VISIBLE_LINE_COUNT\)/, "Fitment summary component must append only hidden lines");
 
   console.log("Product master fitment column checks passed");
 }

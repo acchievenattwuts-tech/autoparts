@@ -53,7 +53,7 @@ export function buildAdminProductFitmentSummary(
   }
 
   return {
-    lines: uniqueLabels.slice(0, MAX_VISIBLE_LINES),
+    lines: uniqueLabels,
     hiddenCount: Math.max(0, uniqueLabels.length - MAX_VISIBLE_LINES),
   };
 }
