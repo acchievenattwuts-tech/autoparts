@@ -19,35 +19,35 @@ model User {
   appRoleId                     String?
   mustChangePassword            Boolean                    @default(false)
   username                      String?                    @unique
-  phone                         String?
-  signatureUrl                  String?
   signatureUpdatedAt            DateTime?                  @db.Timestamptz(3)
+  signatureUrl                  String?
+  phone                         String?
   adjustments                   Adjustment[]
+  auditLogs                     AuditLog[]
   balanceForwards               BalanceForward[]
-  creditNotes                   CreditNote[]
   cashBankAdjustments           CashBankAdjustment[]
   cashBankTransfers             CashBankTransfer[]
+  contentApprovalsToReview      ContentApproval[]          @relation("ContentApprovalApprover")
+  contentApprovalsRequested     ContentApproval[]          @relation("ContentApprovalRequestedBy")
+  contentAuditLogs              ContentAuditLog[]          @relation("ContentAuditActor")
+  contentPostsApproved          ContentPost[]              @relation("ContentPostApprovedBy")
+  contentPostsCreated           ContentPost[]              @relation("ContentPostCreatedBy")
+  contentScheduledJobsCreated   ContentScheduledJob[]      @relation("ContentScheduledJobCreatedBy")
+  creditNotes                   CreditNote[]
+  deliveryCommissionRuns        DeliveryCommissionRun[]    @relation("DeliveryCommissionStaff")
+  deliveryCommissionRunsCreated DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
+  deliveryProofs                DeliveryProof[]
   expenses                      Expense[]
+  lineSummaryDispatches         LineDailySummaryDispatch[]
   purchases                     Purchase[]
   purchaseReturns               PurchaseReturn[]
   receipts                      Receipt[]
+  deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
   sales                         Sale[]
   supplierAdvances              SupplierAdvance[]
   supplierPayments              SupplierPayment[]
-  lineRecipientLinks            UserLineRecipient[]
-  lineSummaryDispatches         LineDailySummaryDispatch[]
-  contentPostsCreated           ContentPost[]              @relation("ContentPostCreatedBy")
-  contentPostsApproved          ContentPost[]              @relation("ContentPostApprovedBy")
-  contentApprovalsRequested     ContentApproval[]          @relation("ContentApprovalRequestedBy")
-  contentApprovalsToReview      ContentApproval[]          @relation("ContentApprovalApprover")
-  contentScheduledJobsCreated   ContentScheduledJob[]      @relation("ContentScheduledJobCreatedBy")
-  contentAuditLogs              ContentAuditLog[]          @relation("ContentAuditActor")
-  auditLogs                     AuditLog[]
-  deliveryProofs                DeliveryProof[]
-  deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
-  deliveryCommissionRunsCreated DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
-  deliveryCommissionRuns        DeliveryCommissionRun[]    @relation("DeliveryCommissionStaff")
   appRole                       AppRole?                   @relation(fields: [appRoleId], references: [id])
+  lineRecipientLinks            UserLineRecipient?
 
   @@index([username])
   @@index([appRoleId])
@@ -64,7 +64,7 @@ model LineRecipient {
   lastWebhookAt DateTime?           @db.Timestamptz(3)
   createdAt     DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime            @updatedAt @db.Timestamptz(3)
-  userLinks     UserLineRecipient[]
+  userLinks     UserLineRecipient?
 
   @@index([type, status])
 }
@@ -130,11 +130,11 @@ model ContentPost {
   approvedByUserId  String?
   createdAt         DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime              @updatedAt @db.Timestamptz(3)
-  createdByUser     User                  @relation("ContentPostCreatedBy", fields: [createdByUserId], references: [id])
-  approvedByUser    User?                 @relation("ContentPostApprovedBy", fields: [approvedByUserId], references: [id])
   approvals         ContentApproval[]
-  scheduledJobs     ContentScheduledJob[]
   auditLogs         ContentAuditLog[]
+  approvedByUser    User?                 @relation("ContentPostApprovedBy", fields: [approvedByUserId], references: [id])
+  createdByUser     User                  @relation("ContentPostCreatedBy", fields: [createdByUserId], references: [id])
+  scheduledJobs     ContentScheduledJob[]
 
   @@index([channel, status, scheduledAt])
   @@index([createdByUserId, createdAt])
@@ -156,9 +156,9 @@ model ContentApproval {
   actedAt           DateTime?             @db.Timestamptz(3)
   createdAt         DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime              @updatedAt @db.Timestamptz(3)
+  approverUser      User                  @relation("ContentApprovalApprover", fields: [approverUserId], references: [id])
   post              ContentPost           @relation(fields: [postId], references: [id], onDelete: Cascade)
   requestedByUser   User                  @relation("ContentApprovalRequestedBy", fields: [requestedByUserId], references: [id])
-  approverUser      User                  @relation("ContentApprovalApprover", fields: [approverUserId], references: [id])
 
   @@index([postId, status])
   @@index([approverUserId, status, requestedAt])
@@ -183,8 +183,8 @@ model ContentScheduledJob {
   createdByUserId   String?
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
-  post              ContentPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
   createdByUser     User?                     @relation("ContentScheduledJobCreatedBy", fields: [createdByUserId], references: [id])
+  post              ContentPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([status, runAt])
   @@index([postId, type, status])
@@ -201,8 +201,8 @@ model ContentAuditLog {
   metadataJson     String?
   notificationType ContentNotificationType?
   createdAt        DateTime                 @default(now()) @db.Timestamptz(3)
-  post             ContentPost              @relation(fields: [postId], references: [id], onDelete: Cascade)
   actorUser        User?                    @relation("ContentAuditActor", fields: [actorUserId], references: [id])
+  post             ContentPost              @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId, createdAt])
   @@index([actorUserId, createdAt])
@@ -283,12 +283,12 @@ model CarBrand {
 }
 
 model CarModel {
-  id         String            @id @default(cuid())
+  id         String           @id @default(cuid())
   name       String
   carBrandId String
-  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
-  isActive   Boolean           @default(true)
-  carBrand   CarBrand          @relation(fields: [carBrandId], references: [id])
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  isActive   Boolean          @default(true)
+  carBrand   CarBrand         @relation(fields: [carBrandId], references: [id])
   products   ProductFitment[]
 
   @@unique([name, carBrandId])
@@ -310,11 +310,11 @@ model Supplier {
   contactName       String?
   phone             String?
   address           String?
-  taxId             String?
-  creditTerm        Int?
   createdAt         DateTime          @default(now()) @db.Timestamptz(3)
   code              String?           @unique
   isActive          Boolean           @default(true)
+  taxId             String?
+  creditTerm        Int?
   preferredProducts Product[]         @relation("ProductPreferredSupplier")
   purchases         Purchase[]
   purchaseItems     PurchaseItem[]
@@ -352,7 +352,6 @@ model Product {
   saleUnitName        String               @default("ชิ้น")
   brandId             String?
   avgCost             Decimal              @default(0) @db.Decimal(10, 2)
-  inventoryTracking   InventoryTracking    @default(TRACKED)
   warrantyDays        Int                  @default(0)
   preferredSupplierId String?
   allowExpiredIssue   Boolean              @default(false)
@@ -360,11 +359,12 @@ model Product {
   lotIssueMethod      LotIssueMethod       @default(FIFO)
   requireExpiryDate   Boolean              @default(false)
   slug                String?              @unique
+  inventoryTracking   InventoryTracking    @default(TRACKED)
   adjustmentItems     AdjustmentItem[]
   balanceForwards     BalanceForward[]
-  creditNoteItems     CreditNoteItem[]
   claimStockBalances  ClaimStockBalance[]
   claimStockMovements ClaimStockMovement[]
+  creditNoteItems     CreditNoteItem[]
   lotBalances         LotBalance[]
   brand               PartsBrand?          @relation(fields: [brandId], references: [id])
   category            Category             @relation(fields: [categoryId], references: [id])
@@ -411,24 +411,13 @@ model ProductUnit {
   @@unique([productId, name])
 }
 
-enum AliasKind {
-  ALIAS
-  OEM
-  PART_NO
-  CROSS_REF
-  KEYWORD
-  MISSPELL
-  EN
-  TH
-}
-
 model ProductAlias {
   id        String    @id @default(cuid())
   productId String
   alias     String
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
   kind      AliasKind @default(ALIAS)
   weight    Int?
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
   product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, alias, kind])
@@ -458,16 +447,42 @@ model ProductSearchLog {
   source      String   @db.VarChar(30)
   path        String?  @db.VarChar(200)
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  dedupeKey   String?  @unique @db.VarChar(280)
+  hitCount    Int      @default(1)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   @@index([createdAt(sort: Desc)])
   @@index([source, createdAt(sort: Desc)])
   @@index([resultCount, createdAt(sort: Desc)])
 }
 
+model ProductSearchReviewOutcome {
+  id               String                    @id @default(cuid())
+  normalizedQuery  String                    @db.VarChar(200)
+  candidateAction  String                    @db.VarChar(50)
+  status           ProductSearchReviewStatus @default(PENDING)
+  note             String?                   @db.VarChar(500)
+  appliedType      String?                   @db.VarChar(50)
+  appliedRef       String?                   @db.VarChar(100)
+  reviewedById     String?
+  reviewedByName   String?                   @db.VarChar(100)
+  reviewedAt       DateTime?                 @db.Timestamptz(3)
+  createdAt        DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                  @updatedAt @db.Timestamptz(3)
+  baselineCount    Int?
+  baselineAvg      Float?
+  baselineLatestAt DateTime?                 @db.Timestamptz(3)
+  baselineSources  Json?
+
+  @@unique([normalizedQuery, candidateAction])
+  @@index([status, updatedAt(sort: Desc)])
+  @@index([reviewedAt(sort: Desc)])
+}
+
 model ProductFitment {
-  id         String   @id @default(cuid())
   productId  String
   carModelId String
+  id         String   @id @default(cuid())
   submodel   String?
   yearStart  Int?
   yearEnd    Int?
@@ -502,8 +517,8 @@ model StockCard {
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   landedCost          Decimal              @default(0) @db.Decimal(10, 2)
   usesReferenceCost   Boolean              @default(false)
-  product             Product              @relation(fields: [productId], references: [id])
   claimStockMovements ClaimStockMovement[]
+  product             Product              @relation(fields: [productId], references: [id])
   lotMovements        StockMovementLot[]
 
   @@index([productId, docDate, sorder])
@@ -538,7 +553,6 @@ model Purchase {
   userId               String
   totalAmount          Decimal               @db.Decimal(10, 2)
   discount             Decimal               @default(0) @db.Decimal(10, 2)
-  shippingFee          Decimal               @default(0) @db.Decimal(10, 2)
   netAmount            Decimal               @db.Decimal(10, 2)
   note                 String?
   purchaseDate         DateTime              @default(now()) @db.Timestamptz(3)
@@ -552,14 +566,15 @@ model Purchase {
   cancelNote           String?
   cancelledAt          DateTime?             @db.Timestamptz(3)
   status               DocStatus             @default(ACTIVE)
-  purchaseType         PurchaseType          @default(CREDIT_PURCHASE)
   amountRemain         Decimal               @default(0) @db.Decimal(10, 2)
   paymentMethod        PaymentMethod         @default(TRANSFER)
-  paymentStatus        PurchasePaymentStatus @default(UNPAID)
   cashBankAccountId    String?
+  paymentStatus        PurchasePaymentStatus @default(UNPAID)
+  purchaseType         PurchaseType          @default(CREDIT_PURCHASE)
   creditTerm           Int?
-  supplier             Supplier?             @relation(fields: [supplierId], references: [id])
+  shippingFee          Decimal               @default(0) @db.Decimal(10, 2)
   cashBankAccount      CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
+  supplier             Supplier?             @relation(fields: [supplierId], references: [id])
   user                 User                  @relation(fields: [userId], references: [id])
   items                PurchaseItem[]
   purchaseReturns      PurchaseReturn[]
@@ -586,23 +601,23 @@ model PurchaseItem {
 }
 
 model Customer {
-  id              String       @id @default(cuid())
-  code            String?      @unique
-  name            String
-  phone           String?      @unique
-  address         String?
-  taxId           String?
-  note            String?
-  creditTerm      Int?
-  source          String       @default("ADMIN")
-  lineUserId      String?      @unique
-  lineLinkedAt    DateTime?    @db.Timestamptz(3)
-  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+  id               String       @id @default(cuid())
+  code             String?      @unique
+  name             String
+  phone            String?      @unique
+  address          String?
+  taxId            String?
+  note             String?
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
   shippingAddress  String?
+  isActive         Boolean      @default(true)
+  creditTerm       Int?
+  lineLinkedAt     DateTime?    @db.Timestamptz(3)
+  lineUserId       String?      @unique
+  source           String       @default("ADMIN")
   defaultLatitude  Float?
   defaultLongitude Float?
-  isActive         Boolean      @default(true)
   creditNotes      CreditNote[]
   receipts         Receipt[]
   sales            Sale[]
@@ -616,9 +631,6 @@ model Sale {
   customerName            String?
   customerPhone           String?
   userId                  String
-  signerName              String?
-  signerSignatureUrl      String?
-  signedAt                DateTime?                @db.Timestamptz(3)
   totalAmount             Decimal                  @db.Decimal(10, 2)
   discount                Decimal                  @default(0) @db.Decimal(10, 2)
   netAmount               Decimal                  @db.Decimal(10, 2)
@@ -644,25 +656,28 @@ model Sale {
   shippingMethod          ShippingMethod           @default(NONE)
   shippingStatus          ShippingStatus           @default(PENDING)
   trackingNo              String?
+  cashBankAccountId       String?
+  creditTerm              Int?
+  signedAt                DateTime?                @db.Timestamptz(3)
+  signerName              String?
+  signerSignatureUrl      String?
   deliveryQueueOrder      Int?
   deliveryStaffId         String?
-  creditTerm              Int?
-  cashBankAccountId       String?
-  trackingToken           String?                  @unique
   trackingExpiry          DateTime?                @db.Timestamptz(3)
+  trackingToken           String?                  @unique
   destLatitude            Float?
   destLongitude           Float?
-  cashBankAccount         CashBankAccount?         @relation(fields: [cashBankAccountId], references: [id])
   creditNotes             CreditNote[]
+  deliveryCommissionItems DeliveryCommissionItem[]
+  deliveryProofs          DeliveryProof[]
+  deliveryTracking        DeliveryTracking?
   receipts                ReceiptItem[]
+  cashBankAccount         CashBankAccount?         @relation(fields: [cashBankAccountId], references: [id])
   customer                Customer?                @relation(fields: [customerId], references: [id])
   deliveryStaff           User?                    @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
   user                    User                     @relation(fields: [userId], references: [id])
   items                   SaleItem[]
   warranties              Warranty[]
-  deliveryProofs          DeliveryProof[]
-  deliveryCommissionItems DeliveryCommissionItem[]
-  deliveryTracking        DeliveryTracking?
 
   @@index([cashBankAccountId])
   @@index([trackingToken])
@@ -686,8 +701,8 @@ model DeliveryProof {
   capturedByUserId  String?
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime @updatedAt @db.Timestamptz(3)
-  sale              Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
   capturedByUser    User?    @relation(fields: [capturedByUserId], references: [id])
+  sale              Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@index([saleId, capturedAt])
   @@index([capturedByUserId])
@@ -732,13 +747,13 @@ model Warranty {
   saleId       String
   saleItemId   String
   productId    String
-  lotNo        String?
   startDate    DateTime        @db.Timestamptz(3)
   endDate      DateTime        @db.Timestamptz(3)
   note         String?
   createdAt    DateTime        @default(now()) @db.Timestamptz(3)
   warrantyDays Int
   unitSeq      Int             @default(1)
+  lotNo        String?
   product      Product         @relation(fields: [productId], references: [id])
   sale         Sale            @relation(fields: [saleId], references: [id])
   saleItem     SaleItem        @relation(fields: [saleItemId], references: [id])
@@ -758,9 +773,6 @@ model WarrantyClaim {
   claimType           ClaimType
   status              WarrantyClaimStatus  @default(DRAFT)
   outcome             ClaimOutcome?
-  signerName          String?
-  signerSignatureUrl  String?
-  signedAt            DateTime?            @db.Timestamptz(3)
   symptom             String?
   note                String?
   supplierId          String?
@@ -769,15 +781,18 @@ model WarrantyClaim {
   supplierAddress     String?
   sentAt              DateTime?            @db.Timestamptz(3)
   resolvedAt          DateTime?            @db.Timestamptz(3)
-  returnedAt          DateTime?            @db.Timestamptz(3)
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
-  supplier            Supplier?            @relation(fields: [supplierId], references: [id])
-  warranty            Warranty             @relation(fields: [warrantyId], references: [id])
+  returnedAt          DateTime?            @db.Timestamptz(3)
+  signedAt            DateTime?            @db.Timestamptz(3)
+  signerName          String?
+  signerSignatureUrl  String?
   claimStockBalances  ClaimStockBalance[]
   claimStockMovements ClaimStockMovement[]
-  claimLots           WarrantyClaimLot[]
   purchaseReturns     PurchaseReturn[]
+  supplier            Supplier?            @relation(fields: [supplierId], references: [id])
+  warranty            Warranty             @relation(fields: [warrantyId], references: [id])
+  claimLots           WarrantyClaimLot[]
 
   @@index([warrantyId])
   @@index([claimDate])
@@ -850,11 +865,11 @@ model ExpenseCode {
   name                   String
   description            String?
   isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
   isDeliveryCommission   Boolean                 @default(false)
   deliveryCommissionSlot String?                 @unique
-  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
-  items                  ExpenseItem[]
   deliveryCommissionRuns DeliveryCommissionRun[]
+  items                  ExpenseItem[]
 }
 
 model Expense {
@@ -875,10 +890,10 @@ model Expense {
   totalAmount           Decimal                @db.Decimal(10, 2)
   updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
   cashBankAccountId     String?
+  deliveryCommissionRun DeliveryCommissionRun?
   cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
-  deliveryCommissionRun DeliveryCommissionRun?
 
   @@index([cashBankAccountId])
 }
@@ -903,12 +918,12 @@ model DeliveryCommissionRun {
   cancelledAt       DateTime?                @db.Timestamptz(3)
   createdAt         DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                 @updatedAt @db.Timestamptz(3)
+  items             DeliveryCommissionItem[]
   cashBankAccount   CashBankAccount          @relation(fields: [cashBankAccountId], references: [id])
   deliveryStaff     User                     @relation("DeliveryCommissionStaff", fields: [deliveryStaffId], references: [id])
-  expense           Expense?                 @relation(fields: [expenseId], references: [id])
   expenseCode       ExpenseCode              @relation(fields: [expenseCodeId], references: [id])
+  expense           Expense?                 @relation(fields: [expenseId], references: [id])
   user              User                     @relation("DeliveryCommissionCreatedBy", fields: [userId], references: [id])
-  items             DeliveryCommissionItem[]
 
   @@index([payDate, status])
   @@index([deliveryStaffId, status, payDate])
@@ -919,7 +934,6 @@ model DeliveryCommissionItem {
   id                String                @id @default(cuid())
   runId             String
   saleId            String
-  activeSaleId      String?               @unique
   saleNo            String
   saleDate          DateTime              @db.Timestamptz(3)
   customerName      String?
@@ -927,6 +941,7 @@ model DeliveryCommissionItem {
   commissionPercent Decimal               @db.Decimal(5, 2)
   commissionAmount  Decimal               @db.Decimal(10, 2)
   createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  activeSaleId      String?               @unique
   run               DeliveryCommissionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   sale              Sale                  @relation(fields: [saleId], references: [id])
 
@@ -965,15 +980,11 @@ model FactProfit {
   supplierName        String?
   lineLabel           String?
   quantity            Decimal          @default(0) @db.Decimal(12, 4)
-  salesAmountExVat    Decimal          @default(0) @db.Decimal(10, 2)
-  salesAmountIncVat   Decimal          @default(0) @db.Decimal(10, 2)
   salesAmount         Decimal          @default(0) @db.Decimal(10, 2)
   costAmount          Decimal          @default(0) @db.Decimal(10, 2)
   expenseAmount       Decimal          @default(0) @db.Decimal(10, 2)
   grossProfit         Decimal          @default(0) @db.Decimal(10, 2)
   netProfitAmount     Decimal          @default(0) @db.Decimal(10, 2)
-  unitSalePriceExVat  Decimal          @default(0) @db.Decimal(10, 2)
-  unitSalePriceIncVat Decimal          @default(0) @db.Decimal(10, 2)
   unitSalePrice       Decimal          @default(0) @db.Decimal(10, 2)
   unitCostPrice       Decimal          @default(0) @db.Decimal(10, 2)
   unitProfit          Decimal          @default(0) @db.Decimal(10, 2)
@@ -981,6 +992,10 @@ model FactProfit {
   supersededAt        DateTime?        @db.Timestamptz(3)
   createdAt           DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime         @updatedAt @db.Timestamptz(3)
+  salesAmountExVat    Decimal          @default(0) @db.Decimal(10, 2)
+  salesAmountIncVat   Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePriceExVat  Decimal          @default(0) @db.Decimal(10, 2)
+  unitSalePriceIncVat Decimal          @default(0) @db.Decimal(10, 2)
 
   @@index([businessDate, isActive])
   @@index([sourceType, sourceId, isActive])
@@ -1078,19 +1093,19 @@ model PurchaseReturn {
   vatAmount            Decimal                      @default(0) @db.Decimal(10, 2)
   vatRate              Decimal                      @default(0) @db.Decimal(5, 2)
   vatType              VatType                      @default(NO_VAT)
-  type                 PurchaseReturnType           @default(RETURN)
-  settlementType       PurchaseReturnSettlementType @default(CASH_REFUND)
-  refundMethod         PurchaseReturnRefundMethod?
   cancelNote           String?
   cancelledAt          DateTime?                    @db.Timestamptz(3)
   status               DocStatus                    @default(ACTIVE)
   amountRemain         Decimal                      @default(0) @db.Decimal(10, 2)
   cashBankAccountId    String?
+  refundMethod         PurchaseReturnRefundMethod?
+  settlementType       PurchaseReturnSettlementType @default(CASH_REFUND)
+  type                 PurchaseReturnType           @default(RETURN)
   claimId              String?
-  purchase             Purchase?                    @relation(fields: [purchaseId], references: [id])
-  supplier             Supplier?                    @relation(fields: [supplierId], references: [id])
   cashBankAccount      CashBankAccount?             @relation(fields: [cashBankAccountId], references: [id])
   claim                WarrantyClaim?               @relation(fields: [claimId], references: [id])
+  purchase             Purchase?                    @relation(fields: [purchaseId], references: [id])
+  supplier             Supplier?                    @relation(fields: [supplierId], references: [id])
   user                 User                         @relation(fields: [userId], references: [id])
   items                PurchaseReturnItem[]
   supplierPaymentItems SupplierPaymentItem[]
@@ -1142,9 +1157,6 @@ model Receipt {
   customerId         String?
   customerName       String?
   userId             String
-  signerName         String?
-  signerSignatureUrl String?
-  signedAt           DateTime?        @db.Timestamptz(3)
   totalAmount        Decimal          @db.Decimal(10, 2)
   paymentMethod      PaymentMethod
   note               String?
@@ -1154,6 +1166,9 @@ model Receipt {
   cancelledAt        DateTime?        @db.Timestamptz(3)
   status             DocStatus        @default(ACTIVE)
   cashBankAccountId  String?
+  signedAt           DateTime?        @db.Timestamptz(3)
+  signerName         String?
+  signerSignatureUrl String?
   cashBankAccount    CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   customer           Customer?        @relation(fields: [customerId], references: [id])
   user               User             @relation(fields: [userId], references: [id])
@@ -1169,27 +1184,27 @@ model CashBankAccount {
   type                     CashBankAccountType
   bankName                 String?
   accountNo                String?
-  promptPayId              String?
-  isPrimaryTransferAccount Boolean                 @default(false)
   openingBalance           Decimal                 @default(0) @db.Decimal(10, 2)
   openingDate              DateTime                @db.Timestamptz(3)
   isActive                 Boolean                 @default(true)
-  lowBalanceThreshold      Decimal                 @default(0) @db.Decimal(10, 2)
   createdAt                DateTime                @default(now()) @db.Timestamptz(3)
   updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
-  purchases                Purchase[]
-  purchaseReturns          PurchaseReturn[]
-  sales                    Sale[]
-  expenses                 Expense[]
-  creditNotes              CreditNote[]
-  receipts                 Receipt[]
-  supplierAdvances         SupplierAdvance[]
-  supplierPayments         SupplierPayment[]
+  isPrimaryTransferAccount Boolean                 @default(false)
+  promptPayId              String?
+  lowBalanceThreshold      Decimal                 @default(0) @db.Decimal(10, 2)
+  adjustments              CashBankAdjustment[]
   movements                CashBankMovement[]
   transfersFrom            CashBankTransfer[]      @relation("CashBankTransferFrom")
   transfersTo              CashBankTransfer[]      @relation("CashBankTransferTo")
-  adjustments              CashBankAdjustment[]
+  creditNotes              CreditNote[]
   deliveryCommissionRuns   DeliveryCommissionRun[]
+  expenses                 Expense[]
+  purchases                Purchase[]
+  purchaseReturns          PurchaseReturn[]
+  receipts                 Receipt[]
+  sales                    Sale[]
+  supplierAdvances         SupplierAdvance[]
+  supplierPayments         SupplierPayment[]
 
   @@index([type, isActive])
   @@index([name])
@@ -1444,8 +1459,6 @@ model product_search_documents {
   category_name       String                  @default("")
   brand_name          String                  @default("")
   alias_text          String                  @default("")
-  oem_text            String                  @default("")
-  keyword_text        String                  @default("")
   car_brand_text      String                  @default("")
   car_model_text      String                  @default("")
   fitment_text        String                  @default("")
@@ -1453,11 +1466,32 @@ model product_search_documents {
   search_document     Unsupported("tsvector")
   product_created_at  DateTime                @db.Timestamptz(6)
   updated_at          DateTime                @default(now()) @db.Timestamptz(6)
+  oem_text            String                  @default("")
+  keyword_text        String                  @default("")
 
   @@index([product_created_at(sort: Desc)], map: "idx_product_search_documents_created_at")
   @@index([search_document], map: "idx_product_search_documents_document", type: Gin)
   @@index([is_active], map: "idx_product_search_documents_is_active")
   @@index([search_text(ops: raw("gin_trgm_ops"))], map: "idx_product_search_documents_text_trgm", type: Gin)
+}
+
+enum AliasKind {
+  ALIAS
+  OEM
+  PART_NO
+  CROSS_REF
+  KEYWORD
+  MISSPELL
+  EN
+  TH
+}
+
+enum ProductSearchReviewStatus {
+  PENDING
+  APPLIED
+  IGNORED
+  NEEDS_INVESTIGATION
+  DUPLICATE
 }
 
 enum Role {
@@ -1604,8 +1638,8 @@ enum ShippingMethod {
   KERRY
   FLASH
   JT
-  THAILAND_POST
   OTHER
+  THAILAND_POST
 }
 
 enum PaymentMethod {
@@ -1636,11 +1670,11 @@ enum CashBankSourceType {
   PURCHASE
   EXPENSE
   CN_SALE
+  TRANSFER
+  ADJUSTMENT
   CN_PURCHASE
   SUPPLIER_ADVANCE
   SUPPLIER_PAYMENT
-  TRANSFER
-  ADJUSTMENT
 }
 
 enum CashBankDirection {
@@ -1662,8 +1696,8 @@ enum WarrantyClaimStatus {
   DRAFT
   SENT_TO_SUPPLIER
   CLOSED
-  RETURNED_TO_CUSTOMER
   CANCELLED
+  RETURNED_TO_CUSTOMER
 }
 
 enum ClaimType {
