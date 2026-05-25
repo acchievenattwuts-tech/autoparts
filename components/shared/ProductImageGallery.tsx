@@ -15,14 +15,28 @@ interface Props {
 }
 
 const SCROLL_STEP_PX = 240;
+const MAIN_SWIPE_THRESHOLD_PX = 50;
+const POPUP_SWIPE_THRESHOLD_PX = 72;
+const POPUP_EDGE_RESISTANCE = 0.35;
 
 const ProductImageGallery = ({ images, productName }: Props) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [popupOpen, setPopupOpen] = useState(false);
+  const [popupDragOffset, setPopupDragOffset] = useState(0);
+  const [isPopupDragging, setIsPopupDragging] = useState(false);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const stripRef = useRef<HTMLDivElement>(null);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const popupThumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const popupPointerStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+
+  const hasMultiple = images.length > 1;
+  const isFirst = activeIndex === 0;
+  const isLast = activeIndex === images.length - 1;
+  const activeImage = images[activeIndex] ?? images[0];
 
   const updateScrollButtons = useCallback(() => {
     const el = stripRef.current;
@@ -35,6 +49,55 @@ const ProductImageGallery = ({ images, productName }: Props) => {
     setCanScrollLeft(el.scrollLeft > 0);
     setCanScrollRight(el.scrollLeft < maxScroll - 1);
   }, []);
+
+  const scrollActiveThumbIntoView = useCallback((index: number) => {
+    const btn = thumbRefs.current[index];
+    const el = stripRef.current;
+    if (!btn || !el) return;
+
+    const btnLeft = btn.offsetLeft;
+    const btnRight = btnLeft + btn.offsetWidth;
+    const viewLeft = el.scrollLeft;
+    const viewRight = viewLeft + el.clientWidth;
+    if (btnLeft < viewLeft) {
+      el.scrollTo({ left: btnLeft - 12, behavior: "smooth" });
+    } else if (btnRight > viewRight) {
+      el.scrollTo({ left: btnRight - el.clientWidth + 12, behavior: "smooth" });
+    }
+  }, []);
+
+  const selectThumb = useCallback((index: number) => {
+    const nextIndex = Math.max(0, Math.min(index, images.length - 1));
+    setActiveIndex(nextIndex);
+    scrollActiveThumbIntoView(nextIndex);
+  }, [images.length, scrollActiveThumbIntoView]);
+
+  const goToImage = useCallback((index: number) => {
+    setPopupDragOffset(0);
+    selectThumb(index);
+  }, [selectThumb]);
+
+  const closePopup = useCallback(() => {
+    setPopupOpen(false);
+    setPopupDragOffset(0);
+    setIsPopupDragging(false);
+    popupPointerStart.current = null;
+  }, []);
+
+  const openPopup = () => {
+    setPopupOpen(true);
+    setPopupDragOffset(0);
+  };
+
+  const scrollStrip = (dir: "left" | "right") => {
+    const el = stripRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir === "left" ? -SCROLL_STEP_PX : SCROLL_STEP_PX, behavior: "smooth" });
+  };
+
+  const navigatePopup = useCallback((direction: -1 | 1) => {
+    goToImage(activeIndex + direction);
+  }, [activeIndex, goToImage]);
 
   useEffect(() => {
     const el = stripRef.current;
@@ -51,46 +114,32 @@ const ProductImageGallery = ({ images, productName }: Props) => {
 
   useEffect(() => {
     if (!popupOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [popupOpen]);
+
+  useEffect(() => {
+    if (!popupOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPopupOpen(false);
-      if (e.key === "ArrowRight") {
-        setActiveIndex((i) => Math.min(i + 1, images.length - 1));
-      }
-      if (e.key === "ArrowLeft") {
-        setActiveIndex((i) => Math.max(i - 1, 0));
-      }
+      if (e.key === "Escape") closePopup();
+      if (e.key === "ArrowRight") navigatePopup(1);
+      if (e.key === "ArrowLeft") navigatePopup(-1);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [popupOpen, images.length]);
+  }, [closePopup, navigatePopup, popupOpen]);
 
-  const scrollStrip = (dir: "left" | "right") => {
-    const el = stripRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir === "left" ? -SCROLL_STEP_PX : SCROLL_STEP_PX, behavior: "smooth" });
-  };
-
-  const selectThumb = (index: number) => {
-    setActiveIndex(index);
-    const btn = thumbRefs.current[index];
-    if (btn && stripRef.current) {
-      const el = stripRef.current;
-      const btnLeft = btn.offsetLeft;
-      const btnRight = btnLeft + btn.offsetWidth;
-      const viewLeft = el.scrollLeft;
-      const viewRight = viewLeft + el.clientWidth;
-      if (btnLeft < viewLeft) {
-        el.scrollTo({ left: btnLeft - 12, behavior: "smooth" });
-      } else if (btnRight > viewRight) {
-        el.scrollTo({ left: btnRight - el.clientWidth + 12, behavior: "smooth" });
-      }
-    }
-  };
-
-  // ── Swipe gesture for mobile / arrow navigation ─────────────────────────
-  const SWIPE_THRESHOLD_PX = 50;
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
+  useEffect(() => {
+    if (!popupOpen) return;
+    popupThumbRefs.current[activeIndex]?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [activeIndex, popupOpen]);
 
   const handleMainTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -103,20 +152,65 @@ const ProductImageGallery = ({ images, productName }: Props) => {
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     touchStartX.current = null;
     touchStartY.current = null;
-    if (Math.abs(dx) > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) {
-      if (dx < 0) selectThumb(Math.min(activeIndex + 1, images.length - 1));
-      else selectThumb(Math.max(activeIndex - 1, 0));
+    if (Math.abs(dx) > MAIN_SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) {
+      selectThumb(dx < 0 ? activeIndex + 1 : activeIndex - 1);
     }
+  };
+
+  const handlePopupPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!hasMultiple || e.pointerType === "mouse") return;
+    popupPointerStart.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+    setIsPopupDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePopupPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = popupPointerStart.current;
+    if (!start) return;
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+    if (Math.abs(dy) > Math.abs(dx) * 1.35) return;
+
+    const isPullingPastFirst = activeIndex === 0 && dx > 0;
+    const isPullingPastLast = activeIndex === images.length - 1 && dx < 0;
+    setPopupDragOffset(isPullingPastFirst || isPullingPastLast ? dx * POPUP_EDGE_RESISTANCE : dx);
+  };
+
+  const finishPopupDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = popupPointerStart.current;
+    if (!start) return;
+
+    const dx = e.clientX - start.x;
+    if (e.currentTarget.hasPointerCapture(start.pointerId)) {
+      e.currentTarget.releasePointerCapture(start.pointerId);
+    }
+
+    popupPointerStart.current = null;
+    setIsPopupDragging(false);
+
+    if (Math.abs(dx) > POPUP_SWIPE_THRESHOLD_PX) {
+      if (dx < 0 && activeIndex < images.length - 1) {
+        navigatePopup(1);
+        return;
+      }
+      if (dx > 0 && activeIndex > 0) {
+        navigatePopup(-1);
+        return;
+      }
+    }
+    setPopupDragOffset(0);
   };
 
   const goPrev = (e: React.MouseEvent) => {
     e.stopPropagation();
-    selectThumb(Math.max(activeIndex - 1, 0));
+    selectThumb(activeIndex - 1);
   };
 
   const goNext = (e: React.MouseEvent) => {
     e.stopPropagation();
-    selectThumb(Math.min(activeIndex + 1, images.length - 1));
+    selectThumb(activeIndex + 1);
   };
 
   if (images.length === 0) {
@@ -129,12 +223,6 @@ const ProductImageGallery = ({ images, productName }: Props) => {
     );
   }
 
-  const activeImage = images[activeIndex] ?? images[0];
-
-  const hasMultiple = images.length > 1;
-  const isFirst = activeIndex === 0;
-  const isLast = activeIndex === images.length - 1;
-
   return (
     <>
       <div
@@ -144,7 +232,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
       >
         <button
           type="button"
-          onClick={() => setPopupOpen(true)}
+          onClick={openPopup}
           className="group relative block h-full w-full cursor-zoom-in overflow-hidden"
           aria-label="ดูรูปขนาดเต็ม"
         >
@@ -186,7 +274,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
         )}
       </div>
 
-      {images.length > 1 && (
+      {hasMultiple && (
         <div className="relative border-t border-slate-200 bg-white/80 dark:border-white/10 dark:bg-slate-900/40">
           {canScrollLeft && (
             <button
@@ -201,7 +289,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
 
           <div
             ref={stripRef}
-            className="flex gap-2 overflow-x-auto scroll-smooth p-3 [&::-webkit-scrollbar]:hidden"
+            className="flex snap-x gap-3 overflow-x-auto scroll-smooth p-3 [&::-webkit-scrollbar]:hidden sm:gap-2"
             style={{ scrollbarWidth: "none" }}
           >
             {images.map((image, index) => {
@@ -216,9 +304,9 @@ const ProductImageGallery = ({ images, productName }: Props) => {
                   onMouseEnter={() => selectThumb(index)}
                   onFocus={() => selectThumb(index)}
                   onClick={() => selectThumb(index)}
-                  className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border bg-white transition dark:bg-slate-800 ${
+                  className={`relative h-20 w-20 shrink-0 snap-center overflow-hidden rounded-2xl border bg-white shadow-sm transition active:scale-95 dark:bg-slate-800 sm:h-16 sm:w-16 sm:rounded-xl ${
                     isActive
-                      ? "border-[#f97316] ring-2 ring-[#f97316]/40 dark:border-sky-400 dark:ring-sky-400/40"
+                      ? "border-[#f97316] shadow-[0_10px_24px_rgba(249,115,22,0.22)] ring-2 ring-[#f97316]/45 dark:border-sky-400 dark:ring-sky-400/40"
                       : "border-slate-200 hover:border-[#f97316]/60 dark:border-white/10 dark:hover:border-sky-400/60"
                   }`}
                   aria-label={`เลือก ${image.alt || `รูปที่ ${index + 1}`}`}
@@ -228,8 +316,8 @@ const ProductImageGallery = ({ images, productName }: Props) => {
                     src={image.url}
                     alt={image.alt || `${productName} รูปที่ ${index + 1}`}
                     fill
-                    sizes="64px"
-                    className="object-cover"
+                    sizes="(max-width: 640px) 80px, 64px"
+                    className="object-contain p-1"
                   />
                 </button>
               );
@@ -251,56 +339,119 @@ const ProductImageGallery = ({ images, productName }: Props) => {
 
       {popupOpen && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-          onClick={() => setPopupOpen(false)}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 p-0 backdrop-blur-sm sm:p-4"
+          onClick={closePopup}
           role="dialog"
           aria-modal="true"
           aria-label="ดูรูปขนาดเต็ม"
         >
           <div
-            className="relative w-full max-w-4xl"
+            className="relative flex h-full w-full max-w-5xl flex-col justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
-              onClick={() => setPopupOpen(false)}
-              className="absolute -top-10 right-0 text-white transition-colors hover:text-gray-300"
+              onClick={closePopup}
+              className="absolute right-4 top-4 z-30 rounded-full bg-black/45 p-2 text-white ring-1 ring-white/15 transition hover:bg-white hover:text-slate-900 sm:right-0 sm:top-0"
               aria-label="ปิด"
             >
-              <X size={28} />
+              <X size={24} />
             </button>
-            <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white">
-              <Image
-                src={activeImage.url}
-                alt={activeImage.alt}
-                fill
-                className="object-contain"
-                sizes="(max-width: 768px) 100vw, 900px"
-              />
+
+            {hasMultiple && (
+              <div className="absolute left-1/2 top-5 z-20 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/15 sm:top-4">
+                {activeIndex + 1} / {images.length}
+              </div>
+            )}
+
+            <div
+              className="relative min-h-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing [touch-action:pan-y] sm:rounded-2xl"
+              onPointerDown={handlePopupPointerDown}
+              onPointerMove={handlePopupPointerMove}
+              onPointerUp={finishPopupDrag}
+              onPointerCancel={finishPopupDrag}
+            >
+              <div
+                className={`flex h-full ${isPopupDragging ? "" : "transition-transform duration-300 ease-out"}`}
+                style={{
+                  transform: `translate3d(calc(${-activeIndex * 100}% + ${popupDragOffset}px), 0, 0)`,
+                }}
+              >
+                {images.map((image, index) => {
+                  const distance = Math.abs(index - activeIndex);
+                  return (
+                    <div key={`${image.url}-popup-${index}`} className="relative h-full w-full shrink-0 px-3 py-14 sm:px-8 sm:py-12">
+                      <div
+                        className={`relative h-full w-full overflow-hidden bg-white transition duration-300 sm:rounded-2xl ${
+                          distance === 0 ? "scale-100 opacity-100" : "scale-[0.96] opacity-70"
+                        }`}
+                      >
+                        <Image
+                          src={image.url}
+                          alt={image.alt}
+                          fill
+                          className="pointer-events-none object-contain select-none"
+                          sizes="(max-width: 768px) 100vw, 1000px"
+                          draggable={false}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            {images.length > 1 && (
+
+            {hasMultiple && (
               <>
                 <button
                   type="button"
-                  onClick={() => setActiveIndex((i) => Math.max(i - 1, 0))}
-                  disabled={activeIndex === 0}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-800 shadow-md transition hover:bg-white disabled:opacity-40"
+                  onClick={() => navigatePopup(-1)}
+                  disabled={isFirst}
+                  className="absolute left-3 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/90 p-3 text-slate-800 shadow-md transition hover:bg-white disabled:opacity-35 sm:block"
                   aria-label="ก่อนหน้า"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveIndex((i) => Math.min(i + 1, images.length - 1))}
-                  disabled={activeIndex === images.length - 1}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 text-slate-800 shadow-md transition hover:bg-white disabled:opacity-40"
+                  onClick={() => navigatePopup(1)}
+                  disabled={isLast}
+                  className="absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 rounded-full bg-white/90 p-3 text-slate-800 shadow-md transition hover:bg-white disabled:opacity-35 sm:block"
                   aria-label="ถัดไป"
                 >
                   <ChevronRight className="h-5 w-5" />
                 </button>
-                <p className="mt-3 text-center text-xs text-white/80">
-                  {activeIndex + 1} / {images.length}
-                </p>
+                <div className="flex shrink-0 snap-x gap-2 overflow-x-auto px-4 pb-5 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-center sm:px-8 sm:pb-2">
+                  {images.map((image, index) => {
+                    const isActive = index === activeIndex;
+                    return (
+                      <button
+                        type="button"
+                        key={`${image.url}-popup-thumb-${index}`}
+                        ref={(el) => {
+                          popupThumbRefs.current[index] = el;
+                        }}
+                        onClick={() => goToImage(index)}
+                        className={`relative h-16 w-16 shrink-0 snap-center overflow-hidden rounded-xl border bg-white transition active:scale-95 ${
+                          isActive
+                            ? "border-[#f97316] ring-2 ring-[#f97316]"
+                            : "border-white/25 opacity-70 hover:opacity-100"
+                        }`}
+                        aria-label={`เลือก ${image.alt || `รูปที่ ${index + 1}`}`}
+                        aria-current={isActive ? "true" : undefined}
+                      >
+                        <Image
+                          src={image.url}
+                          alt={image.alt || `${productName} รูปที่ ${index + 1}`}
+                          fill
+                          sizes="64px"
+                          className="object-contain p-1"
+                          draggable={false}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
               </>
             )}
           </div>
