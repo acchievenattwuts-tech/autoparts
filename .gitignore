@@ -60,3 +60,7 @@ env
 /scripts/import-products-from-csv.mjs
 /scripts/import-products-k-miu.mjs
 /scripts/import-products-vanichanan.mjs
+
+# Codex / Superpowers generated artifacts (not part of app)
+/.superpowers/
+/docs/superpowers/

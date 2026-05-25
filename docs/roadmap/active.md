@@ -18,9 +18,16 @@
   - [ ] แยก spec ลง [docs/specs/cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
 
 ### Product Search Overhaul (OEM / Fitment / Synonym)
-- สถานะ: Phase A + B + C + D + E เสร็จ
+- สถานะ: Phase A + B + C + D + E + F1 + F2 เสร็จ
 - เอกสาร spec: [docs/specs/product-search-overhaul.md](/D:/autoparts/docs/specs/product-search-overhaul.md)
 - Phase E: no-result telemetry + dashboard/report เสร็จแล้ว
+- Product Search Quality report: no-result/low-result clustering + reviewed apply flow เสร็จแล้ว
+- เอกสาร phase ถัดไป: [docs/specs/product-search-log-analysis.md](/D:/autoparts/docs/specs/product-search-log-analysis.md)
+- งานที่ต้องทำต่อ:
+  - [x] Phase F3 - Review Outcome Tracking
+  - [x] Phase F4 - Fitment/Year Remediation Flow
+  - [x] Phase F5 - Closed-Loop Measurement
+  - [x] Phase F6 - Guarded Auto-Apply
 
 ### Product Search Quality Improvements (Round 2)
 - สถานะ: Q1 + Q2 + Q3 + Q4 + Q5 เสร็จ

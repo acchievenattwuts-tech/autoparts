@@ -55,6 +55,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     deliveryCommissionPercent: Number(map["delivery_commission_percent"] ?? defaultSiteConfig.deliveryCommissionPercent),
     vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
     vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
+    productSearchAutoApplySynonymsEnabled: defaultSiteConfig.productSearchAutoApplySynonymsEnabled,
   };
 };
 

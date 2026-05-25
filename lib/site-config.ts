@@ -1,6 +1,10 @@
 import { db } from "./db";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
+import {
+  PRODUCT_SEARCH_AUTO_APPLY_SYNONYMS_ENABLED_KEY,
+  parseProductSearchAutoApplyEnabledSetting,
+} from "@/lib/product-search-auto-apply";
 
 export interface SiteConfig {
   shopName: string;
@@ -32,6 +36,7 @@ export interface SiteConfig {
   vatType: string; // "NO_VAT" | "EXCLUDING_VAT" | "INCLUDING_VAT"
   vatRate: number; // e.g. 7
   deliveryCommissionPercent: number;
+  productSearchAutoApplySynonymsEnabled: boolean;
 }
 
 export const defaultSiteConfig: SiteConfig = {
@@ -64,6 +69,7 @@ export const defaultSiteConfig: SiteConfig = {
   vatType: "NO_VAT",
   vatRate: 7,
   deliveryCommissionPercent: 30,
+  productSearchAutoApplySynonymsEnabled: false,
 };
 
 export const getSiteConfig = unstable_cache(
@@ -102,6 +108,9 @@ export const getSiteConfig = unstable_cache(
       vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
       deliveryCommissionPercent: Number(
         map["delivery_commission_percent"] ?? defaultSiteConfig.deliveryCommissionPercent,
+      ),
+      productSearchAutoApplySynonymsEnabled: parseProductSearchAutoApplyEnabledSetting(
+        map[PRODUCT_SEARCH_AUTO_APPLY_SYNONYMS_ENABLED_KEY],
       ),
     };
   },

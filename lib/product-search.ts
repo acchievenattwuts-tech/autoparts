@@ -3,6 +3,7 @@ import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
 import { expandQueryTokens } from "@/lib/search-synonyms";
+import { normalizeSearchText } from "@/lib/search-normalization";
 
 const SEARCH_V2_CODE_SIMILARITY = 0.2;
 const SEARCH_V2_NAME_SIMILARITY = 0.18;
@@ -63,7 +64,7 @@ type ExactSearchRow = {
 };
 
 const normalizeSearchQuery = (query?: string | null): string | undefined => {
-  const normalized = query?.trim();
+  const normalized = normalizeSearchText(query);
   return normalized ? normalized : undefined;
 };
 

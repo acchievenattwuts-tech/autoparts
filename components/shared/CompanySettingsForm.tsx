@@ -8,8 +8,8 @@ import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
 
 const inputClass =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
-const labelClass = "mb-1 block text-sm font-medium text-gray-700";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100";
+const labelClass = "mb-1 block text-sm font-medium text-gray-700 dark:text-slate-200";
 
 interface ToggleProps {
   name: string;
@@ -26,13 +26,13 @@ const Toggle = ({ name, checked, onChange, label }: ToggleProps) => (
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:ring-offset-1 ${checked ? "bg-[#1e3a5f]" : "bg-gray-300"}`}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] focus:ring-offset-1 dark:focus:ring-sky-400 ${checked ? "bg-[#1e3a5f] dark:bg-sky-600" : "bg-gray-300 dark:bg-slate-700"}`}
     >
       <span
         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`}
       />
     </button>
-    <span className="text-sm text-gray-600">{label}</span>
+    <span className="text-sm text-gray-600 dark:text-slate-300">{label}</span>
   </label>
 );
 
@@ -57,10 +57,10 @@ const SocialRow = ({
   placeholder,
   icon,
 }: SocialRowProps) => (
-  <div className="flex flex-col gap-3 border-b border-gray-100 py-4 last:border-0 sm:flex-row sm:items-center">
+  <div className="flex flex-col gap-3 border-b border-gray-100 py-4 last:border-0 dark:border-white/10 sm:flex-row sm:items-center">
     <div className="flex w-32 flex-shrink-0 items-center gap-2">
       {icon}
-      <span className="text-sm font-medium text-gray-700">{platform}</span>
+      <span className="text-sm font-medium text-gray-700 dark:text-slate-200">{platform}</span>
     </div>
     <div className="flex-1">
       <input name={urlName} defaultValue={urlValue} className={inputClass} placeholder={placeholder} />
@@ -100,6 +100,9 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
   const [tiktokEnabled, setTiktokEnabled] = useState(config.shopTiktokEnabled);
   const [shopeeEnabled, setShopeeEnabled] = useState(config.shopShopeeEnabled);
   const [lazadaEnabled, setLazadaEnabled] = useState(config.shopLazadaEnabled);
+  const [productSearchAutoApplySynonymsEnabled, setProductSearchAutoApplySynonymsEnabled] = useState(
+    config.productSearchAutoApplySynonymsEnabled,
+  );
 
   const handleLogoChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -139,8 +142,8 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-kanit font-semibold text-gray-800">ข้อมูลร้านค้า</h2>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-4 font-kanit font-semibold text-gray-800 dark:text-slate-100">ข้อมูลร้านค้า</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className={labelClass}>ชื่อร้าน *</label>
@@ -187,21 +190,21 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
                     </button>
                   </>
                 ) : (
-                  <p className="px-3 text-center text-sm text-gray-400">ยังไม่มีโลโก้</p>
+                  <p className="px-3 text-center text-sm text-gray-400 dark:text-slate-500">ยังไม่มีโลโก้</p>
                 )}
               </div>
               <div className="flex-1 space-y-3">
                 <input ref={logoFileRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" id="logoUpload" />
                 <label
                   htmlFor="logoUpload"
-                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors ${logoUploading ? "cursor-not-allowed bg-gray-50 opacity-60" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors dark:border-white/10 ${logoUploading ? "cursor-not-allowed bg-gray-50 opacity-60 dark:bg-slate-900" : "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"}`}
                 >
                   <Upload size={14} />
                   {logoUploading ? "กำลังอัปโหลด..." : "เลือกไฟล์"}
                 </label>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-400">JPG, PNG, WebP ไม่เกิน 3MB</p>
-                  <p className="text-xs text-gray-400">แนะนำพื้นหลังโปร่งใส และใช้สัดส่วน 1:1, 3:1 หรือ 4:1 เพื่อให้แสดงผลได้ดีทั้งโลโก้แนวนอนและไอคอนร้าน</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">JPG, PNG, WebP ไม่เกิน 3MB</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">แนะนำพื้นหลังโปร่งใส และใช้สัดส่วน 1:1, 3:1 หรือ 4:1 เพื่อให้แสดงผลได้ดีทั้งโลโก้แนวนอนและไอคอนร้าน</p>
                 </div>
                 {logoError && <p className="text-xs text-red-500">{logoError}</p>}
               </div>
@@ -210,9 +213,9 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-kanit font-semibold text-gray-800">ข้อมูลหน้าเพจและการติดต่อ</h2>
-        <p className="mb-4 text-xs text-gray-400">กลุ่มนี้ใช้ควบคุมข้อมูลที่แสดงบนหน้าบ้านและส่วนท้ายเว็บไซต์ทั้งหมด รวมถึงข้อความ Hero</p>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-1 font-kanit font-semibold text-gray-800 dark:text-slate-100">ข้อมูลหน้าเพจและการติดต่อ</h2>
+        <p className="mb-4 text-xs text-gray-400 dark:text-slate-500">กลุ่มนี้ใช้ควบคุมข้อมูลที่แสดงบนหน้าบ้านและส่วนท้ายเว็บไซต์ทั้งหมด รวมถึงข้อความ Hero</p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
             <label className={labelClass}>หัวข้อหลักหน้าแรก (Hero Title)</label>
@@ -241,7 +244,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
           <div className="md:col-span-2">
             <label className={labelClass}>Google Maps Embed URL</label>
             <input name="shop_google_map_embed_url" defaultValue={config.shopGoogleMapEmbedUrl} className={inputClass} placeholder="https://www.google.com/maps/embed?pb=..." />
-            <p className="mt-1 text-xs text-gray-400">ใช้ลิงก์จาก Share &gt; Embed a map เพื่อให้แผนที่แสดงในส่วนท้ายเว็บ</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">ใช้ลิงก์จาก Share &gt; Embed a map เพื่อให้แผนที่แสดงในส่วนท้ายเว็บ</p>
           </div>
           <div className="md:col-span-2">
             <label className={labelClass}>วันหยุด / หมายเหตุหน้าร้าน</label>
@@ -254,9 +257,9 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-kanit font-semibold text-gray-800">ช่องทางโซเชียลมีเดีย</h2>
-        <p className="mb-4 text-xs text-gray-400">วาง URL และเปิด/ปิดการแสดงผลในหน้าเว็บ</p>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-1 font-kanit font-semibold text-gray-800 dark:text-slate-100">ช่องทางโซเชียลมีเดีย</h2>
+        <p className="mb-4 text-xs text-gray-400 dark:text-slate-500">วาง URL และเปิด/ปิดการแสดงผลในหน้าเว็บ</p>
         <div>
           <SocialRow platform="Facebook" urlName="shop_facebook_url" urlValue={config.shopFacebookUrl} enabledName="shop_facebook_enabled" enabled={facebookEnabled} onToggle={setFacebookEnabled} placeholder="https://facebook.com/yourpage" icon={<FacebookIcon />} />
           <SocialRow platform="TikTok" urlName="shop_tiktok_url" urlValue={config.shopTiktokUrl} enabledName="shop_tiktok_enabled" enabled={tiktokEnabled} onToggle={setTiktokEnabled} placeholder="https://tiktok.com/@yourpage" icon={<TiktokIcon />} />
@@ -265,23 +268,43 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f]">การตั้งค่าภาษี (VAT)</h2>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-5 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">การตั้งค่าภาษี (VAT)</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className={labelClass}>ประเภทภาษีเริ่มต้น</label>
-            <select name="vat_type" defaultValue={config.vatType} className={`${inputClass} bg-white`}>
+            <select name="vat_type" defaultValue={config.vatType} className={inputClass}>
               <option value="NO_VAT">ไม่มีภาษี (No VAT)</option>
               <option value="EXCLUDING_VAT">ราคาไม่รวม VAT (Excl. VAT)</option>
               <option value="INCLUDING_VAT">ราคารวม VAT แล้ว (Incl. VAT)</option>
             </select>
-            <p className="mt-1 text-xs text-gray-400">ค่าเริ่มต้นสำหรับเอกสารใหม่ สามารถปรับต่อรายการได้ภายหลัง</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">ค่าเริ่มต้นสำหรับเอกสารใหม่ สามารถปรับต่อรายการได้ภายหลัง</p>
           </div>
           <div>
             <label className={labelClass}>อัตรา VAT (%)</label>
             <input type="number" name="vat_rate" defaultValue={config.vatRate} min={0} max={100} step={0.01} className={inputClass} placeholder="7" />
-            <p className="mt-1 text-xs text-gray-400">เช่น 7 สำหรับ VAT 7%</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">เช่น 7 สำหรับ VAT 7%</p>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-2 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
+          Product Search Guardrails
+        </h2>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl space-y-1">
+            <p className="text-sm font-medium text-gray-800 dark:text-slate-100">Auto-apply SearchSynonym</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              เปิดให้ Product Search Quality report เขียน SearchSynonym อัตโนมัติจากรายการ dry-run ที่ผ่าน guard แล้วเท่านั้น ระบบยังไม่ auto-apply ProductAlias/OEM หรือ fitment/year
+            </p>
+          </div>
+          <Toggle
+            name="product_search_auto_apply_synonyms_enabled"
+            checked={productSearchAutoApplySynonymsEnabled}
+            onChange={setProductSearchAutoApplySynonymsEnabled}
+            label={productSearchAutoApplySynonymsEnabled ? "เปิด" : "ปิด"}
+          />
         </div>
       </div>
 
@@ -309,9 +332,9 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h2 className="mb-1 font-kanit font-semibold text-gray-800">โปรดทราบในฟอร์มพิมพ์</h2>
-        <p className="mb-4 text-xs text-gray-400">ใช้กับใบแจ้งหนี้ / ใบส่งของ และใบเสร็จรับเงิน โดยระบบรับไม่เกิน 5 บรรทัด</p>
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-1 font-kanit font-semibold text-gray-800 dark:text-slate-100">โปรดทราบในฟอร์มพิมพ์</h2>
+        <p className="mb-4 text-xs text-gray-400 dark:text-slate-500">ใช้กับใบแจ้งหนี้ / ใบส่งของ และใบเสร็จรับเงิน โดยระบบรับไม่เกิน 5 บรรทัด</p>
         <div className="grid grid-cols-1 gap-4">
           <div>
             <label className={labelClass}>รายละเอียดโปรดทราบ</label>
@@ -322,7 +345,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
               className={inputClass}
               placeholder={"1. เก็บเอกสารนี้ไว้เป็นหลักฐาน\n2. ตรวจสอบสินค้าและจำนวนก่อนรับของ\n3. ติดต่อร้านเมื่อพบความผิดปกติ"}
             />
-            <p className="mt-1 text-xs text-gray-400">บรรทัดว่างจะไม่ถูกนำไปแสดงในฟอร์มพิมพ์</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">บรรทัดว่างจะไม่ถูกนำไปแสดงในฟอร์มพิมพ์</p>
           </div>
         </div>
       </div>

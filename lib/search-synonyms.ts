@@ -12,6 +12,7 @@
 
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
+import { buildSearchVariants, normalizeSearchText, tokenizeSearchVariants } from "@/lib/search-normalization";
 
 const SYNONYM_CACHE_TAG = "search-synonyms";
 const SYNONYM_CACHE_KEY = ["search-synonyms:active"];
@@ -51,11 +52,18 @@ const buildExpansionMap = (rows: SynonymRow[]): Map<string, string[]> => {
 
   for (const row of rows) {
     const cluster = Array.from(
-      new Set([row.term, ...row.synonyms].map((s) => s.trim().toLowerCase()).filter(Boolean)),
+      new Set([row.term, ...row.synonyms].map((s) => normalizeSearchText(s)).filter(Boolean)),
     );
     if (cluster.length === 0) continue;
 
-    for (const key of cluster) {
+    const keys = new Set<string>();
+    for (const item of cluster) {
+      for (const variant of buildSearchVariants(item)) {
+        keys.add(variant);
+      }
+    }
+
+    for (const key of keys) {
       const existing = map.get(key);
       if (existing) {
         // Merge clusters — handles overlapping synonyms like "Vios" ↔ "วีออส" plus "vios" ↔ "v-ios"
@@ -77,7 +85,7 @@ const buildExpansionMap = (rows: SynonymRow[]): Map<string, string[]> => {
  * Returns the original token plus all known synonyms (lower-cased).
  */
 export async function expandQueryTokens(rawQuery: string): Promise<string[]> {
-  const normalized = rawQuery.trim().toLowerCase();
+  const normalized = normalizeSearchText(rawQuery);
   if (!normalized) return [];
 
   const rows = await loadActiveSynonyms();
@@ -87,8 +95,7 @@ export async function expandQueryTokens(rawQuery: string): Promise<string[]> {
 
   // Tokenize on whitespace AND keep the full query as a single token so
   // multi-word terms like "คอมแอร์วีออส" still match dictionary entries.
-  const wordTokens = normalized.split(/\s+/).filter(Boolean);
-  const candidates = new Set<string>([normalized, ...wordTokens]);
+  const candidates = new Set<string>(tokenizeSearchVariants(normalized));
 
   const expanded = new Set<string>();
   for (const token of candidates) {
