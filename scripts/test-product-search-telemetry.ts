@@ -41,6 +41,14 @@ assert.equal(
 );
 assert.equal(
   shouldLogProductSearchTelemetry({ input: baseInput, resultCount: 1 }),
+  true,
+);
+assert.equal(
+  shouldLogProductSearchTelemetry({ input: baseInput, resultCount: 3 }),
+  true,
+);
+assert.equal(
+  shouldLogProductSearchTelemetry({ input: baseInput, resultCount: 4 }),
   false,
 );
 assert.equal(

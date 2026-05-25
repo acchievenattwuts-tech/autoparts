@@ -8,6 +8,9 @@
 - [cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
 - [delivery-queue.md](/D:/autoparts/docs/specs/delivery-queue.md)
 - [lot-control.md](/D:/autoparts/docs/specs/lot-control.md)
+- [product-search-log-analysis.md](/D:/autoparts/docs/specs/product-search-log-analysis.md)
+- [product-search-overhaul.md](/D:/autoparts/docs/specs/product-search-overhaul.md)
+- [product-search-quality-improvements.md](/D:/autoparts/docs/specs/product-search-quality-improvements.md)
 - [warranty-claim.md](/D:/autoparts/docs/specs/warranty-claim.md)
 
 ## Writing Rules

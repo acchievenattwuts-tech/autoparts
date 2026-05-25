@@ -15,6 +15,7 @@
 ## Current Focus
 - `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
+- Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
 - รักษาเอกสารให้ AI อ่านง่าย: ใช้ไฟล์นี้เป็น index และย้ายรายละเอียดลงเอกสารเฉพาะเรื่อง
 
 ## Current Priorities
@@ -40,6 +41,15 @@
   - [docs/seo/phase-7-final-status-2026-04-03.md](/D:/autoparts/docs/seo/phase-7-final-status-2026-04-03.md)
   - [docs/seo/phase-7-follow-up-2026-04-03.md](/D:/autoparts/docs/seo/phase-7-follow-up-2026-04-03.md)
   - [docs/seo/phase-7-external-verification-2026-04-03.md](/D:/autoparts/docs/seo/phase-7-external-verification-2026-04-03.md)
+
+### 3. Product Search Quality Follow-up
+- สถานะ: Phase E + F1 + F2 เสร็จแล้ว, phase ถัดไปถูกเพิ่มใน roadmap
+- เอกสาร active: [docs/specs/product-search-log-analysis.md](/D:/autoparts/docs/specs/product-search-log-analysis.md)
+- สิ่งที่ต้องทำต่อ:
+  - [x] Phase F3 - Review Outcome Tracking
+  - [x] Phase F4 - Fitment/Year Remediation Flow
+  - [x] Phase F5 - Closed-Loop Measurement
+  - [x] Phase F6 - Guarded Auto-Apply
 
 ## Source Of Truth Map
 ### Product and Inventory

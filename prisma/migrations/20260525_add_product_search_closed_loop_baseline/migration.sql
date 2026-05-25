@@ -1,0 +1,5 @@
+ALTER TABLE "ProductSearchReviewOutcome"
+  ADD COLUMN IF NOT EXISTS "baselineCount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "baselineAvg" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "baselineLatestAt" TIMESTAMPTZ(3),
+  ADD COLUMN IF NOT EXISTS "baselineSources" JSONB;
