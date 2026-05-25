@@ -70,9 +70,11 @@ async function run() {
   assert.match(pageSource, /ยี่ห้อรถ/, "Products page must render the fitment column header");
   assert.match(pageSource, /buildAdminProductFitmentSummary/, "Products page must use the fitment summary helper");
   assert.match(pageSource, /carModels:\s*\{/, "Products page query must fetch fitment data");
+  assert.doesNotMatch(pageSource, /เธ/, "Products page must not contain mojibake Thai text");
+  assert.match(pageSource, /จัดการสินค้า/, "Products page title must remain readable Thai");
+  assert.match(pageSource, /ผลการค้นหา/, "Products page summary text must remain readable Thai");
 
   console.log("Product master fitment column checks passed");
 }
 
 void run();
-
