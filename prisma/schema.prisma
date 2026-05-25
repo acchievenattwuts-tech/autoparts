@@ -479,6 +479,26 @@ model ProductSearchReviewOutcome {
   @@index([reviewedAt(sort: Desc)])
 }
 
+model ProductSearchClusterCache {
+  id               String   @id @default(cuid())
+  windowKey        String   @db.VarChar(20)
+  normalizedQuery  String   @db.VarChar(200)
+  candidateAction  String   @db.VarChar(50)
+  bucket           String   @db.VarChar(20)
+  count            Int
+  minResultCount   Int
+  avgResultCount   Decimal  @db.Decimal(10, 2)
+  latestAt         DateTime @db.Timestamptz(3)
+  rawQueriesSample Json
+  sourceCounts     Json
+  windowStart      DateTime @db.Timestamptz(3)
+  windowEnd        DateTime @db.Timestamptz(3)
+  computedAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([windowKey, normalizedQuery, candidateAction])
+  @@index([windowKey, computedAt])
+}
+
 model ProductFitment {
   productId  String
   carModelId String

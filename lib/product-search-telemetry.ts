@@ -1,3 +1,5 @@
+import { normalizeSearchText } from "@/lib/search-normalization";
+
 type ProductSearchTelemetryInput = {
   query?: string | null;
   isActive?: boolean;
@@ -27,6 +29,24 @@ type ProductSearchLogInputArgs = {
 const MAX_QUERY_LENGTH = 200;
 const MAX_PATH_LENGTH = 200;
 const MAX_FILTER_VALUE_LENGTH = 100;
+const MAX_DEDUPE_KEY_LENGTH = 280;
+const DEDUPE_BUCKET_MS = 60 * 60 * 1000;
+export const LOW_RESULT_SEARCH_THRESHOLD = 3;
+
+export const buildProductSearchDedupeKey = ({
+  query,
+  source,
+  at,
+}: {
+  query: string;
+  source: ProductSearchLogSource;
+  at: Date;
+}): string => {
+  const normalized = normalizeSearchText(query);
+  if (!normalized) return "";
+  const bucket = Math.floor(at.getTime() / DEDUPE_BUCKET_MS);
+  return `${normalized}|${source}|${bucket}`.slice(0, MAX_DEDUPE_KEY_LENGTH);
+};
 
 const cleanText = (value: string | null | undefined, maxLength = MAX_FILTER_VALUE_LENGTH): string | undefined => {
   const normalized = value?.trim().replace(/\s+/g, " ");
@@ -44,7 +64,9 @@ export const shouldLogProductSearchTelemetry = ({
   input,
   resultCount,
 }: Pick<ProductSearchLogInputArgs, "input" | "resultCount">): boolean =>
-  resultCount === 0 && Boolean(cleanText(input.query, MAX_QUERY_LENGTH));
+  resultCount >= 0 &&
+  resultCount <= LOW_RESULT_SEARCH_THRESHOLD &&
+  Boolean(cleanText(input.query, MAX_QUERY_LENGTH));
 
 export const buildProductSearchLogInput = ({
   input,
@@ -91,8 +113,30 @@ export async function logProductSearchTelemetry(args: ProductSearchLogInputArgs)
   try {
     const { db } = await import("@/lib/db");
     const data = buildProductSearchLogInput(args);
+    const now = new Date();
+    const dedupeKey = buildProductSearchDedupeKey({
+      query: data.query,
+      source: args.source,
+      at: now,
+    });
 
-    await db.productSearchLog.create({ data });
+    // Fire-and-forget: telemetry must never block the search response.
+    // Repeated identical searches inside the same hourly bucket upsert into a
+    // single row (incrementing hitCount) instead of bloating the table.
+    void db.productSearchLog
+      .upsert({
+        where: { dedupeKey },
+        create: { ...data, dedupeKey, hitCount: 1 },
+        update: {
+          resultCount: data.resultCount,
+          filters: data.filters,
+          path: data.path,
+          hitCount: { increment: 1 },
+        },
+      })
+      .catch((error) => {
+        console.error("Product search telemetry logging failed.", error);
+      });
   } catch (error) {
     console.error("Product search telemetry logging failed.", error);
   }
