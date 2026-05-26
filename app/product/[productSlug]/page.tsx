@@ -403,6 +403,29 @@ const ProductDetailPage = async ({ params }: Props) => {
           </div>
         </section>
 
+        {relatedProducts.length > 0 && (
+          <section className="mx-auto max-w-7xl px-4 pb-6 sm:px-6 lg:px-8">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="font-kanit text-xl font-semibold text-[#10213d]">
+                สินค้าใกล้เคียงในหมวดเดียวกัน
+              </h2>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+                ถ้ายังต้องการเทียบหลายตัวก่อนสั่ง ลองเปิดดูสินค้าอื่นในหมวดเดียวกันแล้วส่งลิงก์หรือรหัสที่สงสัยให้ร้านช่วยเช็กต่อได้
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {relatedProducts.map((relatedProduct, index) => (
+                  <ScrollReveal key={relatedProduct.id} delay={index * 50} className="h-full">
+                    <ProductCard
+                      product={relatedProduct}
+                      lineUrl={config.shopLineUrl}
+                    />
+                  </ScrollReveal>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
         {product.aliases.length > 0 && (
           <section className="mx-auto max-w-7xl px-4 pb-6 sm:px-6 lg:px-8">
             <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -418,9 +441,9 @@ const ProductDetailPage = async ({ params }: Props) => {
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                {product.aliases.map(({ alias }) => (
+                {product.aliases.map(({ alias }, index) => (
                   <span
-                    key={alias}
+                    key={`${alias}-${index}`}
                     className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600"
                   >
                     {alias}
@@ -487,28 +510,6 @@ const ProductDetailPage = async ({ params }: Props) => {
           </div>
         </section>
 
-        {relatedProducts.length > 0 && (
-          <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="font-kanit text-xl font-semibold text-[#10213d]">
-                สินค้าใกล้เคียงในหมวดเดียวกัน
-              </h2>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                ถ้ายังต้องการเทียบหลายตัวก่อนสั่ง ลองเปิดดูสินค้าอื่นในหมวดเดียวกันแล้วส่งลิงก์หรือรหัสที่สงสัยให้ร้านช่วยเช็กต่อได้
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {relatedProducts.map((relatedProduct, index) => (
-                  <ScrollReveal key={relatedProduct.id} delay={index * 50} className="h-full">
-                    <ProductCard
-                      product={relatedProduct}
-                      lineUrl={config.shopLineUrl}
-                    />
-                  </ScrollReveal>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
       </main>
       <Footer config={config} />
       <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
