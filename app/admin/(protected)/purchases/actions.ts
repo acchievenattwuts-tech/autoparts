@@ -464,8 +464,9 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
         },
       },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
+          lineNo: true,
           productId: true,
           supplierId: true,
           quantity: true,
@@ -515,6 +516,7 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
       productId: item.productId,
       productCode: item.product.code,
       productName: item.product.name,
+      lineNo: item.lineNo,
       supplierId: item.supplierId,
       quantity: item.quantity,
       costPrice: item.costPrice,
@@ -639,6 +641,7 @@ export async function createPurchase(
         const purchaseItem = await tx.purchaseItem.create({
           data: {
             purchaseId:    purchase.id,
+            lineNo:        itemIndex + 1,
             productId:     item.productId,
             supplierId:    supplierId || null,
             quantity:      Math.round(qtyInBase),
@@ -835,6 +838,7 @@ export async function updatePurchase(
       items: {
         select: {
           id: true,
+          lineNo: true,
           productId: true,
           quantity: true,
           costPrice: true,
@@ -1138,6 +1142,7 @@ export async function updatePurchase(
               where: { id: existingItemId },
               data: {
                 supplierId: supplierId || null,
+                lineNo: newIdx + 1,
                 subtotalAmount: itemSubtotal,
                 ...(canUpdateLandedAllocationInPlace
                   ? { landedCost: landedCostPerSelectedUnit }
@@ -1235,6 +1240,7 @@ export async function updatePurchase(
         const purchaseItem = await tx.purchaseItem.create({
           data: {
             purchaseId:    id,
+            lineNo:        itemIndex + 1,
             productId:     item.productId,
             supplierId:    supplierId || null,
             quantity:      Math.round(qtyInBase),

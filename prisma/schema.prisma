@@ -607,6 +607,7 @@ model Purchase {
 model PurchaseItem {
   id             String            @id @default(cuid())
   purchaseId     String
+  lineNo         Int               @default(0)
   productId      String
   supplierId     String?
   quantity       Int
@@ -618,6 +619,8 @@ model PurchaseItem {
   purchase       Purchase          @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   supplier       Supplier?         @relation(fields: [supplierId], references: [id])
   lotItems       PurchaseItemLot[]
+
+  @@index([purchaseId, lineNo])
 }
 
 model Customer {

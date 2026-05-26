@@ -22,6 +22,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
       user: { select: { name: true } },
       cashBankAccount: { select: { name: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           product: { select: { code: true, name: true, isLotControl: true } },
           lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
