@@ -20,6 +20,15 @@ import { db } from "@/lib/db";
 // Type for Prisma transaction client
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
+function sqlStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function sqlNumericLiteral(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return String(value);
+}
+
 export interface StockCardInput {
   productId: string;
   docNo: string;
@@ -146,24 +155,26 @@ export async function recalculateStockCard(
     const chunk = pendingUpdates.slice(i, i + updateChunkSize);
     if (chunk.length === 0) continue;
 
-    await tx.$executeRaw`
+    const values = chunk
+      .map((update) => `(
+        ${sqlStringLiteral(update.id)},
+        ${sqlNumericLiteral(update.priceOut)}::numeric,
+        ${sqlNumericLiteral(update.qtyBalance)}::numeric,
+        ${sqlNumericLiteral(update.priceBalance)}::numeric
+      )`)
+      .join(",");
+
+    await tx.$executeRawUnsafe(`
       UPDATE "StockCard" AS sc
       SET
         "priceOut" = data."priceOut",
         "qtyBalance" = data."qtyBalance",
         "priceBalance" = data."priceBalance"
       FROM (
-        VALUES ${Prisma.join(
-          chunk.map((update) => Prisma.sql`(
-            ${update.id},
-            ${update.priceOut}::numeric,
-            ${update.qtyBalance}::numeric,
-            ${update.priceBalance}::numeric
-          )`),
-        )}
+        VALUES ${values}
       ) AS data("id", "priceOut", "qtyBalance", "priceBalance")
       WHERE sc."id" = data."id"
-    `;
+    `);
   }
 
   // Update Product with final balance
