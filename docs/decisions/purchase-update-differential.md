@@ -2,8 +2,7 @@
 
 ## Status
 - Active (2026-05-26)
-- Applies to: `updatePurchase`, `updateSale`, `updatePurchaseReturn`
-- Not yet applied to: `updateCreditNote`
+- Applies to: `updatePurchase`, `updateSale`, `updatePurchaseReturn`, `updateCreditNote`
 
 ## Context
 - หน้าฟอร์มแก้ไขเอกสาร (`/admin/purchases/[id]/edit`, `/admin/sales/[id]/edit`) เดิมทำงานแบบ "delete-then-recreate" คือเวลา save:
@@ -44,6 +43,20 @@
   - `saleDate` เปลี่ยน → `docDate` ของทุก StockCard row ต้องเปลี่ยน
 - **ไม่มี landed cost allocation** → `shippingFee` / `discount` เปลี่ยนไม่กระทบ per-line cost ของ sale → ไม่ trigger fallback
 
+### Credit Note signature (base-unit)
+`productId | qtyInBase | salePrice | sorted lots(lotNo|qtyInBase|isReturnLot)`
+
+- Helper: `buildCreditNoteItemSignature()` ใน `credit-notes/actions.ts`
+- Lot ของ CN เก็บ `lotNo` + `qty` + `isReturnLot` → ใส่ `isReturnLot` ใน signature ด้วย
+- `productId` nullable (free-form items อย่างค่าธรรมเนียม) — signature ใช้ empty string แทน null ตัด match ตาม qty+price ได้ปกติ
+- Header-derived sync บน matched items: `subtotalAmount` (เมื่อ vatType / vatRate เปลี่ยน)
+- Fallback ถูกบังคับเมื่อ:
+  - `cnDate` เปลี่ยน → docDate ของทุก StockCard row ต้องเปลี่ยน
+  - `type` เปลี่ยน (RETURN ↔ CREDIT_DEBT) → stock effect toggle ทั้งใบ
+  - `saleId` เปลี่ยน → `buildSaleReferenceCostMap()` เปลี่ยน → priceIn ของ `RETURN_IN` ทุก row ต้องเปลี่ยน
+- `customerId` เปลี่ยนไม่ trigger fallback (เป็นแค่ header field)
+- กรณี CREDIT_DEBT ทั้งเก่าและใหม่ → ไม่มี StockCard work เลย แต่ differential ยังช่วยลด delete/recreate ของ `CreditNoteItem` rows
+
 ### Purchase Return signature (base-unit)
 `productId | qtyInBase | costPerBase | sorted lots(lotNo|qtyInBase)`
 
@@ -71,13 +84,13 @@
 - Sale: `recalculateSaleAmountRemain`, `replaceCashBankSourceMovements`, `rebuildSaleProfitFacts` ยังถูกเรียกหลัง diff path เหมือนเดิม
 
 ## Out of Scope
-- ยังไม่ apply กับ:
-  - `updateCreditNote`
-- ถ้าจะขยายไปโมดูลอื่นต้องเปิด task แยก เพราะแต่ละโมดูลมี nuance ต่างกัน (lot direction, AR/AP clearing, reference cost, neutral stock-in)
+- ครอบคลุม update flows ทั้งหมดของเอกสาร stock-affecting แล้ว
+- โมดูลอื่นที่ไม่กระทบ stock โดยตรง (receipt, expense, adjustment, ฯลฯ) ไม่อยู่ใน pattern นี้ — ใช้เพราะ delete-then-recreate ของเอกสารกลุ่ม stock ที่กระทบ MAVG เท่านั้น
 
 ## Source of Truth
 - Purchase: `app/admin/(protected)/purchases/actions.ts` → `updatePurchase`, `buildItemStockSignature()`
 - Sale: `app/admin/(protected)/sales/actions.ts` → `updateSale`, `buildSaleItemSignature()`
 - Purchase Return: `app/admin/(protected)/purchase-returns/actions.ts` → `updatePurchaseReturn`, `buildPurchaseReturnItemSignature()`
+- Credit Note: `app/admin/(protected)/credit-notes/actions.ts` → `updateCreditNote`, `buildCreditNoteItemSignature()`
 - MAVG engine: `lib/stock-card.ts` (`recalculateStockCard`, `writeStockCard`)
-- Lot ledger: `lib/lot-control.ts` (`reverseSaleLotBalance`, `reversePurchaseLotBalance`, `reversePurchaseReturnLotBalance`, `writeSaleLots`, `writePurchaseLots`, `writePurchaseReturnLots`)
+- Lot ledger: `lib/lot-control.ts` (`reverseSaleLotBalance`, `reversePurchaseLotBalance`, `reversePurchaseReturnLotBalance`, `reverseCreditNoteLotBalance`, `writeSaleLots`, `writePurchaseLots`, `writePurchaseReturnLots`, `writeCreditNoteLots`)

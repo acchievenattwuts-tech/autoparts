@@ -184,6 +184,38 @@ const cnSchema = z.object({
   items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+// Build a stable signature for a credit-note line in BASE-UNIT terms.
+// Matched signatures produce identical StockCard (RETURN_IN) + lot-ledger
+// + amount effects, so the differential updater can keep them untouched.
+// CreditNoteItemLot stores lotNo+qty+isReturnLot (no unitCost/mfg/exp),
+// so the lot portion is compact. salePrice is the value seller refunds,
+// not stock cost — cost is locked at write time via referenceCostMap.
+type CreditNoteSigLot = {
+  lotNo:       string;
+  qtyInBase:   number;
+  isReturnLot: boolean;
+};
+
+function buildCreditNoteItemSignature(payload: {
+  productId: string | null;
+  qtyInBase: number;
+  salePrice: number;
+  lots:      CreditNoteSigLot[];
+}): string {
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const lotsSig = payload.lots
+    .map((l) => [l.lotNo, round4(l.qtyInBase), l.isReturnLot ? "1" : "0"].join("|"))
+    .sort()
+    .join("//");
+  return [
+    payload.productId ?? "",
+    round4(payload.qtyInBase),
+    round2(payload.salePrice),
+    lotsSig,
+  ].join("||");
+}
+
 async function resolveCreditNoteRefundMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   accountId: string | undefined,
@@ -659,7 +691,19 @@ export async function updateCreditNote(
 
   const existing = await db.creditNote.findUnique({
     where: { id },
-    include: { items: { select: { id: true, productId: true } } },
+    include: {
+      items: {
+        select: {
+          id:        true,
+          productId: true,
+          qty:       true,
+          unitPrice: true,
+          lotItems: {
+            select: { lotNo: true, qty: true, isReturnLot: true },
+          },
+        },
+      },
+    },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
@@ -714,6 +758,114 @@ export async function updateCreditNote(
     ...new Set(existing.items.map((i) => i.productId).filter((pid): pid is string => pid !== null)),
   ];
 
+  // ─── Differential decision (header-level triggers) ────────────────────────
+  // Fall back to full reset when any of these change, because each affects
+  // every existing line:
+  //   - cnDate → docDate of every StockCard row would need to change
+  //   - type (RETURN ↔ CREDIT_DEBT) → stock effects toggle on/off entirely
+  //   - saleId → buildSaleReferenceCostMap() shifts → priceIn of every
+  //     RETURN_IN row would need to change
+  const cnDateChanged =
+    existing.cnDate.toISOString().slice(0, 10) !== cnDate;
+  const typeChanged = existing.type !== type;
+  const saleIdChanged =
+    (existing.saleId ?? null) !== (saleId || null);
+  const useDifferential =
+    !cnDateChanged && !typeChanged && !saleIdChanged;
+
+  // Resolve unit scales for incoming items so we can normalize them into
+  // base units before computing signatures.
+  const newUnitLookup = validItems.length === 0
+    ? []
+    : await db.productUnit.findMany({
+        where: {
+          OR: validItems.map((i) => ({
+            productId: i.productId,
+            name: i.unitName,
+          })),
+        },
+        select: { productId: true, name: true, scale: true },
+      });
+  const newUnitScaleMap = new Map(
+    newUnitLookup.map((u) => [`${u.productId}::${u.name}`, Number(u.scale)]),
+  );
+
+  type ExistingCNSig = {
+    existingItemId: string;
+    productId:      string | null;
+    signature:      string;
+  };
+  type NewCNSig = {
+    newIdx:    number;
+    productId: string;
+    signature: string;
+  };
+
+  const oldItemSigs: ExistingCNSig[] = useDifferential
+    ? existing.items.map((item) => ({
+        existingItemId: item.id,
+        productId:      item.productId,
+        signature: buildCreditNoteItemSignature({
+          productId: item.productId,
+          qtyInBase: Number(item.qty),
+          salePrice: Number(item.unitPrice),
+          lots: item.lotItems.map((l) => ({
+            lotNo:       l.lotNo,
+            qtyInBase:   Number(l.qty),
+            isReturnLot: l.isReturnLot,
+          })),
+        }),
+      }))
+    : [];
+
+  const newItemSigs: NewCNSig[] = useDifferential
+    ? validItems.map((item, idx) => {
+        const scale =
+          newUnitScaleMap.get(`${item.productId}::${item.unitName}`) ?? 1;
+        return {
+          newIdx:    idx,
+          productId: item.productId,
+          signature: buildCreditNoteItemSignature({
+            productId: item.productId,
+            qtyInBase: item.qty * scale,
+            salePrice: item.salePrice,
+            lots: (item.lotItems ?? []).map((l) => ({
+              lotNo:       l.lotNo.trim(),
+              qtyInBase:   l.qty * scale,
+              isReturnLot: l.isReturnLot,
+            })),
+          }),
+        };
+      })
+    : [];
+
+  // Greedy multiset match
+  const matchedExistingIds = new Set<string>();
+  const matchedByNewIdx = new Map<number, string>();
+  if (useDifferential) {
+    for (const n of newItemSigs) {
+      const candidate = oldItemSigs.find(
+        (o) =>
+          !matchedExistingIds.has(o.existingItemId) && o.signature === n.signature,
+      );
+      if (candidate) {
+        matchedExistingIds.add(candidate.existingItemId);
+        matchedByNewIdx.set(n.newIdx, candidate.existingItemId);
+      }
+    }
+  }
+  const removedExistingItems = useDifferential
+    ? oldItemSigs.filter((o) => !matchedExistingIds.has(o.existingItemId))
+    : [];
+  const addedNewItems = useDifferential
+    ? newItemSigs.filter((n) => !matchedByNewIdx.has(n.newIdx))
+    : [];
+  const affectedProductIds = new Set<string>();
+  removedExistingItems.forEach((r) => { if (r.productId) affectedProductIds.add(r.productId); });
+  addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
+
+  const oldHadStock = existing.type === "RETURN";
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
@@ -728,21 +880,47 @@ export async function updateCreditNote(
         resolvedCashBankAccountId,
       );
 
-      // 1. Reverse old stock effects (only if old type was RETURN)
-      if (existing.type === "RETURN" && oldProductIds.length > 0) {
-        for (const item of existing.items) {
-          if (item.productId) {
-            await reverseCreditNoteLotBalance(tx, item.id, item.productId);
+      // 1. Reverse stock effects + delete items.
+      //    Differential: only removed lines (and recalc only affected products).
+      //    Fallback: all existing lines + all old products.
+      if (useDifferential) {
+        if (oldHadStock && removedExistingItems.length > 0) {
+          for (const removed of removedExistingItems) {
+            if (removed.productId) {
+              await reverseCreditNoteLotBalance(tx, removed.existingItemId, removed.productId);
+            }
+            await tx.stockCard.deleteMany({
+              where: {
+                docNo:       existing.cnNo,
+                referenceId: removed.existingItemId,
+              },
+            });
           }
         }
-        await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
-        for (const productId of oldProductIds) {
-          await recalculateStockCard(tx, productId);
+        if (removedExistingItems.length > 0) {
+          await tx.creditNoteItem.deleteMany({
+            where: { id: { in: removedExistingItems.map((r) => r.existingItemId) } },
+          });
         }
+        if (oldHadStock) {
+          for (const productId of affectedProductIds) {
+            await recalculateStockCard(tx, productId);
+          }
+        }
+      } else {
+        if (oldHadStock && oldProductIds.length > 0) {
+          for (const item of existing.items) {
+            if (item.productId) {
+              await reverseCreditNoteLotBalance(tx, item.id, item.productId);
+            }
+          }
+          await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
+          for (const productId of oldProductIds) {
+            await recalculateStockCard(tx, productId);
+          }
+        }
+        await tx.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
       }
-
-      // 2. Delete old line items
-      await tx.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
 
       // 3. Update header
       await tx.creditNote.update({
@@ -765,8 +943,33 @@ export async function updateCreditNote(
         },
       });
 
-      // 4. Re-create items + stock cards
-      for (const item of validItems) {
+      // 3b. Sync header-derived fields on matched items in differential path.
+      //     subtotalAmount = calcItemSubtotal(amount, vatType, vatRate)
+      //     follows header VAT changes.
+      if (useDifferential && matchedByNewIdx.size > 0) {
+        const taxBasisChanged =
+          existing.vatType !== vatType ||
+          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
+        if (taxBasisChanged) {
+          for (const [newIdx, existingItemId] of matchedByNewIdx) {
+            const item = validItems[newIdx];
+            const itemTotal = item.qty * item.salePrice;
+            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            await tx.creditNoteItem.update({
+              where: { id: existingItemId },
+              data:  { subtotalAmount: itemSubtotal },
+            });
+          }
+        }
+      }
+
+      // 4. Create items + stock cards.
+      //    Differential: only added/changed lines. Fallback: every line.
+      const itemsToCreate = useDifferential
+        ? addedNewItems.map((a) => validItems[a.newIdx])
+        : validItems;
+
+      for (const item of itemsToCreate) {
         const unit = await tx.productUnit.findUnique({
           where: { productId_name: { productId: item.productId, name: item.unitName } },
         });
