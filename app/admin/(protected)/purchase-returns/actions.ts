@@ -85,6 +85,36 @@ type LineData = {
   lotItems: z.infer<typeof lotSubRowSchema>[];
 };
 
+// Build a stable signature for a purchase-return line in BASE-UNIT terms.
+// Lines whose signature matches an existing DB line produce identical
+// StockCard (RETURN_OUT) + lot-ledger + amount effects, so the differential
+// updater can keep them untouched. PurchaseReturnItemLot stores only
+// lotNo+qty (no unitCost/mfg/exp), so the lot portion is simpler than
+// purchase's signature.
+type PurchaseReturnSigLot = {
+  lotNo:     string;
+  qtyInBase: number;
+};
+
+function buildPurchaseReturnItemSignature(payload: {
+  productId:   string;
+  qtyInBase:   number;
+  costPerBase: number;
+  lots:        PurchaseReturnSigLot[];
+}): string {
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const lotsSig = payload.lots
+    .map((l) => [l.lotNo, round4(l.qtyInBase)].join("|"))
+    .sort()
+    .join("//");
+  return [
+    payload.productId,
+    round4(payload.qtyInBase),
+    round4(payload.costPerBase),
+    lotsSig,
+  ].join("||");
+}
+
 async function preloadPurchaseReturnLineMaps(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   items: z.infer<typeof returnItemSchema>[],
@@ -844,7 +874,15 @@ export async function updatePurchaseReturn(
   const existing = await db.purchaseReturn.findUnique({
     where: { id },
     include: {
-      items: { select: { id: true, productId: true } },
+      items: {
+        select: {
+          id:        true,
+          productId: true,
+          qty:       true,
+          costPrice: true,
+          lotItems:  { select: { lotNo: true, qty: true } },
+        },
+      },
     },
   });
   if (!existing) return { error: "ไม่พบเอกสาร" };
@@ -905,6 +943,22 @@ export async function updatePurchaseReturn(
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
   const oldHadStock = existing.type === PurchaseReturnType.RETURN;
 
+  // ─── Differential decision (header-level triggers) ────────────────────────
+  // Falls back to full reset when any of these change, because the change
+  // affects every existing line:
+  //   - returnDate → docDate of every StockCard row would need to change
+  //   - type (RETURN ↔ DEBIT) → stock effects toggle on/off entirely
+  //   - purchaseId → buildPurchaseReferenceCostMap() shifts → priceIn of
+  //     every RETURN_OUT row would need to change
+  // claimId change is handled separately (per-document, runs in both paths).
+  const returnDateChanged =
+    existing.returnDate.toISOString().slice(0, 10) !== returnDate;
+  const typeChanged = existing.type !== type;
+  const purchaseIdChanged =
+    (existing.purchaseId ?? null) !== (purchaseId || null);
+  const useDifferential =
+    !returnDateChanged && !typeChanged && !purchaseIdChanged;
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(id);
@@ -919,18 +973,118 @@ export async function updatePurchaseReturn(
         });
       }
 
-      if (oldHadStock) {
-        for (const item of existing.items) {
-          await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
-        }
-        await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
-        for (const productId of oldProductIds) {
-          await recalculateStockCard(tx, productId);
+      // Build lineData first so we have resolved per-base costs for both the
+      // header total and the signature comparison.
+      const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+
+      // ─── Per-line diff (only meaningful when useDifferential) ────────────
+      type ExistingPRSig = {
+        existingItemId: string;
+        productId:      string;
+        signature:      string;
+      };
+      type NewPRSig = {
+        newIdx:    number;
+        productId: string;
+        signature: string;
+      };
+
+      const oldItemSigs: ExistingPRSig[] = useDifferential
+        ? existing.items.map((item) => ({
+            existingItemId: item.id,
+            productId:      item.productId,
+            signature: buildPurchaseReturnItemSignature({
+              productId:   item.productId,
+              qtyInBase:   Number(item.qty),
+              costPerBase: Number(item.costPrice),
+              lots: item.lotItems.map((l) => ({
+                lotNo:     l.lotNo,
+                qtyInBase: Number(l.qty),
+              })),
+            }),
+          }))
+        : [];
+
+      const newItemSigs: NewPRSig[] = useDifferential
+        ? lineData.map((line, idx) => ({
+            newIdx:    idx,
+            productId: line.productId,
+            signature: buildPurchaseReturnItemSignature({
+              productId:   line.productId,
+              qtyInBase:   line.qtyInBase,
+              costPerBase: line.costPerBase,
+              lots: (line.lotItems ?? []).map((l) => {
+                const lineScale = line.qty === 0 ? 1 : line.qtyInBase / line.qty;
+                return {
+                  lotNo:     l.lotNo.trim(),
+                  qtyInBase: l.qty * lineScale,
+                };
+              }),
+            }),
+          }))
+        : [];
+
+      // Greedy multiset match
+      const matchedExistingIds = new Set<string>();
+      const matchedByNewIdx = new Map<number, string>();
+      if (useDifferential) {
+        for (const n of newItemSigs) {
+          const candidate = oldItemSigs.find(
+            (o) =>
+              !matchedExistingIds.has(o.existingItemId) && o.signature === n.signature,
+          );
+          if (candidate) {
+            matchedExistingIds.add(candidate.existingItemId);
+            matchedByNewIdx.set(n.newIdx, candidate.existingItemId);
+          }
         }
       }
-      await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
+      const removedExistingItems = useDifferential
+        ? oldItemSigs.filter((o) => !matchedExistingIds.has(o.existingItemId))
+        : [];
+      const addedNewItems = useDifferential
+        ? newItemSigs.filter((n) => !matchedByNewIdx.has(n.newIdx))
+        : [];
+      const affectedProductIds = new Set<string>();
+      removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
+      addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
 
-      const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+      // ─── Drop stock effects + items for removed/all ──────────────────────
+      if (useDifferential) {
+        if (oldHadStock && removedExistingItems.length > 0) {
+          for (const removed of removedExistingItems) {
+            await reversePurchaseReturnLotBalance(tx, removed.existingItemId, removed.productId);
+            await tx.stockCard.deleteMany({
+              where: {
+                docNo:       existing.returnNo,
+                referenceId: removed.existingItemId,
+              },
+            });
+          }
+        }
+        if (removedExistingItems.length > 0) {
+          await tx.purchaseReturnItem.deleteMany({
+            where: { id: { in: removedExistingItems.map((r) => r.existingItemId) } },
+          });
+        }
+        if (oldHadStock) {
+          for (const productId of affectedProductIds) {
+            await recalculateStockCard(tx, productId);
+          }
+        }
+      } else {
+        if (oldHadStock) {
+          for (const item of existing.items) {
+            await reversePurchaseReturnLotBalance(tx, item.id, item.productId);
+          }
+          await tx.stockCard.deleteMany({ where: { docNo: existing.returnNo } });
+          for (const productId of oldProductIds) {
+            await recalculateStockCard(tx, productId);
+          }
+        }
+        await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
+      }
+
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
       const resolvedCashBankAccountId =
@@ -959,7 +1113,31 @@ export async function updatePurchaseReturn(
         },
       });
 
-      await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, lineData, type, purchaseId);
+      // Sync header-derived fields on items we kept untouched in the
+      // differential path. subtotalAmount = calcItemSubtotal(totalAmount,
+      // vatType, vatRate) so it must follow header VAT changes.
+      if (useDifferential && matchedByNewIdx.size > 0) {
+        const taxBasisChanged =
+          existing.vatType !== vatType ||
+          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
+        if (taxBasisChanged) {
+          for (const [newIdx, existingItemId] of matchedByNewIdx) {
+            const line = lineData[newIdx];
+            await tx.purchaseReturnItem.update({
+              where: { id: existingItemId },
+              data:  { subtotalAmount: line.subtotalAmount },
+            });
+          }
+        }
+      }
+
+      // Create only added (differential) or all (fallback) lines.
+      const linesToWrite = useDifferential
+        ? addedNewItems.map((a) => lineData[a.newIdx])
+        : lineData;
+      if (linesToWrite.length > 0) {
+        await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, linesToWrite, type, purchaseId);
+      }
 
       if (linkedClaim) {
         const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);

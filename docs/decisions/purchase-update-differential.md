@@ -2,8 +2,8 @@
 
 ## Status
 - Active (2026-05-26)
-- Applies to: `updatePurchase`, `updateSale`
-- Not yet applied to: `updatePurchaseReturn`, `updateCreditNote`
+- Applies to: `updatePurchase`, `updateSale`, `updatePurchaseReturn`
+- Not yet applied to: `updateCreditNote`
 
 ## Context
 - หน้าฟอร์มแก้ไขเอกสาร (`/admin/purchases/[id]/edit`, `/admin/sales/[id]/edit`) เดิมทำงานแบบ "delete-then-recreate" คือเวลา save:
@@ -44,6 +44,20 @@
   - `saleDate` เปลี่ยน → `docDate` ของทุก StockCard row ต้องเปลี่ยน
 - **ไม่มี landed cost allocation** → `shippingFee` / `discount` เปลี่ยนไม่กระทบ per-line cost ของ sale → ไม่ trigger fallback
 
+### Purchase Return signature (base-unit)
+`productId | qtyInBase | costPerBase | sorted lots(lotNo|qtyInBase)`
+
+- Helper: `buildPurchaseReturnItemSignature()` ใน `purchase-returns/actions.ts`
+- Lot ของ purchase-return เก็บแค่ `lotNo` + `qty` (ไม่มี unitCost/mfg/exp) → lot portion ของ signature ง่ายกว่า purchase
+- `costPerBase` resolve ด้วย logic เดียวกับ `buildLineData`: `item.costPrice / scale` ถ้ามี, ไม่งั้น fallback ไป product avgCost (tracked) หรือ costPrice
+- Header-derived sync บน matched items: `subtotalAmount` (เมื่อ vatType / vatRate เปลี่ยน)
+- Fallback ถูกบังคับเมื่อ:
+  - `returnDate` เปลี่ยน → docDate ของทุก StockCard row ต้องเปลี่ยน
+  - `type` เปลี่ยน (RETURN ↔ DEBIT) → stock effect toggle ทั้งใบ (RETURN เขียน StockCard, DEBIT ไม่เขียน)
+  - `purchaseId` เปลี่ยน → `buildPurchaseReferenceCostMap()` เปลี่ยน → priceIn ของ `RETURN_OUT` ทุก row ต้องเปลี่ยน
+- `claimId` เปลี่ยนไม่ต้อง fallback — claim stock movement (`SUPPLIER_CREDIT_SETTLE`) เป็น per-document ทำงานทั้ง 2 paths
+- กรณี DEBIT ทั้งเก่าและใหม่ → ไม่มี StockCard work เลย แต่ differential ยังช่วยลด delete/recreate ของ `PurchaseReturnItem` rows
+
 ## Impact
 - Manual save UX (2026-05-26): purchase and sale add/edit forms now stay on the current form after a successful save instead of redirecting to the listing page. A first save from the new form returns the created document id (`purchaseId` / `saleId`), updates the browser URL to the edit route with `history.replaceState`, and subsequent saves in the same form call `updatePurchase` / `updateSale`. This keeps repeated user saves on the differential update path and avoids creating duplicate documents.
 - Client draft autosave (2026-05-26): purchase and sale forms keep unsaved draft state only in `localStorage`, scoped by `purchase-draft:new`, `purchase-draft:edit:<id>`, `sale-draft:new`, and `sale-draft:edit:<id>`. Draft save/restore does not call server actions and does not affect stock, lot ledger, cash-bank, AR/AP, profit facts, or audit logs until the user explicitly presses the save button.
@@ -58,12 +72,12 @@
 
 ## Out of Scope
 - ยังไม่ apply กับ:
-  - `updatePurchaseReturn`
   - `updateCreditNote`
 - ถ้าจะขยายไปโมดูลอื่นต้องเปิด task แยก เพราะแต่ละโมดูลมี nuance ต่างกัน (lot direction, AR/AP clearing, reference cost, neutral stock-in)
 
 ## Source of Truth
 - Purchase: `app/admin/(protected)/purchases/actions.ts` → `updatePurchase`, `buildItemStockSignature()`
 - Sale: `app/admin/(protected)/sales/actions.ts` → `updateSale`, `buildSaleItemSignature()`
+- Purchase Return: `app/admin/(protected)/purchase-returns/actions.ts` → `updatePurchaseReturn`, `buildPurchaseReturnItemSignature()`
 - MAVG engine: `lib/stock-card.ts` (`recalculateStockCard`, `writeStockCard`)
-- Lot ledger: `lib/lot-control.ts` (`reverseSaleLotBalance`, `reversePurchaseLotBalance`, `writeSaleLots`, `writePurchaseLots`)
+- Lot ledger: `lib/lot-control.ts` (`reverseSaleLotBalance`, `reversePurchaseLotBalance`, `reversePurchaseReturnLotBalance`, `writeSaleLots`, `writePurchaseLots`, `writePurchaseReturnLots`)
