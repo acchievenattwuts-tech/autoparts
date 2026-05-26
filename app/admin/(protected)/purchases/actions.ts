@@ -131,6 +131,44 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+// Build a stable signature for a purchase line in BASE-UNIT terms.
+// Two lines that produce identical StockCard + lot effects share the same
+// signature, so the differential updater can keep them untouched.
+type StockSignatureLot = {
+  lotNo: string;
+  qtyInBase: number;
+  unitCostBase: number;
+  mfgDate: Date | null;
+  expDate: Date | null;
+};
+
+function buildItemStockSignature(payload: {
+  productId: string;
+  qtyInBase: number;
+  costPerBase: number;
+  lots: StockSignatureLot[];
+}): string {
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const lotsSig = payload.lots
+    .map((l) =>
+      [
+        l.lotNo,
+        round4(l.qtyInBase),
+        round4(l.unitCostBase),
+        l.mfgDate ? l.mfgDate.toISOString() : "",
+        l.expDate ? l.expDate.toISOString() : "",
+      ].join("|"),
+    )
+    .sort()
+    .join("//");
+  return [
+    payload.productId,
+    round4(payload.qtyInBase),
+    round4(payload.costPerBase),
+    lotsSig,
+  ].join("||");
+}
+
 // Allocate signed landed-cost adjustment (shippingFee − discount) by line value.
 // Positive amount raises per-unit cost (shipping); negative lowers it (trade discount).
 function allocateLandedByLineValue(
@@ -628,11 +666,29 @@ export async function updatePurchase(
     return { error: "รหัสเอกสารไม่ถูกต้อง" };
   }
 
-  // Load existing purchase
+  // Load existing purchase (with full item data so we can diff against the
+  // incoming items and skip StockCard / lot work for unchanged lines).
   const existing = await db.purchase.findUnique({
     where: { id },
     include: {
-      items:          { select: { id: true, productId: true } },
+      items: {
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          costPrice: true,
+          landedCost: true,
+          lotItems: {
+            select: {
+              lotNo: true,
+              qty: true,
+              unitCost: true,
+              mfgDate: true,
+              expDate: true,
+            },
+          },
+        },
+      },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
       supplierPaymentItems: {
         where: { payment: { status: "ACTIVE" } },
@@ -695,6 +751,126 @@ export async function updatePurchase(
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
 
+  // ─── Differential Analysis ────────────────────────────────────────────────
+  // Compare incoming items against existing items in base-unit terms. Lines
+  // that match an existing line by signature are left untouched (no lot
+  // reverse, no StockCard rewrite, no MAVG recalc). Lines that don't match
+  // are removed; new lines are added. Fall back to a full reset whenever the
+  // landed-cost allocation across lines could shift (different docDate, or
+  // shipping/discount/totalLineValue changed while allocation is active),
+  // because that would require updating every line's landedCost anyway.
+  const purchaseDateChanged =
+    existing.purchaseDate.toISOString().slice(0, 10) !== purchaseDate;
+  const oldShipping = Number(existing.shippingFee);
+  const oldDiscount = Number(existing.discount);
+  const allocationActive =
+    oldShipping > 0 || oldDiscount > 0 || shippingFee > 0 || discount > 0;
+  const oldTotalLineValue = existing.items.reduce(
+    (sum, i) => sum + Number(i.quantity) * Number(i.costPrice),
+    0,
+  );
+  const newTotalLineValue = totalAmount;
+  const allocationsMayShift =
+    allocationActive &&
+    (oldShipping !== shippingFee ||
+      oldDiscount !== discount ||
+      Math.abs(oldTotalLineValue - newTotalLineValue) > 0.0001);
+
+  // Resolve unit scales for the incoming items so we can normalize them
+  // into base units before computing signatures.
+  const newUnitLookup = validItems.length === 0
+    ? []
+    : await db.productUnit.findMany({
+        where: {
+          OR: validItems.map((i) => ({
+            productId: i.productId,
+            name: i.unitName,
+          })),
+        },
+        select: { productId: true, name: true, scale: true },
+      });
+  const newUnitScaleMap = new Map(
+    newUnitLookup.map((u) => [
+      getPurchaseUnitKey(u.productId, u.name),
+      Number(u.scale),
+    ]),
+  );
+
+  type ExistingItemSig = {
+    existingItemId: string;
+    productId: string;
+    signature: string;
+  };
+  type NewItemSig = {
+    newIdx: number;
+    productId: string;
+    signature: string;
+  };
+
+  const oldItemSigs: ExistingItemSig[] = existing.items.map((item) => ({
+    existingItemId: item.id,
+    productId: item.productId,
+    signature: buildItemStockSignature({
+      productId: item.productId,
+      qtyInBase: Number(item.quantity),
+      costPerBase: Number(item.costPrice),
+      lots: item.lotItems.map((l) => ({
+        lotNo: l.lotNo,
+        qtyInBase: Number(l.qty),
+        unitCostBase: Number(l.unitCost),
+        mfgDate: l.mfgDate,
+        expDate: l.expDate,
+      })),
+    }),
+  }));
+
+  const newItemSigs: NewItemSig[] = validItems.map((item, idx) => {
+    const scale =
+      newUnitScaleMap.get(getPurchaseUnitKey(item.productId, item.unitName)) ?? 1;
+    return {
+      newIdx: idx,
+      productId: item.productId,
+      signature: buildItemStockSignature({
+        productId: item.productId,
+        qtyInBase: item.qty * scale,
+        costPerBase: item.costPrice / scale,
+        lots: (item.lotItems ?? []).map((l) => ({
+          lotNo: l.lotNo.trim(),
+          qtyInBase: l.qty * scale,
+          unitCostBase: l.unitCost / scale,
+          mfgDate: l.mfgDate ? parseDateOnlyToDate(l.mfgDate) : null,
+          expDate: l.expDate ? parseDateOnlyToDate(l.expDate) : null,
+        })),
+      }),
+    };
+  });
+
+  // Greedy multiset match: each existing line can be claimed by at most one
+  // new line with the same signature.
+  const matchedExistingIds = new Set<string>();
+  const matchedByNewIdx = new Map<number, string>();
+  for (const n of newItemSigs) {
+    const candidate = oldItemSigs.find(
+      (o) =>
+        !matchedExistingIds.has(o.existingItemId) && o.signature === n.signature,
+    );
+    if (candidate) {
+      matchedExistingIds.add(candidate.existingItemId);
+      matchedByNewIdx.set(n.newIdx, candidate.existingItemId);
+    }
+  }
+  const removedExistingItems = oldItemSigs.filter(
+    (o) => !matchedExistingIds.has(o.existingItemId),
+  );
+  const addedNewItems = newItemSigs.filter(
+    (n) => !matchedByNewIdx.has(n.newIdx),
+  );
+
+  const useDifferential = !purchaseDateChanged && !allocationsMayShift;
+  const affectedProductIds = new Set<string>();
+  removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
+  addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseAuditSnapshot(id);
@@ -705,19 +881,38 @@ export async function updatePurchase(
         resolvedCashBankAccountId,
       );
 
-      const oldItems = await tx.purchaseItem.findMany({
-        where: { purchaseId: id },
-        select: { id: true, productId: true },
-      });
-
-      // 1. Reverse old stock effects
-      for (const item of oldItems) {
-        await reversePurchaseLotBalance(tx, item.id, item.productId);
-      }
-      await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
-      await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
-      for (const productId of oldProductIds) {
-        await recalculateStockCard(tx, productId);
+      // 1. Drop stock effects for removed/changed lines only.
+      //    Differential path: only the lines that didn't survive signature
+      //    matching are reversed + deleted. Fallback path: everything is
+      //    reversed and we rebuild from scratch (original behaviour).
+      if (useDifferential) {
+        for (const removed of removedExistingItems) {
+          await reversePurchaseLotBalance(tx, removed.existingItemId, removed.productId);
+          await tx.stockCard.deleteMany({
+            where: {
+              docNo: existing.purchaseNo,
+              referenceId: removed.existingItemId,
+            },
+          });
+          // Cascade removes PurchaseItemLot rows as well.
+          await tx.purchaseItem.delete({ where: { id: removed.existingItemId } });
+        }
+        for (const productId of affectedProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
+      } else {
+        const oldItems = await tx.purchaseItem.findMany({
+          where: { purchaseId: id },
+          select: { id: true, productId: true },
+        });
+        for (const item of oldItems) {
+          await reversePurchaseLotBalance(tx, item.id, item.productId);
+        }
+        await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
+        await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
+        for (const productId of oldProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
       }
 
       // 2. Update header
@@ -747,10 +942,44 @@ export async function updatePurchase(
         },
       });
 
-      const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
+      // 2b. Sync header-derived fields on items we kept untouched in the
+      //     differential path. supplierId, subtotalAmount (VAT-derived) live
+      //     on PurchaseItem so they must follow the header.
+      if (useDifferential && matchedByNewIdx.size > 0) {
+        const supplierIdChanged =
+          (existing.supplierId ?? null) !== (supplierId || null);
+        const taxBasisChanged =
+          existing.vatType !== vatType ||
+          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
+        if (supplierIdChanged || taxBasisChanged) {
+          for (const [newIdx, existingItemId] of matchedByNewIdx) {
+            const item = validItems[newIdx];
+            const itemTotal = item.qty * item.costPrice;
+            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            await tx.purchaseItem.update({
+              where: { id: existingItemId },
+              data: {
+                supplierId: supplierId || null,
+                subtotalAmount: itemSubtotal,
+              },
+            });
+          }
+        }
+      }
 
-      // 3. Re-create items + stock cards
-      for (const [itemIndex, item] of validItems.entries()) {
+      // 3. Create items + stock cards.
+      //    Differential: only added/changed lines. Fallback: every line.
+      const itemsToCreate: { item: typeof validItems[number]; itemIndex: number }[] =
+        useDifferential
+          ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], itemIndex: a.newIdx }))
+          : validItems.map((item, itemIndex) => ({ item, itemIndex }));
+
+      const { productMap, unitMap } = await preloadPurchaseDependencies(
+        tx,
+        itemsToCreate.map(({ item }) => item),
+      );
+
+      for (const { item, itemIndex } of itemsToCreate) {
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
         if (!product) throw new Error("ไม่พบสินค้า");

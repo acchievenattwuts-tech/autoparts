@@ -164,6 +164,42 @@ type SaleProductSnapshot = {
 
 const getSaleUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
 
+// Build a stable signature for a sale line in BASE-UNIT terms.
+// Lines whose signature matches an existing DB line produce identical
+// StockCard + lot-out + warranty effects, so the differential updater
+// can leave them untouched. costPrice is intentionally excluded — for
+// matched items we keep the historical avgCost snapshot already stored.
+type SaleStockSignatureLot = {
+  lotNo:     string;
+  qtyInBase: number;
+};
+
+function buildSaleItemSignature(payload: {
+  productId:    string;
+  qtyInBase:    number;
+  salePrice:    number;
+  warrantyDays: number;
+  supplierId:   string | null;
+  supplierName: string | null;
+  lots:         SaleStockSignatureLot[];
+}): string {
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const lotsSig = payload.lots
+    .map((l) => [l.lotNo, round4(l.qtyInBase)].join("|"))
+    .sort()
+    .join("//");
+  return [
+    payload.productId,
+    round4(payload.qtyInBase),
+    round2(payload.salePrice),
+    payload.warrantyDays,
+    payload.supplierId   ?? "",
+    payload.supplierName ?? "",
+    lotsSig,
+  ].join("||");
+}
+
 async function getSaleAuditSnapshot(saleId: string) {
   const sale = await db.sale.findUnique({
     where: { id: saleId },
@@ -851,7 +887,20 @@ export async function updateSale(
     where: { id },
     include: {
       user:        { select: { name: true, signatureUrl: true } },
-      items:       { select: { id: true, productId: true } },
+      items: {
+        select: {
+          id:            true,
+          productId:     true,
+          quantity:      true,
+          salePrice:     true,
+          warrantyDays:  true,
+          supplierId:    true,
+          supplierName:  true,
+          lotItems: {
+            select: { lotNo: true, qty: true },
+          },
+        },
+      },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
       warranties:  {
@@ -935,6 +984,112 @@ export async function updateSale(
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
 
+  // ─── Differential Analysis ────────────────────────────────────────────────
+  // Compare incoming items against existing items in base-unit terms. Lines
+  // that match an existing line by signature are left untouched (no lot
+  // reverse, no StockCard rewrite, no warranty/MAVG rebuild). Lines that
+  // don't match are removed; new lines are added. Sale uses no landed-cost
+  // allocation across items, so shipping/discount changes never shift
+  // per-line cost — only a saleDate change forces a full reset (docDate of
+  // every StockCard row would otherwise need to change).
+  const saleDateChanged =
+    existing.saleDate.toISOString().slice(0, 10) !== saleDate;
+
+  // Resolve unit scales for the incoming items so we can normalize them
+  // into base units before computing signatures.
+  const newUnitLookup = validItems.length === 0
+    ? []
+    : await db.productUnit.findMany({
+        where: {
+          OR: validItems.map((i) => ({
+            productId: i.productId,
+            name: i.unitName,
+          })),
+        },
+        select: { productId: true, name: true, scale: true },
+      });
+  const newUnitScaleMap = new Map(
+    newUnitLookup.map((u) => [
+      getSaleUnitKey(u.productId, u.name),
+      Number(u.scale),
+    ]),
+  );
+
+  type ExistingSaleSig = {
+    existingItemId: string;
+    productId:      string;
+    signature:      string;
+  };
+  type NewSaleSig = {
+    newIdx:    number;
+    productId: string;
+    signature: string;
+  };
+
+  const oldItemSigs: ExistingSaleSig[] = existing.items.map((item) => ({
+    existingItemId: item.id,
+    productId:      item.productId,
+    signature: buildSaleItemSignature({
+      productId:    item.productId,
+      qtyInBase:    Number(item.quantity),
+      salePrice:    Number(item.salePrice),
+      warrantyDays: item.warrantyDays,
+      supplierId:   item.supplierId ?? null,
+      supplierName: item.supplierName ?? null,
+      lots: item.lotItems.map((l) => ({
+        lotNo:     l.lotNo,
+        qtyInBase: Number(l.qty),
+      })),
+    }),
+  }));
+
+  const newItemSigs: NewSaleSig[] = validItems.map((item, idx) => {
+    const scale =
+      newUnitScaleMap.get(getSaleUnitKey(item.productId, item.unitName)) ?? 1;
+    return {
+      newIdx:    idx,
+      productId: item.productId,
+      signature: buildSaleItemSignature({
+        productId:    item.productId,
+        qtyInBase:    item.qty * scale,
+        salePrice:    item.salePrice,
+        warrantyDays: item.warrantyDays,
+        supplierId:   item.supplierId   || null,
+        supplierName: item.supplierName || null,
+        lots: (item.lotItems ?? []).map((l) => ({
+          lotNo:     l.lotNo.trim(),
+          qtyInBase: l.qty * scale,
+        })),
+      }),
+    };
+  });
+
+  // Greedy multiset match: each existing line can be claimed by at most one
+  // new line with the same signature.
+  const matchedExistingIds = new Set<string>();
+  const matchedByNewIdx = new Map<number, string>();
+  for (const n of newItemSigs) {
+    const candidate = oldItemSigs.find(
+      (o) =>
+        !matchedExistingIds.has(o.existingItemId) && o.signature === n.signature,
+    );
+    if (candidate) {
+      matchedExistingIds.add(candidate.existingItemId);
+      matchedByNewIdx.set(n.newIdx, candidate.existingItemId);
+    }
+  }
+  const removedExistingItems = oldItemSigs.filter(
+    (o) => !matchedExistingIds.has(o.existingItemId),
+  );
+  const addedNewItems = newItemSigs.filter(
+    (n) => !matchedByNewIdx.has(n.newIdx),
+  );
+
+  const useDifferential = !saleDateChanged;
+  const affectedProductIds = new Set<string>();
+  removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
+  addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSaleAuditSnapshot(id);
@@ -948,19 +1103,44 @@ export async function updateSale(
         existing.signerSignatureUrl ?? existing.user?.signatureUrl ?? null;
       const fallbackSignedAt = existing.signedAt ?? (fallbackSignerName ? docDate : null);
 
-      // 1. Reverse old stock + warranties (warranty ต้องลบก่อน saleItem เพราะมี FK)
-      const oldItems = await tx.saleItem.findMany({
-        where: { saleId: id },
-        select: { id: true, productId: true },
-      });
-      for (const item of oldItems) {
-        await reverseSaleLotBalance(tx, item.id, item.productId);
-      }
-      await tx.stockCard.deleteMany({ where: { docNo: existing.saleNo } });
-      await tx.warranty.deleteMany({ where: { saleId: id } });
-      await tx.saleItem.deleteMany({ where: { saleId: id } });
-      for (const productId of oldProductIds) {
-        await recalculateStockCard(tx, productId);
+      // 1. Drop stock effects for removed/changed lines only.
+      //    Differential path: only the lines that didn't survive signature
+      //    matching are reversed + deleted. Fallback path: everything is
+      //    reversed and we rebuild from scratch (original behaviour).
+      //    Warranty must be deleted before SaleItem because of FK.
+      if (useDifferential) {
+        if (removedExistingItems.length > 0) {
+          const removedIds = removedExistingItems.map((r) => r.existingItemId);
+          for (const removed of removedExistingItems) {
+            await reverseSaleLotBalance(tx, removed.existingItemId, removed.productId);
+            await tx.stockCard.deleteMany({
+              where: {
+                docNo:       existing.saleNo,
+                referenceId: removed.existingItemId,
+              },
+            });
+          }
+          await tx.warranty.deleteMany({ where: { saleItemId: { in: removedIds } } });
+          // Cascade removes SaleItemLot rows as well.
+          await tx.saleItem.deleteMany({ where: { id: { in: removedIds } } });
+        }
+        for (const productId of affectedProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
+      } else {
+        const oldItems = await tx.saleItem.findMany({
+          where: { saleId: id },
+          select: { id: true, productId: true },
+        });
+        for (const item of oldItems) {
+          await reverseSaleLotBalance(tx, item.id, item.productId);
+        }
+        await tx.stockCard.deleteMany({ where: { docNo: existing.saleNo } });
+        await tx.warranty.deleteMany({ where: { saleId: id } });
+        await tx.saleItem.deleteMany({ where: { saleId: id } });
+        for (const productId of oldProductIds) {
+          await recalculateStockCard(tx, productId);
+        }
       }
 
       // 2. Update header
@@ -996,10 +1176,39 @@ export async function updateSale(
           creditTerm:      creditTerm      ?? null,
         },
       });
-      const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
+      // 2b. Sync header-derived fields on items we kept untouched in the
+      //     differential path. subtotalAmount = calcItemSubtotal(itemTotal,
+      //     vatType, vatRate) lives on SaleItem, so it must follow the
+      //     header when VAT basis changes.
+      if (useDifferential && matchedByNewIdx.size > 0) {
+        const taxBasisChanged =
+          existing.vatType !== vatType ||
+          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
+        if (taxBasisChanged) {
+          for (const [newIdx, existingItemId] of matchedByNewIdx) {
+            const item = validItems[newIdx];
+            const itemTotal = item.qty * item.salePrice;
+            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            await tx.saleItem.update({
+              where: { id: existingItemId },
+              data:  { subtotalAmount: itemSubtotal },
+            });
+          }
+        }
+      }
 
-      // 3. Re-create items + stock cards + warranties
-      for (const item of validItems) {
+      // 3. Create items + stock cards + warranties.
+      //    Differential: only added/changed lines. Fallback: every line.
+      const itemsToCreate: { item: typeof validItems[number] }[] = useDifferential
+        ? addedNewItems.map((a) => ({ item: validItems[a.newIdx] }))
+        : validItems.map((item) => ({ item }));
+
+      const { productMap, unitMap } = await preloadSaleDependencies(
+        tx,
+        itemsToCreate.map(({ item }) => item),
+      );
+
+      for (const { item } of itemsToCreate) {
         const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
         if (!product) throw new Error("ไม่พบสินค้า");

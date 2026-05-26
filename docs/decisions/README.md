@@ -9,6 +9,7 @@
 - [cash-bank-lite.md](/D:/autoparts/docs/decisions/cash-bank-lite.md)
 - [lot-control.md](/D:/autoparts/docs/decisions/lot-control.md)
 - [warranty-claim.md](/D:/autoparts/docs/decisions/warranty-claim.md)
+- [purchase-update-differential.md](/D:/autoparts/docs/decisions/purchase-update-differential.md)
 
 ## Writing Rules
 - 1 เรื่องต่อ 1 ไฟล์
