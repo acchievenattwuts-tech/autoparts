@@ -61,6 +61,12 @@ export async function recalculateStockCard(
   let baQty   = 0;
   let baPrice = 0;
   let baTotal = 0;
+  const pendingUpdates: {
+    id: string;
+    priceOut: number;
+    qtyBalance: number;
+    priceBalance: number;
+  }[] = [];
 
   // Sources where stock comes IN but carries no independent cost — the entry
   // is meant to be MAVG-neutral (priceIn was set to avgCost at write time).
@@ -123,18 +129,41 @@ export async function recalculateStockCard(
       }
     }
 
-    await tx.stockCard.update({
-      where: { id: row.id },
-      data: {
-        priceOut:     new Prisma.Decimal(priceOut),
-        qtyBalance:   new Prisma.Decimal(newBaQty),
-        priceBalance: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
-      },
+    pendingUpdates.push({
+      id: row.id,
+      priceOut,
+      qtyBalance: newBaQty,
+      priceBalance: newBaPrice > 0 ? newBaPrice : 0,
     });
 
     baQty   = newBaQty;
     baPrice = newBaPrice;
     baTotal = newBaTotal;
+  }
+
+  const updateChunkSize = 500;
+  for (let i = 0; i < pendingUpdates.length; i += updateChunkSize) {
+    const chunk = pendingUpdates.slice(i, i + updateChunkSize);
+    if (chunk.length === 0) continue;
+
+    await tx.$executeRaw`
+      UPDATE "StockCard" AS sc
+      SET
+        "priceOut" = data."priceOut",
+        "qtyBalance" = data."qtyBalance",
+        "priceBalance" = data."priceBalance"
+      FROM (
+        VALUES ${Prisma.join(
+          chunk.map((update) => Prisma.sql`(
+            ${update.id},
+            ${update.priceOut}::numeric,
+            ${update.qtyBalance}::numeric,
+            ${update.priceBalance}::numeric
+          )`),
+        )}
+      ) AS data("id", "priceOut", "qtyBalance", "priceBalance")
+      WHERE sc."id" = data."id"
+    `;
   }
 
   // Update Product with final balance
