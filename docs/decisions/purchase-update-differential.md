@@ -29,7 +29,7 @@
 - Helper: `buildItemStockSignature()` ใน `purchases/actions.ts`
 - Header-derived sync บน matched items: `supplierId`, `subtotalAmount` (เมื่อ supplier / vatType / vatRate เปลี่ยน)
 - Fallback ถูกบังคับเมื่อ:
-  - `purchaseDate` เปลี่ยน → `docDate` ของทุก StockCard row ต้องเปลี่ยน
+  - `purchaseDate` เปลี่ยน โดยเทียบเป็น date-only ใน timezone ไทย → `docDate` ของทุก StockCard row ต้องเปลี่ยน
   - `shippingFee` / `discount` เปลี่ยน หรือ `totalLineValue` เปลี่ยนขณะที่มี landed allocation > 0 → landed allocation กระจายข้าม item ทำให้ทุก line cost เปลี่ยน
 - Fast path เพิ่มเติม (2026-05-26): ถ้า `shippingFee` / `discount` เปลี่ยนแต่ทุก purchase line ยัง match ได้ครบแบบ 1:1 และ `purchaseDate` ไม่เปลี่ยน ระบบจะไม่ full reset ทั้งบิล แต่ update `PurchaseItem.landedCost` และ `StockCard.landedCost` ของ matched rows in place ถ้า StockCard row นั้นเป็นแถวล่าสุดของ product จะ replay สูตร MAVG ของ product จนถึงแถวนั้น แล้ว update เฉพาะ current StockCard row + Product balance โดยไม่ update history rows ทั้งหมด; ถ้ามี StockCard row หลังจากนั้นจึงค่อย `recalculateStockCard()` เฉพาะ product นั้น วิธีนี้ยังคง MAVG correctness แต่ไม่ reverse lot / delete item / recreate StockCard ทั้งบิล
 

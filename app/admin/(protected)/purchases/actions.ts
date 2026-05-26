@@ -21,7 +21,7 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -921,7 +921,7 @@ export async function updatePurchase(
   // shipping/discount/totalLineValue changed while allocation is active),
   // because that would require updating every line's landedCost anyway.
   const purchaseDateChanged =
-    existing.purchaseDate.toISOString().slice(0, 10) !== purchaseDate;
+    formatDateOnlyForInput(existing.purchaseDate) !== purchaseDate;
   const oldShipping = Number(existing.shippingFee);
   const oldDiscount = Number(existing.discount);
   const allocationActive =

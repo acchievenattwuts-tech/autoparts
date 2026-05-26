@@ -21,7 +21,7 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -766,7 +766,7 @@ export async function updateCreditNote(
   //   - saleId → buildSaleReferenceCostMap() shifts → priceIn of every
   //     RETURN_IN row would need to change
   const cnDateChanged =
-    existing.cnDate.toISOString().slice(0, 10) !== cnDate;
+    formatDateOnlyForInput(existing.cnDate) !== cnDate;
   const typeChanged = existing.type !== type;
   const saleIdChanged =
     (existing.saleId ?? null) !== (saleId || null);

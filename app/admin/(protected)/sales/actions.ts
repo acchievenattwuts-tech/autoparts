@@ -33,7 +33,7 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
-import { addThailandDays, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
+import { addThailandDays, formatDateOnlyForInput, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 
 const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
@@ -993,7 +993,7 @@ export async function updateSale(
   // per-line cost — only a saleDate change forces a full reset (docDate of
   // every StockCard row would otherwise need to change).
   const saleDateChanged =
-    existing.saleDate.toISOString().slice(0, 10) !== saleDate;
+    formatDateOnlyForInput(existing.saleDate) !== saleDate;
 
   // Resolve unit scales for the incoming items so we can normalize them
   // into base units before computing signatures.

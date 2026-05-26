@@ -7,7 +7,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import NewClaimForm from "./NewClaimForm";
 import { autoAllocateLots, type LotAvailableJSON } from "@/lib/lot-control-client";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateOnlyForInput, formatDateThai } from "@/lib/th-date";
 
 interface Props {
   searchParams: Promise<{ warrantyId?: string }>;
@@ -96,8 +96,8 @@ const NewClaimPage = async ({ searchParams }: Props) => {
             lotNo: row.lotNo,
             qtyOnHand: Number(row.qtyOnHand),
             unitCost: Number(lotMaster?.unitCost ?? 0),
-            mfgDate: lotMaster?.mfgDate?.toISOString() ?? null,
-            expDate: lotMaster?.expDate?.toISOString() ?? null,
+            mfgDate: lotMaster?.mfgDate ? formatDateOnlyForInput(lotMaster.mfgDate) : null,
+            expDate: lotMaster?.expDate ? formatDateOnlyForInput(lotMaster.expDate) : null,
           };
         })
       )

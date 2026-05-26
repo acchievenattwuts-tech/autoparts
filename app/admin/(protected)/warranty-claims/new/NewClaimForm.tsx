@@ -158,7 +158,7 @@ const NewClaimForm = ({
                   (lot): SelectOption => ({
                     id: lot.lotNo,
                     label: lot.lotNo,
-                    sublabel: `คงเหลือ ${lot.qtyOnHand.toLocaleString("th-TH")} | EXP ${lot.expDate ? lot.expDate.slice(0, 10) : "-"}`,
+                    sublabel: `คงเหลือ ${lot.qtyOnHand.toLocaleString("th-TH")} | EXP ${lot.expDate ?? "-"}`,
                   })
                 )}
                 value={replacementLotNo}

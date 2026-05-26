@@ -952,7 +952,7 @@ export async function updatePurchaseReturn(
   //     every RETURN_OUT row would need to change
   // claimId change is handled separately (per-document, runs in both paths).
   const returnDateChanged =
-    existing.returnDate.toISOString().slice(0, 10) !== returnDate;
+    formatDateOnlyForInput(existing.returnDate) !== returnDate;
   const typeChanged = existing.type !== type;
   const purchaseIdChanged =
     (existing.purchaseId ?? null) !== (purchaseId || null);
