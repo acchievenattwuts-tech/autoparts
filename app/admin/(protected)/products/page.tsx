@@ -8,7 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, X } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -34,7 +34,24 @@ interface ProductsPageProps {
     brandId?: string;
     carBrandId?: string;
     carModelId?: string;
+    priceMin?: string;
+    priceMax?: string;
+    stockStatus?: string;
+    statusFilter?: string;
+    trackingFilter?: string;
   }>;
+}
+
+function buildRemoveParamUrl(
+  params: Record<string, string | undefined>,
+  removeKeys: string[],
+): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v && !removeKeys.includes(k)) p.set(k, v);
+  }
+  const qs = p.toString();
+  return `/admin/products${qs ? `?${qs}` : ""}`;
 }
 
 const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
@@ -49,8 +66,16 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");
   const canCancel = hasPermissionAccess(role, permissions, "products.cancel");
 
-  const { search, page, categoryId, brandId, carBrandId, carModelId } = await searchParams;
+  const {
+    search, page, categoryId, brandId, carBrandId, carModelId,
+    priceMin, priceMax, stockStatus, statusFilter, trackingFilter,
+  } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
+
+  const searchIsActive =
+    statusFilter === "active" ? true :
+    statusFilter === "inactive" ? false :
+    undefined;
 
   const productSearchInput = {
     query: search,
@@ -58,10 +83,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     brandId,
     carBrandId,
     carModelId,
+    isActive: searchIsActive,
     skip: (pageNum - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
-    order: "codeDesc",
-  } as const;
+    order: "codeDesc" as const,
+  };
 
   const [searchResult, categories, partsBrands, carBrands] = await Promise.all([
     searchProductIds(productSearchInput),
@@ -97,10 +123,21 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     path: "/admin/products",
   });
 
-  const products = sortProductsByIds(
+  const advancedWhere: Record<string, unknown> = {};
+  if (priceMin || priceMax) {
+    advancedWhere.salePrice = {
+      ...(priceMin ? { gte: parseFloat(priceMin) } : {}),
+      ...(priceMax ? { lte: parseFloat(priceMax) } : {}),
+    };
+  }
+  if (trackingFilter === "tracked") advancedWhere.inventoryTracking = "TRACKED";
+  else if (trackingFilter === "non_tracked") advancedWhere.inventoryTracking = "NON_TRACKED";
+
+  const rawProducts = sortProductsByIds(
     await db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
+        ...advancedWhere,
       },
       select: {
         id: true,
@@ -139,6 +176,17 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     searchResult.ids,
   );
 
+  const products = stockStatus
+    ? rawProducts.filter((p) => {
+        const s = Number(p.stock);
+        const min = Number(p.minStock);
+        if (stockStatus === "in_stock") return s > min;
+        if (stockStatus === "low_stock") return s > 0 && s <= min;
+        if (stockStatus === "out_of_stock") return s <= 0;
+        return true;
+      })
+    : rawProducts;
+
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -171,6 +219,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         brandId={brandId}
         carBrandId={carBrandId}
         carModelId={carModelId}
+        priceMin={priceMin}
+        priceMax={priceMax}
+        stockStatus={stockStatus}
+        statusFilter={statusFilter}
+        trackingFilter={trackingFilter}
         categories={categories}
         partsBrands={partsBrands}
         carBrands={carBrands.map((brand) => ({
@@ -181,6 +234,59 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       />
 
       <AdminTableSection>
+        {(() => {
+          const allParams = { search, categoryId, brandId, carBrandId, carModelId, priceMin, priceMax, stockStatus, statusFilter, trackingFilter };
+          type Pill = { label: string; removeUrl: string };
+          const pills: Pill[] = [];
+          if (search) pills.push({ label: `ค้นหา: "${search}"`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["search"]) });
+          if (categoryId) {
+            const cat = categories.find((c) => c.id === categoryId);
+            pills.push({ label: `หมวดหมู่: ${cat?.name ?? categoryId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["categoryId"]) });
+          }
+          if (brandId) {
+            const br = partsBrands.find((b) => b.id === brandId);
+            pills.push({ label: `แบรนด์: ${br?.name ?? brandId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["brandId"]) });
+          }
+          if (carBrandId) {
+            const cb = carBrands.find((b) => b.id === carBrandId);
+            pills.push({ label: `ยี่ห้อรถ: ${cb?.name ?? carBrandId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["carBrandId", "carModelId"]) });
+          }
+          if (carModelId) {
+            const cm = carBrands.flatMap((b) => b.carModels).find((m) => m.id === carModelId);
+            pills.push({ label: `รุ่นรถ: ${cm?.name ?? carModelId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["carModelId"]) });
+          }
+          if (priceMin || priceMax) {
+            const label = priceMin && priceMax
+              ? `ราคา: ${Number(priceMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(priceMax).toLocaleString("th-TH-u-ca-gregory")} ฿`
+              : priceMin ? `ราคา ≥ ${Number(priceMin).toLocaleString("th-TH-u-ca-gregory")} ฿` : `ราคา ≤ ${Number(priceMax).toLocaleString("th-TH-u-ca-gregory")} ฿`;
+            pills.push({ label, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["priceMin", "priceMax"]) });
+          }
+          if (stockStatus) {
+            const map: Record<string, string> = { in_stock: "มีสต็อก", low_stock: "สต็อกต่ำ", out_of_stock: "หมดสต็อก" };
+            pills.push({ label: `สต็อก: ${map[stockStatus] ?? stockStatus}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["stockStatus"]) });
+          }
+          if (statusFilter) {
+            pills.push({ label: `สถานะ: ${statusFilter === "active" ? "ใช้งาน" : "ปิดใช้งาน"}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["statusFilter"]) });
+          }
+          if (trackingFilter) {
+            pills.push({ label: `การคำนวณ: ${trackingFilter === "tracked" ? "คำนวณสต็อก" : "ไม่คำนวณ"}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["trackingFilter"]) });
+          }
+          if (pills.length === 0) return null;
+          return (
+            <div className="flex flex-wrap gap-1.5 border-b border-gray-100 px-6 py-3 dark:border-white/10">
+              {pills.map((pill) => (
+                <Link
+                  key={pill.label}
+                  href={pill.removeUrl}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-red-400/30 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                >
+                  {pill.label}
+                  <X size={10} />
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
         <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">
           <p className="text-sm text-gray-500 dark:text-slate-400">
             {search ? (
