@@ -463,7 +463,7 @@ async function createWarrantySnapshots(
 
 export async function createSale(
   formData: FormData
-): Promise<{ success?: boolean; saleNo?: string; error?: string }> {
+): Promise<{ success?: boolean; saleId?: string; saleNo?: string; error?: string }> {
   const session = await requirePermission("sales.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
@@ -744,7 +744,7 @@ export async function createSale(
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath("/admin/products");
-    return { success: true, saleNo };
+    return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
     console.error("[createSale]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

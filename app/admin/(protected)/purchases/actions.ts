@@ -366,7 +366,7 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
 
 export async function createPurchase(
   formData: FormData
-): Promise<{ success?: boolean; purchaseNo?: string; error?: string }> {
+): Promise<{ success?: boolean; purchaseId?: string; purchaseNo?: string; error?: string }> {
   const session = await requirePermission("purchases.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
@@ -556,7 +556,7 @@ export async function createPurchase(
 
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/products");
-    return { success: true, purchaseNo };
+    return { success: true, purchaseId: createdPurchaseId, purchaseNo };
   } catch (err) {
     console.error("[createPurchase]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

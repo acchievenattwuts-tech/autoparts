@@ -45,6 +45,8 @@
 - **ไม่มี landed cost allocation** → `shippingFee` / `discount` เปลี่ยนไม่กระทบ per-line cost ของ sale → ไม่ trigger fallback
 
 ## Impact
+- Manual save UX (2026-05-26): purchase and sale add/edit forms now stay on the current form after a successful save instead of redirecting to the listing page. A first save from the new form returns the created document id (`purchaseId` / `saleId`), updates the browser URL to the edit route with `history.replaceState`, and subsequent saves in the same form call `updatePurchase` / `updateSale`. This keeps repeated user saves on the differential update path and avoids creating duplicate documents.
+- Client draft autosave (2026-05-26): purchase and sale forms keep unsaved draft state only in `localStorage`, scoped by `purchase-draft:new`, `purchase-draft:edit:<id>`, `sale-draft:new`, and `sale-draft:edit:<id>`. Draft save/restore does not call server actions and does not affect stock, lot ledger, cash-bank, AR/AP, profit facts, or audit logs until the user explicitly presses the save button.
 - MAVG correctness ไม่เปลี่ยน — ทุกครั้งที่มี item ถูกแตะ ระบบจะเรียก `recalculateStockCard()` ของ product นั้นเหมือนเดิม
 - Performance gain ตามกรณีหลักของผู้ใช้:
   - กดบันทึกซ้ำโดยไม่แก้อะไร → 0 stockcard work

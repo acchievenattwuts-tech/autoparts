@@ -1,7 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
@@ -13,6 +12,13 @@ import { fetchProductLots } from "../actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
+import {
+  buildSaleDraft,
+  getSaleDraftKey,
+  parseSaleDraft,
+  type SaleDraftPayload,
+  type SaleFormLineItem,
+} from "../sale-form-data";
 
 interface ProductOption {
   id: string;
@@ -58,7 +64,7 @@ interface CustomerOption {
   defaultLongitude: number | null;
 }
 
-interface LineItem {
+interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
   productId:    string;
   unitName:     string;
   qty:          number;
@@ -119,12 +125,17 @@ const SaleForm = ({
   editableLotOnEdit?: boolean;
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }) => {
-  const router = useRouter();
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
   const [isPending, startTransition] = useTransition();
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState("");
+  const [draftStatus, setDraftStatus] = useState("");
+  const [availableDraft, setAvailableDraft] = useState<SaleDraftPayload | null>(null);
+  const [persistedSaleId, setPersistedSaleId] = useState(initialData?.id ?? "");
+  const [saleDate, setSaleDate] = useState(initialData?.saleDate ?? getThailandDateKey());
+  const [saleType, setSaleType] = useState(initialData?.saleType ?? "RETAIL");
+  const [note, setNote] = useState(initialData?.note ?? "");
   const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
@@ -151,6 +162,112 @@ const SaleForm = ({
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
+  const draftKey = getSaleDraftKey(
+    persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
+  );
+  const lastPersistedDraftRef = useRef("");
+
+  const getDraftSnapshot = useCallback(() =>
+    JSON.stringify({
+      saleDate,
+      customerId: selectedCustomerId,
+      customerName: customerNameOverride,
+      customerPhone: customerPhoneOverride,
+      saleType,
+      paymentType,
+      cashBankAccountId,
+      fulfillmentType,
+      shippingAddress,
+      shippingFee,
+      shippingMethod,
+      destLatitude: destLat,
+      destLongitude: destLon,
+      discount,
+      note,
+      vatType,
+      vatRate,
+      creditTerm,
+      items,
+    }), [cashBankAccountId, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
+
+  const applyDraft = (draft: SaleDraftPayload) => {
+    setSaleDate(draft.saleDate);
+    setSelectedCustomerId(draft.customerId);
+    setCustomerNameOverride(draft.customerName);
+    setCustomerPhoneOverride(draft.customerPhone);
+    setSaleType(draft.saleType);
+    setPaymentType(draft.paymentType);
+    setCashBankAccountId(draft.cashBankAccountId);
+    setFulfillmentType(draft.fulfillmentType);
+    setShippingAddress(draft.shippingAddress);
+    setShippingFee(draft.shippingFee);
+    setShippingMethod(draft.shippingMethod);
+    setDestLat(draft.destLatitude);
+    setDestLon(draft.destLongitude);
+    setDiscount(draft.discount);
+    setNote(draft.note);
+    setVatType(draft.vatType);
+    setVatRate(draft.vatRate);
+    setCreditTerm(draft.creditTerm);
+    setItems(draft.items as LineItem[]);
+    setAvailableDraft(null);
+    setDraftStatus("กู้คืน draft แล้ว");
+  };
+
+  useEffect(() => {
+    lastPersistedDraftRef.current = getDraftSnapshot();
+    const draft = parseSaleDraft(
+      window.localStorage.getItem(draftKey),
+      persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
+    );
+    if (draft) {
+      setAvailableDraft(draft);
+      setDraftStatus(`พบ draft ล่าสุด ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+    }
+    // Run once per loaded form context; user edits are handled by the autosave effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  useEffect(() => {
+    const snapshot = getDraftSnapshot();
+    if (snapshot === lastPersistedDraftRef.current) return;
+
+    setDraftStatus("กำลังบันทึก draft...");
+    const timeout = window.setTimeout(() => {
+      try {
+        const draft = buildSaleDraft({
+          mode: persistedSaleId ? "edit" : "new",
+          saleId: persistedSaleId || null,
+          saleDate,
+          customerId: selectedCustomerId,
+          customerName: customerNameOverride,
+          customerPhone: customerPhoneOverride,
+          saleType,
+          paymentType,
+          cashBankAccountId,
+          fulfillmentType,
+          shippingAddress,
+          shippingFee,
+          shippingMethod,
+          destLatitude: destLat,
+          destLongitude: destLon,
+          discount,
+          note,
+          vatType,
+          vatRate,
+          creditTerm,
+          items,
+        });
+        window.localStorage.setItem(draftKey, JSON.stringify(draft));
+        lastPersistedDraftRef.current = snapshot;
+        setDraftStatus(`Draft saved ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+      } catch {
+        setDraftStatus("บันทึก draft ไม่สำเร็จ");
+      }
+    }, 2000);
+
+    return () => window.clearTimeout(timeout);
+  }, [cashBankAccountId, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -382,14 +499,23 @@ const SaleForm = ({
 
     const form = e.currentTarget;
     const formData = new FormData(form);
+    formData.set("saleDate", saleDate);
+    formData.set("saleType", saleType);
+    formData.set("customerId", selectedCustomerId);
+    formData.set("customerName", customerNameOverride);
+    formData.set("customerPhone", customerPhoneOverride);
     formData.set("items", JSON.stringify(items));
+    formData.set("paymentType", paymentType);
     formData.set("fulfillmentType", fulfillmentType);
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
     formData.set("shippingMethod", fulfillmentType === "DELIVERY" ? shippingMethod : "NONE");
     formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set("discount", String(discount));
+    formData.set("note", note);
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
+    formData.set("creditTerm", String(creditTerm));
     if (fulfillmentType === "DELIVERY" && destLat !== null) formData.set("destLatitude", String(destLat));
     if (fulfillmentType === "DELIVERY" && destLon !== null) formData.set("destLongitude", String(destLon));
     if (
@@ -403,17 +529,30 @@ const SaleForm = ({
     }
 
     startTransition(async () => {
-      if (isEdit && initialData) {
-        const result = await updateSale(initialData.id, formData);
+      if (persistedSaleId) {
+        const result = await updateSale(persistedSaleId, formData);
         if (result.error) setError(result.error);
-        else router.push("/admin/sales");
+        else {
+          window.localStorage.removeItem(draftKey);
+          lastPersistedDraftRef.current = getDraftSnapshot();
+          setAvailableDraft(null);
+          setDraftStatus("");
+          setSuccess("บันทึกการแก้ไขสำเร็จ");
+        }
       } else {
         const result = await createSale(formData);
         if (result.error) {
           setError(result.error);
         } else {
           setSuccess(`บันทึกสำเร็จ เลขที่ใบขาย: ${result.saleNo}`);
-          setTimeout(() => router.push("/admin/sales"), 1500);
+          window.localStorage.removeItem(draftKey);
+          lastPersistedDraftRef.current = getDraftSnapshot();
+          setAvailableDraft(null);
+          setDraftStatus("");
+          if (result.saleId) {
+            setPersistedSaleId(result.saleId);
+            window.history.replaceState(null, "", `/admin/sales/${result.saleId}/edit`);
+          }
         }
       }
     });
@@ -421,6 +560,36 @@ const SaleForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {availableDraft && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              พบ draft ที่ยังไม่ได้บันทึกจาก {new Date(availableDraft.updatedAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => applyDraft(availableDraft)}
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+              >
+                กู้คืน draft
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.localStorage.removeItem(draftKey);
+                  setAvailableDraft(null);
+                  setDraftStatus("");
+                }}
+                className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-400/40 dark:text-amber-300 dark:hover:bg-amber-500/20"
+              >
+                ไม่ใช้ draft
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
@@ -435,7 +604,8 @@ const SaleForm = ({
               type="date"
               name="saleDate"
               required
-              defaultValue={initialData?.saleDate ?? getThailandDateKey()}
+              value={saleDate}
+              onChange={(e) => setSaleDate(e.target.value)}
               className={inputCls}
             />
           </div>
@@ -455,7 +625,7 @@ const SaleForm = ({
           </div>
           <div>
             <label className={labelCls}>ประเภทการขาย</label>
-            <select name="saleType" defaultValue={initialData?.saleType ?? "RETAIL"} className={`${inputCls} bg-white`}>
+            <select name="saleType" value={saleType} onChange={(e) => setSaleType(e.target.value)} className={`${inputCls} bg-white`}>
               <option value="RETAIL">ขายปลีก</option>
               <option value="WHOLESALE">ขายส่ง</option>
             </select>
@@ -563,7 +733,8 @@ const SaleForm = ({
               type="text"
               name="note"
               maxLength={500}
-              defaultValue={initialData?.note ?? ""}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
               className={inputCls}
               placeholder="หมายเหตุ"
             />
@@ -1044,7 +1215,10 @@ const SaleForm = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-gray-500 dark:text-slate-400">
+          {draftStatus || "Draft จะถูกเก็บเฉพาะในเครื่องนี้ ยังไม่กระทบข้อมูลจริงจนกว่าจะกดบันทึก"}
+        </p>
         <button
           type="submit"
           disabled={isPending}
@@ -1058,7 +1232,7 @@ const SaleForm = ({
               </svg>
               กำลังบันทึก...
             </span>
-          ) : isEdit ? "บันทึกการแก้ไข" : "บันทึกการขาย"}
+          ) : isEdit || persistedSaleId ? "บันทึกการแก้ไข" : "บันทึกการขาย"}
         </button>
       </div>
     </form>

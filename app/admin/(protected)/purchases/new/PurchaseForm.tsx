@@ -1,7 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
@@ -11,7 +10,14 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { getThailandDateKey } from "@/lib/th-date";
-import { sanitizePurchaseItemsForSubmit, type PurchaseFormLineItem } from "../purchase-form-data";
+import {
+  buildPurchaseDraft,
+  getPurchaseDraftKey,
+  parsePurchaseDraft,
+  sanitizePurchaseItemsForSubmit,
+  type PurchaseDraftPayload,
+  type PurchaseFormLineItem,
+} from "../purchase-form-data";
 
 interface ProductOption {
   id: string;
@@ -79,12 +85,17 @@ const PurchaseForm = ({
   initialData?: InitialData;
   editableLotOnEdit?: boolean;
 }) => {
-  const router = useRouter();
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
   const [isPending, startTransition] = useTransition();
   const [error, setError]       = useState("");
   const [success, setSuccess]   = useState("");
+  const [draftStatus, setDraftStatus] = useState("");
+  const [availableDraft, setAvailableDraft] = useState<PurchaseDraftPayload | null>(null);
+  const [persistedPurchaseId, setPersistedPurchaseId] = useState(initialData?.id ?? "");
+  const [purchaseDate, setPurchaseDate] = useState(initialData?.purchaseDate ?? getThailandDateKey());
+  const [referenceNo, setReferenceNo] = useState(initialData?.referenceNo ?? "");
+  const [note, setNote] = useState(initialData?.note ?? "");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
   const [purchaseType, setPurchaseType] = useState<PurchaseType>(
     initialData?.purchaseType ?? PurchaseType.CASH_PURCHASE,
@@ -109,6 +120,88 @@ const PurchaseForm = ({
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
+  const draftKey = getPurchaseDraftKey(
+    persistedPurchaseId ? { mode: "edit", purchaseId: persistedPurchaseId } : { mode: "new" },
+  );
+  const lastPersistedDraftRef = useRef("");
+
+  const getDraftSnapshot = useCallback(() =>
+    JSON.stringify({
+      purchaseDate,
+      supplierId,
+      purchaseType,
+      cashBankAccountId,
+      referenceNo,
+      discount,
+      shippingFee,
+      note,
+      vatType,
+      vatRate,
+      creditTerm,
+      items,
+    }), [cashBankAccountId, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
+
+  const applyDraft = (draft: PurchaseDraftPayload) => {
+    setPurchaseDate(draft.purchaseDate);
+    setSupplierId(draft.supplierId);
+    setPurchaseType(draft.purchaseType as PurchaseType);
+    setCashBankAccountId(draft.cashBankAccountId);
+    setReferenceNo(draft.referenceNo);
+    setDiscount(draft.discount);
+    setShippingFee(draft.shippingFee);
+    setNote(draft.note);
+    setVatType(draft.vatType);
+    setVatRate(draft.vatRate);
+    setCreditTerm(draft.creditTerm);
+    setItems(draft.items as LineItem[]);
+    setAvailableDraft(null);
+    setDraftStatus("กู้คืน draft แล้ว");
+  };
+
+  useEffect(() => {
+    lastPersistedDraftRef.current = getDraftSnapshot();
+    const draft = parsePurchaseDraft(window.localStorage.getItem(draftKey), persistedPurchaseId ? { mode: "edit", purchaseId: persistedPurchaseId } : { mode: "new" });
+    if (draft) {
+      setAvailableDraft(draft);
+      setDraftStatus(`พบ draft ล่าสุด ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+    }
+    // Run once per loaded form context; user edits are handled by the autosave effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  useEffect(() => {
+    const snapshot = getDraftSnapshot();
+    if (snapshot === lastPersistedDraftRef.current) return;
+
+    setDraftStatus("กำลังบันทึก draft...");
+    const timeout = window.setTimeout(() => {
+      try {
+        const draft = buildPurchaseDraft({
+          mode: persistedPurchaseId ? "edit" : "new",
+          purchaseId: persistedPurchaseId || null,
+          purchaseDate,
+          supplierId,
+          purchaseType,
+          cashBankAccountId,
+          referenceNo,
+          discount,
+          shippingFee,
+          note,
+          vatType,
+          vatRate,
+          creditTerm,
+          items,
+        });
+        window.localStorage.setItem(draftKey, JSON.stringify(draft));
+        lastPersistedDraftRef.current = snapshot;
+        setDraftStatus(`Draft saved ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+      } catch {
+        setDraftStatus("บันทึก draft ไม่สำเร็จ");
+      }
+    }, 2000);
+
+    return () => window.clearTimeout(timeout);
+  }, [cashBankAccountId, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]);
@@ -220,9 +313,12 @@ const PurchaseForm = ({
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
     if (purchaseType === PurchaseType.CASH_PURCHASE && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
     formData.set("supplierId", supplierId);
+    formData.set("purchaseDate", purchaseDate);
     formData.set("purchaseType", purchaseType);
     formData.set("cashBankAccountId", purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : "");
     formData.set("creditTerm", purchaseType === PurchaseType.CREDIT_PURCHASE ? creditTerm : "");
+    formData.set("referenceNo", referenceNo);
+    formData.set("note", note);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
@@ -242,16 +338,27 @@ const PurchaseForm = ({
     formData.set("vatRate", String(vatRate));
 
     startTransition(async () => {
-      if (isEdit && initialData) {
-        const result = await updatePurchase(initialData.id, formData);
+      if (persistedPurchaseId) {
+        const result = await updatePurchase(persistedPurchaseId, formData);
         if (result.error) setError(result.error);
-        else router.push("/admin/purchases");
+        else {
+          window.localStorage.removeItem(draftKey);
+          lastPersistedDraftRef.current = getDraftSnapshot();
+          setDraftStatus("");
+          setSuccess("บันทึกการแก้ไขสำเร็จ");
+        }
       } else {
         const result = await createPurchase(formData);
         if (result.error) setError(result.error);
         else {
+          window.localStorage.removeItem(draftKey);
+          if (result.purchaseId) {
+            setPersistedPurchaseId(result.purchaseId);
+            window.history.replaceState(null, "", `/admin/purchases/${result.purchaseId}/edit`);
+          }
+          lastPersistedDraftRef.current = getDraftSnapshot();
+          setDraftStatus("");
           setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
-          setTimeout(() => router.push("/admin/purchases"), 1500);
         }
       }
     });
@@ -259,6 +366,31 @@ const PurchaseForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {availableDraft && (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <p>พบ draft ที่ยังไม่ได้บันทึกจริงจาก {new Date(availableDraft.updatedAt).toLocaleString("th-TH")}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => applyDraft(availableDraft)}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
+            >
+              กู้คืน draft
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.localStorage.removeItem(draftKey);
+                setAvailableDraft(null);
+                setDraftStatus("");
+              }}
+              className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-400/40 dark:text-amber-100 dark:hover:bg-amber-500/20"
+            >
+              ไม่ใช้ draft
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
@@ -268,7 +400,8 @@ const PurchaseForm = ({
           <div>
             <label className={labelCls}>วันที่ซื้อ <span className="text-red-500">*</span></label>
             <input type="date" name="purchaseDate" required
-              defaultValue={initialData?.purchaseDate ?? getThailandDateKey()}
+              value={purchaseDate}
+              onChange={(event) => setPurchaseDate(event.target.value)}
               className={inputCls} />
           </div>
           <div>
@@ -286,7 +419,8 @@ const PurchaseForm = ({
               type="text"
               name="referenceNo"
               maxLength={100}
-              defaultValue={initialData?.referenceNo ?? ""}
+              value={referenceNo}
+              onChange={(event) => setReferenceNo(event.target.value)}
               className={inputCls}
               placeholder="เช่น เลขที่ใบกำกับของผู้จำหน่าย"
             />
@@ -318,7 +452,7 @@ const PurchaseForm = ({
           </div>
           <div>
             <label className={labelCls}>หมายเหตุ</label>
-            <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} className={inputCls} placeholder="หมายเหตุ" />
+            <input type="text" name="note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} className={inputCls} placeholder="หมายเหตุ" />
           </div>
 
           <div>
@@ -691,6 +825,11 @@ const PurchaseForm = ({
           <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
+      {draftStatus && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-400">
+          {draftStatus}
+        </div>
+      )}
 
       <div className="flex justify-end gap-3">
         <button type="submit" disabled={isPending}
@@ -703,7 +842,7 @@ const PurchaseForm = ({
               </svg>
               กำลังบันทึก...
             </>
-          ) : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบซื้อ"}
+          ) : isEdit || persistedPurchaseId ? "บันทึกการแก้ไข" : "บันทึกใบซื้อ"}
         </button>
       </div>
     </form>
