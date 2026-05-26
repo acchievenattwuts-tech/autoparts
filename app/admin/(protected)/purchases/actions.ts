@@ -125,6 +125,19 @@ type PurchaseProductSnapshot = {
   inventoryTracking: string;
 };
 
+type PurchaseStockCardDraft = {
+  productId: string;
+  docNo: string;
+  docDate: Date;
+  source: "PURCHASE";
+  qtyIn: number;
+  qtyOut: number;
+  priceIn: number;
+  landedCost?: number;
+  detail?: string;
+  referenceId?: string;
+};
+
 const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
 
 function roundMoney(value: number): number {
@@ -284,6 +297,37 @@ async function resolvePurchasePaymentMethod(
   }
 
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
+async function createPurchaseStockCardDraft(
+  tx: PurchaseTxClient,
+  input: PurchaseStockCardDraft,
+  nextSorderByProductId: Map<string, number>,
+): Promise<string> {
+  const nextSorder = nextSorderByProductId.get(input.productId) ?? 1;
+  nextSorderByProductId.set(input.productId, nextSorder + 1);
+
+  const row = await tx.stockCard.create({
+    data: {
+      productId: input.productId,
+      docNo: input.docNo,
+      docDate: input.docDate,
+      source: input.source,
+      sorder: nextSorder,
+      qtyIn: new Prisma.Decimal(input.qtyIn),
+      qtyOut: new Prisma.Decimal(input.qtyOut),
+      qtyBalance: new Prisma.Decimal(0),
+      landedCost: new Prisma.Decimal(input.landedCost ?? 0),
+      priceIn: new Prisma.Decimal(input.priceIn),
+      priceOut: new Prisma.Decimal(0),
+      priceBalance: new Prisma.Decimal(0),
+      detail: input.detail,
+      referenceId: input.referenceId,
+    },
+    select: { id: true },
+  });
+
+  return row.id;
 }
 
 function derivePurchasePaymentStatus(purchaseType: PurchaseType): PurchasePaymentStatus {
@@ -880,6 +924,7 @@ export async function updatePurchase(
         purchaseType,
         resolvedCashBankAccountId,
       );
+      const productIdsNeedingRecalc = new Set<string>();
 
       // 1. Drop stock effects for removed/changed lines only.
       //    Differential path: only the lines that didn't survive signature
@@ -888,19 +933,25 @@ export async function updatePurchase(
       if (useDifferential) {
         for (const removed of removedExistingItems) {
           await reversePurchaseLotBalance(tx, removed.existingItemId, removed.productId);
-          await tx.stockCard.deleteMany({
+          const deletedStockCards = await tx.stockCard.deleteMany({
             where: {
               docNo: existing.purchaseNo,
               referenceId: removed.existingItemId,
             },
           });
+          if (deletedStockCards.count > 0) {
+            productIdsNeedingRecalc.add(removed.productId);
+          }
           // Cascade removes PurchaseItemLot rows as well.
           await tx.purchaseItem.delete({ where: { id: removed.existingItemId } });
         }
-        for (const productId of affectedProductIds) {
-          await recalculateStockCard(tx, productId);
-        }
       } else {
+        const oldStockProducts = await tx.stockCard.findMany({
+          where: { docNo: existing.purchaseNo },
+          select: { productId: true },
+          distinct: ["productId"],
+        });
+        oldStockProducts.forEach((row) => productIdsNeedingRecalc.add(row.productId));
         const oldItems = await tx.purchaseItem.findMany({
           where: { purchaseId: id },
           select: { id: true, productId: true },
@@ -910,9 +961,6 @@ export async function updatePurchase(
         }
         await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
         await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
-        for (const productId of oldProductIds) {
-          await recalculateStockCard(tx, productId);
-        }
       }
 
       // 2. Update header
@@ -978,6 +1026,29 @@ export async function updatePurchase(
         tx,
         itemsToCreate.map(({ item }) => item),
       );
+      const stockProductIdsToCreate = [
+        ...new Set(
+          itemsToCreate
+            .map(({ item }) => item.productId)
+            .filter((productId) => {
+              const product = productMap.get(productId);
+              return product && isInventoryTracked(product.inventoryTracking);
+            }),
+        ),
+      ];
+      const maxSorderRows = stockProductIdsToCreate.length > 0
+        ? await tx.stockCard.groupBy({
+            by: ["productId"],
+            where: { productId: { in: stockProductIdsToCreate } },
+            _max: { sorder: true },
+          })
+        : [];
+      const nextSorderByProductId = new Map(
+        maxSorderRows.map((row) => [
+          row.productId,
+          (row._max.sorder ?? 0) + 1,
+        ]),
+      );
 
       for (const { item, itemIndex } of itemsToCreate) {
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
@@ -1007,7 +1078,7 @@ export async function updatePurchase(
           },
         });
 
-        const stockCardId = isTracked ? await writeStockCard(tx, {
+        const stockCardId = isTracked ? await createPurchaseStockCardDraft(tx, {
           productId:   item.productId,
           docNo:       existing.purchaseNo,
           docDate:     parseDateOnlyToDate(purchaseDate),
@@ -1018,7 +1089,10 @@ export async function updatePurchase(
           landedCost:  allocatedLandedForLine,
           detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
           referenceId: purchaseItem.id,
-        }) : null;
+        }, nextSorderByProductId) : null;
+        if (stockCardId) {
+          productIdsNeedingRecalc.add(item.productId);
+        }
         if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
             const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
             if (lotErr) throw new Error(lotErr);
@@ -1034,6 +1108,10 @@ export async function updatePurchase(
             await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
             await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
         }
+      }
+
+      for (const productId of productIdsNeedingRecalc) {
+        await recalculateStockCard(tx, productId);
       }
 
       await replaceCashBankSourceMovements(
