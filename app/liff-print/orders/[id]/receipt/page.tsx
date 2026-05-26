@@ -70,6 +70,7 @@ export default async function ExternalLiffOrderReceiptPage({
       user: { select: { name: true, signatureUrl: true } },
       customer: { select: { name: true, phone: true, address: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           id: true,
           quantity: true,
@@ -167,6 +168,7 @@ export default async function ExternalLiffOrderReceiptPage({
       cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       user: { select: { name: true, signatureUrl: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
           creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },

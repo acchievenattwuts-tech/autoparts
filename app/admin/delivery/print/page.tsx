@@ -90,6 +90,7 @@ const DeliveryPrintPage = async ({
         user: { select: { name: true, signatureUrl: true } },
         customer: { select: { name: true, phone: true, address: true } },
         items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           select: {
             id: true,
             quantity: true,
