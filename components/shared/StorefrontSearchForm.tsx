@@ -33,7 +33,7 @@ const StorefrontSearchForm = ({ initialValue, variant }: Props) => {
       : "rounded-xl border-2 border-gray-200 bg-white py-2 shadow-sm transition-colors focus:border-[#1e3a5f] dark:border-white/10";
 
   return (
-    <div className={variant === "desktop" ? "hidden max-w-sm flex-1 md:block" : "flex min-w-0 flex-1 md:hidden"}>
+    <div className={variant === "desktop" ? "hidden flex-1 md:flex md:justify-center" : "flex min-w-0 flex-1 md:hidden"}>
       <ProductAutocomplete
         initialValue={initialValue}
         placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
@@ -41,6 +41,8 @@ const StorefrontSearchForm = ({ initialValue, variant }: Props) => {
         onSubmit={submit}
         inputClassName={inputClass}
         showSubmitButton
+        enhanced={variant === "desktop" ? "desktop" : "mobile"}
+        className={variant === "desktop" ? "w-full" : undefined}
       />
     </div>
   );

@@ -121,7 +121,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     }));
 
     return NextResponse.json(
-      { items },
+      { items, totalCount: result.total },
       { headers: { "Cache-Control": "public, max-age=30, s-maxage=60" } },
     );
   } catch (error) {

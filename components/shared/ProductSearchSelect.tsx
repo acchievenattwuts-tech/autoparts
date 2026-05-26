@@ -43,7 +43,9 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
 }: Props<T>) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const [coords, setCoords] = useState({
+    top: 0, bottom: 0, left: 0, width: 0, maxHeight: 224, openUp: false,
+  });
   const [remoteResults, setRemoteResults] = useState<T[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const adminTheme = useOptionalAdminTheme();
@@ -114,8 +116,20 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
 
   const updateCoords = () => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect) {
-      setCoords({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 256) });
+    if (!rect) return;
+    const MARGIN = 8;
+    const MIN_HEIGHT = 160;
+    const PREFERRED_HEIGHT = 400;
+    const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
+    const spaceAbove = rect.top - MARGIN;
+    const openUp = spaceBelow < MIN_HEIGHT && spaceAbove > spaceBelow;
+    const available = openUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.min(Math.max(available - MARGIN, MIN_HEIGHT), PREFERRED_HEIGHT);
+    const w = Math.max(rect.width, 256);
+    if (openUp) {
+      setCoords({ top: 0, bottom: window.innerHeight - rect.top + 4, left: rect.left, width: w, maxHeight, openUp: true });
+    } else {
+      setCoords({ top: rect.bottom + 4, bottom: 0, left: rect.left, width: w, maxHeight, openUp: false });
     }
   };
 
@@ -193,10 +207,12 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   const dropdown = open ? (
     <div
       ref={dropdownRef}
-      style={{ top: coords.top, left: coords.left, width: coords.width }}
+      style={coords.openUp
+        ? { bottom: coords.bottom, left: coords.left, width: coords.width }
+        : { top: coords.top, left: coords.left, width: coords.width }}
       className={dropdownClassName}
     >
-      <div className="max-h-56 overflow-y-auto overscroll-contain">
+      <div style={{ maxHeight: coords.maxHeight }} className="overflow-y-auto overscroll-contain">
         {!isQueryReady ? (
           <p className={dropdownMessageClassName}>
             พิมพ์อย่างน้อย {MIN_QUERY_LENGTH} ตัวอักษรเพื่อค้นหา
