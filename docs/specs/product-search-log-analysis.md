@@ -270,6 +270,44 @@ Out of scope for this round:
   rarely hit. Only rolling windows are cached.
 - Replacing in-memory aggregation entirely — kept as the fallback path.
 
+## UX/UI Hardening 2026-05-26 (Items 13–21)
+
+Goal: address UX/UI improvement findings from the post-F6 audit.
+Bug-fix + UX scope — no schema changes, no new Server Actions.
+
+Checklist:
+
+- [x] Item 13: Add confirmation AlertDialog before Apply/Add alias/Add fitment submits
+      so an accidental click never writes to DB without explicit confirmation.
+- [x] Item 14: Move apply forms out of the table cell into a Sheet (right-side drawer)
+      opened by a "Review" button — fixes the horizontal scroll on screens < 1280px.
+- [x] Item 15: Replace free-text productCode input with SearchableSelect so admins
+      can type-to-search instead of needing to know the exact code.
+- [x] Item 16: Change outcome count cards from `md:grid-cols-5` to
+      `md:grid-cols-3 xl:grid-cols-5` so labels don't wrap at 768 px.
+- [x] Item 17: Replace static inline banner for f2Applied/f2Error with a
+      FlashMessage client component that auto-clears from the URL after 5 seconds.
+- [x] Item 18: Add pagination to the cluster table (Previous / หน้า N / Next)
+      so admins can browse beyond the top 20 clusters.
+- [x] Item 19: Add `loading.tsx` for the route segment to satisfy the mandatory
+      `.rules §8` loading state requirement.
+- [x] Item 20: Add `sticky top-0 z-10` to both table `<thead>` elements so column
+      headers stay visible when scrolling long result sets.
+- [x] Item 21: Improve Ignore / Needs investigation / Duplicate buttons inside the
+      Sheet with icons (EyeOff, Search, Copy) and distinct border colours so they
+      are visually grouped and less likely to be clicked by accident.
+
+New files:
+- `loading.tsx` — Suspense-based loading indicator (Item 19)
+- `FlashMessage.tsx` — client component with router.replace auto-clear (Item 17)
+- `ProductSearchReviewSheet.tsx` — Sheet + AlertDialog + SearchableSelect (Items 13, 14, 15, 21)
+
+Out of scope for this round:
+
+- Rewriting the cluster table as a virtualised list.
+- Server-side product search for the code picker (static list of 500 is sufficient).
+- Adding confirmation to Ignore/Investigate/Duplicate (soft status changes; risk is low).
+
 ## Out Of Scope
 
 - Ranking changes.

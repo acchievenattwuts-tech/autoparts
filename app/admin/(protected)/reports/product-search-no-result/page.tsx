@@ -5,7 +5,6 @@ import Link from "next/link";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
-import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { db } from "@/lib/db";
 import { ProductSearchReviewStatus as PrismaProductSearchReviewStatus } from "@/lib/generated/prisma";
 import {
@@ -41,12 +40,10 @@ import {
 } from "@/lib/th-date";
 import {
   autoApplySearchSynonymCandidates,
-  applyProductAliasCandidate,
-  applyProductFitmentCandidate,
-  applySearchSynonymCandidate,
-  markProductSearchReviewOutcome,
   refreshProductSearchClusterCache,
 } from "./actions";
+import { FlashMessage } from "./FlashMessage";
+import { ProductSearchReviewSheet } from "./ProductSearchReviewSheet";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -55,6 +52,7 @@ type PageProps = {
 const RECENT_LIMIT = 100;
 const CLUSTER_LIMIT = 20;
 const ANALYSIS_LIMIT = 500;
+const PRODUCT_SELECT_LIMIT = 500;
 
 const parseDateParam = (value: string | undefined, boundary: "start" | "end"): Date | undefined => {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
@@ -87,13 +85,9 @@ const getActionLabel = (action: ProductSearchCandidateAction): string => {
   return labels[action];
 };
 
-const aliasKindOptions = ["OEM", "PART_NO", "CROSS_REF", "ALIAS", "KEYWORD", "MISSPELL"] as const;
 const outcomeStatusOptions = ["all", "pending", "applied", "ignored", "needs-investigation", "duplicate"] as const;
 
 type OutcomeStatusFilter = (typeof outcomeStatusOptions)[number];
-
-const getDefaultAliasKind = (action: ProductSearchCandidateAction): (typeof aliasKindOptions)[number] =>
-  action === "product-alias-oem" ? "OEM" : "ALIAS";
 
 const prismaStatusToFilter: Record<PrismaProductSearchReviewStatus, OutcomeStatusFilter> = {
   PENDING: "pending",
@@ -175,6 +169,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
     ? (params.outcomeStatus as OutcomeStatusFilter)
     : "all";
   const autoApplyDryRun = params.autoApplyDryRun === "1";
+  const clusterPage = Math.max(1, parseInt(params.clusterPage ?? "1", 10) || 1);
   const autoApplyEnabled = await getSiteConfig()
     .then((config) => config.productSearchAutoApplySynonymsEnabled)
     .catch(() => false);
@@ -208,6 +203,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
     logCountGroups,
     outcomeStatusGroups,
     carBrands,
+    products,
   ] = await Promise.all([
     db.productSearchLog.findMany({
       where,
@@ -247,6 +243,12 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
           select: { id: true, name: true },
         },
       },
+    }),
+    db.product.findMany({
+      where: { isActive: true },
+      orderBy: { code: "asc" },
+      take: PRODUCT_SELECT_LIMIT,
+      select: { code: true, name: true },
     }),
   ]);
 
@@ -343,14 +345,20 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
   const outcomeMap = new Map(
     outcomes.map((outcome) => [`${outcome.normalizedQuery}\u0000${outcome.candidateAction}`, outcome]),
   );
-  const clusters = rawClusters
+  const filteredClusters = rawClusters
     .filter((cluster) => {
       if (outcomeStatus === "all") return true;
       const outcome = outcomeMap.get(`${cluster.normalizedQuery}\u0000${cluster.candidateAction}`);
       if (outcomeStatus === "pending") return !outcome || outcome.status === PrismaProductSearchReviewStatus.PENDING;
       return outcome ? prismaStatusToFilter[outcome.status] === outcomeStatus : false;
-    })
-    .slice(0, CLUSTER_LIMIT);
+  });
+  const clusterTotalCount = filteredClusters.length;
+  const clusterPageCount = Math.max(1, Math.ceil(clusterTotalCount / CLUSTER_LIMIT));
+  const clusterPageSafe = Math.min(clusterPage, clusterPageCount);
+  const clusters = filteredClusters.slice(
+    (clusterPageSafe - 1) * CLUSTER_LIMIT,
+    clusterPageSafe * CLUSTER_LIMIT,
+  );
   const appliedOutcomes = clusters
     .map((cluster) => outcomeMap.get(`${cluster.normalizedQuery}\u0000${cluster.candidateAction}`))
     .filter((outcome): outcome is NonNullable<typeof outcome> => Boolean(outcome?.reviewedAt));
@@ -454,16 +462,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         description={`ติดตามคำค้นหาที่ไม่พบผลลัพธ์และคำค้นหาที่ได้ผลลัพธ์น้อยกว่า ${LOW_RESULT_SEARCH_THRESHOLD} รายการ เพื่อใช้ปรับ SearchSynonym, ProductAlias/OEM และ fitment`}
       />
 
-      {f2Applied ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100">
-          {f2Applied}
-        </div>
-      ) : null}
-      {f2Error ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-100">
-          {f2Error}
-        </div>
-      ) : null}
+      <FlashMessage f2Applied={f2Applied} f2Error={f2Error} />
 
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
@@ -568,7 +567,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
       </div>
 
       <div
-        className="grid gap-3 md:grid-cols-5"
+        className="grid gap-3 md:grid-cols-3 xl:grid-cols-5"
         title="ตัวเลขหลัก = review outcome ของ normalized query ที่อยู่ในช่วงตัวกรองด้านบน (Dep 2B); ตัวเลขรองในวงเล็บ = review ที่ทำในช่วงเดียวกัน (Dep 2A)"
       >
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
@@ -749,14 +748,15 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[#1e3a5f] text-white dark:bg-slate-800">
+            <thead className="sticky top-0 z-10 bg-[#1e3a5f] text-white dark:bg-slate-800">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">Normalized query</th>
                 <th className="px-3 py-2.5 text-left font-medium">Raw variants</th>
                 <th className="px-3 py-2.5 text-right font-medium">ครั้ง</th>
                 <th className="px-3 py-2.5 text-right font-medium">Avg result</th>
                 <th className="px-3 py-2.5 text-left font-medium">ประเภท</th>
-                <th className="px-3 py-2.5 text-left font-medium">Action ที่ควรตรวจ</th>
+                <th className="px-3 py-2.5 text-left font-medium">Action</th>
+                <th className="px-3 py-2.5 text-left font-medium">Review</th>
                 <th className="px-3 py-2.5 text-left font-medium">ล่าสุด</th>
               </tr>
             </thead>
@@ -808,191 +808,24 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                         {getBucketLabel(cluster.bucket)}
                       </span>
                     </td>
-                    <td className="min-w-[24rem] px-3 py-2 text-gray-700 dark:text-slate-200">
-                      <div className="space-y-2">
-                        <span className="inline-flex rounded-full bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 dark:bg-sky-400/10 dark:text-sky-200">
-                          {getActionLabel(cluster.candidateAction)}
-                        </span>
-                        {cluster.candidateAction === "search-synonym" ? (
-                          <form action={applySearchSynonymCandidate} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-white/10 dark:bg-white/5">
-                            <input type="hidden" name="candidate" value={cluster.rawQueries[0] || cluster.normalizedQuery} />
-                            <input type="hidden" name="normalizedQuery" value={cluster.normalizedQuery} />
-                            <input type="hidden" name="candidateAction" value={cluster.candidateAction} />
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Term
-                              <input
-                                name="term"
-                                defaultValue=""
-                                placeholder="canonical term"
-                                className="h-8 w-36 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Lang
-                              <input
-                                name="language"
-                                defaultValue=""
-                                placeholder="th/en"
-                                className="h-8 w-16 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <button
-                              type="submit"
-                              className="h-8 rounded-md bg-[#1e3a5f] px-3 text-xs font-medium text-white hover:bg-[#163055] dark:bg-sky-700 dark:hover:bg-sky-600"
-                            >
-                              Apply
-                            </button>
-                          </form>
-                        ) : null}
-                        {cluster.candidateAction === "product-alias-oem" ? (
-                          <form action={applyProductAliasCandidate} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-white/10 dark:bg-white/5">
-                            <input type="hidden" name="alias" value={cluster.rawQueries[0] || cluster.normalizedQuery} />
-                            <input type="hidden" name="normalizedQuery" value={cluster.normalizedQuery} />
-                            <input type="hidden" name="candidateAction" value={cluster.candidateAction} />
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Product code
-                              <input
-                                name="productCode"
-                                placeholder="exact code"
-                                className="h-8 w-32 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Kind
-                              <select
-                                name="kind"
-                                defaultValue={getDefaultAliasKind(cluster.candidateAction)}
-                                className="h-8 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              >
-                                {aliasKindOptions.map((kind) => (
-                                  <option key={kind} value={kind}>
-                                    {kind}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <button
-                              type="submit"
-                              className="h-8 rounded-md bg-[#1e3a5f] px-3 text-xs font-medium text-white hover:bg-[#163055] dark:bg-sky-700 dark:hover:bg-sky-600"
-                            >
-                              Add alias
-                            </button>
-                          </form>
-                        ) : null}
-                        {cluster.candidateAction === "fitment-year" ? (
-                          <form action={applyProductFitmentCandidate} className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-white/10 dark:bg-white/5">
-                            <input type="hidden" name="normalizedQuery" value={cluster.normalizedQuery} />
-                            <input type="hidden" name="candidateAction" value={cluster.candidateAction} />
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Product code
-                              <input
-                                name="productCode"
-                                placeholder="exact code"
-                                className="h-8 w-32 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Car model
-                              <SearchableSelectFilter
-                                name="carModelId"
-                                options={carBrands.flatMap((brand) =>
-                                  brand.carModels.map((model) => ({
-                                    id: model.id,
-                                    label: `${brand.name} / ${model.name}`,
-                                    sublabel: brand.name,
-                                  })),
-                                )}
-                                placeholder="Select model"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Year start
-                              <input
-                                name="yearStart"
-                                type="number"
-                                min={1900}
-                                max={2200}
-                                defaultValue={fitmentYearHint.yearStart ?? ""}
-                                className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Year end
-                              <input
-                                name="yearEnd"
-                                type="number"
-                                min={1900}
-                                max={2200}
-                                defaultValue={fitmentYearHint.yearEnd ?? ""}
-                                className="h-8 w-24 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Submodel
-                              <input
-                                name="submodel"
-                                placeholder="optional"
-                                className="h-8 w-28 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                              Engine
-                              <input
-                                name="engineCode"
-                                placeholder="optional"
-                                className="h-8 w-28 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                              />
-                            </label>
-                            <button
-                              type="submit"
-                              className="h-8 rounded-md bg-[#1e3a5f] px-3 text-xs font-medium text-white hover:bg-[#163055] dark:bg-sky-700 dark:hover:bg-sky-600"
-                            >
-                              Add fitment
-                            </button>
-                          </form>
-                        ) : null}
-                        <form action={markProductSearchReviewOutcome} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-gray-200 p-2 dark:border-white/15">
-                          <input type="hidden" name="normalizedQuery" value={cluster.normalizedQuery} />
-                          <input type="hidden" name="candidateAction" value={cluster.candidateAction} />
-                          <input type="hidden" name="returnTo" value={returnTo} />
-                          <label className="flex flex-col gap-1 text-[11px] text-gray-500 dark:text-slate-400">
-                            Note
-                            <input
-                              name="note"
-                              defaultValue={outcome?.note ?? ""}
-                              placeholder="optional"
-                              className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-ring dark:text-slate-100"
-                            />
-                          </label>
-                          <button
-                            type="submit"
-                            name="status"
-                            value="ignored"
-                            className="h-8 rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
-                          >
-                            Ignore
-                          </button>
-                          <button
-                            type="submit"
-                            name="status"
-                            value="needs-investigation"
-                            className="h-8 rounded-md bg-amber-100 px-2 text-xs font-medium text-amber-800 hover:bg-amber-200 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20"
-                          >
-                            Investigate
-                          </button>
-                          <button
-                            type="submit"
-                            name="status"
-                            value="duplicate"
-                            className="h-8 rounded-md bg-cyan-100 px-2 text-xs font-medium text-cyan-800 hover:bg-cyan-200 dark:bg-cyan-400/10 dark:text-cyan-200 dark:hover:bg-cyan-400/20"
-                          >
-                            Duplicate
-                          </button>
-                        </form>
-                      </div>
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-200">
+                      <span className="inline-flex rounded-full bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 dark:bg-sky-400/10 dark:text-sky-200">
+                        {getActionLabel(cluster.candidateAction)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <ProductSearchReviewSheet
+                        cluster={{
+                          normalizedQuery: cluster.normalizedQuery,
+                          rawQueries: cluster.rawQueries,
+                          candidateAction: cluster.candidateAction as "search-synonym" | "product-alias-oem" | "fitment-year" | "review-noise",
+                        }}
+                        outcome={outcome ? { status: outcome.status, note: outcome.note ?? null } : null}
+                        products={products}
+                        carBrands={carBrands}
+                        fitmentYearHint={fitmentYearHint}
+                        returnTo={returnTo}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-slate-400">{formatDateTimeThai(cluster.latestAt)}</td>
                   </tr>
@@ -1002,6 +835,43 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             </tbody>
           </table>
         </div>
+        {/* ── Pagination (Item 18) ── */}
+        {clusterPageCount > 1 ? (
+          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-white/10">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              แสดง {((clusterPageSafe - 1) * CLUSTER_LIMIT) + 1}–{Math.min(clusterPageSafe * CLUSTER_LIMIT, clusterTotalCount)} จาก {clusterTotalCount} กลุ่ม
+            </p>
+            <div className="flex items-center gap-2">
+              {clusterPageSafe > 1 ? (
+                <Link
+                  href={(() => {
+                    const next = new URLSearchParams(returnParams);
+                    next.set("clusterPage", String(clusterPageSafe - 1));
+                    return `/admin/reports/product-search-no-result?${next}`;
+                  })()}
+                  className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                >
+                  ← ก่อนหน้า
+                </Link>
+              ) : null}
+              <span className="text-xs text-gray-500 dark:text-slate-400">
+                หน้า {clusterPageSafe} / {clusterPageCount}
+              </span>
+              {clusterPageSafe < clusterPageCount ? (
+                <Link
+                  href={(() => {
+                    const next = new URLSearchParams(returnParams);
+                    next.set("clusterPage", String(clusterPageSafe + 1));
+                    return `/admin/reports/product-search-no-result?${next}`;
+                  })()}
+                  className="inline-flex h-8 items-center rounded-md border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                >
+                  ถัดไป →
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80">
@@ -1011,7 +881,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-[#1e3a5f] text-white dark:bg-slate-800">
+            <thead className="sticky top-0 z-10 bg-[#1e3a5f] text-white dark:bg-slate-800">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">เวลา</th>
                 <th className="px-3 py-2.5 text-left font-medium">คำค้น</th>
