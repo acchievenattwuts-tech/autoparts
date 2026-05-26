@@ -73,6 +73,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
         user: { select: { name: true, signatureUrl: true } },
         items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
             sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
             creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },

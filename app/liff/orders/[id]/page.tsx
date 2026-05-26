@@ -69,7 +69,7 @@ export default async function LiffOrderDetailPage({
             salePrice: true,
             totalAmount: true,
           },
-          orderBy: { id: "asc" },
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         },
       },
     }),

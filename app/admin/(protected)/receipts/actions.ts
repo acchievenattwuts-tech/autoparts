@@ -236,7 +236,7 @@ async function getReceiptAuditSnapshot(receiptId: string) {
     where: { id: receiptId },
     include: {
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           saleId: true,
           cnId: true,
@@ -341,8 +341,9 @@ export async function createReceipt(
       createdReceiptId = receipt.id;
 
       await tx.receiptItem.createMany({
-        data: parsed.items.map((item) => ({
+        data: parsed.items.map((item, idx) => ({
           receiptId:  receipt.id,
+          lineNo:     idx + 1,
           saleId:     item.saleId ?? null,
           cnId:       item.cnId ?? null,
           paidAmount: item.paidAmount,
@@ -550,8 +551,9 @@ export async function updateReceipt(
 
       // 3. Re-create receipt items
       await tx.receiptItem.createMany({
-        data: parsed.items.map((item) => ({
+        data: parsed.items.map((item, idx) => ({
           receiptId:  id,
+          lineNo:     idx + 1,
           saleId:     item.saleId ?? null,
           cnId:       item.cnId ?? null,
           paidAmount: item.paidAmount,

@@ -32,7 +32,7 @@ const SupplierPaymentDetailPage = async ({
       cashBankAccount: { select: { name: true, code: true } },
       user: { select: { name: true } },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           purchase: { select: { id: true, purchaseNo: true, purchaseDate: true } },
           purchaseReturn: { select: { id: true, returnNo: true, returnDate: true } },

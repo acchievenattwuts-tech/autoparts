@@ -93,7 +93,7 @@ async function getAdjustmentAuditSnapshot(adjustmentId: string) {
     where: { id: adjustmentId },
     include: {
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           id: true,
           qtyAdjust: true,
@@ -214,10 +214,11 @@ export async function createAdjustment(
           userId: session.user.id,
           note,
           items: {
-            create: validItems.map((item) => {
+            create: validItems.map((item, idx) => {
               const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`) ?? 1;
               const qtyBase = item.qty * scale;
               return {
+                lineNo: idx + 1,
                 productId: item.productId,
                 qtyAdjust: item.type === "ADJUST_IN" ? qtyBase : -qtyBase,
                 reason: item.reason,
@@ -225,7 +226,7 @@ export async function createAdjustment(
             }),
           },
         },
-        include: { items: true },
+        include: { items: { orderBy: [{ lineNo: "asc" }, { id: "asc" }] } },
       });
       createdAdjustmentId = adjustment.id;
 

@@ -22,6 +22,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
       cashBankAccount: { select: { name: true } },
       user:     { select: { name: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           product: { select: { code: true, name: true } },
           lotItems: { select: { lotNo: true, qty: true } },

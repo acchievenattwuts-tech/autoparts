@@ -20,6 +20,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     where: { id },
     include: {
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           product: {
             select: {

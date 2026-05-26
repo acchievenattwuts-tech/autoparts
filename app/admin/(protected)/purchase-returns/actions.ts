@@ -410,7 +410,7 @@ async function writePurchaseReturnLines(
   purchaseReturnId: string,
   returnNo: string,
   docDate: Date,
-  lineData: LineData[],
+  lineData: { line: LineData; lineNo: number }[],
   type: PurchaseReturnType,
   sourcePurchaseId: string | undefined,
 ): Promise<void> {
@@ -419,7 +419,7 @@ async function writePurchaseReturnLines(
     ? await buildPurchaseReferenceCostMap(tx, sourcePurchaseId)
     : new Map<string, number>();
 
-  for (const line of lineData) {
+  for (const { line, lineNo } of lineData) {
     if (writeStock && line.isLotControl) {
       const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
       if (lotError) throw new Error(lotError);
@@ -428,6 +428,7 @@ async function writePurchaseReturnLines(
     const returnItem = await tx.purchaseReturnItem.create({
       data: {
         purchaseReturnId,
+        lineNo,
         productId: line.productId,
         qty: Math.round(line.qtyInBase),
         costPrice: line.costPerBase,
@@ -548,7 +549,7 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
         },
       },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           productId: true,
           qty: true,
@@ -694,7 +695,15 @@ export async function createPurchaseReturn(
       });
       createdPurchaseReturnId = purchaseReturn.id;
 
-      await writePurchaseReturnLines(tx, purchaseReturn.id, returnNo, docDate, lineData, type, purchaseId);
+      await writePurchaseReturnLines(
+        tx,
+        purchaseReturn.id,
+        returnNo,
+        docDate,
+        lineData.map((line, idx) => ({ line, lineNo: idx + 1 })),
+        type,
+        purchaseId,
+      );
 
       if (linkedClaim) {
         const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
@@ -1120,21 +1129,21 @@ export async function updatePurchaseReturn(
         const taxBasisChanged =
           existing.vatType !== vatType ||
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
-        if (taxBasisChanged) {
-          for (const [newIdx, existingItemId] of matchedByNewIdx) {
-            const line = lineData[newIdx];
-            await tx.purchaseReturnItem.update({
-              where: { id: existingItemId },
-              data:  { subtotalAmount: line.subtotalAmount },
-            });
-          }
+        for (const [newIdx, existingItemId] of matchedByNewIdx) {
+          const line = lineData[newIdx];
+          await tx.purchaseReturnItem.update({
+            where: { id: existingItemId },
+            data:  taxBasisChanged
+              ? { lineNo: newIdx + 1, subtotalAmount: line.subtotalAmount }
+              : { lineNo: newIdx + 1 },
+          });
         }
       }
 
       // Create only added (differential) or all (fallback) lines.
-      const linesToWrite = useDifferential
-        ? addedNewItems.map((a) => lineData[a.newIdx])
-        : lineData;
+      const linesToWrite: { line: LineData; lineNo: number }[] = useDifferential
+        ? addedNewItems.map((a) => ({ line: lineData[a.newIdx], lineNo: a.newIdx + 1 }))
+        : lineData.map((line, idx) => ({ line, lineNo: idx + 1 }));
       if (linesToWrite.length > 0) {
         await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, linesToWrite, type, purchaseId);
       }

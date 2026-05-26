@@ -112,6 +112,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       where: { id },
       include: {
         items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
             product: { select: { code: true, name: true, reportUnitName: true, isLotControl: true } },
             lotItems: { select: { lotNo: true, qty: true } },

@@ -22,6 +22,7 @@ const EditSupplierPaymentPage = async ({
     where: { id },
     include: {
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           purchase: { select: { purchaseNo: true, amountRemain: true } },
           purchaseReturn: { select: { returnNo: true, amountRemain: true } },

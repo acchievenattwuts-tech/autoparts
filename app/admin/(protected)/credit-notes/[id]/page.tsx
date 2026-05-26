@@ -37,6 +37,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
       sale: { select: { saleNo: true } },
       user: { select: { name: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           product: { select: { code: true, name: true } },
           lotItems: { select: { lotNo: true, qty: true, isReturnLot: true } },

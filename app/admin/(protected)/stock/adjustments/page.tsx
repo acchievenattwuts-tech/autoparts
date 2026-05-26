@@ -69,6 +69,7 @@ const AdjustmentsPage = async ({
         cancelNote: true,
         user: { select: { name: true } },
         items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           select: {
             id: true,
             qtyAdjust: true,

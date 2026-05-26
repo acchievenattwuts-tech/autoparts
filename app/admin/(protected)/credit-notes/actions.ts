@@ -316,7 +316,7 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
         },
       },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           productId: true,
           qty: true,
@@ -451,7 +451,7 @@ export async function createCreditNote(
       createdCreditNoteId = cn.id;
 
       // Process each line item
-      for (const item of validItems) {
+      for (const [itemIndex, item] of validItems.entries()) {
         // Get unit scale
         const unit = await tx.productUnit.findUnique({
           where: { productId_name: { productId: item.productId, name: item.unitName } },
@@ -478,6 +478,7 @@ export async function createCreditNote(
         const cnItem = await tx.creditNoteItem.create({
           data: {
             creditNoteId:  cn.id,
+            lineNo:        itemIndex + 1,
             productId:     item.productId,
             qty:           Math.round(qtyInBase),
             unitPrice:     item.salePrice,
@@ -950,26 +951,26 @@ export async function updateCreditNote(
         const taxBasisChanged =
           existing.vatType !== vatType ||
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
-        if (taxBasisChanged) {
-          for (const [newIdx, existingItemId] of matchedByNewIdx) {
-            const item = validItems[newIdx];
-            const itemTotal = item.qty * item.salePrice;
-            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
-            await tx.creditNoteItem.update({
-              where: { id: existingItemId },
-              data:  { subtotalAmount: itemSubtotal },
-            });
-          }
+        for (const [newIdx, existingItemId] of matchedByNewIdx) {
+          const item = validItems[newIdx];
+          const itemTotal = item.qty * item.salePrice;
+          const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+          await tx.creditNoteItem.update({
+            where: { id: existingItemId },
+            data:  taxBasisChanged
+              ? { lineNo: newIdx + 1, subtotalAmount: itemSubtotal }
+              : { lineNo: newIdx + 1 },
+          });
         }
       }
 
       // 4. Create items + stock cards.
       //    Differential: only added/changed lines. Fallback: every line.
-      const itemsToCreate = useDifferential
-        ? addedNewItems.map((a) => validItems[a.newIdx])
-        : validItems;
+      const itemsToCreate: { item: typeof validItems[number]; newIdx: number }[] = useDifferential
+        ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], newIdx: a.newIdx }))
+        : validItems.map((item, idx) => ({ item, newIdx: idx }));
 
-      for (const item of itemsToCreate) {
+      for (const { item, newIdx } of itemsToCreate) {
         const unit = await tx.productUnit.findUnique({
           where: { productId_name: { productId: item.productId, name: item.unitName } },
         });
@@ -994,6 +995,7 @@ export async function updateCreditNote(
         const cnItem = await tx.creditNoteItem.create({
           data: {
             creditNoteId:   id,
+            lineNo:         newIdx + 1,
             productId:      item.productId,
             qty:            Math.round(qtyInBase),
             unitPrice:      item.salePrice,

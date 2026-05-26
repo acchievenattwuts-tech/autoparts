@@ -19,6 +19,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
     include: {
       user: { select: { name: true } },
       items: {
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           expenseCode: { select: { code: true, name: true } },
         },

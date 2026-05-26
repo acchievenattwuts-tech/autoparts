@@ -214,7 +214,7 @@ async function getSaleAuditSnapshot(saleId: string) {
           supplierId: true,
           supplierName: true,
         },
-        orderBy: [{ productId: "asc" }, { id: "asc" }],
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -593,7 +593,7 @@ export async function createSale(
       createdSaleId = sale.id;
 
       // 2. Process each line item
-      for (const item of validItems) {
+      for (const [itemIndex, item] of validItems.entries()) {
         // Get unit scale
         const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
@@ -613,6 +613,7 @@ export async function createSale(
         const saleItem = await tx.saleItem.create({
           data: {
             saleId:        sale.id,
+            lineNo:        itemIndex + 1,
             productId:     item.productId,
             quantity:      Math.round(qtyInBase),
             salePrice:     item.salePrice,
@@ -1184,31 +1185,31 @@ export async function updateSale(
         const taxBasisChanged =
           existing.vatType !== vatType ||
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
-        if (taxBasisChanged) {
-          for (const [newIdx, existingItemId] of matchedByNewIdx) {
-            const item = validItems[newIdx];
-            const itemTotal = item.qty * item.salePrice;
-            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
-            await tx.saleItem.update({
-              where: { id: existingItemId },
-              data:  { subtotalAmount: itemSubtotal },
-            });
-          }
+        for (const [newIdx, existingItemId] of matchedByNewIdx) {
+          const item = validItems[newIdx];
+          const itemTotal = item.qty * item.salePrice;
+          const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+          await tx.saleItem.update({
+            where: { id: existingItemId },
+            data:  taxBasisChanged
+              ? { lineNo: newIdx + 1, subtotalAmount: itemSubtotal }
+              : { lineNo: newIdx + 1 },
+          });
         }
       }
 
       // 3. Create items + stock cards + warranties.
       //    Differential: only added/changed lines. Fallback: every line.
-      const itemsToCreate: { item: typeof validItems[number] }[] = useDifferential
-        ? addedNewItems.map((a) => ({ item: validItems[a.newIdx] }))
-        : validItems.map((item) => ({ item }));
+      const itemsToCreate: { item: typeof validItems[number]; newIdx: number }[] = useDifferential
+        ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], newIdx: a.newIdx }))
+        : validItems.map((item, idx) => ({ item, newIdx: idx }));
 
       const { productMap, unitMap } = await preloadSaleDependencies(
         tx,
         itemsToCreate.map(({ item }) => item),
       );
 
-      for (const { item } of itemsToCreate) {
+      for (const { item, newIdx } of itemsToCreate) {
         const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
         if (!product) throw new Error("ไม่พบสินค้า");
@@ -1222,7 +1223,7 @@ export async function updateSale(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
         const saleItem = await tx.saleItem.create({
-          data: { saleId: id, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
+          data: { saleId: id, lineNo: newIdx + 1, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
         });
 
         const stockCardId = isTracked ? await writeStockCard(tx, {

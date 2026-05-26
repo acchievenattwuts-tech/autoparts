@@ -21,6 +21,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       where: { id },
       include: {
         items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           select: {
             saleId:     true,
             cnId:       true,

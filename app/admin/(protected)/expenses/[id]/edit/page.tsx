@@ -19,7 +19,10 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     db.expense.findUnique({
       where: { id },
       include: {
-        items: { include: { expenseCode: { select: { id: true } } } },
+        items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+          include: { expenseCode: { select: { id: true } } },
+        },
       },
     }),
     db.expenseCode.findMany({

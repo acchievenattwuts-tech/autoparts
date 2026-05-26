@@ -747,6 +747,7 @@ model DeliveryTracking {
 model SaleItem {
   id             String        @id @default(cuid())
   saleId         String
+  lineNo         Int           @default(0)
   productId      String
   quantity       Int
   salePrice      Decimal       @db.Decimal(10, 2)
@@ -761,7 +762,7 @@ model SaleItem {
   lotItems       SaleItemLot[]
   warranties     Warranty[]
 
-  @@index([saleId])
+  @@index([saleId, lineNo])
   @@index([productId])
 }
 
@@ -956,6 +957,7 @@ model DeliveryCommissionRun {
 model DeliveryCommissionItem {
   id                String                @id @default(cuid())
   runId             String
+  lineNo            Int                   @default(0)
   saleId            String
   saleNo            String
   saleDate          DateTime              @db.Timestamptz(3)
@@ -969,17 +971,21 @@ model DeliveryCommissionItem {
   sale              Sale                  @relation(fields: [saleId], references: [id])
 
   @@unique([runId, saleId])
+  @@index([runId, lineNo])
   @@index([saleId])
 }
 
 model ExpenseItem {
   id            String      @id @default(cuid())
   expenseId     String
+  lineNo        Int         @default(0)
   expenseCodeId String
   description   String?
   amount        Decimal     @db.Decimal(10, 2)
   expenseCode   ExpenseCode @relation(fields: [expenseCodeId], references: [id])
   expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId, lineNo])
 }
 
 model FactProfit {
@@ -1045,11 +1051,14 @@ model Adjustment {
 model AdjustmentItem {
   id           String     @id @default(cuid())
   adjustmentId String
+  lineNo       Int        @default(0)
   productId    String
   qtyAdjust    Decimal    @db.Decimal(12, 4)
   reason       String?
   adjustment   Adjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
   product      Product    @relation(fields: [productId], references: [id])
+
+  @@index([adjustmentId, lineNo])
 }
 
 model CreditNote {
@@ -1090,6 +1099,7 @@ model CreditNote {
 model CreditNoteItem {
   id             String              @id @default(cuid())
   creditNoteId   String
+  lineNo         Int                 @default(0)
   productId      String?
   qty            Decimal             @default(0) @db.Decimal(12, 4)
   unitPrice      Decimal             @default(0) @db.Decimal(10, 2)
@@ -1099,6 +1109,8 @@ model CreditNoteItem {
   creditNote     CreditNote          @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
   product        Product?            @relation(fields: [productId], references: [id])
   lotItems       CreditNoteItemLot[]
+
+  @@index([creditNoteId, lineNo])
 }
 
 model PurchaseReturn {
@@ -1141,6 +1153,7 @@ model PurchaseReturn {
 model PurchaseReturnItem {
   id               String                  @id @default(cuid())
   purchaseReturnId String
+  lineNo           Int                     @default(0)
   productId        String
   qty              Decimal                 @db.Decimal(12, 4)
   costPrice        Decimal                 @db.Decimal(10, 2)
@@ -1150,6 +1163,8 @@ model PurchaseReturnItem {
   product          Product                 @relation(fields: [productId], references: [id])
   purchaseReturn   PurchaseReturn          @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   lotItems         PurchaseReturnItemLot[]
+
+  @@index([purchaseReturnId, lineNo])
 }
 
 model SiteContent {
@@ -1304,6 +1319,7 @@ model CashBankAdjustment {
 model ReceiptItem {
   id         String      @id @default(cuid())
   receiptId  String
+  lineNo     Int         @default(0)
   saleId     String?
   paidAmount Decimal     @db.Decimal(10, 2)
   cnId       String?
@@ -1312,7 +1328,7 @@ model ReceiptItem {
   sale       Sale?       @relation(fields: [saleId], references: [id])
 
   @@index([saleId])
-  @@index([receiptId])
+  @@index([receiptId, lineNo])
   @@index([cnId])
 }
 
@@ -1372,6 +1388,7 @@ model SupplierPayment {
 model SupplierPaymentItem {
   id               String           @id @default(cuid())
   paymentId        String
+  lineNo           Int              @default(0)
   purchaseId       String?
   purchaseReturnId String?
   advanceId        String?
@@ -1381,7 +1398,7 @@ model SupplierPaymentItem {
   purchase         Purchase?        @relation(fields: [purchaseId], references: [id])
   purchaseReturn   PurchaseReturn?  @relation(fields: [purchaseReturnId], references: [id])
 
-  @@index([paymentId])
+  @@index([paymentId, lineNo])
   @@index([purchaseId])
   @@index([purchaseReturnId])
   @@index([advanceId])

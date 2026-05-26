@@ -44,7 +44,7 @@ async function getExpenseAuditSnapshot(expenseId: string) {
         },
       },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           id: true,
           description: true,
@@ -143,7 +143,8 @@ export async function createExpense(
           netAmount,
           note:           d.note,
           items: {
-            create: d.items.map((it) => ({
+            create: d.items.map((it, idx) => ({
+              lineNo:        idx + 1,
               expenseCodeId: it.expenseCodeId,
               description:   it.description || null,
               amount:        it.amount,
@@ -308,8 +309,9 @@ export async function updateExpense(
         },
       });
       await tx.expenseItem.createMany({
-        data: d.items.map((it) => ({
+        data: d.items.map((it, idx) => ({
           expenseId:     id,
+          lineNo:        idx + 1,
           expenseCodeId: it.expenseCodeId,
           description:   it.description || null,
           amount:        it.amount,

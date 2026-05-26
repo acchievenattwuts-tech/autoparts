@@ -357,7 +357,7 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
         },
       },
       items: {
-        orderBy: { id: "asc" },
+        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
           purchaseId: true,
           purchaseReturnId: true,
@@ -472,8 +472,9 @@ export async function createSupplierPayment(
       createdPaymentId = payment.id;
 
       await tx.supplierPaymentItem.createMany({
-        data: parsed.items.map((item) => ({
+        data: parsed.items.map((item, idx) => ({
           paymentId: payment.id,
+          lineNo:    idx + 1,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,
@@ -603,8 +604,9 @@ export async function updateSupplierPayment(
       });
 
       await tx.supplierPaymentItem.createMany({
-        data: parsed.items.map((item) => ({
+        data: parsed.items.map((item, idx) => ({
           paymentId: id,
+          lineNo:    idx + 1,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,

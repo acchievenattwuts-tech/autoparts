@@ -240,6 +240,7 @@ export async function createDeliveryCommissionRun(formData: FormData): Promise<C
             items: {
               create: [
                 {
+                  lineNo: 1,
                   expenseCodeId: expenseCode.id,
                   description: `ทำจ่ายค่าส่งพนักงาน ${deliveryStaff.name} (${runNo})`,
                   amount: commissionTotal,
@@ -265,7 +266,8 @@ export async function createDeliveryCommissionRun(formData: FormData): Promise<C
             commissionTotal,
             note: d.note || null,
             items: {
-              create: items.map((item) => ({
+              create: items.map((item, idx) => ({
+                lineNo: idx + 1,
                 saleId: item.saleId,
                 activeSaleId: item.saleId,
                 saleNo: item.saleNo,
