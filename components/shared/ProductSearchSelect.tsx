@@ -172,7 +172,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   useEffect(() => {
     if (!open) return;
     const close = (event: Event) => {
-      if (dropdownRef.current?.contains(event.target as Node)) return;
+      if (event.target instanceof Node && dropdownRef.current?.contains(event.target)) return;
       setOpen(false);
       setQuery("");
     };
