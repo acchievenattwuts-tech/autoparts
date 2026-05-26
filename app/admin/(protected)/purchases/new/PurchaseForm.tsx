@@ -11,6 +11,7 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { getThailandDateKey } from "@/lib/th-date";
+import { sanitizePurchaseItemsForSubmit, type PurchaseFormLineItem } from "../purchase-form-data";
 
 interface ProductOption {
   id: string;
@@ -38,13 +39,8 @@ interface CashBankAccountOption {
   accountNo: string | null;
 }
 
-interface LineItem {
-  productId:  string;
-  unitName:   string;
-  qty:        number;
-  costPrice:  number;
-  landedCost: number;
-  lotItems:   LotSubRow[];
+interface LineItem extends Omit<PurchaseFormLineItem, "lotItems"> {
+  lotItems: LotSubRow[];
 }
 
 interface InitialData {
@@ -239,7 +235,7 @@ const PurchaseForm = ({
         if (lotErr) { setError(lotErr); return; }
       }
     }
-    formData.set("items", JSON.stringify(items));
+    formData.set("items", JSON.stringify(sanitizePurchaseItemsForSubmit(items)));
     formData.set("discount", String(discount));
     formData.set("shippingFee", String(shippingFee));
     formData.set("vatType", vatType);
