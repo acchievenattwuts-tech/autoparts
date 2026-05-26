@@ -93,6 +93,6 @@ const TX_TIMEOUT = 30_000; // 30s — Supabase serverless needs more time for mu
 
 type TxFn<T> = Parameters<typeof db.$transaction>[0] & ((tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<T>);
 
-export function dbTx<T>(fn: TxFn<T>): Promise<T> {
-  return db.$transaction(fn, { timeout: TX_TIMEOUT }) as Promise<T>;
+export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T> {
+  return db.$transaction(fn, { timeout: options?.timeout ?? TX_TIMEOUT }) as Promise<T>;
 }

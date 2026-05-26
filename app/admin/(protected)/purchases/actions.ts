@@ -537,7 +537,7 @@ export async function createPurchase(
             }]
           : [],
       );
-    });
+    }, { timeout: 120_000 });
 
     const afterSnapshot = createdPurchaseId
       ? await getPurchaseAuditSnapshot(createdPurchaseId)
@@ -1051,7 +1051,7 @@ export async function updatePurchase(
             }]
           : [],
       );
-    });
+    }, { timeout: 120_000 });
 
     const afterSnapshot = await getPurchaseAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {

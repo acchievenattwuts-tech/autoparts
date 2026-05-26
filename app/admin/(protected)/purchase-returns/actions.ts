@@ -734,7 +734,7 @@ export async function createPurchaseReturn(
             ]
           : [],
       );
-    });
+    }, { timeout: 120_000 });
 
     const afterSnapshot = createdPurchaseReturnId
       ? await getPurchaseReturnAuditSnapshot(createdPurchaseReturnId)
@@ -830,7 +830,7 @@ export async function cancelPurchaseReturn(
           amountRemain: 0,
         },
       });
-    });
+    }, { timeout: 120_000 });
 
     const afterSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
     if (beforeSnapshot && afterSnapshot) {
@@ -1175,7 +1175,7 @@ export async function updatePurchaseReturn(
             ]
           : [],
       );
-    });
+    }, { timeout: 120_000 });
 
     const afterSnapshot = await getPurchaseReturnAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
