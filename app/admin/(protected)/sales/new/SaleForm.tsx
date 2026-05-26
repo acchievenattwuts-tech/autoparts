@@ -907,19 +907,13 @@ const SaleForm = ({
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
         <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
           <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้า</h2>
-          <button
-            type="button"
-            onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300"
-          >
-            <Plus size={14} /> เพิ่มรายการ
-          </button>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-center py-2 px-2 text-gray-500 font-medium w-10 dark:text-slate-400">ลำดับ</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
@@ -942,6 +936,7 @@ const SaleForm = ({
                 return (
                   <Fragment key={i}>
                   <tr className="border-b border-gray-50 dark:border-white/5">
+                    <td className="py-2 px-2 text-center text-sm text-gray-500 dark:text-slate-400">{i + 1}</td>
                     <td className="py-2 px-2">
                       <ProductSearchSelect
                         products={productOptions}
@@ -1029,7 +1024,7 @@ const SaleForm = ({
                   </tr>
                   {isLot && (
                     <tr className="bg-amber-50/60 dark:bg-amber-500/10">
-                      <td colSpan={7} className="px-4 pb-3 pt-1">
+                      <td colSpan={8} className="px-4 pb-3 pt-1">
                         {/* Lot header */}
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-400/40">
@@ -1219,6 +1214,14 @@ const SaleForm = ({
         <p className="text-xs text-gray-500 dark:text-slate-400">
           {draftStatus || "Draft จะถูกเก็บเฉพาะในเครื่องนี้ ยังไม่กระทบข้อมูลจริงจนกว่าจะกดบันทึก"}
         </p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={addItem}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:border-[#1e3a5f] bg-white text-gray-700 hover:text-[#1e3a5f] text-sm font-semibold rounded-lg transition-colors dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300"
+          >
+            <Plus size={14} /> เพิ่มรายการ
+          </button>
         <button
           type="submit"
           disabled={isPending}
@@ -1234,6 +1237,7 @@ const SaleForm = ({
             </span>
           ) : isEdit || persistedSaleId ? "บันทึกการแก้ไข" : "บันทึกการขาย"}
         </button>
+        </div>
       </div>
     </form>
   );

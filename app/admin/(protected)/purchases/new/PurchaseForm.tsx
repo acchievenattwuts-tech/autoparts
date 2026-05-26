@@ -557,16 +557,13 @@ const PurchaseForm = ({
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
         <div className="flex items-center justify-between mb-5 pb-3 border-b border-gray-100 dark:border-white/10">
           <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-300">รายการสินค้า</h2>
-          <button type="button" onClick={addItem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-400 dark:hover:border-sky-500 dark:hover:text-sky-300">
-            <Plus size={14} /> เพิ่มรายการ
-          </button>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-white/10">
+                <th className="text-center py-2 px-2 text-gray-500 font-medium w-10 dark:text-slate-400">ลำดับ</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
@@ -586,6 +583,7 @@ const PurchaseForm = ({
                 return (
                   <Fragment key={i}>
                     <tr key={i} className="border-b border-gray-50 dark:border-white/5">
+                      <td className="py-2 px-2 text-center text-sm text-gray-500 dark:text-slate-400">{i + 1}</td>
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
@@ -637,7 +635,7 @@ const PurchaseForm = ({
                     </tr>
                     {isLot && (
                       <tr className="bg-amber-50/60 dark:bg-amber-500/10">
-                        <td colSpan={6} className="px-4 pb-3 pt-1">
+                        <td colSpan={7} className="px-4 pb-3 pt-1">
                           {showReadonlyLots ? (
                             /* Read-only lot display in edit mode */
                             <div className="flex flex-wrap gap-2">
@@ -758,7 +756,7 @@ const PurchaseForm = ({
             </tbody>
             <tfoot>
               <tr className="border-t border-gray-100 dark:border-white/10">
-                <td colSpan={4} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวมค่าสินค้าก่อนส่วนลด</td>
+                <td colSpan={5} className="py-2 px-2 text-right text-sm text-gray-500 dark:text-slate-400">รวมค่าสินค้าก่อนส่วนลด</td>
                 <td className="py-2 px-2 text-right text-gray-700 dark:text-slate-200">
                   {totalBeforeDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
@@ -766,7 +764,7 @@ const PurchaseForm = ({
               </tr>
               {shippingFee > 0 && (
                 <tr>
-                  <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ค่าจัดส่ง</td>
+                  <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ค่าจัดส่ง</td>
                   <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
                     +{shippingFee.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </td>
@@ -774,7 +772,7 @@ const PurchaseForm = ({
                 </tr>
               )}
               <tr>
-                <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ส่วนลด</td>
+                <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">ส่วนลด</td>
                 <td className="py-1 px-2 text-right text-red-500 dark:text-red-400">
                   -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
@@ -783,7 +781,7 @@ const PurchaseForm = ({
               {vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
+                    <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       ยอดก่อนภาษี
                     </td>
                     <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
@@ -792,7 +790,7 @@ const PurchaseForm = ({
                     <td />
                   </tr>
                   <tr>
-                    <td colSpan={4} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
+                    <td colSpan={5} className="py-1 px-2 text-right text-sm text-gray-500 dark:text-slate-400">
                       VAT {vatRate}%
                     </td>
                     <td className="py-1 px-2 text-right text-gray-700 dark:text-slate-200">
@@ -803,7 +801,7 @@ const PurchaseForm = ({
                 </>
               )}
               <tr className="border-t border-gray-200 dark:border-white/10">
-                <td colSpan={4} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td colSpan={5} className="py-3 px-2 text-right text-sm font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
                 <td className="py-3 px-2 text-right font-bold text-[#1e3a5f] text-base dark:text-sky-300">
                   {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>
@@ -831,7 +829,11 @@ const PurchaseForm = ({
         </div>
       )}
 
-      <div className="flex justify-end gap-3">
+      <div className="flex justify-end items-center gap-3">
+        <button type="button" onClick={addItem}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:border-[#1e3a5f] bg-white text-gray-700 hover:text-[#1e3a5f] text-sm font-semibold rounded-lg transition-colors dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300">
+          <Plus size={14} /> เพิ่มรายการ
+        </button>
         <button type="submit" disabled={isPending}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
           {isPending ? (
