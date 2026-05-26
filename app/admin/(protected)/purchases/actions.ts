@@ -138,6 +138,13 @@ type PurchaseStockCardDraft = {
   referenceId?: string;
 };
 
+type PurchaseLandedStockCardSnapshot = {
+  id: string;
+  productId: string;
+  docDate: Date;
+  sorder: number;
+};
+
 const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
 
 function roundMoney(value: number): number {
@@ -328,6 +335,116 @@ async function createPurchaseStockCardDraft(
   });
 
   return row.id;
+}
+
+async function refreshLatestPurchaseStockCardBalance(
+  tx: PurchaseTxClient,
+  row: PurchaseLandedStockCardSnapshot,
+): Promise<boolean> {
+  const laterRow = await tx.stockCard.findFirst({
+    where: {
+      productId: row.productId,
+      OR: [
+        { docDate: { gt: row.docDate } },
+        { docDate: row.docDate, sorder: { gt: row.sorder } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (laterRow) return false;
+
+  const rows = await tx.stockCard.findMany({
+    where: { productId: row.productId },
+    orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+    select: {
+      id: true,
+      source: true,
+      qtyIn: true,
+      qtyOut: true,
+      priceIn: true,
+      landedCost: true,
+      usesReferenceCost: true,
+    },
+  });
+
+  let baQty = 0;
+  let baPrice = 0;
+  let baTotal = 0;
+  let currentPriceOut = 0;
+  let currentQtyBalance = 0;
+  let currentPriceBalance = 0;
+  const neutralInSources = ["RETURN_IN", "CLAIM_RETURN_IN", "CLAIM_RECV_IN"];
+
+  for (const stockRow of rows) {
+    const qIn = Number(stockRow.qtyIn);
+    const qOut = Number(stockRow.qtyOut);
+    const usesRef = stockRow.usesReferenceCost === true;
+    const pIn =
+      qIn > 0 && neutralInSources.includes(stockRow.source) && !usesRef
+        ? baPrice
+        : Number(stockRow.priceIn);
+    const landedCost = Number(stockRow.landedCost);
+    const newQty = baQty + qIn - qOut;
+    let newPrice = 0;
+    let newTotal = 0;
+    let priceOut = baPrice;
+
+    if (qIn > 0) {
+      if (newQty > 0) {
+        if (baQty > 0) {
+          newTotal = baTotal + qIn * pIn - qOut * baPrice + landedCost;
+          newPrice = newTotal / newQty;
+        } else {
+          newPrice = pIn + landedCost / qIn;
+          newTotal = newPrice * newQty;
+        }
+      }
+    } else if (usesRef && Number(stockRow.priceIn) > 0) {
+      const refCost = Number(stockRow.priceIn);
+      priceOut = refCost;
+      if (newQty >= 0) {
+        newTotal = baTotal - qOut * refCost;
+        if (newTotal < 0) newTotal = 0;
+        newPrice = newQty > 0 ? newTotal / newQty : 0;
+      }
+    } else {
+      priceOut = baPrice;
+      if (newQty >= 0) {
+        newPrice = baPrice;
+        newTotal = baTotal - qOut * baPrice;
+        if (newTotal < 0) newTotal = 0;
+      }
+    }
+
+    baQty = newQty;
+    baPrice = newPrice;
+    baTotal = newTotal;
+
+    if (stockRow.id === row.id) {
+      currentPriceOut = priceOut;
+      currentQtyBalance = newQty;
+      currentPriceBalance = newPrice > 0 ? newPrice : 0;
+    }
+  }
+
+  await tx.stockCard.update({
+    where: { id: row.id },
+    data: {
+      priceOut: new Prisma.Decimal(currentPriceOut),
+      qtyBalance: new Prisma.Decimal(currentQtyBalance),
+      priceBalance: new Prisma.Decimal(currentPriceBalance),
+    },
+  });
+
+  await tx.product.update({
+    where: { id: row.productId },
+    data: {
+      stock: Math.round(baQty),
+      avgCost: new Prisma.Decimal(baPrice > 0 ? baPrice : 0),
+    },
+  });
+
+  return true;
 }
 
 function derivePurchasePaymentStatus(purchaseType: PurchaseType): PurchasePaymentStatus {
@@ -910,7 +1027,13 @@ export async function updatePurchase(
     (n) => !matchedByNewIdx.has(n.newIdx),
   );
 
-  const useDifferential = !purchaseDateChanged && !allocationsMayShift;
+  const canUpdateLandedAllocationInPlace =
+    !purchaseDateChanged &&
+    allocationsMayShift &&
+    removedExistingItems.length === 0 &&
+    addedNewItems.length === 0;
+  const useDifferential =
+    !purchaseDateChanged && (!allocationsMayShift || canUpdateLandedAllocationInPlace);
   const affectedProductIds = new Set<string>();
   removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
   addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
@@ -992,25 +1115,69 @@ export async function updatePurchase(
 
       // 2b. Sync header-derived fields on items we kept untouched in the
       //     differential path. supplierId, subtotalAmount (VAT-derived) live
-      //     on PurchaseItem so they must follow the header.
+      //     on PurchaseItem so they must follow the header. When only landed
+      //     allocation changed and every line still matches, update the
+      //     existing line + StockCard landed cost in place instead of
+      //     rebuilding item/lot rows for the whole document.
       if (useDifferential && matchedByNewIdx.size > 0) {
         const supplierIdChanged =
           (existing.supplierId ?? null) !== (supplierId || null);
         const taxBasisChanged =
           existing.vatType !== vatType ||
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
-        if (supplierIdChanged || taxBasisChanged) {
+        if (supplierIdChanged || taxBasisChanged || canUpdateLandedAllocationInPlace) {
+          const changedStockCardIds: string[] = [];
           for (const [newIdx, existingItemId] of matchedByNewIdx) {
             const item = validItems[newIdx];
             const itemTotal = item.qty * item.costPrice;
             const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            const allocatedLandedForLine = landedAllocations.get(newIdx) ?? 0;
+            const landedCostPerSelectedUnit =
+              item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
             await tx.purchaseItem.update({
               where: { id: existingItemId },
               data: {
                 supplierId: supplierId || null,
                 subtotalAmount: itemSubtotal,
+                ...(canUpdateLandedAllocationInPlace
+                  ? { landedCost: landedCostPerSelectedUnit }
+                  : {}),
               },
             });
+
+            if (canUpdateLandedAllocationInPlace) {
+              const updatedStockCards = await tx.stockCard.findMany({
+                where: { docNo: existing.purchaseNo, referenceId: existingItemId },
+                select: { id: true },
+              });
+              const updatedStockCardIds = updatedStockCards.map((row) => row.id);
+              if (updatedStockCardIds.length > 0) {
+                changedStockCardIds.push(...updatedStockCardIds);
+                await tx.stockCard.updateMany({
+                  where: { id: { in: updatedStockCardIds } },
+                  data: { landedCost: allocatedLandedForLine },
+                });
+              }
+            }
+          }
+
+          if (canUpdateLandedAllocationInPlace && changedStockCardIds.length > 0) {
+            const changedRows = await tx.stockCard.findMany({
+              where: { id: { in: changedStockCardIds } },
+              select: {
+                id: true,
+                productId: true,
+                docDate: true,
+                sorder: true,
+              },
+            });
+
+            for (const row of changedRows) {
+              const refreshed = await refreshLatestPurchaseStockCardBalance(tx, row);
+              if (!refreshed) {
+                productIdsNeedingRecalc.add(row.productId);
+              }
+            }
           }
         }
       }
