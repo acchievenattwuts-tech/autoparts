@@ -113,7 +113,7 @@ const purchaseSchema = z.object({
   vatType:      z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:      z.coerce.number().min(0).max(100).default(0),
   creditTerm:   z.coerce.number().int().min(0).max(365).optional(),
-  items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
+  items:        z.array(purchaseItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(300),
 });
 
 type PurchaseTxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
