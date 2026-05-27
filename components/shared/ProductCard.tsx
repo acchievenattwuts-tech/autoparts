@@ -1,3 +1,7 @@
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
@@ -36,6 +40,9 @@ const formatFitmentYear = (yearStart?: number | null, yearEnd?: number | null) =
 };
 
 const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
   const inStock = product.stock > 0;
   const productPath = getProductPath({
     category: product.category,
@@ -57,14 +64,33 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
         })()
       : null;
 
+  const handleProductClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // Allow right-click, middle-click, Ctrl+click, Meta+click to behave natively
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    startTransition(() => {
+      router.push(productPath);
+    });
+  };
+
   return (
     <div className="group relative flex h-full min-h-[22.25rem] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#f97316]/45 hover:shadow-[0_20px_45px_rgba(15,23,42,0.16)] hover:ring-2 hover:ring-[#f97316]/12 focus-within:border-[#f97316]/55 focus-within:ring-2 focus-within:ring-[#f97316]/20 motion-reduce:transform-none sm:min-h-[25.75rem] lg:min-h-[26.25rem]">
+
+      {/* Loading overlay — แสดงทันทีที่คลิก */}
+      {isPending && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-white/75 backdrop-blur-[2px]">
+          <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-[#f97316]/30 border-t-[#f97316]" />
+        </div>
+      )}
+
       <Link
         href={productPath}
-        prefetch={prefetchDetail}
+        prefetch={prefetchDetail ?? true}
+        onClick={handleProductClick}
         aria-label={`ดูรายละเอียด ${product.name}`}
         className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2"
       />
+
       <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50">
         {product.imageUrl ? (
           <Image
