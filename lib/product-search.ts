@@ -317,7 +317,7 @@ async function searchProductIdsV2(
   // into the simple `to_tsquery` lexeme form (alphanumeric and Thai chars only;
   // anything else becomes a space) so user input can never inject tsquery syntax.
   const sanitizedTsTokens = expandedTokens
-    .map((token) => token.replace(/[^\p{L}\p{N}_-]+/gu, " ").trim())
+    .map((token) => token.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ").trim())
     .map((token) => token.replace(/\s+/g, " "))
     .filter((token) => token.length > 0)
     .map((token) => token.split(" ").map((word) => `${word}:*`).join(" & "))
@@ -325,7 +325,7 @@ async function searchProductIdsV2(
 
   const tsQueryExpression = sanitizedTsTokens.length > 0
     ? sanitizedTsTokens.map((expr) => `(${expr})`).join(" | ")
-    : normalizedQuery.replace(/[^\p{L}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
+    : normalizedQuery.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
 
   // Phase Q2: pass query through f_unaccent so it matches the unaccented tsvector index.
   const tsQuery = Prisma.sql`to_tsquery('simple', f_unaccent(${tsQueryExpression}))`;

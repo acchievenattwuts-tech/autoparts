@@ -26,7 +26,7 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
   const updateInFlightRef = useRef(false);
   const lastResumeUpdateRef = useRef(0);
 
-  const updateLocation = useCallback(async () => {
+  const updateLocation = useCallback(async function updateLocationImpl() {
     if (updateInFlightRef.current) return;
     if (saleIds.length === 0) return;
 
@@ -44,7 +44,9 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
         const delay = 2000 * Math.pow(2, retryCountRef.current - 1);
         updateInFlightRef.current = false;
         setGps({ status: "loading" });
-        window.setTimeout(() => updateLocation(), delay);
+        window.setTimeout(() => {
+          void updateLocationImpl();
+        }, delay);
         return;
       }
 
@@ -93,7 +95,7 @@ export default function GpsUpdateBanner({ saleIds }: Props) {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
-  }, [saleIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [saleIds]);
 
   useEffect(() => {
     const id = window.setInterval(() => {

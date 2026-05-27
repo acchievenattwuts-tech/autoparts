@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Loader2, Save, Users, X } from "lucide-react";
 
 import {
@@ -26,23 +26,18 @@ type Props = {
 
 type SaveScope = "sale" | "saleAndCustomer";
 
-const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
+type DestinationPinSheetContentProps = {
+  selectedSale: DestinationPinSheetSale;
+  onClose: () => void;
+};
+
+const DestinationPinSheetContent = ({ selectedSale, onClose }: DestinationPinSheetContentProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pendingScope, setPendingScope] = useState<SaveScope | null>(null);
-  const [pinLat, setPinLat] = useState<number | null>(null);
-  const [pinLon, setPinLon] = useState<number | null>(null);
+  const [pinLat, setPinLat] = useState<number | null>(selectedSale.destLatitude ?? null);
+  const [pinLon, setPinLon] = useState<number | null>(selectedSale.destLongitude ?? null);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!selectedSale) return;
-    setPinLat(selectedSale.destLatitude ?? null);
-    setPinLon(selectedSale.destLongitude ?? null);
-    setError("");
-    setPendingScope(null);
-  }, [selectedSale]);
-
-  if (!selectedSale) return null;
 
   const handleSave = (scope: SaveScope) => {
     if (pinLat === null || pinLon === null) {
@@ -151,6 +146,18 @@ const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
         </section>
       </div>
     </div>
+  );
+};
+
+const DestinationPinSheet = ({ selectedSale, onClose }: Props) => {
+  if (!selectedSale) return null;
+
+  return (
+    <DestinationPinSheetContent
+      key={selectedSale.saleId}
+      selectedSale={selectedSale}
+      onClose={onClose}
+    />
   );
 };
 

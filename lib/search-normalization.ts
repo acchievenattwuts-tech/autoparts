@@ -8,7 +8,7 @@ export const normalizeSearchText = (value?: string | null): string => {
 
   return normalizeWhitespace(
     value
-      .normalize("NFKC")
+      .normalize("NFC")
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .toLowerCase(),
   );

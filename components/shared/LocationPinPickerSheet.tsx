@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { MapPin, Save, Users, X } from "lucide-react";
 
 import LocationPinPicker from "@/components/shared/LocationPinPicker";
@@ -33,20 +33,11 @@ type SaleModeProps = BaseProps & {
 
 type Props = CustomerModeProps | SaleModeProps;
 
-const LocationPinPickerSheet = (props: Props) => {
-  const { open, onClose, initialLat, initialLon, title, subtitle, mode } = props;
+const LocationPinPickerSheetContent = (props: Props) => {
+  const { onClose, initialLat, initialLon, title, subtitle, mode } = props;
   const [pinLat, setPinLat] = useState<number | null>(initialLat);
   const [pinLon, setPinLon] = useState<number | null>(initialLon);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    setPinLat(initialLat);
-    setPinLon(initialLon);
-    setError("");
-  }, [open, initialLat, initialLon]);
-
-  if (!open) return null;
 
   const hasPin = pinLat !== null && pinLon !== null;
 
@@ -171,6 +162,17 @@ const LocationPinPickerSheet = (props: Props) => {
         </section>
       </div>
     </div>
+  );
+};
+
+const LocationPinPickerSheet = (props: Props) => {
+  if (!props.open) return null;
+
+  return (
+    <LocationPinPickerSheetContent
+      key={`${props.mode}:${props.initialLat ?? ""}:${props.initialLon ?? ""}`}
+      {...props}
+    />
   );
 };
 
