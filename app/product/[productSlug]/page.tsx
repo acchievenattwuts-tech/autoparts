@@ -1,9 +1,8 @@
 export const revalidate = 300;
 
 import type { Metadata } from "next";
-export const dynamic = "force-dynamic";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import {
   ArrowLeft,
   CarFront,
@@ -95,15 +94,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 const ProductDetailPage = async ({ params }: Props) => {
+  const { productSlug } = await params;
   const [config, product] = await Promise.all([getSiteConfig(), getResolvedProductFromParams(params)]);
-  const relatedProducts = await getRelatedStorefrontProductsByCategory({
-    categoryId: product.categoryId,
-    currentProductId: product.id,
-  });
 
   const canonicalPath = getProductPath({
     category: product.category,
     product,
+  });
+  const requestedPath = `/product/${decodeURIComponent(productSlug)}`;
+  if (requestedPath !== canonicalPath) {
+    permanentRedirect(canonicalPath);
+  }
+
+  const relatedProducts = await getRelatedStorefrontProductsByCategory({
+    categoryId: product.categoryId,
+    currentProductId: product.id,
   });
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);

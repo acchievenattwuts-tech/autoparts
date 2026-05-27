@@ -54,11 +54,13 @@ type ProductSlugInput =
       productName: string;
       productId: string;
       productSlug?: string | null;
+      productCode?: string | null;
     }
   | {
       name: string;
       id: string;
       slug?: string | null;
+      code?: string | null;
     };
 
 const getCategoryName = (input: CategorySlugInput): string =>
@@ -86,6 +88,46 @@ const getProductStoredSlug = (input: ProductSlugInput): string | null =>
         ? normalizeSlugSegment(input.slug)
         : null
       : null;
+
+const getProductCode = (input: ProductSlugInput): string | null => {
+  if ("productCode" in input && input.productCode) return input.productCode;
+  if ("code" in input && input.code) return input.code;
+  return null;
+};
+
+const PRODUCT_SLUG_MAX_LENGTH = 60;
+
+const capSlugAtWordBoundary = (slug: string, maxLength: number): string => {
+  if (slug.length <= maxLength) return slug;
+  const truncated = slug.slice(0, maxLength);
+  const lastDash = truncated.lastIndexOf("-");
+  const candidate = lastDash > 0 ? truncated.slice(0, lastDash) : truncated;
+  return candidate.replace(/-+$/g, "");
+};
+
+const isAsciiPureSlug = (slug: string): boolean => /^[a-z0-9-]+$/.test(slug);
+
+export const buildAsciiProductSlugBase = (input: ProductSlugInput): string => {
+  const storedSlug = getProductStoredSlug(input);
+  if (storedSlug && isAsciiPureSlug(storedSlug) && !isPlaceholderSlug(storedSlug)) {
+    return capSlugAtWordBoundary(storedSlug, PRODUCT_SLUG_MAX_LENGTH);
+  }
+
+  const fromName = slugifyAsciiSegmentRaw(getProductName(input));
+  if (fromName && !isPlaceholderSlug(fromName)) {
+    return capSlugAtWordBoundary(fromName, PRODUCT_SLUG_MAX_LENGTH);
+  }
+
+  const code = getProductCode(input);
+  if (code) {
+    const codeSlug = slugifyAsciiSegmentRaw(code);
+    if (codeSlug) {
+      return capSlugAtWordBoundary(codeSlug, PRODUCT_SLUG_MAX_LENGTH);
+    }
+  }
+
+  return "item";
+};
 
 export const getProductCategorySlug = (category: CategorySlugInput): string => {
   const storedSlug = getCategoryStoredSlug(category);
@@ -178,8 +220,7 @@ export const getCategoryPath = (category: CategorySlugInput): string => {
 };
 
 export const getProductSlug = (product: ProductSlugInput): string => {
-  const slug = getProductStoredSlug(product) ?? slugifySegment(getProductName(product));
-  return `${slug}-${getProductId(product)}`;
+  return `${buildAsciiProductSlugBase(product)}-${getProductId(product)}`;
 };
 
 export const getProductPath = ({

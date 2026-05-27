@@ -19,6 +19,7 @@ import {
   isInventoryTracked,
 } from "@/lib/inventory-tracking";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
+import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -410,8 +411,9 @@ export const createProduct = async (
           slug: buildUniqueSlug({
             value: productData.name,
             taken: existingSlugs.flatMap(({ slug }) => (slug ? [slug] : [])),
-            fallback: "product",
+            fallback: code.toLowerCase(),
             extraCandidates: [code],
+            slugify: slugifyAsciiSegment,
           }),
           name: productData.name,
           categoryId: productData.categoryId,
@@ -567,19 +569,23 @@ export const updateProduct = async (
 
       await assertCanSetInventoryTracking(tx, id, productData.inventoryTracking);
 
-      const slug =
-        currentProduct?.slug ??
-        buildUniqueSlug({
-          value: productData.name,
-          taken: (
-            await tx.product.findMany({
-              where: { NOT: { id } },
-              select: { slug: true },
-            })
-          ).flatMap(({ slug: existingSlug }) => (existingSlug ? [existingSlug] : [])),
-          fallback: "product",
-          extraCandidates: [currentProduct?.code ?? ""],
-        });
+      const existingSlugIsAscii =
+        !!currentProduct?.slug && /^[a-z0-9-]+$/.test(currentProduct.slug);
+      const fallbackSlug = (currentProduct?.code ?? "").toLowerCase() || "product";
+      const slug = existingSlugIsAscii
+        ? currentProduct!.slug!
+        : buildUniqueSlug({
+            value: productData.name,
+            taken: (
+              await tx.product.findMany({
+                where: { NOT: { id } },
+                select: { slug: true },
+              })
+            ).flatMap(({ slug: existingSlug }) => (existingSlug ? [existingSlug] : [])),
+            fallback: fallbackSlug,
+            extraCandidates: [currentProduct?.code ?? ""],
+            slugify: slugifyAsciiSegment,
+          });
 
       await tx.product.update({
         where: { id },
