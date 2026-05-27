@@ -142,6 +142,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       select: {
         id: true,
         imageUrl: true,
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: { url: true, alt: true },
+        },
         code: true,
         name: true,
         shelfLocation: true,
@@ -355,8 +359,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       }`}
                     >
                       <td className="px-4 py-3">
-                        {product.imageUrl ? (
-                          <ProductImagePreview src={product.imageUrl} alt={product.name} />
+                        {(product.imageUrl || product.images.length > 0) ? (
+                          <ProductImagePreview
+                            imageUrl={product.imageUrl}
+                            images={product.images}
+                            alt={product.name}
+                          />
                         ) : (
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-white/5">
                             <span className="text-xs text-gray-300">ไม่มี</span>
