@@ -103,6 +103,8 @@ const AdminLineCustomerNotifications = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const summaryAbortRef = useRef<AbortController | null>(null);
   const listAbortRef = useRef<AbortController | null>(null);
+  const lastFetchedAtRef = useRef<number>(0);
+  const latestLinkedAtRef = useRef<string | null>(null);
   const { isDark } = useAdminTheme();
 
   const markReadTo = useCallback(
@@ -110,6 +112,7 @@ const AdminLineCustomerNotifications = ({
       if (!value) return;
       writeLastSeenAt(userId, value);
       setUnreadCount(0);
+      latestLinkedAtRef.current = value;
       setLatestLinkedAt(value);
     },
     [userId],
@@ -117,6 +120,7 @@ const AdminLineCustomerNotifications = ({
 
   const fetchSummary = useCallback(async () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    lastFetchedAtRef.current = Date.now();
 
     summaryAbortRef.current?.abort();
     const controller = new AbortController();
@@ -137,6 +141,9 @@ const AdminLineCustomerNotifications = ({
       }
       const data = (await response.json()) as SummaryResponse;
       setSummaryError(false);
+
+      if (lastSeenAt && data.latestLinkedAt === latestLinkedAtRef.current) return;
+      latestLinkedAtRef.current = data.latestLinkedAt;
       setLatestLinkedAt(data.latestLinkedAt);
 
       if (!lastSeenAt && data.latestLinkedAt) {
@@ -188,9 +195,13 @@ const AdminLineCustomerNotifications = ({
       void fetchSummary();
     }, POLL_INTERVAL_MS);
 
-    const handleFocus = () => void fetchSummary();
+    const handleFocus = () => {
+      if (Date.now() - lastFetchedAtRef.current >= POLL_INTERVAL_MS) void fetchSummary();
+    };
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") void fetchSummary();
+      if (document.visibilityState === "visible" && Date.now() - lastFetchedAtRef.current >= POLL_INTERVAL_MS) {
+        void fetchSummary();
+      }
     };
 
     window.addEventListener("focus", handleFocus);
