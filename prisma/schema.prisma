@@ -646,6 +646,7 @@ model Customer {
   sales            Sale[]
 
   @@index([name])
+  @@index([lineLinkedAt])
 }
 
 model Sale {
