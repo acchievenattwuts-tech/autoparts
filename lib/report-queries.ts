@@ -336,6 +336,10 @@ export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
   };
 }
 
+export async function countSalesRowsDocs(filters: ReportFilters): Promise<number> {
+  return db.sale.count({ where: buildSalesReportWhere(filters) });
+}
+
 // Query: Purchase Register
 
 function buildPurchaseReportWhere(filters: ReportFilters): Prisma.PurchaseWhereInput {

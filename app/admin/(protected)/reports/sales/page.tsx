@@ -11,15 +11,14 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import {
   buildExportQuery,
+  countSalesRowsDocs,
   parseReportQueryFilters,
   querySalesRows,
   querySalesRowsTotals,
   statusLabel,
   type SaleRow,
-  type ReportFilters,
 } from "@/lib/report-queries";
 import { formatDateThai } from "@/lib/th-date";
-import { DocStatus, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -34,32 +33,6 @@ function formatCurrency(value: number) {
 
 function formatDate(value: Date) {
   return formatDateThai(value);
-}
-
-async function countSalesRows(filters: ReportFilters): Promise<number> {
-  const paymentType =
-    filters.paymentType && filters.paymentType !== "ALL"
-      ? (filters.paymentType as SalePaymentType)
-      : undefined;
-  const saleType =
-    filters.saleType && filters.saleType !== "ALL"
-      ? (filters.saleType as SaleType)
-      : undefined;
-  const statusFilter: { status?: DocStatus } = filters.showCancelled
-    ? {}
-    : { status: "ACTIVE" };
-
-  const sales = await db.sale.count({
-      where: {
-        saleDate: { gte: filters.from, lte: filters.to },
-        ...statusFilter,
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-        ...(paymentType ? { paymentType } : {}),
-        ...(saleType ? { saleType } : {}),
-      },
-    });
-
-  return sales;
 }
 
 export default async function SalesReportPage({ searchParams }: PageProps) {
@@ -77,7 +50,7 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
       orderBy: [{ type: "asc" }, { code: "asc" }],
       select: { id: true, code: true, name: true },
     }),
-    filters.hasFilter ? countSalesRows(filters) : Promise.resolve(0),
+    filters.hasFilter ? countSalesRowsDocs(filters) : Promise.resolve(0),
   ]);
 
   const totalSubtotal = totals.subtotal;

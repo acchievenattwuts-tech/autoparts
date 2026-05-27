@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 200; // Vercel Pro: must match createSale tx timeout (180s) + response time
 
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";

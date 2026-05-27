@@ -551,7 +551,7 @@ export async function createCreditNote(
       );
 
       await rebuildCreditNoteProfitFacts(tx, cn.id);
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = createdCreditNoteId
       ? await getCreditNoteAuditSnapshot(createdCreditNoteId)
@@ -648,7 +648,7 @@ export async function cancelCreditNote(
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: 0 },
       });
       await rebuildCreditNoteProfitFacts(tx, cnId);
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = await getCreditNoteAuditSnapshot(cnId);
     if (beforeSnapshot && afterSnapshot) {
@@ -1062,7 +1062,7 @@ export async function updateCreditNote(
       );
 
       await rebuildCreditNoteProfitFacts(tx, id);
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = await getCreditNoteAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {

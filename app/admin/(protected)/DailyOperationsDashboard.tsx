@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe, SearchX } from "lucide-react";
 
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -18,6 +19,143 @@ import {
 import AdminDashboardCharts from "./AdminDashboardCharts";
 import type { SalesChartDatum } from "./SalesChart";
 import type { TopProductsChartDatum } from "./TopProductsChart";
+
+// Cache dashboard aggregates for 60 seconds — admins viewing within a minute see cached data,
+// reducing DB load drastically. Cache key includes today's date so it auto-invalidates daily.
+const DASHBOARD_CACHE_TTL_SECONDS = 60;
+
+const fetchDashboardAggregates = (params: {
+  bangkokToday: string;
+  bangkokMonthStart: string;
+  bangkokStartOfToday: Date;
+  bangkokEndOfToday: Date;
+  bangkokStartOfMonth: Date;
+  bangkokStartOf30Days: Date;
+  canViewProductSearchReport: boolean;
+}) =>
+  unstable_cache(
+    async () => {
+      const {
+        bangkokToday,
+        bangkokMonthStart,
+        bangkokStartOfToday,
+        bangkokEndOfToday,
+        bangkokStartOfMonth,
+        bangkokStartOf30Days,
+        canViewProductSearchReport,
+      } = params;
+      return Promise.all([
+        db.sale.aggregate({
+          _count: { id: true },
+          _sum: { netAmount: true },
+          where: {
+            status: "ACTIVE",
+            saleDate: { gte: bangkokStartOfToday, lte: bangkokEndOfToday },
+          },
+        }),
+        db.sale.aggregate({
+          _sum: { netAmount: true },
+          where: {
+            status: "ACTIVE",
+            saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+          },
+        }),
+        db.purchase.aggregate({
+          _sum: { netAmount: true },
+          where: {
+            status: "ACTIVE",
+            purchaseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+          },
+        }),
+        db.sale.aggregate({
+          _sum: { amountRemain: true },
+          where: { status: "ACTIVE", paymentType: "CREDIT_SALE", fulfillmentType: "PICKUP" },
+        }),
+        db.sale.aggregate({
+          _sum: { amountRemain: true },
+          where: {
+            status: "ACTIVE",
+            paymentType: "CREDIT_SALE",
+            fulfillmentType: "DELIVERY",
+            amountRemain: { gt: 0 },
+          },
+        }),
+        db.expense.aggregate({
+          _sum: { netAmount: true },
+          where: {
+            status: "ACTIVE",
+            expenseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+          },
+        }),
+        db.purchase.aggregate({
+          _sum: { amountRemain: true },
+          where: {
+            status: "ACTIVE",
+            purchaseType: "CREDIT_PURCHASE",
+            amountRemain: { gt: 0 },
+          },
+        }),
+        db.supplierAdvance.aggregate({
+          _sum: { amountRemain: true },
+          where: { status: "ACTIVE", amountRemain: { gt: 0 } },
+        }),
+        db.purchaseReturn.aggregate({
+          _sum: { amountRemain: true },
+          where: {
+            status: "ACTIVE",
+            settlementType: "SUPPLIER_CREDIT",
+            amountRemain: { gt: 0 },
+          },
+        }),
+        db.storefrontVisitDaily.count({
+          where: { visitDay: bangkokToday },
+        }),
+        db.storefrontVisitDaily.findMany({
+          distinct: ["visitorKey"],
+          where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
+          select: { visitorKey: true },
+        }),
+        db.storefrontVisitDaily.findMany({
+          distinct: ["visitorKey"],
+          select: { visitorKey: true },
+        }),
+        canViewProductSearchReport
+          ? db.productSearchLog.findMany({
+              where: { resultCount: 0 },
+              orderBy: { createdAt: "desc" },
+              take: 10,
+            })
+          : Promise.resolve([]),
+        db.sale.findMany({
+          where: {
+            status: "ACTIVE",
+            saleDate: { gte: bangkokStartOf30Days, lte: bangkokEndOfToday },
+          },
+          select: { saleDate: true, netAmount: true },
+          orderBy: { saleDate: "asc" },
+        }),
+        db.saleItem.groupBy({
+          by: ["productId"],
+          where: {
+            sale: {
+              status: "ACTIVE",
+              saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
+            },
+          },
+          _sum: { quantity: true, totalAmount: true },
+        }),
+      ]);
+    },
+    [
+      "dashboard-aggregates",
+      params.bangkokToday,
+      params.canViewProductSearchReport ? "with-search" : "no-search",
+    ],
+    {
+      revalidate: DASHBOARD_CACHE_TTL_SECONDS,
+      tags: ["dashboard-aggregates"],
+    },
+  )();
 
 const DailyOperationsDashboard = async () => {
   const { role, permissions } = await getSessionPermissionContext();
@@ -50,107 +188,15 @@ const DailyOperationsDashboard = async () => {
     recentNoResultSearches,
     recentSales,
     topProductGroups,
-  ] = await Promise.all([
-    db.sale.aggregate({
-      _count: { id: true },
-      _sum: { netAmount: true },
-      where: {
-        status: "ACTIVE",
-        saleDate: { gte: bangkokStartOfToday, lte: bangkokEndOfToday },
-      },
-    }),
-    db.sale.aggregate({
-      _sum: { netAmount: true },
-      where: {
-        status: "ACTIVE",
-        saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
-      },
-    }),
-    db.purchase.aggregate({
-      _sum: { netAmount: true },
-      where: {
-        status: "ACTIVE",
-        purchaseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
-      },
-    }),
-    db.sale.aggregate({
-      _sum: { amountRemain: true },
-      where: { status: "ACTIVE", paymentType: "CREDIT_SALE", fulfillmentType: "PICKUP" },
-    }),
-    db.sale.aggregate({
-      _sum: { amountRemain: true },
-      where: {
-        status: "ACTIVE",
-        paymentType: "CREDIT_SALE",
-        fulfillmentType: "DELIVERY",
-        amountRemain: { gt: 0 },
-      },
-    }),
-    db.expense.aggregate({
-      _sum: { netAmount: true },
-      where: {
-        status: "ACTIVE",
-        expenseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
-      },
-    }),
-    db.purchase.aggregate({
-      _sum: { amountRemain: true },
-      where: {
-        status: "ACTIVE",
-        purchaseType: "CREDIT_PURCHASE",
-        amountRemain: { gt: 0 },
-      },
-    }),
-    db.supplierAdvance.aggregate({
-      _sum: { amountRemain: true },
-      where: { status: "ACTIVE", amountRemain: { gt: 0 } },
-    }),
-    db.purchaseReturn.aggregate({
-      _sum: { amountRemain: true },
-      where: {
-        status: "ACTIVE",
-        settlementType: "SUPPLIER_CREDIT",
-        amountRemain: { gt: 0 },
-      },
-    }),
-    db.storefrontVisitDaily.count({
-      where: { visitDay: bangkokToday },
-    }),
-    db.storefrontVisitDaily.findMany({
-      distinct: ["visitorKey"],
-      where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
-      select: { visitorKey: true },
-    }),
-    db.storefrontVisitDaily.findMany({
-      distinct: ["visitorKey"],
-      select: { visitorKey: true },
-    }),
-    canViewProductSearchReport
-      ? db.productSearchLog.findMany({
-          where: { resultCount: 0 },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        })
-      : Promise.resolve([]),
-    db.sale.findMany({
-      where: {
-        status: "ACTIVE",
-        saleDate: { gte: bangkokStartOf30Days, lte: bangkokEndOfToday },
-      },
-      select: { saleDate: true, netAmount: true },
-      orderBy: { saleDate: "asc" },
-    }),
-    db.saleItem.groupBy({
-      by: ["productId"],
-      where: {
-        sale: {
-          status: "ACTIVE",
-          saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
-        },
-      },
-      _sum: { quantity: true, totalAmount: true },
-    }),
-  ]);
+  ] = await fetchDashboardAggregates({
+    bangkokToday,
+    bangkokMonthStart,
+    bangkokStartOfToday,
+    bangkokEndOfToday,
+    bangkokStartOfMonth,
+    bangkokStartOf30Days,
+    canViewProductSearchReport,
+  });
 
   const formatMoney = (value: unknown) =>
     Number(value ?? 0).toLocaleString("th-TH", {

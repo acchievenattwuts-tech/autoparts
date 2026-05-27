@@ -602,6 +602,7 @@ model Purchase {
 
   @@index([cashBankAccountId])
   @@index([purchaseType])
+  @@index([purchaseDate(sort: Desc), status])
 }
 
 model PurchaseItem {
@@ -712,6 +713,7 @@ model Sale {
   @@index([fulfillmentType, status, shippingStatus, saleDate, saleNo])
   @@index([customerId, status, saleDate(sort: Desc)])
   @@index([customerId, paymentType, status, amountRemain])
+  @@index([saleDate(sort: Desc), status])
 }
 
 model DeliveryProof {

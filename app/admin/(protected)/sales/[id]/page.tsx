@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MAVG recalc) can reach 180s
 
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";

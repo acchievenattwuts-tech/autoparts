@@ -703,7 +703,7 @@ export async function createSale(
           },
         });
       }
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = createdSaleId
       ? await getSaleAuditSnapshot(createdSaleId)
@@ -844,7 +844,7 @@ export async function cancelSale(
         },
       });
       await rebuildSaleProfitFacts(tx, saleId);
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = await getSaleAuditSnapshot(saleId);
     if (beforeSnapshot && afterSnapshot) {
@@ -1303,7 +1303,7 @@ export async function updateSale(
           },
         });
       }
-    }, { timeout: 120_000 });
+    }, { timeout: 180_000 });
 
     const afterSnapshot = await getSaleAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {

@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 180; // Vercel Pro: stock backfill — Supabase statement_timeout=2min, allow extra time for multiple batch transactions
 
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { db } from "@/lib/db";

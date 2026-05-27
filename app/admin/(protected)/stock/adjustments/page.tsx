@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 130; // Vercel Pro: must exceed dbTx default (110s) + response time
 
 import { db } from "@/lib/db";
 import AdjustmentForm from "./AdjustmentForm";

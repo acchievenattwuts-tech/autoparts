@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   DndContext,
   KeyboardSensor,
@@ -23,12 +24,18 @@ import { AlertTriangle } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { reorderDeliveryQueue } from "../../sales/actions";
-import DeliveryProofSheet from "./DeliveryProofSheet";
-import DestinationPinSheet from "./DestinationPinSheet";
 import GpsUpdateBanner from "./GpsUpdateBanner";
 import MobileDeliveryCard from "./MobileDeliveryCard";
 import MobileStatusTabs from "./MobileStatusTabs";
 import QueueHeader, { type Mode } from "./QueueHeader";
+
+// Lazy-load heavy sheets — only loaded when user opens them
+const DeliveryProofSheet = dynamic(() => import("./DeliveryProofSheet"), {
+  ssr: false,
+});
+const DestinationPinSheet = dynamic(() => import("./DestinationPinSheet"), {
+  ssr: false,
+});
 
 type ShippingStatus = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED";
 

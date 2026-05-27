@@ -5,9 +5,12 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const DEFAULT_DB_POOL_MAX = 5;
+// Vercel Pro: higher concurrency per function instance — increased from 10.
+// Supabase Transaction Pooler (port 6543) supports up to 60 client connections on free tier.
+// With up to ~4 concurrent function instances on Pro, 15 per instance is safe.
+const DEFAULT_DB_POOL_MAX = 15;
 const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
-const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 15_000;
+const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 20_000; // slightly higher for Pro long-running ops
 
 let hasWarnedAboutSupabaseSessionPooler = false;
 
@@ -89,7 +92,10 @@ export const db = globalForPrisma.prisma ?? createPrismaClient();
 // when warm, avoiding connection churn. Each cold start gets a fresh instance anyway.
 globalForPrisma.prisma = db;
 
-const TX_TIMEOUT = 30_000; // 30s — Supabase serverless needs more time for multi-step transactions
+// Supabase statement_timeout = 2min (120s). TX_TIMEOUT must stay under that.
+// For normal routes (maxDuration=60s) this is still the effective ceiling.
+// For stock/bf (maxDuration=180s), multiple sequential transactions can each use up to 110s.
+const TX_TIMEOUT = 110_000; // 110s — safely under Supabase 120s statement_timeout
 
 type TxFn<T> = Parameters<typeof db.$transaction>[0] & ((tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<T>);
 

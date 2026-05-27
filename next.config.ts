@@ -61,15 +61,16 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   experimental: {
-    cpus: 1,
+    // Vercel Pro supports more CPU resources during build — increased from 1.
+    cpus: 4,
     serverActions: {
       // Keep server action payloads tight to protect upload performance.
       bodySizeLimit: "3mb",
     },
-    // Keep prerender fan-out low enough for the current Supabase session pool during build.
-    staticGenerationRetryCount: 1,
-    staticGenerationMaxConcurrency: 1,
-    staticGenerationMinPagesPerWorker: 80,
+    // Vercel Pro can handle higher prerender concurrency without pool exhaustion.
+    staticGenerationRetryCount: 2,
+    staticGenerationMaxConcurrency: 4,
+    staticGenerationMinPagesPerWorker: 40,
   },
 
   async headers() {
