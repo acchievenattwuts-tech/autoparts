@@ -5,11 +5,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, CheckCheck, Eye, LoaderCircle, Pencil, RefreshCw, UserRoundCheck } from "lucide-react";
 
+import {
+  ADMIN_LINE_NOTIFICATION_POLL_INTERVAL_MS,
+  shouldPollLineCustomerSummary,
+} from "@/components/shared/admin-line-customer-notification-polling";
 import { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import { formatDateTimeThai } from "@/lib/th-date";
 import { cn } from "@/lib/utils";
 
-const POLL_INTERVAL_MS = 60_000;
 const STORAGE_PREFIX = "adminLineCustomerNotifLastSeenAt";
 
 type LineCustomerLinkKind =
@@ -192,14 +195,37 @@ const AdminLineCustomerNotifications = ({
   useEffect(() => {
     void fetchSummary();
     const intervalId = window.setInterval(() => {
-      void fetchSummary();
-    }, POLL_INTERVAL_MS);
+      if (
+        shouldPollLineCustomerSummary({
+          now: Date.now(),
+          lastFetchedAt: lastFetchedAtRef.current,
+          isDocumentHidden: document.visibilityState === "hidden",
+        })
+      ) {
+        void fetchSummary();
+      }
+    }, ADMIN_LINE_NOTIFICATION_POLL_INTERVAL_MS);
 
     const handleFocus = () => {
-      if (Date.now() - lastFetchedAtRef.current >= POLL_INTERVAL_MS) void fetchSummary();
+      if (
+        shouldPollLineCustomerSummary({
+          now: Date.now(),
+          lastFetchedAt: lastFetchedAtRef.current,
+          isDocumentHidden: false,
+        })
+      ) {
+        void fetchSummary();
+      }
     };
     const handleVisibility = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastFetchedAtRef.current >= POLL_INTERVAL_MS) {
+      if (
+        document.visibilityState === "visible" &&
+        shouldPollLineCustomerSummary({
+          now: Date.now(),
+          lastFetchedAt: lastFetchedAtRef.current,
+          isDocumentHidden: false,
+        })
+      ) {
         void fetchSummary();
       }
     };
