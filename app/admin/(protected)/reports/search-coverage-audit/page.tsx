@@ -14,106 +14,180 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
-import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import Pagination from "@/components/shared/Pagination";
 import { db } from "@/lib/db";
+import { AliasKind, Prisma } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
-import { AliasKind } from "@/lib/generated/prisma";
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 20;
 const FILTER_OPTIONS = ["all", "missing_oem", "missing_keyword", "missing_image", "missing_fitment"] as const;
+
 type FilterOption = (typeof FILTER_OPTIONS)[number];
 
 const isFilterOption = (raw: string | undefined): raw is FilterOption =>
   typeof raw === "string" && (FILTER_OPTIONS as readonly string[]).includes(raw);
 
-const THAI_CHAR_REGEX = /[ก-๙]/;
-const containsThai = (s: string): boolean => THAI_CHAR_REGEX.test(s);
+type PageProps = {
+  searchParams: Promise<{ filter?: string; page?: string }>;
+};
 
-const OEM_KINDS: AliasKind[] = [AliasKind.OEM, AliasKind.PART_NO];
-const KEYWORD_KINDS: AliasKind[] = [AliasKind.KEYWORD, AliasKind.TH, AliasKind.MISSPELL, AliasKind.ALIAS];
+type TotalsRow = {
+  total: number;
+  missingOem: number;
+  missingKeyword: number;
+  missingImage: number;
+  missingFitment: number;
+  fullyCovered: number;
+};
 
-interface PageProps {
-  searchParams: Promise<{ filter?: string }>;
-}
+type CoverageRow = {
+  id: string;
+  code: string;
+  name: string;
+  missingOem: boolean;
+  missingKeyword: boolean;
+  missingImage: boolean;
+  missingFitment: boolean;
+  missingCount: number;
+};
+
+const COVERAGE_CTE = Prisma.sql`
+  WITH coverage AS (
+    SELECT
+      p.id,
+      p.code,
+      p.name,
+      NOT EXISTS (
+        SELECT 1
+        FROM "ProductAlias" pa
+        WHERE pa."productId" = p.id
+          AND pa.kind IN (${AliasKind.OEM}, ${AliasKind.PART_NO})
+      ) AS "missingOem",
+      NOT EXISTS (
+        SELECT 1
+        FROM "ProductAlias" pa
+        WHERE pa."productId" = p.id
+          AND pa.kind IN (${AliasKind.KEYWORD}, ${AliasKind.TH}, ${AliasKind.MISSPELL}, ${AliasKind.ALIAS})
+          AND pa.alias ~ '[ก-๙]'
+      ) AS "missingKeyword",
+      COALESCE(NULLIF(BTRIM(p."imageUrl"), ''), NULL) IS NULL AS "missingImage",
+      NOT EXISTS (
+        SELECT 1
+        FROM "ProductCarModel" pf
+        WHERE pf."productId" = p.id
+      ) AS "missingFitment",
+      (
+        (NOT EXISTS (
+          SELECT 1
+          FROM "ProductAlias" pa
+          WHERE pa."productId" = p.id
+            AND pa.kind IN (${AliasKind.OEM}, ${AliasKind.PART_NO})
+        ))::int +
+        (NOT EXISTS (
+          SELECT 1
+          FROM "ProductAlias" pa
+          WHERE pa."productId" = p.id
+            AND pa.kind IN (${AliasKind.KEYWORD}, ${AliasKind.TH}, ${AliasKind.MISSPELL}, ${AliasKind.ALIAS})
+            AND pa.alias ~ '[ก-๙]'
+        ))::int +
+        (COALESCE(NULLIF(BTRIM(p."imageUrl"), ''), NULL) IS NULL)::int +
+        (NOT EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pf
+          WHERE pf."productId" = p.id
+        ))::int
+      ) AS "missingCount"
+    FROM "Product" p
+    WHERE p."isActive" = true
+  )
+`;
+
+const getFilterWhereSql = (filter: FilterOption) => {
+  switch (filter) {
+    case "missing_oem":
+      return Prisma.sql`"missingOem" = true`;
+    case "missing_keyword":
+      return Prisma.sql`"missingKeyword" = true`;
+    case "missing_image":
+      return Prisma.sql`"missingImage" = true`;
+    case "missing_fitment":
+      return Prisma.sql`"missingFitment" = true`;
+    case "all":
+    default:
+      return Prisma.sql`"missingCount" > 0`;
+  }
+};
 
 export default async function SearchCoverageAuditPage({ searchParams }: PageProps) {
   await requirePermission("search_coverage.view");
+
   const params = await searchParams;
   const filter: FilterOption = isFilterOption(params.filter) ? params.filter : "all";
+  const requestedPage = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
+  const filterWhereSql = getFilterWhereSql(filter);
 
-  const products = await db.product.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      imageUrl: true,
-      aliases: { select: { alias: true, kind: true } },
-      _count: { select: { carModels: true } },
-    },
-    orderBy: { code: "asc" },
-    take: PAGE_SIZE,
-  });
+  const [totalsResult, filteredCountResult] = await Promise.all([
+    db.$queryRaw<TotalsRow[]>(Prisma.sql`
+      ${COVERAGE_CTE}
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE "missingOem")::int AS "missingOem",
+        COUNT(*) FILTER (WHERE "missingKeyword")::int AS "missingKeyword",
+        COUNT(*) FILTER (WHERE "missingImage")::int AS "missingImage",
+        COUNT(*) FILTER (WHERE "missingFitment")::int AS "missingFitment",
+        COUNT(*) FILTER (
+          WHERE NOT "missingOem"
+            AND NOT "missingKeyword"
+            AND NOT "missingImage"
+            AND NOT "missingFitment"
+        )::int AS "fullyCovered"
+      FROM coverage
+    `),
+    db.$queryRaw<Array<{ count: number }>>(Prisma.sql`
+      ${COVERAGE_CTE}
+      SELECT COUNT(*)::int AS count
+      FROM coverage
+      WHERE ${filterWhereSql}
+    `),
+  ]);
 
-  type Row = {
-    id: string;
-    code: string;
-    name: string;
-    missingOem: boolean;
-    missingKeyword: boolean;
-    missingImage: boolean;
-    missingFitment: boolean;
-    missingCount: number;
+  const totals = totalsResult[0] ?? {
+    total: 0,
+    missingOem: 0,
+    missingKeyword: 0,
+    missingImage: 0,
+    missingFitment: 0,
+    fullyCovered: 0,
   };
+  const filteredCount = filteredCountResult[0]?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
 
-  const allRows: Row[] = products.map((p) => {
-    const hasOem = p.aliases.some((a) => OEM_KINDS.includes(a.kind));
-    const hasKeyword = p.aliases.some((a) => KEYWORD_KINDS.includes(a.kind) && containsThai(a.alias));
-    const hasImage = Boolean(p.imageUrl && p.imageUrl.trim() !== "");
-    const hasFitment = p._count.carModels > 0;
-
-    const missingOem = !hasOem;
-    const missingKeyword = !hasKeyword;
-    const missingImage = !hasImage;
-    const missingFitment = !hasFitment;
-
-    return {
-      id: p.id,
-      code: p.code,
-      name: p.name,
-      missingOem,
-      missingKeyword,
-      missingImage,
-      missingFitment,
-      missingCount: Number(missingOem) + Number(missingKeyword) + Number(missingImage) + Number(missingFitment),
-    };
-  });
-
-  const totals = {
-    total: allRows.length,
-    missingOem: allRows.filter((r) => r.missingOem).length,
-    missingKeyword: allRows.filter((r) => r.missingKeyword).length,
-    missingImage: allRows.filter((r) => r.missingImage).length,
-    missingFitment: allRows.filter((r) => r.missingFitment).length,
-    fullyCovered: allRows.filter((r) => r.missingCount === 0).length,
-  };
-
-  const rows = (() => {
-    switch (filter) {
-      case "missing_oem": return allRows.filter((r) => r.missingOem);
-      case "missing_keyword": return allRows.filter((r) => r.missingKeyword);
-      case "missing_image": return allRows.filter((r) => r.missingImage);
-      case "missing_fitment": return allRows.filter((r) => r.missingFitment);
-      case "all":
-      default: return allRows.filter((r) => r.missingCount > 0);
-    }
-  })().sort((a, b) => b.missingCount - a.missingCount || a.code.localeCompare(b.code));
+  const rows = await db.$queryRaw<CoverageRow[]>(Prisma.sql`
+    ${COVERAGE_CTE}
+    SELECT
+      id,
+      code,
+      name,
+      "missingOem",
+      "missingKeyword",
+      "missingImage",
+      "missingFitment",
+      "missingCount"
+    FROM coverage
+    WHERE ${filterWhereSql}
+    ORDER BY "missingCount" DESC, code ASC
+    OFFSET ${(currentPage - 1) * PAGE_SIZE}
+    LIMIT ${PAGE_SIZE}
+  `);
 
   const coveragePct = totals.total === 0 ? 100 : Math.round((totals.fullyCovered / totals.total) * 100);
+  const paginationParams = filter === "all" ? undefined : { filter };
 
   return (
     <div className="space-y-4">
@@ -169,7 +243,7 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
         </AdminSearchForm>
       </AdminFilterToolbar>
 
-      <AdminTableSection title={`รายการ (${rows.length})`}>
+      <AdminTableSection title={`รายการ (${filteredCount})`}>
         {rows.length === 0 ? (
           <p className="py-12 text-center text-sm text-emerald-600 dark:text-emerald-400">
             สินค้าทั้งหมดมีข้อมูลครบ
@@ -186,24 +260,40 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {rows.map((row) => (
                   <tr
-                    key={r.id}
+                    key={row.id}
                     className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-slate-200">{r.code}</td>
-                    <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{r.name}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-slate-200">{row.code}</td>
+                    <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{row.name}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {r.missingOem && <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">OEM</span>}
-                        {r.missingKeyword && <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">คำค้น TH</span>}
-                        {r.missingImage && <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">รูป</span>}
-                        {r.missingFitment && <span className="inline-flex items-center rounded-full border border-purple-100 bg-purple-50 px-2 py-0.5 text-xs text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300">รุ่นรถ</span>}
+                        {row.missingOem ? (
+                          <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                            OEM
+                          </span>
+                        ) : null}
+                        {row.missingKeyword ? (
+                          <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            คำค้น TH
+                          </span>
+                        ) : null}
+                        {row.missingImage ? (
+                          <span className="inline-flex items-center rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                            รูป
+                          </span>
+                        ) : null}
+                        {row.missingFitment ? (
+                          <span className="inline-flex items-center rounded-full border border-purple-100 bg-purple-50 px-2 py-0.5 text-xs text-purple-700 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300">
+                            รุ่นรถ
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/admin/products/${r.id}/edit`}
+                        href={`/admin/products/${row.id}/edit`}
                         className="inline-flex items-center rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055]"
                       >
                         แก้ไข
@@ -217,8 +307,15 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
         )}
       </AdminTableSection>
 
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        basePath="/admin/reports/search-coverage-audit"
+        searchParams={paginationParams}
+      />
+
       <p className="text-xs text-gray-500 dark:text-slate-400">
-        * แสดงสูงสุด {PAGE_SIZE} สินค้าที่ active เท่านั้น ถ้าเกินจำนวนนี้แนะนำให้แก้ไขสินค้าตามลำดับและรีเฟรชหน้านี้
+        * แสดงสินค้าที่ active และข้อมูลยังไม่ครบทั้งหมด แบ่งหน้าละ {PAGE_SIZE} รายการ
       </p>
     </div>
   );

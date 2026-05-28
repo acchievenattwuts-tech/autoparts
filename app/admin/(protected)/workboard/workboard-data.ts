@@ -581,6 +581,7 @@ async function queryCashBankBelow() {
 
 async function queryIncompleteLineCustomers() {
   const where = {
+    isActive: true,
     source: "LINE_LIFF" as const,
     OR: [{ shippingAddress: null }, { shippingAddress: "" }, { taxId: null }, { taxId: "" }],
   };
