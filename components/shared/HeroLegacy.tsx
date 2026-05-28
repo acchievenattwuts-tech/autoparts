@@ -31,9 +31,9 @@ interface HeroLegacyProps {
 }
 
 const HeroLegacy = ({
-  lineUrl = "https://lin.ee/18P0SqG",
+  lineUrl = "",
   shopPhone,
-  shopName = "ศรีวรรณ อะไหล่แอร์",
+  shopName = "",
 }: HeroLegacyProps) => {
   return (
     <section id="home" className="relative min-h-screen overflow-hidden">

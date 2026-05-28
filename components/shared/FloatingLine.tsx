@@ -8,11 +8,11 @@ const CLOSE_ICON = (
   </svg>
 );
 
-const FloatingLine = ({ lineUrl = "https://lin.ee/18P0SqG" }: { lineUrl?: string }) => {
+const FloatingLine = ({ lineUrl = "" }: { lineUrl?: string }) => {
   const LINE_OA_URL = lineUrl;
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed) return null;
+  if (dismissed || !lineUrl) return null;
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">

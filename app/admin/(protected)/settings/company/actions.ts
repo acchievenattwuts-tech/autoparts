@@ -92,6 +92,7 @@ const companySchema = z.object({
   shop_email: z.string().max(100),
   shop_line_id: z.string().max(50),
   shop_line_url: urlOrEmpty,
+  shop_line_qr_url: urlOrEmpty,
   shop_logo_url: urlOrEmpty,
   shop_google_map_url: urlOrEmpty,
   shop_google_map_embed_url: urlOrEmpty,

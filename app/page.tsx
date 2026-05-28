@@ -79,7 +79,7 @@ const Home = async () => {
           />
         </ScrollReveal>
         <ScrollReveal delay={80}>
-          <ProductCategories categories={categories} />
+          <ProductCategories categories={categories} lineUrl={config.shopLineUrl} />
         </ScrollReveal>
         <ScrollReveal delay={120}>
           <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
@@ -94,6 +94,7 @@ const Home = async () => {
           <LineCTA
             lineId={config.shopLineId}
             lineUrl={config.shopLineUrl}
+            lineQrUrl={config.shopLineQrUrl}
             shopPhone={config.shopPhone}
             shopName={config.shopName}
           />

@@ -25,6 +25,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     shopEmail: map["shop_email"] ?? defaultSiteConfig.shopEmail,
     shopLineId: map["shop_line_id"] ?? defaultSiteConfig.shopLineId,
     shopLineUrl: map["shop_line_url"] ?? defaultSiteConfig.shopLineUrl,
+    shopLineQrUrl: map["shop_line_qr_url"] ?? defaultSiteConfig.shopLineQrUrl,
     shopLogoUrl: map["shop_logo_url"] ?? defaultSiteConfig.shopLogoUrl,
     shopGoogleMapUrl: map["shop_google_map_url"] ?? defaultSiteConfig.shopGoogleMapUrl,
     shopGoogleMapEmbedUrl: map["shop_google_map_embed_url"] ?? defaultSiteConfig.shopGoogleMapEmbedUrl,

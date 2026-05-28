@@ -3,15 +3,17 @@ import Image from "next/image";
 interface LineCTAProps {
   lineUrl?: string;
   lineId?: string;
+  lineQrUrl?: string;
   shopPhone?: string;
   shopName?: string;
 }
 
 const LineCTA = ({
-  lineUrl = "https://lin.ee/18P0SqG",
-  lineId = "@435adwz",
+  lineUrl = "",
+  lineId = "",
+  lineQrUrl = "",
   shopPhone,
-  shopName = "ศรีวรรณ อะไหล่แอร์",
+  shopName = "",
 }: LineCTAProps) => {
   const lineTarget = lineUrl;
 
@@ -69,7 +71,7 @@ const LineCTA = ({
             <div className="w-64 rounded-3xl bg-white p-8 text-center shadow-2xl">
               <div className="relative mx-auto mb-4 h-44 w-44">
                 <Image
-                  src="/qr-line.png"
+                  src={lineQrUrl || "/qr-line.png"}
                   alt={`QR Code LINE OA ${shopName}`}
                   fill
                   sizes="176px"

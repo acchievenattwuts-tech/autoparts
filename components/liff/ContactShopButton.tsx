@@ -13,7 +13,7 @@ const hasPrintTokenParam = () => {
   return new URLSearchParams(window.location.search).has("printToken");
 };
 
-export default function ContactShopButton() {
+export default function ContactShopButton({ lineUrl = "" }: { lineUrl?: string }) {
   const isPrintTokenRequest = useSyncExternalStore(subscribe, hasPrintTokenParam, () => false);
 
   if (isPrintTokenRequest) {
@@ -26,7 +26,7 @@ export default function ContactShopButton() {
       return;
     }
 
-    window.location.href = "https://lin.ee/18P0SqG";
+    if (lineUrl) window.location.href = lineUrl;
   };
 
   return (

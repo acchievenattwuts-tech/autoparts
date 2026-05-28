@@ -56,9 +56,9 @@ interface StorefrontNavbarProps {
 }
 
 const StorefrontNavbar = ({
-  shopName = "ศรีวรรณ อะไหล่แอร์",
+  shopName = "",
   shopLogoUrl = "",
-  lineUrl = "https://lin.ee/18P0SqG",
+  lineUrl = "",
   shopPhone,
   searchQuery,
 }: StorefrontNavbarProps) => {

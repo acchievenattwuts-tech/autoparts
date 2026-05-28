@@ -96,6 +96,10 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
   const [logoUrl, setLogoUrl] = useState(config.shopLogoUrl ?? "");
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState("");
+  const lineQrFileRef = useRef<HTMLInputElement>(null);
+  const [lineQrUrl, setLineQrUrl] = useState(config.shopLineQrUrl ?? "");
+  const [lineQrUploading, setLineQrUploading] = useState(false);
+  const [lineQrError, setLineQrError] = useState("");
   const [facebookEnabled, setFacebookEnabled] = useState(config.shopFacebookEnabled);
   const [tiktokEnabled, setTiktokEnabled] = useState(config.shopTiktokEnabled);
   const [shopeeEnabled, setShopeeEnabled] = useState(config.shopShopeeEnabled);
@@ -118,6 +122,22 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
     if (result.error) setLogoError(result.error);
     if (result.url) setLogoUrl(result.url);
     if (logoFileRef.current) logoFileRef.current.value = "";
+  };
+
+  const handleLineQrChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLineQrError("");
+    setLineQrUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    const result = await uploadLogoImage(formData);
+    setLineQrUploading(false);
+
+    if (result.error) setLineQrError(result.error);
+    if (result.url) setLineQrUrl(result.url);
+    if (lineQrFileRef.current) lineQrFileRef.current.value = "";
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -232,6 +252,40 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
           <div>
             <label className={labelClass}>LINE URL</label>
             <input name="shop_line_url" defaultValue={config.shopLineUrl} className={inputClass} placeholder="https://lin.ee/..." />
+          </div>
+          <div className="md:col-span-2">
+            <label className={labelClass}>QR Code LINE OA</label>
+            <input type="hidden" name="shop_line_qr_url" value={lineQrUrl} />
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+              <div className="relative flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                {lineQrUrl ? (
+                  <>
+                    <Image src={lineQrUrl} alt="LINE QR Code" fill sizes="96px" className="object-contain p-1" />
+                    <button
+                      type="button"
+                      onClick={() => setLineQrUrl("")}
+                      className="absolute right-0.5 top-0.5 rounded-full border border-gray-200 bg-white p-0.5 transition-colors hover:border-red-300 hover:bg-red-50"
+                    >
+                      <X size={12} className="text-gray-500 hover:text-red-500" />
+                    </button>
+                  </>
+                ) : (
+                  <p className="px-2 text-center text-xs text-gray-400 dark:text-slate-500">ยังไม่มี QR</p>
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <input ref={lineQrFileRef} type="file" accept="image/*" onChange={handleLineQrChange} className="hidden" id="lineQrUpload" />
+                <label
+                  htmlFor="lineQrUpload"
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium transition-colors dark:border-white/10 ${lineQrUploading ? "cursor-not-allowed bg-gray-50 opacity-60 dark:bg-slate-900" : "bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"}`}
+                >
+                  <Upload size={14} />
+                  {lineQrUploading ? "กำลังอัปโหลด..." : "เลือกไฟล์ QR"}
+                </label>
+                <p className="text-xs text-gray-400 dark:text-slate-500">อัปโหลด QR Code ที่ได้จาก LINE OA Manager (PNG, JPG, WebP ไม่เกิน 3MB)</p>
+                {lineQrError && <p className="text-xs text-red-500">{lineQrError}</p>}
+              </div>
+            </div>
           </div>
           <div>
             <label className={labelClass}>เวลาทำการ</label>

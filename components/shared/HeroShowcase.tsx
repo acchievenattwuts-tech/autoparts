@@ -11,9 +11,9 @@ interface HeroShowcaseProps {
 }
 
 const HeroShowcase = ({
-  lineUrl = "https://lin.ee/18P0SqG",
+  lineUrl = "",
   shopPhone,
-  shopName = "ศรีวรรณ อะไหล่แอร์",
+  shopName = "",
 }: HeroShowcaseProps) => {
   return (
     <section id="home" className="relative overflow-hidden bg-[#edf5ff]">

@@ -5,7 +5,7 @@ import { LoaderCircle } from "lucide-react";
 
 import { useLiff } from "./LiffProvider";
 
-export default function LiffGate({ children }: { children: React.ReactNode }) {
+export default function LiffGate({ children, lineUrl = "" }: { children: React.ReactNode; lineUrl?: string }) {
   const { isReady, error } = useLiff();
 
   if (!isReady) {
@@ -26,12 +26,14 @@ export default function LiffGate({ children }: { children: React.ReactNode }) {
           <p className="font-semibold">เปิดบริการไม่สำเร็จ</p>
           <p className="mt-1 text-sm">{error}</p>
         </div>
-        <Link
-          href="https://lin.ee/18P0SqG"
-          className="mt-4 inline-flex rounded-xl bg-blue-800 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-900/20"
-        >
-          ติดต่อร้าน
-        </Link>
+        {lineUrl && (
+          <Link
+            href={lineUrl}
+            className="mt-4 inline-flex rounded-xl bg-blue-800 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-900/20"
+          >
+            ติดต่อร้าน
+          </Link>
+        )}
       </div>
     );
   }

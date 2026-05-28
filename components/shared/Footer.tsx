@@ -8,13 +8,13 @@ interface FooterProps {
 }
 
 const Footer = ({ config }: FooterProps) => {
-  const shopName = config?.shopName ?? "ศรีวรรณ อะไหล่แอร์";
-  const shopSlogan = config?.shopSlogan ?? "อะไหล่แอร์และหม้อน้ำรถยนต์ครบวงจร";
+  const shopName = config?.shopName ?? "";
+  const shopSlogan = config?.shopSlogan ?? "";
   const shopPhone = config?.shopPhone ?? "";
   const shopPhoneSecondary = config?.shopPhoneSecondary ?? "";
-  const shopAddress = config?.shopAddress ?? "กรุณาติดต่อทาง LINE\nเพื่อนัดรับสินค้า";
+  const shopAddress = config?.shopAddress ?? "";
   const shopLogoUrl = config?.shopLogoUrl ?? "";
-  const lineUrl = config?.shopLineUrl ?? "https://lin.ee/18P0SqG";
+  const lineUrl = config?.shopLineUrl ?? "";
   const shopBusinessHours = config?.shopBusinessHours ?? "";
   const shopHolidayNote = config?.shopHolidayNote ?? "";
   const facebookUrl = config?.shopFacebookUrl ?? "";

@@ -30,9 +30,9 @@ interface NavbarProps {
 }
 
 const Navbar = ({
-  shopName = "ศรีวรรณ อะไหล่แอร์",
+  shopName = "",
   shopLogoUrl = "",
-  lineUrl = "https://lin.ee/18P0SqG",
+  lineUrl = "",
   shopPhone,
   searchQuery,
 }: NavbarProps) => {
