@@ -30,8 +30,8 @@ const PrintDocumentHeader = ({
           />
         </div>
       ) : null}
-      <div className="space-y-0.5 text-xs text-gray-600">
-        {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
+      <div className="space-y-0.5 text-xs text-gray-800">
+        {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-900">{shopConfig.shopName}</p> : null}
         {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
         {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
         {shopConfig.shopWebsiteUrl || shopConfig.shopLineId ? (
@@ -45,7 +45,7 @@ const PrintDocumentHeader = ({
     </div>
     <div className="text-right">
       <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>{title}</p>
-      <p className="mt-1 text-xs text-gray-400">{pageLabel}</p>
+      <p className="mt-1 text-xs text-gray-600">{pageLabel}</p>
     </div>
   </div>
 );

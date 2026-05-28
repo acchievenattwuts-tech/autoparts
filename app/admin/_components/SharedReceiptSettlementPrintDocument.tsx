@@ -108,35 +108,35 @@ const SharedReceiptSettlementPrintDocument = ({
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
         <div className={`space-y-0.5 rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">ข้อมูลลูกค้า</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลลูกค้า</p>
           <p>
-            <span className="text-gray-500">ชื่อ: </span>
+            <span className="text-gray-700">ชื่อ: </span>
             <span className="font-semibold">{customerName}</span>
           </p>
           {receipt.customer?.address ? (
             <p>
-              <span className="text-gray-500">ที่อยู่: </span>
+              <span className="text-gray-700">ที่อยู่: </span>
               {receipt.customer.address}
             </p>
           ) : null}
           {customerPhone ? (
             <p>
-              <span className="text-gray-500">โทร: </span>
+              <span className="text-gray-700">โทร: </span>
               {customerPhone}
             </p>
           ) : null}
         </div>
 
         <div className={`rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">ข้อมูลเอกสาร</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลเอกสาร</p>
           <table className="w-full text-xs">
             <tbody>
               <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">เลขที่เอกสาร</td>
+                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เลขที่เอกสาร</td>
                 <td className="font-mono font-semibold">{receipt.receiptNo}</td>
               </tr>
               <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">วันที่เอกสาร</td>
+                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันที่เอกสาร</td>
                 <td>{receiptDateText}</td>
               </tr>
             </tbody>
@@ -152,7 +152,7 @@ const SharedReceiptSettlementPrintDocument = ({
           <col />
         </colgroup>
         <thead>
-          <tr className="bg-gray-100 text-gray-700">
+          <tr className="bg-gray-100 text-gray-900">
             <th className={`w-40 ${PRINT_HEADER_CELL_CLASS} text-left`}>เลขที่เอกสารอ้างอิง</th>
             <th className={`w-28 ${PRINT_HEADER_CELL_CLASS} text-left`}>วันที่เอกสาร</th>
             <th className={`${PRINT_HEADER_CELL_CLASS} text-right`}>ยอดเอกสาร</th>
@@ -186,7 +186,7 @@ const SharedReceiptSettlementPrintDocument = ({
 
       <div className="mb-4 grid text-xs" style={RECEIPT_SUMMARY_GRID_STYLE}>
         <div className={`col-span-2 border-b border-l ${PRINT_BODY_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-gray-400">หมายเหตุ:</p>
+          <p className="mb-1 text-gray-700">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
         </div>
         <div className={`relative col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2 pb-1`}>
@@ -196,7 +196,7 @@ const SharedReceiptSettlementPrintDocument = ({
               <div className="font-bold text-gray-900">ยอดรับชำระรวม</div>
               <div className="text-right font-bold text-[#1e3a5f]">{formatPrintNumber(Number(receipt.totalAmount))}</div>
             </div>
-            <div className="text-right text-[11px] text-gray-500">({totalAmountInWords})</div>
+            <div className="text-right text-[11px] text-gray-700">({totalAmountInWords})</div>
           </div>
         </div>
       </div>
@@ -209,7 +209,7 @@ const SharedReceiptSettlementPrintDocument = ({
             {hasSupportBlock ? (
               <div className={`${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
                 <div className="flex items-center gap-6">
-                  <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
+                  <span className="whitespace-nowrap text-gray-700">ชำระโดย:</span>
                   {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
                     <span key={key} className="flex items-center gap-1.5">
                       <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>

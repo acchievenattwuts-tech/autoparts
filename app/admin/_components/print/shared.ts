@@ -14,8 +14,8 @@ export type PrintShopConfig = {
   printNoticeText?: string | null;
 };
 
-export const PRINT_HEADER_BORDER_CLASS = "border-gray-400";
-export const PRINT_BODY_BORDER_CLASS = "border-gray-300";
+export const PRINT_HEADER_BORDER_CLASS = "border-gray-700";
+export const PRINT_BODY_BORDER_CLASS = "border-gray-500";
 export const PRINT_HEADER_CELL_CLASS = `border ${PRINT_HEADER_BORDER_CLASS} px-1.5 py-1.5`;
 export const PRINT_TABLE_CELL_CLASS = `border ${PRINT_BODY_BORDER_CLASS} px-1.5 py-1.5`;
 export const PRINT_SECTION_BORDER_CLASS = `border ${PRINT_BODY_BORDER_CLASS}`;

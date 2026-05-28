@@ -75,7 +75,7 @@ export default function ExternalPrintShell({
           #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
           #receipt :is(.bg-gray-100, .hover\\:bg-gray-100:hover, .bg-gray-200, .hover\\:bg-gray-200:hover) { background-color: #f3f4f6 !important; }
           #receipt :is(.text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700) { color: #111827 !important; }
-          #receipt :is(.text-gray-600, .text-gray-500, .text-gray-400) { color: #6b7280 !important; }
+          #receipt :is(.text-gray-600, .text-gray-500, .text-gray-400) { color: #374151 !important; }
           #receipt .text-\\[\\#1e3a5f\\] { color: #1e3a5f !important; }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }

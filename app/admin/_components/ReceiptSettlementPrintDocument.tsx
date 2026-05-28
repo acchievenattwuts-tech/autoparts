@@ -57,8 +57,8 @@ const PAYMENT_PRINT_LABELS: { key: "CASH" | "TRANSFER"; label: string }[] = [
   { key: "TRANSFER", label: "เงินโอน" },
 ];
 
-const PRINT_HEADER_BORDER_CLASS = "border-gray-400";
-const PRINT_BODY_BORDER_CLASS = "border-gray-300";
+const PRINT_HEADER_BORDER_CLASS = "border-gray-700";
+const PRINT_BODY_BORDER_CLASS = "border-gray-500";
 const PRINT_HEADER_CELL_CLASS = `border ${PRINT_HEADER_BORDER_CLASS} px-1.5 py-1.5`;
 const PRINT_TABLE_CELL_CLASS = `border ${PRINT_BODY_BORDER_CLASS} px-1.5 py-1.5`;
 const PRINT_SECTION_BORDER_CLASS = `border ${PRINT_BODY_BORDER_CLASS}`;
@@ -183,8 +183,8 @@ export default function ReceiptSettlementPrintDocument({
               />
             </div>
           ) : null}
-          <div className="space-y-0.5 text-xs text-gray-600">
-          {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-800">{shopConfig.shopName}</p> : null}
+          <div className="space-y-0.5 text-xs text-gray-800">
+          {shopConfig.shopName ? <p className="text-sm font-semibold text-gray-900">{shopConfig.shopName}</p> : null}
           {shopConfig.shopAddress ? <p>{shopConfig.shopAddress}</p> : null}
           {shopConfig.shopPhone ? <p>โทร: {shopConfig.shopPhone}</p> : null}
           {shopConfig.shopWebsiteUrl || shopConfig.shopLineId ? (
@@ -198,41 +198,41 @@ export default function ReceiptSettlementPrintDocument({
         </div>
         <div className="text-right">
           <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>ใบเสร็จรับเงิน</p>
-          <p className="mt-1 text-xs text-gray-400">หน้า 1/1</p>
+          <p className="mt-1 text-xs text-gray-600">หน้า 1/1</p>
         </div>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
         <div className={`space-y-0.5 rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">ข้อมูลลูกค้า</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลลูกค้า</p>
           <p>
-            <span className="text-gray-500">ชื่อ: </span>
+            <span className="text-gray-700">ชื่อ: </span>
             <span className="font-semibold">{customerName}</span>
           </p>
           {receipt.customer?.address ? (
             <p>
-              <span className="text-gray-500">ที่อยู่: </span>
+              <span className="text-gray-700">ที่อยู่: </span>
               {receipt.customer.address}
             </p>
           ) : null}
           {customerPhone ? (
             <p>
-              <span className="text-gray-500">โทร: </span>
+              <span className="text-gray-700">โทร: </span>
               {customerPhone}
             </p>
           ) : null}
         </div>
 
         <div className={`rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">ข้อมูลเอกสาร</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลเอกสาร</p>
           <table className="w-full text-xs">
             <tbody>
               <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">เลขที่เอกสาร</td>
+                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เลขที่เอกสาร</td>
                 <td className="font-mono font-semibold">{receipt.receiptNo}</td>
               </tr>
               <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-500">วันที่เอกสาร</td>
+                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันที่เอกสาร</td>
                 <td>{receiptDateText}</td>
               </tr>
             </tbody>
@@ -248,7 +248,7 @@ export default function ReceiptSettlementPrintDocument({
           <col />
         </colgroup>
         <thead>
-          <tr className="bg-gray-100 text-gray-700">
+          <tr className="bg-gray-100 text-gray-900">
             <th className={`w-40 ${PRINT_HEADER_CELL_CLASS} text-left`}>เลขที่เอกสารอ้างอิง</th>
             <th className={`w-28 ${PRINT_HEADER_CELL_CLASS} text-left`}>วันที่เอกสาร</th>
             <th className={`${PRINT_HEADER_CELL_CLASS} text-right`}>ยอดเอกสาร</th>
@@ -282,7 +282,7 @@ export default function ReceiptSettlementPrintDocument({
 
       <div className="mb-4 grid text-xs" style={RECEIPT_SUMMARY_GRID_STYLE}>
         <div className={`col-span-2 border-b border-l ${PRINT_BODY_BORDER_CLASS} p-2`}>
-          <p className="mb-1 text-gray-400">หมายเหตุ:</p>
+          <p className="mb-1 text-gray-700">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
         </div>
         <div className={`relative col-span-2 border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2 pb-1`}>
@@ -292,7 +292,7 @@ export default function ReceiptSettlementPrintDocument({
               <div className="font-bold text-gray-900">ยอดรับชำระรวม</div>
               <div className="text-right font-bold text-[#1e3a5f]">{fmtNum(Number(receipt.totalAmount))}</div>
             </div>
-            <div className="text-right text-[11px] text-gray-500">({totalAmountInWords})</div>
+            <div className="text-right text-[11px] text-gray-700">({totalAmountInWords})</div>
           </div>
         </div>
       </div>
@@ -305,7 +305,7 @@ export default function ReceiptSettlementPrintDocument({
             {hasSupportBlock ? (
               <div className={`${PRINT_SECTION_BORDER_CLASS} px-3 py-2 text-xs`}>
                 <div className="flex items-center gap-6">
-                  <span className="whitespace-nowrap text-gray-500">ชำระโดย:</span>
+                  <span className="whitespace-nowrap text-gray-700">ชำระโดย:</span>
                   {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
                     <span key={key} className="flex items-center gap-1.5">
                       <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
@@ -354,15 +354,15 @@ export default function ReceiptSettlementPrintDocument({
                   />
                 ) : null}
               </div>
-              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้รับเงิน</div>
-              <div className="px-4 pb-1 text-gray-700">{signerDisplayName}</div>
-              <div className="px-4 pb-2 text-gray-400">วันที่ {receiptDateText}</div>
+              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-900`}>ผู้รับเงิน</div>
+              <div className="px-4 pb-1 text-gray-900">{signerDisplayName}</div>
+              <div className="px-4 pb-2 text-gray-600">วันที่ {receiptDateText}</div>
             </div>
             <div>
               <div className="h-16" />
-              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>ผู้ชำระเงิน</div>
-              <div className="px-4 pb-1 text-gray-700">&nbsp;</div>
-              <div className="px-4 pb-2 text-gray-400">วันที่ ................................................</div>
+              <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-900`}>ผู้ชำระเงิน</div>
+              <div className="px-4 pb-1 text-gray-900">&nbsp;</div>
+              <div className="px-4 pb-2 text-gray-600">วันที่ ................................................</div>
             </div>
           </div>
         </div>

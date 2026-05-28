@@ -38,9 +38,9 @@ const PrintSignatureGrid = ({
             />
           ) : null}
         </div>
-        <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-700`}>{column.label}</div>
-        {column.showNameLine ? <div className="px-4 pb-1 text-gray-700">{column.nameText ?? "\u00A0"}</div> : null}
-        <div className="px-4 pb-2 text-gray-400">{column.dateText}</div>
+        <div className={`${PRINT_SECTION_TOP_BORDER_CLASS} py-1.5 font-medium text-gray-900`}>{column.label}</div>
+        {column.showNameLine ? <div className="px-4 pb-1 text-gray-900">{column.nameText ?? "\u00A0"}</div> : null}
+        <div className="px-4 pb-2 text-gray-600">{column.dateText}</div>
       </div>
     ))}
   </div>
