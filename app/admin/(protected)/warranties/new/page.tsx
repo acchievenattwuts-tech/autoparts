@@ -12,20 +12,43 @@ const NewWarrantyPage = async () => {
 
   const since = addThailandDays(parseDateOnlyToDate(getThailandDateKey()), -60);
 
-  const recentSales = await db.sale.findMany({
-    where: {
-      status: "ACTIVE",
-      saleDate: { gte: since },
-    },
-    orderBy: { saleDate: "desc" },
-    take: 100,
-    select: {
-      id: true,
-      saleNo: true,
-      saleDate: true,
-      customerName: true,
-    },
-  });
+  const [recentSales, customers, products] = await Promise.all([
+    db.sale.findMany({
+      where: {
+        status: "ACTIVE",
+        saleDate: { gte: since },
+      },
+      orderBy: { saleDate: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        customerName: true,
+      },
+    }),
+    db.customer.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      take: 500,
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        phone: true,
+      },
+    }),
+    db.product.findMany({
+      where: { isActive: true, isLotControl: false },
+      orderBy: { name: "asc" },
+      take: 500,
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    }),
+  ]);
 
   return (
     <div>
@@ -41,7 +64,11 @@ const NewWarrantyPage = async () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <NewWarrantyForm recentSales={recentSales} />
+        <NewWarrantyForm
+          recentSales={recentSales}
+          customers={customers}
+          products={products}
+        />
       </div>
     </div>
   );

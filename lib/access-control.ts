@@ -86,6 +86,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "warranties.view", group: "ระบบงาน", label: "ดูประกัน" },
   { key: "warranties.create", group: "ระบบงาน", label: "เพิ่มประกัน" },
   { key: "warranties.update", group: "ระบบงาน", label: "แก้ไขประกัน" },
+  { key: "warranties.cancel", group: "ระบบงาน", label: "ยกเลิกประกัน (เฉพาะที่สร้างเอง)" },
   { key: "warranties.manage", group: "ระบบงาน", label: "จัดการประกัน" },
 
   { key: "warranty_claims.view", group: "ระบบงาน", label: "ดูใบเคลมสินค้า" },

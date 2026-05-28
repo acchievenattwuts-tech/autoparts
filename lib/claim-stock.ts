@@ -39,6 +39,7 @@ export async function getOriginalClaimUnitCost(
     select: {
       productId: true,
       lotNo: true,
+      product: { select: { avgCost: true } },
       saleItem: {
         select: {
           costPrice: true,
@@ -58,14 +59,17 @@ export async function getOriginalClaimUnitCost(
   }
 
   const lotNo = normalizeLotNo(warranty.lotNo);
-  const lotCost = lotNo
-    ? warranty.saleItem.lotItems.find((lotItem) => lotItem.lotNo === lotNo)?.unitCost
-    : null;
+  const lotCost =
+    lotNo && warranty.saleItem
+      ? warranty.saleItem.lotItems.find((lotItem) => lotItem.lotNo === lotNo)?.unitCost
+      : null;
+
+  const fallbackCost = warranty.saleItem?.costPrice ?? warranty.product.avgCost;
 
   return {
     productId: warranty.productId,
     lotNo,
-    unitCost: Number(lotCost ?? warranty.saleItem.costPrice),
+    unitCost: Number(lotCost ?? fallbackCost),
   };
 }
 

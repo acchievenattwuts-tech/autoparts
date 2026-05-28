@@ -17,7 +17,13 @@ export default async function LiffWarrantyDetailPage({
 }) {
   const [{ id }, customer] = await Promise.all([params, requireLiffCustomer()]);
   const warranty = await db.warranty.findFirst({
-    where: { id, sale: { customerId: customer.id, status: "ACTIVE" } },
+    where: {
+      id,
+      OR: [
+        { sale: { customerId: customer.id, status: "ACTIVE" } },
+        { customerId: customer.id, saleId: null },
+      ],
+    },
     select: {
       id: true,
       warrantyDays: true,
@@ -74,7 +80,9 @@ export default async function LiffWarrantyDetailPage({
           <dl className="space-y-3 text-sm">
             <div>
               <dt className="text-slate-500 dark:text-slate-400">เลขที่บิล</dt>
-              <dd className="font-mono font-semibold text-slate-950 dark:text-slate-100">{warranty.sale.saleNo}</dd>
+              <dd className="font-mono font-semibold text-slate-950 dark:text-slate-100">
+                {warranty.sale?.saleNo ?? "ประกันหน้างาน"}
+              </dd>
             </div>
             <div>
               <dt className="text-slate-500 dark:text-slate-400">เริ่มประกัน</dt>

@@ -29,7 +29,10 @@ export default async function LiffWarrantiesPage({
   const statusFilter = normalizeWarrantyStatusFilter((await searchParams).status);
   const today = parseDateOnlyToStartOfDay(getThailandDateKey());
   const baseWarrantyWhere: Prisma.WarrantyWhereInput = {
-    sale: { customerId: customer.id, status: "ACTIVE" },
+    OR: [
+      { sale: { customerId: customer.id, status: "ACTIVE" } },
+      { customerId: customer.id, saleId: null },
+    ],
   };
   const activeWarrantyWhere: Prisma.WarrantyWhereInput = {
     ...baseWarrantyWhere,
@@ -54,6 +57,8 @@ export default async function LiffWarrantiesPage({
         endDate: true,
         product: { select: { code: true, name: true } },
         sale: { select: { saleNo: true, saleDate: true } },
+        customer: { select: { name: true } },
+        customerName: true,
         _count: { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
       },
       orderBy: [{ endDate: "desc" }, { unitSeq: "asc" }],
@@ -122,7 +127,7 @@ export default async function LiffWarrantiesPage({
                     <div>
                       <p className="font-semibold text-slate-950 dark:text-slate-100">{warranty.product.name}</p>
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {warranty.product.code} · {warranty.sale.saleNo}
+                        {warranty.product.code} · {warranty.sale?.saleNo ?? "ประกันหน้างาน"}
                       </p>
                     </div>
                   </div>

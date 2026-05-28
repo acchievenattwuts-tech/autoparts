@@ -30,6 +30,8 @@ const NewClaimPage = async ({ searchParams }: Props) => {
         startDate: true,
         endDate: true,
         product: { select: { id: true, code: true, name: true, isLotControl: true } },
+        customerName: true,
+        customer: { select: { name: true } },
         sale:    { select: { saleNo: true, customerName: true } },
         saleItem: {
           select: {
@@ -128,8 +130,8 @@ const NewClaimPage = async ({ searchParams }: Props) => {
           <span>รหัส: <strong>{warranty.product.code}</strong></span>
           <span>Lot: <strong>{warranty.lotNo ?? "-"}</strong></span>
           <span>ลำดับ: <strong>#{warranty.unitSeq}</strong></span>
-          <span>ใบขาย: <strong>{warranty.sale.saleNo}</strong></span>
-          <span>ลูกค้า: <strong>{warranty.sale.customerName ?? "—"}</strong></span>
+          <span>ใบขาย: <strong>{warranty.sale?.saleNo ?? "— (ประกันหน้างาน)"}</strong></span>
+          <span>ลูกค้า: <strong>{warranty.sale?.customerName ?? warranty.customer?.name ?? warranty.customerName ?? "—"}</strong></span>
           <span>เริ่ม: <strong>{formatDateThai(warranty.startDate)}</strong></span>
           <span>หมด: <strong>{formatDateThai(warranty.endDate)}</strong></span>
         </div>

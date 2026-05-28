@@ -104,6 +104,8 @@ const ClaimListPage = async ({
           { warranty: { product: { name: { contains: normalizedQuery, mode: "insensitive" } } } },
           { warranty: { product: { code: { contains: normalizedQuery, mode: "insensitive" } } } },
           { warranty: { sale: { customerName: { contains: normalizedQuery, mode: "insensitive" } } } },
+          { warranty: { customerName: { contains: normalizedQuery, mode: "insensitive" } } },
+          { warranty: { customer: { name: { contains: normalizedQuery, mode: "insensitive" } } } },
         ],
       }
     : {};
@@ -129,8 +131,10 @@ const ClaimListPage = async ({
         warranty: {
           select: {
             unitSeq: true,
+            customerName: true,
             product: { select: { code: true, name: true } },
             sale: { select: { saleNo: true, customerName: true } },
+            customer: { select: { name: true } },
           },
         },
       },
@@ -272,8 +276,17 @@ const ClaimListPage = async ({
                       <p className="text-xs text-gray-400">[{claim.warranty.product.code}] ลำดับ #{claim.warranty.unitSeq}</p>
                     </td>
                     <td className="py-2.5 px-4">
-                      <p className="text-gray-700">{claim.warranty.sale.customerName ?? "—"}</p>
-                      <p className="font-mono text-xs text-gray-400">{claim.warranty.sale.saleNo}</p>
+                      <p className="text-gray-700">
+                        {claim.warranty.sale?.customerName
+                          ?? claim.warranty.customer?.name
+                          ?? claim.warranty.customerName
+                          ?? "—"}
+                      </p>
+                      {claim.warranty.sale ? (
+                        <p className="font-mono text-xs text-gray-400">{claim.warranty.sale.saleNo}</p>
+                      ) : (
+                        <p className="text-[10px] text-purple-600">ประกันหน้างาน</p>
+                      )}
                     </td>
                     <td className="py-2.5 px-4 text-gray-600 text-xs">
                       {claim.claimType === "REPLACE_NOW" ? "เปลี่ยนให้ทันที" : "ลูกค้ารอเคลม"}

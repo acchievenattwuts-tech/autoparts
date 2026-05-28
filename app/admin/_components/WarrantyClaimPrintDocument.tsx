@@ -32,6 +32,8 @@ type WarrantyClaimPrintDocumentProps = {
       warrantyDays: number;
       startDate: Date | string;
       endDate: Date | string;
+      customerName?: string | null;
+      customer?: { name: string; phone?: string | null } | null;
       product: {
         code: string;
         name: string;
@@ -41,7 +43,7 @@ type WarrantyClaimPrintDocumentProps = {
         saleDate: Date | string;
         customerName?: string | null;
         customerPhone?: string | null;
-      };
+      } | null;
     };
   };
   shopConfig: PrintShopConfig;
@@ -61,8 +63,13 @@ const WarrantyClaimPrintDocument = ({
   rootId,
   rootClassName,
 }: WarrantyClaimPrintDocumentProps) => {
-  const customerName = claim.warranty.sale.customerName ?? "-";
-  const customerPhone = claim.warranty.sale.customerPhone ?? null;
+  const customerName =
+    claim.warranty.sale?.customerName
+      ?? claim.warranty.customer?.name
+      ?? claim.warranty.customerName
+      ?? "-";
+  const customerPhone =
+    claim.warranty.sale?.customerPhone ?? claim.warranty.customer?.phone ?? null;
   const claimSignerName = claim.signerName ?? null;
   const claimSignerSignatureUrl = claim.signerSignatureUrl ?? null;
   const claimSignedDateText = claim.signedAt ? `วันที่ ${formatPrintDate(claim.signedAt)}` : "วันที่ ................................................";
@@ -84,14 +91,23 @@ const WarrantyClaimPrintDocument = ({
               {customerPhone}
             </p>
           ) : null}
-          <p>
-            <span className="text-gray-500">เลขที่ใบขาย: </span>
-            <span className="font-mono">{claim.warranty.sale.saleNo}</span>
-          </p>
-          <p>
-            <span className="text-gray-500">วันที่ขาย: </span>
-            {formatPrintDate(claim.warranty.sale.saleDate)}
-          </p>
+          {claim.warranty.sale ? (
+            <>
+              <p>
+                <span className="text-gray-500">เลขที่ใบขาย: </span>
+                <span className="font-mono">{claim.warranty.sale.saleNo}</span>
+              </p>
+              <p>
+                <span className="text-gray-500">วันที่ขาย: </span>
+                {formatPrintDate(claim.warranty.sale.saleDate)}
+              </p>
+            </>
+          ) : (
+            <p>
+              <span className="text-gray-500">เลขที่ใบขาย: </span>
+              <span className="font-medium text-purple-700">ประกันหน้างาน (ไม่มีบิล)</span>
+            </p>
+          )}
         </div>
 
         <div className={`rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>

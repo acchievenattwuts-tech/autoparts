@@ -645,6 +645,7 @@ model Customer {
   creditNotes      CreditNote[]
   receipts         Receipt[]
   sales            Sale[]
+  warranties       Warranty[]
 
   @@index([name])
   @@index([lineLinkedAt])
@@ -770,26 +771,37 @@ model SaleItem {
 }
 
 model Warranty {
-  id           String          @id @default(cuid())
-  saleId       String
-  saleItemId   String
+  id           String                 @id @default(cuid())
+  saleId       String?
+  saleItemId   String?
   productId    String
-  startDate    DateTime        @db.Timestamptz(3)
-  endDate      DateTime        @db.Timestamptz(3)
+  customerId   String?
+  customerName String?
+  startDate    DateTime               @db.Timestamptz(3)
+  endDate      DateTime               @db.Timestamptz(3)
   note         String?
-  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime               @default(now()) @db.Timestamptz(3)
   warrantyDays Int
-  unitSeq      Int             @default(1)
+  unitSeq      Int                    @default(1)
   lotNo        String?
-  product      Product         @relation(fields: [productId], references: [id])
-  sale         Sale            @relation(fields: [saleId], references: [id])
-  saleItem     SaleItem        @relation(fields: [saleItemId], references: [id])
+  createdVia   WarrantyCreationSource @default(AUTO_FROM_SALE)
+  product      Product                @relation(fields: [productId], references: [id])
+  sale         Sale?                  @relation(fields: [saleId], references: [id])
+  saleItem     SaleItem?              @relation(fields: [saleItemId], references: [id])
+  customer     Customer?              @relation(fields: [customerId], references: [id])
   claims       WarrantyClaim[]
 
   @@unique([saleItemId, unitSeq])
   @@index([productId])
   @@index([endDate])
   @@index([saleId, endDate])
+  @@index([customerId])
+  @@index([createdVia])
+}
+
+enum WarrantyCreationSource {
+  AUTO_FROM_SALE
+  MANUAL
 }
 
 model WarrantyClaim {

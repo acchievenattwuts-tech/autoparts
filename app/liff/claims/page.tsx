@@ -35,10 +35,10 @@ export default async function LiffClaimsPage({
   const baseClaimWhere: Prisma.WarrantyClaimWhereInput = {
     status: { not: "CANCELLED" },
     warranty: {
-      sale: {
-        customerId: customer.id,
-        status: "ACTIVE",
-      },
+      OR: [
+        { sale: { customerId: customer.id, status: "ACTIVE" } },
+        { customerId: customer.id, saleId: null },
+      ],
     },
   };
   const closedClaimWhere: Prisma.WarrantyClaimWhereInput = {

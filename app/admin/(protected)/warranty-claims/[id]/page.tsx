@@ -62,6 +62,8 @@ const ClaimDetailPage = async ({ params }: Props) => {
             startDate: true,
             endDate: true,
             product: { select: { code: true, name: true, isLotControl: true } },
+            customerName: true,
+            customer: { select: { name: true } },
             sale: { select: { saleNo: true, customerName: true } },
           },
         },
@@ -221,16 +223,24 @@ const ClaimDetailPage = async ({ params }: Props) => {
               </div>
               <div>
                 <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">ใบขาย</p>
-                <Link
-                  href={`/admin/sales/${claim.warranty.sale.saleNo}`}
-                  className="font-mono text-sm text-[#1e3a5f] hover:underline dark:text-sky-300"
-                >
-                  {claim.warranty.sale.saleNo}
-                </Link>
+                {claim.warranty.sale ? (
+                  <Link
+                    href={`/admin/sales/${claim.warranty.sale.saleNo}`}
+                    className="font-mono text-sm text-[#1e3a5f] hover:underline dark:text-sky-300"
+                  >
+                    {claim.warranty.sale.saleNo}
+                  </Link>
+                ) : (
+                  <span className="inline-flex rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 dark:border-purple-300/30 dark:bg-purple-500/15 dark:text-purple-200">
+                    ประกันหน้างาน
+                  </span>
+                )}
               </div>
               <div>
                 <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">ลูกค้า</p>
-                <p className="text-gray-700 dark:text-slate-200">{claim.warranty.sale.customerName ?? "—"}</p>
+                <p className="text-gray-700 dark:text-slate-200">
+                  {claim.warranty.sale?.customerName ?? claim.warranty.customer?.name ?? claim.warranty.customerName ?? "—"}
+                </p>
               </div>
               <div>
                 <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">ประกัน</p>

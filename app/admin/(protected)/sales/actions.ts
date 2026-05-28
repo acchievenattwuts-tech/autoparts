@@ -457,6 +457,7 @@ async function createWarrantySnapshots(
       endDate,
       unitSeq: index + 1,
       lotNo: lotSequence[index] ?? null,
+      createdVia: "AUTO_FROM_SALE" as const,
     })),
   });
 }

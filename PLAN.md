@@ -16,6 +16,7 @@
 - `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
 - Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
+- **Warranty Manual Mode + Cancel Flow (2026-05-28)** — เพิ่ม 2-mode บน `/admin/warranties/new` (WITH_SALE / NO_SALE) + ฟังก์ชันยกเลิกประกันที่สร้างเอง (เฉพาะ `createdVia = MANUAL`, hard delete, block ถ้ามี active claim) รายละเอียดอยู่ใน [docs/roadmap/active.md](/D:/autoparts/docs/roadmap/active.md)
 - รักษาเอกสารให้ AI อ่านง่าย: ใช้ไฟล์นี้เป็น index และย้ายรายละเอียดลงเอกสารเฉพาะเรื่อง
 
 ## Current Priorities

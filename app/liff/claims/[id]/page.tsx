@@ -23,10 +23,10 @@ export default async function LiffClaimDetailPage({
       id,
       status: { not: "CANCELLED" },
       warranty: {
-        sale: {
-          customerId: customer.id,
-          status: "ACTIVE",
-        },
+        OR: [
+          { sale: { customerId: customer.id, status: "ACTIVE" } },
+          { customerId: customer.id, saleId: null },
+        ],
       },
     },
     select: {
@@ -91,7 +91,7 @@ export default async function LiffClaimDetailPage({
             <div>
               <p className="font-semibold text-slate-950 dark:text-slate-100">{claim.warranty.product.name}</p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Warranty: {claim.warranty.product.code} · บิล {claim.warranty.sale.saleNo}
+                Warranty: {claim.warranty.product.code} · บิล {claim.warranty.sale?.saleNo ?? "ประกันหน้างาน"}
               </p>
             </div>
             <span

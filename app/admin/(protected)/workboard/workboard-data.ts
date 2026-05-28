@@ -386,8 +386,10 @@ async function querySupplierClaims() {
         supplierName: true,
         warranty: {
           select: {
+            customerName: true,
             product: { select: { name: true } },
             sale: { select: { customerName: true } },
+            customer: { select: { name: true } },
           },
         },
       },
@@ -402,7 +404,11 @@ async function querySupplierClaims() {
       claimDate: row.claimDate,
       supplierName: row.supplierName ?? "-",
       productName: row.warranty.product.name,
-      customerName: row.warranty.sale.customerName ?? "-",
+      customerName:
+        row.warranty.sale?.customerName
+          ?? row.warranty.customer?.name
+          ?? row.warranty.customerName
+          ?? "-",
     })),
   };
 }

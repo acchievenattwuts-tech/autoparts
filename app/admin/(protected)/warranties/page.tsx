@@ -8,6 +8,7 @@ import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
+import CancelWarrantyButton from "./CancelWarrantyButton";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import {
@@ -49,6 +50,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
   await requirePermission("warranties.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canCreate = hasPermissionAccess(role, permissions, "warranties.create");
+  const canCancel = hasPermissionAccess(role, permissions, "warranties.cancel");
 
   const { status, q, page, from: fromParam, to: toParam } = await searchParams;
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
@@ -72,6 +74,8 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
           { product: { code: { contains: normalizedQuery, mode: "insensitive" } } },
           { sale: { customerName: { contains: normalizedQuery, mode: "insensitive" } } },
           { sale: { saleNo: { contains: normalizedQuery, mode: "insensitive" } } },
+          { customerName: { contains: normalizedQuery, mode: "insensitive" } },
+          { customer: { name: { contains: normalizedQuery, mode: "insensitive" } } },
         ],
       }
     : {};
@@ -95,8 +99,11 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         note: true,
         unitSeq: true,
         saleItemId: true,
+        customerName: true,
+        createdVia: true,
         product:  { select: { code: true, name: true } },
         sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
+        customer: { select: { name: true } },
         _count:   { select: { claims: { where: { status: { not: "CANCELLED" } } } } },
       },
     }),
@@ -276,8 +283,21 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         <p className="text-xs text-gray-400">[{w.product.code}]</p>
                       </td>
                       <td className="py-2.5 px-4">
-                        <p className="font-mono text-xs text-[#1e3a5f]">{w.sale.saleNo}</p>
-                        <p className="text-xs text-gray-500">{w.sale.customerName ?? "—"}</p>
+                        {w.sale ? (
+                          <>
+                            <p className="font-mono text-xs text-[#1e3a5f]">{w.sale.saleNo}</p>
+                            <p className="text-xs text-gray-500">{w.sale.customerName ?? "—"}</p>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-flex rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700">
+                              ประกันหน้างาน
+                            </span>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              {w.customer?.name ?? w.customerName ?? "—"}
+                            </p>
+                          </>
+                        )}
                       </td>
                       <td className="py-2.5 px-4 text-center text-gray-500 text-xs">
                         #{w.unitSeq}
@@ -312,18 +332,26 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         {w.note ?? "—"}
                       </td>
                       <td className="py-2.5 px-4">
-                        {w.wStatus !== "expired" && w._count.claims === 0 && (
-                          <Link
-                            href={`/admin/warranty-claims/new?warrantyId=${w.id}`}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#1e3a5f] border border-[#1e3a5f]/30 rounded-lg hover:bg-[#1e3a5f]/5 transition-colors whitespace-nowrap"
-                            title="เปิดใบเคลม"
-                          >
-                            <FilePlus size={12} /> เคลม
-                          </Link>
-                        )}
-                        {w._count.claims > 0 && (
-                          <span className="text-xs text-orange-500 font-medium">เคลมแล้ว {w._count.claims}</span>
-                        )}
+                        <div className="flex items-center gap-2 justify-end">
+                          {w.wStatus !== "expired" && w._count.claims === 0 && (
+                            <Link
+                              href={`/admin/warranty-claims/new?warrantyId=${w.id}`}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#1e3a5f] border border-[#1e3a5f]/30 rounded-lg hover:bg-[#1e3a5f]/5 transition-colors whitespace-nowrap"
+                              title="เปิดใบเคลม"
+                            >
+                              <FilePlus size={12} /> เคลม
+                            </Link>
+                          )}
+                          {w._count.claims > 0 && (
+                            <span className="text-xs text-orange-500 font-medium">เคลมแล้ว {w._count.claims}</span>
+                          )}
+                          {canCancel && w.createdVia === "MANUAL" && w._count.claims === 0 && (
+                            <CancelWarrantyButton
+                              warrantyId={w.id}
+                              warrantyLabel={`${w.product.name} (${w.product.code})`}
+                            />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

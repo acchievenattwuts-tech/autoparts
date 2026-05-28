@@ -9,6 +9,7 @@ export interface SelectOption {
   id: string;
   label: string;
   sublabel?: string;
+  disabled?: boolean;
 }
 
 interface Props {
@@ -112,6 +113,7 @@ const SearchableSelect = ({
   };
 
   const handleSelect = (option: SelectOption) => {
+    if (option.disabled) return;
     onChange(option.id);
     onOptionSelect?.(option);
     setQuery("");
@@ -215,10 +217,15 @@ const SearchableSelect = ({
                 <button
                   key={option.id}
                   type="button"
+                  disabled={option.disabled}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(option)}
                   className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
-                    option.id === value ? selectedOptionClassName : defaultOptionClassName
+                    option.disabled
+                      ? "cursor-not-allowed opacity-50 " + (isDark ? "text-slate-500" : "text-gray-400")
+                      : option.id === value
+                        ? selectedOptionClassName
+                        : defaultOptionClassName
                   }`}
                 >
                   <span className="font-medium">{option.label}</span>

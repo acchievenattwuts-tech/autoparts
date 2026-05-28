@@ -737,8 +737,10 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         select: {
           id: true,
           endDate: true,
+          customerName: true,
           product: { select: { code: true, name: true } },
           sale: { select: { saleNo: true, customerName: true } },
+          customer: { select: { name: true } },
         },
         take: 100,
       });
@@ -761,8 +763,10 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           supplierName: true,
           warranty: {
             select: {
+              customerName: true,
               product: { select: { code: true, name: true } },
               sale: { select: { saleNo: true, customerName: true } },
+              customer: { select: { name: true } },
             },
           },
         },
@@ -970,8 +974,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     id: warranty.id,
     productCode: warranty.product.code,
     productName: warranty.product.name,
-    customerName: warranty.sale.customerName ?? "-",
-    saleNo: warranty.sale.saleNo,
+    customerName:
+      warranty.sale?.customerName
+        ?? warranty.customer?.name
+        ?? warranty.customerName
+        ?? "-",
+    saleNo: warranty.sale?.saleNo ?? "-",
     endDate: warranty.endDate,
     daysLeft: Math.ceil((startOfDay(warranty.endDate).getTime() - startOfDay(now).getTime()) / DAY_MS),
   }));
@@ -981,8 +989,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     claimDate: claim.claimDate,
     productCode: claim.warranty.product.code,
     productName: claim.warranty.product.name,
-    customerName: claim.warranty.sale.customerName ?? "-",
-    saleNo: claim.warranty.sale.saleNo,
+    customerName:
+      claim.warranty.sale?.customerName
+        ?? claim.warranty.customer?.name
+        ?? claim.warranty.customerName
+        ?? "-",
+    saleNo: claim.warranty.sale?.saleNo ?? "-",
     claimType: claim.claimType,
     supplierName: claim.supplierName?.trim() || "-",
     status: claim.status,
