@@ -35,6 +35,30 @@ function runProductsSearchRegressionChecks() {
 
   expectIncludes(
     searchResults,
+    "const [isRouteSyncPending, setIsRouteSyncPending] = useState(false);",
+    "SearchResults must keep a route-sync pending flag so loading UI also covers background router.replace work",
+  );
+
+  expectIncludes(
+    searchResults,
+    "const isPending = isTransitionPending || isRouteSyncPending;",
+    "SearchResults loading UI must combine transition pending state with route-sync pending state",
+  );
+
+  expectIncludes(
+    searchResults,
+    "setIsRouteSyncPending(true);",
+    "SearchResults must enter route-sync pending state before background router.replace navigation",
+  );
+
+  expectIncludes(
+    searchResults,
+    "setIsRouteSyncPending(false);",
+    "SearchResults must clear route-sync pending state after the background navigation settles",
+  );
+
+  expectIncludes(
+    searchResults,
     'import type { SearchProductItem } from "@/lib/storefront-product-search";',
     "SearchResults must import SearchProductItem from the shared helper module, not from the server action module",
   );

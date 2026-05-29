@@ -85,11 +85,14 @@ const SearchResults = ({
   const [didYouMean, setDidYouMean] = useState<string[]>(initialDidYouMean);
   const [filters, setFilters] = useState<FiltersState>(initialFilters);
   const [meta, setMeta] = useState(initialMeta);
-  const [isPending, startTransition] = useTransition();
+  const [isTransitionPending, startTransition] = useTransition();
+  const [isRouteSyncPending, setIsRouteSyncPending] = useState(false);
+  const isPending = isTransitionPending || isRouteSyncPending;
   const [animKey, setAnimKey] = useState(0);
   const gridSectionRef = useRef<HTMLDivElement>(null);
   const skipNextScrollRef = useRef(true);
   const prevNonceRef = useRef(renderNonce);
+  const latestRequestIdRef = useRef(0);
   // true while a server re-render is triggered by our own AJAX filter (not user nav)
   const isAjaxUpdateRef = useRef(false);
   const router = useRouter();
@@ -101,8 +104,11 @@ const SearchResults = ({
     if (isAjaxUpdateRef.current) {
       // Background server re-render from our own router.replace — skip state reset
       isAjaxUpdateRef.current = false;
+      setIsRouteSyncPending(false);
       return;
     }
+
+    setIsRouteSyncPending(false);
 
     // External navigation (nav link, browser back/forward) — reset to server state
     setProducts(initialProducts);
@@ -115,6 +121,8 @@ const SearchResults = ({
   }, [renderNonce]);
 
   const applyFilters = (next: FiltersState, scrollIntoView: boolean) => {
+    const requestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = requestId;
     const input: SearchFilterInput = {
       q: next.q || undefined,
       brand: next.brand || undefined,
@@ -128,28 +136,47 @@ const SearchResults = ({
     // router.replace triggers a background server re-render; isAjaxUpdateRef prevents
     // the resulting renderNonce change from resetting our AJAX-driven state.
     const url = buildSearchUrl(next, basePath);
-    isAjaxUpdateRef.current = true;
-    router.replace(url, { scroll: false });
+    const currentUrl =
+      typeof window === "undefined"
+        ? ""
+        : `${window.location.pathname}${window.location.search}`;
+    const shouldSyncRoute = url !== currentUrl;
+
+    if (shouldSyncRoute) {
+      setIsRouteSyncPending(true);
+      isAjaxUpdateRef.current = true;
+      router.replace(url, { scroll: false });
+    } else {
+      isAjaxUpdateRef.current = false;
+      setIsRouteSyncPending(false);
+    }
 
     startTransition(async () => {
-      const result = await searchProductsAction(input);
+      try {
+        const result = await searchProductsAction(input);
+        if (latestRequestIdRef.current !== requestId) return;
 
-      setProducts(result.products);
-      setTotal(result.total);
-      setDidYouMean(result.didYouMean);
-      setMeta({
-        pageStart: result.pageStart,
-        pageEnd: result.pageEnd,
-        totalPages: result.totalPages,
-      });
-      setFilters(next);
-      setAnimKey((k) => k + 1);
-
-      if (scrollIntoView && gridSectionRef.current) {
-        gridSectionRef.current.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
+        setProducts(result.products);
+        setTotal(result.total);
+        setDidYouMean(result.didYouMean);
+        setMeta({
+          pageStart: result.pageStart,
+          pageEnd: result.pageEnd,
+          totalPages: result.totalPages,
         });
+        setFilters(next);
+        setAnimKey((k) => k + 1);
+
+        if (scrollIntoView && gridSectionRef.current) {
+          gridSectionRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }
+      } finally {
+        if (latestRequestIdRef.current === requestId && !shouldSyncRoute) {
+          setIsRouteSyncPending(false);
+        }
       }
     });
   };
