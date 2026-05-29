@@ -85,6 +85,7 @@ const ProductAutocomplete = ({
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [hasInlineFocus, setHasInlineFocus] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [mounted, setMounted] = useState(false);
@@ -113,7 +114,8 @@ const ProductAutocomplete = ({
         const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
         setItems(data.items ?? []);
         setTotalCount(data.totalCount ?? null);
-        setOpen(true);
+        const shouldAutoOpen = modalOpen || hasInlineFocus;
+        setOpen(shouldAutoOpen);
         setActiveIndex(-1);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
@@ -127,7 +129,7 @@ const ProductAutocomplete = ({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [value]);
+  }, [value, modalOpen, hasInlineFocus]);
 
   // Close on outside click (skip when modal is open — modal has its own handlers)
   useEffect(() => {
@@ -210,6 +212,18 @@ const ProductAutocomplete = ({
       setOpen(false);
       setActiveIndex(-1);
     }
+  };
+
+  const handleInlineFocusCapture = () => {
+    setHasInlineFocus(true);
+  };
+
+  const handleInlineBlurCapture = (e: React.FocusEvent<HTMLDivElement>) => {
+    const nextFocused = e.relatedTarget as Node | null;
+    if (nextFocused && e.currentTarget.contains(nextFocused)) return;
+    setHasInlineFocus(false);
+    setOpen(false);
+    setActiveIndex(-1);
   };
 
   // --- Rich dropdown body (used by both desktop dropdown + mobile modal) ---
@@ -414,11 +428,13 @@ const ProductAutocomplete = ({
 
   // --- DESKTOP ENHANCED VARIANT ---
   if (enhanced === "desktop") {
-    const isExpanded = open || value.trim().length >= MIN_QUERY_LEN;
+    const isExpanded = hasInlineFocus || open;
     return (
       <>
         <div
           ref={wrapperRef}
+          onFocusCapture={handleInlineFocusCapture}
+          onBlurCapture={handleInlineBlurCapture}
           className={`relative z-50 transition-[max-width] duration-300 ease-out ${
             isExpanded ? "max-w-2xl" : "max-w-sm"
           } ${className ?? ""}`}
@@ -510,7 +526,12 @@ const ProductAutocomplete = ({
 
   // --- ORIGINAL VARIANT (admin / non-enhanced) ---
   return (
-    <div ref={wrapperRef} className={`relative ${className ?? ""}`}>
+    <div
+      ref={wrapperRef}
+      onFocusCapture={handleInlineFocusCapture}
+      onBlurCapture={handleInlineBlurCapture}
+      className={`relative ${className ?? ""}`}
+    >
       <div className="relative">
         {!showSubmitButton && (
           <Search

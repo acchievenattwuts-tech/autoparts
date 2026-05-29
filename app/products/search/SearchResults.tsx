@@ -6,10 +6,10 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
 import Pagination from "@/components/shared/Pagination";
+import type { SearchProductItem } from "@/lib/storefront-product-search";
 import ProductFilterBar from "../ProductFilterBar";
 import {
   searchProductsAction,
-  type SearchProductItem,
   type SearchFilterInput,
 } from "./search-products-actions";
 

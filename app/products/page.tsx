@@ -1,7 +1,6 @@
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 import type { Metadata } from "next";
-import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
@@ -17,14 +16,11 @@ import {
   getStorefrontProductsLandingPageData,
 } from "@/lib/storefront-catalog";
 import {
-  searchProductIds,
-  sortProductsByIds,
-  suggestDidYouMean,
-} from "@/lib/product-search";
+  getStorefrontProductSearchPageData,
+  STOREFRONT_PRODUCTS_PER_PAGE,
+  type SearchProductItem,
+} from "@/lib/storefront-product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
-import type { SearchProductItem } from "./search/search-products-actions";
-
-const PRODUCTS_PER_PAGE = 24;
 
 type QueryValue = string | string[] | undefined;
 
@@ -126,12 +122,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
     initialMeta = {
       pageStart: initialProducts.length > 0 ? 1 : 0,
       pageEnd: initialProducts.length,
-      totalPages: Math.max(1, Math.ceil(totalProducts / PRODUCTS_PER_PAGE)),
+      totalPages: Math.max(1, Math.ceil(totalProducts / STOREFRONT_PRODUCTS_PER_PAGE)),
     };
   } else {
-    // Search mode: dynamic query
-    const skip = (currentPage - 1) * PRODUCTS_PER_PAGE;
-    const searchInput = {
+    // Search mode: route stays request-time, but repeated identical searches reuse
+    // the cached page payload from the shared storefront search helper.
+    const skip = (currentPage - 1) * STOREFRONT_PRODUCTS_PER_PAGE;
+    const telemetryInput = {
       query: q,
       isActive: true,
       categoryName: category,
@@ -139,75 +136,35 @@ const ProductsPage = async ({ searchParams }: Props) => {
       carModelNames: models,
       fitmentYear: explicitYear,
       skip,
-      take: PRODUCTS_PER_PAGE,
+      take: STOREFRONT_PRODUCTS_PER_PAGE,
       order: "createdAtDesc",
     } as const;
 
-    const searchResult = await searchProductIds(searchInput);
+    const searchPageData = await getStorefrontProductSearchPageData({
+      q,
+      category,
+      brand,
+      models,
+      year: explicitYear,
+      page: currentPage,
+    });
 
     await logProductSearchTelemetry({
-      input: searchInput,
-      resultCount: searchResult.total,
+      input: telemetryInput,
+      resultCount: searchPageData.total,
       source: "storefront",
       path: "/products",
     });
 
-    const products = await db.product.findMany({
-      where: {
-        id: {
-          in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"],
-        },
-      },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        code: true,
-        imageUrl: true,
-        salePrice: true,
-        stock: true,
-        reportUnitName: true,
-        category: { select: { name: true, slug: true } },
-        brand: { select: { name: true } },
-        carModels: {
-          select: {
-            yearStart: true,
-            yearEnd: true,
-            carModel: {
-              select: {
-                name: true,
-                carBrand: { select: { name: true } },
-              },
-            },
-          },
-          take: 6,
-        },
-      },
-    });
-
-    const sorted = sortProductsByIds(products, searchResult.ids);
-    initialProducts = sorted.map((p) => ({ ...p, salePrice: p.salePrice.toString() }));
-    initialTotal = searchResult.total;
-    initialDidYouMean =
-      q && searchResult.total < 3 ? await suggestDidYouMean(q, 3) : [];
-    const pageEnd = Math.min(skip + initialProducts.length, searchResult.total);
+    initialProducts = searchPageData.products;
+    initialTotal = searchPageData.total;
+    initialDidYouMean = searchPageData.didYouMean;
     initialMeta = {
-      pageStart: initialTotal === 0 ? 0 : skip + 1,
-      pageEnd,
-      totalPages: Math.max(1, Math.ceil(initialTotal / PRODUCTS_PER_PAGE)),
+      pageStart: searchPageData.pageStart,
+      pageEnd: searchPageData.pageEnd,
+      totalPages: searchPageData.totalPages,
     };
   }
-
-  // Key derived from server-rendered URL params so SearchResults re-mounts
-  // on real navigation (e.g. nav link → /products clears filter state),
-  // but NOT on AJAX filter changes (those use history.replaceState, no re-render).
-  const searchResultsKey = [
-    q ?? "",
-    brand ?? "",
-    category ?? "",
-    [...models].sort().join(","),
-    String(currentPage),
-  ].join("|");
 
   return (
     <>
@@ -224,7 +181,6 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <SearchResults
-            key={searchResultsKey}
             renderNonce={Date.now()}
             initialProducts={initialProducts}
             initialTotal={initialTotal}

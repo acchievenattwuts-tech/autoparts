@@ -27,6 +27,7 @@ import {
   extractProductIdFromSlug,
   getCategoryPath,
   getProductPath,
+  shouldRedirectToCanonicalProductPath,
 } from "@/lib/product-slug";
 import {
   buildStorefrontProductDescription,
@@ -102,7 +103,12 @@ const ProductDetailPage = async ({ params }: Props) => {
     product,
   });
   const requestedPath = `/product/${decodeURIComponent(productSlug)}`;
-  if (requestedPath !== canonicalPath) {
+  if (
+    shouldRedirectToCanonicalProductPath({
+      requestedPath,
+      canonicalPath,
+    })
+  ) {
     permanentRedirect(canonicalPath);
   }
 

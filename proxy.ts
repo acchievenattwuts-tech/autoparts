@@ -1,5 +1,12 @@
 import { auth } from "./auth";
 import { NextResponse, type NextRequest } from "next/server";
+import { db } from "@/lib/db";
+import {
+  extractProductIdFromSlug,
+  getLegacyThaiProductPathRedirectTarget,
+  getProductPath,
+  isLegacyThaiProductPath,
+} from "@/lib/product-slug";
 
 /**
  * Bot/Rate-Limit Protection + Admin Auth
@@ -67,13 +74,58 @@ function sweepStaleEntries(now: number) {
   }
 }
 
-export const proxy = auth((req) => {
+export const proxy = auth(async (req) => {
   const { pathname } = req.nextUrl;
   const userAgent = req.headers.get("user-agent") ?? "";
 
   // Admin paths — leave entirely to auth session logic (no bot check needed)
   if (pathname.startsWith("/admin")) {
     return NextResponse.next();
+  }
+
+  if (pathname.startsWith("/product/")) {
+    const productSlug = pathname.slice("/product/".length);
+
+    if (!isLegacyThaiProductPath(pathname)) {
+      return NextResponse.next();
+    }
+
+    const productId = extractProductIdFromSlug(productSlug);
+
+    if (!productId) {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+
+    const product = await db.product.findFirst({
+      where: {
+        id: productId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        code: true,
+        category: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    if (!product) {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+
+    const canonicalPath = getProductPath({
+      category: product.category,
+      product,
+    });
+    const redirectTarget = getLegacyThaiProductPathRedirectTarget({
+      pathname,
+      canonicalPath,
+    });
+
+    if (redirectTarget) {
+      return NextResponse.redirect(new URL(redirectTarget, req.url), 308);
+    }
   }
 
   // Block aggressive bots on public paths

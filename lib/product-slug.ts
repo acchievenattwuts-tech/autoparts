@@ -233,6 +233,54 @@ export const getProductPath = ({
   return `/product/${getProductSlug(product)}`;
 };
 
+export const shouldRedirectToCanonicalProductPath = ({
+  requestedPath,
+  canonicalPath,
+}: {
+  requestedPath: string;
+  canonicalPath: string;
+}): boolean => {
+  if (requestedPath === canonicalPath) {
+    return false;
+  }
+
+  const requestedSegment = requestedPath.slice("/product/".length);
+
+  // Legacy Thai product URLs are redirected in proxy.ts before render.
+  // If one still reaches the page layer, avoid retrying the redirect here.
+  if (/[^\x00-\x7F]/.test(requestedSegment)) {
+    return false;
+  }
+
+  return true;
+};
+
+export const isLegacyThaiProductPath = (pathname: string): boolean => {
+  if (!pathname.startsWith("/product/")) {
+    return false;
+  }
+
+  return /[^\x00-\x7F]/.test(pathname.slice("/product/".length));
+};
+
+export const getLegacyThaiProductPathRedirectTarget = ({
+  pathname,
+  canonicalPath,
+}: {
+  pathname: string;
+  canonicalPath: string;
+}): string | null => {
+  if (pathname === canonicalPath) {
+    return null;
+  }
+
+  if (!isLegacyThaiProductPath(pathname)) {
+    return null;
+  }
+
+  return canonicalPath;
+};
+
 export const extractProductIdFromSlug = (slug: string): string | null => {
   const index = slug.lastIndexOf("-");
   if (index === -1) {
