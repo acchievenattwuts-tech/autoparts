@@ -12,6 +12,12 @@ import {
   INVENTORY_TRACKING_TRACKED,
   type InventoryTrackingValue,
 } from "@/lib/inventory-tracking";
+import {
+  createEmptyProductFitmentRow,
+  type ProductFitmentFormRow,
+  PRODUCT_FITMENT_SECTION_COPY,
+  type ProductFitmentTypeValue,
+} from "@/lib/product-fitment";
 
 // ─── Alias kind catalog ───────────────────────────────────────────────────────
 
@@ -71,15 +77,7 @@ interface ProductImageRow {
   isPrimary: boolean;
 }
 
-export interface FitmentRow {
-  carModelId: string;
-  submodel: string | null;
-  yearStart: number | null;
-  yearEnd: number | null;
-  engineCode: string | null;
-  engineSize: string | null;
-  note: string | null;
-}
+export type FitmentRow = ProductFitmentFormRow;
 
 /** Serializable product data — all Decimal fields converted to number */
 export interface ProductFormData {
@@ -108,6 +106,7 @@ export interface ProductFormData {
   allowExpiredIssue:  boolean;
   aliases:         AliasRow[];
   fitments:        FitmentRow[];
+  compatibleFitments: FitmentRow[];
   units:           UnitRow[];
 }
 
@@ -196,6 +195,9 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
 
   // Fitments (compatible car models with year range / engine / submodel)
   const [fitments, setFitments] = useState<FitmentRow[]>(product?.fitments ?? []);
+  const [compatibleFitments, setCompatibleFitments] = useState<FitmentRow[]>(
+    product?.compatibleFitments ?? [],
+  );
 
   // Flattened car model options (brand / model) for SearchableSelect
   const carModelOptions = useMemo<SelectOption[]>(() => {
@@ -284,19 +286,30 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
   };
 
   // ── Fitment handlers ───────────────────────────────────────────────────────
-  const addFitment = () => {
-    setFitments((prev) => [
-      ...prev,
-      { carModelId: "", submodel: null, yearStart: null, yearEnd: null, engineCode: null, engineSize: null, note: null },
-    ]);
+  const getFitmentState = (fitmentType: ProductFitmentTypeValue) =>
+    fitmentType === "COMPATIBLE"
+      ? [compatibleFitments, setCompatibleFitments] as const
+      : [fitments, setFitments] as const;
+
+  const addFitment = (fitmentType: ProductFitmentTypeValue) => {
+    const [, setRows] = getFitmentState(fitmentType);
+    setRows((prev) => [...prev, createEmptyProductFitmentRow()]);
   };
 
-  const updateFitment = <K extends keyof FitmentRow>(index: number, field: K, value: FitmentRow[K]) => {
-    setFitments((prev) => prev.map((f, i) => (i === index ? { ...f, [field]: value } : f)));
+  const updateFitment = <K extends keyof FitmentRow>(
+    fitmentType: ProductFitmentTypeValue,
+    index: number,
+    field: K,
+    value: FitmentRow[K],
+  ) => {
+    const [, setRows] = getFitmentState(fitmentType);
+    setRows((prev) => prev.map((f, i) => (i === index ? { ...f, [field]: value } : f)));
   };
 
-  const removeFitment = (index: number) =>
-    setFitments((prev) => prev.filter((_, i) => i !== index));
+  const removeFitment = (fitmentType: ProductFitmentTypeValue, index: number) => {
+    const [, setRows] = getFitmentState(fitmentType);
+    setRows((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const parseYear = (raw: string): number | null => {
     if (!raw.trim()) return null;
@@ -489,8 +502,9 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     formData.set("lotIssueMethod", lotIssueMethod);
     // Drop fitment rows with no carModel selected (incomplete)
     const cleanFitments = fitments.filter((f) => f.carModelId);
-    // Validate year ranges
-    for (const f of cleanFitments) {
+    const cleanCompatibleFitments = compatibleFitments.filter((f) => f.carModelId);
+    const allFitments = [...cleanFitments, ...cleanCompatibleFitments];
+    for (const f of allFitments) {
       if (f.yearStart !== null && (f.yearStart < 1900 || f.yearStart > 2200)) {
         setError("ปีเริ่มต้นต้องอยู่ระหว่าง ค.ศ. 1900–2200");
         return;
@@ -506,6 +520,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
     }
     formData.set("aliases", JSON.stringify(aliases));
     formData.set("fitments", JSON.stringify(cleanFitments));
+    formData.set("compatibleFitments", JSON.stringify(cleanCompatibleFitments));
     formData.set("units", JSON.stringify(units));
     formData.set("saleUnitName", saleUnitName);
     formData.set("purchaseUnitName", purchaseUnitName);
@@ -553,6 +568,241 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
           </span>
         )}
       </button>
+    );
+  };
+
+  const renderFitmentSection = (
+    fitmentType: ProductFitmentTypeValue,
+    rows: FitmentRow[],
+  ) => {
+    const copy = PRODUCT_FITMENT_SECTION_COPY[fitmentType];
+
+    return (
+      <div className={sectionCls}>
+        <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 dark:border-white/10">
+          <h2 className="font-kanit text-base sm:text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">
+            {copy.adminTitle}
+          </h2>
+          <span className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">
+            {rows.length} รายการ
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+          {copy.adminDescription}
+        </p>
+
+        {carModelOptions.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-slate-500">ยังไม่มีข้อมูลรุ่นรถในระบบ</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-slate-500 mb-4">{copy.adminEmptyState}</p>
+        ) : (
+          <>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-white/10 text-left">
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[200px]">รุ่นรถ <span className="text-red-500">*</span></th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[120px]">โฉม</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">ปีเริ่ม</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">ปีจบ</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-32">รหัสเครื่อง</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 w-24">CC</th>
+                    <th className="py-2 pr-3 font-medium text-gray-500 dark:text-slate-400 min-w-[140px]">โน้ต</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((f, i) => (
+                    <tr key={`${fitmentType}-${i}`} className="border-b border-gray-50 dark:border-white/5 align-top">
+                      <td className="py-2 pr-3">
+                        <SearchableSelect
+                          options={carModelOptions}
+                          value={f.carModelId}
+                          onChange={(id) => updateFitment(fitmentType, i, "carModelId", id)}
+                          placeholder="เลือกยี่ห้อ / รุ่น"
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.submodel ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "submodel", parseOptStr(e.target.value))}
+                          placeholder="เช่น Gen 3"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          value={f.yearStart ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "yearStart", parseYear(e.target.value))}
+                          placeholder="2007"
+                          min={1900}
+                          max={2200}
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="number"
+                          value={f.yearEnd ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "yearEnd", parseYear(e.target.value))}
+                          placeholder="2013"
+                          min={1900}
+                          max={2200}
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.engineCode ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "engineCode", parseOptStr(e.target.value))}
+                          placeholder="2NZ-FE"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.engineSize ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "engineSize", parseOptStr(e.target.value))}
+                          placeholder="1.5L"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="text"
+                          value={f.note ?? ""}
+                          onChange={(e) => updateFitment(fitmentType, i, "note", parseOptStr(e.target.value))}
+                          placeholder="หมายเหตุ"
+                          className={`${inputCls} py-1.5`}
+                        />
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => removeFitment(fitmentType, i)}
+                          className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
+                          title="ลบรายการนี้"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="md:hidden space-y-3">
+              {rows.map((f, i) => (
+                <div key={`${fitmentType}-${i}`} className="rounded-lg border border-gray-200 dark:border-white/10 p-3 space-y-2.5 bg-gray-50/40 dark:bg-slate-800/30">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-medium text-gray-500 dark:text-slate-400">#{i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFitment(fitmentType, i)}
+                      className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
+                      aria-label="ลบ"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">รุ่นรถ <span className="text-red-500">*</span></label>
+                    <SearchableSelect
+                      options={carModelOptions}
+                      value={f.carModelId}
+                      onChange={(id) => updateFitment(fitmentType, i, "carModelId", id)}
+                      placeholder="เลือกยี่ห้อ / รุ่น"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โฉม</label>
+                      <input
+                        type="text"
+                        value={f.submodel ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "submodel", parseOptStr(e.target.value))}
+                        placeholder="Gen 3"
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">รหัสเครื่อง</label>
+                      <input
+                        type="text"
+                        value={f.engineCode ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "engineCode", parseOptStr(e.target.value))}
+                        placeholder="2NZ-FE"
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีเริ่ม</label>
+                      <input
+                        type="number"
+                        value={f.yearStart ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "yearStart", parseYear(e.target.value))}
+                        placeholder="2007"
+                        min={1900}
+                        max={2200}
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีจบ</label>
+                      <input
+                        type="number"
+                        value={f.yearEnd ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "yearEnd", parseYear(e.target.value))}
+                        placeholder="2013"
+                        min={1900}
+                        max={2200}
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">CC</label>
+                      <input
+                        type="text"
+                        value={f.engineSize ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "engineSize", parseOptStr(e.target.value))}
+                        placeholder="1.5L"
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โน้ต</label>
+                      <input
+                        type="text"
+                        value={f.note ?? ""}
+                        onChange={(e) => updateFitment(fitmentType, i, "note", parseOptStr(e.target.value))}
+                        placeholder="หมายเหตุ"
+                        className={`${inputCls} py-1.5`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {carModelOptions.length > 0 && (
+          <button
+            type="button"
+            onClick={() => addFitment(fitmentType)}
+            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-slate-600 dark:hover:border-sky-400 dark:text-slate-300 dark:hover:text-sky-300"
+          >
+            <Plus size={14} />
+            {copy.adminAddLabel}
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -783,7 +1033,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <SearchableSelect
                           options={carModelOptions}
                           value={f.carModelId}
-                          onChange={(id) => updateFitment(i, "carModelId", id)}
+                          onChange={(id) => updateFitment("DIRECT", i, "carModelId", id)}
                           placeholder="เลือกยี่ห้อ / รุ่น"
                         />
                       </td>
@@ -791,7 +1041,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="text"
                           value={f.submodel ?? ""}
-                          onChange={(e) => updateFitment(i, "submodel", parseOptStr(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "submodel", parseOptStr(e.target.value))}
                           placeholder="เช่น Gen 3"
                           className={`${inputCls} py-1.5`}
                         />
@@ -800,7 +1050,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="number"
                           value={f.yearStart ?? ""}
-                          onChange={(e) => updateFitment(i, "yearStart", parseYear(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "yearStart", parseYear(e.target.value))}
                           placeholder="2007"
                           min={1900}
                           max={2200}
@@ -811,7 +1061,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="number"
                           value={f.yearEnd ?? ""}
-                          onChange={(e) => updateFitment(i, "yearEnd", parseYear(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "yearEnd", parseYear(e.target.value))}
                           placeholder="2013"
                           min={1900}
                           max={2200}
@@ -822,7 +1072,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="text"
                           value={f.engineCode ?? ""}
-                          onChange={(e) => updateFitment(i, "engineCode", parseOptStr(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "engineCode", parseOptStr(e.target.value))}
                           placeholder="2NZ-FE"
                           className={`${inputCls} py-1.5`}
                         />
@@ -831,7 +1081,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="text"
                           value={f.engineSize ?? ""}
-                          onChange={(e) => updateFitment(i, "engineSize", parseOptStr(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "engineSize", parseOptStr(e.target.value))}
                           placeholder="1.5L"
                           className={`${inputCls} py-1.5`}
                         />
@@ -840,7 +1090,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                         <input
                           type="text"
                           value={f.note ?? ""}
-                          onChange={(e) => updateFitment(i, "note", parseOptStr(e.target.value))}
+                          onChange={(e) => updateFitment("DIRECT", i, "note", parseOptStr(e.target.value))}
                           placeholder="หมายเหตุ"
                           className={`${inputCls} py-1.5`}
                         />
@@ -848,7 +1098,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                       <td className="py-2 text-right">
                         <button
                           type="button"
-                          onClick={() => removeFitment(i)}
+                          onClick={() => removeFitment("DIRECT", i)}
                           className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
                           title="ลบรายการนี้"
                         >
@@ -869,7 +1119,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                     <span className="text-xs font-medium text-gray-500 dark:text-slate-400">#{i + 1}</span>
                     <button
                       type="button"
-                      onClick={() => removeFitment(i)}
+                      onClick={() => removeFitment("DIRECT", i)}
                       className="text-red-400 hover:text-red-600 transition-colors dark:text-red-400 dark:hover:text-red-300"
                       aria-label="ลบ"
                     >
@@ -881,7 +1131,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                     <SearchableSelect
                       options={carModelOptions}
                       value={f.carModelId}
-                      onChange={(id) => updateFitment(i, "carModelId", id)}
+                      onChange={(id) => updateFitment("DIRECT", i, "carModelId", id)}
                       placeholder="เลือกยี่ห้อ / รุ่น"
                     />
                   </div>
@@ -889,37 +1139,37 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โฉม</label>
                       <input type="text" value={f.submodel ?? ""}
-                        onChange={(e) => updateFitment(i, "submodel", parseOptStr(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "submodel", parseOptStr(e.target.value))}
                         placeholder="Gen 3" className={`${inputCls} py-1.5`} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">รหัสเครื่อง</label>
                       <input type="text" value={f.engineCode ?? ""}
-                        onChange={(e) => updateFitment(i, "engineCode", parseOptStr(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "engineCode", parseOptStr(e.target.value))}
                         placeholder="2NZ-FE" className={`${inputCls} py-1.5`} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีเริ่ม</label>
                       <input type="number" value={f.yearStart ?? ""}
-                        onChange={(e) => updateFitment(i, "yearStart", parseYear(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "yearStart", parseYear(e.target.value))}
                         placeholder="2007" min={1900} max={2200} className={`${inputCls} py-1.5`} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">ปีจบ</label>
                       <input type="number" value={f.yearEnd ?? ""}
-                        onChange={(e) => updateFitment(i, "yearEnd", parseYear(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "yearEnd", parseYear(e.target.value))}
                         placeholder="2013" min={1900} max={2200} className={`${inputCls} py-1.5`} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">CC</label>
                       <input type="text" value={f.engineSize ?? ""}
-                        onChange={(e) => updateFitment(i, "engineSize", parseOptStr(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "engineSize", parseOptStr(e.target.value))}
                         placeholder="1.5L" className={`${inputCls} py-1.5`} />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1 dark:text-slate-300">โน้ต</label>
                       <input type="text" value={f.note ?? ""}
-                        onChange={(e) => updateFitment(i, "note", parseOptStr(e.target.value))}
+                        onChange={(e) => updateFitment("DIRECT", i, "note", parseOptStr(e.target.value))}
                         placeholder="หมายเหตุ" className={`${inputCls} py-1.5`} />
                     </div>
                   </div>
@@ -932,7 +1182,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         {carModelOptions.length > 0 && (
           <button
             type="button"
-            onClick={addFitment}
+            onClick={() => addFitment("DIRECT")}
             className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 hover:border-[#1e3a5f] text-gray-500 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-slate-600 dark:hover:border-sky-400 dark:text-slate-300 dark:hover:text-sky-300"
           >
             <Plus size={14} />
@@ -942,6 +1192,8 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
       </div>
 
       {/* ── 4. รูปภาพสินค้า ──────────────────────────────────────────────── */}
+      {renderFitmentSection("COMPATIBLE", compatibleFitments)}
+
       <div className={sectionCls}>
         <h2 className={sectionHeadingCls}>รูปภาพสินค้า</h2>
         <div className="flex flex-col sm:flex-row items-start gap-5">

@@ -503,6 +503,7 @@ model ProductFitment {
   productId  String
   carModelId String
   id         String   @id @default(cuid())
+  fitmentType ProductFitmentType @default(DIRECT)
   submodel   String?
   yearStart  Int?
   yearEnd    Int?
@@ -513,9 +514,10 @@ model ProductFitment {
   carModel   CarModel @relation(fields: [carModelId], references: [id])
   product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([productId, carModelId, submodel, yearStart, yearEnd, engineCode])
+  @@unique([productId, carModelId, submodel, yearStart, yearEnd, engineCode, fitmentType])
   @@index([carModelId, productId])
   @@index([carModelId, yearStart, yearEnd])
+  @@index([productId, fitmentType])
   @@map("ProductCarModel")
 }
 
@@ -1539,6 +1541,11 @@ enum AliasKind {
   MISSPELL
   EN
   TH
+}
+
+enum ProductFitmentType {
+  DIRECT
+  COMPATIBLE
 }
 
 enum ProductSearchReviewStatus {

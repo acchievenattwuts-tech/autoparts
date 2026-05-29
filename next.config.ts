@@ -63,6 +63,7 @@ const nextConfig: NextConfig = {
   experimental: {
     // Vercel Pro supports more CPU resources during build — increased from 1.
     cpus: 4,
+    webpackMemoryOptimizations: true,
     serverActions: {
       // Keep server action payloads tight to protect upload performance.
       bodySizeLimit: "3mb",

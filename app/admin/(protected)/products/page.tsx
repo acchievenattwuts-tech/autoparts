@@ -8,7 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Pencil, X } from "lucide-react";
+import { Plus, Pencil, Eye, X } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -160,6 +160,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         category: { select: { name: true } },
         brand: { select: { name: true } },
         carModels: {
+          where: { fitmentType: "DIRECT" },
           select: {
             yearStart: true,
             yearEnd: true,
@@ -445,6 +446,13 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       </td>
                       <td className="px-4 py-3">
                         <AdminActionGroup align="end">
+                          <Link
+                            href={`/admin/products/${product.id}/preview`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-white/5"
+                          >
+                            <Eye size={12} />
+                            ดู
+                          </Link>
                           {canUpdate && (
                             <Link
                               href={`/admin/products/${product.id}/edit`}

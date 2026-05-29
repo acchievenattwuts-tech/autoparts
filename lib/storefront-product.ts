@@ -33,6 +33,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           },
           carModels: {
             select: {
+              fitmentType: true,
               submodel: true,
               yearStart: true,
               yearEnd: true,
@@ -46,6 +47,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
                 },
               },
             },
+            orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
             take: 16,
           },
           updatedAt: true,
@@ -83,6 +85,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {
+            where: { fitmentType: "DIRECT" },
             select: {
               yearStart: true,
               yearEnd: true,
@@ -116,6 +119,7 @@ const RELATED_SELECT = {
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {
+    where: { fitmentType: "DIRECT" },
     select: {
       yearStart: true,
       yearEnd: true,
@@ -155,13 +159,17 @@ export const buildStorefrontProductDescription = (product: {
   description: string | null;
   code: string;
   brand: { name: string } | null;
-  carModels: { carModel: { name: string; carBrand: { name: string } } }[];
+  carModels: {
+    fitmentType?: string;
+    carModel: { name: string; carBrand: { name: string } };
+  }[];
 }) => {
   if (product.description?.trim()) {
     return product.description.trim();
   }
 
   const compatibleCars = product.carModels
+    .filter((fitment) => fitment.fitmentType !== "COMPATIBLE")
     .slice(0, 3)
     .map(({ carModel }) => `${carModel.carBrand.name} ${carModel.name}`);
 

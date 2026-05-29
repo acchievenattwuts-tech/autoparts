@@ -25,6 +25,7 @@ const PRODUCT_SELECT = {
   category: { select: { name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {
+    where: { fitmentType: "DIRECT" },
     select: {
       yearStart: true,
       yearEnd: true,

@@ -28,6 +28,7 @@ interface AutocompleteItem {
   name: string;
   imageUrl: string | null;
   salePrice: number;
+  stock: number;
   inStock: boolean;
   reportUnitName: string;
   brand: string | null;
@@ -632,7 +633,7 @@ const ProductAutocomplete = ({
                             <span className="font-mono text-[11px] text-gray-500 dark:text-slate-400">
                               {item.code}
                             </span>
-                            {!item.inStock && (
+                            {!item.inStock && mode !== "admin" && (
                               <span className="rounded bg-red-50 px-1.5 py-0 text-[10px] text-red-600 dark:bg-red-500/10 dark:text-red-300">
                                 ของหมด
                               </span>
@@ -644,6 +645,19 @@ const ProductAutocomplete = ({
                           <p className="truncate text-xs text-gray-500 dark:text-slate-400">
                             {item.category}
                           </p>
+                          {mode === "admin" && (
+                            <span
+                              className={`mt-0.5 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                                item.stock <= 0
+                                  ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                                  : item.stock <= 5
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                              }`}
+                            >
+                              Stock {item.stock.toLocaleString("en-US")} {item.reportUnitName}
+                            </span>
+                          )}
                         </div>
                         <div className="flex-shrink-0 text-right">
                           <p className="text-sm font-bold text-[#f97316]">

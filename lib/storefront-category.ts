@@ -84,6 +84,7 @@ const fetchCategoryProductPage = unstable_cache(
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {
+            where: { fitmentType: "DIRECT" },
             select: {
               yearStart: true,
               yearEnd: true,

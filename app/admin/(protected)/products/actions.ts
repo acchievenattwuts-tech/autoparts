@@ -12,12 +12,15 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
-import { AliasKind, AuditAction } from "@/lib/generated/prisma";
+import { AliasKind, AuditAction, ProductFitmentType } from "@/lib/generated/prisma";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
   isInventoryTracked,
 } from "@/lib/inventory-tracking";
+import {
+  partitionProductFitments,
+} from "@/lib/product-fitment";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
@@ -42,6 +45,16 @@ const productImageSchema = z.object({
   alt: z.string().max(200).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   isPrimary: z.boolean().default(false),
+});
+
+const productFitmentSchema = z.object({
+  carModelId: z.string().min(1).max(50),
+  submodel: z.string().max(100).nullable().optional(),
+  yearStart: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
+  yearEnd: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
+  engineCode: z.string().max(50).nullable().optional(),
+  engineSize: z.string().max(30).nullable().optional(),
+  note: z.string().max(200).nullable().optional(),
 });
 
 const productSchema = z.object({
@@ -75,20 +88,8 @@ const productSchema = z.object({
     )
     .max(100)
     .default([]),
-  fitments: z
-    .array(
-      z.object({
-        carModelId: z.string().min(1).max(50),
-        submodel: z.string().max(100).nullable().optional(),
-        yearStart: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
-        yearEnd: z.coerce.number().int().min(1900).max(2200).nullable().optional(),
-        engineCode: z.string().max(50).nullable().optional(),
-        engineSize: z.string().max(30).nullable().optional(),
-        note: z.string().max(200).nullable().optional(),
-      }),
-    )
-    .max(500)
-    .default([]),
+  fitments: z.array(productFitmentSchema).max(500).default([]),
+  compatibleFitments: z.array(productFitmentSchema).max(500).default([]),
   units: z.array(productUnitSchema).min(1, "ต้องมีหน่วยนับอย่างน้อย 1 หน่วย").max(20),
 });
 
@@ -122,6 +123,7 @@ async function getProductAuditSnapshot(productId: string) {
       carModels: {
         select: {
           id: true,
+          fitmentType: true,
           carModelId: true,
           submodel: true,
           yearStart: true,
@@ -130,7 +132,7 @@ async function getProductAuditSnapshot(productId: string) {
           engineSize: true,
           note: true,
         },
-        orderBy: [{ carModelId: "asc" }, { yearStart: "asc" }],
+        orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
       },
     },
   });
@@ -138,6 +140,18 @@ async function getProductAuditSnapshot(productId: string) {
   if (!product) {
     return null;
   }
+
+  const fitmentSnapshotRows = product.carModels.map((item) => ({
+    fitmentType: item.fitmentType,
+    carModelId: item.carModelId,
+    submodel: item.submodel,
+    yearStart: item.yearStart,
+    yearEnd: item.yearEnd,
+    engineCode: item.engineCode,
+    engineSize: item.engineSize,
+    note: item.note,
+  }));
+  const fitmentGroups = partitionProductFitments(fitmentSnapshotRows);
 
   return {
     id: product.id,
@@ -165,7 +179,16 @@ async function getProductAuditSnapshot(productId: string) {
     lotIssueMethod: product.lotIssueMethod,
     isActive: product.isActive,
     aliases: product.aliases.map((item) => ({ alias: item.alias, kind: item.kind })),
-    fitments: product.carModels.map((item) => ({
+    fitments: fitmentGroups.direct.map((item) => ({
+      carModelId: item.carModelId,
+      submodel: item.submodel,
+      yearStart: item.yearStart,
+      yearEnd: item.yearEnd,
+      engineCode: item.engineCode,
+      engineSize: item.engineSize,
+      note: item.note,
+    })),
+    compatibleFitments: fitmentGroups.compatible.map((item) => ({
       carModelId: item.carModelId,
       submodel: item.submodel,
       yearStart: item.yearStart,
@@ -180,11 +203,52 @@ async function getProductAuditSnapshot(productId: string) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+const parseFitmentRowsJson = (raw: string): ProductInput["fitments"] => {
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed
+    .map((item) => {
+      if (typeof item === "string") {
+        return { carModelId: item };
+      }
+      if (item && typeof item === "object") {
+        const rec = item as Record<string, unknown>;
+        return {
+          carModelId: String(rec.carModelId ?? ""),
+          submodel: typeof rec.submodel === "string" && rec.submodel.trim() !== "" ? rec.submodel : null,
+          yearStart:
+            rec.yearStart === null || rec.yearStart === undefined || rec.yearStart === ""
+              ? null
+              : Number(rec.yearStart),
+          yearEnd:
+            rec.yearEnd === null || rec.yearEnd === undefined || rec.yearEnd === ""
+              ? null
+              : Number(rec.yearEnd),
+          engineCode:
+            typeof rec.engineCode === "string" && rec.engineCode.trim() !== ""
+              ? rec.engineCode
+              : null,
+          engineSize:
+            typeof rec.engineSize === "string" && rec.engineSize.trim() !== ""
+              ? rec.engineSize
+              : null,
+          note: typeof rec.note === "string" && rec.note.trim() !== "" ? rec.note : null,
+        };
+      }
+      return { carModelId: "" };
+    })
+    .filter((fitment) => fitment.carModelId);
+};
+
 const parseProductFormData = (
   formData: FormData
 ): { success: true; data: ProductInput } | { success: false; error: string } => {
   let aliases: ProductInput["aliases"] = [];
   let fitments: ProductInput["fitments"] = [];
+  let compatibleFitments: ProductInput["compatibleFitments"] = [];
   let units: z.infer<typeof productUnitSchema>[] = [];
   let productImages: z.infer<typeof productImageSchema>[] = [];
 
@@ -217,28 +281,12 @@ const parseProductFormData = (
   try {
     const raw = formData.get("fitments");
     if (typeof raw === "string" && raw) {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) {
-        fitments = parsed.map((item) => {
-          // Backward-compat: legacy string carModelId
-          if (typeof item === "string") {
-            return { carModelId: item };
-          }
-          if (item && typeof item === "object") {
-            const rec = item as Record<string, unknown>;
-            return {
-              carModelId: String(rec.carModelId ?? ""),
-              submodel: typeof rec.submodel === "string" && rec.submodel.trim() !== "" ? rec.submodel : null,
-              yearStart: rec.yearStart === null || rec.yearStart === undefined || rec.yearStart === "" ? null : Number(rec.yearStart),
-              yearEnd: rec.yearEnd === null || rec.yearEnd === undefined || rec.yearEnd === "" ? null : Number(rec.yearEnd),
-              engineCode: typeof rec.engineCode === "string" && rec.engineCode.trim() !== "" ? rec.engineCode : null,
-              engineSize: typeof rec.engineSize === "string" && rec.engineSize.trim() !== "" ? rec.engineSize : null,
-              note: typeof rec.note === "string" && rec.note.trim() !== "" ? rec.note : null,
-            };
-          }
-          return { carModelId: "" };
-        }).filter((f) => f.carModelId);
-      }
+      fitments = parseFitmentRowsJson(raw);
+    }
+
+    const rawCompatible = formData.get("compatibleFitments");
+    if (typeof rawCompatible === "string" && rawCompatible) {
+      compatibleFitments = parseFitmentRowsJson(rawCompatible);
     }
   } catch {
     return { success: false, error: "รูปแบบข้อมูลรุ่นรถ/ปีไม่ถูกต้อง" };
@@ -342,6 +390,7 @@ const parseProductFormData = (
     lotIssueMethod: formData.get("lotIssueMethod") ?? "FIFO",
     aliases,
     fitments,
+    compatibleFitments,
     units,
   });
 
@@ -384,6 +433,35 @@ async function assertCanSetInventoryTracking(
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
+const buildProductFitmentCreateManyData = (
+  productId: string,
+  fitments: ProductInput["fitments"],
+  compatibleFitments: ProductInput["compatibleFitments"],
+) => [
+  ...fitments.map((fitment) => ({
+    productId,
+    fitmentType: ProductFitmentType.DIRECT,
+    carModelId: fitment.carModelId,
+    submodel: fitment.submodel ?? null,
+    yearStart: fitment.yearStart ?? null,
+    yearEnd: fitment.yearEnd ?? null,
+    engineCode: fitment.engineCode ?? null,
+    engineSize: fitment.engineSize ?? null,
+    note: fitment.note ?? null,
+  })),
+  ...compatibleFitments.map((fitment) => ({
+    productId,
+    fitmentType: ProductFitmentType.COMPATIBLE,
+    carModelId: fitment.carModelId,
+    submodel: fitment.submodel ?? null,
+    yearStart: fitment.yearStart ?? null,
+    yearEnd: fitment.yearEnd ?? null,
+    engineCode: fitment.engineCode ?? null,
+    engineSize: fitment.engineSize ?? null,
+    note: fitment.note ?? null,
+  })),
+];
+
 export const createProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
@@ -397,7 +475,8 @@ export const createProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, units, productImages, ...productData } = result.data;
+  const { aliases, fitments, compatibleFitments, units, productImages, ...productData } =
+    result.data;
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
   const code = await generateProductCode();
@@ -475,18 +554,9 @@ export const createProduct = async (
         });
       }
 
-      if (fitments.length > 0) {
+      if (fitments.length > 0 || compatibleFitments.length > 0) {
         await tx.productFitment.createMany({
-          data: fitments.map((f) => ({
-            productId: product.id,
-            carModelId: f.carModelId,
-            submodel: f.submodel ?? null,
-            yearStart: f.yearStart ?? null,
-            yearEnd: f.yearEnd ?? null,
-            engineCode: f.engineCode ?? null,
-            engineSize: f.engineSize ?? null,
-            note: f.note ?? null,
-          })),
+          data: buildProductFitmentCreateManyData(product.id, fitments, compatibleFitments),
           skipDuplicates: true,
         });
       }
@@ -536,7 +606,8 @@ export const updateProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, units, productImages, ...productData } = result.data;
+  const { aliases, fitments, compatibleFitments, units, productImages, ...productData } =
+    result.data;
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
 
@@ -656,18 +727,9 @@ export const updateProduct = async (
 
       // Sync fitments (delete-and-recreate)
       await tx.productFitment.deleteMany({ where: { productId: id } });
-      if (fitments.length > 0) {
+      if (fitments.length > 0 || compatibleFitments.length > 0) {
         await tx.productFitment.createMany({
-          data: fitments.map((f) => ({
-            productId: id,
-            carModelId: f.carModelId,
-            submodel: f.submodel ?? null,
-            yearStart: f.yearStart ?? null,
-            yearEnd: f.yearEnd ?? null,
-            engineCode: f.engineCode ?? null,
-            engineSize: f.engineSize ?? null,
-            note: f.note ?? null,
-          })),
+          data: buildProductFitmentCreateManyData(id, fitments, compatibleFitments),
           skipDuplicates: true,
         });
       }

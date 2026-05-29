@@ -9,6 +9,7 @@ import ProductForm, { type ProductFormData } from "@/components/shared/ProductFo
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { partitionProductFitments } from "@/lib/product-fitment";
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
@@ -27,6 +28,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         carModels: {
           select: {
             id: true,
+            fitmentType: true,
             carModelId: true,
             submodel: true,
             yearStart: true,
@@ -35,7 +37,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
             engineSize: true,
             note: true,
           },
-          orderBy: [{ carModelId: "asc" }, { yearStart: "asc" }],
+          orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
         },
         units: { orderBy: { isBase: "desc" } },
         images: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
@@ -60,6 +62,8 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
   if (!product) {
     notFound();
   }
+
+  const fitmentGroups = partitionProductFitments(product.carModels);
 
   const productData: ProductFormData = {
     id:               product.id,
@@ -90,7 +94,16 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
     lotIssueMethod:       product.lotIssueMethod,
     allowExpiredIssue:    product.allowExpiredIssue,
     aliases:              product.aliases.map((a) => ({ alias: a.alias, kind: a.kind })),
-    fitments:         product.carModels.map((cm) => ({
+    fitments:         fitmentGroups.direct.map((cm) => ({
+      carModelId: cm.carModelId,
+      submodel: cm.submodel,
+      yearStart: cm.yearStart,
+      yearEnd: cm.yearEnd,
+      engineCode: cm.engineCode,
+      engineSize: cm.engineSize,
+      note: cm.note,
+    })),
+    compatibleFitments: fitmentGroups.compatible.map((cm) => ({
       carModelId: cm.carModelId,
       submodel: cm.submodel,
       yearStart: cm.yearStart,

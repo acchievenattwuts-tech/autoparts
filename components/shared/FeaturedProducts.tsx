@@ -21,6 +21,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         category: { select: { name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
+          where: { fitmentType: "DIRECT" },
           select: {
             yearStart: true,
             yearEnd: true,

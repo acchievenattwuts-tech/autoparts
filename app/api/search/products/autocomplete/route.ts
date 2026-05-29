@@ -30,6 +30,7 @@ type AutocompleteItem = {
   name: string;
   imageUrl: string | null;
   salePrice: number;
+  stock: number;
   inStock: boolean;
   reportUnitName: string;
   brand: string | null;
@@ -116,12 +117,13 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       name: p.name,
       imageUrl: p.imageUrl,
       salePrice: Number(p.salePrice),
+      stock: Number(p.stock),
       inStock: p.stock > 0,
       reportUnitName: p.reportUnitName,
       brand: p.brand?.name ?? null,
       category: p.category.name,
       href: getProductPath({ category: p.category, product: p }),
-      adminHref: `/admin/products/${p.id}/edit`,
+      adminHref: `/admin/products/${p.id}/preview`,
     }));
 
     return NextResponse.json(

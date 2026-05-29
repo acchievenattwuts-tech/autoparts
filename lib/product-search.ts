@@ -118,6 +118,34 @@ const buildContainsCondition = (
         },
       },
     },
+    {
+      carModels: {
+        some: {
+          submodel: { contains: query, mode: "insensitive" },
+        },
+      },
+    },
+    {
+      carModels: {
+        some: {
+          engineCode: { contains: query, mode: "insensitive" },
+        },
+      },
+    },
+    {
+      carModels: {
+        some: {
+          engineSize: { contains: query, mode: "insensitive" },
+        },
+      },
+    },
+    {
+      carModels: {
+        some: {
+          note: { contains: query, mode: "insensitive" },
+        },
+      },
+    },
     { category: { name: { contains: query, mode: "insensitive" } } },
     { brand: { name: { contains: query, mode: "insensitive" } } },
   ],

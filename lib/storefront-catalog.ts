@@ -49,7 +49,10 @@ export const getStorefrontProductsLandingPageData = unstable_cache(
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {
-            where: { carModel: { isActive: true, carBrand: { isActive: true } } },
+            where: {
+              fitmentType: "DIRECT",
+              carModel: { isActive: true, carBrand: { isActive: true } },
+            },
             select: {
               yearStart: true,
               yearEnd: true,

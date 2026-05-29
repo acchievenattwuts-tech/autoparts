@@ -15,7 +15,6 @@ import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductImageGallery from "@/components/shared/ProductImageGallery";
-import ScrollReveal from "@/components/shared/ScrollReveal";
 import RelatedProductsSection from "./RelatedProductsSection";
 import ProductPageViewReporter from "@/components/analytics/ProductPageViewReporter";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -35,6 +34,10 @@ import {
   getRelatedStorefrontProductsByCategory,
 } from "@/lib/storefront-product";
 import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
+import {
+  partitionProductFitments,
+  PRODUCT_FITMENT_SECTION_COPY,
+} from "@/lib/product-fitment";
 
 interface Props {
   params: Promise<{
@@ -127,6 +130,7 @@ const ProductDetailPage = async ({ params }: Props) => {
   const displayPrices = getStorefrontDisplayPrices(product.salePrice);
 
   type FitmentRow = {
+    fitmentType: string;
     modelName: string;
     submodel: string | null;
     yearStart: number | null;
@@ -136,24 +140,44 @@ const ProductDetailPage = async ({ params }: Props) => {
     note: string | null;
   };
 
-  const carBrandMap = new Map<string, FitmentRow[]>();
-  for (const fitment of product.carModels) {
-    const brandName = fitment.carModel.carBrand.name;
-    if (!carBrandMap.has(brandName)) {
-      carBrandMap.set(brandName, []);
-    }
-    carBrandMap.get(brandName)?.push({
-      modelName: fitment.carModel.name,
-      submodel: fitment.submodel,
-      yearStart: fitment.yearStart,
-      yearEnd: fitment.yearEnd,
-      engineCode: fitment.engineCode,
-      engineSize: fitment.engineSize,
-      note: fitment.note,
-    });
-  }
+  const fitmentRows = product.carModels.map((fitment) => ({
+    fitmentType: fitment.fitmentType,
+    modelName: fitment.carModel.name,
+    submodel: fitment.submodel,
+    yearStart: fitment.yearStart,
+    yearEnd: fitment.yearEnd,
+    engineCode: fitment.engineCode,
+    engineSize: fitment.engineSize,
+    note: fitment.note,
+    brandName: fitment.carModel.carBrand.name,
+  }));
+  const fitmentGroups = partitionProductFitments(fitmentRows);
+  const groupCarsByBrand = (rows: Array<FitmentRow & { brandName: string }>) => {
+    const carBrandMap = new Map<string, FitmentRow[]>();
 
-  const groupedCars = Array.from(carBrandMap.entries());
+    for (const row of rows) {
+      if (!carBrandMap.has(row.brandName)) {
+        carBrandMap.set(row.brandName, []);
+      }
+
+      carBrandMap.get(row.brandName)?.push({
+        fitmentType: row.fitmentType,
+        modelName: row.modelName,
+        submodel: row.submodel,
+        yearStart: row.yearStart,
+        yearEnd: row.yearEnd,
+        engineCode: row.engineCode,
+        engineSize: row.engineSize,
+        note: row.note,
+      });
+    }
+
+    return Array.from(carBrandMap.entries());
+  };
+
+  const groupedDirectCars = groupCarsByBrand(fitmentGroups.direct);
+  const groupedCompatibleCars = groupCarsByBrand(fitmentGroups.compatible);
+  const groupedCars = groupedDirectCars;
 
   const formatYearRange = (start: number | null, end: number | null): string | null => {
     if (start && end) return `ปี ${start}-${end}`;
@@ -171,8 +195,8 @@ const ProductDetailPage = async ({ params }: Props) => {
     ].includes(article.slug),
   );
   const compatibilitySummary =
-    groupedCars.length > 0
-      ? groupedCars
+    groupedDirectCars.length > 0
+      ? groupedDirectCars
           .slice(0, 2)
           .map(([brandName, rows]) => `${brandName} ${rows.slice(0, 2).map((r) => r.modelName).join(", ")}`)
           .join(" | ")
@@ -186,6 +210,74 @@ const ProductDetailPage = async ({ params }: Props) => {
       ? [{ url: product.imageUrl, alt: product.name }]
       : []),
   ];
+  const renderFitmentSection = (
+    fitmentType: "DIRECT" | "COMPATIBLE",
+    groupedCars: Array<[string, FitmentRow[]]>,
+  ) => {
+    if (groupedCars.length === 0) {
+      return null;
+    }
+
+    const copy = PRODUCT_FITMENT_SECTION_COPY[fitmentType];
+
+    return (
+      <>
+        <div className="my-5 border-t border-slate-100 sm:my-6" />
+
+        <div className="flex items-start gap-3">
+          <div className="inline-flex flex-shrink-0 rounded-2xl bg-[#f97316]/10 p-3 text-[#f97316]">
+            <CarFront className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-kanit text-lg font-semibold text-[#10213d] sm:text-xl">
+              {copy.storefrontTitle}
+            </h2>
+            <p className="mt-1 text-xs leading-6 text-slate-500 sm:text-sm">
+              {copy.storefrontDescription}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {groupedCars.map(([brandName, rows]) => (
+            <div key={`${fitmentType}-${brandName}`} className="rounded-[22px] border border-orange-200 bg-white px-4 py-4 shadow-[0_14px_28px_rgba(15,23,42,0.05)]">
+              <span className="inline-flex rounded-full bg-orange-50 px-3 py-1 text-sm font-bold text-orange-700">
+                {brandName}
+              </span>
+              <div className="mt-2 space-y-2">
+                {rows.map((row, index) => {
+                  const yearLabel = formatYearRange(row.yearStart, row.yearEnd);
+                  const engineLabel = [row.engineCode, row.engineSize]
+                    .filter((value): value is string => Boolean(value))
+                    .join(" ");
+                  const metaParts = [yearLabel, engineLabel].filter(
+                    (value): value is string => Boolean(value),
+                  );
+
+                  return (
+                    <div key={`${fitmentType}-${brandName}-${row.modelName}-${index}`} className="border-l-4 border-[#f97316] pl-3">
+                      <p className="break-words text-lg font-bold leading-7 text-[#10213d]">
+                        {row.submodel ? `${row.modelName} (${row.submodel})` : row.modelName}
+                      </p>
+                      {metaParts.length > 0 && (
+                        <p className="break-words text-sm leading-6 text-slate-500">
+                          {metaParts.join(" · ")}
+                        </p>
+                      )}
+                      {row.note && (
+                        <p className="break-words text-sm leading-6 text-slate-500">
+                          หมายเหตุ: {row.note}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
 
   return (
     <>
@@ -417,6 +509,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                 </div>
               </>
             )}
+            {renderFitmentSection("COMPATIBLE", groupedCompatibleCars)}
           </div>
         </section>
 
