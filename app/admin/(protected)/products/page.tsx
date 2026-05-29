@@ -9,6 +9,7 @@ import {
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Plus, Pencil, Eye, X } from "lucide-react";
+import NavLink from "@/components/shared/NavLink";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -281,14 +282,22 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           return (
             <div className="flex flex-wrap gap-1.5 border-b border-gray-100 px-6 py-3 dark:border-white/10">
               {pills.map((pill) => (
-                <Link
+                <NavLink
                   key={pill.label}
                   href={pill.removeUrl}
+                  hideSpinner
+                  ariaLabel={`ลบฟิลเตอร์ ${pill.label}`}
                   className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-red-400/30 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                  pendingChildren={
+                    <>
+                      {pill.label}
+                      <span className="ml-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    </>
+                  }
                 >
                   {pill.label}
                   <X size={10} />
-                </Link>
+                </NavLink>
               ))}
             </div>
           );

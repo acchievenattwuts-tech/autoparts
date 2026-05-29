@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { SlidersHorizontal, ChevronDown } from "lucide-react";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
@@ -9,6 +8,7 @@ import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import NavLink from "@/components/shared/NavLink";
 
 type Option = { id: string; name: string };
 type CarBrandOption = Option & { models: Option[] };
@@ -115,12 +115,12 @@ export default function ProductFilterForm({
           </AdminSearchSubmitButton>
 
           {hasFilters && (
-            <Link
+            <NavLink
               href="/admin/products"
-              className="shrink-0 inline-flex justify-center rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+              className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
             >
               ล้าง
-            </Link>
+            </NavLink>
           )}
 
           {/* More toggle */}
