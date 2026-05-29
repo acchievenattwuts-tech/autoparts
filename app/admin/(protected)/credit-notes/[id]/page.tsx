@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MAVG recalc) can reach 180s
 
 import { db } from "@/lib/db";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
@@ -52,12 +52,12 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
   return (
     <div>
       <div className="mb-6 flex items-center gap-2">
-        <Link
+        <NavLink
           href="/admin/credit-notes"
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> ใบลดหนี้ทั้งหมด
-        </Link>
+        </NavLink>
         <span className="text-gray-300 dark:text-slate-600">/</span>
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{cn.cnNo}</span>
       </div>
@@ -73,12 +73,12 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
             )}
           </div>
           {cn.status === "ACTIVE" && canUpdate && (
-            <Link
+            <NavLink
               href={`/admin/credit-notes/${id}/edit`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
             >
               <Pencil size={14} /> แก้ไข
-            </Link>
+            </NavLink>
           )}
         </div>
 
@@ -113,12 +113,13 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
           {cn.sale && (
             <div>
               <p className="mb-0.5 text-gray-500 dark:text-slate-400">อ้างอิงใบขาย</p>
-              <Link
+              <NavLink
                 href={`/admin/sales/${cn.saleId}`}
                 className="font-mono text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                hideSpinner
               >
                 {cn.sale.saleNo}
-              </Link>
+              </NavLink>
             </div>
           )}
           <div>

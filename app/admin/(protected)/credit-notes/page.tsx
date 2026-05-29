@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { Plus, Eye, Pencil } from "lucide-react";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -137,9 +137,9 @@ const CreditNotesPage = async ({
         description="ค้นหา ดูรายละเอียด และจัดการใบลดหนี้"
         actions={
           canCreate ? (
-            <Link href="/admin/credit-notes/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
+            <NavLink href="/admin/credit-notes/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
               <Plus size={16} /> สร้าง CN ใหม่
-            </Link>
+            </NavLink>
           ) : null
         }
       />
@@ -151,7 +151,7 @@ const CreditNotesPage = async ({
             <span className="font-medium text-slate-700 dark:text-slate-200">กำลังแสดงผลของ:</span>
             {selectedCustomer ? <AdminStatusBadge tone="info">ลูกค้า: {selectedCustomer.name} {selectedCustomer.code ? `(${selectedCustomer.code})` : ""}</AdminStatusBadge> : null}
             {selectedProduct ? <AdminStatusBadge tone="info">สินค้า: {selectedProduct.name} {selectedProduct.code ? `(${selectedProduct.code})` : ""}</AdminStatusBadge> : null}
-            {(selectedCustomer || selectedProduct) && <Link href="/admin/credit-notes" className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">ล้าง filter drilldown</Link>}
+            {(selectedCustomer || selectedProduct) && <NavLink href="/admin/credit-notes" className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300" hideSpinner>ล้าง filter drilldown</NavLink>}
           </div>
         }
       >
@@ -203,10 +203,10 @@ const CreditNotesPage = async ({
                   <td className="px-4 py-3">{cn.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
                   <td className="px-4 py-3">
                     <AdminActionGroup align="end">
-                      <Link href={`/admin/credit-notes/${cn.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"><Eye size={14} /> ดู</Link>
+                      <NavLink href={`/admin/credit-notes/${cn.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200" hideSpinner><Eye size={14} /> ดู</NavLink>
                       {cn.status === "ACTIVE" ? (
                         <>
-                          {canUpdate ? <Link href={`/admin/credit-notes/${cn.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                          {canUpdate ? <NavLink href={`/admin/credit-notes/${cn.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
                           {canCancel ? <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} /> : null}
                         </>
                       ) : null}

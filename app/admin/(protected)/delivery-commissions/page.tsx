@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { FileSpreadsheet, FileText, Truck } from "lucide-react";
 
 import Pagination from "@/components/shared/Pagination";
@@ -100,18 +100,20 @@ export default async function DeliveryCommissionsPage({ searchParams }: PageProp
         </h1>
       </div>
       <div className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-[#111827]">
-        <Link
+        <NavLink
           href="/admin/delivery-commissions?tab=payouts"
           className={`${tabBaseClass} ${activeTab === "payouts" ? tabActiveClass : tabInactiveClass}`}
+          hideSpinner
         >
           ทำจ่าย / ประวัติ
-        </Link>
-        <Link
+        </NavLink>
+        <NavLink
           href="/admin/delivery-commissions?tab=report"
           className={`${tabBaseClass} ${activeTab === "report" ? tabActiveClass : tabInactiveClass}`}
+          hideSpinner
         >
           รายงานบิลจัดส่ง
-        </Link>
+        </NavLink>
       </div>
     </div>
   );
@@ -468,7 +470,7 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
                         {proof ? formatDateTimeThai(proof.capturedAt) : "-"}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
-                        <Link href={`/admin/sales/${sale.id}`} className="hover:underline">{sale.saleNo}</Link>
+                        <NavLink href={`/admin/sales/${sale.id}`} className="hover:underline" hideSpinner>{sale.saleNo}</NavLink>
                       </td>
                       <td className="px-3 py-3 text-gray-700 dark:text-slate-200">{sale.customerName || "-"}</td>
                       <td className="px-3 py-3 text-gray-700 dark:text-slate-200">{sale.deliveryStaff?.name ?? "-"}</td>
@@ -490,12 +492,13 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {paidItem ? (
-                          <Link
+                          <NavLink
                             href={`/admin/delivery-commissions?tab=payouts&highlight=${paidItem.run.id}#run-${paidItem.run.id}`}
                             className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/20"
+                            hideSpinner
                           >
                             จ่ายแล้ว · {paidItem.run.runNo}
-                          </Link>
+                          </NavLink>
                         ) : (
                           <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500 dark:bg-white/10 dark:text-slate-400">
                             ยังไม่จ่าย

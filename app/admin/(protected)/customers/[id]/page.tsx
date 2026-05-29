@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
@@ -121,12 +121,12 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Link
+        <NavLink
           href="/admin/customers"
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} /> รายการลูกค้า
-        </Link>
+        </NavLink>
       </div>
 
       <AdminPageHeader
@@ -146,12 +146,12 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
             </div>
         }
         actions={
-          <Link
+          <NavLink
             href={`/admin/customers/${id}/edit`}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#162d4a]"
           >
             <Pencil size={12} /> แก้ไข
-          </Link>
+          </NavLink>
         }
       />
 
@@ -249,9 +249,9 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                 {salesWithStatus.map((s) => (
                   <tr key={s.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
                     <td className="px-4 py-3 font-mono">
-                      <Link href={`/admin/sales/${s.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300">
+                      <NavLink href={`/admin/sales/${s.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300" hideSpinner>
                         {s.saleNo}
-                      </Link>
+                      </NavLink>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {formatDateThai(s.saleDate)}
@@ -348,12 +348,13 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">{s._count.items} รายการ</td>
                     <td className="px-4 py-3">
-                      <Link
+                      <NavLink
                         href={`/admin/sales/${s.id}`}
                         className="text-xs text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
+                        hideSpinner
                       >
                         ดูใบเสร็จ
-                      </Link>
+                      </NavLink>
                     </td>
                   </tr>
                 ))

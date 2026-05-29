@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { Eye, Pencil, Plus } from "lucide-react";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
@@ -97,9 +97,9 @@ const PurchasesPage = async ({
         description="ค้นหา ดูสถานะ และจัดการใบซื้อสินค้า"
         actions={
           canCreate ? (
-            <Link href="/admin/purchases/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
+            <NavLink href="/admin/purchases/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
               <Plus size={16} /> สร้างใบซื้อใหม่
-            </Link>
+            </NavLink>
           ) : null
         }
       />
@@ -151,12 +151,12 @@ const PurchasesPage = async ({
                   </td>
                   <td className="px-4 py-3">
                     <AdminActionGroup align="end">
-                      <Link href={`/admin/purchases/${p.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200">
+                      <NavLink href={`/admin/purchases/${p.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200" hideSpinner>
                         <Eye size={14} /> ดู
-                      </Link>
+                      </NavLink>
                       {p.status === "ACTIVE" ? (
                         <>
-                          {canUpdate ? <Link href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                          {canUpdate ? <NavLink href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
                           {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
                         </>
                       ) : null}

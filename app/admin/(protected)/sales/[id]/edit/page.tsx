@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
@@ -185,10 +185,10 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   return (
     <div>
       <div className="flex items-center gap-2 mb-6">
-        <Link href={`/admin/sales/${id}`}
+        <NavLink href={`/admin/sales/${id}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-[#1e3a5f] transition-colors dark:text-slate-400 dark:hover:text-sky-300">
           <ChevronLeft size={16} /> {sale.saleNo}
-        </Link>
+        </NavLink>
         <span className="text-gray-300 dark:text-slate-600">/</span>
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>

@@ -8,8 +8,8 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
-import { Plus, Pencil, Eye, X } from "lucide-react";
 import NavLink from "@/components/shared/NavLink";
+import { Plus, Pencil, Eye, X } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -345,13 +345,14 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                         <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">คุณหมายถึง:</p>
                         <div className="flex flex-wrap justify-center gap-1.5">
                           {didYouMean.map((suggestion) => (
-                            <Link
+                            <NavLink
                               key={suggestion}
                               href={`/admin/products?search=${encodeURIComponent(suggestion)}`}
                               className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 bg-[#1e3a5f]/5 px-3 py-1 text-xs font-medium text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/10 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:border-sky-400 dark:hover:bg-sky-500/20"
+                              hideSpinner
                             >
                               {suggestion}
-                            </Link>
+                            </NavLink>
                           ))}
                         </div>
                       </div>

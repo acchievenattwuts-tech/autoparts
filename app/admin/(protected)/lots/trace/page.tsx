@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { Activity } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -419,12 +419,13 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
             ค้นหา
           </AdminSearchSubmitButton>
           {(q || productId || fromKey || toKey) && (
-            <Link
+            <NavLink
               href="/admin/lots/trace"
               className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
+              hideSpinner
             >
               ล้าง
-            </Link>
+            </NavLink>
           )}
         </AdminSearchForm>
 
@@ -444,9 +445,10 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                 });
                 return (
                   <li key={product.id}>
-                    <Link
+                    <NavLink
                       href={`/admin/lots/trace?productId=${product.id}&q=${encodeURIComponent(normalizedQuery)}${dateFilterQS ? `&${dateFilterQS}` : ""}`}
                       className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
+                      hideSpinner
                     >
                       <div>
                         <span className="mr-2 font-mono text-xs text-gray-500">[{product.code}]</span>
@@ -455,7 +457,7 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                       <span className="ml-4 whitespace-nowrap text-xs text-gray-400">
                         คงเหลือ {fmt(toReportUnitQty(Number(product.stock), unit.scale))} {unit.unitName}
                       </span>
-                    </Link>
+                    </NavLink>
                   </li>
                 );
               })}
@@ -604,16 +606,17 @@ export default async function LotMovementPage({ searchParams }: PageProps) {
                                   {formatDateThai(movement.date)}
                                 </td>
                                 <td className="px-3 py-2.5">
-                                  <Link
+                                  <NavLink
                                     href={movement.docLink}
                                     className={`font-mono text-xs hover:underline ${
                                       movement.isCancelled
                                         ? "text-gray-400 line-through"
                                         : "text-[#1e3a5f]"
                                     }`}
+                                    hideSpinner
                                   >
                                     {movement.docNo}
-                                  </Link>
+                                  </NavLink>
                                 </td>
                                 <td className="px-3 py-2.5">
                                   <span

@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil, Package, Tag, MapPin, ShieldCheck, Layers, BarChart2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import ProductImagePreview from "@/app/admin/(protected)/products/ProductImagePreview";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -99,21 +99,21 @@ const ProductPreviewPage = async ({ params }: Props) => {
         description={`รหัส ${product.code}`}
         actions={
           <div className="flex items-center gap-2">
-            <Link
+            <NavLink
               href="/admin/products"
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-white/5"
             >
               <ChevronLeft size={15} />
               กลับ
-            </Link>
+            </NavLink>
             {canUpdate && (
-              <Link
+              <NavLink
                 href={`/admin/products/${product.id}/edit`}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
               >
                 <Pencil size={14} />
                 แก้ไข
-              </Link>
+              </NavLink>
             )}
           </div>
         }

@@ -3,11 +3,10 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL, getShippingTrackingUrl } from "@/lib/shipping";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ExternalLink, Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
-import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { formatDateThai } from "@/lib/th-date";
 
 const getDeliveryStaffLabel = ({
@@ -95,12 +94,12 @@ const DeliveryPage = async ({
         <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">คิวจัดส่ง</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500 dark:text-slate-400">{sales.length} รายการ</span>
-          <Link
+          <NavLink
             href={`/admin/delivery/update${statusFilter ? `?status=${statusFilter}` : ""}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"
           >
             <Smartphone size={14} /> มุมมองมือถือ
-          </Link>
+          </NavLink>
           {printAllUrl && (
             <a
               href={printAllUrl}
@@ -117,7 +116,7 @@ const DeliveryPage = async ({
       {/* Tabs */}
       <div className="flex gap-2 mb-4 flex-wrap">
         {tabs.map((tab) => (
-          <Link
+          <NavLink
             key={tab.label}
             href={tab.value ? `/admin/delivery?status=${tab.value}` : "/admin/delivery"}
             className={`relative inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
@@ -125,14 +124,10 @@ const DeliveryPage = async ({
                 ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
                 : "bg-white border border-gray-200 text-gray-600 hover:border-[#1e3a5f] dark:bg-white/5 dark:border-white/15 dark:text-slate-300 dark:hover:border-sky-400"
             }`}
+            hideSpinner
           >
-            <LinkPendingIndicator
-              variant="chip"
-              label="กำลังกรอง"
-              className="right-2 top-1/2 -translate-y-1/2 rounded-full px-1.5 py-0.5 text-[10px]"
-            />
             {tab.label}
-          </Link>
+          </NavLink>
         ))}
       </div>
 
@@ -260,12 +255,13 @@ const DeliveryPage = async ({
                     </td>
                     <td className="py-3 px-4 align-top">
                       <div className="flex items-center gap-2">
-                        <Link
+                        <NavLink
                           href={`/admin/sales/${s.id}`}
                           className="inline-flex items-center gap-1 text-xs text-[#1e3a5f] hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
+                          hideSpinner
                         >
                           <Eye size={14} /> ดู
-                        </Link>
+                        </NavLink>
                         <PrintFromListButton href={`/admin/sales/${s.id}`} />
                       </div>
                     </td>

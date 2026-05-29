@@ -4,7 +4,7 @@ export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MA
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
-import Link from "next/link";
+import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -208,12 +208,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
 
       <div className="no-print">
         <div className="mb-6 flex items-center gap-2">
-          <Link
+          <NavLink
             href="/admin/sales"
             className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
           >
             <ChevronLeft size={16} /> รายการขาย
-          </Link>
+          </NavLink>
           <span className="text-gray-300 dark:text-slate-600">/</span>
           <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{sale.saleNo}</span>
         </div>
@@ -230,12 +230,12 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             </div>
             <div className="flex items-center gap-2">
               {sale.status === "ACTIVE" && canUpdate ? (
-                <Link
+                <NavLink
                   href={`/admin/sales/${id}/edit`}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
                 >
                   <Pencil size={14} /> แก้ไข
-                </Link>
+                </NavLink>
               ) : null}
               <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "พิมพ์ใบแจ้งหนี้" : "พิมพ์ใบเสร็จ"} />
             </div>
@@ -257,9 +257,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             <div>
               <p className="mb-1 text-gray-500 dark:text-slate-400">ลูกค้า</p>
               {sale.customer ? (
-                <Link href={`/admin/customers/${sale.customer.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200">
+                <NavLink href={`/admin/customers/${sale.customer.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200" hideSpinner>
                   {sale.customer.name}
-                </Link>
+                </NavLink>
               ) : (
                 <p className="font-medium text-gray-900 dark:text-slate-100">{sale.customerName ?? "-"}</p>
               )}
@@ -361,12 +361,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ
                 </span>
                 {sale._count.deliveryProofs > DELIVERY_PROOF_HISTORY_LIMIT ? (
-                  <Link
+                  <NavLink
                     href={`/admin/sales/${sale.id}/delivery-proofs`}
                     className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 px-3 py-1 text-xs font-semibold text-[#1e3a5f] hover:bg-[#1e3a5f]/5 dark:border-sky-400/30 dark:text-sky-300 dark:hover:bg-sky-400/10"
+                    hideSpinner
                   >
                     ดูหลักฐานทั้งหมด
-                  </Link>
+                  </NavLink>
                 ) : null}
               </div>
             </div>
@@ -445,12 +446,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
                     แสดง {sale.deliveryProofs.length.toLocaleString("th-TH")} รายการล่าสุดจากทั้งหมด{" "}
                     {sale._count.deliveryProofs.toLocaleString("th-TH")} รายการ{" "}
-                    <Link
+                    <NavLink
                       href={`/admin/sales/${sale.id}/delivery-proofs`}
                       className="font-semibold text-[#1e3a5f] hover:underline dark:text-sky-300"
+                      hideSpinner
                     >
                       ดูหลักฐานทั้งหมด
-                    </Link>
+                    </NavLink>
                   </div>
                 ) : null}
               </div>
