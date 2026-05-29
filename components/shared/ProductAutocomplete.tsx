@@ -16,7 +16,7 @@
  *   enhanced="mobile"  → tap-to-open full-screen slide-in modal
  */
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -90,6 +90,8 @@ const ProductAutocomplete = ({
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [mounted, setMounted] = useState(false);
+  const [isNavigating, startNavigation] = useTransition();
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -177,10 +179,21 @@ const ProductAutocomplete = ({
   }, [items]);
 
   const navigateTo = (item: AutocompleteItem) => {
-    setOpen(false);
-    setModalOpen(false);
-    router.push(mode === "admin" ? item.adminHref : item.href);
+    if (isNavigating) return;
+    setPendingItemId(item.id);
+    startNavigation(() => {
+      router.push(mode === "admin" ? item.adminHref : item.href);
+    });
   };
+
+  // Close dropdown + clear pending after navigation completes
+  useEffect(() => {
+    if (!isNavigating && pendingItemId) {
+      setPendingItemId(null);
+      setOpen(false);
+      setModalOpen(false);
+    }
+  }, [isNavigating, pendingItemId]);
 
   const submitQuery = () => {
     setOpen(false);
@@ -253,14 +266,22 @@ const ProductAutocomplete = ({
                 {brandItems.map((item) => {
                   runningIndex += 1;
                   const idx = runningIndex;
+                  const isThisPending = pendingItemId === item.id;
+                  const isOtherPending = isNavigating && !isThisPending;
                   return (
                     <li key={item.id} role="option" aria-selected={idx === activeIndex}>
                       <button
                         type="button"
                         onClick={() => navigateTo(item)}
-                        onMouseEnter={() => setActiveIndex(idx)}
-                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                          idx === activeIndex
+                        onMouseEnter={() => !isNavigating && setActiveIndex(idx)}
+                        disabled={isNavigating}
+                        aria-busy={isThisPending}
+                        className={`relative flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                          isThisPending
+                            ? "bg-orange-50 dark:bg-orange-500/10"
+                            : isOtherPending
+                            ? "opacity-50 cursor-not-allowed"
+                            : idx === activeIndex
                             ? "bg-orange-50 dark:bg-orange-500/10"
                             : "hover:bg-gray-50 dark:hover:bg-white/5"
                         }`}
@@ -299,12 +320,18 @@ const ProductAutocomplete = ({
                           </p>
                         </div>
                         <div className="flex-shrink-0 text-right">
-                          <p className="text-sm font-bold text-[#f97316]">
-                            ฿{item.salePrice.toLocaleString("th-TH")}
-                          </p>
-                          <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                            /{item.reportUnitName}
-                          </p>
+                          {isThisPending ? (
+                            <Loader2 size={18} className="animate-spin text-[#f97316]" />
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold text-[#f97316]">
+                                ฿{item.salePrice.toLocaleString("th-TH")}
+                              </p>
+                              <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                /{item.reportUnitName}
+                              </p>
+                            </>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -328,10 +355,76 @@ const ProductAutocomplete = ({
     );
   };
 
+  // --- Shared pending overlay (top progress bar + toast) — rendered via portal ---
+  const pendingOverlay =
+    mounted && isNavigating
+      ? createPortal(
+          <>
+            {/* Top progress bar — indeterminate animation, no layout shift */}
+            <div
+              className="pointer-events-none fixed inset-x-0 top-0 z-[200] h-[3px] overflow-hidden bg-orange-100/40 dark:bg-orange-500/10"
+              aria-hidden="true"
+            >
+              <div className="autocomplete-progress h-full w-1/3 bg-gradient-to-r from-[#f97316] via-[#fb923c] to-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+            </div>
+
+            {/* Bottom toast — respects iOS safe area, responsive */}
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none fixed inset-x-0 z-[200] flex justify-center px-4"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+            >
+              <div className="autocomplete-toast pointer-events-auto inline-flex items-center gap-2 rounded-full bg-slate-900/95 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-black/20 backdrop-blur dark:bg-slate-100/95 dark:text-slate-900">
+                <Loader2 size={14} className="animate-spin text-[#f97316]" />
+                <span>กำลังเปิดสินค้า...</span>
+              </div>
+            </div>
+
+            <style jsx global>{`
+              @keyframes autocomplete-progress-slide {
+                0% {
+                  transform: translateX(-100%);
+                }
+                100% {
+                  transform: translateX(400%);
+                }
+              }
+              .autocomplete-progress {
+                animation: autocomplete-progress-slide 1.1s ease-in-out infinite;
+                will-change: transform;
+              }
+              @keyframes autocomplete-toast-in {
+                from {
+                  opacity: 0;
+                  transform: translateY(8px);
+                }
+                to {
+                  opacity: 1;
+                  transform: translateY(0);
+                }
+              }
+              .autocomplete-toast {
+                animation: autocomplete-toast-in 180ms ease-out;
+                will-change: transform, opacity;
+              }
+              @media (prefers-reduced-motion: reduce) {
+                .autocomplete-progress,
+                .autocomplete-toast {
+                  animation: none;
+                }
+              }
+            `}</style>
+          </>,
+          document.body,
+        )
+      : null;
+
   // --- MOBILE MODAL VARIANT ---
   if (enhanced === "mobile") {
     return (
       <>
+        {pendingOverlay}
         <div ref={wrapperRef} className={`relative ${className ?? ""}`}>
           <div className="relative">
             <Search
@@ -432,6 +525,7 @@ const ProductAutocomplete = ({
     const isExpanded = hasInlineFocus || open;
     return (
       <>
+        {pendingOverlay}
         <div
           ref={wrapperRef}
           onFocusCapture={handleInlineFocusCapture}
@@ -527,12 +621,14 @@ const ProductAutocomplete = ({
 
   // --- ORIGINAL VARIANT (admin / non-enhanced) ---
   return (
-    <div
-      ref={wrapperRef}
-      onFocusCapture={handleInlineFocusCapture}
-      onBlurCapture={handleInlineBlurCapture}
-      className={`relative ${className ?? ""}`}
-    >
+    <>
+      {pendingOverlay}
+      <div
+        ref={wrapperRef}
+        onFocusCapture={handleInlineFocusCapture}
+        onBlurCapture={handleInlineBlurCapture}
+        className={`relative ${className ?? ""}`}
+      >
       <div className="relative">
         {!showSubmitButton && (
           <Search
@@ -601,14 +697,22 @@ const ProductAutocomplete = ({
                 {brandItems.map((item) => {
                   flatIdx += 1;
                   const idx = flatIdx;
+                  const isThisPending = pendingItemId === item.id;
+                  const isOtherPending = isNavigating && !isThisPending;
                   return (
                     <li key={item.id} role="option" aria-selected={idx === activeIndex}>
                       <button
                         type="button"
                         onClick={() => navigateTo(item)}
-                        onMouseEnter={() => setActiveIndex(idx)}
-                        className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-                          idx === activeIndex
+                        onMouseEnter={() => !isNavigating && setActiveIndex(idx)}
+                        disabled={isNavigating}
+                        aria-busy={isThisPending}
+                        className={`relative flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+                          isThisPending
+                            ? "bg-orange-50 dark:bg-orange-500/10"
+                            : isOtherPending
+                            ? "opacity-50 cursor-not-allowed"
+                            : idx === activeIndex
                             ? "bg-gray-100 dark:bg-white/5"
                             : "hover:bg-gray-50 dark:hover:bg-white/5"
                         }`}
@@ -660,12 +764,18 @@ const ProductAutocomplete = ({
                           )}
                         </div>
                         <div className="flex-shrink-0 text-right">
-                          <p className="text-sm font-bold text-[#f97316]">
-                            ฿{item.salePrice.toLocaleString("th-TH")}
-                          </p>
-                          <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                            /{item.reportUnitName}
-                          </p>
+                          {isThisPending ? (
+                            <Loader2 size={18} className="animate-spin text-[#f97316]" />
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold text-[#f97316]">
+                                ฿{item.salePrice.toLocaleString("th-TH")}
+                              </p>
+                              <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                /{item.reportUnitName}
+                              </p>
+                            </>
+                          )}
                         </div>
                       </button>
                     </li>
@@ -676,7 +786,8 @@ const ProductAutocomplete = ({
           })()}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
