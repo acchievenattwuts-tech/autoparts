@@ -3,25 +3,24 @@ export const revalidate = 300;
 import type { Metadata } from "next";
 // Keep search dynamic so query-driven catalog results do not go stale.
 export const dynamic = "force-dynamic";
-import { Suspense } from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
-import ProductCard from "@/components/shared/ProductCard";
-import Pagination from "@/components/shared/Pagination";
-import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
-import ProductFilterBar from "../ProductFilterBar";
-import ProductFilterBarFallback from "../ProductFilterBarFallback";
 import ProductsHero from "../ProductsHero";
-import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
+import SearchResults from "./SearchResults";
+import {
+  searchProductIds,
+  sortProductsByIds,
+  suggestDidYouMean,
+} from "@/lib/product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { absoluteUrl } from "@/lib/seo";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
+import type { SearchProductItem } from "./search-products-actions";
 
 const PRODUCTS_PER_PAGE = 24;
 
@@ -61,32 +60,6 @@ const normalizeQueryValues = (value: QueryValue): string[] => {
   }
 
   return value ? [value] : [];
-};
-
-const buildProductsHref = ({
-  q,
-  category,
-  brand,
-  model,
-  page,
-}: {
-  q?: string;
-  category?: string;
-  brand?: string;
-  model?: QueryValue;
-  page?: number;
-}) => {
-  const params = new URLSearchParams();
-  const models = normalizeQueryValues(model);
-
-  if (q) params.set("q", q);
-  if (category) params.set("category", category);
-  if (brand) params.set("brand", brand);
-  models.forEach((item) => params.append("model", item));
-  if (page && page > 1) params.set("page", String(page));
-
-  const query = params.toString();
-  return query ? `/products/search?${query}` : "/products/search";
 };
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
@@ -135,7 +108,9 @@ const ProductsPage = async ({ searchParams }: Props) => {
   const explicitYear = parseYearParam(year);
   const config = await getSiteConfig();
   const currentPage = parsePage(page);
-  const hasSearchState = Boolean(q || category || brand || models.length > 0 || explicitYear || currentPage > 1);
+  const hasSearchState = Boolean(
+    q || category || brand || models.length > 0 || explicitYear || currentPage > 1,
+  );
 
   if (!hasSearchState) {
     redirect("/products");
@@ -200,11 +175,25 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   const sortedProducts = sortProductsByIds(products, searchResult.ids);
 
+  // Serialize Decimal -> string for client component
+  const initialProducts: SearchProductItem[] = sortedProducts.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    code: p.code,
+    imageUrl: p.imageUrl,
+    salePrice: p.salePrice.toString(),
+    stock: p.stock,
+    reportUnitName: p.reportUnitName,
+    category: p.category,
+    brand: p.brand,
+    carModels: p.carModels,
+  }));
+
   // Phase Q4 — "Did you mean" suggestions when results are sparse/empty
-  const didYouMean = q && searchResult.total < 3
-    ? await suggestDidYouMean(q, 3)
-    : [];
-  const hasFilter = q || category || brand || models.length > 0;
+  const didYouMean =
+    q && searchResult.total < 3 ? await suggestDidYouMean(q, 3) : [];
+
   const totalPages = Math.max(1, Math.ceil(searchResult.total / PRODUCTS_PER_PAGE));
   const pageStart = searchResult.total === 0 ? 0 : skip + 1;
   const pageEnd = Math.min(skip + sortedProducts.length, searchResult.total);
@@ -223,99 +212,26 @@ const ProductsPage = async ({ searchParams }: Props) => {
         <ProductsHero />
 
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-6 lg:flex-row">
-            <aside className="w-full shrink-0 lg:w-72">
-              <Suspense fallback={<ProductFilterBarFallback />}>
-                <ProductFilterBar
-                  brands={filterData.carBrands}
-                  categories={filterData.categories}
-                />
-              </Suspense>
-            </aside>
-
-            <div className="min-w-0 flex-1">
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-gray-500">
-                  {hasFilter ? (
-                    <>
-                      {q && <>ค้นหา &ldquo;{q}&rdquo; </>}
-                      {brand && (
-                        <>
-                          {brand}
-                          {models.length > 0 ? ` › ${models.join(", ")}` : ""}{" "}
-                        </>
-                      )}
-                      {category && <>{category} </>}
-                      — พบ <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                      รายการ
-                    </>
-                  ) : (
-                    <>
-                      แสดงสินค้า <span className="font-semibold text-gray-800">{searchResult.total}</span>{" "}
-                      รายการ
-                    </>
-                  )}
-                </p>
-
-                {searchResult.total > 0 && (
-                  <p className="text-xs text-gray-400 sm:text-sm">
-                    แสดง {pageStart}-{pageEnd} จาก {searchResult.total} รายการ
-                  </p>
-                )}
-              </div>
-
-              {sortedProducts.length === 0 ? (
-                <div className="py-16 text-center text-gray-400">
-                  <p className="mb-2 text-lg">ไม่พบสินค้าที่ค้นหา</p>
-                  {didYouMean.length > 0 && (
-                    <div className="mb-4">
-                      <p className="mb-2 text-sm text-gray-600">คุณหมายถึง:</p>
-                      <div className="flex flex-wrap justify-center gap-2">
-                        {didYouMean.map((suggestion) => (
-                          <Link
-                            key={suggestion}
-                            href={`/products/search?q=${encodeURIComponent(suggestion)}`}
-                            className="inline-flex items-center rounded-full border border-[#1e3a5f]/20 bg-[#1e3a5f]/5 px-3 py-1 text-sm font-medium text-[#1e3a5f] transition hover:border-[#1e3a5f] hover:bg-[#1e3a5f]/10"
-                          >
-                            {suggestion}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <Link href="/products" className="text-sm text-[#1e3a5f] underline">
-                    ดูสินค้าทั้งหมด
-                  </Link>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-                    {sortedProducts.map((product, index) => (
-                      <ScrollReveal key={product.id} delay={index * 40} className="h-full">
-                        <ProductCard
-                          product={product}
-                          lineUrl={config.shopLineUrl}
-                          prefetchDetail={false}
-                        />
-                      </ScrollReveal>
-                    ))}
-                  </div>
-
-                  {totalPages > 1 && (
-                    <div className="mt-8 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
-                      <Pagination
-                        currentPage={currentPage}
-                        totalPages={totalPages}
-                        buildHref={(page) =>
-                          buildProductsHref({ q, category, brand, model, page })
-                        }
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          <SearchResults
+            initialProducts={initialProducts}
+            initialTotal={searchResult.total}
+            initialDidYouMean={didYouMean}
+            initialFilters={{
+              q: q ?? "",
+              brand: brand ?? "",
+              models,
+              category: category ?? "",
+              year: explicitYear,
+              page: currentPage,
+            }}
+            initialMeta={{
+              pageStart,
+              pageEnd,
+              totalPages,
+            }}
+            filterData={filterData}
+            lineUrl={config.shopLineUrl}
+          />
         </div>
       </main>
       <Footer config={config} />
@@ -332,5 +248,3 @@ const ProductsPage = async ({ searchParams }: Props) => {
 };
 
 export default ProductsPage;
-
-

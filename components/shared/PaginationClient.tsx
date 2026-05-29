@@ -13,6 +13,10 @@ interface PaginationClientProps {
   items: PaginationItem[];
   prevHref: string | null;
   nextHref: string | null;
+  /** When provided, click calls onNavigate(page) instead of router.push */
+  onNavigate?: (page: number) => void;
+  /** External pending state (overrides internal useTransition) */
+  isPending?: boolean;
 }
 
 const Spinner = () => (
@@ -55,15 +59,22 @@ const PaginationClient = ({
   items,
   prevHref,
   nextHref,
+  onNavigate,
+  isPending: externalPending,
 }: PaginationClientProps) => {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [internalPending, startTransition] = useTransition();
+  const isPending = externalPending ?? internalPending;
 
   const navigate =
-    (href: string) => (e: MouseEvent<HTMLAnchorElement>) => {
+    (href: string, page: number) => (e: MouseEvent<HTMLAnchorElement>) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
       e.preventDefault();
       if (isPending) return;
+      if (onNavigate) {
+        onNavigate(page);
+        return;
+      }
       startTransition(() => router.push(href));
     };
 
@@ -76,7 +87,7 @@ const PaginationClient = ({
       {prevHref ? (
         <Link
           href={prevHref}
-          onClick={navigate(prevHref)}
+          onClick={navigate(prevHref, currentPage - 1)}
           className={`${baseLinkClass} ${inactiveClass}`}
           aria-label="หน้าก่อนหน้า"
           rel="prev"
@@ -104,7 +115,7 @@ const PaginationClient = ({
           <Link
             key={item.page}
             href={item.href}
-            onClick={navigate(item.href)}
+            onClick={navigate(item.href, item.page)}
             aria-current={isCurrent ? "page" : undefined}
             className={`${baseLinkClass} ${isCurrent ? activeClass : inactiveClass}`}
           >
@@ -116,7 +127,7 @@ const PaginationClient = ({
       {nextHref ? (
         <Link
           href={nextHref}
-          onClick={navigate(nextHref)}
+          onClick={navigate(nextHref, currentPage + 1)}
           className={`${baseLinkClass} ${inactiveClass}`}
           aria-label="หน้าถัดไป"
           rel="next"

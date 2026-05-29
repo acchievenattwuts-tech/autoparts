@@ -69,7 +69,10 @@ const FeaturedProducts = async ({ lineUrl, products }: Props) => {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {resolvedProducts.map((product, index) => (
             <ScrollReveal key={product.id} delay={index * 60} className="h-full">
-              <ProductCard product={product} lineUrl={lineUrl} />
+              <ProductCard
+                product={{ ...product, salePrice: product.salePrice.toString() }}
+                lineUrl={lineUrl}
+              />
             </ScrollReveal>
           ))}
         </div>

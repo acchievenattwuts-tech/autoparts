@@ -6,6 +6,10 @@ interface PaginationProps {
   basePath?: string;
   searchParams?: Record<string, string>;
   buildHref?: (page: number) => string;
+  /** When provided, click handler calls this instead of router.push (keeps href for SEO/right-click) */
+  onNavigate?: (page: number) => void;
+  /** External pending state (overrides internal useTransition) */
+  isPending?: boolean;
 }
 
 const buildUrl = (
@@ -24,6 +28,8 @@ const Pagination = ({
   basePath,
   searchParams,
   buildHref,
+  onNavigate,
+  isPending,
 }: PaginationProps) => {
   if (totalPages <= 1) return null;
 
@@ -61,6 +67,8 @@ const Pagination = ({
       items={items}
       prevHref={prevHref}
       nextHref={nextHref}
+      onNavigate={onNavigate}
+      isPending={isPending}
     />
   );
 };

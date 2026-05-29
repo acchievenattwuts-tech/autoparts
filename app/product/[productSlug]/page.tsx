@@ -112,7 +112,10 @@ const ProductDetailPage = async ({ params }: Props) => {
     currentProductId: product.id,
   });
   const initialHasMore = relatedProductsRaw.length > INITIAL_TAKE;
-  const relatedProducts = relatedProductsRaw.slice(0, INITIAL_TAKE);
+  const relatedProducts = relatedProductsRaw.slice(0, INITIAL_TAKE).map((p) => ({
+    ...p,
+    salePrice: p.salePrice.toString(),
+  }));
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
   const displayPrices = getStorefrontDisplayPrices(product.salePrice);

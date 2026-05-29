@@ -7,9 +7,25 @@ type CarModel = { id: string; name: string };
 type CarBrand = { id: string; name: string; carModels: CarModel[] };
 type Category = { id: string; name: string };
 
+export type ControlledFilters = {
+  q: string;
+  brand: string;
+  models: string[];
+  category: string;
+  page: string;
+};
+
 interface Props {
   brands: CarBrand[];
   categories: Category[];
+  /** When provided, FilterBar operates in controlled mode (no router.push) */
+  controlledFilters?: ControlledFilters;
+  /** Called when user changes a filter — receives a record of changed keys */
+  onNavigate?: (updates: Record<string, string | string[]>) => void;
+  /** Called when user clicks "ล้างทั้งหมด" — only relevant in controlled mode */
+  onClearAll?: () => void;
+  /** External pending state (overrides internal useTransition state) */
+  isPending?: boolean;
 }
 
 const FILTER_ICON = (
@@ -51,16 +67,35 @@ const sectionLabelClass = "text-[10px] font-semibold uppercase tracking-[0.16em]
 const listRowClass =
   "group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm leading-5 transition";
 
-const ProductFilterBar = ({ brands, categories }: Props) => {
+const ProductFilterBar = ({
+  brands,
+  categories,
+  controlledFilters,
+  onNavigate,
+  onClearAll,
+  isPending: externalPending,
+}: Props) => {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [internalPending, startTransition] = useTransition();
+  const isControlled = controlledFilters !== undefined;
+  const isPending = externalPending ?? internalPending;
 
-  const q = searchParams.get("q") ?? "";
-  const brand = searchParams.get("brand") ?? "";
-  const selectedModels = searchParams.getAll("model").filter(Boolean);
-  const category = searchParams.get("category") ?? "";
-  const page = searchParams.get("page") ?? "";
+  const q = isControlled
+    ? controlledFilters.q
+    : (searchParams.get("q") ?? "");
+  const brand = isControlled
+    ? controlledFilters.brand
+    : (searchParams.get("brand") ?? "");
+  const selectedModels = isControlled
+    ? controlledFilters.models
+    : searchParams.getAll("model").filter(Boolean);
+  const category = isControlled
+    ? controlledFilters.category
+    : (searchParams.get("category") ?? "");
+  const page = isControlled
+    ? controlledFilters.page
+    : (searchParams.get("page") ?? "");
 
   const hasCarFilter = Boolean(brand || selectedModels.length > 0);
   const hasAnyFilter = Boolean(hasCarFilter || category);
@@ -91,6 +126,11 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   }, [hasAnyFilter]);
 
   const navigate = (updates: Record<string, string | string[]>) => {
+    if (isControlled && onNavigate) {
+      onNavigate(updates);
+      return;
+    }
+
     const params = new URLSearchParams(searchParams.toString());
 
     for (const [key, value] of Object.entries(updates)) {
@@ -109,6 +149,11 @@ const ProductFilterBar = ({ brands, categories }: Props) => {
   };
 
   const clearAll = () => {
+    if (isControlled && onClearAll) {
+      onClearAll();
+      return;
+    }
+
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     const query = params.toString();
