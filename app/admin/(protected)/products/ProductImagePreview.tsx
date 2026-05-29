@@ -13,6 +13,8 @@ interface Props {
   imageUrl?: string | null;
   images?: { url: string; alt: string | null }[];
   alt: string;
+  /** Thumbnail size — "sm" (40px, default for list tables) or "lg" (160px, for detail/preview pages). */
+  size?: "sm" | "lg";
 }
 
 const SWIPE_THRESHOLD_PX = 60;
@@ -36,9 +38,10 @@ function buildImageList(
   return [{ url: imageUrl, alt: fallbackAlt }, ...extra];
 }
 
-const ProductImagePreview = ({ imageUrl, images, alt }: Props) => {
+const ProductImagePreview = ({ imageUrl, images, alt, size = "sm" }: Props) => {
   const galleryImages = buildImageList(imageUrl, images, alt);
   const hasMultiple = galleryImages.length > 1;
+  const isLarge = size === "lg";
 
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -132,7 +135,11 @@ const ProductImagePreview = ({ imageUrl, images, alt }: Props) => {
 
   if (galleryImages.length === 0) {
     return (
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-white/5">
+      <div
+        className={`flex items-center justify-center rounded-lg bg-gray-100 dark:bg-white/5 ${
+          isLarge ? "h-40 w-40" : "h-10 w-10"
+        }`}
+      >
         <span className="text-xs text-gray-300 dark:text-slate-600">ไม่มี</span>
       </div>
     );
@@ -140,17 +147,29 @@ const ProductImagePreview = ({ imageUrl, images, alt }: Props) => {
 
   return (
     <>
-      {/* thumbnail ในตาราง */}
+      {/* thumbnail */}
       <button
         type="button"
         onClick={() => openAt(0)}
-        className="relative h-10 w-10 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-gray-100 transition-all hover:ring-2 hover:ring-[#1e3a5f] dark:border-white/10 dark:hover:ring-sky-400"
+        className={`relative flex-shrink-0 cursor-zoom-in overflow-hidden border border-gray-100 transition-all hover:ring-2 hover:ring-[#1e3a5f] dark:border-white/10 dark:hover:ring-sky-400 ${
+          isLarge ? "h-40 w-40 rounded-xl bg-gray-50 dark:bg-slate-800" : "h-10 w-10 rounded-lg"
+        }`}
         aria-label={`ดูรูป ${alt}`}
       >
-        <Image src={thumbSrc!} alt={alt} fill className="object-cover" sizes="40px" />
+        <Image
+          src={thumbSrc!}
+          alt={alt}
+          fill
+          className={isLarge ? "object-contain p-2" : "object-cover"}
+          sizes={isLarge ? "160px" : "40px"}
+        />
         {/* badge จำนวนรูป */}
         {hasMultiple && (
-          <span className="absolute bottom-0 right-0 flex h-4 min-w-[16px] items-center justify-center rounded-tl-md bg-black/60 px-0.5 text-[9px] font-bold leading-none text-white">
+          <span
+            className={`absolute bottom-0 right-0 flex items-center justify-center rounded-tl-md bg-black/60 font-bold leading-none text-white ${
+              isLarge ? "h-6 min-w-[24px] px-1.5 text-xs" : "h-4 min-w-[16px] px-0.5 text-[9px]"
+            }`}
+          >
             {galleryImages.length}
           </span>
         )}

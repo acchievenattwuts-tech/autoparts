@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/require-auth";
 import { auth } from "@/auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Pencil, Package, Tag, MapPin, ShieldCheck, Layers, BarChart2 } from "lucide-react";
+import { ChevronLeft, Pencil, Package, Tag, MapPin, ShieldCheck, Layers, BarChart2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import ProductImagePreview from "@/app/admin/(protected)/products/ProductImagePreview";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
@@ -63,8 +63,8 @@ const ProductPreviewPage = async ({ params }: Props) => {
       },
       aliases: { select: { alias: true } },
       carModels: {
-        where: { fitmentType: "DIRECT" },
         select: {
+          fitmentType: true,
           yearStart: true,
           yearEnd: true,
           carModel: {
@@ -74,7 +74,7 @@ const ProductPreviewPage = async ({ params }: Props) => {
             },
           },
         },
-        orderBy: [{ carModelId: "asc" }, { yearStart: "asc" }],
+        orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
       },
     },
   });
@@ -82,7 +82,10 @@ const ProductPreviewPage = async ({ params }: Props) => {
   if (!product) notFound();
 
   const hasImage = !!product.imageUrl || product.images.length > 0;
-  const fitmentSummary = buildAdminProductFitmentSummary(product.carModels);
+  const directFitments = product.carModels.filter((f) => f.fitmentType === "DIRECT");
+  const compatibleFitments = product.carModels.filter((f) => f.fitmentType === "COMPATIBLE");
+  const directSummary = buildAdminProductFitmentSummary(directFitments);
+  const compatibleSummary = buildAdminProductFitmentSummary(compatibleFitments);
 
   const stockNum = Number(product.stock);
   const minNum = Number(product.minStock);
@@ -120,12 +123,13 @@ const ProductPreviewPage = async ({ params }: Props) => {
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900">
         <div className="flex flex-col gap-6 sm:flex-row">
           {/* Image — clickable gallery (same logic as list page) */}
-          <div className="flex-shrink-0 [&_button]:!h-40 [&_button]:!w-40 [&_button]:!rounded-xl">
+          <div className="flex-shrink-0">
             {hasImage ? (
               <ProductImagePreview
                 imageUrl={product.imageUrl}
                 images={product.images}
                 alt={product.name}
+                size="lg"
               />
             ) : (
               <div className="flex h-40 w-40 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 dark:border-white/10 dark:bg-slate-800">
@@ -289,22 +293,51 @@ const ProductPreviewPage = async ({ params }: Props) => {
         </div>
       )}
 
-      {/* Fitment */}
-      {fitmentSummary.lines.length > 0 && (
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
-          <SectionTitle title="รุ่นรถที่รองรับ" />
-          <ul className="mt-3 space-y-1">
-            {fitmentSummary.lines.map((line) => (
-              <li key={line} className="text-sm text-gray-700 dark:text-slate-300">
-                {line}
-              </li>
-            ))}
-            {fitmentSummary.hiddenCount > 0 && (
-              <li className="text-xs text-gray-400 dark:text-slate-500">
-                และอีก {fitmentSummary.hiddenCount} รุ่น
-              </li>
-            )}
-          </ul>
+      {/* Fitment — DIRECT (left) + COMPATIBLE (right) */}
+      {(directSummary.lines.length > 0 || compatibleSummary.lines.length > 0) && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* DIRECT — รุ่นรถที่รองรับ */}
+          {directSummary.lines.length > 0 && (
+            <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 size={15} />
+                รุ่นรถที่รองรับ
+                <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  {directSummary.lines.length}
+                </span>
+              </h2>
+              <ul className="mt-3 space-y-1">
+                {directSummary.lines.map((line) => (
+                  <li key={line} className="text-sm text-gray-700 dark:text-slate-300">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* COMPATIBLE — อาจใช้ร่วมกันได้บางรุ่น */}
+          {compatibleSummary.lines.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 dark:text-amber-200">
+                <AlertTriangle size={15} />
+                อาจใช้ร่วมกันได้บางรุ่น
+                <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
+                  {compatibleSummary.lines.length}
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-200/80">
+                ต้องเทียบอะไหล่เดิมก่อนสั่งซื้อทุกครั้ง
+              </p>
+              <ul className="mt-3 space-y-1">
+                {compatibleSummary.lines.map((line) => (
+                  <li key={line} className="text-sm text-amber-900 dark:text-amber-100">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
