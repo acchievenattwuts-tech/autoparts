@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
@@ -45,9 +46,18 @@ interface Props {
   };
   filterData: FilterData;
   lineUrl: string;
+  /** Base path for URL updates via router.replace. Defaults to /products */
+  basePath?: string;
+  /**
+   * Unique value generated server-side on every render (Date.now()).
+   * AJAX filter changes call router.replace → background server re-render → new nonce,
+   * but isAjaxUpdateRef skips the state reset. Only external navigations (nav links,
+   * browser back) bypass the flag and trigger a full state reset.
+   */
+  renderNonce: number;
 }
 
-const buildSearchUrl = (f: FiltersState): string => {
+const buildSearchUrl = (f: FiltersState, basePath: string): string => {
   const params = new URLSearchParams();
   if (f.q) params.set("q", f.q);
   if (f.category) params.set("category", f.category);
@@ -56,7 +66,7 @@ const buildSearchUrl = (f: FiltersState): string => {
   if (f.year) params.set("year", String(f.year));
   if (f.page > 1) params.set("page", String(f.page));
   const query = params.toString();
-  return query ? `/products/search?${query}` : "/products/search";
+  return query ? `${basePath}?${query}` : basePath;
 };
 
 const SearchResults = ({
@@ -67,6 +77,8 @@ const SearchResults = ({
   initialMeta,
   filterData,
   lineUrl,
+  basePath = "/products",
+  renderNonce,
 }: Props) => {
   const [products, setProducts] = useState<SearchProductItem[]>(initialProducts);
   const [total, setTotal] = useState(initialTotal);
@@ -76,7 +88,31 @@ const SearchResults = ({
   const [isPending, startTransition] = useTransition();
   const [animKey, setAnimKey] = useState(0);
   const gridSectionRef = useRef<HTMLDivElement>(null);
-  const skipNextScrollRef = useRef(true); // skip scroll on first mount
+  const skipNextScrollRef = useRef(true);
+  const prevNonceRef = useRef(renderNonce);
+  // true while a server re-render is triggered by our own AJAX filter (not user nav)
+  const isAjaxUpdateRef = useRef(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (prevNonceRef.current === renderNonce) return;
+    prevNonceRef.current = renderNonce;
+
+    if (isAjaxUpdateRef.current) {
+      // Background server re-render from our own router.replace — skip state reset
+      isAjaxUpdateRef.current = false;
+      return;
+    }
+
+    // External navigation (nav link, browser back/forward) — reset to server state
+    setProducts(initialProducts);
+    setTotal(initialTotal);
+    setDidYouMean(initialDidYouMean);
+    setFilters(initialFilters);
+    setMeta(initialMeta);
+    setAnimKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderNonce]);
 
   const applyFilters = (next: FiltersState, scrollIntoView: boolean) => {
     const input: SearchFilterInput = {
@@ -87,6 +123,13 @@ const SearchResults = ({
       year: next.year,
       page: next.page,
     };
+
+    // Sync Next.js router so nav links (e.g. "สินค้า" → /products) work on first click.
+    // router.replace triggers a background server re-render; isAjaxUpdateRef prevents
+    // the resulting renderNonce change from resetting our AJAX-driven state.
+    const url = buildSearchUrl(next, basePath);
+    isAjaxUpdateRef.current = true;
+    router.replace(url, { scroll: false });
 
     startTransition(async () => {
       const result = await searchProductsAction(input);
@@ -101,9 +144,6 @@ const SearchResults = ({
       });
       setFilters(next);
       setAnimKey((k) => k + 1);
-
-      const url = buildSearchUrl(next);
-      window.history.replaceState(null, "", url);
 
       if (scrollIntoView && gridSectionRef.current) {
         gridSectionRef.current.scrollIntoView({
@@ -304,7 +344,7 @@ const SearchResults = ({
                       currentPage={filters.page}
                       totalPages={meta.totalPages}
                       buildHref={(page) =>
-                        buildSearchUrl({ ...filters, page })
+                        buildSearchUrl({ ...filters, page }, basePath)
                       }
                       onNavigate={handlePageChange}
                       isPending={isPending}
