@@ -97,11 +97,57 @@ export const getRelatedStorefrontProductsByCategory = async ({
           },
         },
         orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
-        take: 4,
+        take: 9,
       }),
     [`storefront-related-products:${categoryId}:${currentProductId}`],
     { tags: ["storefront:products", `storefront-product:${currentProductId}`] },
   )();
+};
+
+const RELATED_SELECT = {
+  id: true,
+  slug: true,
+  name: true,
+  code: true,
+  imageUrl: true,
+  salePrice: true,
+  stock: true,
+  reportUnitName: true,
+  category: { select: { id: true, name: true, slug: true } },
+  brand: { select: { name: true } },
+  carModels: {
+    select: {
+      yearStart: true,
+      yearEnd: true,
+      carModel: {
+        select: {
+          name: true,
+          carBrand: { select: { name: true } },
+        },
+      },
+    },
+    take: 6,
+  },
+} as const;
+
+export const getRelatedStorefrontProductsPaginated = async ({
+  categoryId,
+  currentProductId,
+  skip,
+  take,
+}: {
+  categoryId: string;
+  currentProductId: string;
+  skip: number;
+  take: number;
+}) => {
+  return db.product.findMany({
+    where: { isActive: true, categoryId, id: { not: currentProductId } },
+    select: RELATED_SELECT,
+    orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
+    skip,
+    take,
+  });
 };
 
 export const buildStorefrontProductDescription = (product: {

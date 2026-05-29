@@ -79,10 +79,10 @@ const Home = async () => {
           />
         </ScrollReveal>
         <ScrollReveal delay={80}>
-          <ProductCategories categories={categories} lineUrl={config.shopLineUrl} />
+          <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
         </ScrollReveal>
         <ScrollReveal delay={120}>
-          <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
+          <ProductCategories categories={categories} lineUrl={config.shopLineUrl} />
         </ScrollReveal>
         <ScrollReveal delay={160}>
           <SeoIntentSection />

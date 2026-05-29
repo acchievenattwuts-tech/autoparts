@@ -14,9 +14,9 @@ import {
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
-import ProductCard from "@/components/shared/ProductCard";
 import ProductImageGallery from "@/components/shared/ProductImageGallery";
 import ScrollReveal from "@/components/shared/ScrollReveal";
+import RelatedProductsSection from "./RelatedProductsSection";
 import ProductPageViewReporter from "@/components/analytics/ProductPageViewReporter";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
@@ -106,10 +106,13 @@ const ProductDetailPage = async ({ params }: Props) => {
     permanentRedirect(canonicalPath);
   }
 
-  const relatedProducts = await getRelatedStorefrontProductsByCategory({
+  const INITIAL_TAKE = 8;
+  const relatedProductsRaw = await getRelatedStorefrontProductsByCategory({
     categoryId: product.categoryId,
     currentProductId: product.id,
   });
+  const initialHasMore = relatedProductsRaw.length > INITIAL_TAKE;
+  const relatedProducts = relatedProductsRaw.slice(0, INITIAL_TAKE);
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
   const displayPrices = getStorefrontDisplayPrices(product.salePrice);
@@ -409,26 +412,13 @@ const ProductDetailPage = async ({ params }: Props) => {
         </section>
 
         {relatedProducts.length > 0 && (
-          <section className="mx-auto max-w-7xl px-4 pb-6 sm:px-6 lg:px-8">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <h2 className="font-kanit text-xl font-semibold text-[#10213d]">
-                สินค้าใกล้เคียงในหมวดเดียวกัน
-              </h2>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                ถ้ายังต้องการเทียบหลายตัวก่อนสั่ง ลองเปิดดูสินค้าอื่นในหมวดเดียวกันแล้วส่งลิงก์หรือรหัสที่สงสัยให้ร้านช่วยเช็กต่อได้
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {relatedProducts.map((relatedProduct, index) => (
-                  <ScrollReveal key={relatedProduct.id} delay={index * 50} className="h-full">
-                    <ProductCard
-                      product={relatedProduct}
-                      lineUrl={config.shopLineUrl}
-                    />
-                  </ScrollReveal>
-                ))}
-              </div>
-            </div>
-          </section>
+          <RelatedProductsSection
+            initialProducts={relatedProducts}
+            initialHasMore={initialHasMore}
+            categoryId={product.categoryId}
+            currentProductId={product.id}
+            lineUrl={config.shopLineUrl}
+          />
         )}
 
         {product.aliases.length > 0 && (
