@@ -2,6 +2,11 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
+import {
+  getProductSearchCacheTtl,
+  PRODUCT_SEARCH_TAG,
+  type ProductSearchCacheProfile,
+} from "@/lib/product-search-cache";
 import { expandQueryTokens } from "@/lib/search-synonyms";
 import { normalizeSearchText } from "@/lib/search-normalization";
 
@@ -28,6 +33,7 @@ type ProductSearchInput = {
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
+  cacheProfile?: ProductSearchCacheProfile;
 };
 
 /** Phase Q5 — Match reasons per product (chip labels in UI). */
@@ -713,6 +719,7 @@ const buildMatchReasons = (rows: RankedSearchRow[]): Record<string, ProductMatch
 export async function searchProductIds(
   input: ProductSearchInput,
 ): Promise<ProductSearchResult> {
+  const cacheProfile = input.cacheProfile ?? "storefront";
   const cacheKey = JSON.stringify({
     query: normalizeSearchQuery(input.query) ?? "",
     isActive: input.isActive ?? null,
@@ -727,6 +734,7 @@ export async function searchProductIds(
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",
+    cacheProfile,
   });
 
   return unstable_cache(
@@ -745,7 +753,10 @@ export async function searchProductIds(
       }
     },
     [`product-search:${cacheKey}`],
-    { tags: ["product-search"], revalidate: 300 },
+    {
+      tags: [PRODUCT_SEARCH_TAG],
+      revalidate: getProductSearchCacheTtl(cacheProfile),
+    },
   )();
 }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
   diffEntity,
@@ -20,6 +20,7 @@ import {
 } from "@/lib/inventory-tracking";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
+import { updateProductSearchCache } from "@/lib/product-search-cache";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -95,7 +96,11 @@ type ProductInput = z.infer<typeof productSchema>;
 
 const revalidateStorefrontProductCaches = async (productId?: string) => {
   revalidatePath("/admin/products");
-  await revalidateStorefrontCaches(productId);
+  updateProductSearchCache();
+  if (productId) {
+    updateTag(`storefront-product:${productId}`);
+  }
+  await revalidateStorefrontCaches();
 };
 
 async function getProductAuditSnapshot(productId: string) {

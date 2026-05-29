@@ -2,6 +2,10 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 import {
+  PRODUCT_SEARCH_TAG,
+  STOREFRONT_PRODUCT_SEARCH_CACHE_TTL_SECONDS,
+} from "@/lib/product-search-cache";
+import {
   searchProductIds,
   sortProductsByIds,
   suggestDidYouMean,
@@ -142,6 +146,7 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
       skip,
       take: STOREFRONT_PRODUCTS_PER_PAGE,
       order: "createdAtDesc",
+      cacheProfile: "storefront",
     });
 
     const products = await db.product.findMany({
@@ -176,7 +181,10 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
     };
   },
   ["storefront-product-search-page-data"],
-  { tags: ["storefront:products", "product-search"], revalidate: 300 },
+  {
+    tags: ["storefront:products", PRODUCT_SEARCH_TAG],
+    revalidate: STOREFRONT_PRODUCT_SEARCH_CACHE_TTL_SECONDS,
+  },
 );
 
 export async function getStorefrontProductSearchPageData(

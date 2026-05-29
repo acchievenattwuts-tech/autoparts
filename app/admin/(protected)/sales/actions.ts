@@ -75,6 +75,7 @@ export async function searchSaleProducts(query: string) {
     query: normalizedQuery,
     isActive: true,
     take: 20,
+    cacheProfile: "admin",
   });
   if (searchResult.ids.length === 0) return [];
 

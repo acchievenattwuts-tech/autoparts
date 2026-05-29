@@ -10,6 +10,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
+import { updateProductSearchCache } from "@/lib/product-search-cache";
 import {
   categoryVisualInputSchema,
   saveCategoryVisualSetting,
@@ -33,7 +34,7 @@ const refreshCategorySearchCaches = async ({
   updateTag("storefront:categories");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
-  updateTag("product-search");
+  updateProductSearchCache();
 
   revalidatePath("/");
   revalidatePath("/products");

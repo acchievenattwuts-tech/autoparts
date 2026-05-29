@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { revalidateProductSearchCache } from "@/lib/product-search-cache";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
 const getRouteSecret = (): string => {
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   await revalidateStorefrontCaches(body.categoryId);
+  revalidateProductSearchCache();
 
   return NextResponse.json({
     ok: true,

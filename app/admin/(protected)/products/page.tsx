@@ -87,6 +87,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     skip: (pageNum - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
     order: "codeDesc" as const,
+    cacheProfile: "admin" as const,
   };
 
   const [searchResult, categories, partsBrands, carBrands] = await Promise.all([

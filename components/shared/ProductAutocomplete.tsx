@@ -107,7 +107,7 @@ const ProductAutocomplete = ({
       setLoading(true);
       try {
         const res = await fetch(
-          `/api/search/products/autocomplete?q=${encodeURIComponent(value.trim())}`,
+          `/api/search/products/autocomplete?q=${encodeURIComponent(value.trim())}&mode=${mode}`,
           { signal: controller.signal },
         );
         if (!res.ok) throw new Error(`status ${res.status}`);
@@ -129,7 +129,7 @@ const ProductAutocomplete = ({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [value, modalOpen, hasInlineFocus]);
+  }, [value, modalOpen, hasInlineFocus, mode]);
 
   // Close on outside click (skip when modal is open — modal has its own handlers)
   useEffect(() => {

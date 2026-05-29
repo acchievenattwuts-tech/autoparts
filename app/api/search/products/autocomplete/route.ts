@@ -9,6 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
+import type { ProductSearchCacheProfile } from "@/lib/product-search-cache";
 import { searchProductIds } from "@/lib/product-search";
 import { db } from "@/lib/db";
 import { getProductPath } from "@/lib/product-slug";
@@ -55,6 +56,8 @@ export const GET = async (request: Request): Promise<NextResponse> => {
   try {
     const url = new URL(request.url);
     const query = normalize(url.searchParams.get("q"));
+    const cacheProfile: ProductSearchCacheProfile =
+      url.searchParams.get("mode") === "admin" ? "admin" : "storefront";
 
     if (query.length < MIN_QUERY_LENGTH) {
       return NextResponse.json({ items: [] });
@@ -77,6 +80,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       isActive: true,
       take: TAKE,
       order: "createdAtDesc",
+      cacheProfile,
     });
 
     if (result.ids.length === 0) {

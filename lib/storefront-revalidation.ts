@@ -4,7 +4,6 @@ const STOREFRONT_TAGS = [
   "storefront:categories",
   "storefront:products",
   "storefront-product-filters",
-  "product-search",
 ] as const;
 
 const STOREFRONT_PATHS = ["/", "/products", "/sitemap.xml"] as const;

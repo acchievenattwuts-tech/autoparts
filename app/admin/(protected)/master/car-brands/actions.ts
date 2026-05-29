@@ -8,6 +8,7 @@ import {
 } from "@/lib/audit-log";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
+import { updateProductSearchCache } from "@/lib/product-search-cache";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
@@ -28,7 +29,7 @@ const refreshCarSearchCaches = async (filters?: {
   revalidatePath("/products");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
-  updateTag("product-search");
+  updateProductSearchCache();
 
   if (!filters?.carBrandId && !filters?.carModelId) {
     return;
