@@ -3,15 +3,24 @@ import { AlertCircle, CheckCircle2, ChevronRight, Landmark, Truck } from "lucide
 
 import CopyPaymentValueButton from "@/components/liff/CopyPaymentValueButton";
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import { db } from "@/lib/db";
 import { addDays, formatLiffMoney, isBeforeToday } from "@/lib/liff-format";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { getPrimaryTransferAccount } from "@/lib/payment-qr";
 import { SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai } from "@/lib/th-date";
 
 export default async function LiffOutstandingPage() {
-  const customer = await requireLiffCustomer();
+  const customer = await getLiffCustomer();
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูยอดค้างชำระ"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อตรวจสอบยอดและช่องทางชำระเงิน"
+      />
+    );
+  }
   const [sales, transferAccount] = await Promise.all([
     db.sale.findMany({
       where: {

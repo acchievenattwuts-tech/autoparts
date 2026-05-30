@@ -2,10 +2,11 @@ import Link from "next/link";
 import { ChevronRight, ShieldAlert } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
 import { type Prisma } from "@/lib/generated/prisma";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 import {
   CLAIM_TYPE_LABEL,
@@ -30,7 +31,15 @@ export default async function LiffClaimsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const customer = await requireLiffCustomer();
+  const customer = await getLiffCustomer();
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูประวัติการเคลม"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูสถานะและประวัติการเคลมสินค้า"
+      />
+    );
+  }
   const statusFilter = normalizeClaimStatusFilter((await searchParams).status);
   const baseClaimWhere: Prisma.WarrantyClaimWhereInput = {
     status: { not: "CANCELLED" },

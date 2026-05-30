@@ -3,11 +3,12 @@ import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 import { getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { addThailandDays } from "@/lib/th-date";
@@ -49,7 +50,15 @@ export default async function LiffOrderInvoicePage({
     }),
   ]);
   const tokenAccess = verifyLiffPrintDocumentToken({ token: printToken, kind: "invoice", saleId: id });
-  const liffCustomer = tokenAccess ? null : await requireLiffCustomer();
+  const liffCustomer = tokenAccess ? null : await getLiffCustomer();
+  if (!tokenAccess && !liffCustomer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูใบแจ้งหนี้"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อเปิดเอกสารใบแจ้งหนี้"
+      />
+    );
+  }
   const customerId = tokenAccess?.customerId ?? liffCustomer!.id;
 
   const sale = await db.sale.findFirst({

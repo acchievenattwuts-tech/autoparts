@@ -50,7 +50,8 @@ const LiffContext = createContext<LiffContextValue | null>(null);
 const isExternalPrintRequest = () =>
   typeof window !== "undefined" && new URLSearchParams(window.location.search).has("printToken");
 
-const canRenderLinkFormInPlace = (path: string) => path === "/liff/orders";
+const canRenderLinkFormInPlace = (path: string) =>
+  path.startsWith("/liff/") && path !== "/liff/link";
 
 function completeLiffSessionNavigation(sessionToken: string) {
   const form = document.createElement("form");

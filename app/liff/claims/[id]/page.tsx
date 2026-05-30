@@ -2,8 +2,9 @@ import Link from "next/link";
 import { CheckCircle2, ChevronLeft, Circle } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import { db } from "@/lib/db";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 import {
   CLAIM_TYPE_LABEL,
@@ -17,7 +18,15 @@ export default async function LiffClaimDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, customer] = await Promise.all([params, requireLiffCustomer()]);
+  const [{ id }, customer] = await Promise.all([params, getLiffCustomer()]);
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูรายละเอียดเคลม"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูสถานะการเคลมสินค้า"
+      />
+    );
+  }
   const claim = await db.warrantyClaim.findFirst({
     where: {
       id,

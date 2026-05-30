@@ -2,11 +2,12 @@ import Link from "next/link";
 import { BadgeDollarSign, ChevronLeft, FileText, Package, ReceiptText, Truck } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import OrderStatusTimeline from "@/components/liff/OrderStatusTimeline";
 import TrackingSmartLink from "@/components/liff/TrackingSmartLink";
 import { db } from "@/lib/db";
 import { isTrackingExpired } from "@/lib/delivery-tracking";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 import InlineDeliveryTracker from "./InlineDeliveryTracker";
 import PaymentHistory from "./PaymentHistory";
@@ -30,7 +31,15 @@ export default async function LiffOrderDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, customer] = await Promise.all([params, requireLiffCustomer()]);
+  const [{ id }, customer] = await Promise.all([params, getLiffCustomer()]);
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูรายละเอียดบิล"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูรายการสินค้าและสถานะบิล"
+      />
+    );
+  }
   const [order, activeReceipt] = await Promise.all([
     db.sale.findFirst({
       where: {

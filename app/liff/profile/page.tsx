@@ -1,11 +1,20 @@
 import { CalendarCheck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
 
 export default async function LiffProfilePage() {
-  const customer = await requireLiffCustomer();
+  const customer = await getLiffCustomer();
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูข้อมูลส่วนตัว"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูข้อมูลลูกค้าของคุณ"
+      />
+    );
+  }
   const missing = [
     !customer.shippingAddress ? "ที่อยู่จัดส่ง" : null,
     !customer.taxId ? "เลขผู้เสียภาษี" : null,

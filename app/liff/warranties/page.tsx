@@ -2,10 +2,11 @@ import Link from "next/link";
 import { ChevronRight, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import LiffBottomNav from "@/components/liff/LiffBottomNav";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
 import { type Prisma } from "@/lib/generated/prisma";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai, getThailandDateKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 const warrantyStatusTabs = [
@@ -25,7 +26,15 @@ export default async function LiffWarrantiesPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
-  const customer = await requireLiffCustomer();
+  const customer = await getLiffCustomer();
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูประวัติประกัน"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูประกันสินค้าที่คุณซื้อ"
+      />
+    );
+  }
   const statusFilter = normalizeWarrantyStatusFilter((await searchParams).status);
   const today = parseDateOnlyToStartOfDay(getThailandDateKey());
   const baseWarrantyWhere: Prisma.WarrantyWhereInput = {

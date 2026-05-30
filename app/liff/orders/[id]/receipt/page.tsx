@@ -4,11 +4,12 @@ import { notFound } from "next/navigation";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 import { getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
 import { db } from "@/lib/db";
 import { AuditAction, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { addThailandDays } from "@/lib/th-date";
@@ -50,7 +51,15 @@ export default async function LiffOrderReceiptPage({
     }),
   ]);
   const tokenAccess = verifyLiffPrintDocumentToken({ token: printToken, kind: "receipt", saleId: id, receiptId });
-  const liffCustomer = tokenAccess ? null : await requireLiffCustomer();
+  const liffCustomer = tokenAccess ? null : await getLiffCustomer();
+  if (!tokenAccess && !liffCustomer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูใบเสร็จ"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อเปิดเอกสารใบเสร็จ"
+      />
+    );
+  }
   const customerId = tokenAccess?.customerId ?? liffCustomer!.id;
 
   const sale = await db.sale.findFirst({

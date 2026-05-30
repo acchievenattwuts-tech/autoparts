@@ -2,8 +2,9 @@ import Link from "next/link";
 import { ChevronLeft, ShieldCheck } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import { db } from "@/lib/db";
-import { requireLiffCustomer } from "@/lib/liff-data";
+import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai, getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getCustomerClaimStatusBadgeClass,
@@ -15,7 +16,15 @@ export default async function LiffWarrantyDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const [{ id }, customer] = await Promise.all([params, requireLiffCustomer()]);
+  const [{ id }, customer] = await Promise.all([params, getLiffCustomer()]);
+  if (!customer) {
+    return (
+      <LiffLinkRequired
+        title="ผูกเบอร์เพื่อดูประวัติประกัน"
+        description="กรุณาผูกบัญชี LINE กับเบอร์โทรที่ลงทะเบียนไว้กับร้าน เพื่อดูรายละเอียดประกันสินค้า"
+      />
+    );
+  }
   const warranty = await db.warranty.findFirst({
     where: {
       id,
