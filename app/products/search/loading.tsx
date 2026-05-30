@@ -8,7 +8,7 @@ const Loading = () => (
     </div>
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col gap-6 lg:flex-row">
-        <aside className="w-full shrink-0 lg:w-72">
+        <aside className="hidden shrink-0 lg:block lg:w-72">
           <div className="space-y-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-10 w-full bg-gray-200 rounded-xl animate-pulse" />
@@ -16,7 +16,7 @@ const Loading = () => (
           </div>
         </aside>
         <div className="min-w-0 flex-1">
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
             {[...Array(9)].map((_, i) => (
               <div
                 key={i}

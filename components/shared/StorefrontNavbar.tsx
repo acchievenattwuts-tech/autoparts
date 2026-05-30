@@ -99,8 +99,6 @@ const StorefrontNavbar = async ({
 
             <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="mobile" />
 
-            <StorefrontFilterTrigger filterData={filterData} />
-
             <nav className="hidden items-center gap-5 md:flex">
               {navLinks.map((link) => (
                 <Link
@@ -135,6 +133,10 @@ const StorefrontNavbar = async ({
                 LINE
               </a>
             </div>
+
+            {/* Filter trigger on tablet (md–lg): sits right of CTA, left of hamburger.
+                On mobile it sits between search and hamburger. lg+ = sidebar used. */}
+            <StorefrontFilterTrigger filterData={filterData} />
 
             <details className="group md:hidden">
               <summary
