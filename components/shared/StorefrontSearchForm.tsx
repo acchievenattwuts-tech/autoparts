@@ -32,8 +32,11 @@ const StorefrontSearchForm = ({ initialValue, variant }: Props) => {
       ? "rounded-full border-2 border-gray-200 bg-white py-2 shadow-sm transition-colors hover:border-[#1e3a5f]/40 focus:border-[#1e3a5f] dark:border-white/10"
       : "rounded-xl border-2 border-gray-200 bg-white py-2 shadow-sm transition-colors focus:border-[#1e3a5f] dark:border-white/10";
 
+  // Breakpoint: lg (1024px). iPad (≤ 1023px) uses the mobile variant — a readonly
+  // input that opens a fullscreen modal — so the inline dropdown blur/click bug
+  // does not affect tablets and the UX matches mobile.
   return (
-    <div className={variant === "desktop" ? "hidden flex-1 md:flex md:justify-center" : "flex min-w-0 flex-1 md:hidden"}>
+    <div className={variant === "desktop" ? "hidden flex-1 lg:flex lg:justify-center" : "flex min-w-0 flex-1 lg:hidden"}>
       <ProductAutocomplete
         initialValue={initialValue}
         placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
