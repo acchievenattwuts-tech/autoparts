@@ -116,7 +116,7 @@ const StorefrontFilterTrigger = ({ filterData }: Props) => {
       <button
         type="button"
         onClick={handleClick}
-        className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#1e3a5f] shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:ring-[#1e3a5f]/30 md:hidden"
+        className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#1e3a5f] shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:ring-[#1e3a5f]/30 lg:hidden"
         aria-label="ตัวกรองสินค้า"
       >
         {FILTER_ICON}

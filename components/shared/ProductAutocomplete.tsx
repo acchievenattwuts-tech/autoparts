@@ -272,6 +272,12 @@ const ProductAutocomplete = ({
                     <li key={item.id} role="option" aria-selected={idx === activeIndex}>
                       <button
                         type="button"
+                        // Safari does not focus <button> on click → wrapper's
+                        // onBlurCapture fires with relatedTarget=null and closes
+                        // the dropdown before onClick runs. preventDefault on
+                        // mousedown blocks the focus transition, keeping the
+                        // dropdown mounted long enough for onClick to fire.
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => navigateTo(item)}
                         onMouseEnter={() => !isNavigating && setActiveIndex(idx)}
                         disabled={isNavigating}
@@ -344,6 +350,8 @@ const ProductAutocomplete = ({
         {onSubmit && value.trim().length >= MIN_QUERY_LEN && (
           <button
             type="button"
+            // Same Safari blur-before-click guard as suggestion buttons above.
+            onMouseDown={(e) => e.preventDefault()}
             onClick={submitQuery}
             className="flex w-full items-center justify-center gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-[#1e3a5f] transition-colors hover:bg-gray-100 dark:border-white/10 dark:bg-slate-800/50 dark:text-sky-300 dark:hover:bg-slate-800"
           >
@@ -703,6 +711,12 @@ const ProductAutocomplete = ({
                     <li key={item.id} role="option" aria-selected={idx === activeIndex}>
                       <button
                         type="button"
+                        // Safari does not focus <button> on click → wrapper's
+                        // onBlurCapture fires with relatedTarget=null and closes
+                        // the dropdown before onClick runs. preventDefault on
+                        // mousedown blocks the focus transition, keeping the
+                        // dropdown mounted long enough for onClick to fire.
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => navigateTo(item)}
                         onMouseEnter={() => !isNavigating && setActiveIndex(idx)}
                         disabled={isNavigating}
