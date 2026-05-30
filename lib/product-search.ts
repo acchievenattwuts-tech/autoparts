@@ -30,10 +30,33 @@ type ProductSearchInput = {
   carModelNames?: string[] | null;
   /** Optional explicit fitment year filter (e.g. user selected from dropdown) */
   fitmentYear?: number | null;
+  /** Multi-select storefront filters (Phase Filter-UI) */
+  categoryNames?: string[] | null;
+  brandIds?: string[] | null;
+  carBrandNames?: string[] | null;
+  /** Fitment year range — products with a fitment row overlapping [yearMin, yearMax] match */
+  yearMin?: number | null;
+  yearMax?: number | null;
+  priceMin?: number | null;
+  priceMax?: number | null;
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
   cacheProfile?: ProductSearchCacheProfile;
+};
+
+const normalizeStringArray = (values?: string[] | null): string[] =>
+  Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+
+const normalizeYearBound = (value?: number | null): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value < 1900 || value > 2200) return null;
+  return Math.trunc(value);
+};
+
+const normalizePriceBound = (value?: number | null): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return value;
 };
 
 /** Phase Q5 — Match reasons per product (chip labels in UI). */
@@ -162,24 +185,46 @@ export const buildProductSearchWhere = (
   return buildContainsCondition(normalized);
 };
 
-const buildProductFilterWhere = ({
-  query,
-  isActive,
-  categoryName,
-  categoryId,
-  brandId,
-  carBrandId,
-  carModelId,
-  carBrandName,
-  carModelNames,
-  carModelName,
-}: Pick<
-  ProductSearchInput,
-  "query" | "isActive" | "categoryName" | "categoryId" | "brandId" | "carBrandId" | "carModelId" | "carBrandName" | "carModelName" | "carModelNames"
->): PrismaTypes.ProductWhereInput => {
+const buildProductFilterWhere = (
+  input: Pick<
+    ProductSearchInput,
+    | "query"
+    | "isActive"
+    | "categoryName"
+    | "categoryId"
+    | "brandId"
+    | "carBrandId"
+    | "carModelId"
+    | "carBrandName"
+    | "carModelName"
+    | "carModelNames"
+    | "categoryNames"
+    | "brandIds"
+    | "carBrandNames"
+    | "priceMin"
+    | "priceMax"
+  >,
+): PrismaTypes.ProductWhereInput => {
+  const {
+    query,
+    isActive,
+    categoryName,
+    categoryId,
+    brandId,
+    carBrandId,
+    carModelId,
+    carBrandName,
+    carModelNames,
+    carModelName,
+  } = input;
   const where: PrismaTypes.ProductWhereInput = {};
   const searchWhere = buildProductSearchWhere(query);
   const normalizedCarModelNames = normalizeCarModelNames({ carModelName, carModelNames });
+  const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
+  const normalizedBrandIds = normalizeStringArray(input.brandIds);
+  const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
+  const priceMin = normalizePriceBound(input.priceMin);
+  const priceMax = normalizePriceBound(input.priceMax);
 
   if (typeof isActive === "boolean") {
     where.isActive = isActive;
@@ -187,6 +232,8 @@ const buildProductFilterWhere = ({
 
   if (categoryName) {
     where.category = { name: categoryName };
+  } else if (normalizedCategoryNames.length > 0) {
+    where.category = { name: { in: normalizedCategoryNames } };
   }
 
   if (categoryId) {
@@ -195,7 +242,20 @@ const buildProductFilterWhere = ({
 
   if (brandId) {
     where.brandId = brandId;
+  } else if (normalizedBrandIds.length > 0) {
+    where.brandId = { in: normalizedBrandIds };
   }
+
+  if (priceMin !== null || priceMax !== null) {
+    const priceFilter: PrismaTypes.DecimalFilter = {};
+    if (priceMin !== null) priceFilter.gte = priceMin;
+    if (priceMax !== null) priceFilter.lte = priceMax;
+    where.salePrice = priceFilter;
+  }
+
+  const effectiveCarBrandNames = carBrandName
+    ? [carBrandName]
+    : normalizedCarBrandNames;
 
   if (carModelId) {
     where.carModels = { some: { carModelId } };
@@ -207,26 +267,24 @@ const buildProductFilterWhere = ({
         },
       },
     };
-  }
-
-  if (!carBrandId && !carModelId && carBrandName && normalizedCarModelNames.length > 0) {
+  } else if (effectiveCarBrandNames.length > 0 && normalizedCarModelNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
           name: { in: normalizedCarModelNames },
-          carBrand: { name: carBrandName },
+          carBrand: { name: { in: effectiveCarBrandNames } },
         },
       },
     };
-  } else if (!carBrandId && !carModelId && carBrandName) {
+  } else if (effectiveCarBrandNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
-          carBrand: { name: carBrandName },
+          carBrand: { name: { in: effectiveCarBrandNames } },
         },
       },
     };
-  } else if (!carBrandId && !carModelId && normalizedCarModelNames.length > 0) {
+  } else if (normalizedCarModelNames.length > 0) {
     where.carModels = {
       some: {
         carModel: {
@@ -247,29 +305,59 @@ const buildProductFilterWhere = ({
 
 /**
  * Build a year-aware filter for the Prisma fallback path.
- * Lenient (Q3=B): match fitment rows where year is in range OR all year fields are null.
+ * Supports both the legacy single-year API (`targetYear`) and the storefront range
+ * filter (`yearMin`/`yearMax`). A fitment row matches if its [yearStart,yearEnd]
+ * overlaps the requested range; lenient — NULL fitment bounds are treated as open.
  */
+const buildYearOrConditions = (
+  year: number,
+): PrismaTypes.ProductFitmentWhereInput[] => [
+  { yearStart: null, yearEnd: null },
+  { yearStart: null, yearEnd: { gte: year } },
+  { yearEnd: null, yearStart: { lte: year } },
+  {
+    AND: [
+      { yearStart: { lte: year } },
+      { yearEnd: { gte: year } },
+    ],
+  },
+];
+
+const buildYearRangeOverlap = (
+  yearMin: number | null,
+  yearMax: number | null,
+): PrismaTypes.ProductFitmentWhereInput => {
+  const ands: PrismaTypes.ProductFitmentWhereInput[] = [];
+  if (yearMax !== null) {
+    ands.push({ OR: [{ yearStart: null }, { yearStart: { lte: yearMax } }] });
+  }
+  if (yearMin !== null) {
+    ands.push({ OR: [{ yearEnd: null }, { yearEnd: { gte: yearMin } }] });
+  }
+  return ands.length === 1 ? ands[0] : { AND: ands };
+};
+
 const applyYearFilter = (
   where: PrismaTypes.ProductWhereInput,
   targetYear: number | null,
+  yearMin: number | null = null,
+  yearMax: number | null = null,
 ): PrismaTypes.ProductWhereInput => {
-  if (targetYear === null) return where;
+  const yearConditions: PrismaTypes.ProductFitmentWhereInput[] = [];
+
+  if (targetYear !== null) {
+    yearConditions.push({ OR: buildYearOrConditions(targetYear) });
+  }
+
+  if (yearMin !== null || yearMax !== null) {
+    yearConditions.push(buildYearRangeOverlap(yearMin, yearMax));
+  }
+
+  if (yearConditions.length === 0) return where;
 
   const yearCondition: PrismaTypes.ProductWhereInput = {
     carModels: {
-      some: {
-        OR: [
-          { yearStart: null, yearEnd: null },
-          { yearStart: null, yearEnd: { gte: targetYear } },
-          { yearEnd: null, yearStart: { lte: targetYear } },
-          {
-            AND: [
-              { yearStart: { lte: targetYear } },
-              { yearEnd: { gte: targetYear } },
-            ],
-          },
-        ],
-      },
+      some: yearConditions.length === 1 ? yearConditions[0] : { AND: yearConditions },
     },
   };
 
@@ -304,7 +392,9 @@ async function searchProductIdsFallback(
 ): Promise<ProductSearchResult> {
   const baseWhere = buildProductFilterWhere(input);
   const targetYear = input.fitmentYear ?? extractYearFromQuery(input.query);
-  const where = applyYearFilter(baseWhere, targetYear);
+  const yearMin = normalizeYearBound(input.yearMin);
+  const yearMax = normalizeYearBound(input.yearMax);
+  const where = applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
   const skip = input.skip ?? 0;
   const take = input.take ?? 30;
   const order = input.order ?? "createdAtDesc";
@@ -482,7 +572,18 @@ async function searchProductIdsV2(
       `
     : Prisma.empty;
 
-  const carBrandClause = input.carBrandName
+  const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
+  const normalizedBrandIds = normalizeStringArray(input.brandIds);
+  const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
+  const yearMinRange = normalizeYearBound(input.yearMin);
+  const yearMaxRange = normalizeYearBound(input.yearMax);
+  const priceMin = normalizePriceBound(input.priceMin);
+  const priceMax = normalizePriceBound(input.priceMax);
+  const effectiveCarBrandNames = input.carBrandName
+    ? [input.carBrandName]
+    : normalizedCarBrandNames;
+
+  const carBrandClause = effectiveCarBrandNames.length > 0
     ? Prisma.sql`
         AND EXISTS (
           SELECT 1
@@ -490,7 +591,7 @@ async function searchProductIdsV2(
           INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
           INNER JOIN "CarBrand" cb ON cb.id = cm."carBrandId"
           WHERE pcm."productId" = psd.product_id
-            AND cb.name = ${input.carBrandName}
+            AND cb.name IN (${Prisma.join(effectiveCarBrandNames)})
         )
       `
     : Prisma.empty;
@@ -507,17 +608,75 @@ async function searchProductIdsV2(
       `
     : Prisma.empty;
 
+  // Multi-select category (storefront filter UI)
+  const categoryNamesClause = !input.categoryName && normalizedCategoryNames.length > 0
+    ? Prisma.sql`AND psd.category_name IN (${Prisma.join(normalizedCategoryNames)})`
+    : Prisma.empty;
+
+  // Multi-select parts brand
+  const brandIdsClause = !input.brandId && normalizedBrandIds.length > 0
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "Product" p
+          WHERE p.id = psd.product_id
+            AND p."brandId" IN (${Prisma.join(normalizedBrandIds)})
+        )
+      `
+    : Prisma.empty;
+
+  // Year range overlap — fitment row [yearStart,yearEnd] intersects [yearMin,yearMax].
+  // NULL fitment bounds are open-ended (lenient).
+  const yearRangeClause = (yearMinRange !== null || yearMaxRange !== null)
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          WHERE pcm."productId" = psd.product_id
+            AND ${yearMaxRange !== null
+              ? Prisma.sql`(pcm."yearStart" IS NULL OR pcm."yearStart" <= ${yearMaxRange})`
+              : Prisma.sql`TRUE`}
+            AND ${yearMinRange !== null
+              ? Prisma.sql`(pcm."yearEnd" IS NULL OR pcm."yearEnd" >= ${yearMinRange})`
+              : Prisma.sql`TRUE`}
+        )
+      `
+    : Prisma.empty;
+
+  // Price range (Decimal salePrice on Product)
+  const priceMinClause = priceMin !== null
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1 FROM "Product" p
+          WHERE p.id = psd.product_id AND p."salePrice" >= ${priceMin}
+        )
+      `
+    : Prisma.empty;
+  const priceMaxClause = priceMax !== null
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1 FROM "Product" p
+          WHERE p.id = psd.product_id AND p."salePrice" <= ${priceMax}
+        )
+      `
+    : Prisma.empty;
+
   const exactScope = Prisma.sql`
     WHERE TRUE
       ${isActiveClause}
       ${categoryClause}
+      ${categoryNamesClause}
       ${categoryIdClause}
       ${brandIdClause}
+      ${brandIdsClause}
       ${carBrandIdClause}
       ${carModelIdClause}
       ${carBrandClause}
       ${carModelClause}
       ${yearFilterClause}
+      ${yearRangeClause}
+      ${priceMinClause}
+      ${priceMaxClause}
   `;
 
   const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
@@ -759,6 +918,13 @@ export async function searchProductIds(
     carBrandName: input.carBrandName ?? "",
     carModelNames: normalizeCarModelNames(input),
     fitmentYear: input.fitmentYear ?? null,
+    categoryNames: normalizeStringArray(input.categoryNames),
+    brandIds: normalizeStringArray(input.brandIds),
+    carBrandNames: normalizeStringArray(input.carBrandNames),
+    yearMin: normalizeYearBound(input.yearMin),
+    yearMax: normalizeYearBound(input.yearMax),
+    priceMin: normalizePriceBound(input.priceMin),
+    priceMax: normalizePriceBound(input.priceMax),
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",

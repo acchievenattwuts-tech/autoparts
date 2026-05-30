@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import StorefrontSearchForm from "@/components/shared/StorefrontSearchForm";
+import StorefrontFilterTrigger from "@/components/shared/StorefrontFilterTrigger";
+import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-white" aria-hidden="true">
@@ -55,7 +57,7 @@ interface StorefrontNavbarProps {
   searchQuery?: string;
 }
 
-const StorefrontNavbar = ({
+const StorefrontNavbar = async ({
   shopName = "",
   shopLogoUrl = "",
   lineUrl = "",
@@ -66,6 +68,7 @@ const StorefrontNavbar = ({
   const firstName = nameParts[0] ?? shopName;
   const restName = nameParts.slice(1).join(" ");
   const displayPhone = shopPhone?.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") ?? null;
+  const filterData = await getStorefrontProductFilters();
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-sm">
@@ -95,6 +98,8 @@ const StorefrontNavbar = ({
             </Link>
 
             <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="mobile" />
+
+            <StorefrontFilterTrigger filterData={filterData} />
 
             <nav className="hidden items-center gap-5 md:flex">
               {navLinks.map((link) => (

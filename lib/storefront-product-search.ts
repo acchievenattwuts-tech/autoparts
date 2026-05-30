@@ -65,6 +65,14 @@ export type StorefrontProductSearchInput = {
   models?: string[];
   year?: number | null;
   page?: number;
+  /** Multi-select filters (Filter UI v2) */
+  categories?: string[];
+  partsBrands?: string[];
+  carBrands?: string[];
+  yearMin?: number | null;
+  yearMax?: number | null;
+  priceMin?: number | null;
+  priceMax?: number | null;
 };
 
 export type SearchProductsResult = {
@@ -86,6 +94,13 @@ type NormalizedStorefrontProductSearchInput = {
   models: string[];
   year: number | null;
   page: number;
+  categories: string[];
+  partsBrands: string[];
+  carBrands: string[];
+  yearMin: number | null;
+  yearMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 const normalizeTextInput = (value?: string): string | undefined => {
@@ -102,6 +117,11 @@ const normalizeYearInput = (year?: number | null): number | null => {
   return Math.trunc(year);
 };
 
+const normalizePriceInput = (value?: number | null): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return value;
+};
+
 const normalizePageInput = (page?: number): number => {
   if (typeof page !== "number" || !Number.isFinite(page) || page < 1) return 1;
   return Math.trunc(page);
@@ -116,6 +136,13 @@ const normalizeSearchInput = (
   models: normalizeModelsInput(input.models),
   year: normalizeYearInput(input.year),
   page: normalizePageInput(input.page),
+  categories: normalizeModelsInput(input.categories),
+  partsBrands: normalizeModelsInput(input.partsBrands),
+  carBrands: normalizeModelsInput(input.carBrands),
+  yearMin: normalizeYearInput(input.yearMin),
+  yearMax: normalizeYearInput(input.yearMax),
+  priceMin: normalizePriceInput(input.priceMin),
+  priceMax: normalizePriceInput(input.priceMax),
 });
 
 const serializeSearchProduct = (product: SearchProductRecord): SearchProductItem => ({
@@ -144,6 +171,13 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
       carBrandName: input.brand,
       carModelNames: input.models,
       fitmentYear: input.year,
+      categoryNames: input.categories,
+      brandIds: input.partsBrands,
+      carBrandNames: input.carBrands,
+      yearMin: input.yearMin,
+      yearMax: input.yearMax,
+      priceMin: input.priceMin,
+      priceMax: input.priceMax,
       skip,
       take: STOREFRONT_PRODUCTS_PER_PAGE,
       order: "createdAtDesc",

@@ -15,6 +15,14 @@ const SearchInputSchema = z.object({
   models: z.array(z.string().max(200)).max(50).default([]),
   year: z.number().int().min(1900).max(2200).nullable().optional(),
   page: z.number().int().min(1).max(500).default(1),
+  // Multi-select filter UI v2
+  categories: z.array(z.string().max(200)).max(50).default([]),
+  partsBrands: z.array(z.string().max(64)).max(50).default([]),
+  carBrands: z.array(z.string().max(200)).max(50).default([]),
+  yearMin: z.number().int().min(1900).max(2200).nullable().optional(),
+  yearMax: z.number().int().min(1900).max(2200).nullable().optional(),
+  priceMin: z.number().min(0).max(99_999_999).nullable().optional(),
+  priceMax: z.number().min(0).max(99_999_999).nullable().optional(),
 });
 
 export type SearchFilterInput = z.infer<typeof SearchInputSchema>;
@@ -35,7 +43,21 @@ export async function searchProductsAction(
   const parsed = SearchInputSchema.safeParse(input);
   if (!parsed.success) return EMPTY_RESULT;
 
-  const { q, category, brand, models, year, page } = parsed.data;
+  const {
+    q,
+    category,
+    brand,
+    models,
+    year,
+    page,
+    categories,
+    partsBrands,
+    carBrands,
+    yearMin,
+    yearMax,
+    priceMin,
+    priceMax,
+  } = parsed.data;
   const skip = (page - 1) * STOREFRONT_PRODUCTS_PER_PAGE;
 
   const searchInput = {
@@ -45,6 +67,13 @@ export async function searchProductsAction(
     carBrandName: brand,
     carModelNames: models,
     fitmentYear: year ?? null,
+    categoryNames: categories,
+    brandIds: partsBrands,
+    carBrandNames: carBrands,
+    yearMin: yearMin ?? null,
+    yearMax: yearMax ?? null,
+    priceMin: priceMin ?? null,
+    priceMax: priceMax ?? null,
     skip,
     take: STOREFRONT_PRODUCTS_PER_PAGE,
     order: "createdAtDesc",
@@ -58,6 +87,13 @@ export async function searchProductsAction(
       models,
       year: year ?? null,
       page,
+      categories,
+      partsBrands,
+      carBrands,
+      yearMin: yearMin ?? null,
+      yearMax: yearMax ?? null,
+      priceMin: priceMin ?? null,
+      priceMax: priceMax ?? null,
     });
 
     await logProductSearchTelemetry({

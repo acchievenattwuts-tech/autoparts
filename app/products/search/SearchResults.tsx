@@ -12,6 +12,7 @@ import {
   searchProductsAction,
   type SearchFilterInput,
 } from "./search-products-actions";
+import { PRODUCT_FILTER_COUNT_EVENT } from "@/components/shared/StorefrontFilterTrigger";
 
 type CarBrand = {
   id: string;
@@ -19,10 +20,12 @@ type CarBrand = {
   carModels: Array<{ id: string; name: string }>;
 };
 type Category = { id: string; name: string };
+type PartsBrand = { id: string; name: string };
 
 type FilterData = {
   carBrands: CarBrand[];
   categories: Category[];
+  partsBrands: PartsBrand[];
 };
 
 type FiltersState = {
@@ -32,6 +35,14 @@ type FiltersState = {
   category: string;
   year: number | null;
   page: number;
+  // Multi-select Filter UI v2
+  categories: string[];
+  partsBrands: string[];
+  carBrands: string[];
+  yearMin: number | null;
+  yearMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
 };
 
 interface Props {
@@ -64,6 +75,14 @@ const buildSearchUrl = (f: FiltersState, basePath: string): string => {
   if (f.brand) params.set("brand", f.brand);
   f.models.forEach((m) => params.append("model", m));
   if (f.year) params.set("year", String(f.year));
+  // Multi-select v2
+  f.categories.forEach((c) => params.append("categories", c));
+  f.partsBrands.forEach((b) => params.append("partsBrand", b));
+  f.carBrands.forEach((b) => params.append("carBrand", b));
+  if (f.yearMin !== null) params.set("yearMin", String(f.yearMin));
+  if (f.yearMax !== null) params.set("yearMax", String(f.yearMax));
+  if (f.priceMin !== null) params.set("priceMin", String(f.priceMin));
+  if (f.priceMax !== null) params.set("priceMax", String(f.priceMax));
   if (f.page > 1) params.set("page", String(f.page));
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
@@ -120,7 +139,10 @@ const SearchResults = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderNonce]);
 
-  const applyFilters = (next: FiltersState, scrollIntoView: boolean) => {
+  const applyFilters = (
+    next: FiltersState,
+    scrollMode: "grid" | "top" | "none" = "none",
+  ) => {
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
     const input: SearchFilterInput = {
@@ -130,6 +152,13 @@ const SearchResults = ({
       models: next.models,
       year: next.year,
       page: next.page,
+      categories: next.categories,
+      partsBrands: next.partsBrands,
+      carBrands: next.carBrands,
+      yearMin: next.yearMin,
+      yearMax: next.yearMax,
+      priceMin: next.priceMin,
+      priceMax: next.priceMax,
     };
 
     // Sync Next.js router so nav links (e.g. "สินค้า" → /products) work on first click.
@@ -151,6 +180,14 @@ const SearchResults = ({
       setIsRouteSyncPending(false);
     }
 
+    // Broadcast the new filter count to the shared navbar trigger (badge).
+    if (typeof window !== "undefined") {
+      const search = url.includes("?") ? url.slice(url.indexOf("?")) : "";
+      window.dispatchEvent(
+        new CustomEvent(PRODUCT_FILTER_COUNT_EVENT, { detail: { search } }),
+      );
+    }
+
     startTransition(async () => {
       try {
         const result = await searchProductsAction(input);
@@ -167,36 +204,57 @@ const SearchResults = ({
         setFilters(next);
         setAnimKey((k) => k + 1);
 
-        if (scrollIntoView && gridSectionRef.current) {
-          gridSectionRef.current.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
+        // Defer scroll one frame after React commits the new product grid —
+        // otherwise the layout shift from new content cancels a smooth scroll.
+        if (scrollMode === "top") {
+          requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        } else if (scrollMode === "grid" && gridSectionRef.current) {
+          const target = gridSectionRef.current;
+          requestAnimationFrame(() => {
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
           });
         }
       } finally {
-        if (latestRequestIdRef.current === requestId && !shouldSyncRoute) {
+        // Clear route-sync pending state once the Server Action result is applied —
+        // do not wait for the parallel router.replace() server re-render to complete.
+        // If the page is cached (revalidate=300), renderNonce may not change → useEffect
+        // never fires → spinner would otherwise stay stuck.
+        // Keep isAjaxUpdateRef.current = true so any late-arriving renderNonce change
+        // still skips the external-nav state reset; useEffect will clear that flag.
+        if (latestRequestIdRef.current === requestId) {
           setIsRouteSyncPending(false);
         }
       }
     });
   };
 
-  const handleFilterChange = (updates: Record<string, string | string[]>) => {
-    const next: FiltersState = { ...filters, page: 1 };
-
-    for (const [key, value] of Object.entries(updates)) {
-      if (key === "brand" && typeof value === "string") {
-        next.brand = value;
-        // Clear models when switching brand
-        if (value !== filters.brand) next.models = [];
-      } else if (key === "category" && typeof value === "string") {
-        next.category = value;
-      } else if (key === "model" && Array.isArray(value)) {
-        next.models = value.filter(Boolean);
-      }
-    }
-
-    applyFilters(next, false);
+  // Apply-on-submit: FilterBar maintains its own draft state and submits the
+  // complete next FiltersState shape at once when user clicks "ตกลง".
+  const handleApplyFilters = (draft: {
+    categories: string[];
+    partsBrands: string[];
+    carBrands: string[];
+    models: string[];
+    yearMin: number | null;
+    yearMax: number | null;
+    priceMin: number | null;
+    priceMax: number | null;
+  }) => {
+    const next: FiltersState = {
+      ...filters,
+      page: 1,
+      categories: draft.categories,
+      partsBrands: draft.partsBrands,
+      carBrands: draft.carBrands,
+      models: draft.models,
+      yearMin: draft.yearMin,
+      yearMax: draft.yearMax,
+      priceMin: draft.priceMin,
+      priceMax: draft.priceMax,
+    };
+    applyFilters(next, "top");
   };
 
   const handleClearAll = () => {
@@ -208,17 +266,24 @@ const SearchResults = ({
         category: "",
         year: null,
         page: 1,
+        categories: [],
+        partsBrands: [],
+        carBrands: [],
+        yearMin: null,
+        yearMax: null,
+        priceMin: null,
+        priceMax: null,
       },
-      false,
+      "top",
     );
   };
 
   const handlePageChange = (page: number) => {
-    applyFilters({ ...filters, page }, true);
+    applyFilters({ ...filters, page }, "grid");
   };
 
   const handleDidYouMeanClick = (suggestion: string) => {
-    applyFilters({ ...filters, q: suggestion, page: 1 }, false);
+    applyFilters({ ...filters, q: suggestion, page: 1 }, "none");
   };
 
   // Sync state back if browser back/forward changes URL (e.g. external)
@@ -230,22 +295,33 @@ const SearchResults = ({
     Boolean(filters.q) ||
     Boolean(filters.category) ||
     Boolean(filters.brand) ||
-    filters.models.length > 0;
+    filters.models.length > 0 ||
+    filters.categories.length > 0 ||
+    filters.partsBrands.length > 0 ||
+    filters.carBrands.length > 0 ||
+    filters.yearMin !== null ||
+    filters.yearMax !== null ||
+    filters.priceMin !== null ||
+    filters.priceMax !== null;
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      <aside className="w-full shrink-0 lg:w-72">
+    <div className="flex flex-col lg:flex-row lg:gap-6">
+      <aside className="shrink-0 lg:w-72">
         <ProductFilterBar
-          brands={filterData.carBrands}
+          carBrands={filterData.carBrands}
           categories={filterData.categories}
-          controlledFilters={{
-            q: filters.q,
-            brand: filters.brand,
+          partsBrands={filterData.partsBrands}
+          appliedFilters={{
+            categories: filters.categories,
+            partsBrands: filters.partsBrands,
+            carBrands: filters.carBrands,
             models: filters.models,
-            category: filters.category,
-            page: filters.page > 1 ? String(filters.page) : "",
+            yearMin: filters.yearMin,
+            yearMax: filters.yearMax,
+            priceMin: filters.priceMin,
+            priceMax: filters.priceMax,
           }}
-          onNavigate={handleFilterChange}
+          onApply={handleApplyFilters}
           onClearAll={handleClearAll}
           isPending={isPending}
         />
@@ -255,21 +331,52 @@ const SearchResults = ({
         ref={gridSectionRef}
         className="min-w-0 flex-1 scroll-mt-20"
       >
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-2 flex flex-col gap-1 sm:mb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
           <p className="text-sm text-gray-500 transition-opacity duration-200">
             {hasFilter ? (
               <>
                 {filters.q && <>ค้นหา &ldquo;{filters.q}&rdquo; </>}
-                {filters.brand && (
+                {filters.categories.length > 0 && (
+                  <>หมวด: {filters.categories.join(", ")} · </>
+                )}
+                {filters.partsBrands.length > 0 && (
                   <>
-                    {filters.brand}
-                    {filters.models.length > 0
-                      ? ` › ${filters.models.join(", ")}`
-                      : ""}{" "}
+                    แบรนด์อะไหล่:{" "}
+                    {filters.partsBrands
+                      .map(
+                        (id) =>
+                          filterData.partsBrands.find((b) => b.id === id)?.name ?? id,
+                      )
+                      .join(", ")}{" "}
+                    ·{" "}
                   </>
                 )}
-                {filters.category && <>{filters.category} </>}
-                — พบ{" "}
+                {filters.carBrands.length > 0 && (
+                  <>ยี่ห้อรถ: {filters.carBrands.join(", ")} · </>
+                )}
+                {filters.models.length > 0 && (
+                  <>รุ่น: {filters.models.join(", ")} · </>
+                )}
+                {(filters.yearMin !== null || filters.yearMax !== null) && (
+                  <>
+                    ปี: {filters.yearMin !== null ? filters.yearMin : "ก่อนหน้า"}
+                    {" – "}
+                    {filters.yearMax !== null ? filters.yearMax : "ล่าสุด"}
+                    {" · "}
+                  </>
+                )}
+                {(filters.priceMin !== null || filters.priceMax !== null) && (
+                  <>
+                    ราคา:{" "}
+                    {filters.priceMin !== null ? filters.priceMin.toLocaleString() : "0"}
+                    {" – "}
+                    {filters.priceMax !== null
+                      ? filters.priceMax.toLocaleString()
+                      : "∞"}
+                    {" บาท · "}
+                  </>
+                )}
+                พบ{" "}
                 <span className="font-semibold text-gray-800">{total}</span>{" "}
                 รายการ
               </>
@@ -290,9 +397,10 @@ const SearchResults = ({
         </div>
 
         <div className="relative min-h-[400px]">
-          {/* Loading pill — sticky at top so it remains visible while scrolling */}
+          {/* Loading pill — absolute so it doesn't reserve vertical space when hidden.
+              Pinned near top of the grid section; visible only while data is loading. */}
           <div
-            className={`pointer-events-none sticky top-20 z-20 mb-3 flex justify-center transition-all duration-200 ${
+            className={`pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center transition-all duration-200 ${
               isPending
                 ? "translate-y-0 opacity-100"
                 : "-translate-y-2 opacity-0"

@@ -5,7 +5,7 @@ const PRODUCTS_PER_PAGE = 24;
 
 export const getStorefrontProductFilters = unstable_cache(
   async () => {
-    const [categories, carBrands] = await Promise.all([
+    const [categories, carBrands, partsBrands] = await Promise.all([
       db.category.findMany({
         where: { isActive: true },
         select: { id: true, name: true },
@@ -24,12 +24,17 @@ export const getStorefrontProductFilters = unstable_cache(
         },
         orderBy: { name: "asc" },
       }),
+      db.partsBrand.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
-    return { categories, carBrands };
+    return { categories, carBrands, partsBrands };
   },
-  ["storefront-product-filters"],
-  { tags: ["storefront-product-filters"] },
+  ["storefront-product-filters-v3"],
+  { tags: ["storefront-product-filters"], revalidate: 300 },
 );
 
 export const getStorefrontProductsLandingPageData = unstable_cache(

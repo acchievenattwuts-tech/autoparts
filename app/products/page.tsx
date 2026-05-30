@@ -32,6 +32,14 @@ interface Props {
     model?: QueryValue;
     year?: string;
     page?: string;
+    // Multi-select filter UI v2
+    categories?: QueryValue;
+    partsBrand?: QueryValue;
+    carBrand?: QueryValue;
+    yearMin?: string;
+    yearMax?: string;
+    priceMin?: string;
+    priceMax?: string;
   }>;
 }
 
@@ -48,10 +56,18 @@ const parsePage = (value?: string) => {
   return parsed;
 };
 
+const parsePriceParam = (value?: string): number | null => {
+  if (!value) return null;
+  const n = Number.parseFloat(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+};
+
 const normalizeQueryValues = (value: QueryValue): string[] => {
   if (Array.isArray(value)) return value.filter(Boolean);
   return value ? [value] : [];
 };
+
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const { q, category, brand, model, page } = await searchParams;
@@ -96,12 +112,45 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 }
 
 const ProductsPage = async ({ searchParams }: Props) => {
-  const { q, category, brand, model, year, page } = await searchParams;
+  const {
+    q,
+    category,
+    brand,
+    model,
+    year,
+    page,
+    categories: categoriesParam,
+    partsBrand: partsBrandParam,
+    carBrand: carBrandParam,
+    yearMin: yearMinParam,
+    yearMax: yearMaxParam,
+    priceMin: priceMinParam,
+    priceMax: priceMaxParam,
+  } = await searchParams;
   const models = normalizeQueryValues(model);
   const explicitYear = parseYearParam(year);
   const currentPage = parsePage(page);
+  const categories = normalizeQueryValues(categoriesParam);
+  const partsBrands = normalizeQueryValues(partsBrandParam);
+  const carBrands = normalizeQueryValues(carBrandParam);
+  const yearMin = parseYearParam(yearMinParam);
+  const yearMax = parseYearParam(yearMaxParam);
+  const priceMin = parsePriceParam(priceMinParam);
+  const priceMax = parsePriceParam(priceMaxParam);
   const hasFilter = Boolean(
-    q || category || brand || models.length > 0 || explicitYear || currentPage > 1,
+    q ||
+      category ||
+      brand ||
+      models.length > 0 ||
+      explicitYear ||
+      currentPage > 1 ||
+      categories.length > 0 ||
+      partsBrands.length > 0 ||
+      carBrands.length > 0 ||
+      yearMin !== null ||
+      yearMax !== null ||
+      priceMin !== null ||
+      priceMax !== null,
   );
 
   const [config, filterData] = await Promise.all([
@@ -135,6 +184,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
       carBrandName: brand,
       carModelNames: models,
       fitmentYear: explicitYear,
+      categoryNames: categories,
+      brandIds: partsBrands,
+      carBrandNames: carBrands,
+      yearMin,
+      yearMax,
+      priceMin,
+      priceMax,
       skip,
       take: STOREFRONT_PRODUCTS_PER_PAGE,
       order: "createdAtDesc",
@@ -147,6 +203,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
       models,
       year: explicitYear,
       page: currentPage,
+      categories,
+      partsBrands,
+      carBrands,
+      yearMin,
+      yearMax,
+      priceMin,
+      priceMax,
     });
 
     await logProductSearchTelemetry({
@@ -192,6 +255,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
               category: category ?? "",
               year: explicitYear,
               page: currentPage,
+              categories,
+              partsBrands,
+              carBrands,
+              yearMin,
+              yearMax,
+              priceMin,
+              priceMax,
             }}
             initialMeta={initialMeta}
             filterData={filterData}

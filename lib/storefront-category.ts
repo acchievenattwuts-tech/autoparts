@@ -104,7 +104,13 @@ const fetchCategoryProductPage = unstable_cache(
       }),
       db.product.count({ where }),
     ]);
-    return { products, total };
+    // Serialize Decimal → string so the result can be passed from Server Component
+    // to Client Component (Next.js 16 forbids Decimal across the boundary).
+    const serialized = products.map((p) => ({
+      ...p,
+      salePrice: p.salePrice.toString(),
+    }));
+    return { products: serialized, total };
   },
   ["storefront-category-products"],
   { tags: [...CATEGORY_CACHE_TAGS, "storefront:products"] },
