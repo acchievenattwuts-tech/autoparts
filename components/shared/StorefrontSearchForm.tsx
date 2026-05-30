@@ -45,7 +45,7 @@ const StorefrontSearchForm = ({ initialValue, variant }: Props) => {
         inputClassName={inputClass}
         showSubmitButton
         enhanced={variant === "desktop" ? "desktop" : "mobile"}
-        className={variant === "desktop" ? "w-full" : undefined}
+        className="w-full"
       />
     </div>
   );
