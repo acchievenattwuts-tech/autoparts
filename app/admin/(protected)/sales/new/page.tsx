@@ -37,7 +37,7 @@ const NewSalePage = async () => {
     db.supplier.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, code: true },
     }),
     getActiveCashBankAccountOptions(),
   ]);

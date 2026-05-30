@@ -42,6 +42,7 @@ interface ProductOption {
 interface SupplierOption {
   id:   string;
   name: string;
+  code: string | null;
 }
 
 interface CashBankAccountOption {
@@ -952,7 +953,7 @@ const SaleForm = ({
                           <SearchableSelect
                             options={[
                               { id: "", label: "-- ไม่ระบุซัพพลายเออร์ --" },
-                              ...suppliers.map((s): SelectOption => ({ id: s.id, label: s.name })),
+                              ...suppliers.map((s): SelectOption => ({ id: s.id, label: s.code ? `[${s.code}] ${s.name}` : s.name })),
                             ]}
                             value={item.supplierId}
                             onChange={(id) => updateItemSupplier(i, id)}

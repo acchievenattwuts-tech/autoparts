@@ -49,7 +49,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     }),
     db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true } }),
     getSiteConfig(),
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, code: true } }),
     getActiveCashBankAccountOptions(),
   ]);
 
