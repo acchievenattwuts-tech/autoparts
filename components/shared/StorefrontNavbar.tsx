@@ -99,7 +99,7 @@ const StorefrontNavbar = async ({
 
             <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="mobile" />
 
-            <nav className="hidden items-center gap-5 md:flex">
+            <nav className="hidden items-center gap-5 lg:flex">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -113,7 +113,7 @@ const StorefrontNavbar = async ({
 
             <StorefrontSearchForm initialValue={searchQuery ?? ""} variant="desktop" />
 
-            <div className="hidden shrink-0 items-center gap-3 md:flex">
+            <div className="hidden shrink-0 items-center gap-3 lg:flex">
               {displayPhone && (
                 <a
                   href={`tel:${shopPhone}`}
@@ -138,7 +138,7 @@ const StorefrontNavbar = async ({
                 On mobile it sits between search and hamburger. lg+ = sidebar used. */}
             <StorefrontFilterTrigger filterData={filterData} />
 
-            <details className="group md:hidden">
+            <details className="group lg:hidden">
               <summary
                 className="list-none rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100 [&::-webkit-details-marker]:hidden"
                 aria-label="เปิดหรือปิดเมนู"
