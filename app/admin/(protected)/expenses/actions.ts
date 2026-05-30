@@ -277,10 +277,11 @@ export async function updateExpense(
   } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
 
   const parsed = expenseSchema.safeParse({
-    expenseDate: formData.get("expenseDate"),
-    vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
-    vatRate:     formData.get("vatRate") || 0,
-    note:        formData.get("note") || undefined,
+    expenseDate:       formData.get("expenseDate"),
+    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
+    vatType:           (formData.get("vatType") as VatType) || VatType.NO_VAT,
+    vatRate:           formData.get("vatRate") || 0,
+    note:              formData.get("note") || undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
