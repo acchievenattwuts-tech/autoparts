@@ -383,7 +383,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </div>
                     <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                       <p className="text-xs text-slate-400">หน่วย</p>
-                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{product.reportUnitName}</p>
+                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{product.saleUnitName || "-"}</p>
                     </div>
                     <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                       <p className="text-xs text-slate-400">แบรนด์อะไหล่</p>
@@ -636,7 +636,7 @@ const ProductDetailPage = async ({ params }: Props) => {
         additionalProperties={[
           { name: "หมวดสินค้า", value: product.category.name },
           { name: "รหัสสินค้า", value: product.code },
-          { name: "หน่วยแสดงผล", value: product.reportUnitName },
+          { name: "หน่วยขาย", value: product.saleUnitName || "-" },
           { name: "รุ่นรถที่เกี่ยวข้อง", value: compatibilitySummary },
         ]}
         relatedLinks={[

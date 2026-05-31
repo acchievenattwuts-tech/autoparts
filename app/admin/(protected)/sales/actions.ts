@@ -622,6 +622,10 @@ export async function createSale(
             costPrice:     costPerBase,
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
+            showQty:       item.qty,
+            showUnitName:  item.unitName,
+            showPricePerUnit: item.salePrice,
+            unitScale:     scale,
             warrantyDays:  item.warrantyDays,
             supplierId:    item.supplierId || null,
             supplierName:  item.supplierName || null,
@@ -1189,13 +1193,20 @@ export async function updateSale(
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const item = validItems[newIdx];
+          const displayScale =
+            newUnitScaleMap.get(getSaleUnitKey(item.productId, item.unitName)) ?? 1;
           const itemTotal = item.qty * item.salePrice;
           const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
           await tx.saleItem.update({
             where: { id: existingItemId },
-            data:  taxBasisChanged
-              ? { lineNo: newIdx + 1, subtotalAmount: itemSubtotal }
-              : { lineNo: newIdx + 1 },
+            data: {
+              lineNo: newIdx + 1,
+              showQty: item.qty,
+              showUnitName: item.unitName,
+              showPricePerUnit: item.salePrice,
+              unitScale: displayScale,
+              ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
+            },
           });
         }
       }
@@ -1225,7 +1236,23 @@ export async function updateSale(
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
         const saleItem = await tx.saleItem.create({
-          data: { saleId: id, lineNo: newIdx + 1, productId: item.productId, quantity: Math.round(qtyInBase), salePrice: item.salePrice, costPrice: costPerBase, totalAmount: itemTotal, subtotalAmount: itemSubtotal, warrantyDays: item.warrantyDays, supplierId: item.supplierId || null, supplierName: item.supplierName || null },
+          data: {
+            saleId: id,
+            lineNo: newIdx + 1,
+            productId: item.productId,
+            quantity: Math.round(qtyInBase),
+            salePrice: item.salePrice,
+            costPrice: costPerBase,
+            totalAmount: itemTotal,
+            subtotalAmount: itemSubtotal,
+            showQty: item.qty,
+            showUnitName: item.unitName,
+            showPricePerUnit: item.salePrice,
+            unitScale: scale,
+            warrantyDays: item.warrantyDays,
+            supplierId: item.supplierId || null,
+            supplierName: item.supplierName || null,
+          },
         });
 
         const stockCardId = isTracked ? await writeStockCard(tx, {

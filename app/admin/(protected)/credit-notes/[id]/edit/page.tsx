@@ -83,16 +83,22 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       const productOption = products.find((product) => product.id === item.productId);
       const unitName = productOption?.saleUnitName || item.product?.units.find((u) => u.isBase)?.name || "";
       const unit = item.product?.units.find((u) => u.name === unitName);
-      const scale = unit ? Number(unit.scale) : 1;
+      const scale = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
+      const displayUnitName = item.showUnitName ?? unitName;
+      const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.qty) / scale;
+      const displaySalePrice =
+        item.showPricePerUnit != null
+          ? Number(item.showPricePerUnit)
+          : Number(item.unitPrice);
       return {
         productId: item.productId ?? "",
-        unitName,
-        qty:       Number(item.qty) / scale,
-        salePrice: Number(item.unitPrice),
+        unitName: displayUnitName,
+        qty:       displayQty,
+        salePrice: displaySalePrice,
         lotItems: item.lotItems.map((lot) => ({
           lotNo: lot.isReturnLot ? lot.lotNo.replace(/^RET-/, "") : lot.lotNo,
           qty: Number(lot.qty) / scale,
-          unitCost: Number(item.unitPrice),
+          unitCost: displaySalePrice,
           mfgDate: "",
           expDate: "",
           isReturnLot: lot.isReturnLot,

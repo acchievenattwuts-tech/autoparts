@@ -20,6 +20,7 @@
 - Phase 5.5: lot control and follow-up integration
 - Phase 6: reporting baseline
 - Phase 6.5: accounting reports alignment
+- Document item display snapshot (2026-05-31): purchase, purchase return, sale, and sale return keep original entered qty/unit/unit price for presentation while stock/MAVG/lot logic stays on base units
 - Phase 7: SEO/AEO/AIO/Core Web Vitals baseline
 
 ## Notes

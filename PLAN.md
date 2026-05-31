@@ -58,6 +58,7 @@
 - Document numbers: `lib/doc-number.ts`
 - VAT calculations: `lib/vat.ts`
 - Prisma schema: `prisma/schema.prisma`
+- Transaction item display snapshots: [docs/decisions/document-item-display-snapshot.md](/D:/autoparts/docs/decisions/document-item-display-snapshot.md)
 
 ### Admin Rules
 - Cross-module delivery/print/theme/search rules: [AGENTS.md](/D:/autoparts/AGENTS.md)

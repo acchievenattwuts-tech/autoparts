@@ -12,8 +12,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // Prefer the pooled URL for CLI operations in this environment because the
-    // direct Supabase host is not always reachable from local development.
-    url: process.env["DATABASE_URL"] ?? process.env["DIRECT_URL"]!,
+    // Migrations should prefer a direct connection to avoid PgBouncer issues.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"]!,
   },
 });

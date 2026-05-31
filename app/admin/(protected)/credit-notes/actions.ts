@@ -485,6 +485,10 @@ export async function createCreditNote(
             unitPrice:     item.salePrice,
             amount:        itemTotal,
             subtotalAmount: itemSubtotal,
+            showQty:       item.qty,
+            showUnitName:  item.unitName,
+            showPricePerUnit: item.salePrice,
+            unitScale:     scale,
           },
         });
 
@@ -954,13 +958,20 @@ export async function updateCreditNote(
           Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const item = validItems[newIdx];
+          const displayScale =
+            newUnitScaleMap.get(`${item.productId}::${item.unitName}`) ?? 1;
           const itemTotal = item.qty * item.salePrice;
           const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
           await tx.creditNoteItem.update({
             where: { id: existingItemId },
-            data:  taxBasisChanged
-              ? { lineNo: newIdx + 1, subtotalAmount: itemSubtotal }
-              : { lineNo: newIdx + 1 },
+            data: {
+              lineNo: newIdx + 1,
+              showQty: item.qty,
+              showUnitName: item.unitName,
+              showPricePerUnit: item.salePrice,
+              unitScale: displayScale,
+              ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
+            },
           });
         }
       }
@@ -1002,6 +1013,10 @@ export async function updateCreditNote(
             unitPrice:      item.salePrice,
             amount:         itemTotal,
             subtotalAmount: itemSubtotal,
+            showQty:        item.qty,
+            showUnitName:   item.unitName,
+            showPricePerUnit: item.salePrice,
+            unitScale:      scale,
           },
         });
 
@@ -1132,6 +1147,10 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
           productId: true,
           quantity:  true,
           salePrice: true,
+          showQty: true,
+          showUnitName: true,
+          showPricePerUnit: true,
+          unitScale: true,
           product: {
             select: {
               id: true,
@@ -1158,13 +1177,13 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
   const items = sale.items.map((item) => {
     const unitName = item.product.saleUnitName ?? "";
     const unit     = item.product.units.find((u) => u.name === unitName);
-    const scale    = unit?.scale ?? 1;
+    const scale    = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
     productMap.set(item.productId, serializeCreditNoteProductOption(item.product));
     return {
       productId: item.productId,
-      unitName,
-      qty:       Number(item.quantity) / scale,
-      salePrice: Number(item.salePrice),
+      unitName: item.showUnitName ?? unitName,
+      qty: item.showQty != null ? Number(item.showQty) : Number(item.quantity) / scale,
+      salePrice: item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice),
     };
   });
 

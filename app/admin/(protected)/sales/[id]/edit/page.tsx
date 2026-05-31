@@ -106,17 +106,24 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const initialItems = sale.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];
+    const displayUnitName = item.showUnitName ?? baseUnit?.name ?? "";
+    const displayScale = Number(item.unitScale ?? baseUnit?.scale ?? 1) || 1;
+    const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.quantity) / displayScale;
+    const displaySalePrice =
+      item.showPricePerUnit != null
+        ? Number(item.showPricePerUnit)
+        : Number(item.salePrice);
     return {
       productId:    item.productId,
-      unitName:     baseUnit?.name ?? "",
-      qty:          Number(item.quantity),
-      salePrice:    Number(item.salePrice),
+      unitName:     displayUnitName,
+      qty:          displayQty,
+      salePrice:    displaySalePrice,
       warrantyDays: item.warrantyDays ?? 0,
       supplierId:   item.supplierId ?? "",
       supplierName: item.supplierName ?? "",
       lotItems:     item.lotItems.map((lot) => ({
         lotNo:    lot.lotNo,
-        qty:      Number(lot.qty),
+        qty:      Number(lot.qty) / displayScale,
         unitCost: Number(lot.unitCost),
         mfgDate:  "",
         expDate:  productLotExpMap[`${item.productId}:${lot.lotNo}`] ?? "",

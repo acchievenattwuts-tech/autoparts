@@ -17,13 +17,13 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           name: true,
           description: true,
           imageUrl: true,
+          saleUnitName: true,
           images: {
             select: { url: true, alt: true, sortOrder: true, isPrimary: true },
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
           },
           salePrice: true,
           stock: true,
-          reportUnitName: true,
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           aliases: {
@@ -80,8 +80,8 @@ export const getRelatedStorefrontProductsByCategory = async ({
           code: true,
           imageUrl: true,
           salePrice: true,
+          saleUnitName: true,
           stock: true,
-          reportUnitName: true,
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {
@@ -114,8 +114,8 @@ const RELATED_SELECT = {
   code: true,
   imageUrl: true,
   salePrice: true,
+  saleUnitName: true,
   stock: true,
-  reportUnitName: true,
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {

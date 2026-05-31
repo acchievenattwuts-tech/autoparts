@@ -63,19 +63,25 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
   }));
 
-  // Convert stored items (base unit qty + cost per base) back to display format using base unit
   const initialItems = purchase.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];
+    const displayUnitName = item.showUnitName ?? baseUnit?.name ?? "";
+    const displayScale = Number(item.unitScale ?? baseUnit?.scale ?? 1) || 1;
+    const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.quantity) / displayScale;
+    const displayCostPrice =
+      item.showPricePerUnit != null
+        ? Number(item.showPricePerUnit)
+        : Number(item.costPrice) * displayScale;
     return {
       productId: item.productId,
-      unitName: baseUnit?.name ?? "",
-      qty: item.quantity,
-      costPrice: Number(item.costPrice),
-      landedCost: Number(item.landedCost) * item.quantity,
+      unitName: displayUnitName,
+      qty: displayQty,
+      costPrice: displayCostPrice,
+      landedCost: Number(item.landedCost) * displayQty,
       lotItems: item.lotItems.map((lot) => ({
         lotNo: lot.lotNo,
-        qty: Number(lot.qty),
-        unitCost: Number(lot.unitCost),
+        qty: Number(lot.qty) / displayScale,
+        unitCost: Number(lot.unitCost) * displayScale,
           mfgDate: lot.mfgDate ? formatDateOnlyForInput(lot.mfgDate) : "",
           expDate: lot.expDate ? formatDateOnlyForInput(lot.expDate) : "",
       })),

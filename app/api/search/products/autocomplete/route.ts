@@ -32,6 +32,7 @@ type AutocompleteItem = {
   salePrice: number;
   stock: number;
   inStock: boolean;
+  saleUnitName: string | null;
   reportUnitName: string;
   brand: string | null;
   category: string;
@@ -100,8 +101,9 @@ export const GET = async (request: Request): Promise<NextResponse> => {
         name: true,
         imageUrl: true,
         salePrice: true,
-        stock: true,
+        saleUnitName: true,
         reportUnitName: true,
+        stock: true,
         category: { select: { name: true, slug: true } },
         brand: { select: { name: true } },
       },
@@ -119,6 +121,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       salePrice: Number(p.salePrice),
       stock: Number(p.stock),
       inStock: p.stock > 0,
+      saleUnitName: p.saleUnitName,
       reportUnitName: p.reportUnitName,
       brand: p.brand?.name ?? null,
       category: p.category.name,

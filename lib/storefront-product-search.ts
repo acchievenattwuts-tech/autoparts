@@ -20,8 +20,8 @@ const PRODUCT_SELECT = {
   code: true,
   imageUrl: true,
   salePrice: true,
+  saleUnitName: true,
   stock: true,
-  reportUnitName: true,
   category: { select: { name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {
@@ -47,8 +47,8 @@ export type SearchProductItem = {
   code: string;
   imageUrl: string | null;
   salePrice: string;
+  saleUnitName: string | null;
   stock: number;
-  reportUnitName: string;
   category: { name: string; slug: string | null };
   brand: { name: string } | null;
   carModels: Array<{
@@ -152,8 +152,8 @@ const serializeSearchProduct = (product: SearchProductRecord): SearchProductItem
   code: product.code,
   imageUrl: product.imageUrl,
   salePrice: product.salePrice.toString(),
+  saleUnitName: product.saleUnitName,
   stock: product.stock,
-  reportUnitName: product.reportUnitName,
   category: product.category,
   brand: product.brand,
   carModels: product.carModels,

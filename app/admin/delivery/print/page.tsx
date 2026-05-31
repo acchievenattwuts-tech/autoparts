@@ -97,6 +97,10 @@ const DeliveryPrintPage = async ({
             quantity: true,
             salePrice: true,
             totalAmount: true,
+            showQty: true,
+            showUnitName: true,
+            showPricePerUnit: true,
+            unitScale: true,
             lotItems: { select: { lotNo: true, qty: true } },
             product: {
               select: { code: true, name: true, reportUnitName: true },

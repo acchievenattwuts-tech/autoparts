@@ -91,15 +91,22 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const initialItems = ret.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];
+    const displayUnitName = item.showUnitName ?? baseUnit?.name ?? "";
+    const displayScale = Number(item.unitScale ?? baseUnit?.scale ?? 1) || 1;
+    const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.qty) / displayScale;
+    const displayCostPrice =
+      item.showPricePerUnit != null
+        ? Number(item.showPricePerUnit)
+        : Number(item.costPrice) * displayScale;
     return {
       productId: item.productId,
-      unitName:  baseUnit?.name ?? "",
-      qty:       Number(item.qty),
-      costPrice: Number(item.costPrice),
+      unitName:  displayUnitName,
+      qty:       displayQty,
+      costPrice: displayCostPrice,
       lotItems: item.lotItems.map((lot) => ({
         lotNo: lot.lotNo,
-        qty: Number(lot.qty),
-        unitCost: Number(item.costPrice),
+        qty: Number(lot.qty) / displayScale,
+        unitCost: displayCostPrice,
         mfgDate: "",
         expDate: "",
       })),

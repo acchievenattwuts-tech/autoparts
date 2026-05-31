@@ -30,6 +30,7 @@ interface AutocompleteItem {
   salePrice: number;
   stock: number;
   inStock: boolean;
+  saleUnitName: string | null;
   reportUnitName: string;
   brand: string | null;
   category: string;
@@ -92,6 +93,8 @@ const ProductAutocomplete = ({
   const [mounted, setMounted] = useState(false);
   const [isNavigating, startNavigation] = useTransition();
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const getDisplayUnitName = (item: AutocompleteItem) =>
+    item.saleUnitName || item.reportUnitName || "หน่วย";
 
   useEffect(() => {
     setMounted(true);
@@ -334,7 +337,7 @@ const ProductAutocomplete = ({
                                 ฿{item.salePrice.toLocaleString("th-TH")}
                               </p>
                               <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                                /{item.reportUnitName}
+                                /{getDisplayUnitName(item)}
                               </p>
                             </>
                           )}
@@ -773,7 +776,7 @@ const ProductAutocomplete = ({
                                   : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
                               }`}
                             >
-                              Stock {item.stock.toLocaleString("en-US")} {item.reportUnitName}
+                              Stock {item.stock.toLocaleString("en-US")} {getDisplayUnitName(item)}
                             </span>
                           )}
                         </div>
@@ -786,7 +789,7 @@ const ProductAutocomplete = ({
                                 ฿{item.salePrice.toLocaleString("th-TH")}
                               </p>
                               <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                                /{item.reportUnitName}
+                                /{getDisplayUnitName(item)}
                               </p>
                             </>
                           )}

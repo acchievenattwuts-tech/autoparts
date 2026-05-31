@@ -650,6 +650,10 @@ export async function createPurchase(
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
             landedCost:    landedCostPerSelectedUnit,
+            showQty:       item.qty,
+            showUnitName:  item.unitName,
+            showPricePerUnit: item.costPrice,
+            unitScale:     scale,
           },
         });
 
@@ -1125,15 +1129,11 @@ export async function updatePurchase(
       //     existing line + StockCard landed cost in place instead of
       //     rebuilding item/lot rows for the whole document.
       if (useDifferential && matchedByNewIdx.size > 0) {
-        const supplierIdChanged =
-          (existing.supplierId ?? null) !== (supplierId || null);
-        const taxBasisChanged =
-          existing.vatType !== vatType ||
-          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
-        if (supplierIdChanged || taxBasisChanged || canUpdateLandedAllocationInPlace) {
           const changedStockCardIds: string[] = [];
           for (const [newIdx, existingItemId] of matchedByNewIdx) {
             const item = validItems[newIdx];
+            const displayScale =
+              newUnitScaleMap.get(getPurchaseUnitKey(item.productId, item.unitName)) ?? 1;
             const itemTotal = item.qty * item.costPrice;
             const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
             const allocatedLandedForLine = landedAllocations.get(newIdx) ?? 0;
@@ -1145,6 +1145,10 @@ export async function updatePurchase(
                 supplierId: supplierId || null,
                 lineNo: newIdx + 1,
                 subtotalAmount: itemSubtotal,
+                showQty: item.qty,
+                showUnitName: item.unitName,
+                showPricePerUnit: item.costPrice,
+                unitScale: displayScale,
                 ...(canUpdateLandedAllocationInPlace
                   ? { landedCost: landedCostPerSelectedUnit }
                   : {}),
@@ -1185,7 +1189,6 @@ export async function updatePurchase(
               }
             }
           }
-        }
       }
 
       // 3. Create items + stock cards.
@@ -1249,6 +1252,10 @@ export async function updatePurchase(
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
             landedCost:    landedCostPerSelectedUnit,
+            showQty:       item.qty,
+            showUnitName:  item.unitName,
+            showPricePerUnit: item.costPrice,
+            unitScale:     scale,
           },
         });
 

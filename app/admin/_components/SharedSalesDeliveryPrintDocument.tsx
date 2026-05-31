@@ -40,6 +40,10 @@ type SalePrintItem = {
   quantity: NumericLike;
   salePrice: NumericLike;
   totalAmount: NumericLike;
+  showQty?: NumericLike | null;
+  showUnitName?: string | null;
+  showPricePerUnit?: NumericLike | null;
+  unitScale?: NumericLike | null;
   lotItems: SalePrintLotItem[];
   product: SalePrintProduct;
 };
@@ -210,24 +214,31 @@ const SharedSalesDeliveryPrintDocument = ({
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((item, idx) => (
-            <tr key={item.id}>
-              <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{idx + 1}</td>
-              <td className={`whitespace-nowrap ${PRINT_TABLE_CELL_CLASS} font-mono text-gray-700`}>{item.product.code}</td>
-              <td className={PRINT_TABLE_CELL_CLASS}>
-                <div className="font-medium text-gray-900">{item.product.name}</div>
-                {item.lotItems.length > 0 ? (
-                  <div className="mt-0.5 text-[11px] text-gray-600">
-                    Lot: {item.lotItems.map((lot) => `${lot.lotNo} × ${Number(lot.qty)}`).join(", ")}
-                  </div>
-                ) : null}
-              </td>
-              <td className={`${PRINT_TABLE_CELL_CLASS} text-center`}>{Number(item.quantity)}</td>
-              <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{item.product.reportUnitName}</td>
-              <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(item.salePrice))}</td>
-              <td className={`${PRINT_TABLE_CELL_CLASS} text-right font-medium`}>{formatPrintNumber(Number(item.totalAmount))}</td>
-            </tr>
-          ))}
+          {sale.items.map((item, idx) => {
+            const displayScale = Number(item.unitScale ?? 1) || 1;
+            const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.quantity);
+            const displayUnitName = item.showUnitName ?? item.product.reportUnitName;
+            const displayPrice = item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice);
+
+            return (
+              <tr key={item.id}>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{idx + 1}</td>
+                <td className={`whitespace-nowrap ${PRINT_TABLE_CELL_CLASS} font-mono text-gray-700`}>{item.product.code}</td>
+                <td className={PRINT_TABLE_CELL_CLASS}>
+                  <div className="font-medium text-gray-900">{item.product.name}</div>
+                  {item.lotItems.length > 0 ? (
+                    <div className="mt-0.5 text-[11px] text-gray-600">
+                      Lot: {item.lotItems.map((lot) => `${lot.lotNo} × ${(Number(lot.qty) / displayScale).toLocaleString("th-TH")}`).join(", ")}
+                    </div>
+                  ) : null}
+                </td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-center`}>{displayQty.toLocaleString("th-TH")}</td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{displayUnitName}</td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(displayPrice)}</td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-right font-medium`}>{formatPrintNumber(Number(item.totalAmount))}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

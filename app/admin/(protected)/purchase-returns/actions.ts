@@ -76,8 +76,10 @@ type LineData = {
   productId: string;
   unitName: string;
   qty: number;
+  unitScale: number;
   qtyInBase: number;
   costPerBase: number;
+  showPricePerUnit: number;
   isLotControl: boolean;
   isTracked: boolean;
   totalAmount: number;
@@ -343,8 +345,10 @@ async function buildLineData(
       productId: item.productId,
       unitName: item.unitName,
       qty: item.qty,
+      unitScale: scale,
       qtyInBase,
       costPerBase,
+      showPricePerUnit: item.costPrice && item.costPrice > 0 ? item.costPrice : fallbackCost * scale,
       isLotControl: product.isLotControl,
       isTracked,
       totalAmount,
@@ -436,6 +440,10 @@ async function writePurchaseReturnLines(
         amount: line.totalAmount,
         subtotalAmount: line.subtotalAmount,
         detail: `คืน ${line.qty} ${line.unitName}`,
+        showQty: line.qty,
+        showUnitName: line.unitName,
+        showPricePerUnit: line.showPricePerUnit,
+        unitScale: line.unitScale,
       },
     });
 
@@ -1134,9 +1142,14 @@ export async function updatePurchaseReturn(
           const line = lineData[newIdx];
           await tx.purchaseReturnItem.update({
             where: { id: existingItemId },
-            data:  taxBasisChanged
-              ? { lineNo: newIdx + 1, subtotalAmount: line.subtotalAmount }
-              : { lineNo: newIdx + 1 },
+            data: {
+              lineNo: newIdx + 1,
+              showQty: line.qty,
+              showUnitName: line.unitName,
+              showPricePerUnit: line.showPricePerUnit,
+              unitScale: line.unitScale,
+              ...(taxBasisChanged ? { subtotalAmount: line.subtotalAmount } : {}),
+            },
           });
         }
       }
@@ -1245,6 +1258,10 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
           productId: true,
           quantity: true,
           costPrice: true,
+          showQty: true,
+          showUnitName: true,
+          showPricePerUnit: true,
+          unitScale: true,
           product: {
             select: {
               id: true,
@@ -1281,14 +1298,20 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   const items = purchase.items.map((item) => {
     const unitName = item.product.purchaseUnitName ?? "";
     const unit = item.product.units.find((entry) => entry.name === unitName);
-    const scale = unit ? Number(unit.scale) : 1;
+    const scale = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
+    const displayUnitName = item.showUnitName ?? unitName;
+    const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.quantity) / scale;
+    const displayCostPrice =
+      item.showPricePerUnit != null
+        ? Number(item.showPricePerUnit)
+        : Number(item.costPrice) * scale;
     productMap.set(item.productId, serializePurchaseReturnProductOption(item.product));
 
     return {
       productId: item.productId,
-      unitName,
-      qty: Number(item.quantity) / scale,
-      costPrice: Number(item.costPrice) * scale,
+      unitName: displayUnitName,
+      qty: displayQty,
+      costPrice: displayCostPrice,
       lotItems: item.product.isLotControl
         ? item.lotItems.map((lot) => ({
             lotNo: lot.lotNo,

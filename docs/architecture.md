@@ -34,6 +34,7 @@
 
 ## Key Business Rules
 - `StockCard` เป็น source of truth ของ stock movement
+- Transaction item rows keep base-unit fields for stock/accounting and display snapshot fields for the original user-entered quantity, unit, and unit price.
 - เอกสาร print หลายหน้า share presentation rules และต้อง sync กันตาม [AGENTS.md](/D:/autoparts/AGENTS.md)
 - Admin navigation และ quick search ต้อง sync กัน
 - งาน UI admin ต้องดูทั้ง light/dark mode

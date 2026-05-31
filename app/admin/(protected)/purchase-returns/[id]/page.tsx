@@ -142,44 +142,54 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
                 <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวน (base)</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">จำนวน</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">หน่วย</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ทุน/หน่วย</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">รวม</th>
               </tr>
             </thead>
             <tbody>
-              {ret.items.map((item) => (
+              {ret.items.map((item) => {
+                const displayScale = Number(item.unitScale ?? 1) || 1;
+                const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.qty);
+                const displayUnitName = item.showUnitName ?? "-";
+                const displayPrice =
+                  item.showPricePerUnit != null
+                    ? Number(item.showPricePerUnit)
+                    : Number(item.costPrice);
+                return (
                 <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                   <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-slate-400">{item.product.code}</td>
                   <td className="px-3 py-2 text-gray-800 dark:text-slate-200">
                     <div>{item.product.name}</div>
                     {item.lotItems.length > 0 && (
                       <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                        Lot: {item.lotItems.map((lot) => `${lot.lotNo} (${Number(lot.qty)})`).join(", ")}
+                        Lot: {item.lotItems.map((lot) => `${lot.lotNo} (${(Number(lot.qty) / displayScale).toLocaleString("th-TH")} ${displayUnitName})`).join(", ")}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{Number(item.qty)}</td>
+                  <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{displayQty.toLocaleString("th-TH")}</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{displayUnitName}</td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">
-                    {Number(item.costPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    {displayPrice.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">
                     {Number(item.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
             <tfoot className="border-t-2 border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
               {ret.vatType !== "NO_VAT" && (
                 <>
                   <tr>
-                    <td colSpan={4} className="px-3 py-1 text-right text-sm text-gray-500 dark:text-slate-400">ยอดก่อนภาษี</td>
+                    <td colSpan={5} className="px-3 py-1 text-right text-sm text-gray-500 dark:text-slate-400">ยอดก่อนภาษี</td>
                     <td className="px-3 py-1 text-right text-gray-700 dark:text-slate-300">
                       {Number(ret.subtotalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                   </tr>
                   <tr>
-                    <td colSpan={4} className="px-3 py-1 text-right text-sm text-gray-500 dark:text-slate-400">
+                    <td colSpan={5} className="px-3 py-1 text-right text-sm text-gray-500 dark:text-slate-400">
                       VAT {Number(ret.vatRate)}%
                     </td>
                     <td className="px-3 py-1 text-right text-gray-700 dark:text-slate-300">
@@ -189,7 +199,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
                 </>
               )}
               <tr>
-                <td colSpan={4} className="px-3 py-3 text-right font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
+                <td colSpan={5} className="px-3 py-3 text-right font-semibold text-gray-700 dark:text-slate-300">ยอดสุทธิ</td>
                 <td className="px-3 py-3 text-right text-base font-bold text-[#1e3a5f] dark:text-sky-300">
                   {Number(ret.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                 </td>

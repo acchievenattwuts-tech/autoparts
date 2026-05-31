@@ -10,6 +10,7 @@
 - [lot-control.md](/D:/autoparts/docs/decisions/lot-control.md)
 - [warranty-claim.md](/D:/autoparts/docs/decisions/warranty-claim.md)
 - [purchase-update-differential.md](/D:/autoparts/docs/decisions/purchase-update-differential.md)
+- [document-item-display-snapshot.md](/D:/autoparts/docs/decisions/document-item-display-snapshot.md)
 
 ## Writing Rules
 - 1 เรื่องต่อ 1 ไฟล์

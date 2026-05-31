@@ -49,8 +49,8 @@ export const getStorefrontProductsLandingPageData = unstable_cache(
           code: true,
           imageUrl: true,
           salePrice: true,
+          saleUnitName: true,
           stock: true,
-          reportUnitName: true,
           category: { select: { id: true, name: true, slug: true } },
           brand: { select: { name: true } },
           carModels: {

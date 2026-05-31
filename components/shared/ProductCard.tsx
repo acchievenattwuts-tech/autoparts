@@ -15,8 +15,8 @@ type ProductForCard = {
   code: string;
   imageUrl: string | null;
   salePrice: { toString(): string } | number;
+  saleUnitName?: string | null;
   stock: number;
-  reportUnitName: string;
   category: { name: string; slug?: string | null };
   brand: { name: string } | null;
   carModels?: {
@@ -49,6 +49,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
     product,
   });
   const displayPrices = getStorefrontDisplayPrices(product.salePrice);
+  const saleUnitLabel = product.saleUnitName?.trim() || "หน่วย";
 
   const compatibilitySummary =
     product.carModels && product.carModels.length > 0
@@ -142,6 +143,9 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
               <p className="mt-1 text-xs font-bold text-emerald-600 sm:text-sm">ราคาพิเศษ</p>
               <p className="text-xl font-extrabold leading-none text-[#f97316] sm:text-2xl">
                 ฿{displayPrices.salePrice.toLocaleString("th-TH")}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">
+                / {saleUnitLabel}
               </p>
             </div>
 
