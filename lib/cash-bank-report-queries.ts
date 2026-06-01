@@ -4,6 +4,7 @@ import {
   CashBankDirection,
   CashBankSourceType,
   CashBankTransferStatus,
+  Prisma,
 } from "@/lib/generated/prisma";
 import { getCashBankSourceHref, getCashBankSourceLabel } from "@/lib/cash-bank-links";
 import {
@@ -18,6 +19,8 @@ import {
 
 type SourceFilter = CashBankSourceType | "ALL";
 type DirectionFilter = CashBankDirection | "ALL";
+const LEDGER_ROW_LIMIT = 5000;
+export const CASH_BANK_HISTORY_ROW_LIMIT = 5000;
 
 export type CashBankReportFilters = {
   from: Date;
@@ -56,6 +59,13 @@ export type CashBankLedgerData = {
   totalIn: number;
   totalOut: number;
   endingBalance: number;
+  rowLimit: number;
+  rowLimitReached: boolean;
+};
+
+type CashBankBalanceSnapshotRow = {
+  accountId: string;
+  balanceAfter: Prisma.Decimal;
 };
 
 export type CashBankTransferHistoryRow = {
@@ -165,11 +175,20 @@ export async function queryCashBankLedgerData(
       code: true,
       name: true,
       openingBalance: true,
+      openingDate: true,
     },
   });
 
   if (accounts.length === 0) {
-    return { rows: [], openingBalance: 0, totalIn: 0, totalOut: 0, endingBalance: 0 };
+    return {
+      rows: [],
+      openingBalance: 0,
+      totalIn: 0,
+      totalOut: 0,
+      endingBalance: 0,
+      rowLimit: LEDGER_ROW_LIMIT,
+      rowLimitReached: false,
+    };
   }
 
   const movements = await db.cashBankMovement.findMany({
@@ -204,52 +223,45 @@ export async function queryCashBankLedgerData(
         },
       },
     },
-    take: 5000,
+    take: LEDGER_ROW_LIMIT,
   });
 
-  const [openingEntries, endingEntries] = await Promise.all([
-    Promise.all(
-      accounts.map(async (account) => {
-        const previousMovement = await db.cashBankMovement.findFirst({
-          where: {
-            accountId: account.id,
-            txnDate: { lt: filters.from },
-          },
-          orderBy: [
-            { txnDate: "desc" },
-            { sorder: "desc" },
-            { createdAt: "desc" },
-            { id: "desc" },
-          ],
-          select: { balanceAfter: true },
-        });
-        return [
-          account.id,
-          Number(previousMovement?.balanceAfter ?? account.openingBalance),
-        ] as const;
-      }),
-    ),
+  const accountIds = accounts.map((account) => account.id);
+  const [openingRows, endingRows] = await Promise.all([
+    db.$queryRaw<CashBankBalanceSnapshotRow[]>`
+      SELECT DISTINCT ON (m."accountId")
+        m."accountId",
+        m."balanceAfter"
+      FROM "CashBankMovement" m
+      WHERE m."accountId" IN (${Prisma.join(accountIds)})
+        AND m."txnDate" < ${filters.from}
+      ORDER BY m."accountId" ASC, m."txnDate" DESC, m.sorder DESC, m."createdAt" DESC, m.id DESC
+    `,
     // Query ending balance separately (no direction/source filter) so the balance
     // card is always accurate regardless of which filter the user has applied.
-    Promise.all(
-      accounts.map(async (account) => {
-        const lastMovement = await db.cashBankMovement.findFirst({
-          where: {
-            accountId: account.id,
-            txnDate: { lte: filters.to },
-          },
-          orderBy: [
-            { txnDate: "desc" },
-            { sorder: "desc" },
-            { createdAt: "desc" },
-            { id: "desc" },
-          ],
-          select: { balanceAfter: true },
-        });
-        return [account.id, lastMovement ? Number(lastMovement.balanceAfter) : null] as const;
-      }),
-    ),
+    db.$queryRaw<CashBankBalanceSnapshotRow[]>`
+      SELECT DISTINCT ON (m."accountId")
+        m."accountId",
+        m."balanceAfter"
+      FROM "CashBankMovement" m
+      WHERE m."accountId" IN (${Prisma.join(accountIds)})
+        AND m."txnDate" <= ${filters.to}
+      ORDER BY m."accountId" ASC, m."txnDate" DESC, m.sorder DESC, m."createdAt" DESC, m.id DESC
+    `,
   ]);
+
+  const openingSnapshotByAccount = new Map(openingRows.map((row) => [row.accountId, Number(row.balanceAfter)]));
+  const endingSnapshotByAccount = new Map(endingRows.map((row) => [row.accountId, Number(row.balanceAfter)]));
+  const openingEntries = accounts.map((account) => {
+    const balance = openingSnapshotByAccount.get(account.id)
+      ?? (filters.from >= account.openingDate ? Number(account.openingBalance) : 0);
+    return [account.id, balance] as const;
+  });
+  const endingEntries = accounts.map((account) => {
+    const balance = endingSnapshotByAccount.get(account.id)
+      ?? (filters.to >= account.openingDate ? Number(account.openingBalance) : 0);
+    return [account.id, balance] as const;
+  });
 
   const openingByAccount = new Map(openingEntries);
   const rows: CashBankLedgerRow[] = movements.map((movement, index) => {
@@ -287,6 +299,8 @@ export async function queryCashBankLedgerData(
     totalIn,
     totalOut,
     endingBalance,
+    rowLimit: LEDGER_ROW_LIMIT,
+    rowLimitReached: movements.length >= LEDGER_ROW_LIMIT,
   };
 }
 
@@ -312,7 +326,7 @@ export async function queryCashBankTransferHistoryRows(
       fromAccount: { select: { code: true, name: true } },
       toAccount: { select: { code: true, name: true } },
     },
-    take: 5000,
+    take: CASH_BANK_HISTORY_ROW_LIMIT,
   });
 
   return rows.map((row, index) => ({
@@ -354,7 +368,7 @@ export async function queryCashBankAdjustmentHistoryRows(
       cancelNote: true,
       account: { select: { code: true, name: true } },
     },
-    take: 5000,
+    take: CASH_BANK_HISTORY_ROW_LIMIT,
   });
 
   return rows.map((row, index) => ({

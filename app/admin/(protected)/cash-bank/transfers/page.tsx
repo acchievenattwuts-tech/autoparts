@@ -36,8 +36,8 @@ export default async function CashBankTransfersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">โอนเงินระหว่างบัญชี</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">โอนเงินระหว่างบัญชี</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400">
           ใช้สำหรับย้ายเงินระหว่างบัญชีเงินสดและธนาคาร โดยระบบจะสร้าง movement ออกและเข้าให้อัตโนมัติในรายการเดียว
         </p>
       </div>

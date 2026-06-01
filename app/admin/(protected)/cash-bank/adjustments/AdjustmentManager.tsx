@@ -39,7 +39,7 @@ type Props = {
 };
 
 const inputCls =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-sky-500/40";
 
 function formatCurrency(value: number): string {
   return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -171,33 +171,33 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
   return (
     <div className="space-y-5">
       {(canCreate || (adjustmentId && canUpdate)) && (
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="font-kanit text-lg font-semibold text-gray-900">
+              <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">
                 {adjustmentId ? "แก้ไขการปรับยอด" : "บันทึกการปรับยอดเงิน"}
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-slate-400">
                 ใช้สำหรับรายการเงินเข้าออกที่ไม่เกิดจากเอกสารหลัก เช่น เงินสดขาดเกิน ค่าธรรมเนียมธนาคาร หรือการตั้งยอดเริ่มต้น
               </p>
             </div>
             {adjustmentId && (
-              <button type="button" onClick={resetForm} className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200">
+              <button type="button" onClick={resetForm} className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15">
                 ล้างฟอร์ม
               </button>
             )}
           </div>
 
-          {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-          {success && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{success}</div>}
+          {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200">{error}</div>}
+          {success && <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200">{success}</div>}
 
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">วันที่</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">วันที่</label>
               <input type="date" className={inputCls} value={adjustDate} onChange={(e) => setAdjustDate(e.target.value)} />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">บัญชี</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">บัญชี</label>
               <select className={`${inputCls} bg-white`} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
                 <option value="">เลือกบัญชี</option>
                 {accounts.map((account) => (
@@ -206,14 +206,14 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">ทิศทาง</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ทิศทาง</label>
               <select className={`${inputCls} bg-white`} value={direction} onChange={(e) => setDirection(e.target.value as "IN" | "OUT")}>
                 <option value="IN">เงินเข้า</option>
                 <option value="OUT">เงินออก</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">จำนวนเงิน</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">จำนวนเงิน</label>
               <input
                 type="number"
                 step={0.01}
@@ -228,11 +228,11 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">เหตุผล</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">เหตุผล</label>
               <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น เงินขาดเกิน / ค่าธรรมเนียม" />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">หมายเหตุ</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">หมายเหตุ</label>
               <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
               type="button"
               onClick={handleSubmit}
               disabled={isPending}
-              className="rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60"
+              className="rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
             >
               {isPending ? "กำลังบันทึก..." : adjustmentId ? "บันทึกการแก้ไข" : "บันทึกการปรับยอด"}
             </button>
@@ -250,11 +250,11 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
         </div>
       )}
 
-      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h2 className="font-kanit text-lg font-semibold text-gray-900">ประวัติการปรับยอดเงิน</h2>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
+      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ประวัติการปรับยอดเงิน</h2>
+        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100 dark:border-white/10">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-gray-50 text-gray-600 dark:bg-white/5 dark:text-slate-300">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">เลขที่</th>
                 <th className="px-3 py-2 text-left font-medium">วันที่</th>
@@ -269,30 +269,30 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
             </thead>
             <tbody>
               {sortedAdjustments.map((adjustment) => (
-                <tr key={adjustment.id} className="border-t border-gray-100">
-                  <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{adjustment.adjustNo}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(adjustment.adjustDate)}</td>
-                  <td className="px-3 py-2 text-gray-900">
+                <tr key={adjustment.id} className="border-t border-gray-100 dark:border-white/10">
+                  <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-300">{adjustment.adjustNo}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-slate-300">{formatDate(adjustment.adjustDate)}</td>
+                  <td className="px-3 py-2 text-gray-900 dark:text-slate-100">
                     <p>{adjustment.accountName}</p>
-                    <p className="text-xs text-gray-400">{adjustment.accountCode}</p>
+                    <p className="text-xs text-gray-400 dark:text-slate-500">{adjustment.accountCode}</p>
                   </td>
                   <td className="px-3 py-2">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.direction === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.direction === "IN" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-rose-100 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300"}`}>
                       {adjustment.direction === "IN" ? "เงินเข้า" : "เงินออก"}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-right font-medium text-gray-900">{formatCurrency(adjustment.amount)}</td>
-                  <td className="px-3 py-2 text-gray-600">{adjustment.reason}</td>
-                  <td className="px-3 py-2 text-gray-500">{adjustment.note || adjustment.cancelNote || "-"}</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">{formatCurrency(adjustment.amount)}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-slate-300">{adjustment.reason}</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{adjustment.note || adjustment.cancelNote || "-"}</td>
                   <td className="px-3 py-2 text-center">
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${adjustment.status === "ACTIVE" ? "bg-green-100 text-green-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-slate-400"}`}>
                       {adjustment.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิกแล้ว"}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-2">
                       {canUpdate && adjustment.status === "ACTIVE" && (
-                        <button type="button" onClick={() => handleEdit(adjustment)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200">
+                        <button type="button" onClick={() => handleEdit(adjustment)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15">
                           แก้ไข
                         </button>
                       )}
@@ -305,7 +305,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
                             setCancelTarget(adjustment.id);
                             setCancelNote("");
                           }}
-                          className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                          className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:bg-red-400/10 dark:text-red-200 dark:hover:bg-red-400/15"
                         >
                           ยกเลิก
                         </button>
@@ -320,9 +320,9 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
       </div>
 
       {cancelTarget && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm">
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">ยืนยันการยกเลิกรายการปรับยอด</h2>
-          <p className="text-sm text-gray-600">ระบุเหตุผลเพื่อเก็บไว้ในประวัติการยกเลิก</p>
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-5 shadow-sm dark:border-red-400/30 dark:bg-red-400/10">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-red-100">ยืนยันการยกเลิกรายการปรับยอด</h2>
+          <p className="text-sm text-gray-600 dark:text-red-200/80">ระบุเหตุผลเพื่อเก็บไว้ในประวัติการยกเลิก</p>
           <div className="mt-4 flex flex-col gap-3 md:flex-row">
             <input
               className={inputCls}
@@ -342,7 +342,7 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
               <button
                 type="button"
                 onClick={resetCancelState}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
               >
                 ปิด
               </button>

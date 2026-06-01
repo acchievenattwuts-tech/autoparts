@@ -60,7 +60,7 @@ function emptyFormState(): FormState {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] disabled:bg-gray-50 disabled:text-gray-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-600 dark:focus:ring-sky-500/40";
 
 export default function CashBankAccountManager({ accounts, canManage }: Props) {
   const router = useRouter();
@@ -174,13 +174,13 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
   };
 
   return (
-    <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="font-kanit text-lg font-semibold text-gray-900">
+          <h2 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">
             {form.accountId ? "แก้ไขบัญชีเงิน" : "เพิ่มบัญชีเงิน"}
           </h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-slate-400">
             ใช้กำหนดบัญชีเงินสดหรือธนาคารสำหรับ movement และรายงาน cash/bank
           </p>
         </div>
@@ -188,7 +188,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           <button
             type="button"
             onClick={resetForm}
-            className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200"
+            className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
           >
             ล้างฟอร์ม
           </button>
@@ -196,27 +196,27 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200">
           {error}
         </div>
       )}
       {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200">
           {success}
         </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">รหัสบัญชี</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">รหัสบัญชี</label>
           <input className={inputCls} value={form.code} onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">ชื่อบัญชี</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ชื่อบัญชี</label>
           <input className={inputCls} value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">ประเภท</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ประเภท</label>
           <select
             className={`${inputCls} bg-white`}
             value={form.type}
@@ -236,7 +236,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">ยอดยกมา</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ยอดยกมา</label>
           <input
             type="number"
             step={0.01}
@@ -251,7 +251,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">วันที่ยอดยกมา</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">วันที่ยอดยกมา</label>
           <input
             type="date"
             className={inputCls}
@@ -260,7 +260,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">ยอดขั้นต่ำเตือน</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ยอดขั้นต่ำเตือน</label>
           <input
             type="number"
             step={0.01}
@@ -277,7 +277,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">ธนาคาร</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ธนาคาร</label>
           <input
             className={inputCls}
             value={form.bankName}
@@ -287,7 +287,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">เลขที่บัญชี</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">เลขที่บัญชี</label>
           <input
             className={inputCls}
             value={form.accountNo}
@@ -297,7 +297,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">PromptPay ID</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">PromptPay ID</label>
           <input
             className={inputCls}
             value={form.promptPayId}
@@ -306,7 +306,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
             placeholder={form.type === "BANK" ? "เบอร์โทร / เลขบัตร / e-Wallet ID" : "ใช้เฉพาะบัญชีธนาคาร"}
           />
         </div>
-        <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100">
           <input
             type="checkbox"
             checked={form.isPrimaryTransferAccount}
@@ -315,7 +315,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           />
           บัญชีหลักรับโอน
         </label>
-        <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 dark:border-white/10 dark:text-slate-300">
           <input
             type="checkbox"
             checked={form.isActive}
@@ -331,10 +331,10 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
         </label>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-gray-500 dark:text-slate-400">
         การเปลี่ยนบัญชีหลักรับโอนใช้แบบ 2 ขั้น: เอาติ๊กออกจากบัญชีเดิมและบันทึกก่อน แล้วค่อยไปติ๊กบัญชีธนาคารใหม่
       </p>
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-gray-500 dark:text-slate-400">
         หากต้องการ QR พร้อมยอดชำระ ระบบต้องมี PromptPay ID ในบัญชีธนาคารที่ตั้งเป็นบัญชีหลักรับโอน
       </p>
 
@@ -343,7 +343,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           type="button"
           onClick={handleSubmit}
           disabled={isPending}
-          className="rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60"
+          className="rounded-lg bg-[#1e3a5f] px-5 py-2 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
         >
           {isPending ? "กำลังบันทึก..." : form.accountId ? "บันทึกการแก้ไข" : "เพิ่มบัญชี"}
         </button>
@@ -351,15 +351,15 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           type="button"
           onClick={handleSeedDefaults}
           disabled={isPending}
-          className="rounded-lg bg-emerald-50 px-5 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+          className="rounded-lg bg-emerald-50 px-5 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/15"
         >
           {isPending ? "กำลังประมวลผล..." : "สร้างบัญชีตั้งต้น"}
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-gray-100">
+      <div className="overflow-x-auto rounded-xl border border-gray-100 dark:border-white/10">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
+          <thead className="bg-gray-50 text-gray-600 dark:bg-white/5 dark:text-slate-300">
             <tr>
               <th className="px-3 py-2 text-left font-medium">รหัส</th>
               <th className="px-3 py-2 text-left font-medium">ชื่อบัญชี</th>
@@ -372,17 +372,17 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
           </thead>
           <tbody>
             {sortedAccounts.map((account) => (
-              <tr key={account.id} className="border-t border-gray-100">
-                <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f]">{account.code}</td>
-                <td className="px-3 py-2 text-gray-900">{account.name}</td>
-                <td className="px-3 py-2 text-gray-600">{account.type}</td>
-                <td className="px-3 py-2 text-gray-500">
+              <tr key={account.id} className="border-t border-gray-100 dark:border-white/10">
+                <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-300">{account.code}</td>
+                <td className="px-3 py-2 text-gray-900 dark:text-slate-100">{account.name}</td>
+                <td className="px-3 py-2 text-gray-600 dark:text-slate-300">{account.type}</td>
+                <td className="px-3 py-2 text-gray-500 dark:text-slate-400">
                   {[account.bankName, account.accountNo].filter(Boolean).join(" | ") || "-"}
                   {account.promptPayId ? (
-                    <div className="mt-1 text-xs text-gray-400">PromptPay: {account.promptPayId}</div>
+                    <div className="mt-1 text-xs text-gray-400 dark:text-slate-500">PromptPay: {account.promptPayId}</div>
                   ) : null}
                 </td>
-                <td className="px-3 py-2 text-right font-medium text-gray-800">
+                <td className="px-3 py-2 text-right font-medium text-gray-800 dark:text-slate-100">
                   {account.openingBalance.toLocaleString("th-TH", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
@@ -391,13 +391,13 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
                 <td className="px-3 py-2 text-center">
                   <span
                     className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      account.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                      account.isActive ? "bg-green-100 text-green-700 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-slate-400"
                     }`}
                   >
                     {account.isActive ? "ใช้งาน" : "ปิดใช้งาน"}
                   </span>
                   {account.isPrimaryTransferAccount ? (
-                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">
                       บัญชีหลักรับโอน
                     </span>
                   ) : null}
@@ -406,7 +406,7 @@ export default function CashBankAccountManager({ accounts, canManage }: Props) {
                   <button
                     type="button"
                     onClick={() => handleEdit(account)}
-                    className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200"
+                    className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
                   >
                     แก้ไข
                   </button>

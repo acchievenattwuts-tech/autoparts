@@ -65,7 +65,7 @@ interface Props {
    * but isAjaxUpdateRef skips the state reset. Only external navigations (nav links,
    * browser back) bypass the flag and trigger a full state reset.
    */
-  renderNonce: number;
+  renderNonce: string;
 }
 
 const buildSearchUrl = (f: FiltersState, basePath: string): string => {

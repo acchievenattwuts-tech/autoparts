@@ -282,6 +282,9 @@ const SharedSalesDeliveryPrintDocument = ({
                     <p className="font-semibold text-gray-900">ข้อมูลบัญชีรับโอน</p>
                     <p className="text-gray-700">{transferPrimaryAccount.bankName || transferPrimaryAccount.name}</p>
                     <p className="font-mono text-sm text-[#1e3a5f]">{transferPrimaryAccount.accountNo || "-"}</p>
+                    <p className="text-gray-700">
+                      ชื่อบัญชี: <span className="font-semibold text-gray-900">{transferPrimaryAccount.name}</span>
+                    </p>
                     {transferPrimaryAccount.promptPayId ? (
                       <p className="text-gray-700">
                         PromptPay ID: <span className="font-mono">{transferPrimaryAccount.promptPayId}</span>
@@ -364,6 +367,9 @@ const SharedSalesDeliveryPrintDocument = ({
                       <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
                       <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
                       <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+                      <p>
+                        ชื่อบัญชี: <span className="font-medium text-gray-900">{receivedTransferAccount.name}</span>
+                      </p>
                     </div>
                   ) : null}
                 </div>

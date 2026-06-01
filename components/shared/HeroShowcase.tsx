@@ -15,6 +15,9 @@ const HeroShowcase = ({
   shopPhone,
   shopName = "",
 }: HeroShowcaseProps) => {
+  const shopPhoneHref = shopPhone?.replace(/[^0-9+]/g, "");
+  const ContactCard = shopPhoneHref ? "a" : "div";
+
   return (
     <section id="home" className="relative overflow-hidden bg-[#edf5ff]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(65,114,194,0.18),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_28%)]" />
@@ -126,13 +129,21 @@ const HeroShowcase = ({
                 <p className="mt-3 text-sm font-semibold text-[#16345d]">ส่งทั่วประเทศ</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">สรุปรายการแล้วจัดส่งต่อได้ทันที</p>
               </div>
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur">
+              <ContactCard
+                {...(shopPhoneHref
+                  ? {
+                      href: `tel:${shopPhoneHref}`,
+                      "aria-label": `โทร ${shopPhone}`,
+                    }
+                  : {})}
+                className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#4d6fba]/25 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d6fba]/45"
+              >
                 <Phone className="h-5 w-5 text-[#4d6fba]" />
                 <p className="mt-3 text-sm font-semibold text-[#16345d]">ติดต่อสะดวก</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   {shopPhone ? `โทร ${shopPhone}` : "ทักแชตหรือส่งรูปอะไหล่เดิมได้"}
                 </p>
-              </div>
+              </ContactCard>
             </div>
           </div>
         </div>

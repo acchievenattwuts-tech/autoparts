@@ -38,8 +38,8 @@ export default async function CashBankAdjustmentsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-kanit text-2xl font-bold text-gray-900">ปรับยอดเงิน</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">ปรับยอดเงิน</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400">
           ใช้กับรายการเงินเข้าออกที่ไม่ได้เกิดจากเอกสารหลัก เช่น เงินขาด เงินเกิน ค่าธรรมเนียมธนาคาร หรือการตั้งยอดเริ่มต้น
         </p>
       </div>

@@ -224,6 +224,9 @@ const SharedReceiptSettlementPrintDocument = ({
                     <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
                     <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>
                     <p className="font-mono text-[#1e3a5f]">{receivedTransferAccount.accountNo || "-"}</p>
+                    <p>
+                      ชื่อบัญชี: <span className="font-medium text-gray-900">{receivedTransferAccount.name}</span>
+                    </p>
                   </div>
                 ) : null}
               </div>

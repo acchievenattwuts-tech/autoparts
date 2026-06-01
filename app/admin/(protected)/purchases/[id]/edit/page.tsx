@@ -16,7 +16,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
 
   const { id } = await params;
 
-  const [purchase, rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
+  const [purchase, suppliers, config, cashBankAccounts] = await Promise.all([
     db.purchase.findUnique({
       where: { id },
       include: {
@@ -33,19 +33,6 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         },
       },
     }),
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true,
-        purchaseUnitName: true, costPrice: true, inventoryTracking: true,
-        isLotControl: true, requireExpiryDate: true,
-        category: { select: { name: true } },
-        brand: { select: { name: true } },
-        aliases: { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
     db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, creditTerm: true } }),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
@@ -53,6 +40,22 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
 
   if (!purchase) notFound();
   if (purchase.status === "CANCELLED") redirect(`/admin/purchases/${id}`);
+
+  const purchaseProductIds = [...new Set(purchase.items.map((item) => item.productId))];
+  const rawProducts = purchaseProductIds.length
+    ? await db.product.findMany({
+        where: { id: { in: purchaseProductIds } },
+        select: {
+          id: true, code: true, name: true, description: true,
+          purchaseUnitName: true, costPrice: true, inventoryTracking: true,
+          isLotControl: true, requireExpiryDate: true,
+          category: { select: { name: true } },
+          brand: { select: { name: true } },
+          aliases: { select: { alias: true } },
+          units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+        },
+      })
+    : [];
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,

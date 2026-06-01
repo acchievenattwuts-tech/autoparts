@@ -10,7 +10,6 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
 import { getThailandDateKey } from "@/lib/th-date";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchaseReturnPage = async ({
   searchParams,
@@ -21,19 +20,7 @@ const NewPurchaseReturnPage = async ({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const claimId = resolvedSearchParams?.claimId?.trim() || undefined;
 
-  const [rawProducts, config, cashBankAccounts, linkedClaim] = await Promise.all([
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true, avgCost: true, inventoryTracking: true,
-        isLotControl: true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
+  const [config, cashBankAccounts, linkedClaim] = await Promise.all([
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
     claimId
@@ -74,17 +61,11 @@ const NewPurchaseReturnPage = async ({
       : Promise.resolve(null),
   ]);
 
-  const productRows = [...rawProducts];
-  if (
-    linkedClaim?.warranty.product &&
-    !productRows.some((product) => product.id === linkedClaim.warranty.product.id)
-  ) {
-    productRows.push(linkedClaim.warranty.product);
-  }
+  const productRows = linkedClaim?.warranty.product ? [linkedClaim.warranty.product] : [];
 
   const products = productRows.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
-    avgCost: Number(p.avgCost), isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
+    avgCost: Number(p.avgCost), isLotControl: p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),

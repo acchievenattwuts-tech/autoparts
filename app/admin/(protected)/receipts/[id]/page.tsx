@@ -217,6 +217,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                   {receivedTransferAccount.bankName ?? receivedTransferAccount.name}
                 </p>
                 <p className="font-mono text-[#1e3a5f] dark:text-sky-300">{receivedTransferAccount.accountNo ?? "-"}</p>
+                <p className="text-gray-700 dark:text-slate-300">
+                  ชื่อบัญชี: <span className="font-medium text-gray-900 dark:text-slate-100">{receivedTransferAccount.name}</span>
+                </p>
               </div>
             ) : null}
             <div>

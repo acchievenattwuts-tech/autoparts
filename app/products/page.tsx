@@ -68,6 +68,44 @@ const normalizeQueryValues = (value: QueryValue): string[] => {
   return value ? [value] : [];
 };
 
+const buildRenderNonce = (input: {
+  q?: string;
+  category?: string;
+  brand?: string;
+  models: string[];
+  year: number | null;
+  page: number;
+  categories: string[];
+  partsBrands: string[];
+  carBrands: string[];
+  yearMin: number | null;
+  yearMax: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
+  total: number;
+  pageStart: number;
+  pageEnd: number;
+  totalPages: number;
+}): string =>
+  JSON.stringify({
+    q: input.q ?? "",
+    category: input.category ?? "",
+    brand: input.brand ?? "",
+    models: input.models,
+    year: input.year,
+    page: input.page,
+    categories: input.categories,
+    partsBrands: input.partsBrands,
+    carBrands: input.carBrands,
+    yearMin: input.yearMin,
+    yearMax: input.yearMax,
+    priceMin: input.priceMin,
+    priceMax: input.priceMax,
+    total: input.total,
+    pageStart: input.pageStart,
+    pageEnd: input.pageEnd,
+    totalPages: input.totalPages,
+  });
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const { q, category, brand, model, page } = await searchParams;
@@ -229,6 +267,26 @@ const ProductsPage = async ({ searchParams }: Props) => {
     };
   }
 
+  const renderNonce = buildRenderNonce({
+    q,
+    category,
+    brand,
+    models,
+    year: explicitYear,
+    page: currentPage,
+    categories,
+    partsBrands,
+    carBrands,
+    yearMin,
+    yearMax,
+    priceMin,
+    priceMax,
+    total: initialTotal,
+    pageStart: initialMeta.pageStart,
+    pageEnd: initialMeta.pageEnd,
+    totalPages: initialMeta.totalPages,
+  });
+
   return (
     <>
       <StorefrontNavbar
@@ -244,7 +302,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <SearchResults
-            renderNonce={Date.now()}
+            renderNonce={renderNonce}
             initialProducts={initialProducts}
             initialTotal={initialTotal}
             initialDidYouMean={initialDidYouMean}

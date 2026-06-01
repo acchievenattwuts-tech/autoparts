@@ -29,9 +29,35 @@ function uniqueIds(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
-function toSignedAmount(direction: CashBankDirection, amount: Prisma.Decimal | number): number {
-  const numericAmount = Number(amount);
-  return direction === CashBankDirection.IN ? numericAmount : -numericAmount;
+async function updateCashBankRunningBalances(
+  tx: TxClient,
+  accountId: string,
+  startingBalance: Prisma.Decimal | number,
+  startDate?: Date,
+): Promise<void> {
+  await tx.$executeRaw`
+    WITH ordered AS (
+      SELECT
+        m.id,
+        ${startingBalance}::numeric
+          + SUM(
+            CASE
+              WHEN m.direction = 'IN' THEN m.amount
+              ELSE -m.amount
+            END
+          ) OVER (
+            ORDER BY m."txnDate" ASC, m.sorder ASC, m."createdAt" ASC, m.id ASC
+          ) AS next_balance
+      FROM "CashBankMovement" m
+      WHERE m."accountId" = ${accountId}
+        AND (${startDate ?? null}::timestamptz IS NULL OR m."txnDate" >= ${startDate ?? null}::timestamptz)
+    )
+    UPDATE "CashBankMovement" AS m
+    SET "balanceAfter" = ordered.next_balance
+    FROM ordered
+    WHERE m.id = ordered.id
+      AND m."balanceAfter" IS DISTINCT FROM ordered.next_balance
+  `;
 }
 
 export async function assertCashBankAccountsExist(
@@ -52,6 +78,44 @@ export async function assertCashBankAccountsExist(
   }
 }
 
+async function assertCashBankAccountsCanPost(
+  tx: TxClient,
+  entries: CashBankEntryInput[],
+): Promise<void> {
+  const normalizedIds = uniqueIds(entries.map((entry) => entry.accountId));
+  if (normalizedIds.length === 0) return;
+
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: normalizedIds } },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      isActive: true,
+      openingDate: true,
+    },
+  });
+  const accountById = new Map(accounts.map((account) => [account.id, account]));
+
+  const missingId = normalizedIds.find((accountId) => !accountById.has(accountId));
+  if (missingId) {
+    throw new Error("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
+  }
+
+  for (const entry of entries) {
+    const account = accountById.get(entry.accountId);
+    if (!account) continue;
+
+    const accountLabel = `${account.code} - ${account.name}`;
+    if (!account.isActive) {
+      throw new Error(`บัญชีเงินสด/ธนาคาร ${accountLabel} ถูกปิดใช้งานแล้ว`);
+    }
+    if (entry.txnDate < account.openingDate) {
+      throw new Error(`วันที่รายการของบัญชี ${accountLabel} ต้องไม่ก่อนวันที่ยอดยกมา`);
+    }
+  }
+}
+
 export async function recalculateCashBankAccount(
   tx: TxClient,
   accountId: string,
@@ -62,32 +126,7 @@ export async function recalculateCashBankAccount(
   });
   if (!account) return;
 
-  const movements = await tx.cashBankMovement.findMany({
-    where: { accountId },
-    orderBy: [
-      { txnDate: "asc" },
-      { sorder: "asc" },
-      { createdAt: "asc" },
-      { id: "asc" },
-    ],
-    select: {
-      id: true,
-      direction: true,
-      amount: true,
-      balanceAfter: true,
-    },
-  });
-
-  let runningBalance = Number(account.openingBalance);
-  for (const movement of movements) {
-    runningBalance += toSignedAmount(movement.direction, movement.amount);
-    if (Number(movement.balanceAfter) === runningBalance) continue;
-
-    await tx.cashBankMovement.update({
-      where: { id: movement.id },
-      data: { balanceAfter: runningBalance },
-    });
-  }
+  await updateCashBankRunningBalances(tx, accountId, account.openingBalance);
 }
 
 async function recalculateCashBankAccountFrom(
@@ -115,38 +154,8 @@ async function recalculateCashBankAccountFrom(
     select: { balanceAfter: true },
   });
 
-  const movements = await tx.cashBankMovement.findMany({
-    where: {
-      accountId,
-      txnDate: { gte: startDate },
-    },
-    orderBy: [
-      { txnDate: "asc" },
-      { sorder: "asc" },
-      { createdAt: "asc" },
-      { id: "asc" },
-    ],
-    select: {
-      id: true,
-      direction: true,
-      amount: true,
-      balanceAfter: true,
-    },
-  });
-
-  let runningBalance = previousMovement
-    ? Number(previousMovement.balanceAfter)
-    : Number(account.openingBalance);
-
-  for (const movement of movements) {
-    runningBalance += toSignedAmount(movement.direction, movement.amount);
-    if (Number(movement.balanceAfter) === runningBalance) continue;
-
-    await tx.cashBankMovement.update({
-      where: { id: movement.id },
-      data: { balanceAfter: runningBalance },
-    });
-  }
+  const runningBalance = previousMovement?.balanceAfter ?? account.openingBalance;
+  await updateCashBankRunningBalances(tx, accountId, runningBalance, startDate);
 }
 
 export async function replaceCashBankSourceMovements(
@@ -161,10 +170,7 @@ export async function replaceCashBankSourceMovements(
   });
 
   const nextEntries = entries.filter((entry) => entry.amount > 0);
-  await assertCashBankAccountsExist(
-    tx,
-    nextEntries.map((entry) => entry.accountId),
-  );
+  await assertCashBankAccountsCanPost(tx, nextEntries);
 
   await tx.cashBankMovement.deleteMany({
     where: { sourceType, sourceId },

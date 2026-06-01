@@ -8,6 +8,7 @@ import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { CashBankDirection } from "@/lib/generated/prisma";
 import {
+  CASH_BANK_HISTORY_ROW_LIMIT,
   parseCashBankReportFilters,
   queryCashBankAdjustmentHistoryRows,
 } from "@/lib/cash-bank-report-queries";
@@ -56,6 +57,7 @@ export default async function CashBankAdjustmentHistoryReportPage({ searchParams
     .filter((row) => row.direction === CashBankDirection.OUT)
     .reduce((sum, row) => sum + row.amount, 0);
   const exportQuery = buildQuery(filters);
+  const rowLimitReached = rows.length >= CASH_BANK_HISTORY_ROW_LIMIT;
 
   return (
     <div className="space-y-4">
@@ -148,6 +150,11 @@ export default async function CashBankAdjustmentHistoryReportPage({ searchParams
         </div>
       ) : (
       <>
+      {rowLimitReached ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
+          à¸£à¸²à¸¢à¸à¸²à¸£à¸šà¸™à¸«à¸™à¹‰à¸²à¸™à¸µà¹‰à¹à¸ªà¸”à¸‡à¸ªà¸¹à¸‡à¸ªà¸¸à¸” {CASH_BANK_HISTORY_ROW_LIMIT.toLocaleString("th-TH")} à¹à¸–à¸§ à¸à¸£à¸¸à¸“à¸²à¸¥à¸”à¸Šà¹ˆà¸§à¸‡à¸§à¸±à¸™à¸—à¸µà¹ˆà¸–à¹‰à¸²à¸•à¹‰à¸­à¸‡à¸à¸²à¸£à¸”à¸¹à¸£à¸²à¸¢à¸¥à¸°à¹€à¸­à¸µà¸¢à¸”à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 shadow-sm">
           <p className="text-xs text-emerald-700">Adjustment เงินเข้า</p>

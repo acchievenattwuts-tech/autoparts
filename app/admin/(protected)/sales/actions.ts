@@ -104,6 +104,62 @@ export async function searchSaleProducts(query: string) {
   }));
 }
 
+export async function searchSaleCustomers(query: string) {
+  const session = await requireAnyPermission(["sales.create", "sales.update"]).catch(
+    () => null,
+  );
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return [];
+
+  return db.customer.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: normalizedQuery, mode: "insensitive" } },
+        { code: { contains: normalizedQuery, mode: "insensitive" } },
+        { phone: { contains: normalizedQuery, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { name: "asc" },
+    take: 50,
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      code: true,
+      shippingAddress: true,
+      creditTerm: true,
+      defaultLatitude: true,
+      defaultLongitude: true,
+    },
+  });
+}
+
+export async function searchSaleSuppliers(query: string) {
+  const session = await requireAnyPermission(["sales.create", "sales.update"]).catch(
+    () => null,
+  );
+  if (!session?.user?.id) return [];
+
+  const normalizedQuery = query.trim();
+  if (normalizedQuery.length < 2) return [];
+
+  return db.supplier.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: normalizedQuery, mode: "insensitive" } },
+        { code: { contains: normalizedQuery, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { name: "asc" },
+    take: 50,
+    select: { id: true, name: true, code: true },
+  });
+}
+
 async function requireSaleLotPermission() {
   const createSession = await requirePermission("sales.create").catch(() => null);
   if (createSession?.user?.id) return createSession;

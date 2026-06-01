@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import {
   EMPTY_FILTERS,
   ProductFilterDrawer,
@@ -23,6 +23,8 @@ export const OPEN_PRODUCT_FILTER_EVENT = "storefront:open-product-filter";
 // count in sync without depending on useSearchParams (which would require a
 // Suspense boundary for static pages like / and /about).
 export const PRODUCT_FILTER_COUNT_EVENT = "storefront:product-filter-count";
+
+let filterCountSearchOverride: string | null = null;
 
 const computeFilterCount = (search: string): number => {
   if (!search) return 0;
@@ -62,31 +64,38 @@ const StorefrontFilterTrigger = ({ filterData }: Props) => {
   const router = useRouter();
   const isOnProducts = pathname === "/products";
 
-  const [count, setCount] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isOnProducts) {
-      setCount(0);
-      return;
-    }
-    setCount(computeFilterCount(window.location.search));
+  const subscribeFilterCount = useCallback(
+    (onStoreChange: () => void) => {
+      filterCountSearchOverride = null;
+      if (!isOnProducts) return () => {};
 
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ search?: string }>).detail;
-      if (typeof detail?.search === "string") {
-        setCount(computeFilterCount(detail.search));
-      } else {
-        setCount(computeFilterCount(window.location.search));
-      }
-    };
-    window.addEventListener(PRODUCT_FILTER_COUNT_EVENT, handler);
-    window.addEventListener("popstate", handler);
-    return () => {
-      window.removeEventListener(PRODUCT_FILTER_COUNT_EVENT, handler);
-      window.removeEventListener("popstate", handler);
-    };
-  }, [isOnProducts, pathname]);
+      const handler = (event: Event) => {
+        const detail = (event as CustomEvent<{ search?: string }>).detail;
+        if (typeof detail?.search === "string") {
+          filterCountSearchOverride = detail.search;
+        } else {
+          filterCountSearchOverride = null;
+        }
+        onStoreChange();
+      };
+      window.addEventListener(PRODUCT_FILTER_COUNT_EVENT, handler);
+      window.addEventListener("popstate", handler);
+      return () => {
+        window.removeEventListener(PRODUCT_FILTER_COUNT_EVENT, handler);
+        window.removeEventListener("popstate", handler);
+      };
+    },
+    [isOnProducts],
+  );
+
+  const getFilterCountSnapshot = useCallback(() => {
+    if (!isOnProducts || typeof window === "undefined") return 0;
+    return computeFilterCount(filterCountSearchOverride ?? window.location.search);
+  }, [isOnProducts]);
+
+  const count = useSyncExternalStore(subscribeFilterCount, getFilterCountSnapshot, () => 0);
 
   const handleClick = () => {
     if (isOnProducts) {

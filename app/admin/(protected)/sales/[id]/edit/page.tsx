@@ -16,7 +16,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const { id } = await params;
 
-  const [sale, rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
+  const [sale, config, cashBankAccounts] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -33,34 +33,50 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         },
       },
     }),
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true,
-        salePrice: true, saleUnitName: true, warrantyDays: true,
-        preferredSupplierId: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
-        category:          { select: { name: true } },
-        brand:             { select: { name: true } },
-        aliases:           { select: { alias: true } },
-        preferredSupplier: { select: { name: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
-    db.customer.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true } }),
     getSiteConfig(),
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, code: true } }),
     getActiveCashBankAccountOptions(),
   ]);
 
   if (!sale) notFound();
   if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
 
+  const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
+  const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
+  const [rawProducts, customers, suppliers] = await Promise.all([
+    saleProductIds.length
+      ? db.product.findMany({
+          where: { id: { in: saleProductIds } },
+          select: {
+            id: true, code: true, name: true, description: true,
+            salePrice: true, saleUnitName: true, warrantyDays: true,
+            preferredSupplierId: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
+            category:          { select: { name: true } },
+            brand:             { select: { name: true } },
+            aliases:           { select: { alias: true } },
+            preferredSupplier: { select: { name: true } },
+            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+          },
+        })
+      : Promise.resolve([]),
+    sale.customerId
+      ? db.customer.findMany({
+          where: { id: sale.customerId },
+          take: 1,
+          select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true },
+        })
+      : Promise.resolve([]),
+    saleSupplierIds.length
+      ? db.supplier.findMany({
+          where: { id: { in: saleSupplierIds } },
+          select: { id: true, name: true, code: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
   // Join ProductLot to get expDate for each SaleItemLot
   const lotKeys = sale.items.flatMap((item) =>
     item.lotItems.map((lot) => ({ productId: item.productId, lotNo: lot.lotNo }))
   );
-  const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const productLotExpMap: Record<string, string> = {};
   const productLotMetaMap: Record<string, { expDate: string; mfgDate: string; unitCost: number }> = {};
   if (lotKeys.length > 0) {

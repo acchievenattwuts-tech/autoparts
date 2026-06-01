@@ -566,32 +566,40 @@ export const ProductFilterDrawer = ({
   onApply,
   onClear,
 }: FilterDrawerProps) => {
+  if (!isOpen || typeof document === "undefined") return null;
+
+  const drawerKey = JSON.stringify(initialFilters);
+
+  return (
+    <ProductFilterDrawerContent
+      key={drawerKey}
+      onClose={onClose}
+      initialFilters={initialFilters}
+      filterData={filterData}
+      onApply={onApply}
+      onClear={onClear}
+    />
+  );
+};
+
+const ProductFilterDrawerContent = ({
+  onClose,
+  initialFilters,
+  filterData,
+  onApply,
+  onClear,
+}: Omit<FilterDrawerProps, "isOpen">) => {
   const [draft, setDraft] = useState<DraftFilters>(initialFilters);
-  const [mounted, setMounted] = useState(false);
-
-  // Portal target = document.body (mount only after hydration to avoid SSR mismatch)
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Reset draft to initial when opening
-  useEffect(() => {
-    if (isOpen) setDraft(initialFilters);
-  }, [isOpen, initialFilters]);
 
   // Lock body scroll while open
   useEffect(() => {
     if (typeof document === "undefined") return;
-    if (isOpen) {
-      const previous = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = previous;
-      };
-    }
-  }, [isOpen]);
-
-  if (!isOpen || !mounted) return null;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
 
   // Render via portal at document.body to escape any ancestor containing block
   // (e.g. StorefrontNavbar uses backdrop-blur which scopes fixed-position children).

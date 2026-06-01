@@ -88,12 +88,14 @@ export default async function LiffOutstandingPage() {
             <div className="space-y-2 text-sm">
               <p className="font-semibold text-slate-900 dark:text-slate-200">{transferAccount.bankName ?? transferAccount.name}</p>
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2 dark:bg-slate-800/60">
-                <p className="text-slate-600 dark:text-slate-300">เลขบัญชี {transferAccount.accountNo ?? "-"}</p>
+                <div className="space-y-0.5">
+                  <p className="text-slate-600 dark:text-slate-300">เลขบัญชี {transferAccount.accountNo ?? "-"}</p>
+                  <p className="text-slate-600 dark:text-slate-300">ชื่อบัญชี {transferAccount.name}</p>
+                </div>
                 {transferAccount.accountNo ? (
                   <CopyPaymentValueButton label="คัดลอกเลขบัญชี" value={transferAccount.accountNo} />
                 ) : null}
               </div>
-              <p className="text-slate-600 dark:text-slate-300">ชื่อบัญชี {transferAccount.name}</p>
               {transferAccount.promptPayId ? (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2 dark:bg-slate-800/60">
                   <p className="text-slate-600 dark:text-slate-300">PromptPay {transferAccount.promptPayId}</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createPurchase, updatePurchase } from "../actions";
+import { createPurchase, searchPurchaseProducts, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PurchaseType } from "@/lib/generated/prisma";
@@ -588,6 +588,7 @@ const PurchaseForm = ({
                         <ProductSearchSelect
                           products={productOptions}
                           value={item.productId}
+                          searchProducts={searchPurchaseProducts}
                           selectedProduct={prod ?? null}
                           onProductSelect={(product) => applySelectedProduct(i, product)}
                           onChange={(id) => {
