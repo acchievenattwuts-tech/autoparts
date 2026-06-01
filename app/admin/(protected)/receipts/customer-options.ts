@@ -91,5 +91,10 @@ export const getReceiptCustomerOptions = async (
         amountRemain: saleOutstanding - cnOutstanding,
       };
     })
-    .filter((customer) => customer.id === currentCustomerId || customer.amountRemain !== 0);
+    .filter(
+      (customer) =>
+        customer.id === currentCustomerId ||
+        saleBalanceMap.has(customer.id) ||
+        cnBalanceMap.has(customer.id),
+    );
 };
