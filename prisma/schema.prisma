@@ -44,6 +44,8 @@ model User {
   receipts                      Receipt[]
   deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
   sales                         Sale[]
+  notifications                 Notification[]
+  shopeeShopsAuthorized         ShopeeShop[]
   supplierAdvances              SupplierAdvance[]
   supplierPayments              SupplierPayment[]
   appRole                       AppRole?                   @relation(fields: [appRoleId], references: [id])
@@ -342,42 +344,42 @@ model PartsBrand {
 }
 
 model Product {
-  id                  String               @id @default(cuid())
-  code                String               @unique
+  id                  String                 @id @default(cuid())
+  code                String                 @unique
   name                String
   description         String?
   categoryId          String
   shelfLocation       String?
-  costPrice           Decimal              @default(0) @db.Decimal(10, 2)
-  salePrice           Decimal              @default(0) @db.Decimal(10, 2)
-  stock               Int                  @default(0)
-  minStock            Int                  @default(1)
+  costPrice           Decimal                @default(0) @db.Decimal(10, 2)
+  salePrice           Decimal                @default(0) @db.Decimal(10, 2)
+  stock               Int                    @default(0)
+  minStock            Int                    @default(1)
   imageUrl            String?
-  isActive            Boolean              @default(true)
-  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime             @updatedAt @db.Timestamptz(3)
-  purchaseUnitName    String               @default("ชิ้น")
-  reportUnitName      String               @default("ชิ้น")
-  saleUnitName        String               @default("ชิ้น")
+  isActive            Boolean                @default(true)
+  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
+  purchaseUnitName    String                 @default("ชิ้น")
+  reportUnitName      String                 @default("ชิ้น")
+  saleUnitName        String                 @default("ชิ้น")
   brandId             String?
-  avgCost             Decimal              @default(0) @db.Decimal(10, 2)
-  warrantyDays        Int                  @default(0)
+  avgCost             Decimal                @default(0) @db.Decimal(10, 2)
+  warrantyDays        Int                    @default(0)
   preferredSupplierId String?
-  allowExpiredIssue   Boolean              @default(false)
-  isLotControl        Boolean              @default(false)
-  lotIssueMethod      LotIssueMethod       @default(FIFO)
-  requireExpiryDate   Boolean              @default(false)
-  slug                String?              @unique
-  inventoryTracking   InventoryTracking    @default(TRACKED)
+  allowExpiredIssue   Boolean                @default(false)
+  isLotControl        Boolean                @default(false)
+  lotIssueMethod      LotIssueMethod         @default(FIFO)
+  requireExpiryDate   Boolean                @default(false)
+  slug                String?                @unique
+  inventoryTracking   InventoryTracking      @default(TRACKED)
   adjustmentItems     AdjustmentItem[]
   balanceForwards     BalanceForward[]
   claimStockBalances  ClaimStockBalance[]
   claimStockMovements ClaimStockMovement[]
   creditNoteItems     CreditNoteItem[]
   lotBalances         LotBalance[]
-  brand               PartsBrand?          @relation(fields: [brandId], references: [id])
-  category            Category             @relation(fields: [categoryId], references: [id])
-  preferredSupplier   Supplier?            @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
+  brand               PartsBrand?            @relation(fields: [brandId], references: [id])
+  category            Category               @relation(fields: [categoryId], references: [id])
+  preferredSupplier   Supplier?              @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   aliases             ProductAlias[]
   carModels           ProductFitment[]
   images              ProductImage[]
@@ -386,6 +388,7 @@ model Product {
   purchaseItems       PurchaseItem[]
   purchaseReturnItems PurchaseReturnItem[]
   saleItems           SaleItem[]
+  shopeeMappings      ShopeeProductMapping[]
   stockCards          StockCard[]
   warranties          Warranty[]
 
@@ -409,13 +412,14 @@ model ProductImage {
 }
 
 model ProductUnit {
-  id        String   @id @default(cuid())
-  productId String
-  name      String
-  scale     Float
-  isBase    Boolean  @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id             String                 @id @default(cuid())
+  productId      String
+  name           String
+  scale          Float
+  isBase         Boolean                @default(false)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  product        Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shopeeMappings ShopeeProductMapping[]
 
   @@unique([productId, name])
 }
@@ -509,19 +513,19 @@ model ProductSearchClusterCache {
 }
 
 model ProductFitment {
-  productId  String
-  carModelId String
-  id         String   @id @default(cuid())
+  productId   String
+  carModelId  String
+  id          String             @id @default(cuid())
   fitmentType ProductFitmentType @default(DIRECT)
-  submodel   String?
-  yearStart  Int?
-  yearEnd    Int?
-  engineCode String?
-  engineSize String?
-  note       String?
-  createdAt  DateTime @default(now()) @db.Timestamptz(3)
-  carModel   CarModel @relation(fields: [carModelId], references: [id])
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  submodel    String?
+  yearStart   Int?
+  yearEnd     Int?
+  engineCode  String?
+  engineSize  String?
+  note        String?
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  carModel    CarModel           @relation(fields: [carModelId], references: [id])
+  product     Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([productId, carModelId, submodel, yearStart, yearEnd, engineCode, fitmentType])
   @@index([carModelId, productId])
@@ -693,6 +697,8 @@ model Sale {
   cancelNote              String?
   cancelledAt             DateTime?                @db.Timestamptz(3)
   status                  DocStatus                @default(ACTIVE)
+  channel                 SaleChannel              @default(STORE)
+  channelRefNo            String?
   amountRemain            Decimal                  @default(0) @db.Decimal(10, 2)
   shippingMethod          ShippingMethod           @default(NONE)
   shippingStatus          ShippingStatus           @default(PENDING)
@@ -719,6 +725,7 @@ model Sale {
   user                    User                     @relation(fields: [userId], references: [id])
   items                   SaleItem[]
   warranties              Warranty[]
+  shopeeOrderImport       ShopeeOrderImport?
 
   @@index([cashBankAccountId])
   @@index([trackingToken])
@@ -730,6 +737,8 @@ model Sale {
   @@index([customerId, status, saleDate(sort: Desc)])
   @@index([customerId, paymentType, status, amountRemain])
   @@index([saleDate(sort: Desc), status])
+  @@index([channel, status, saleDate])
+  @@index([channelRefNo])
 }
 
 model DeliveryProof {
@@ -1283,6 +1292,7 @@ model CashBankAccount {
   purchaseReturns          PurchaseReturn[]
   receipts                 Receipt[]
   sales                    Sale[]
+  shopeeSettlementShops    ShopeeShop[]
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
 
@@ -1708,6 +1718,11 @@ enum SaleType {
   WHOLESALE
 }
 
+enum SaleChannel {
+  STORE
+  SHOPEE
+}
+
 enum FulfillmentType {
   PICKUP
   DELIVERY
@@ -1861,4 +1876,196 @@ enum LotIssueMethod {
   FIFO
   FEFO
   MANUAL
+}
+
+// ─────────────────────────────────────────────────────────────
+// Shopee Open Platform integration (isolated module)
+//   - StockCard stays the source of truth; Shopee never writes Product.stock directly.
+//   - Shopee numeric ids stored as String (serialization-safe in App Router).
+//   - `shopRecordId` = internal FK to ShopeeShop.id (distinct from ShopeeShop.shopId
+//     which is Shopee's real shop_id).
+// ─────────────────────────────────────────────────────────────
+
+model ShopeeShop {
+  id                          String                 @id @default(cuid())
+  shopId                      String                 @unique // Shopee shop_id (real marketplace id)
+  shopName                    String?
+  region                      String?
+  authStatus                  ShopeeAuthStatus       @default(PENDING)
+  accessToken                 String? // server-side only — never returned to client
+  refreshToken                String?
+  tokenExpiresAt              DateTime?              @db.Timestamptz(3)
+  scope                       String?
+  syncEnabled                 Boolean                @default(false)
+  stockBuffer                 Int                    @default(0)
+  lastOrderSyncAt             DateTime?              @db.Timestamptz(3)
+  lastOrderCursor             String?
+  lastStockSyncAt             DateTime?              @db.Timestamptz(3)
+  lastError                   String?
+  authorizedAt                DateTime?              @db.Timestamptz(3)
+  authorizedByUserId          String?
+  settlementCashBankAccountId String?
+  createdAt                   DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime               @updatedAt @db.Timestamptz(3)
+  authorizedByUser            User?                  @relation(fields: [authorizedByUserId], references: [id])
+  settlementCashBankAccount   CashBankAccount?       @relation(fields: [settlementCashBankAccountId], references: [id])
+  mappings                    ShopeeProductMapping[]
+  orders                      ShopeeOrderImport[]
+  syncJobs                    ShopeeSyncJob[]
+
+  @@index([authStatus])
+  @@index([tokenExpiresAt])
+  @@index([authorizedByUserId])
+  @@index([settlementCashBankAccountId])
+}
+
+model ShopeeProductMapping {
+  id              String         @id @default(cuid())
+  shopRecordId    String
+  productId       String
+  productUnitId   String?
+  itemId          String // Shopee item_id
+  modelId         String         @default("0") // Shopee model_id; "0" = no-variation
+  sellerSku       String?
+  syncMode        ShopeeSyncMode @default(MONITOR_ONLY)
+  stockBuffer     Int? // overrides ShopeeShop.stockBuffer when set
+  lastPushedStock Int?
+  lastPushedAt    DateTime?      @db.Timestamptz(3)
+  lastError       String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+  shop            ShopeeShop     @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
+  product         Product        @relation(fields: [productId], references: [id])
+  productUnit     ProductUnit?   @relation(fields: [productUnitId], references: [id])
+
+  @@unique([shopRecordId, itemId, modelId])
+  @@index([productId])
+  @@index([itemId, modelId])
+  @@index([shopRecordId, syncMode])
+}
+
+model ShopeeOrderImport {
+  id             String                  @id @default(cuid())
+  shopRecordId   String
+  orderSn        String // Shopee order_sn
+  shopeeStatus   String
+  importStatus   ShopeeOrderImportStatus @default(PENDING)
+  buyerUsername  String?
+  totalAmount    Decimal?                @db.Decimal(10, 2)
+  currency       String?
+  orderCreatedAt DateTime?               @db.Timestamptz(3)
+  orderUpdatedAt DateTime?               @db.Timestamptz(3)
+  rawPayload     Json?
+  saleId         String?                 @unique
+  lastError      String?
+  importedAt     DateTime?               @db.Timestamptz(3)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(3)
+  shop           ShopeeShop              @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
+  sale           Sale?                   @relation(fields: [saleId], references: [id])
+
+  @@unique([shopRecordId, orderSn])
+  @@index([importStatus, createdAt])
+  @@index([shopRecordId, importStatus])
+  @@index([shopeeStatus])
+}
+
+model ShopeeSyncJob {
+  id             String              @id @default(cuid())
+  shopRecordId   String?
+  type           ShopeeSyncJobType
+  status         ShopeeSyncJobStatus @default(PENDING)
+  idempotencyKey String?             @unique
+  startedAt      DateTime?           @db.Timestamptz(3)
+  finishedAt     DateTime?           @db.Timestamptz(3)
+  itemsProcessed Int                 @default(0)
+  itemsFailed    Int                 @default(0)
+  attemptCount   Int                 @default(0)
+  maxAttempts    Int                 @default(3)
+  lastError      String?
+  metaJson       Json?
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  shop           ShopeeShop?         @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
+
+  @@index([type, status, createdAt])
+  @@index([shopRecordId, type, status])
+}
+
+// In-app notification bell (general-purpose; per-user fan-out rows).
+model Notification {
+  id         String               @id @default(cuid())
+  type       NotificationType
+  severity   NotificationSeverity @default(INFO)
+  title      String
+  body       String?
+  userId     String
+  link       String?
+  entityType String?
+  entityId   String?
+  readAt     DateTime?            @db.Timestamptz(3)
+  dedupeKey  String?
+  createdAt  DateTime             @default(now()) @db.Timestamptz(3)
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@index([type, createdAt])
+  @@index([dedupeKey])
+}
+
+enum ShopeeAuthStatus {
+  PENDING
+  AUTHORIZED
+  REVOKED
+  EXPIRED
+}
+
+enum ShopeeSyncMode {
+  DISABLED
+  MONITOR_ONLY
+  PUSH_INTERNAL_TO_SHOPEE
+}
+
+enum ShopeeOrderImportStatus {
+  PENDING
+  IMPORTED
+  FAILED
+  NEEDS_SKU_MAPPING
+  NEEDS_LOT_SELECTION
+  CANCELLED_REVIEW
+  SKIPPED
+}
+
+enum ShopeeSyncJobType {
+  ORDER_PULL
+  STOCK_PUSH
+  TOKEN_REFRESH
+  LOGISTICS_SYNC
+  WEBHOOK
+  ESCROW_SYNC
+}
+
+enum ShopeeSyncJobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum NotificationType {
+  GENERAL
+  SHOPEE_ORDER_IMPORTED
+  SHOPEE_ORDER_FAILED
+  SHOPEE_STOCK_SYNC_FAILED
+  SHOPEE_TOKEN_EXPIRING
+  SHOPEE_AUTH_REVOKED
+  SHOPEE_RETURN_REVIEW
+  SHOPEE_DELIVERY_EXCEPTION
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
 }

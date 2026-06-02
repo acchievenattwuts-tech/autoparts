@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/shopee/cron/refresh-tokens",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/shopee/cron/pull-orders",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}

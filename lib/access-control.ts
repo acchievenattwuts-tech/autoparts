@@ -123,6 +123,10 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "content.update", group: "การตลาด", label: "แก้ไขและส่งอนุมัติคอนเทนต์ Facebook" },
   { key: "content.manage", group: "การตลาด", label: "อนุมัติและโพสต์คอนเทนต์ Facebook" },
 
+  { key: "marketplace.view", group: "ช่องทางขาย", label: "ดูการเชื่อมต่อ Shopee/Marketplace" },
+  { key: "marketplace.manage", group: "ช่องทางขาย", label: "จัดการการเชื่อมต่อและตั้งค่า Marketplace" },
+  { key: "marketplace.sync", group: "ช่องทางขาย", label: "สั่ง sync Marketplace (ดึงออเดอร์/ส่งสต็อก)" },
+
   { key: "settings.company.view", group: "ระบบ", label: "ดูตั้งค่าร้าน" },
   { key: "settings.company.manage", group: "ระบบ", label: "จัดการตั้งค่าร้าน" },
   { key: "admin.users.view", group: "ระบบ", label: "ดูผู้ใช้" },
@@ -196,6 +200,7 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "content.create",
   "content.update",
   "content.manage",
+  "marketplace.view",
 ];
 
 const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
@@ -226,6 +231,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "delivery.view",
   "delivery_commissions.view",
   "content.view",
+  "marketplace.view",
 ];
 
 const DEFAULT_ROLE_TEMPLATES: RoleTemplate[] = [
@@ -253,6 +259,7 @@ export const ALL_MENU_PERMISSION_KEYS = ALL_PERMISSION_KEYS;
 
 export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKey | null }> = [
   { prefix: "/admin/profile/change-password", permission: null },
+  { prefix: "/admin/notifications", permission: null },
   { prefix: "/admin/users", permission: "admin.users.view" },
   { prefix: "/admin/roles", permission: "admin.roles.view" },
   { prefix: "/admin/audit-log", permission: "audit_log.view" },
@@ -275,6 +282,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/content/approval-queue", permission: "content.view" },
   { prefix: "/admin/content", permission: "content.view" },
+  { prefix: "/admin/marketplace", permission: "marketplace.view" },
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },

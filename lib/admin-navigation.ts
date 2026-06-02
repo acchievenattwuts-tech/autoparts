@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   ShoppingCart,
+  Store,
   Tags,
   TrendingUp,
   Truck,
@@ -123,6 +124,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
     items: [
       { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view", keywords: "content facebook คอนเทนต์" },
       { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view", keywords: "approval queue อนุมัติโพสต์ content" },
+      { label: "Shopee / Marketplace", href: "/admin/marketplace/shopee", icon: Store, permission: "marketplace.view", keywords: "shopee marketplace ช่องทางขาย ออเดอร์ sync มาร์เก็ตเพลส" },
     ],
   },
   {

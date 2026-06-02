@@ -52,6 +52,14 @@
   - [x] Phase F5 - Closed-Loop Measurement
   - [x] Phase F6 - Guarded Auto-Apply
 
+### 4. Shopee Open Platform Integration (โมดูลแยกอิสระ)
+- สถานะ: **Phase A–E เสร็จ · Phase F core เสร็จ** (schema + sale-core refactor + create-sale service) · เหลือ Phase F UI (approval/filter/report/dashboard)
+- หลักการ: แยกโมดูลออกจากระบบเดิมทั้งหมด (`lib/shopee/*`, `app/admin/(protected)/marketplace/*`, `app/api/shopee/*`) ไม่กระทบ logic หน้าร้าน/backoffice เดิม
+- เอกสาร active:
+  - [docs/shopee/README.md](/D:/autoparts/docs/shopee/README.md) — ภาพรวม + isolation principles
+  - [docs/shopee/PLAN-shopee.md](/D:/autoparts/docs/shopee/PLAN-shopee.md) — checklist เต็มทุก phase
+  - [docs/shopee/USER-TASKS.md](/D:/autoparts/docs/shopee/USER-TASKS.md) — งานที่เจ้าของร้านต้องทำเอง
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`

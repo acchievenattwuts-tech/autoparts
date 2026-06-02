@@ -33,8 +33,15 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
-import { addThailandDays, formatDateOnlyForInput, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
+import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
+import {
+  assertLotBalanceAvailable,
+  createWarrantySnapshots,
+  getSaleUnitKey,
+  preloadSaleDependencies,
+  resolveSalePaymentMethod,
+} from "@/lib/sale-core";
 
 const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
@@ -209,17 +216,6 @@ const saleSchema = z.object({
   items:           z.array(saleItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
-type SaleTxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-type SaleItemInput = z.infer<typeof saleItemSchema>;
-
-type SaleProductSnapshot = {
-  avgCost: Prisma.Decimal;
-  costPrice: Prisma.Decimal;
-  inventoryTracking: string;
-  isLotControl: boolean;
-};
-
-const getSaleUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
 
 // Build a stable signature for a sale line in BASE-UNIT terms.
 // Lines whose signature matches an existing DB line produce identical
@@ -321,69 +317,6 @@ async function getSaleAuditSnapshot(saleId: string) {
   };
 }
 
-async function preloadSaleDependencies(
-  tx: SaleTxClient,
-  items: SaleItemInput[],
-): Promise<{
-  unitMap: Map<string, { scale: number }>;
-  productMap: Map<string, SaleProductSnapshot>;
-}> {
-  const productIds = [...new Set(items.map((item) => item.productId))];
-  const uniquePairs = [
-    ...new Map(items.map((item) => [getSaleUnitKey(item.productId, item.unitName), item])).values(),
-  ];
-
-  const [units, products] = await Promise.all([
-    uniquePairs.length === 0
-      ? Promise.resolve([])
-      : tx.productUnit.findMany({
-          where: {
-            OR: uniquePairs.map((item) => ({
-              productId: item.productId,
-              name: item.unitName,
-            })),
-          },
-          select: {
-            productId: true,
-            name: true,
-            scale: true,
-          },
-        }),
-    productIds.length === 0
-      ? Promise.resolve([])
-      : tx.product.findMany({
-          where: { id: { in: productIds } },
-          select: {
-            id: true,
-            avgCost: true,
-            costPrice: true,
-            inventoryTracking: true,
-            isLotControl: true,
-          },
-        }),
-  ]);
-
-  return {
-    unitMap: new Map(
-      units.map((unit) => [
-        getSaleUnitKey(unit.productId, unit.name),
-        { scale: Number(unit.scale) },
-      ]),
-    ),
-    productMap: new Map(
-      products.map((product) => [
-        product.id,
-        {
-          avgCost: product.avgCost,
-          costPrice: product.costPrice,
-          inventoryTracking: product.inventoryTracking,
-          isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
-        },
-      ]),
-    ),
-  };
-}
-
 function validateDeliveryFields(input: {
   fulfillmentType: FulfillmentType;
   shippingAddress?: string | null;
@@ -402,23 +335,6 @@ function validateDeliveryFields(input: {
   }
 
   return null;
-}
-
-async function resolveSalePaymentMethod(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  accountId: string | undefined,
-): Promise<PaymentMethod | null> {
-  if (!accountId) return null;
-
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
-    select: { type: true },
-  });
-  if (!account) {
-    throw new Error("ไม่พบบัญชีรับเงิน");
-  }
-
-  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
 async function getSaleSignerSnapshot(
@@ -440,83 +356,6 @@ async function getSaleSignerSnapshot(
     signerSignatureUrl: user?.signatureUrl ?? null,
     signedAt: user?.name ? signedAt : null,
   };
-}
-
-async function assertLotBalanceAvailable(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  productId: string,
-  lots: { lotNo: string; qtyInBase: number }[],
-): Promise<void> {
-  const lotNos = [...new Set(lots.map((lot) => lot.lotNo))];
-  if (lotNos.length === 0) return;
-
-  const balances = await tx.lotBalance.findMany({
-    where: {
-      productId,
-      lotNo: { in: lotNos },
-    },
-    select: {
-      lotNo: true,
-      qtyOnHand: true,
-    },
-  });
-
-  const balanceMap = new Map(
-    balances.map((balance) => [balance.lotNo, Number(balance.qtyOnHand)]),
-  );
-
-  for (const lot of lots) {
-    const qtyOnHand = balanceMap.get(lot.lotNo) ?? 0;
-    if (qtyOnHand + 0.0001 < lot.qtyInBase) {
-      throw new Error(`Lot ${lot.lotNo} คงเหลือไม่พอ`);
-    }
-  }
-}
-
-function buildWarrantyLotSequence(lots: LotSubRow[]): string[] {
-  const sequence: string[] = [];
-  for (const lot of lots) {
-    const lotNo = lot.lotNo.trim();
-    const qty = Math.max(0, Math.ceil(lot.qty));
-    for (let index = 0; index < qty; index += 1) {
-      sequence.push(lotNo);
-    }
-  }
-  return sequence;
-}
-
-async function createWarrantySnapshots(
-  tx: SaleTxClient,
-  input: {
-    saleId: string;
-    saleItemId: string;
-    productId: string;
-    warrantyDays: number;
-    docDate: Date;
-    itemQty: number;
-    lotItems: LotSubRow[];
-  }
-): Promise<void> {
-  if (input.warrantyDays <= 0) return;
-
-  const startDate = startOfThailandDay(input.docDate);
-  const endDate = addThailandDays(startDate, input.warrantyDays);
-
-  const unitCount = Math.min(Math.ceil(input.itemQty), 999);
-  const lotSequence = buildWarrantyLotSequence(input.lotItems);
-  await tx.warranty.createMany({
-    data: Array.from({ length: unitCount }, (_, index) => ({
-      saleId: input.saleId,
-      saleItemId: input.saleItemId,
-      productId: input.productId,
-      warrantyDays: input.warrantyDays,
-      startDate,
-      endDate,
-      unitSeq: index + 1,
-      lotNo: lotSequence[index] ?? null,
-      createdVia: "AUTO_FROM_SALE" as const,
-    })),
-  });
 }
 
 export async function createSale(

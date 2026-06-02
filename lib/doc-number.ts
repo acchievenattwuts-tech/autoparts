@@ -174,7 +174,7 @@ export async function generatePurchaseReturnNo(date?: Date): Promise<string> {
  * prefix: SA (cash) or SAC (credit)
  * Format: {prefix}{YYMM}{4-digit}
  */
-export async function generateSaleNo(prefix: "SA" | "SAC", date?: Date): Promise<string> {
+export async function generateSaleNo(prefix: "SA" | "SAC" | "SP", date?: Date): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
