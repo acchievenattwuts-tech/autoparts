@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 const TAKE_PER_GROUP = 5;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
+const MIN_QUERY_LENGTH = 2;
 const MAX_QUERY_LENGTH = 80;
 
 type ResultItem = {
@@ -52,7 +53,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
         ? getAllPermissionKeys()
         : ((session.user.permissions ?? []) as PermissionKey[]);
 
-    const rate = checkRateLimit({
+    const rate = await checkRateLimit({
       key: `quick-search:${session.user.id}`,
       limit: RATE_LIMIT_MAX_REQUESTS,
       windowMs: RATE_LIMIT_WINDOW_MS,
@@ -68,7 +69,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     const query = normalize(url.searchParams.get("q"));
     const docOnly = url.searchParams.get("scope") === "docs";
 
-    if (query.length < 1) {
+    if (query.length < MIN_QUERY_LENGTH) {
       return NextResponse.json({ groups: [] });
     }
 

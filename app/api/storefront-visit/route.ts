@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 import {
   getBangkokDayKey,
   isStorefrontPath,
@@ -8,6 +9,9 @@ import {
 } from "@/lib/storefront-visitor";
 
 export const dynamic = "force-dynamic";
+
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
 
 interface StorefrontVisitPayload {
   visitorKey?: unknown;
@@ -18,7 +22,24 @@ function asString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function clientIp(request: Request): string {
+  const fwd = request.headers.get("x-forwarded-for") ?? "";
+  return fwd.split(",")[0].trim() || request.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
 export async function POST(request: Request) {
+  const rate = await checkRateLimit({
+    key: `storefront-visit:${clientIp(request)}`,
+    limit: RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rate.ok) {
+    return NextResponse.json(
+      { ok: false },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
+    );
+  }
+
   let payload: StorefrontVisitPayload;
 
   try {

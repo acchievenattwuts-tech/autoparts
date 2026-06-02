@@ -241,6 +241,15 @@ model LoginThrottle {
   updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 }
 
+model ApiThrottle {
+  key       String   @id
+  count     Int      @default(0)
+  windowEnd DateTime @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([windowEnd])
+}
+
 model AppRole {
   id          String              @id @default(cuid())
   name        String              @unique

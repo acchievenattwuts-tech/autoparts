@@ -65,7 +65,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       return NextResponse.json({ items: [] });
     }
 
-    const rate = checkRateLimit({
+    const rate = await checkRateLimit({
       key: `autocomplete:${clientIp(request)}`,
       limit: RATE_LIMIT_MAX_REQUESTS,
       windowMs: RATE_LIMIT_WINDOW_MS,

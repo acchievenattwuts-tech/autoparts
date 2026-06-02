@@ -56,7 +56,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     }
 
     const { mode, take } = parsed.data;
-    const rate = checkRateLimit({
+    const rate = await checkRateLimit({
       key: `line-customer-notifications:${mode}:${session.user.id}`,
       limit: mode === "summary" ? SUMMARY_RATE_LIMIT_MAX_REQUESTS : LIST_RATE_LIMIT_MAX_REQUESTS,
       windowMs: mode === "summary" ? SUMMARY_RATE_LIMIT_WINDOW_MS : LIST_RATE_LIMIT_WINDOW_MS,

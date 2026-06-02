@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 const ALLOWED_METRICS = new Set(["CLS", "FCP", "FID", "INP", "LCP", "TTFB"]);
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
+function clientIp(request: Request): string {
+  const fwd = request.headers.get("x-forwarded-for") ?? "";
+  return fwd.split(",")[0].trim() || request.headers.get("x-real-ip")?.trim() || "unknown";
+}
 
 interface WebVitalsPayload {
   id?: unknown;
@@ -25,6 +33,18 @@ function asNumber(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const rate = await checkRateLimit({
+    key: `web-vitals:${clientIp(request)}`,
+    limit: RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rate.ok) {
+    return NextResponse.json(
+      { ok: false },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
+    );
+  }
+
   let payload: WebVitalsPayload;
 
   try {

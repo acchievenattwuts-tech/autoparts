@@ -192,14 +192,16 @@ const DeliveryPrintPage = async ({
               ? sale.cashBankAccount ?? primaryTransferAccount
               : null;
           const transferPrimaryAccount = transferDocumentState.shouldShowTransferSection ? primaryTransferAccount : null;
-          const promptPayQrDataUrl = transferDocumentState.shouldGenerateQr
-            ? await buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
-            : null;
-          const verify = await buildPrintDocumentVerifyBadge({
-            type: "sale",
-            docNo: sale.saleNo,
-            variant: "ORIGINAL",
-          });
+          const [promptPayQrDataUrl, verify] = await Promise.all([
+            transferDocumentState.shouldGenerateQr
+              ? buildPromptPayQrDataUrl(primaryTransferAccount?.promptPayId, transferDocumentState.qrAmount)
+              : Promise.resolve(null),
+            buildPrintDocumentVerifyBadge({
+              type: "sale",
+              docNo: sale.saleNo,
+              variant: "ORIGINAL",
+            }),
+          ]);
 
           return (
             <SharedSalesDeliveryPrintDocument

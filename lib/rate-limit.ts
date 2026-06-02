@@ -1,26 +1,4 @@
-type Bucket = {
-  count: number;
-  resetAt: number;
-};
-
-const globalForRateLimit = globalThis as typeof globalThis & {
-  __rateLimitBuckets?: Map<string, Bucket>;
-};
-
-const buckets =
-  globalForRateLimit.__rateLimitBuckets ??
-  (globalForRateLimit.__rateLimitBuckets = new Map<string, Bucket>());
-
-const SWEEP_INTERVAL_MS = 60_000;
-let lastSweepAt = 0;
-
-const sweep = (now: number): void => {
-  if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
-  lastSweepAt = now;
-  for (const [key, bucket] of buckets) {
-    if (bucket.resetAt <= now) buckets.delete(key);
-  }
-};
+import { db } from "@/lib/db";
 
 export type RateLimitOptions = {
   key: string;
@@ -34,22 +12,61 @@ export type RateLimitResult = {
   resetAt: number;
 };
 
-export const checkRateLimit = ({ key, limit, windowMs }: RateLimitOptions): RateLimitResult => {
-  const now = Date.now();
-  sweep(now);
+const CLEANUP_PROBABILITY = 0.002;
+const CLEANUP_GRACE_MS = 60_000;
 
-  const bucket = buckets.get(key);
+const maybeSweepExpired = async (now: number): Promise<void> => {
+  if (Math.random() >= CLEANUP_PROBABILITY) return;
+  try {
+    await db.apiThrottle.deleteMany({
+      where: { windowEnd: { lt: new Date(now - CLEANUP_GRACE_MS) } },
+    });
+  } catch {
+    // Cleanup is best-effort; ignore errors so they never block a request.
+  }
+};
 
-  if (!bucket || bucket.resetAt <= now) {
-    const next: Bucket = { count: 1, resetAt: now + windowMs };
-    buckets.set(key, next);
-    return { ok: true, remaining: limit - 1, resetAt: next.resetAt };
+/**
+ * Centralized rate limit backed by Postgres so counters stay consistent across
+ * every serverless instance. Each `key` is one sliding bucket whose window
+ * resets when `windowEnd` elapses.
+ */
+export const checkRateLimit = async ({
+  key,
+  limit,
+  windowMs,
+}: RateLimitOptions): Promise<RateLimitResult> => {
+  const now = new Date();
+  const nowMs = now.getTime();
+
+  const incremented = await db.apiThrottle.updateMany({
+    where: { key, windowEnd: { gt: now } },
+    data: { count: { increment: 1 } },
+  });
+
+  if (incremented.count === 0) {
+    const windowEnd = new Date(nowMs + windowMs);
+    await db.apiThrottle.upsert({
+      where: { key },
+      create: { key, count: 1, windowEnd },
+      update: { count: 1, windowEnd },
+    });
+    void maybeSweepExpired(nowMs);
+    return { ok: true, remaining: Math.max(0, limit - 1), resetAt: windowEnd.getTime() };
   }
 
-  if (bucket.count >= limit) {
-    return { ok: false, remaining: 0, resetAt: bucket.resetAt };
+  const bucket = await db.apiThrottle.findUnique({
+    where: { key },
+    select: { count: true, windowEnd: true },
+  });
+
+  if (!bucket) {
+    return { ok: true, remaining: Math.max(0, limit - 1), resetAt: nowMs + windowMs };
   }
 
-  bucket.count += 1;
-  return { ok: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
+  const resetAt = bucket.windowEnd.getTime();
+  if (bucket.count > limit) {
+    return { ok: false, remaining: 0, resetAt };
+  }
+  return { ok: true, remaining: Math.max(0, limit - bucket.count), resetAt };
 };
