@@ -112,6 +112,18 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+          ช่องทาง
+          <select
+            name="channel"
+            defaultValue={filters.channel ?? "ALL"}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="ALL">ทุกช่องทาง</option>
+            <option value="STORE">หน้าร้าน</option>
+            <option value="SHOPEE">Shopee</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
           บัญชีรับเงิน
           <div className="min-w-[14rem]">
             <SearchableSelectFilter

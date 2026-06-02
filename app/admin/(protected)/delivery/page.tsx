@@ -73,6 +73,7 @@ const DeliveryPage = async ({
       _count: { select: { deliveryProofs: true } },
       customer: { select: { name: true, phone: true } },
       deliveryStaff: { select: { name: true } },
+      shopeeOrderImport: { select: { id: true, orderSn: true } },
     },
   });
 
@@ -234,6 +235,16 @@ const DeliveryPage = async ({
                           ) : null}
                         </div>
                       )}
+                      {s.shopeeOrderImport ? (
+                        <NavLink
+                          href={`/admin/marketplace/shopee/orders/${s.shopeeOrderImport.id}`}
+                          className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 hover:bg-orange-100 dark:bg-orange-400/10 dark:text-orange-200 dark:hover:bg-orange-400/20"
+                          hideSpinner
+                        >
+                          Shopee {s.shopeeOrderImport.orderSn}
+                          <ExternalLink size={11} />
+                        </NavLink>
+                      ) : null}
                       {s._count.deliveryProofs > 0 ? (
                         <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
                           มีหลักฐาน {s._count.deliveryProofs.toLocaleString("th-TH")} รายการ

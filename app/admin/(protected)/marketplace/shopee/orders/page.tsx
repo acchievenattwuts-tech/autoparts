@@ -181,13 +181,19 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
                           <p className="mt-1 text-xs text-rose-600 dark:text-rose-300">{order.lastError}</p>
                         ) : null}
                       </div>
-                      <div className="text-right text-sm">
+                      <div className="flex flex-col items-end gap-1 text-right text-sm">
                         {order.totalAmount != null ? (
                           <p className="font-medium text-slate-900 dark:text-slate-100">
                             {Number(order.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             {order.currency ? ` ${order.currency}` : ""}
                           </p>
                         ) : null}
+                        <Link
+                          href={`/admin/marketplace/shopee/orders/${order.id}`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-orange-400/30 dark:hover:bg-orange-400/10 dark:hover:text-orange-200"
+                        >
+                          {order.importStatus === "IMPORTED" ? "ดู" : "ตรวจ / สร้างบิล"}
+                        </Link>
                       </div>
                     </div>
                   );

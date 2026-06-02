@@ -1,0 +1,173 @@
+export const dynamic = "force-dynamic";
+
+import Link from "next/link";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ReceiptText } from "lucide-react";
+
+import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { buildShopeeSaleDraft } from "@/lib/shopee/services/create-sale";
+import { getShopeeReturnReviewDetail } from "@/lib/shopee/services/returns";
+
+import CreateSaleConfirm from "./CreateSaleConfirm";
+
+const fmt = (value: number) =>
+  value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+type PageProps = { params: Promise<{ id: string }> };
+
+const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
+  await ensureAccessControlSetup();
+  await requirePermission("marketplace.view");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canManage = hasPermissionAccess(role, permissions, "marketplace.manage");
+  const { id } = await params;
+
+  const [draft, reviewDetail] = await Promise.all([
+    buildShopeeSaleDraft(id),
+    getShopeeReturnReviewDetail(id),
+  ]);
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300">
+            <ReceiptText size={22} />
+          </span>
+          <div>
+            <h1 className="font-kanit text-xl font-bold text-slate-900 dark:text-slate-100">สร้างบิลจากออเดอร์ Shopee</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">ตรวจสอบรายการและราคา ก่อนยืนยันสร้างบิลขายจริง</p>
+          </div>
+        </div>
+        <Link
+          href="/admin/marketplace/shopee/orders"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+        >
+          <ArrowLeft size={15} />
+          กลับคิว
+        </Link>
+      </div>
+
+      {!draft ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-6 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-100">
+          ไม่พบออเดอร์
+        </div>
+      ) : (
+        <>
+          {reviewDetail && reviewDetail.signal.kind !== "NONE" ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertTriangle size={18} />
+                ต้อง review cancel/refund/return จาก Shopee
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium uppercase text-amber-700/80 dark:text-amber-200/80">Signal</p>
+                  <p className="mt-1 font-mono">{reviewDetail.signal.kind}</p>
+                  <p className="mt-1 text-xs">{reviewDetail.signal.reason ?? "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase text-amber-700/80 dark:text-amber-200/80">Policy</p>
+                  <p className="mt-1 font-mono">{reviewDetail.policy}</p>
+                  <p className="mt-1 text-xs">ระบบไม่ยกเลิก Sale และไม่สร้าง CN อัตโนมัติ</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-xl border border-amber-200 bg-white/60 p-3 dark:border-amber-400/20 dark:bg-black/10">
+                <p className="font-medium">Reference-chain protection</p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-xs">
+                  {reviewDetail.referenceWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+                {reviewDetail.saleId ? (
+                  <Link
+                    href={`/admin/sales/${reviewDetail.saleId}`}
+                    className="mt-3 inline-flex rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-300/30 dark:text-amber-100 dark:hover:bg-amber-400/20"
+                  >
+                    เปิด Sale {reviewDetail.saleNo}
+                  </Link>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0d1728]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-slate-900 dark:text-slate-100">ออเดอร์ {draft.orderSn}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">ผู้ซื้อ: {draft.buyerUsername ?? "-"}</p>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2">สินค้า</th>
+                    <th className="px-3 py-2 text-right">จำนวน</th>
+                    <th className="px-3 py-2 text-right">ราคา/หน่วย</th>
+                    <th className="px-3 py-2 text-right">รวม</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                  {draft.lines.map((line) => (
+                    <tr key={`${line.itemId}-${line.modelId}`} className={line.error ? "bg-rose-50/60 dark:bg-rose-400/5" : ""}>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{line.productName}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {line.productCode ? `${line.productCode} · ` : ""}item {line.itemId}/{line.modelId}
+                          {line.isLotControl ? " · คุม lot" : ""}
+                        </p>
+                        {line.error ? <p className="text-xs text-rose-600 dark:text-rose-300">{line.error}</p> : null}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
+                        {line.qty} {line.unitName}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">{fmt(line.unitPrice)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-900 dark:text-slate-100">{fmt(line.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-slate-200 dark:border-white/10">
+                  <tr>
+                    <td colSpan={3} className="px-3 py-2 text-right text-sm font-medium text-slate-600 dark:text-slate-300">
+                      ยอดรวม
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold text-slate-900 dark:text-slate-100">{fmt(draft.totalAmount)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+              ราคาดึงจาก Shopee — โปรดตรวจสอบให้ตรงก่อนยืนยัน · บิลจะลงเป็น CASH_SALE เข้าบัญชี &quot;Shopee พักเงิน&quot; · ตัดสต็อกผ่านระบบเดิม
+            </p>
+          </section>
+
+          {draft.alreadyImported ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100">
+              <CheckCircle2 size={18} className="shrink-0" />
+              ออเดอร์นี้สร้างบิลแล้ว
+            </div>
+          ) : draft.blockers.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" />
+                ยังสร้างบิลไม่ได้
+              </div>
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                {draft.blockers.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          ) : canManage ? (
+            <CreateSaleConfirm orderImportId={draft.orderImportId} />
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">คุณไม่มีสิทธิ์สร้างบิล</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default ShopeeOrderPreviewPage;

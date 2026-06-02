@@ -3,6 +3,7 @@ import {
   Archive,
   Award,
   BarChart3,
+  Boxes,
   Car,
   ClipboardList,
   FileCheck,
@@ -125,6 +126,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view", keywords: "content facebook คอนเทนต์" },
       { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view", keywords: "approval queue อนุมัติโพสต์ content" },
       { label: "Shopee / Marketplace", href: "/admin/marketplace/shopee", icon: Store, permission: "marketplace.view", keywords: "shopee marketplace ช่องทางขาย ออเดอร์ sync มาร์เก็ตเพลส" },
+      { label: "Shopee Stock Sync", href: "/admin/marketplace/shopee/stock", icon: Boxes, permission: "marketplace.view", keywords: "shopee stock sync marketplace buffer reconciliation สต็อก ส่งสต็อก" },
     ],
   },
   {

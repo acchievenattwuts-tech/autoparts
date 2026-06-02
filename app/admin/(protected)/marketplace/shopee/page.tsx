@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, Inbox, Package, Plug, Store, XCircle } from "lucide-react";
+import { AlertTriangle, Boxes, CheckCircle2, Inbox, Package, Plug, Store, XCircle } from "lucide-react";
 
 import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
@@ -11,6 +11,7 @@ import { isShopeeConfigured } from "@/lib/shopee/config";
 import { formatDateTimeThai } from "@/lib/th-date";
 
 import { disconnectShopeeShop, startShopeeAuthorization } from "./actions";
+import SettlementAccountForm from "./SettlementAccountForm";
 
 type ShopeePageProps = {
   searchParams: Promise<{ connected?: string; error?: string; shop?: string }>;
@@ -66,8 +67,17 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
       syncEnabled: true,
       lastError: true,
       authorizedAt: true,
+      settlementCashBankAccountId: true,
     },
   });
+
+  const cashBankAccounts = canManage
+    ? await db.cashBankAccount.findMany({
+        where: { isActive: true },
+        orderBy: { code: "asc" },
+        select: { id: true, code: true, name: true },
+      })
+    : [];
 
   const errorMessage = params.error ? ERROR_MESSAGES[params.error] ?? "เกิดข้อผิดพลาด" : null;
 
@@ -101,6 +111,13 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
         >
           <Inbox size={16} />
           คิวออเดอร์ Shopee
+        </Link>
+        <Link
+          href="/admin/marketplace/shopee/stock"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-white/10 dark:bg-[#0d1728] dark:text-slate-200 dark:hover:bg-white/10"
+        >
+          <Boxes size={16} />
+          Shopee Stock Sync
         </Link>
       </div>
 
@@ -164,8 +181,9 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
               return (
                 <div
                   key={shop.id}
-                  className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-white/10 dark:bg-white/5"
+                  className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 dark:border-white/10 dark:bg-white/5"
                 >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-slate-900 dark:text-slate-100">
@@ -200,6 +218,19 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
                         ยกเลิกการเชื่อมต่อ
                       </button>
                     </form>
+                  ) : null}
+                  </div>
+                  {canManage && shop.authStatus === ShopeeAuthStatus.AUTHORIZED ? (
+                    <div className="border-t border-slate-200 pt-3 dark:border-white/10">
+                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                        บัญชี &quot;Shopee พักเงิน&quot; (ใช้ตอนสร้างบิลจากออเดอร์)
+                      </label>
+                      <SettlementAccountForm
+                        shopRecordId={shop.id}
+                        currentAccountId={shop.settlementCashBankAccountId}
+                        accounts={cashBankAccounts}
+                      />
+                    </div>
                   ) : null}
                 </div>
               );

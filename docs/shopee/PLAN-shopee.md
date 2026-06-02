@@ -94,46 +94,55 @@
 - [x] `generateSaleNo` รองรับ prefix `SP`
 - [x] `lib/shopee/services/create-sale.ts` — `buildShopeeSaleDraft()` (dry-run preview) + `createSaleFromShopeeOrder()` reuse primitives เดียวกัน (writeStockCard/writeSaleLots/createWarrantySnapshots/rebuildSaleProfitFacts/replaceCashBankSourceMovements) → ผลลัพธ์ stock/lot/profit/cash เหมือน sale ปกติ · customer snapshot · CASH_SALE→บัญชีพักเงิน · mark IMPORTED+link saleId · audit (SHOPEE_SALE_CREATE)
 
-### เหลือ (UI + integration)
-- [ ] **Approval UI**: ปุ่ม "สร้างบิล" ในคิว → หน้า preview (draft lines/totals/blockers + เลือก lot สำหรับสินค้าคุม lot) → ยืนยัน → create action (requirePermission + audit + revalidate)
-- [ ] **Settlement account setting**: เลือกบัญชี "Shopee พักเงิน" บนหน้า overview (เซ็ต `ShopeeShop.settlementCashBankAccountId`)
-- [ ] **Sales list filter**: `?channel=STORE|SHOPEE|ALL` + badge ช่องทาง (`/admin/sales`)
-- [ ] **Report**: channel filter + column ใน `report-queries.ts` (querySalesRows/Totals)
-- [ ] **Dashboard widget**: ยอดขายแยก STORE vs SHOPEE (additive)
-- [ ] อ่าน AGENTS.md (print/theme/quick-search) ก่อนแตะหน้า sale
+### UI + integration ✅ เสร็จ
+- [x] **Approval UI**: ปุ่ม "ตรวจ/สร้างบิล" ในคิว → หน้า preview `/orders/[id]` (draft lines/totals/blockers) → `CreateSaleConfirm` → `createSaleFromOrderAction` (requirePermission marketplace.manage + audit + revalidate + redirect ไปหน้าบิล)
+- [x] **Settlement account setting**: `SettlementAccountForm` (SearchableSelect) บนหน้า overview → `setSettlementAccountAction` เซ็ต `ShopeeShop.settlementCashBankAccountId`
+- [x] **Sales list filter**: `?channel=STORE|SHOPEE|ALL` ใน `SalesFilterBar` + คอลัมน์/badge ช่องทาง (`/admin/sales`)
+- [x] **Report**: channel filter ใน `report-queries.ts` (ReportFilters/where/export) + dropdown ช่องทางบนหน้า report sales (CSV export รองรับด้วย)
+- [x] **Dashboard widget**: `ShopeeChannelSummary` ยอดขายแยก STORE vs SHOPEE เดือนนี้ (additive, ไม่แตะ dashboard เดิม)
+- [x] theme light/dark ครบทุกส่วน · ลอจิก/ผลลัพธ์ sale เดิมไม่กระทบ (test 2/2)
 
-> verified (core): lint 0, tsc 0, sale test 2/2 · **ยังไม่สร้าง Sale จริงจนกว่า approval UI + action จะเสร็จ** · ราคา line อ่านจาก `model_discounted_price` (defensive) → preview ให้ human ตรวจก่อนยืนยัน = safety net
+> verified: lint 0, tsc 0, tests 15/15
+> **lot-controlled orders**: preview จะ block ด้วย "มีสินค้าคุม lot ต้องเลือก lot ก่อน" — lot-picker UI เป็น follow-up (service รองรับ `lotSelections` แล้ว)
+> ราคา line อ่านจาก `model_discounted_price` (defensive) → preview ให้ human ตรวจก่อนยืนยัน = safety net · live ทดสอบรอ credentials
 
 ## Phase G — Stock Push to Shopee
-- [ ] Mode per mapping: monitor_only / push / disabled
-- [ ] Hook หลัง stock-affecting transaction (purchase/sale/return/adjust/BF/claim)
-- [ ] Stock buffer setting + reconciliation report + alert เมื่อ push fail/mismatch
+- [x] Mode per mapping: monitor_only / push / disabled + per-mapping stock buffer override บนหน้า Stock Sync
+- [ ] Hook หลัง stock-affecting transaction (purchase/sale/return/adjust/BF/claim) — ยังไม่แตะ stock engine หลักจนกว่า live push payload/behavior จะ verified
+- [x] Stock buffer setting + reconciliation report + in-app alert สำหรับรายการที่ต้องตรวจ/ส่งใหม่
+- [ ] Live Shopee `update_stock` push — รอ verify official/live payload กับ Shopee credentials ก่อนเปิดใช้จริง (ตอนนี้เป็น reconciliation-only safety layer)
 
 ## Phase H — Delivery / Tracking Sync
-- [ ] Map logistics/tracking → `Sale.shippingMethod/shippingStatus/trackingNo`
-- [ ] ดึง tracking เข้า Delivery Queue + audit source SHOPEE
-- [ ] แสดงลิงก์ Shopee order/tracking บน sale detail + delivery queue
+- [x] Map logistics/tracking จาก Shopee order snapshot → `Sale.shippingMethod/shippingStatus/trackingNo`
+- [x] ดึง tracking จาก `ShopeeOrderImport.rawPayload` เข้า Delivery Queue + audit/job source `SHOPEE`
+- [x] แสดงลิงก์ Shopee order ภายใน + tracking link บน sale detail + delivery queue
+- [ ] Live logistics API refresh / external Shopee seller order URL — รอ verify endpoint/field/payload กับ Shopee credentials ก่อนเปิดใช้จริง
 
 ## Phase I — Returns / Cancellations / Refunds
-- [ ] ดึง cancel/refund/return เข้า review queue
-- [ ] กฎ: สถานะไหน cancel sale อัตโนมัติ / ไหนต้อง manual review
-- [ ] เชื่อม return/refund → Credit Note flow (เมื่อ confirm กฎ) + reference-chain protection
+- [x] ดึง cancel/refund/return จาก Shopee order snapshot เข้า review queue (`CANCELLED_REVIEW`) + notification
+- [x] กฎรอบนี้: cancel/refund/return = `MANUAL_REVIEW_ONLY` ทั้งหมด, ไม่ auto-cancel Sale / ไม่ auto-CN
+- [x] เพิ่ม reference-chain protection summary บนหน้า Shopee order detail (Sale/CN/Receipt/Claim blockers)
+- [ ] Live cancel/refund/return API pull — รอ verify endpoint/field/payload กับ Shopee credentials ก่อนเปิดใช้จริง
+- [ ] เชื่อม return/refund → Credit Note flow หลัง confirm business rule + lot/reference-chain behavior
 
-## Phase J — LINE OA Alerts (ต่อยอด stack เดิม)
-- [ ] order ใหม่ import สำเร็จ / import ไม่สำเร็จ (unmapped/สต็อกไม่พอ/lot/validation)
-- [ ] stock sync fail, token ใกล้หมดอายุ, cancel/refund ต้อง review, delivery exception
-- [ ] ใช้ recipient mapping + delivery helper เดิม + throttle/dedupe
+## Phase J — Telegram Alerts (ต่อยอด Notification Bell เดิม)
+- [x] เปลี่ยนแผนจาก LINE OA → Telegram ตาม requirement ล่าสุด
+- [x] ส่ง Telegram เมื่อ `NotificationType.SHOPEE_*` ถูกสร้างใหม่จริง: order ใหม่/import fail, stock sync fail, token ใกล้หมดอายุ, cancel/refund review, delivery exception
+- [x] ใช้ dedupe/throttle จาก `Notification.dedupeKey` เดิม: ถ้า unread notification เดิมยังอยู่ จะไม่สร้าง notification ใหม่และไม่ยิง Telegram ซ้ำ
+- [x] Telegram config: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_IDS` (หรือ `TELEGRAM_CHAT_ID`) และใช้ `APP_BASE_URL`/`NEXTAUTH_URL`/`NEXT_PUBLIC_APP_URL` เพื่อสร้างลิงก์ admin แบบเต็ม
+- [ ] ตั้งค่า Telegram bot token/chat id ใน production env และทดสอบส่งจริง
 
 ## Phase K — Reports + Multi-channel Dashboard
-- [ ] split in-store vs Shopee (ยอด, gross profit, จำนวนออเดอร์, stock risk)
-- [ ] daily LINE summary เพิ่มส่วน Shopee + export fields (order no/shop/channel/tracking/sync)
+- [x] split in-store vs Shopee (ยอด, gross profit, จำนวนออเดอร์, stock risk) บน dashboard แบบ read-only ไม่แตะ logic เดิม
+- [x] daily summary เพิ่มส่วน Shopee + export fields (order no/shop/channel/tracking/sync)
+- [x] รายงานขาย CSV/Excel export เพิ่ม Shopee order no/shop/channel/tracking/sync โดยใช้ข้อมูล Sale + ShopeeOrderImport เดิม
 
 ## Phase L — Auto Shopee Fee → Expense
 - [ ] ดึง escrow_detail → สร้าง Expense (commission/service/voucher) พร้อม category อัตโนมัติ
 
 ## Phase M — Reliability / Security / Tests
 - [ ] rate-limit/backoff, circuit breaker, sync lock (กันรันซ้อน), QStash jobs
-- [ ] tests: signature ✅, token refresh, order idempotency, stock push payload, LINE dedupe
+- [ ] tests: signature ✅, token refresh, order idempotency, stock push payload, Telegram dedupe
 - [ ] runbook: ต่ออายุ credential, กู้ sync fail, จัดการ unmapped SKU, สลับ test→prod
 
 ---

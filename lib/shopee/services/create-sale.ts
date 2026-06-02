@@ -9,8 +9,6 @@ import {
   Prisma,
   SaleChannel,
   SalePaymentType,
-  ShippingMethod,
-  ShippingStatus,
   ShopeeOrderImportStatus,
   VatType,
 } from "@/lib/generated/prisma";
@@ -28,6 +26,12 @@ import {
   createWarrantySnapshots,
   resolveSalePaymentMethod,
 } from "@/lib/sale-core";
+import {
+  extractShopeeCarrier,
+  extractShopeeTrackingNo,
+  mapShopeeCarrierToShippingMethod,
+  mapShopeeOrderStatusToShippingStatus,
+} from "@/lib/shopee/logistics-utils";
 import { writeStockCard } from "@/lib/stock-card";
 import { calcItemSubtotal } from "@/lib/vat";
 
@@ -60,6 +64,7 @@ type RawOrderItem = {
 };
 type RawOrder = {
   order_sn?: string;
+  order_status?: string;
   buyer_username?: string;
   create_time?: number;
   item_list?: RawOrderItem[];
@@ -204,6 +209,9 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
   if (orderImport.saleId || orderImport.importStatus === ShopeeOrderImportStatus.IMPORTED) {
     blockers.push("ออเดอร์นี้สร้างบิลไปแล้ว");
   }
+  if (orderImport.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW) {
+    blockers.push("Shopee order นี้อยู่ในคิว review cancel/refund/return ต้องตรวจด้วยคนก่อน");
+  }
   if (lines.length === 0) blockers.push("ออเดอร์ไม่มีรายการสินค้า");
   if (lines.some((l) => l.error === "ยังไม่ได้ map สินค้า")) blockers.push("มีสินค้าที่ยังไม่ได้ map");
   if (!orderImport.shop.settlementCashBankAccountId) blockers.push("ยังไม่ได้ตั้งบัญชี Shopee พักเงิน");
@@ -257,6 +265,14 @@ export async function createSaleFromShopeeOrder(params: {
   );
 
   const saleNo = await generateSaleNo(SHOPEE_SALE_PREFIX, docDate);
+  const orderImport = await db.shopeeOrderImport.findUnique({
+    where: { id: params.orderImportId },
+    select: { rawPayload: true, shopeeStatus: true },
+  });
+  const rawOrder = parseRawOrder(orderImport?.rawPayload ?? null);
+  const trackingNo = extractShopeeTrackingNo(orderImport?.rawPayload ?? null);
+  const shippingMethod = mapShopeeCarrierToShippingMethod(extractShopeeCarrier(orderImport?.rawPayload ?? null));
+  const shippingStatus = mapShopeeOrderStatusToShippingStatus(rawOrder?.order_status ?? orderImport?.shopeeStatus, trackingNo);
   let createdSaleId = "";
 
   try {
@@ -285,8 +301,9 @@ export async function createSaleFromShopeeOrder(params: {
           cashBankAccountId: settlementAccountId,
           saleDate: docDate,
           amountRemain: new Prisma.Decimal(0),
-          shippingMethod: ShippingMethod.NONE,
-          shippingStatus: ShippingStatus.PENDING,
+          shippingMethod,
+          shippingStatus,
+          trackingNo,
           note: `Shopee order ${draft.orderSn}`,
         },
       });

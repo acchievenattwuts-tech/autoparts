@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import DailyOperationsDashboard from "../DailyOperationsDashboard";
 import DashboardTabs from "../DashboardTabs";
 import ProfitDashboard from "../ProfitDashboard";
+import ShopeeChannelSummary from "./ShopeeChannelSummary";
 
 import { requirePermission } from "@/lib/require-auth";
 
@@ -26,7 +27,12 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
   return (
     <DashboardTabs
       initialTab={resolvedSearchParams?.tab === "profit" ? "profit" : "daily"}
-      dailyContent={<DailyOperationsDashboard />}
+      dailyContent={
+        <div className="space-y-4">
+          <ShopeeChannelSummary />
+          <DailyOperationsDashboard />
+        </div>
+      }
       profitContent={
         <ProfitDashboard
           key={[

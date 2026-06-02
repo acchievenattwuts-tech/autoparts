@@ -3,6 +3,7 @@ import {
   DocStatus,
   VatType,
   SaleType,
+  SaleChannel,
   SalePaymentType,
   CreditNoteType,
   PaymentMethod,
@@ -40,6 +41,7 @@ export type ReportFilters = {
   accountId?: string;
   paymentType?: string;  // for sales
   saleType?: string;     // for sales
+  channel?: string;      // for sales: ALL | STORE | SHOPEE
   cnType?: string;       // for credit-notes
   paymentMethod?: string; // for receipts
   docType?: string;      // for payments: ALL | PURCHASE | EXPENSE
@@ -63,6 +65,7 @@ export function parseReportQueryFilters(
     accountId: params.accountId,
     paymentType: params.paymentType,
     saleType: params.saleType,
+    channel: params.channel,
     cnType: params.cnType,
     paymentMethod: params.paymentMethod,
     docType: params.docType,
@@ -77,6 +80,7 @@ export function buildExportQuery(filters: ReportFilters): string {
   if (filters.accountId) p.set("accountId", filters.accountId);
   if (filters.paymentType) p.set("paymentType", filters.paymentType);
   if (filters.saleType) p.set("saleType", filters.saleType);
+  if (filters.channel) p.set("channel", filters.channel);
   if (filters.cnType) p.set("cnType", filters.cnType);
   if (filters.paymentMethod) p.set("paymentMethod", filters.paymentMethod);
   if (filters.docType) p.set("docType", filters.docType);
@@ -91,6 +95,10 @@ export function saleTypeLabel(t: SaleType): string {
 
 export function paymentTypeLabel(t: SalePaymentType): string {
   return t === "CASH_SALE" ? "เงินสด" : "เชื่อ";
+}
+
+export function saleChannelLabel(channel: SaleChannel): string {
+  return channel === "SHOPEE" ? "Shopee" : "หน้าร้าน";
 }
 
 export function vatTypeLabel(t: VatType): string {
@@ -125,6 +133,11 @@ export function statusLabel(s: DocStatus): string {
 export type SaleRow = {
   rowNo: number;
   docNo: string;
+  marketplaceOrderNo: string;
+  shopName: string;
+  channel: string;
+  trackingNo: string;
+  syncStatus: string;
   docDate: Date;
   docType: string;
   paymentType: string;
@@ -236,6 +249,9 @@ function buildSalesReportWhere(filters: ReportFilters): Prisma.SaleWhereInput {
     ...(filters.saleType && filters.saleType !== "ALL"
       ? { saleType: filters.saleType as SaleType }
       : {}),
+    ...(filters.channel && filters.channel !== "ALL"
+      ? { channel: filters.channel as SaleChannel }
+      : {}),
   };
 }
 
@@ -249,6 +265,10 @@ export async function querySalesRows(
     select: {
         saleNo: true,
         saleDate: true,
+        channel: true,
+        channelRefNo: true,
+        trackingNo: true,
+        shippingStatus: true,
         saleType: true,
         paymentType: true,
         paymentMethod: true,
@@ -260,6 +280,14 @@ export async function querySalesRows(
         note: true,
         cashBankAccount: { select: { name: true } },
         customer: { select: { code: true } },
+        shopeeOrderImport: {
+          select: {
+            orderSn: true,
+            importStatus: true,
+            shopeeStatus: true,
+            shop: { select: { shopName: true, shopId: true } },
+          },
+        },
         items: {
           select: {
             quantity: true,
@@ -285,9 +313,21 @@ export async function querySalesRows(
         saleSubtotal > 0
           ? Math.round((sub / saleSubtotal) * saleVat * 100) / 100
           : 0;
+      const marketplaceOrderNo = sale.shopeeOrderImport?.orderSn ?? sale.channelRefNo ?? "";
+      const shopName = sale.shopeeOrderImport?.shop.shopName ?? sale.shopeeOrderImport?.shop.shopId ?? "";
+      const syncStatus = sale.shopeeOrderImport
+        ? `${sale.shopeeOrderImport.importStatus}/${sale.shopeeOrderImport.shopeeStatus || "-"}`
+        : sale.channel === "SHOPEE"
+          ? "NO_IMPORT_LINK"
+          : "-";
       rows.push({
         rowNo: rowNo++,
         docNo: sale.saleNo,
+        marketplaceOrderNo,
+        shopName,
+        channel: saleChannelLabel(sale.channel),
+        trackingNo: sale.trackingNo ?? "",
+        syncStatus,
         docDate: sale.saleDate,
         docType: saleTypeLabel(sale.saleType),
         paymentType: paymentTypeLabel(sale.paymentType),
@@ -736,13 +776,14 @@ function csvRow(cells: (string | number)[]): string {
 
 export function buildSalesCsv(rows: SaleRow[]): string {
   const header = csvRow([
-    "ลำดับ","เลขที่เอกสาร","วันที่","ประเภท","การชำระ","ช่องทางชำระ","บัญชีเงิน","รหัสลูกค้า","ชื่อลูกค้า",
+    "ลำดับ","เลขที่เอกสาร","Shopee order no","Shop","Channel","Tracking","Sync","วันที่","ประเภท","การชำระ","ช่องทางชำระ","บัญชีเงิน","รหัสลูกค้า","ชื่อลูกค้า",
     "หมายเหตุ","สถานะ","รหัสสินค้า","ชื่อสินค้า","จำนวน","หน่วย","ราคา/หน่วย",
     "ก่อน VAT","VAT Type","VAT","รวม",
   ]);
   const body = rows.map((r) =>
     csvRow([
-      r.rowNo, r.docNo, fmtDate(r.docDate), r.docType, r.paymentType, r.paymentMethod, r.accountName,
+      r.rowNo, r.docNo, r.marketplaceOrderNo, r.shopName, r.channel, r.trackingNo, r.syncStatus,
+      fmtDate(r.docDate), r.docType, r.paymentType, r.paymentMethod, r.accountName,
       r.customerCode, r.customerName, r.note, statusLabel(r.status),
       r.productCode, r.productName, r.qty, r.unitName, r.unitPrice,
       r.subtotalAmount, r.vatType, r.vatAmount, r.totalAmount,

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
+import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 
 /**
  * In-app notification service (general-purpose; per-user fan-out rows).
@@ -72,6 +73,19 @@ export async function createNotification(input: CreateNotificationInput): Promis
       dedupeKey: input.dedupeKey ?? null,
     })),
   });
+
+  if (result.count > 0 && shouldSendTelegramForNotification(input.type)) {
+    await sendTelegramNotification({
+      type: input.type,
+      severity: input.severity ?? NotificationSeverity.INFO,
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+    }).catch((error) => {
+      console.warn("[notifications] Telegram delivery skipped/failed:", error instanceof Error ? error.message : "unknown");
+    });
+  }
+
   return result.count;
 }
 

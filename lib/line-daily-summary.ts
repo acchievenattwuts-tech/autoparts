@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
 import { queryDailyPaymentRows } from "@/lib/report-queries";
+import { getShopeeReportingSummary } from "@/lib/shopee/services/reporting";
 import {
   addThailandDays,
   formatDateThai,
@@ -13,6 +14,12 @@ import {
 
 type MoneySection = {
   salesTotal: number;
+  storeSales: number;
+  storeGrossProfit: number;
+  storeOrderCount: number;
+  shopeeSales: number;
+  shopeeGrossProfit: number;
+  shopeeOrderCount: number;
   cashSales: number;
   creditSales: number;
   costOfGoodsSoldToday: number;
@@ -155,6 +162,8 @@ function renderEmojiLineDailySummaryMessage(summary: {
     "",
     "💰 ยอดขายวันนี้",
     `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
+    `- หน้าร้าน ${formatMoney(money.storeSales)} บาท (${formatCount(money.storeOrderCount)} ออเดอร์)`,
+    `- Shopee ${formatMoney(money.shopeeSales)} บาท (${formatCount(money.shopeeOrderCount)} ออเดอร์)`,
     `- ขายสด ${formatMoney(money.cashSales)} บาท`,
     `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
     `- ต้นทุนขาย ${formatMoney(money.costOfGoodsSoldToday)} บาท`,
@@ -1038,6 +1047,10 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                   filterSummaryFactItems(
                     [
                       { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}`, compactValue: money.salesTotal, keepWhenZero: true },
+                      { label: "หน้าร้าน", value: `฿${formatMoney(money.storeSales)} / ${formatCount(money.storeOrderCount)} ออเดอร์`, compactValue: money.storeSales },
+                      { label: "Shopee", value: `฿${formatMoney(money.shopeeSales)} / ${formatCount(money.shopeeOrderCount)} ออเดอร์`, compactValue: money.shopeeSales },
+                      { label: "GP หน้าร้าน", value: `฿${formatMoney(money.storeGrossProfit)}`, compactValue: money.storeGrossProfit },
+                      { label: "GP Shopee", value: `฿${formatMoney(money.shopeeGrossProfit)}`, compactValue: money.shopeeGrossProfit },
                       { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}`, compactValue: money.cashSales },
                       { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}`, compactValue: money.creditSales },
                       { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}`, compactValue: money.costOfGoodsSoldToday },
@@ -1160,6 +1173,7 @@ export async function buildLineDailySummary(
   const [
     siteConfig,
     profitToday,
+    channelSummary,
     salesTotalAgg,
     cashSalesAgg,
     creditSalesAgg,
@@ -1185,6 +1199,7 @@ export async function buildLineDailySummary(
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
     runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end)),
+    runSummaryStep("money.channelSummary", () => getShopeeReportingSummary({ from: start, to: end })),
     runSummaryStep("money.salesTotal", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1368,6 +1383,12 @@ export async function buildLineDailySummary(
 
   const money: MoneySection = {
     salesTotal: toNumber(salesTotalAgg._sum.netAmount),
+    storeSales: channelSummary.store.salesAmount,
+    storeGrossProfit: channelSummary.store.grossProfit,
+    storeOrderCount: channelSummary.store.orderCount,
+    shopeeSales: channelSummary.shopee.salesAmount,
+    shopeeGrossProfit: channelSummary.shopee.grossProfit,
+    shopeeOrderCount: channelSummary.shopee.orderCount,
     cashSales: toNumber(cashSalesAgg._sum.netAmount),
     creditSales: toNumber(creditSalesAgg._sum.netAmount),
     costOfGoodsSoldToday: profitToday.costAmount,

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Eye, Pencil, Plus } from "lucide-react";
-import { FulfillmentType, SalePaymentType, SaleType, ShippingStatus } from "@/lib/generated/prisma";
+import { FulfillmentType, SaleChannel, SalePaymentType, SaleType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SearchBar from "@/components/shared/SearchBar";
@@ -60,6 +60,15 @@ const paymentTypeTone = {
   CREDIT_SALE: "warning",
 } as const;
 
+const channelLabel: Record<SaleChannel, string> = {
+  STORE:  "หน้าร้าน",
+  SHOPEE: "Shopee",
+};
+const channelTone = {
+  STORE:  "neutral",
+  SHOPEE: "info",
+} as const;
+
 
 const SalesPage = async ({
   searchParams,
@@ -74,6 +83,7 @@ const SalesPage = async ({
     fulfillmentType?: string;
     customerId?: string;
     productId?: string;
+    channel?: string;
   }>;
 }) => {
   await requirePermission("sales.view");
@@ -84,6 +94,7 @@ const SalesPage = async ({
 
   const params = await searchParams;
   const paymentTypeFilter  = params.paymentType;
+  const channelFilter = params.channel;
   const shippingStatusFilter = params.shippingStatus;
   const fulfillmentTypeFilter = params.fulfillmentType;
   const customerId = params.customerId;
@@ -102,6 +113,9 @@ const SalesPage = async ({
   }
   if (paymentTypeFilter && paymentTypeFilter !== "ALL") {
     where.paymentType = paymentTypeFilter as SalePaymentType;
+  }
+  if (channelFilter && channelFilter !== "ALL") {
+    where.channel = channelFilter as SaleChannel;
   }
   if (customerId) {
     where.customerId = customerId;
@@ -154,6 +168,7 @@ const SalesPage = async ({
   const paginationParams: Record<string, string> = {};
   if (q)                    paginationParams.q              = q;
   if (paymentTypeFilter)    paginationParams.paymentType    = paymentTypeFilter;
+  if (channelFilter)        paginationParams.channel        = channelFilter;
   if (from)                 paginationParams.from           = from;
   if (to)                   paginationParams.to             = to;
   if (shippingStatusFilter) paginationParams.shippingStatus = shippingStatusFilter;
@@ -221,6 +236,7 @@ const SalesPage = async ({
               <th className="px-4 py-3 text-left font-medium">วันที่</th>
               <th className="px-4 py-3 text-left font-medium">ลูกค้า</th>
               <th className="px-4 py-3 text-left font-medium">ประเภท</th>
+              <th className="px-4 py-3 text-left font-medium">ช่องทาง</th>
               <th className="px-4 py-3 text-left font-medium">ขายสด/เชื่อ</th>
               <th className="px-4 py-3 text-left font-medium">การจัดส่ง</th>
               <th className="px-4 py-3 text-left font-medium">สถานะส่ง</th>
@@ -234,7 +250,7 @@ const SalesPage = async ({
           <tbody>
             {sales.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
                   {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการขาย"}
                 </td>
               </tr>
@@ -251,6 +267,7 @@ const SalesPage = async ({
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
                   <td className="px-4 py-3"><AdminStatusBadge tone={saleTypeTone[s.saleType]}>{saleTypeLabel[s.saleType]}</AdminStatusBadge></td>
+                  <td className="px-4 py-3"><AdminStatusBadge tone={channelTone[s.channel]}>{channelLabel[s.channel]}</AdminStatusBadge></td>
                   <td className="px-4 py-3"><AdminStatusBadge tone={paymentTypeTone[s.paymentType]}>{paymentTypeLabel[s.paymentType]}</AdminStatusBadge></td>
                   <td className="px-4 py-3"><AdminStatusBadge tone={fulfillmentTone[s.fulfillmentType]}>{fulfillmentLabel[s.fulfillmentType]}</AdminStatusBadge></td>
                   <td className="px-4 py-3">

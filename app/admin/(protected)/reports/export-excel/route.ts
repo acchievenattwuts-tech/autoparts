@@ -100,6 +100,11 @@ async function buildSalesExcel(rows: SaleRow[], title: string): Promise<Blob> {
   ws.columns = [
     { header: "#", key: "rowNo", width: 6 },
     { header: "เลขที่เอกสาร", key: "docNo", width: 16 },
+    { header: "Shopee order no", key: "marketplaceOrderNo", width: 18 },
+    { header: "Shop", key: "shopName", width: 18 },
+    { header: "Channel", key: "channel", width: 12 },
+    { header: "Tracking", key: "trackingNo", width: 18 },
+    { header: "Sync", key: "syncStatus", width: 22 },
     { header: "วันที่", key: "docDate", width: 12 },
     { header: "ประเภท", key: "docType", width: 8 },
     { header: "\u0e01\u0e32\u0e23\u0e0a\u0e33\u0e23\u0e30", key: "paymentType", width: 10 },
@@ -134,10 +139,10 @@ async function buildSalesExcel(rows: SaleRow[], title: string): Promise<Blob> {
     row.getCell("qty").numFmt = "#,##0.####";
   }
 
-  addTotalRow(ws, "รวมทั้งสิ้น", 16, [
-    { col: 17, value: rows.reduce((s, r) => s + r.subtotalAmount, 0) },
-    { col: 19, value: rows.reduce((s, r) => s + r.vatAmount, 0) },
-    { col: 20, value: rows.reduce((s, r) => s + r.totalAmount, 0) },
+  addTotalRow(ws, "รวมทั้งสิ้น", 21, [
+    { col: 22, value: rows.reduce((s, r) => s + r.subtotalAmount, 0) },
+    { col: 24, value: rows.reduce((s, r) => s + r.vatAmount, 0) },
+    { col: 25, value: rows.reduce((s, r) => s + r.totalAmount, 0) },
   ]);
 
   const buf = await wb.xlsx.writeBuffer(); return new Blob([buf]);

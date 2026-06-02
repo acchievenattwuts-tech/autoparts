@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
 import NavLink from "@/components/shared/NavLink";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
@@ -15,7 +15,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
-import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
+import { getShippingTrackingUrl, SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
@@ -137,6 +137,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           },
         },
         _count: { select: { deliveryProofs: true } },
+        shopeeOrderImport: { select: { id: true, orderSn: true } },
       },
     }),
     db.siteContent.findMany(),
@@ -180,6 +181,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     docNo: sale.saleNo,
     variant: "ORIGINAL",
   });
+  const trackingHref = sale.trackingNo
+    ? getShippingTrackingUrl(sale.shippingMethod ?? "NONE", sale.trackingNo)
+    : null;
 
   return (
     <>
@@ -311,7 +315,33 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 {sale.trackingNo ? (
                   <div>
                     <p className="mb-1 text-gray-500 dark:text-slate-400">เลข Tracking</p>
-                    <p className="font-mono font-medium text-gray-900 dark:text-slate-100">{sale.trackingNo}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-mono font-medium text-gray-900 dark:text-slate-100">{sale.trackingNo}</p>
+                      {trackingHref ? (
+                        <a
+                          href={trackingHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-400/10 dark:text-blue-200 dark:hover:bg-blue-400/20"
+                        >
+                          ติดตาม
+                          <ExternalLink size={11} />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {sale.shopeeOrderImport ? (
+                  <div className="col-span-2 md:col-span-3">
+                    <p className="mb-1 text-gray-500 dark:text-slate-400">Shopee Order</p>
+                    <NavLink
+                      href={`/admin/marketplace/shopee/orders/${sale.shopeeOrderImport.id}`}
+                      className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-100 dark:bg-orange-400/10 dark:text-orange-200 dark:hover:bg-orange-400/20"
+                      hideSpinner
+                    >
+                      {sale.shopeeOrderImport.orderSn}
+                      <ExternalLink size={12} />
+                    </NavLink>
                   </div>
                 ) : null}
                 {sale.trackingToken ? (
