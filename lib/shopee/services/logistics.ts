@@ -14,6 +14,15 @@ export type ShopeeLogisticsSyncResult = {
   skipped: number;
 };
 
+// Forward-only ranking so a Shopee sync never reverts a more-advanced internal
+// shipping status (e.g. a staff-marked DELIVERED won't be pulled back to
+// OUT_FOR_DELIVERY). Tracking number + carrier still follow Shopee (authoritative).
+const SHIPPING_STATUS_RANK: Record<ShippingStatus, number> = {
+  [ShippingStatus.PENDING]: 0,
+  [ShippingStatus.OUT_FOR_DELIVERY]: 1,
+  [ShippingStatus.DELIVERED]: 2,
+};
+
 type SyncableShopeeOrder = {
   id: string;
   orderSn: string;
@@ -92,7 +101,8 @@ export async function syncShopeeLogisticsFromImports(
     if (next.shippingMethod !== ShippingMethod.NONE && next.shippingMethod !== order.sale.shippingMethod) {
       data.shippingMethod = next.shippingMethod;
     }
-    if (next.shippingStatus !== order.sale.shippingStatus) {
+    // Only advance forward — never revert a more-advanced (e.g. manually set) status.
+    if (SHIPPING_STATUS_RANK[next.shippingStatus] > SHIPPING_STATUS_RANK[order.sale.shippingStatus]) {
       data.shippingStatus = next.shippingStatus;
     }
 

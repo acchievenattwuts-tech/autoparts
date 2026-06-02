@@ -150,6 +150,15 @@ export async function pullShopeeOrders(
   });
   const mappedKeys = new Set(mappings.map((m) => `${m.itemId}::${m.modelId}`));
 
+  // Batch-fetch existing import statuses once (avoid a findUnique per order).
+  const existingRows = orderSns.length
+    ? await db.shopeeOrderImport.findMany({
+        where: { shopRecordId, orderSn: { in: orderSns } },
+        select: { orderSn: true, importStatus: true },
+      })
+    : [];
+  const existingStatusBySn = new Map(existingRows.map((row) => [row.orderSn, row.importStatus]));
+
   let created = 0;
   let needsMapping = 0;
   let failed = 0;
@@ -169,10 +178,7 @@ export async function pullShopeeOrders(
           ? ShopeeOrderImportStatus.NEEDS_SKU_MAPPING
           : ShopeeOrderImportStatus.PENDING;
 
-        const existing = await db.shopeeOrderImport.findUnique({
-          where: { shopRecordId_orderSn: { shopRecordId, orderSn: order.order_sn } },
-          select: { id: true, importStatus: true },
-        });
+        const existingStatus = existingStatusBySn.get(order.order_sn);
 
         // Never downgrade an order that already advanced past the queue.
         const lockedStatuses: ShopeeOrderImportStatus[] = [
@@ -181,8 +187,8 @@ export async function pullShopeeOrders(
           ShopeeOrderImportStatus.CANCELLED_REVIEW,
         ];
         const nextStatus =
-          existing && lockedStatuses.includes(existing.importStatus)
-            ? existing.importStatus
+          existingStatus && lockedStatuses.includes(existingStatus)
+            ? existingStatus
             : computedStatus;
 
         const rawPayload = order as unknown as Prisma.InputJsonValue;
@@ -214,7 +220,7 @@ export async function pullShopeeOrders(
           },
         });
 
-        if (!existing) created += 1;
+        if (!existingStatusBySn.has(order.order_sn)) created += 1;
         if (nextStatus === ShopeeOrderImportStatus.NEEDS_SKU_MAPPING) needsMapping += 1;
       } catch (error) {
         failed += 1;

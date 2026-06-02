@@ -318,13 +318,20 @@ export async function createSaleFromShopeeOrder(params: {
       });
       createdSaleId = sale.id;
 
+      // Preload all line products in one query (avoid N+1 inside the loop).
+      const productIds = [
+        ...new Set(draft.lines.map((l) => l.productId).filter((id): id is string => Boolean(id))),
+      ];
+      const productList = await tx.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, avgCost: true, costPrice: true, inventoryTracking: true, warrantyDays: true, isLotControl: true },
+      });
+      const productMap = new Map(productList.map((p) => [p.id, p]));
+
       for (const [index, line] of draft.lines.entries()) {
         if (!line.productId) throw new Error("unmapped line");
         const qtyInBase = line.qty * line.unitScale;
-        const product = await tx.product.findUnique({
-          where: { id: line.productId },
-          select: { avgCost: true, costPrice: true, inventoryTracking: true, warrantyDays: true, isLotControl: true },
-        });
+        const product = productMap.get(line.productId);
         if (!product) throw new Error("ไม่พบสินค้า");
 
         const costPerBase = resolveSaleUnitCost(product);

@@ -2,7 +2,7 @@ import { Activity, AlertTriangle, Boxes, Clock, RefreshCw } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { ShopeeAuthStatus } from "@/lib/generated/prisma";
-import { listShopeeStockReconciliation } from "@/lib/shopee/services/stock";
+import { getShopeeStockSummary } from "@/lib/shopee/services/stock";
 import { formatDateTimeThai } from "@/lib/th-date";
 
 /**
@@ -43,13 +43,13 @@ const SyncHealthPanel = async () => {
   const since = new Date(new Date().getTime() - DAY_MS);
   const cards = await Promise.all(
     shops.map(async (shop) => {
-      const [recon, failedJobs] = await Promise.all([
-        listShopeeStockReconciliation(shop.id),
+      const [stock, failedJobs] = await Promise.all([
+        getShopeeStockSummary(shop.id),
         db.shopeeSyncJob.count({
           where: { shopRecordId: shop.id, status: "FAILED", createdAt: { gte: since } },
         }),
       ]);
-      return { shop, stock: recon.summary, failedJobs };
+      return { shop, stock, failedJobs };
     }),
   );
 

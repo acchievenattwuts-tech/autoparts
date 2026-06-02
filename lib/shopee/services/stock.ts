@@ -111,3 +111,41 @@ export async function listShopeeStockReconciliation(shopRecordId: string): Promi
 
   return { rows: mappedRows, summary };
 }
+
+/**
+ * Lighter variant that returns only the reconciliation summary counts — for
+ * dashboards/health panels that don't render the full row list. Selects fewer
+ * columns and skips building row objects.
+ */
+export async function getShopeeStockSummary(shopRecordId: string): Promise<ShopeeStockSummary> {
+  const rows = await db.shopeeProductMapping.findMany({
+    where: { shopRecordId, isActive: true },
+    select: {
+      syncMode: true,
+      stockBuffer: true,
+      lastPushedStock: true,
+      lastError: true,
+      shop: { select: { stockBuffer: true } },
+      product: { select: { stock: true } },
+    },
+  });
+
+  return rows.reduce<ShopeeStockSummary>(
+    (acc, row) => {
+      const effectiveBuffer = row.stockBuffer ?? row.shop.stockBuffer;
+      const targetStock = calculateShopeeTargetStock(row.product.stock, effectiveBuffer);
+      const status = resolveShopeeStockStatus({
+        syncMode: row.syncMode,
+        targetStock,
+        lastPushedStock: row.lastPushedStock,
+        lastError: row.lastError,
+      });
+      acc.total += 1;
+      if (row.syncMode === ShopeeSyncMode.PUSH_INTERNAL_TO_SHOPEE) acc.pushEnabled += 1;
+      if (status === "NEEDS_PUSH" || status === "NOT_PUSHED") acc.needsPush += 1;
+      if (status === "PUSH_FAILED") acc.failed += 1;
+      return acc;
+    },
+    { total: 0, pushEnabled: 0, needsPush: 0, failed: 0 },
+  );
+}
