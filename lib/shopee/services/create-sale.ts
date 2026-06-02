@@ -53,6 +53,8 @@ import { calcItemSubtotal } from "@/lib/vat";
  */
 
 const SHOPEE_SALE_PREFIX = "SP";
+const LOT_BLOCKER = "มีสินค้าคุม lot ต้องเลือก lot ก่อน";
+const MONEY_TOLERANCE = 0.01;
 
 type RawOrderItem = {
   item_id?: number;
@@ -67,6 +69,7 @@ type RawOrder = {
   order_status?: string;
   buyer_username?: string;
   create_time?: number;
+  total_amount?: number;
   item_list?: RawOrderItem[];
 };
 
@@ -93,11 +96,27 @@ export type ShopeeSaleDraft = {
   docDate: Date;
   lines: ShopeeSaleDraftLine[];
   totalAmount: number;
+  shopeeTotalAmount: number | null;
   settlementAccountId: string | null;
   alreadyImported: boolean;
   saleId: string | null;
   saleNo: string | null;
   blockers: string[];
+};
+
+export type ShopeeSaleDraftOrderImport = {
+  id: string;
+  orderSn: string;
+  buyerUsername: string | null;
+  orderCreatedAt: Date | null;
+  totalAmount?: Prisma.Decimal | number | string | null;
+  rawPayload: Prisma.JsonValue | null;
+  importStatus: ShopeeOrderImportStatus;
+  saleId: string | null;
+  shopRecordId: string;
+  returnReviewRequired?: boolean;
+  shop: { settlementCashBankAccountId: string | null };
+  sale: { saleNo: string } | null;
 };
 
 function lineKey(itemId: string, modelId: string): string {
@@ -119,6 +138,12 @@ function resolveUnitPrice(item: RawOrderItem): number {
   return 0;
 }
 
+function moneyAsNumber(value: Prisma.Decimal | number | string | null | undefined): number | null {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Builds a dry-run preview of the Sale that would be created from a queued
  * Shopee order. No writes. Surfaces blockers (unmapped SKU, missing settlement
@@ -132,16 +157,23 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
       orderSn: true,
       buyerUsername: true,
       orderCreatedAt: true,
+      totalAmount: true,
       rawPayload: true,
       importStatus: true,
       saleId: true,
       shopRecordId: true,
+      returnReviewRequired: true,
       shop: { select: { settlementCashBankAccountId: true } },
       sale: { select: { saleNo: true } },
     },
   });
   if (!orderImport) return null;
+  return buildShopeeSaleDraftFromOrderImport(orderImport);
+}
 
+export async function buildShopeeSaleDraftFromOrderImport(
+  orderImport: ShopeeSaleDraftOrderImport,
+): Promise<ShopeeSaleDraft> {
   const order = parseRawOrder(orderImport.rawPayload);
   const rawItems = order?.item_list ?? [];
 
@@ -161,7 +193,7 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
           saleUnitName: true,
           inventoryTracking: true,
           isLotControl: true,
-          units: { select: { name: true, scale: true, isBase: true } },
+          units: { select: { id: true, name: true, scale: true, isBase: true } },
         },
       },
     },
@@ -191,7 +223,7 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
 
     const product = mapping.product;
     const chosenUnit = mapping.productUnitId
-      ? product.units.find((u) => u.name === product.saleUnitName) ?? product.units.find((u) => u.isBase)
+      ? product.units.find((u) => u.id === mapping.productUnitId) ?? product.units.find((u) => u.isBase)
       : product.units.find((u) => u.isBase) ?? product.units[0];
     const unitName = chosenUnit?.name ?? product.saleUnitName;
     const unitScale = chosenUnit ? Number(chosenUnit.scale) : 1;
@@ -204,21 +236,29 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
       unitName, unitScale, qty, unitPrice, lineTotal,
       isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
       isTracked: isInventoryTracked(product.inventoryTracking),
-      error: qty <= 0 ? "จำนวนไม่ถูกต้อง" : null,
+      error: qty <= 0 ? "จำนวนไม่ถูกต้อง" : unitPrice <= 0 ? "ราคาไม่ถูกต้อง" : null,
     });
   }
 
   const blockers: string[] = [];
+  const shopeeTotalAmount = moneyAsNumber(orderImport.totalAmount ?? order?.total_amount ?? null);
   if (orderImport.saleId || orderImport.importStatus === ShopeeOrderImportStatus.IMPORTED) {
     blockers.push("ออเดอร์นี้สร้างบิลไปแล้ว");
   }
-  if (orderImport.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW) {
+  if (orderImport.returnReviewRequired || orderImport.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW) {
     blockers.push("Shopee order นี้อยู่ในคิว review cancel/refund/return ต้องตรวจด้วยคนก่อน");
   }
   if (lines.length === 0) blockers.push("ออเดอร์ไม่มีรายการสินค้า");
   if (lines.some((l) => l.error === "ยังไม่ได้ map สินค้า")) blockers.push("มีสินค้าที่ยังไม่ได้ map");
+  if (lines.some((l) => l.error && l.error !== "ยังไม่ได้ map สินค้า")) blockers.push("มีรายการสินค้าจำนวนหรือราคาไม่ถูกต้อง");
   if (!orderImport.shop.settlementCashBankAccountId) blockers.push("ยังไม่ได้ตั้งบัญชี Shopee พักเงิน");
-  if (lines.some((l) => l.isLotControl)) blockers.push("มีสินค้าคุม lot ต้องเลือก lot ก่อน");
+  if (
+    shopeeTotalAmount != null &&
+    Math.abs(totalAmount - shopeeTotalAmount) > MONEY_TOLERANCE
+  ) {
+    blockers.push(`ยอดรวม preview (${totalAmount.toFixed(2)}) ไม่ตรงกับยอด Shopee (${shopeeTotalAmount.toFixed(2)})`);
+  }
+  if (lines.some((l) => l.isLotControl)) blockers.push(LOT_BLOCKER);
 
   return {
     orderImportId: orderImport.id,
@@ -227,6 +267,7 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
     docDate: orderImport.orderCreatedAt ?? new Date(),
     lines,
     totalAmount,
+    shopeeTotalAmount,
     settlementAccountId: orderImport.shop.settlementCashBankAccountId,
     alreadyImported: Boolean(orderImport.saleId),
     saleId: orderImport.saleId,
@@ -257,6 +298,10 @@ export async function createSaleFromShopeeOrder(params: {
   if (!draft.settlementAccountId) return { ok: false, error: "ยังไม่ได้ตั้งบัญชี Shopee พักเงิน" };
   if (draft.lines.length === 0) return { ok: false, error: "ออเดอร์ไม่มีรายการสินค้า" };
   if (draft.lines.some((l) => l.productId === null)) return { ok: false, error: "มีสินค้าที่ยังไม่ได้ map" };
+  const lineError = draft.lines.find((line) => line.error)?.error;
+  if (lineError) return { ok: false, error: lineError };
+  const blockingError = draft.blockers.find((blocker) => blocker !== LOT_BLOCKER);
+  if (blockingError) return { ok: false, error: blockingError };
 
   const settlementAccountId = draft.settlementAccountId;
   // Posting date = approval time (ERP-standard: post in an open period, in
@@ -286,6 +331,26 @@ export async function createSaleFromShopeeOrder(params: {
 
   try {
     await dbTx(async (tx) => {
+      const claimed = await tx.shopeeOrderImport.updateMany({
+        where: {
+          id: draft.orderImportId,
+          saleId: null,
+          importStatus: { not: ShopeeOrderImportStatus.IMPORTED },
+          returnReviewRequired: false,
+        },
+        data: { lastError: null },
+      });
+      if (claimed.count !== 1) {
+        throw new Error("ออเดอร์นี้ถูกสร้างบิลหรือถูกส่งเข้า review แล้ว");
+      }
+      const duplicateSale = await tx.sale.findFirst({
+        where: { channel: SaleChannel.SHOPEE, channelRefNo: draft.orderSn },
+        select: { id: true, saleNo: true },
+      });
+      if (duplicateSale) {
+        throw new Error(`ออเดอร์นี้มีบิล Shopee อยู่แล้ว (${duplicateSale.saleNo})`);
+      }
+
       const paymentMethod = await resolveSalePaymentMethod(tx, settlementAccountId);
 
       const sale = await tx.sale.create({

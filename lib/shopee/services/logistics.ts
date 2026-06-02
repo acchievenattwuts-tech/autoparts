@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { ShippingMethod, ShippingStatus } from "@/lib/generated/prisma";
+import { Prisma, ShippingMethod, ShippingStatus } from "@/lib/generated/prisma";
 import {
   extractShopeeCarrier,
   extractShopeeTrackingNo,
@@ -22,6 +22,7 @@ const SHIPPING_STATUS_RANK: Record<ShippingStatus, number> = {
   [ShippingStatus.OUT_FOR_DELIVERY]: 1,
   [ShippingStatus.DELIVERED]: 2,
 };
+const LOGISTICS_BATCH_SIZE = 200;
 
 type SyncableShopeeOrder = {
   id: string;
@@ -52,72 +53,86 @@ function resolveNextShipping(raw: SyncableShopeeOrder) {
 export async function syncShopeeLogisticsFromImports(
   shopRecordId?: string,
 ): Promise<ShopeeLogisticsSyncResult> {
-  const orders = await db.shopeeOrderImport.findMany({
-    where: {
-      importStatus: "IMPORTED",
-      saleId: { not: null },
-      ...(shopRecordId ? { shopRecordId } : {}),
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 200,
-    select: {
-      id: true,
-      orderSn: true,
-      shopeeStatus: true,
-      rawPayload: true,
-      sale: {
-        select: {
-          id: true,
-          shippingMethod: true,
-          shippingStatus: true,
-          trackingNo: true,
-        },
-      },
-    },
-  });
-
+  let cursor: string | undefined;
+  let scanned = 0;
   let updated = 0;
   let withTracking = 0;
   let skipped = 0;
 
-  for (const order of orders) {
-    if (!order.sale) {
-      skipped += 1;
-      continue;
-    }
-
-    const next = resolveNextShipping(order);
-    if (next.trackingNo) withTracking += 1;
-
-    const data: {
-      trackingNo?: string | null;
-      shippingMethod?: ShippingMethod;
-      shippingStatus?: ShippingStatus;
-    } = {};
-
-    if (next.trackingNo && next.trackingNo !== order.sale.trackingNo) {
-      data.trackingNo = next.trackingNo;
-    }
-    if (next.shippingMethod !== ShippingMethod.NONE && next.shippingMethod !== order.sale.shippingMethod) {
-      data.shippingMethod = next.shippingMethod;
-    }
-    // Only advance forward — never revert a more-advanced (e.g. manually set) status.
-    if (SHIPPING_STATUS_RANK[next.shippingStatus] > SHIPPING_STATUS_RANK[order.sale.shippingStatus]) {
-      data.shippingStatus = next.shippingStatus;
-    }
-
-    if (Object.keys(data).length === 0) {
-      skipped += 1;
-      continue;
-    }
-
-    await db.sale.update({
-      where: { id: order.sale.id },
-      data,
+  while (true) {
+    const orders = await db.shopeeOrderImport.findMany({
+      where: {
+        importStatus: "IMPORTED",
+        saleId: { not: null },
+        ...(shopRecordId ? { shopRecordId } : {}),
+      },
+      orderBy: { id: "asc" },
+      take: LOGISTICS_BATCH_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        orderSn: true,
+        shopeeStatus: true,
+        rawPayload: true,
+        sale: {
+          select: {
+            id: true,
+            shippingMethod: true,
+            shippingStatus: true,
+            trackingNo: true,
+          },
+        },
+      },
     });
-    updated += 1;
+    if (orders.length === 0) break;
+
+    scanned += orders.length;
+    cursor = orders[orders.length - 1]?.id;
+
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
+
+    for (const order of orders) {
+      if (!order.sale) {
+        skipped += 1;
+        continue;
+      }
+
+      const next = resolveNextShipping(order);
+      if (next.trackingNo) withTracking += 1;
+
+      const data: {
+        trackingNo?: string | null;
+        shippingMethod?: ShippingMethod;
+        shippingStatus?: ShippingStatus;
+      } = {};
+
+      if (next.trackingNo && next.trackingNo !== order.sale.trackingNo) {
+        data.trackingNo = next.trackingNo;
+      }
+      if (next.shippingMethod !== ShippingMethod.NONE && next.shippingMethod !== order.sale.shippingMethod) {
+        data.shippingMethod = next.shippingMethod;
+      }
+      // Only advance forward — never revert a more-advanced (e.g. manually set) status.
+      if (SHIPPING_STATUS_RANK[next.shippingStatus] > SHIPPING_STATUS_RANK[order.sale.shippingStatus]) {
+        data.shippingStatus = next.shippingStatus;
+      }
+
+      if (Object.keys(data).length === 0) {
+        skipped += 1;
+        continue;
+      }
+
+      updates.push(db.sale.update({
+        where: { id: order.sale.id },
+        data,
+      }));
+      updated += 1;
+    }
+
+    if (updates.length > 0) {
+      await db.$transaction(updates);
+    }
   }
 
-  return { scanned: orders.length, updated, withTracking, skipped };
+  return { scanned, updated, withTracking, skipped };
 }
-

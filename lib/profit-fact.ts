@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Prisma, CreditNoteType, DocStatus, ProfitSourceType } from "@/lib/generated/prisma";
+import { Prisma, CreditNoteType, DocStatus, ProfitSourceType, SaleChannel } from "@/lib/generated/prisma";
 import { calcItemSubtotal } from "@/lib/vat";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -7,6 +7,7 @@ type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 type FactProfitRowInput = {
   businessDate: Date;
   sourceType: ProfitSourceType;
+  channel?: SaleChannel | null;
   sourceSubtype?: string | null;
   sourceId: string;
   sourceLineId?: string | null;
@@ -147,6 +148,7 @@ async function createFactProfitRows(
       data: {
         businessDate: row.businessDate,
         sourceType: row.sourceType,
+        channel: row.channel ?? null,
         sourceSubtype: row.sourceSubtype ?? null,
         sourceId: row.sourceId,
         sourceLineId: row.sourceLineId ?? null,
@@ -210,6 +212,7 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       saleNo: true,
       saleDate: true,
       status: true,
+      channel: true,
       customerId: true,
       customerName: true,
       subtotalAmount: true,
@@ -339,6 +342,10 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       marginPct: 0,
     });
   }
+
+  // All rows belong to this sale → tag them with its channel (denormalized for
+  // fast channel-split reporting without loading every sale id).
+  for (const row of rows) row.channel = sale.channel;
 
   await createFactProfitRows(tx, rows);
 }

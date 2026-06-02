@@ -81,7 +81,11 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
       })
     : [];
 
-  const errorMessage = params.error ? ERROR_MESSAGES[params.error] ?? "เกิดข้อผิดพลาด" : null;
+  const errorMessage = params.error
+    ? params.error === "invalid_state"
+      ? "Shopee callback state is invalid. Please start authorization again."
+      : ERROR_MESSAGES[params.error] ?? "เกิดข้อผิดพลาด"
+    : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">

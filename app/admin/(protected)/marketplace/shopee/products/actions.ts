@@ -19,7 +19,7 @@ import {
 import { fetchShopeeItems, type ShopeeItemSummary } from "@/lib/shopee/services/products";
 
 const PRODUCTS_PATH = "/admin/marketplace/shopee/products";
-const PRODUCT_PICKER_LIMIT = 1000;
+const PRODUCT_SEARCH_LIMIT = 50;
 
 function parseSyncMode(value: FormDataEntryValue | null): ShopeeSyncMode {
   const raw = String(value ?? "");
@@ -29,6 +29,37 @@ function parseSyncMode(value: FormDataEntryValue | null): ShopeeSyncMode {
 }
 
 export type MappingActionResult = { ok: true } | { ok: false; error: string };
+export type ProductSearchOption = { id: string; label: string; sublabel?: string };
+
+export async function searchProductOptionsAction(query: string): Promise<ProductSearchOption[]> {
+  try {
+    await requirePermission("marketplace.view");
+  } catch {
+    return [];
+  }
+
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const products = await db.product.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { code: { contains: trimmed, mode: "insensitive" } },
+        { name: { contains: trimmed, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { code: "asc" },
+    select: { id: true, code: true, name: true },
+    take: PRODUCT_SEARCH_LIMIT,
+  });
+
+  return products.map((product) => ({
+    id: product.id,
+    label: product.name,
+    sublabel: product.code,
+  }));
+}
 
 export async function createMappingAction(formData: FormData): Promise<MappingActionResult> {
   let session;
@@ -92,8 +123,19 @@ export async function deleteMappingAction(formData: FormData): Promise<MappingAc
 }
 
 export type PullItemsResult =
-  | { ok: true; items: ShopeeItemSummary[]; suggestions: AutoMatchSuggestion[]; unmappedCount: number }
+  | { ok: true; itemCount: number; suggestions: AutoMatchSuggestion[]; unmappedCount: number }
   | { ok: false; error: string };
+
+function collectShopeeSkus(items: ShopeeItemSummary[]): string[] {
+  const skus = new Set<string>();
+  for (const item of items) {
+    if (item.sku?.trim()) skus.add(item.sku.trim());
+    for (const model of item.models) {
+      if (model.sku?.trim()) skus.add(model.sku.trim());
+    }
+  }
+  return Array.from(skus);
+}
 
 export async function pullShopeeItemsAction(shopRecordId: string): Promise<PullItemsResult> {
   try {
@@ -103,18 +145,20 @@ export async function pullShopeeItemsAction(shopRecordId: string): Promise<PullI
   }
 
   try {
-    const [items, products, existing] = await Promise.all([
+    const [items, existing] = await Promise.all([
       fetchShopeeItems(shopRecordId),
-      db.product.findMany({
-        where: { isActive: true },
-        select: { id: true, code: true, name: true },
-        take: PRODUCT_PICKER_LIMIT,
-      }),
       db.shopeeProductMapping.findMany({
         where: { shopRecordId },
         select: { itemId: true, modelId: true },
       }),
     ]);
+    const skus = collectShopeeSkus(items);
+    const products = skus.length
+      ? await db.product.findMany({
+          where: { isActive: true, code: { in: skus } },
+          select: { id: true, code: true, name: true },
+        })
+      : [];
 
     const existingKeys = new Set(existing.map((e) => `${e.itemId}::${e.modelId}`));
     const suggestions = suggestAutoMappings(items, products, existing);
@@ -125,7 +169,7 @@ export async function pullShopeeItemsAction(shopRecordId: string): Promise<PullI
       return !existingKeys.has(`${item.itemId}::0`);
     }).length;
 
-    return { ok: true, items, suggestions, unmappedCount };
+    return { ok: true, itemCount: items.length, suggestions, unmappedCount };
   } catch (error) {
     console.error("[shopee] pull items failed:", error instanceof Error ? error.message : "unknown");
     return { ok: false, error: "ดึงสินค้าจาก Shopee ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อร้าน" };

@@ -41,7 +41,24 @@ const MAX_LOOKBACK_DAYS = 15; // Shopee window limit
 const LIST_PAGE_SIZE = 100;
 const DETAIL_CHUNK = 50;
 const MAX_LIST_PAGES = 50;
-const DETAIL_OPTIONAL_FIELDS = "buyer_username,item_list,total_amount,order_status,update_time,create_time";
+const DETAIL_OPTIONAL_FIELDS = [
+  "buyer_username",
+  "item_list",
+  "total_amount",
+  "order_status",
+  "update_time",
+  "create_time",
+  "package_list",
+  "recipient_address",
+  "shipping_carrier",
+  "payment_method",
+  "estimated_shipping_fee",
+  "actual_shipping_fee",
+  "buyer_cancel_reason",
+  "cancel_reason",
+  "reverse_shipping_fee",
+  "escrow_detail",
+].join(",");
 
 type OrderListEntry = { order_sn?: string; order_status?: string };
 type OrderListResponse = { order_list?: OrderListEntry[]; more?: boolean; next_cursor?: string };
@@ -52,6 +69,8 @@ type OrderDetailItem = {
   item_sku?: string;
   model_sku?: string;
   model_quantity_purchased?: number;
+  model_discounted_price?: number;
+  model_original_price?: number;
 };
 type OrderDetail = {
   order_sn?: string;

@@ -7,13 +7,13 @@ import { Download, Link2, Loader2, Trash2, Wand2 } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import type { AutoMatchSuggestion } from "@/lib/shopee/services/mapping";
 import type { ShopeeMappingRow } from "@/lib/shopee/services/mapping";
-import type { ShopeeItemSummary } from "@/lib/shopee/services/products";
 
 import {
   applySuggestionsAction,
   createMappingAction,
   deleteMappingAction,
   pullShopeeItemsAction,
+  searchProductOptionsAction,
 } from "./actions";
 
 type ProductLite = { id: string; code: string; name: string };
@@ -38,6 +38,7 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
   const [isPending, startTransition] = useTransition();
 
   const [productId, setProductId] = useState("");
+  const [selectedProductOption, setSelectedProductOption] = useState<SelectOption | null>(null);
   const [itemId, setItemId] = useState("");
   const [modelId, setModelId] = useState("");
   const [sellerSku, setSellerSku] = useState("");
@@ -46,7 +47,7 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
 
   const [pulling, setPulling] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
-  const [items, setItems] = useState<ShopeeItemSummary[] | null>(null);
+  const [itemCount, setItemCount] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<AutoMatchSuggestion[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -74,6 +75,7 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
       if (result.ok) {
         setMessage({ kind: "ok", text: "บันทึกการ map แล้ว" });
         setProductId("");
+        setSelectedProductOption(null);
         setItemId("");
         setModelId("");
         setSellerSku("");
@@ -104,7 +106,7 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
         setPullError(result.error);
         return;
       }
-      setItems(result.items);
+      setItemCount(result.itemCount);
       setSuggestions(result.suggestions);
       setSelected(new Set(result.suggestions.map(suggestionKey)));
     });
@@ -132,7 +134,7 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
       const result = await applySuggestionsAction(fd);
       if (result.ok) {
         setMessage({ kind: "ok", text: `map อัตโนมัติ ${chosen.length} รายการแล้ว` });
-        setItems(null);
+        setItemCount(null);
         setSuggestions([]);
         setSelected(new Set());
         router.refresh();
@@ -211,7 +213,13 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
                 <SearchableSelect
                   options={productOptions}
                   value={productId}
-                  onChange={setProductId}
+                  onChange={(id) => {
+                    setProductId(id);
+                    if (!id) setSelectedProductOption(null);
+                  }}
+                  onOptionSelect={setSelectedProductOption}
+                  searchOptions={searchProductOptionsAction}
+                  selectedOption={selectedProductOption}
                   placeholder="ค้นหาสินค้า (ชื่อ/รหัส)"
                 />
               </div>
@@ -288,10 +296,10 @@ const MappingManager = ({ shopRecordId, canManage, products, mappings }: Props) 
               </p>
             ) : null}
 
-            {items ? (
+            {itemCount != null ? (
               <div className="mt-4 space-y-3">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  ดึงมา {items.length} รายการ · แนะนำ map ได้ {suggestions.length} รายการ (SKU ตรงกับรหัสสินค้า)
+                  ดึงมา {itemCount} รายการ · แนะนำ map ได้ {suggestions.length} รายการ (SKU ตรงกับรหัสสินค้า)
                 </p>
                 {suggestions.length > 0 ? (
                   <>

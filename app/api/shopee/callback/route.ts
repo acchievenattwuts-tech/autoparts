@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 import { auth } from "@/auth";
 import { getAuditActorFromSession } from "@/lib/audit-log";
@@ -10,6 +11,7 @@ import { isShopeeConfigured } from "@/lib/shopee/config";
 import { exchangeCodeForTokens } from "@/lib/shopee/services/auth";
 
 const OVERVIEW_PATH = "/admin/marketplace/shopee";
+const SHOPEE_OAUTH_STATE_COOKIE = "shopee_oauth_state";
 
 /**
  * Shopee OAuth callback. Shopee redirects the admin's browser here with
@@ -41,8 +43,17 @@ export async function GET(request: Request): Promise<Response> {
 
   const code = url.searchParams.get("code");
   const shopId = url.searchParams.get("shop_id");
+  const state = url.searchParams.get("state");
   if (!code || !shopId) {
     overview.searchParams.set("error", "missing_params");
+    return NextResponse.redirect(overview);
+  }
+
+  const cookieStore = await cookies();
+  const expectedState = cookieStore.get(SHOPEE_OAUTH_STATE_COOKIE)?.value;
+  cookieStore.delete(SHOPEE_OAUTH_STATE_COOKIE);
+  if (!state || !expectedState || state !== expectedState) {
+    overview.searchParams.set("error", "invalid_state");
     return NextResponse.redirect(overview);
   }
 

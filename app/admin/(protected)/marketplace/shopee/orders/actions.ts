@@ -7,20 +7,34 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { AuditAction, ShopeeSyncJobStatus, ShopeeSyncJobType } from "@/lib/generated/prisma";
-import { db } from "@/lib/db";
+import { AuditAction, ShopeeSyncJobType } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
-import { pullShopeeOrdersGuarded, type PullOrdersResult } from "@/lib/shopee/services/orders";
-import { createSaleFromShopeeOrder, type LotSelectionMap } from "@/lib/shopee/services/create-sale";
 import { createShopeeFeeExpense, type CreateShopeeFeeExpenseResult } from "@/lib/shopee/services/escrow";
+import { createSaleFromShopeeOrder, type LotSelectionMap } from "@/lib/shopee/services/create-sale";
 import { syncShopeeLogisticsFromImports, type ShopeeLogisticsSyncResult } from "@/lib/shopee/services/logistics";
+import { pullShopeeOrdersGuarded, type PullOrdersResult } from "@/lib/shopee/services/orders";
 import { scanShopeeReturnReviewsFromImports, type ShopeeReturnReviewScanResult } from "@/lib/shopee/services/returns";
+import { withShopeeSyncLock } from "@/lib/shopee/sync-lock";
 
 const ORDERS_PATH = "/admin/marketplace/shopee/orders";
 
 export type PullActionResult =
   | { ok: true; result: PullOrdersResult }
   | { ok: false; error: string };
+
+export type CreateBillActionResult =
+  | { ok: true; saleId: string; saleNo: string }
+  | { ok: false; error: string };
+
+export type SyncLogisticsActionResult =
+  | { ok: true; result: ShopeeLogisticsSyncResult }
+  | { ok: false; error: string };
+
+export type ScanReturnReviewActionResult =
+  | { ok: true; result: ShopeeReturnReviewScanResult }
+  | { ok: false; error: string };
+
+export type CreateFeeExpenseActionResult = CreateShopeeFeeExpenseResult;
 
 export async function pullOrdersNowAction(shopRecordId: string): Promise<PullActionResult> {
   let session;
@@ -30,9 +44,7 @@ export async function pullOrdersNowAction(shopRecordId: string): Promise<PullAct
     return { ok: false, error: "ไม่มีสิทธิ์สั่ง sync" };
   }
 
-  if (!shopRecordId) {
-    return { ok: false, error: "ไม่พบร้าน" };
-  }
+  if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน" };
 
   try {
     const outcome = await pullShopeeOrdersGuarded(shopRecordId);
@@ -58,21 +70,6 @@ export async function pullOrdersNowAction(shopRecordId: string): Promise<PullAct
   }
 }
 
-export type CreateBillActionResult =
-  | { ok: true; saleId: string; saleNo: string }
-  | { ok: false; error: string };
-
-export type SyncLogisticsActionResult =
-  | { ok: true; result: ShopeeLogisticsSyncResult }
-  | { ok: false; error: string };
-
-export type ScanReturnReviewActionResult =
-  | { ok: true; result: ShopeeReturnReviewScanResult }
-  | { ok: false; error: string };
-
-export type CreateFeeExpenseActionResult = CreateShopeeFeeExpenseResult;
-
-/** Creates the real Sale from a queued Shopee order (human-approved). */
 export async function createSaleFromOrderAction(
   orderImportId: string,
   lotSelections?: LotSelectionMap,
@@ -101,7 +98,6 @@ export async function createSaleFromOrderAction(
   return { ok: true, saleId: result.saleId, saleNo: result.saleNo };
 }
 
-/** Creates an Expense from verified escrow fee data stored on the Shopee order snapshot. */
 export async function createFeeExpenseFromOrderAction(orderImportId: string): Promise<CreateFeeExpenseActionResult> {
   let session;
   try {
@@ -137,7 +133,6 @@ export async function createFeeExpenseFromOrderAction(orderImportId: string): Pr
   return result;
 }
 
-/** Syncs delivery fields from Shopee order snapshots into created Shopee Sales. */
 export async function syncLogisticsFromOrdersAction(shopRecordId: string): Promise<SyncLogisticsActionResult> {
   let session;
   try {
@@ -148,28 +143,26 @@ export async function syncLogisticsFromOrdersAction(shopRecordId: string): Promi
 
   if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน" };
 
-  const startedAt = new Date();
   try {
-    const result = await syncShopeeLogisticsFromImports(shopRecordId);
-
-    await db.shopeeSyncJob.create({
-      data: {
-        shopRecordId,
-        type: ShopeeSyncJobType.LOGISTICS_SYNC,
-        status: ShopeeSyncJobStatus.SUCCESS,
-        startedAt,
-        finishedAt: new Date(),
-        itemsProcessed: result.scanned,
-        itemsFailed: 0,
-        attemptCount: 1,
-        metaJson: {
-          source: "SHOPEE_ORDER_IMPORT_SNAPSHOT",
-          updated: result.updated,
-          withTracking: result.withTracking,
-          skipped: result.skipped,
-        },
+    const outcome = await withShopeeSyncLock(
+      { shopRecordId, type: ShopeeSyncJobType.LOGISTICS_SYNC },
+      async () => {
+        const result = await syncShopeeLogisticsFromImports(shopRecordId);
+        return {
+          value: result,
+          itemsProcessed: result.scanned,
+          itemsFailed: 0,
+          meta: {
+            source: "SHOPEE_ORDER_IMPORT_SNAPSHOT",
+            updated: result.updated,
+            withTracking: result.withTracking,
+            skipped: result.skipped,
+          },
+        };
       },
-    });
+    );
+    if (outcome.skipped) return { ok: false, error: "sync tracking กำลังทำงานอยู่" };
+    const result = outcome.result;
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -186,25 +179,10 @@ export async function syncLogisticsFromOrdersAction(shopRecordId: string): Promi
     return { ok: true, result };
   } catch (error) {
     console.error("[shopee] logistics sync failed:", error instanceof Error ? error.message : "unknown");
-    await db.shopeeSyncJob.create({
-      data: {
-        shopRecordId,
-        type: ShopeeSyncJobType.LOGISTICS_SYNC,
-        status: ShopeeSyncJobStatus.FAILED,
-        startedAt,
-        finishedAt: new Date(),
-        itemsProcessed: 0,
-        itemsFailed: 1,
-        attemptCount: 1,
-        lastError: error instanceof Error ? error.message : "unknown",
-        metaJson: { source: "SHOPEE_ORDER_IMPORT_SNAPSHOT" },
-      },
-    }).catch(() => undefined);
     return { ok: false, error: "sync tracking ไม่สำเร็จ" };
   }
 }
 
-/** Flags Shopee cancel/refund/return snapshots for manual review only. */
 export async function scanReturnReviewsAction(shopRecordId: string): Promise<ScanReturnReviewActionResult> {
   let session;
   try {
@@ -216,7 +194,25 @@ export async function scanReturnReviewsAction(shopRecordId: string): Promise<Sca
   if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน" };
 
   try {
-    const result = await scanShopeeReturnReviewsFromImports(shopRecordId);
+    const outcome = await withShopeeSyncLock(
+      { shopRecordId, type: ShopeeSyncJobType.RETURN_REVIEW_SCAN },
+      async () => {
+        const result = await scanShopeeReturnReviewsFromImports(shopRecordId);
+        return {
+          value: result,
+          itemsProcessed: result.scanned,
+          itemsFailed: 0,
+          meta: {
+            source: "SHOPEE_ORDER_IMPORT_SNAPSHOT",
+            flagged: result.flagged,
+            alreadyReview: result.alreadyReview,
+            skipped: result.skipped,
+          },
+        };
+      },
+    );
+    if (outcome.skipped) return { ok: false, error: "scan cancel/refund กำลังทำงานอยู่" };
+    const result = outcome.result;
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),

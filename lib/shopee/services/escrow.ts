@@ -34,6 +34,16 @@ export type ShopeeFeeExpenseDraft = {
   lastError: string | null;
 };
 
+export type ShopeeFeeExpenseDraftOrderImport = {
+  id: string;
+  orderSn: string;
+  saleId: string | null;
+  rawPayload: Prisma.JsonValue | null;
+  escrowLastError: string | null;
+  shop: { settlementCashBankAccountId: string | null };
+  escrowExpense: { id: string; expenseNo: string; status: string } | null;
+};
+
 export type CreateShopeeFeeExpenseResult =
   | { ok: true; expenseId: string; expenseNo: string; reused: boolean }
   | { ok: false; error: string };
@@ -105,7 +115,12 @@ export async function buildShopeeFeeExpenseDraft(orderImportId: string): Promise
     },
   });
   if (!order) return null;
+  return buildShopeeFeeExpenseDraftFromOrderImport(order);
+}
 
+export function buildShopeeFeeExpenseDraftFromOrderImport(
+  order: ShopeeFeeExpenseDraftOrderImport,
+): ShopeeFeeExpenseDraft {
   const lines = extractShopeeEscrowFeeLines(order.rawPayload);
   const totalAmount = roundMoney(lines.reduce((sum, line) => sum + line.amount, 0));
   const blockers: string[] = [];

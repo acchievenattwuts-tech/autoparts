@@ -113,8 +113,8 @@ const CreateSaleConfirm = ({
                   ) : (
                     <div className="mt-2 space-y-1.5">
                       {line.available.map((lot) => (
-                        <div key={lot.lotNo} className="flex items-center justify-between gap-3 text-sm">
-                          <span className="min-w-0 text-slate-600 dark:text-slate-300">
+                        <div key={lot.lotNo} className="flex flex-col gap-1.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                          <span className="min-w-0 break-words text-slate-600 dark:text-slate-300">
                             {lot.lotNo}
                             <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">
                               (คงเหลือ {(lot.qtyOnHand / line.unitScale).toLocaleString("th-TH")} {line.unitName}
@@ -127,7 +127,7 @@ const CreateSaleConfirm = ({
                             step="any"
                             value={qtyMap[line.key]?.[lot.lotNo] ?? ""}
                             onChange={(e) => setQty(line.key, lot.lotNo, e.target.value)}
-                            className="h-8 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm text-slate-900 outline-none focus:border-orange-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                            className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-right text-sm text-slate-900 outline-none focus:border-orange-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 sm:w-24"
                           />
                         </div>
                       ))}

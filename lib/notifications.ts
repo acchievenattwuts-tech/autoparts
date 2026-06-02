@@ -49,6 +49,14 @@ export async function createNotification(input: CreateNotificationInput): Promis
   const targetIds = await resolveTargetUserIds(input.userIds);
   if (targetIds.length === 0) return 0;
 
+  if (input.dedupeKey) {
+    const existingUnread = await db.notification.findFirst({
+      where: { dedupeKey: input.dedupeKey, readAt: null },
+      select: { id: true },
+    });
+    if (existingUnread) return 0;
+  }
+
   let eligibleIds = targetIds;
   if (input.dedupeKey) {
     const existing = await db.notification.findMany({

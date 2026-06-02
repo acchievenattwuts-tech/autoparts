@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import {
   NotificationSeverity,
   NotificationType,
+  Prisma,
   ShopeeOrderImportStatus,
 } from "@/lib/generated/prisma";
 import { createNotification } from "@/lib/notifications";
@@ -10,6 +11,8 @@ import {
   getShopeeReviewPolicy,
   type ShopeeReturnReviewSignal,
 } from "@/lib/shopee/returns-utils";
+
+const RETURN_REVIEW_BATCH_SIZE = 300;
 
 export type ShopeeReturnReviewScanResult = {
   scanned: number;
@@ -28,49 +31,117 @@ export type ShopeeReturnReviewDetail = {
   referenceWarnings: string[];
 };
 
+export type ShopeeReturnReviewOrderImport = {
+  id: string;
+  orderSn: string;
+  shopeeStatus: string;
+  rawPayload: unknown;
+  returnReviewRequired?: boolean;
+  returnReviewReason?: string | null;
+  sale: {
+    id: string;
+    saleNo: string;
+    status: string;
+    creditNotes: { cnNo: string }[];
+    receipts: { receipt: { receiptNo: string } }[];
+    warranties: { claims: { claimNo: string }[] }[];
+  } | null;
+};
+
+function reviewReason(signal: ShopeeReturnReviewSignal): string {
+  return `${signal.kind}: ${signal.reason ?? "Shopee return/cancel/refund signal"} | policy=${getShopeeReviewPolicy(signal.kind)}`;
+}
+
+function signalFromStoredReviewReason(reason: string | null | undefined): ShopeeReturnReviewSignal {
+  const rawKind = reason?.split(":")[0]?.trim().toUpperCase();
+  if (rawKind === "CANCELLATION" || rawKind === "RETURN" || rawKind === "REFUND") {
+    return { kind: rawKind, reason: reason ?? "Shopee return/cancel/refund signal flagged for review" };
+  }
+  return { kind: "RETURN", reason: reason ?? "Shopee return/cancel/refund signal flagged for review" };
+}
+
 export async function scanShopeeReturnReviewsFromImports(
   shopRecordId?: string,
 ): Promise<ShopeeReturnReviewScanResult> {
-  const orders = await db.shopeeOrderImport.findMany({
-    where: {
-      ...(shopRecordId ? { shopRecordId } : {}),
-      importStatus: { not: ShopeeOrderImportStatus.SKIPPED },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 300,
-    select: {
-      id: true,
-      shopRecordId: true,
-      orderSn: true,
-      shopeeStatus: true,
-      importStatus: true,
-      rawPayload: true,
-    },
-  });
-
+  let cursor: string | undefined;
+  let scanned = 0;
   let flagged = 0;
   let alreadyReview = 0;
   let skipped = 0;
 
-  for (const order of orders) {
-    const signal = classifyShopeeReturnReviewSignal(order.shopeeStatus, order.rawPayload);
-    if (signal.kind === "NONE") {
-      skipped += 1;
-      continue;
-    }
-    if (order.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW) {
-      alreadyReview += 1;
-      continue;
-    }
-
-    await db.shopeeOrderImport.update({
-      where: { id: order.id },
-      data: {
-        importStatus: ShopeeOrderImportStatus.CANCELLED_REVIEW,
-        lastError: `${signal.kind}: ${signal.reason ?? "Shopee return/cancel/refund signal"} | policy=${getShopeeReviewPolicy(signal.kind)}`,
+  while (true) {
+    const orders = await db.shopeeOrderImport.findMany({
+      where: {
+        ...(shopRecordId ? { shopRecordId } : {}),
+        importStatus: { not: ShopeeOrderImportStatus.SKIPPED },
+      },
+      orderBy: { id: "asc" },
+      take: RETURN_REVIEW_BATCH_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        orderSn: true,
+        shopeeStatus: true,
+        importStatus: true,
+        saleId: true,
+        rawPayload: true,
+        lastError: true,
+        returnReviewRequired: true,
+        returnReviewReason: true,
       },
     });
-    flagged += 1;
+    if (orders.length === 0) break;
+
+    scanned += orders.length;
+    cursor = orders[orders.length - 1]?.id;
+
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
+    for (const order of orders) {
+      const signal = classifyShopeeReturnReviewSignal(order.shopeeStatus, order.rawPayload);
+      if (signal.kind === "NONE") {
+        skipped += 1;
+        continue;
+      }
+
+      const reason = reviewReason(signal);
+      if (order.returnReviewRequired || order.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW) {
+        alreadyReview += 1;
+        if (!order.returnReviewRequired) {
+          updates.push(
+            db.shopeeOrderImport.update({
+              where: { id: order.id },
+              data: {
+                returnReviewRequired: true,
+                returnReviewReason: order.returnReviewReason ?? reason,
+                returnReviewFlaggedAt: new Date(),
+                lastError: order.lastError ?? reason,
+              },
+            }),
+          );
+        }
+        continue;
+      }
+
+      const shouldPreserveImportStatus =
+        order.importStatus === ShopeeOrderImportStatus.IMPORTED || Boolean(order.saleId);
+      updates.push(
+        db.shopeeOrderImport.update({
+          where: { id: order.id },
+          data: {
+            ...(shouldPreserveImportStatus ? {} : { importStatus: ShopeeOrderImportStatus.CANCELLED_REVIEW }),
+            returnReviewRequired: true,
+            returnReviewReason: reason,
+            returnReviewFlaggedAt: new Date(),
+            lastError: reason,
+          },
+        }),
+      );
+      flagged += 1;
+    }
+
+    if (updates.length > 0) {
+      await db.$transaction(updates);
+    }
   }
 
   if (flagged > 0 && shopRecordId) {
@@ -86,7 +157,7 @@ export async function scanShopeeReturnReviewsFromImports(
     }).catch(() => undefined);
   }
 
-  return { scanned: orders.length, flagged, alreadyReview, skipped };
+  return { scanned, flagged, alreadyReview, skipped };
 }
 
 export async function getShopeeReturnReviewDetail(orderImportId: string): Promise<ShopeeReturnReviewDetail | null> {
@@ -97,6 +168,8 @@ export async function getShopeeReturnReviewDetail(orderImportId: string): Promis
       orderSn: true,
       shopeeStatus: true,
       rawPayload: true,
+      returnReviewRequired: true,
+      returnReviewReason: true,
       sale: {
         select: {
           id: true,
@@ -120,8 +193,17 @@ export async function getShopeeReturnReviewDetail(orderImportId: string): Promis
     },
   });
   if (!order) return null;
+  return getShopeeReturnReviewDetailFromOrderImport(order);
+}
 
+export function getShopeeReturnReviewDetailFromOrderImport(
+  order: ShopeeReturnReviewOrderImport,
+): ShopeeReturnReviewDetail {
   const signal = classifyShopeeReturnReviewSignal(order.shopeeStatus, order.rawPayload);
+  const effectiveSignal =
+    signal.kind !== "NONE" || !order.returnReviewRequired
+      ? signal
+      : signalFromStoredReviewReason(order.returnReviewReason);
   const referenceWarnings: string[] = [];
   if (!order.sale) {
     referenceWarnings.push("ยังไม่มี Sale ในระบบ จึงไม่ควรสร้าง CN/คืน stock อัตโนมัติ");
@@ -146,11 +228,10 @@ export async function getShopeeReturnReviewDetail(orderImportId: string): Promis
   return {
     orderImportId: order.id,
     orderSn: order.orderSn,
-    signal,
-    policy: getShopeeReviewPolicy(signal.kind),
+    signal: effectiveSignal,
+    policy: getShopeeReviewPolicy(effectiveSignal.kind),
     saleId: order.sale?.id ?? null,
     saleNo: order.sale?.saleNo ?? null,
     referenceWarnings,
   };
 }
-

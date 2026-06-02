@@ -41,16 +41,23 @@ export async function getShopeeReportingSummary(input: {
     saleDate: { gte: input.from, lte: input.to },
   };
 
-  const [salesGrouped, saleRefs, stockMappings, failedSyncJobs, reviewOrders] = await Promise.all([
+  const [salesGrouped, profitGrouped, stockMappings, failedSyncJobs, reviewOrders] = await Promise.all([
     db.sale.groupBy({
       by: ["channel"],
       where: saleWhere,
       _sum: { netAmount: true },
       _count: { _all: true },
     }),
-    db.sale.findMany({
-      where: saleWhere,
-      select: { id: true, channel: true },
+    // Gross profit split by channel via the denormalized FactProfit.channel
+    // (indexed) — no longer loads every sale id + a huge `sourceId IN (...)`.
+    db.factProfit.groupBy({
+      by: ["channel"],
+      where: {
+        isActive: true,
+        sourceType: ProfitSourceType.SALE,
+        businessDate: { gte: input.from, lte: input.to },
+      },
+      _sum: { grossProfit: true },
     }),
     db.shopeeProductMapping.findMany({
       where: { isActive: true },
@@ -68,7 +75,10 @@ export async function getShopeeReportingSummary(input: {
     }),
     db.shopeeOrderImport.count({
       where: {
-        importStatus: { in: ["FAILED", "NEEDS_SKU_MAPPING", "NEEDS_LOT_SELECTION", "CANCELLED_REVIEW"] },
+        OR: [
+          { importStatus: { in: ["FAILED", "NEEDS_SKU_MAPPING", "NEEDS_LOT_SELECTION", "CANCELLED_REVIEW"] } },
+          { returnReviewRequired: true },
+        ],
       },
     }),
   ]);
@@ -87,30 +97,12 @@ export async function getShopeeReportingSummary(input: {
     });
   }
 
-  const saleIdsByChannel = new Map<SaleChannel, string[]>();
-  for (const sale of saleRefs) {
-    const ids = saleIdsByChannel.get(sale.channel) ?? [];
-    ids.push(sale.id);
-    saleIdsByChannel.set(sale.channel, ids);
+  for (const row of profitGrouped) {
+    if (!row.channel) continue; // facts not yet tagged (pre-backfill) — skip
+    const metric = metrics.get(row.channel) ?? emptyMetric(row.channel);
+    metric.grossProfit = asNumber(row._sum.grossProfit);
+    metrics.set(row.channel, metric);
   }
-
-  await Promise.all(
-    Array.from(saleIdsByChannel.entries()).map(async ([channel, sourceIds]) => {
-      if (sourceIds.length === 0) return;
-      const profit = await db.factProfit.aggregate({
-        where: {
-          isActive: true,
-          sourceType: ProfitSourceType.SALE,
-          sourceId: { in: sourceIds },
-          businessDate: { gte: input.from, lte: input.to },
-        },
-        _sum: { grossProfit: true },
-      });
-      const metric = metrics.get(channel) ?? emptyMetric(channel);
-      metric.grossProfit = asNumber(profit._sum.grossProfit);
-      metrics.set(channel, metric);
-    }),
-  );
 
   const stockRisk = stockMappings.reduce<ShopeeStockRiskMetric>(
     (acc, mapping) => {

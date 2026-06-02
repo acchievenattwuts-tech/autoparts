@@ -29,7 +29,7 @@ const TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000; // 10 minutes
  * Builds the Shopee shop-authorization URL. The merchant is redirected here to
  * grant access; Shopee then calls back `SHOPEE_REDIRECT_URL?code=...&shop_id=...`.
  */
-export function buildShopAuthorizationUrl(): string {
+export function buildShopAuthorizationUrl(state?: string): string {
   const config = getRequiredShopeeConfig();
   const timestamp = shopeeTimestamp();
   const sign = signPublic(config.partnerId, AUTH_PARTNER_PATH, timestamp, config.partnerKey);
@@ -39,12 +39,14 @@ export function buildShopAuthorizationUrl(): string {
   url.searchParams.set("timestamp", String(timestamp));
   url.searchParams.set("sign", sign);
   url.searchParams.set("redirect", config.redirectUrl);
+  if (state) url.searchParams.set("state", state);
   return url.toString();
 }
 
 export type ShopAuthResult = {
   shopRecordId: string;
   shopId: string;
+  accessToken: string;
   tokenExpiresAt: Date;
 };
 
@@ -104,7 +106,7 @@ export async function exchangeCodeForTokens(params: {
     meta: { event: "SHOPEE_AUTHORIZE", tokenExpiresAt: tokenExpiresAt.toISOString() },
   });
 
-  return { shopRecordId: shop.id, shopId: shop.shopId, tokenExpiresAt };
+  return { shopRecordId: shop.id, shopId: shop.shopId, accessToken: response.access_token, tokenExpiresAt };
 }
 
 /**
@@ -157,7 +159,7 @@ export async function refreshShopAccessToken(
       meta: { event: "SHOPEE_TOKEN_REFRESH", tokenExpiresAt: tokenExpiresAt.toISOString() },
     });
 
-    return { shopRecordId: shop.id, shopId: shop.shopId, tokenExpiresAt };
+    return { shopRecordId: shop.id, shopId: shop.shopId, accessToken: response.access_token, tokenExpiresAt };
   } catch (error) {
     await db.shopeeShop.update({
       where: { id: shop.id },
@@ -185,15 +187,16 @@ export async function refreshShopAccessToken(
 export async function refreshShopAccessTokenGuarded(
   shopRecordId: string,
   actor?: AuditLogActor,
-): Promise<{ refreshed: boolean }> {
+): Promise<{ refreshed: boolean; auth: ShopAuthResult | null }> {
   const outcome = await withShopeeSyncLock(
     { shopRecordId, type: ShopeeSyncJobType.TOKEN_REFRESH },
     async () => {
-      await refreshShopAccessToken(shopRecordId, actor);
-      return { value: null };
+      const auth = await refreshShopAccessToken(shopRecordId, actor);
+      return { value: auth };
     },
   );
-  return { refreshed: !outcome.skipped };
+  if (outcome.skipped) return { refreshed: false, auth: null };
+  return { refreshed: true, auth: outcome.result };
 }
 
 /**
@@ -217,7 +220,13 @@ export async function getValidShopAuth(
 
   if (!accessToken || isExpiringSoon) {
     // Guarded so simultaneous calls during the expiry window refresh only once.
-    await refreshShopAccessTokenGuarded(shopRecordId);
+    const refreshResult = await refreshShopAccessTokenGuarded(shopRecordId);
+    if (refreshResult.auth?.accessToken) {
+      return { accessToken: refreshResult.auth.accessToken, shopId: Number(refreshResult.auth.shopId) };
+    }
+
+    // If the guarded refresh was skipped, another process owns the refresh and
+    // we re-read once to pick up the token it stored.
     const refreshed = await db.shopeeShop.findUnique({
       where: { id: shopRecordId },
       select: { shopId: true, accessToken: true },

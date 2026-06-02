@@ -1,7 +1,10 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
+
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 
 import {
   getAuditActorFromSession,
@@ -16,6 +19,8 @@ import { isShopeeConfigured } from "@/lib/shopee/config";
 import { buildShopAuthorizationUrl } from "@/lib/shopee/services/auth";
 
 const OVERVIEW_PATH = "/admin/marketplace/shopee";
+const SHOPEE_OAUTH_STATE_COOKIE = "shopee_oauth_state";
+const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
 
 /**
  * Starts Shopee shop authorization: records an audit trail then redirects the
@@ -36,8 +41,18 @@ export async function startShopeeAuthorization(): Promise<void> {
     meta: { event: "SHOPEE_AUTH_START" },
   });
 
+  const state = randomBytes(24).toString("base64url");
+  const cookieStore = await cookies();
+  cookieStore.set(SHOPEE_OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: OAUTH_STATE_MAX_AGE_SECONDS,
+  });
+
   // redirect() throws NEXT_REDIRECT — keep it outside any try/catch.
-  redirect(buildShopAuthorizationUrl());
+  redirect(buildShopAuthorizationUrl(state));
 }
 
 /**

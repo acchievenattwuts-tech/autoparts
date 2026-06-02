@@ -11,7 +11,7 @@ import { listShopeeMappings } from "@/lib/shopee/services/mapping";
 
 import MappingManager from "./MappingManager";
 
-const PRODUCT_PICKER_LIMIT = 1000;
+const INITIAL_PRODUCT_PICKER_LIMIT = 50;
 
 const ShopeeProductMappingPage = async () => {
   await ensureAccessControlSetup();
@@ -32,7 +32,7 @@ const ShopeeProductMappingPage = async () => {
           where: { isActive: true },
           orderBy: { code: "asc" },
           select: { id: true, code: true, name: true },
-          take: PRODUCT_PICKER_LIMIT,
+          take: INITIAL_PRODUCT_PICKER_LIMIT,
         }),
       }
     : null;

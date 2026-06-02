@@ -110,7 +110,7 @@ export class ShopeeClient {
   ): Promise<TResponse> {
     const method = options.method ?? "POST";
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    const maxAttempts = options.maxAttempts ?? (method === "GET" ? DEFAULT_MAX_ATTEMPTS : 1);
 
     let lastError: ShopeeApiError | null = null;
 

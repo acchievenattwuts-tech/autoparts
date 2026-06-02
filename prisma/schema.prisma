@@ -1036,6 +1036,7 @@ model FactProfit {
   id                  String           @id @default(cuid())
   businessDate        DateTime         @db.Timestamptz(3)
   sourceType          ProfitSourceType
+  channel             SaleChannel?
   sourceSubtype       String?
   sourceId            String
   sourceLineId        String?
@@ -1075,6 +1076,7 @@ model FactProfit {
   @@index([productId, businessDate])
   @@index([customerId, businessDate])
   @@index([supplierId, businessDate])
+  @@index([channel, sourceType, businessDate, isActive])
 }
 
 model Adjustment {
@@ -1947,32 +1949,36 @@ model ShopeeProductMapping {
 }
 
 model ShopeeOrderImport {
-  id              String                  @id @default(cuid())
-  shopRecordId    String
-  orderSn         String // Shopee order_sn
-  shopeeStatus    String
-  importStatus    ShopeeOrderImportStatus @default(PENDING)
-  buyerUsername   String?
-  totalAmount     Decimal?                @db.Decimal(10, 2)
-  currency        String?
-  orderCreatedAt  DateTime?               @db.Timestamptz(3)
-  orderUpdatedAt  DateTime?               @db.Timestamptz(3)
-  rawPayload      Json?
-  saleId          String?                 @unique
-  escrowExpenseId String?                 @unique
-  escrowSyncedAt  DateTime?               @db.Timestamptz(3)
-  escrowLastError String?
-  lastError       String?
-  importedAt      DateTime?               @db.Timestamptz(3)
-  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
-  shop            ShopeeShop              @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
-  sale            Sale?                   @relation(fields: [saleId], references: [id])
-  escrowExpense   Expense?                @relation("ShopeeEscrowExpense", fields: [escrowExpenseId], references: [id])
+  id                    String                  @id @default(cuid())
+  shopRecordId          String
+  orderSn               String // Shopee order_sn
+  shopeeStatus          String
+  importStatus          ShopeeOrderImportStatus @default(PENDING)
+  buyerUsername         String?
+  totalAmount           Decimal?                @db.Decimal(10, 2)
+  currency              String?
+  orderCreatedAt        DateTime?               @db.Timestamptz(3)
+  orderUpdatedAt        DateTime?               @db.Timestamptz(3)
+  rawPayload            Json?
+  saleId                String?                 @unique
+  escrowExpenseId       String?                 @unique
+  escrowSyncedAt        DateTime?               @db.Timestamptz(3)
+  escrowLastError       String?
+  returnReviewRequired  Boolean                 @default(false)
+  returnReviewReason    String?
+  returnReviewFlaggedAt DateTime?               @db.Timestamptz(3)
+  lastError             String?
+  importedAt            DateTime?               @db.Timestamptz(3)
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(3)
+  shop                  ShopeeShop              @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
+  sale                  Sale?                   @relation(fields: [saleId], references: [id])
+  escrowExpense         Expense?                @relation("ShopeeEscrowExpense", fields: [escrowExpenseId], references: [id])
 
   @@unique([shopRecordId, orderSn])
   @@index([importStatus, createdAt])
   @@index([shopRecordId, importStatus])
+  @@index([returnReviewRequired, updatedAt])
   @@index([shopeeStatus])
 }
 
@@ -2047,6 +2053,7 @@ enum ShopeeSyncJobType {
   STOCK_PUSH
   TOKEN_REFRESH
   LOGISTICS_SYNC
+  RETURN_REVIEW_SCAN
   WEBHOOK
   ESCROW_SYNC
 }

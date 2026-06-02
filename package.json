@@ -21,6 +21,7 @@
     "db:push": "prisma db push --accept-data-loss && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "db:setup-search-v2": "tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",
+    "backfill:fact-profit-channel": "tsx --env-file=.env prisma/scripts/backfill-fact-profit-channel.ts",
     "backfill:claim-stock": "tsx --env-file=.env prisma/scripts/backfill-claim-stock.ts",
     "reconcile:fact-profit": "tsx --env-file=.env prisma/scripts/reconcile-fact-profit.ts",
     "enable:fact-profit-rls": "tsx --env-file=.env prisma/scripts/enable-profit-fact-rls.ts",

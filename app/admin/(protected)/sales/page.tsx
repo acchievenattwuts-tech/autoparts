@@ -228,7 +228,7 @@ const SalesPage = async ({
       {q && <p className="text-sm text-slate-500 dark:text-slate-400">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>}
 
       <AdminTableSection>
-        <table className="w-full text-sm">
+        <table className="min-w-[1280px] w-full text-sm">
           <thead className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
             <tr>
               <th className="w-10 px-4 py-3 text-center font-medium">#</th>

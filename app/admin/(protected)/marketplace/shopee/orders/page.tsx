@@ -6,6 +6,7 @@ import { ArrowLeft, Inbox } from "lucide-react";
 import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { ShopeeAuthStatus, ShopeeOrderImportStatus } from "@/lib/generated/prisma";
+import type { Prisma } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
 
@@ -49,10 +50,21 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
     select: { id: true, shopId: true, shopName: true, lastOrderSyncAt: true },
   });
 
-  const [orders, grouped] = shop
+  const orderWhere: Prisma.ShopeeOrderImportWhereInput | null = shop
+    ? {
+        shopRecordId: shop.id,
+        ...(statusFilter
+          ? statusFilter === ShopeeOrderImportStatus.CANCELLED_REVIEW
+            ? { OR: [{ importStatus: ShopeeOrderImportStatus.CANCELLED_REVIEW }, { returnReviewRequired: true }] }
+            : { importStatus: statusFilter }
+          : {}),
+      }
+    : null;
+
+  const [orders, grouped, returnReviewCount] = shop && orderWhere
     ? await Promise.all([
         db.shopeeOrderImport.findMany({
-          where: { shopRecordId: shop.id, ...(statusFilter ? { importStatus: statusFilter } : {}) },
+          where: orderWhere,
           orderBy: { createdAt: "desc" },
           take: 100,
           select: {
@@ -65,6 +77,7 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
             currency: true,
             orderCreatedAt: true,
             lastError: true,
+            returnReviewRequired: true,
           },
         }),
         db.shopeeOrderImport.groupBy({
@@ -72,10 +85,17 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
           where: { shopRecordId: shop.id },
           _count: { _all: true },
         }),
+        db.shopeeOrderImport.count({
+          where: {
+            shopRecordId: shop.id,
+            OR: [{ importStatus: ShopeeOrderImportStatus.CANCELLED_REVIEW }, { returnReviewRequired: true }],
+          },
+        }),
       ])
-    : [[], []];
+    : [[], [], 0];
 
   const countByStatus = new Map(grouped.map((g) => [g.importStatus, g._count._all]));
+  countByStatus.set(ShopeeOrderImportStatus.CANCELLED_REVIEW, returnReviewCount);
   const totalCount = grouped.reduce((sum, g) => sum + g._count._all, 0);
 
   return (
@@ -161,6 +181,8 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
               <div className="divide-y divide-slate-100 dark:divide-white/10">
                 {orders.map((order) => {
                   const meta = STATUS_META[order.importStatus];
+                  const needsReturnReview =
+                    order.returnReviewRequired || order.importStatus === ShopeeOrderImportStatus.CANCELLED_REVIEW;
                   return (
                     <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                       <div className="min-w-0">
@@ -169,6 +191,11 @@ const ShopeeOrdersPage = async ({ searchParams }: OrdersPageProps) => {
                           <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.className}`}>
                             {meta.label}
                           </span>
+                          {needsReturnReview && order.importStatus !== ShopeeOrderImportStatus.CANCELLED_REVIEW ? (
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATUS_META.CANCELLED_REVIEW.className}`}>
+                              {STATUS_META.CANCELLED_REVIEW.label}
+                            </span>
+                          ) : null}
                           <span className="text-[11px] text-slate-400 dark:text-slate-500">{order.shopeeStatus}</span>
                         </div>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">

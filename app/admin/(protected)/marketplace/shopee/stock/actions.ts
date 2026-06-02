@@ -13,13 +13,13 @@ import {
   NotificationSeverity,
   NotificationType,
   Prisma,
-  ShopeeSyncJobStatus,
   ShopeeSyncJobType,
   ShopeeSyncMode,
 } from "@/lib/generated/prisma";
 import { createNotification } from "@/lib/notifications";
 import { requirePermission } from "@/lib/require-auth";
 import { listShopeeStockReconciliation } from "@/lib/shopee/services/stock";
+import { withShopeeSyncLock } from "@/lib/shopee/sync-lock";
 
 const STOCK_PATH = "/admin/marketplace/shopee/stock";
 
@@ -129,31 +129,30 @@ export async function recordStockReconciliationAction(shopRecordId: string): Pro
 
   if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน Shopee" };
 
-  const reconciliation = await listShopeeStockReconciliation(shopRecordId);
+  const outcome = await withShopeeSyncLock(
+    { shopRecordId, type: ShopeeSyncJobType.STOCK_PUSH },
+    async () => {
+      const reconciliation = await listShopeeStockReconciliation(shopRecordId);
+      return {
+        value: reconciliation,
+        itemsProcessed: reconciliation.summary.total,
+        itemsFailed: reconciliation.summary.failed,
+        meta: {
+          mode: "RECONCILIATION_ONLY",
+          total: reconciliation.summary.total,
+          pushEnabled: reconciliation.summary.pushEnabled,
+          needsPush: reconciliation.summary.needsPush,
+          failed: reconciliation.summary.failed,
+        } satisfies Prisma.InputJsonObject,
+      };
+    },
+  );
+  if (outcome.skipped) return { ok: false, error: "กำลังตรวจ stock sync อยู่" };
+  const reconciliation = outcome.result;
   const now = new Date();
   const attentionRows = reconciliation.rows.filter(
     (row) => row.status === "NEEDS_PUSH" || row.status === "NOT_PUSHED" || row.status === "PUSH_FAILED",
   );
-
-  await db.shopeeSyncJob.create({
-    data: {
-      shopRecordId,
-      type: ShopeeSyncJobType.STOCK_PUSH,
-      status: ShopeeSyncJobStatus.SUCCESS,
-      startedAt: now,
-      finishedAt: now,
-      itemsProcessed: reconciliation.summary.total,
-      itemsFailed: reconciliation.summary.failed,
-      attemptCount: 1,
-      metaJson: {
-        mode: "RECONCILIATION_ONLY",
-        total: reconciliation.summary.total,
-        pushEnabled: reconciliation.summary.pushEnabled,
-        needsPush: reconciliation.summary.needsPush,
-        failed: reconciliation.summary.failed,
-      } satisfies Prisma.InputJsonObject,
-    },
-  });
 
   await db.shopeeShop.update({
     where: { id: shopRecordId },

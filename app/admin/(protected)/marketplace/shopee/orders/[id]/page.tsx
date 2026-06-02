@@ -8,9 +8,9 @@ import { db } from "@/lib/db";
 import { getLotAvailability } from "@/lib/lot-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
-import { buildShopeeSaleDraft } from "@/lib/shopee/services/create-sale";
-import { buildShopeeFeeExpenseDraft } from "@/lib/shopee/services/escrow";
-import { getShopeeReturnReviewDetail } from "@/lib/shopee/services/returns";
+import { buildShopeeSaleDraftFromOrderImport } from "@/lib/shopee/services/create-sale";
+import { buildShopeeFeeExpenseDraftFromOrderImport } from "@/lib/shopee/services/escrow";
+import { getShopeeReturnReviewDetailFromOrderImport } from "@/lib/shopee/services/returns";
 
 import CreateSaleConfirm, { type LotLine } from "./CreateSaleConfirm";
 import CreateFeeExpenseButton from "./CreateFeeExpenseButton";
@@ -30,11 +30,48 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
   const canCreateExpense = hasPermissionAccess(role, permissions, "expenses.create");
   const { id } = await params;
 
-  const [draft, reviewDetail, feeDraft] = await Promise.all([
-    buildShopeeSaleDraft(id),
-    getShopeeReturnReviewDetail(id),
-    buildShopeeFeeExpenseDraft(id),
-  ]);
+  const orderImport = await db.shopeeOrderImport.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      orderSn: true,
+      shopeeStatus: true,
+      buyerUsername: true,
+      orderCreatedAt: true,
+      rawPayload: true,
+      importStatus: true,
+      saleId: true,
+      shopRecordId: true,
+      escrowLastError: true,
+      returnReviewRequired: true,
+      returnReviewReason: true,
+      shop: { select: { settlementCashBankAccountId: true } },
+      sale: {
+        select: {
+          id: true,
+          saleNo: true,
+          status: true,
+          creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
+          receipts: {
+            where: { receipt: { status: "ACTIVE" } },
+            select: { receipt: { select: { receiptNo: true } } },
+          },
+          warranties: {
+            select: {
+              claims: {
+                where: { status: { not: "CANCELLED" } },
+                select: { claimNo: true },
+              },
+            },
+          },
+        },
+      },
+      escrowExpense: { select: { id: true, expenseNo: true, status: true } },
+    },
+  });
+  const draft = orderImport ? await buildShopeeSaleDraftFromOrderImport(orderImport) : null;
+  const reviewDetail = orderImport ? getShopeeReturnReviewDetailFromOrderImport(orderImport) : null;
+  const feeDraft = orderImport ? buildShopeeFeeExpenseDraftFromOrderImport(orderImport) : null;
 
   // Lot picker: hard blockers are everything except the "select lot" notice,
   // which the inline lot picker resolves instead of hard-blocking.
@@ -127,8 +164,8 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
               <p className="text-sm text-slate-500 dark:text-slate-400">ผู้ซื้อ: {draft.buyerUsername ?? "-"}</p>
             </div>
 
-            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-              <table className="w-full text-sm">
+            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
+              <table className="min-w-[640px] w-full text-sm">
                 <thead className="bg-slate-50 text-left text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
                   <tr>
                     <th className="px-3 py-2">สินค้า</th>
@@ -199,8 +236,8 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
               </div>
 
               {feeDraft.lines.length > 0 ? (
-                <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
-                  <table className="w-full text-sm">
+                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
+                  <table className="min-w-[560px] w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
                       <tr>
                         <th className="px-3 py-2">ประเภท</th>
