@@ -79,7 +79,7 @@
 - [x] Vercel cron `app/api/shopee/cron/pull-orders` (ทุก 30 นาที, `CRON_SECRET`) + `pullAllAuthorizedShops()` + vercel.json
 - [x] Notification: ออเดอร์ใหม่ (SHOPEE_ORDER_IMPORTED) + ต้อง map SKU (SHOPEE_ORDER_FAILED, dedupe) + audit (SHOPEE_ORDER_PULL)
 - [x] ลิงก์จากหน้า overview
-- [ ] (follow-up) UI toggle `syncEnabled` บนหน้า overview — **cron auto-pull กรอง `syncEnabled=true`** (manual pull ใช้ได้เลย แต่ auto-pull ต้องเปิด gate ก่อน)
+- [x] UI toggle `syncEnabled` บนหน้า overview (`SyncEnabledToggle` + `setSyncEnabledAction` + audit) → เปิดแล้ว cron auto-pull ทำงาน
 - [ ] (เลื่อน) Webhook ingestion — ยังไม่เลือกในรอบนี้ (ใช้ scheduled pull เป็นหลัก)
 
 > verified: lint 0, tsc 0, tests 13/13 · live pull รอ Shopee credentials
@@ -103,7 +103,7 @@
 - [x] theme light/dark ครบทุกส่วน · ลอจิก/ผลลัพธ์ sale เดิมไม่กระทบ (test 2/2)
 
 > verified: lint 0, tsc 0, tests 15/15
-> **lot-controlled orders**: preview จะ block ด้วย "มีสินค้าคุม lot ต้องเลือก lot ก่อน" — lot-picker UI เป็น follow-up (service รองรับ `lotSelections` แล้ว)
+> **lot-controlled orders**: ✅ lot-picker UI บนหน้า preview — auto-allocate (FEFO/FIFO) + ปรับเอง, validate ครบจำนวนก่อนยืนยัน, ส่ง `lotSelections` เข้า create action (service + `validateLotRows` ตรวจซ้ำฝั่ง server)
 > ราคา line อ่านจาก `model_discounted_price` (defensive) → preview ให้ human ตรวจก่อนยืนยัน = safety net · live ทดสอบรอ credentials
 
 ## Phase G — Stock Push to Shopee

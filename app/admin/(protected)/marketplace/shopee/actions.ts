@@ -135,3 +135,34 @@ export async function setSettlementAccountAction(formData: FormData): Promise<Se
   revalidatePath(OVERVIEW_PATH);
   return { ok: true };
 }
+
+/** Enables/disables automatic order pull (cron) for a shop. */
+export async function setSyncEnabledAction(formData: FormData): Promise<SettlementActionResult> {
+  let session;
+  try {
+    session = await requirePermission("marketplace.manage");
+  } catch {
+    return { ok: false, error: "ไม่มีสิทธิ์จัดการการตั้งค่า" };
+  }
+
+  const shopRecordId = String(formData.get("shopRecordId") ?? "").trim();
+  const enabled = String(formData.get("enabled") ?? "") === "1";
+  if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน" };
+
+  await db.shopeeShop.update({
+    where: { id: shopRecordId },
+    data: { syncEnabled: enabled },
+  });
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...(await getRequestContext()),
+    action: AuditAction.UPDATE,
+    entityType: "ShopeeShop",
+    entityId: shopRecordId,
+    meta: { event: "SHOPEE_SET_SYNC_ENABLED", enabled },
+  });
+
+  revalidatePath(OVERVIEW_PATH);
+  return { ok: true };
+}

@@ -12,6 +12,7 @@ import { formatDateTimeThai } from "@/lib/th-date";
 
 import { disconnectShopeeShop, startShopeeAuthorization } from "./actions";
 import SettlementAccountForm from "./SettlementAccountForm";
+import SyncEnabledToggle from "./SyncEnabledToggle";
 
 type ShopeePageProps = {
   searchParams: Promise<{ connected?: string; error?: string; shop?: string }>;
@@ -230,6 +231,9 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
                         currentAccountId={shop.settlementCashBankAccountId}
                         accounts={cashBankAccounts}
                       />
+                      <div className="mt-3 border-t border-slate-200 pt-3 dark:border-white/10">
+                        <SyncEnabledToggle shopRecordId={shop.id} enabled={shop.syncEnabled} />
+                      </div>
                     </div>
                   ) : null}
                 </div>

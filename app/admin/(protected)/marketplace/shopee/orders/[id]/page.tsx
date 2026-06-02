@@ -4,13 +4,17 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ReceiptText, Wallet } from "lucide-react";
 
 import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
+import { db } from "@/lib/db";
+import { getLotAvailability } from "@/lib/lot-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { buildShopeeSaleDraft } from "@/lib/shopee/services/create-sale";
 import { buildShopeeFeeExpenseDraft } from "@/lib/shopee/services/escrow";
 import { getShopeeReturnReviewDetail } from "@/lib/shopee/services/returns";
 
-import CreateSaleConfirm from "./CreateSaleConfirm";
+import CreateSaleConfirm, { type LotLine } from "./CreateSaleConfirm";
 import CreateFeeExpenseButton from "./CreateFeeExpenseButton";
+
+const LOT_BLOCKER = "มีสินค้าคุม lot ต้องเลือก lot ก่อน";
 
 const fmt = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,6 +34,27 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
     getShopeeReturnReviewDetail(id),
     buildShopeeFeeExpenseDraft(id),
   ]);
+
+  // Lot picker: hard blockers are everything except the "select lot" notice,
+  // which the inline lot picker resolves instead of hard-blocking.
+  const hardBlockers = draft ? draft.blockers.filter((blocker) => blocker !== LOT_BLOCKER) : [];
+  let lotLines: LotLine[] = [];
+  if (draft && canManage && !draft.alreadyImported && hardBlockers.length === 0) {
+    const lotControlled = draft.lines.filter(
+      (line): line is typeof line & { productId: string } =>
+        line.isLotControl && typeof line.productId === "string",
+    );
+    lotLines = await Promise.all(
+      lotControlled.map(async (line) => ({
+        key: `${line.itemId}::${line.modelId}`,
+        productName: line.productName,
+        qty: line.qty,
+        unitName: line.unitName,
+        unitScale: line.unitScale,
+        available: await getLotAvailability(db, line.productId),
+      })),
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -226,20 +251,20 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
               <CheckCircle2 size={18} className="shrink-0" />
               ออเดอร์นี้สร้างบิลแล้ว
             </div>
-          ) : draft.blockers.length > 0 ? (
+          ) : hardBlockers.length > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
               <div className="flex items-center gap-2 font-medium">
                 <AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" />
                 ยังสร้างบิลไม่ได้
               </div>
               <ul className="mt-2 list-inside list-disc space-y-1">
-                {draft.blockers.map((b) => (
+                {hardBlockers.map((b) => (
                   <li key={b}>{b}</li>
                 ))}
               </ul>
             </div>
           ) : canManage ? (
-            <CreateSaleConfirm orderImportId={draft.orderImportId} />
+            <CreateSaleConfirm orderImportId={draft.orderImportId} lotLines={lotLines} />
           ) : (
             <p className="text-sm text-slate-500 dark:text-slate-400">คุณไม่มีสิทธิ์สร้างบิล</p>
           )}

@@ -11,7 +11,7 @@ import { AuditAction, ShopeeSyncJobStatus, ShopeeSyncJobType } from "@/lib/gener
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { pullShopeeOrdersGuarded, type PullOrdersResult } from "@/lib/shopee/services/orders";
-import { createSaleFromShopeeOrder } from "@/lib/shopee/services/create-sale";
+import { createSaleFromShopeeOrder, type LotSelectionMap } from "@/lib/shopee/services/create-sale";
 import { createShopeeFeeExpense, type CreateShopeeFeeExpenseResult } from "@/lib/shopee/services/escrow";
 import { syncShopeeLogisticsFromImports, type ShopeeLogisticsSyncResult } from "@/lib/shopee/services/logistics";
 import { scanShopeeReturnReviewsFromImports, type ShopeeReturnReviewScanResult } from "@/lib/shopee/services/returns";
@@ -73,7 +73,10 @@ export type ScanReturnReviewActionResult =
 export type CreateFeeExpenseActionResult = CreateShopeeFeeExpenseResult;
 
 /** Creates the real Sale from a queued Shopee order (human-approved). */
-export async function createSaleFromOrderAction(orderImportId: string): Promise<CreateBillActionResult> {
+export async function createSaleFromOrderAction(
+  orderImportId: string,
+  lotSelections?: LotSelectionMap,
+): Promise<CreateBillActionResult> {
   let session;
   try {
     session = await requirePermission("marketplace.manage");
@@ -86,6 +89,7 @@ export async function createSaleFromOrderAction(orderImportId: string): Promise<
   const result = await createSaleFromShopeeOrder({
     orderImportId,
     approverUserId: session.user.id,
+    lotSelections,
     actor: getAuditActorFromSession(session),
   });
 
