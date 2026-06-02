@@ -3,7 +3,7 @@
 > Source of truth สำหรับสถานะงาน Shopee ทุก phase ติ๊ก checklist ทันทีเมื่องานเสร็จ
 > หลักการแยกโมดูล + กฎ isolation ดูที่ [README.md](./README.md) งานที่คนต้องทำเองดูที่ [USER-TASKS.md](./USER-TASKS.md)
 
-สถานะรวม: **Phase A–E เสร็จ · Phase F core เสร็จ** (schema + sale-core refactor + create-sale service) · เหลือ Phase F UI (approval/filter/report/dashboard)
+สถานะรวม: **Phase A–F เสร็จ** (foundation → schema → auth → mapping → order queue → สร้าง Sale + approval UI/filter/report/dashboard)
 
 ---
 
@@ -84,7 +84,7 @@
 
 > verified: lint 0, tsc 0, tests 13/13 · live pull รอ Shopee credentials
 
-## Phase F — Sale Creation (กำลังทำ — core เสร็จ, UI/report เหลือ)
+## Phase F — Sale Creation ✅ เสร็จ (core + UI)
 
 > decisions ที่ยืนยัน: channel+channelRefNo+settlement field · CASH_SALE+บัญชี "Shopee พักเงิน" · customer snapshot (ไม่สร้าง Customer) · dashboard widget · prefix **SP** · approval gate ต่อออเดอร์ · architecture **B (reuse lib primitives, ไม่แตะ createSale)**
 
@@ -149,10 +149,10 @@
 
 ## ลูกเล่นพิเศษ (เหนือกว่า FlowAccount) — เก็บไว้ทำ
 
-- [ ] 🔔 Notification bell ใน-app (Phase B/C) — FlowAccount มีแค่ LINE/email
+- [x] 🔔 Notification bell ใน-app (Phase B/C) — FlowAccount มีแค่ LINE/email
 - [ ] 📊 Live Sync Health widget บน dashboard (last sync, token countdown, failed jobs, mismatch)
 - [ ] ⚡ Real-time order toast (ถ้าใช้ webhook) — เร็วกว่า polling 6 ชม.ของ FlowAccount
-- [ ] 🔄 Smart auto-mapping suggestion (Phase D)
-- [ ] 📦 Dry-run mode (Phase E) — safety net ก่อนสร้าง Sale จริง
+- [x] 🔄 Smart auto-mapping suggestion (Phase D)
+- [x] 📦 Dry-run mode (Phase E/F) — `buildShopeeSaleDraft` preview safety net ก่อนสร้าง Sale จริง
 - [ ] 💰 Auto-categorize Shopee fees → Expense (Phase L)
 - [ ] 🧾 Print ใบกำกับภาษีจากหน้า Shopee order ด้วย format เดิมของระบบ
