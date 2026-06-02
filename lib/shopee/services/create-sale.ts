@@ -95,6 +95,8 @@ export type ShopeeSaleDraft = {
   totalAmount: number;
   settlementAccountId: string | null;
   alreadyImported: boolean;
+  saleId: string | null;
+  saleNo: string | null;
   blockers: string[];
 };
 
@@ -135,6 +137,7 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
       saleId: true,
       shopRecordId: true,
       shop: { select: { settlementCashBankAccountId: true } },
+      sale: { select: { saleNo: true } },
     },
   });
   if (!orderImport) return null;
@@ -226,6 +229,8 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
     totalAmount,
     settlementAccountId: orderImport.shop.settlementCashBankAccountId,
     alreadyImported: Boolean(orderImport.saleId),
+    saleId: orderImport.saleId,
+    saleNo: orderImport.sale?.saleNo ?? null,
     blockers,
   };
 }

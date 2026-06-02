@@ -156,9 +156,9 @@
 ## ลูกเล่นพิเศษ (เหนือกว่า FlowAccount) — เก็บไว้ทำ
 
 - [x] 🔔 Notification bell ใน-app (Phase B/C) — FlowAccount มีแค่ LINE/email
-- [ ] 📊 Live Sync Health widget บน dashboard (last sync, token countdown, failed jobs, mismatch)
-- [ ] ⚡ Real-time order toast (ถ้าใช้ webhook) — เร็วกว่า polling 6 ชม.ของ FlowAccount
+- [x] 📊 Sync Health panel บนหน้า marketplace overview — `SyncHealthPanel`: token countdown, last order sync ต่อร้าน, failed sync jobs (24 ชม.), stock push risk (needsPush/failed)
+- [ ] ⚡ Real-time order toast (ถ้าใช้ webhook) — เร็วกว่า polling 6 ชม.ของ FlowAccount (เลื่อนไปตอน go-live: ต้องตั้ง push config + credentials)
 - [x] 🔄 Smart auto-mapping suggestion (Phase D)
 - [x] 📦 Dry-run mode (Phase E/F) — `buildShopeeSaleDraft` preview safety net ก่อนสร้าง Sale จริง
-- [ ] 💰 Auto-categorize Shopee fees → Expense (Phase L)
-- [ ] 🧾 Print ใบกำกับภาษีจากหน้า Shopee order ด้วย format เดิมของระบบ
+- [x] 💰 Auto-categorize Shopee fees → Expense (Phase L escrow) — `createShopeeFeeExpense` + ปุ่มในหน้า order (รอ live escrow_detail ป้อนข้อมูล)
+- [x] 🧾 Print ใบกำกับ/ใบเสร็จ จากหน้า Shopee order — ลิงก์ "เปิด/พิมพ์" → `/admin/sales/[saleId]` (print form เดิมของระบบ) เมื่อสร้างบิลแล้ว

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ReceiptText, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Printer, ReceiptText, Wallet } from "lucide-react";
 
 import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
@@ -247,9 +247,19 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
           ) : null}
 
           {draft.alreadyImported ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100">
-              <CheckCircle2 size={18} className="shrink-0" />
-              ออเดอร์นี้สร้างบิลแล้ว
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 size={18} className="shrink-0" />
+                ออเดอร์นี้สร้างบิลแล้ว{draft.saleNo ? ` (${draft.saleNo})` : ""}
+              </span>
+              {draft.saleId ? (
+                <Link
+                  href={`/admin/sales/${draft.saleId}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-400"
+                >
+                  <Printer size={14} /> เปิด / พิมพ์ใบกำกับ-ใบเสร็จ
+                </Link>
+              ) : null}
             </div>
           ) : hardBlockers.length > 0 ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">

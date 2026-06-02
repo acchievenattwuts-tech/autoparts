@@ -13,6 +13,7 @@ import { formatDateTimeThai } from "@/lib/th-date";
 import { disconnectShopeeShop, startShopeeAuthorization } from "./actions";
 import SettlementAccountForm from "./SettlementAccountForm";
 import SyncEnabledToggle from "./SyncEnabledToggle";
+import SyncHealthPanel from "./SyncHealthPanel";
 
 type ShopeePageProps = {
   searchParams: Promise<{ connected?: string; error?: string; shop?: string }>;
@@ -151,6 +152,8 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
           </div>
         </div>
       ) : null}
+
+      <SyncHealthPanel />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0d1728]">
         <div className="flex flex-wrap items-center justify-between gap-3">
