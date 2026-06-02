@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, ShopeeAuthStatus } from "@/lib/generated/prisma";
 import { createNotification } from "@/lib/notifications";
-import { refreshShopAccessToken } from "@/lib/shopee/services/auth";
+import { refreshShopAccessTokenGuarded } from "@/lib/shopee/services/auth";
 
 /**
  * Proactive token maintenance (called by the QStash-scheduled cron endpoint).
@@ -41,8 +41,10 @@ export async function refreshExpiringShopTokens(
 
   for (const shop of shops) {
     try {
-      await refreshShopAccessToken(shop.id);
-      refreshed += 1;
+      // Guarded: skip if another process (or getValidShopAuth) is already
+      // refreshing this shop — avoids double-refresh invalidating the token.
+      const { refreshed: didRefresh } = await refreshShopAccessTokenGuarded(shop.id);
+      if (didRefresh) refreshed += 1;
     } catch {
       failed += 1;
       await createNotification({

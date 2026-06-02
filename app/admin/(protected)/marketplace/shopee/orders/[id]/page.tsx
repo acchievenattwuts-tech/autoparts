@@ -7,6 +7,7 @@ import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-cont
 import { db } from "@/lib/db";
 import { getLotAvailability } from "@/lib/lot-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { formatDateTimeThai } from "@/lib/th-date";
 import { buildShopeeSaleDraft } from "@/lib/shopee/services/create-sale";
 import { buildShopeeFeeExpenseDraft } from "@/lib/shopee/services/escrow";
 import { getShopeeReturnReviewDetail } from "@/lib/shopee/services/returns";
@@ -168,6 +169,10 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
 
             <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
               ราคาดึงจาก Shopee — โปรดตรวจสอบให้ตรงก่อนยืนยัน · บิลจะลงเป็น CASH_SALE เข้าบัญชี &quot;Shopee พักเงิน&quot; · ตัดสต็อกผ่านระบบเดิม
+            </p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              บิลจะลง <span className="font-medium text-slate-600 dark:text-slate-300">วันที่วันนี้</span> (วันออกเอกสาร) ·
+              อ้างอิง: ลูกค้าสั่งเมื่อ {formatDateTimeThai(draft.docDate, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </p>
           </section>
 

@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
-import { AuditAction, ShopeeAuthStatus } from "@/lib/generated/prisma";
+import { AuditAction, ShopeeAuthStatus, ShopeeSyncJobType } from "@/lib/generated/prisma";
 import { safeWriteAuditLog, type AuditLogActor } from "@/lib/audit-log";
 import { createShopeeClient } from "@/lib/shopee/client";
 import { getRequiredShopeeConfig } from "@/lib/shopee/config";
 import { shopeeTimestamp, signPublic } from "@/lib/shopee/signature";
+import { withShopeeSyncLock } from "@/lib/shopee/sync-lock";
 import type {
   ShopeeRefreshTokenResponse,
   ShopeeTokenGetResponse,
@@ -170,6 +171,32 @@ export async function refreshShopAccessToken(
 }
 
 /**
+ * Refresh guarded by a per-shop sync lock so concurrent callers do not refresh
+ * twice. Shopee rotates the `refresh_token` on every refresh, so a duplicate
+ * refresh can invalidate the token that another caller is about to store.
+ * Returns `refreshed: false` when another refresh was already in progress
+ * (skipped) — the caller should then re-read the current token, which is still
+ * valid because we refresh inside a 10-minute pre-expiry buffer.
+ *
+ * NOTE: the lock is check-then-create, so a sub-millisecond double-acquire is
+ * still theoretically possible; this shrinks the race window from the whole
+ * 10-minute buffer to a few milliseconds.
+ */
+export async function refreshShopAccessTokenGuarded(
+  shopRecordId: string,
+  actor?: AuditLogActor,
+): Promise<{ refreshed: boolean }> {
+  const outcome = await withShopeeSyncLock(
+    { shopRecordId, type: ShopeeSyncJobType.TOKEN_REFRESH },
+    async () => {
+      await refreshShopAccessToken(shopRecordId, actor);
+      return { value: null };
+    },
+  );
+  return { refreshed: !outcome.skipped };
+}
+
+/**
  * Returns a valid access token for a shop, refreshing first if it is missing or
  * about to expire. Use this before every Shopee shop-scoped API call.
  */
@@ -188,9 +215,9 @@ export async function getValidShopAuth(
     !shop.tokenExpiresAt ||
     shop.tokenExpiresAt.getTime() - Date.now() <= TOKEN_REFRESH_BUFFER_MS;
 
-  // Inline `!accessToken` so TS narrows `accessToken` to string after this block.
   if (!accessToken || isExpiringSoon) {
-    await refreshShopAccessToken(shopRecordId);
+    // Guarded so simultaneous calls during the expiry window refresh only once.
+    await refreshShopAccessTokenGuarded(shopRecordId);
     const refreshed = await db.shopeeShop.findUnique({
       where: { id: shopRecordId },
       select: { shopId: true, accessToken: true },

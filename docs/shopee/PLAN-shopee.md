@@ -93,6 +93,7 @@
 - [x] `lib/sale-core.ts` — ย้าย helper (preloadSaleDependencies/assertLotBalanceAvailable/createWarrantySnapshots/resolveSalePaymentMethod) ออกจาก `sales/actions.ts` แบบ behavior คงเดิม → **createSale เดิม test 2/2 ผ่าน**
 - [x] `generateSaleNo` รองรับ prefix `SP`
 - [x] `lib/shopee/services/create-sale.ts` — `buildShopeeSaleDraft()` (dry-run preview) + `createSaleFromShopeeOrder()` reuse primitives เดียวกัน (writeStockCard/writeSaleLots/createWarrantySnapshots/rebuildSaleProfitFacts/replaceCashBankSourceMovements) → ผลลัพธ์ stock/lot/profit/cash เหมือน sale ปกติ · customer snapshot · CASH_SALE→บัญชีพักเงิน · mark IMPORTED+link saleId · audit (SHOPEE_SALE_CREATE)
+- [x] **(review fix H1)** posting date = วันที่ออกบิล (`new Date()`) ตามมาตรฐาน ERP (post ในงวดเปิด + เรียงเวลา) — ไม่ใช้วันที่ลูกค้าสั่งเป็น saleDate/เลขบิล/stock movement (กัน StockCard/MAVG เพี้ยน + ตกงวดปิด) · แสดงวันที่สั่งเป็น reference บน preview
 
 ### UI + integration ✅ เสร็จ
 - [x] **Approval UI**: ปุ่ม "ตรวจ/สร้างบิล" ในคิว → หน้า preview `/orders/[id]` (draft lines/totals/blockers) → `CreateSaleConfirm` → `createSaleFromOrderAction` (requirePermission marketplace.manage + audit + revalidate + redirect ไปหน้าบิล)
@@ -148,6 +149,7 @@
 - [x] rate-limit/backoff — client retry/backoff (Phase A) สำหรับ operation idempotent
 - [x] **runbook** — [RUNBOOK.md](./RUNBOOK.md): ต่ออายุ credential, กู้ sync fail, sync lock, unmapped SKU, สลับ test→prod, Telegram
 - [x] test: sync-lock `isLockHeld` (5/5) + signature (9/9) ที่มีอยู่
+- [x] **(review fix H2)** token refresh race — `refreshShopAccessTokenGuarded` ใช้ sync-lock `TOKEN_REFRESH` (getValidShopAuth + cron) กัน double-refresh ที่ทำให้ refresh_token ใช้ไม่ได้
 - [ ] circuit breaker เต็มรูปแบบ + QStash jobs (ตอนนี้ใช้ Vercel cron + retry/backoff + sync lock แทน)
 - [ ] tests เพิ่ม: token refresh, order idempotency (ต้อง DB), stock push payload (รอ live)
 

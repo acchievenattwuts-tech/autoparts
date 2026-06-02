@@ -259,7 +259,11 @@ export async function createSaleFromShopeeOrder(params: {
   if (draft.lines.some((l) => l.productId === null)) return { ok: false, error: "มีสินค้าที่ยังไม่ได้ map" };
 
   const settlementAccountId = draft.settlementAccountId;
-  const docDate = draft.docDate;
+  // Posting date = approval time (ERP-standard: post in an open period, in
+  // chronological order). The Shopee order date (draft.docDate) is kept as a
+  // reference only (channelRefNo + ShopeeOrderImport.orderCreatedAt) — never
+  // used as the stock/doc-number/accounting date to avoid backdated movements.
+  const docDate = new Date();
   const lotSelections = params.lotSelections ?? {};
 
   const totalAmount = draft.totalAmount;
