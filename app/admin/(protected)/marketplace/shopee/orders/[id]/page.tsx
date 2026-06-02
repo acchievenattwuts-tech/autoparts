@@ -1,14 +1,16 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ReceiptText } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, ReceiptText, Wallet } from "lucide-react";
 
 import { ensureAccessControlSetup, hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { buildShopeeSaleDraft } from "@/lib/shopee/services/create-sale";
+import { buildShopeeFeeExpenseDraft } from "@/lib/shopee/services/escrow";
 import { getShopeeReturnReviewDetail } from "@/lib/shopee/services/returns";
 
 import CreateSaleConfirm from "./CreateSaleConfirm";
+import CreateFeeExpenseButton from "./CreateFeeExpenseButton";
 
 const fmt = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,11 +22,13 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
   await requirePermission("marketplace.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canManage = hasPermissionAccess(role, permissions, "marketplace.manage");
+  const canCreateExpense = hasPermissionAccess(role, permissions, "expenses.create");
   const { id } = await params;
 
-  const [draft, reviewDetail] = await Promise.all([
+  const [draft, reviewDetail, feeDraft] = await Promise.all([
     buildShopeeSaleDraft(id),
     getShopeeReturnReviewDetail(id),
+    buildShopeeFeeExpenseDraft(id),
   ]);
 
   return (
@@ -141,6 +145,81 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
               ราคาดึงจาก Shopee — โปรดตรวจสอบให้ตรงก่อนยืนยัน · บิลจะลงเป็น CASH_SALE เข้าบัญชี &quot;Shopee พักเงิน&quot; · ตัดสต็อกผ่านระบบเดิม
             </p>
           </section>
+
+          {feeDraft ? (
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0d1728]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-300">
+                    <Wallet size={19} />
+                  </span>
+                  <div>
+                    <h2 className="font-kanit text-base font-semibold text-slate-900 dark:text-slate-100">ค่าใช้จ่าย Shopee จาก escrow</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">สร้าง Expense จาก commission/service/voucher ที่อยู่ใน snapshot ที่ยืนยันได้</p>
+                  </div>
+                </div>
+                {feeDraft.existingExpense ? (
+                  <Link
+                    href={`/admin/expenses/${feeDraft.existingExpense.id}`}
+                    className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/20"
+                  >
+                    Expense {feeDraft.existingExpense.expenseNo}
+                  </Link>
+                ) : null}
+              </div>
+
+              {feeDraft.lines.length > 0 ? (
+                <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 dark:border-white/10">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                      <tr>
+                        <th className="px-3 py-2">ประเภท</th>
+                        <th className="px-3 py-2">Source key</th>
+                        <th className="px-3 py-2 text-right">จำนวนเงิน</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/10">
+                      {feeDraft.lines.map((line) => (
+                        <tr key={`${line.kind}-${line.sourceKey}`}>
+                          <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">{line.label}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{line.sourceKey}</td>
+                          <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">{fmt(line.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="border-t border-slate-200 dark:border-white/10">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-2 text-right text-sm font-medium text-slate-600 dark:text-slate-300">รวม</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900 dark:text-slate-100">{fmt(feeDraft.totalAmount)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100">
+                  ยังไม่พบ escrow_detail ที่รองรับใน snapshot นี้
+                </p>
+              )}
+
+              {feeDraft.blockers.length > 0 ? (
+                <ul className="mt-3 list-inside list-disc space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+                  {feeDraft.blockers.map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              ) : canManage && canCreateExpense ? (
+                <div className="mt-4">
+                  <CreateFeeExpenseButton orderImportId={feeDraft.orderImportId} />
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">คุณไม่มีสิทธิ์สร้าง Expense ค่า Shopee</p>
+              )}
+
+              {feeDraft.lastError ? (
+                <p className="mt-3 text-xs text-rose-600 dark:text-rose-300">Last error: {feeDraft.lastError}</p>
+              ) : null}
+            </section>
+          ) : null}
 
           {draft.alreadyImported ? (
             <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100">

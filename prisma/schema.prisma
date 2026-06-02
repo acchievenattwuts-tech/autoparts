@@ -959,6 +959,7 @@ model Expense {
   cashBankAccountId     String?
   deliveryCommissionRun DeliveryCommissionRun?
   cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
+  shopeeEscrowOrder     ShopeeOrderImport?     @relation("ShopeeEscrowExpense")
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
 
@@ -1946,24 +1947,28 @@ model ShopeeProductMapping {
 }
 
 model ShopeeOrderImport {
-  id             String                  @id @default(cuid())
-  shopRecordId   String
-  orderSn        String // Shopee order_sn
-  shopeeStatus   String
-  importStatus   ShopeeOrderImportStatus @default(PENDING)
-  buyerUsername  String?
-  totalAmount    Decimal?                @db.Decimal(10, 2)
-  currency       String?
-  orderCreatedAt DateTime?               @db.Timestamptz(3)
-  orderUpdatedAt DateTime?               @db.Timestamptz(3)
-  rawPayload     Json?
-  saleId         String?                 @unique
-  lastError      String?
-  importedAt     DateTime?               @db.Timestamptz(3)
-  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime                @updatedAt @db.Timestamptz(3)
-  shop           ShopeeShop              @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
-  sale           Sale?                   @relation(fields: [saleId], references: [id])
+  id              String                  @id @default(cuid())
+  shopRecordId    String
+  orderSn         String // Shopee order_sn
+  shopeeStatus    String
+  importStatus    ShopeeOrderImportStatus @default(PENDING)
+  buyerUsername   String?
+  totalAmount     Decimal?                @db.Decimal(10, 2)
+  currency        String?
+  orderCreatedAt  DateTime?               @db.Timestamptz(3)
+  orderUpdatedAt  DateTime?               @db.Timestamptz(3)
+  rawPayload      Json?
+  saleId          String?                 @unique
+  escrowExpenseId String?                 @unique
+  escrowSyncedAt  DateTime?               @db.Timestamptz(3)
+  escrowLastError String?
+  lastError       String?
+  importedAt      DateTime?               @db.Timestamptz(3)
+  createdAt       DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                @updatedAt @db.Timestamptz(3)
+  shop            ShopeeShop              @relation(fields: [shopRecordId], references: [id], onDelete: Cascade)
+  sale            Sale?                   @relation(fields: [saleId], references: [id])
+  escrowExpense   Expense?                @relation("ShopeeEscrowExpense", fields: [escrowExpenseId], references: [id])
 
   @@unique([shopRecordId, orderSn])
   @@index([importStatus, createdAt])

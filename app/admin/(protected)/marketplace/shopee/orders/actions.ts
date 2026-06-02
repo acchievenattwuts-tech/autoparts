@@ -10,8 +10,9 @@ import {
 import { AuditAction, ShopeeSyncJobStatus, ShopeeSyncJobType } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import { pullShopeeOrders, type PullOrdersResult } from "@/lib/shopee/services/orders";
+import { pullShopeeOrdersGuarded, type PullOrdersResult } from "@/lib/shopee/services/orders";
 import { createSaleFromShopeeOrder } from "@/lib/shopee/services/create-sale";
+import { createShopeeFeeExpense, type CreateShopeeFeeExpenseResult } from "@/lib/shopee/services/escrow";
 import { syncShopeeLogisticsFromImports, type ShopeeLogisticsSyncResult } from "@/lib/shopee/services/logistics";
 import { scanShopeeReturnReviewsFromImports, type ShopeeReturnReviewScanResult } from "@/lib/shopee/services/returns";
 
@@ -34,7 +35,11 @@ export async function pullOrdersNowAction(shopRecordId: string): Promise<PullAct
   }
 
   try {
-    const result = await pullShopeeOrders(shopRecordId);
+    const outcome = await pullShopeeOrdersGuarded(shopRecordId);
+    if (outcome.skipped) {
+      return { ok: false, error: "กำลังดึงออเดอร์อยู่ กรุณารอสักครู่แล้วลองใหม่" };
+    }
+    const result = outcome.result;
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -65,6 +70,8 @@ export type ScanReturnReviewActionResult =
   | { ok: true; result: ShopeeReturnReviewScanResult }
   | { ok: false; error: string };
 
+export type CreateFeeExpenseActionResult = CreateShopeeFeeExpenseResult;
+
 /** Creates the real Sale from a queued Shopee order (human-approved). */
 export async function createSaleFromOrderAction(orderImportId: string): Promise<CreateBillActionResult> {
   let session;
@@ -88,6 +95,42 @@ export async function createSaleFromOrderAction(orderImportId: string): Promise<
   revalidatePath("/admin/sales");
   revalidatePath("/admin");
   return { ok: true, saleId: result.saleId, saleNo: result.saleNo };
+}
+
+/** Creates an Expense from verified escrow fee data stored on the Shopee order snapshot. */
+export async function createFeeExpenseFromOrderAction(orderImportId: string): Promise<CreateFeeExpenseActionResult> {
+  let session;
+  try {
+    session = await requirePermission("marketplace.manage");
+    await requirePermission("expenses.create");
+  } catch {
+    return { ok: false, error: "ไม่มีสิทธิ์สร้างค่าใช้จ่าย Shopee" };
+  }
+
+  if (!orderImportId) return { ok: false, error: "ไม่พบออเดอร์" };
+
+  const result = await createShopeeFeeExpense({
+    orderImportId,
+    userId: session.user.id,
+  });
+
+  if (!result.ok) return result;
+
+  await safeWriteAuditLog({
+    ...getAuditActorFromSession(session),
+    ...(await getRequestContext()),
+    action: AuditAction.CREATE,
+    entityType: "Expense",
+    entityId: result.expenseId,
+    entityRef: result.expenseNo,
+    meta: { event: "SHOPEE_FEE_EXPENSE_CREATE", orderImportId, reused: result.reused },
+  });
+
+  revalidatePath(ORDERS_PATH);
+  revalidatePath(`/admin/marketplace/shopee/orders/${orderImportId}`);
+  revalidatePath("/admin/expenses");
+  revalidatePath("/admin");
+  return result;
 }
 
 /** Syncs delivery fields from Shopee order snapshots into created Shopee Sales. */

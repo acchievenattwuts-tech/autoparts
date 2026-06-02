@@ -4,10 +4,12 @@ import {
   NotificationType,
   Prisma,
   ShopeeOrderImportStatus,
+  ShopeeSyncJobType,
 } from "@/lib/generated/prisma";
 import { createNotification } from "@/lib/notifications";
 import { createShopeeClient } from "@/lib/shopee/client";
 import { getValidShopAuth } from "@/lib/shopee/services/auth";
+import { withShopeeSyncLock, type SyncLockOutcome } from "@/lib/shopee/sync-lock";
 
 /**
  * Shopee order pull → import queue (Phase E).
@@ -253,25 +255,52 @@ export async function pullShopeeOrders(
   return { fetched: orderSns.length, created, needsMapping, failed };
 }
 
+/**
+ * Order pull guarded by the sync lock — prevents a slow run from overlapping the
+ * next cron tick (or a manual click) for the same shop. Returns the lock outcome.
+ */
+export async function pullShopeeOrdersGuarded(
+  shopRecordId: string,
+): Promise<SyncLockOutcome<PullOrdersResult>> {
+  return withShopeeSyncLock({ shopRecordId, type: ShopeeSyncJobType.ORDER_PULL }, async () => {
+    const result = await pullShopeeOrders(shopRecordId);
+    return {
+      value: result,
+      itemsProcessed: result.fetched,
+      itemsFailed: result.failed,
+      meta: { created: result.created, needsMapping: result.needsMapping },
+    };
+  });
+}
+
 /** Pulls orders for every AUTHORIZED shop (used by the scheduled cron). */
-export async function pullAllAuthorizedShops(): Promise<{ shops: number; result: PullOrdersResult }> {
+export async function pullAllAuthorizedShops(): Promise<{
+  shops: number;
+  skipped: number;
+  result: PullOrdersResult;
+}> {
   const shops = await db.shopeeShop.findMany({
     where: { authStatus: "AUTHORIZED", syncEnabled: true },
     select: { id: true },
   });
 
   const total: PullOrdersResult = { fetched: 0, created: 0, needsMapping: 0, failed: 0 };
+  let skipped = 0;
   for (const shop of shops) {
     try {
-      const result = await pullShopeeOrders(shop.id);
-      total.fetched += result.fetched;
-      total.created += result.created;
-      total.needsMapping += result.needsMapping;
-      total.failed += result.failed;
+      const outcome = await pullShopeeOrdersGuarded(shop.id);
+      if (outcome.skipped) {
+        skipped += 1;
+        continue;
+      }
+      total.fetched += outcome.result.fetched;
+      total.created += outcome.result.created;
+      total.needsMapping += outcome.result.needsMapping;
+      total.failed += outcome.result.failed;
     } catch (error) {
       total.failed += 1;
       console.error("[shopee] pull-all failed for shop:", shop.id, error instanceof Error ? error.message : "unknown");
     }
   }
-  return { shops: shops.length, result: total };
+  return { shops: shops.length, skipped, result: total };
 }

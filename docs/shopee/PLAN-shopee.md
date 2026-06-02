@@ -138,12 +138,18 @@
 - [x] รายงานขาย CSV/Excel export เพิ่ม Shopee order no/shop/channel/tracking/sync โดยใช้ข้อมูล Sale + ShopeeOrderImport เดิม
 
 ## Phase L — Auto Shopee Fee → Expense
-- [ ] ดึง escrow_detail → สร้าง Expense (commission/service/voucher) พร้อม category อัตโนมัติ
+- [x] สร้าง Expense จาก `escrow_detail` ที่อยู่ใน Shopee order snapshot แล้ว (commission/service/voucher) พร้อม auto category + cash movement/profit fact เดิม
+- [x] ผูก Shopee order → Expense แบบ idempotent (`escrowExpenseId`) เพื่อกันสร้างซ้ำ
+- [x] เพิ่ม preview/action บนหน้า Shopee order detail พร้อม blocker ถ้ายังไม่มี sale, settlement account, หรือ escrow payload ที่รองรับ
+- [ ] Live escrow_detail API pull — รอ verify endpoint/field/payload กับ Shopee credentials ก่อนเปิด sync จริง
 
 ## Phase M — Reliability / Security / Tests
-- [ ] rate-limit/backoff, circuit breaker, sync lock (กันรันซ้อน), QStash jobs
-- [ ] tests: signature ✅, token refresh, order idempotency, stock push payload, Telegram dedupe
-- [ ] runbook: ต่ออายุ credential, กู้ sync fail, จัดการ unmapped SKU, สลับ test→prod
+- [x] **sync lock** (กันรันซ้อน) — `lib/shopee/sync-lock.ts` (`withShopeeSyncLock` + ShopeeSyncJob RUNNING mutex + stale auto-release 10 นาที) ใช้กับ order pull (cron + manual) → `pullShopeeOrdersGuarded`
+- [x] rate-limit/backoff — client retry/backoff (Phase A) สำหรับ operation idempotent
+- [x] **runbook** — [RUNBOOK.md](./RUNBOOK.md): ต่ออายุ credential, กู้ sync fail, sync lock, unmapped SKU, สลับ test→prod, Telegram
+- [x] test: sync-lock `isLockHeld` (5/5) + signature (9/9) ที่มีอยู่
+- [ ] circuit breaker เต็มรูปแบบ + QStash jobs (ตอนนี้ใช้ Vercel cron + retry/backoff + sync lock แทน)
+- [ ] tests เพิ่ม: token refresh, order idempotency (ต้อง DB), stock push payload (รอ live)
 
 ---
 
