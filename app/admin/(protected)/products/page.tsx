@@ -9,7 +9,7 @@ import {
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import NavLink from "@/components/shared/NavLink";
-import { Plus, Pencil, Eye, X } from "lucide-react";
+import { Plus, Pencil, Eye, X, FileText, FileSpreadsheet } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
 import Pagination from "@/components/shared/Pagination";
@@ -197,6 +197,18 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  const exportQuery = new URLSearchParams({
+    ...(search ? { search } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(brandId ? { brandId } : {}),
+    ...(carBrandId ? { carBrandId } : {}),
+    ...(carModelId ? { carModelId } : {}),
+    ...(priceMin ? { priceMin } : {}),
+    ...(priceMax ? { priceMax } : {}),
+    ...(stockStatus ? { stockStatus } : {}),
+    ...(statusFilter ? { statusFilter } : {}),
+    ...(trackingFilter ? { trackingFilter } : {}),
+  }).toString();
 
   // Phase Q4 — "Did you mean" suggestions when admin search returns no/few hits
   const didYouMean = search && total < 3
@@ -209,15 +221,31 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         title="จัดการสินค้า"
         description="ค้นหา กรอง และจัดการข้อมูลสินค้าในระบบสต็อก"
         actions={
-          canCreate ? (
-          <Link
-            href="/admin/products/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
-          >
-            <Plus size={16} />
-            เพิ่มสินค้า
-          </Link>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/admin/products/export${exportQuery ? `?${exportQuery}` : ""}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-gray-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600"
+            >
+              <FileText size={16} />
+              CSV
+            </Link>
+            <Link
+              href={`/admin/products/export-excel${exportQuery ? `?${exportQuery}` : ""}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+            >
+              <FileSpreadsheet size={16} />
+              Excel
+            </Link>
+            {canCreate ? (
+              <Link
+                href="/admin/products/new"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
+              >
+                <Plus size={16} />
+                เพิ่มสินค้า
+              </Link>
+            ) : null}
+          </div>
         }
       />
 

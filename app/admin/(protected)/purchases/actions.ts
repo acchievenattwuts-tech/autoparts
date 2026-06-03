@@ -27,6 +27,7 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { refreshProductPurchaseLastFields } from "@/lib/product-purchase-last";
 
 const purchaseProductOptionSelect = {
   id: true,
@@ -691,6 +692,11 @@ export async function createPurchase(
         }
       }
 
+      await refreshProductPurchaseLastFields(
+        tx,
+        validItems.map((item) => item.productId),
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.PURCHASE,
@@ -1294,6 +1300,11 @@ export async function updatePurchase(
       for (const productId of productIdsNeedingRecalc) {
         await recalculateStockCard(tx, productId);
       }
+
+      await refreshProductPurchaseLastFields(
+        tx,
+        new Set([...oldProductIds, ...validItems.map((item) => item.productId)]),
+      );
 
       await replaceCashBankSourceMovements(
         tx,
