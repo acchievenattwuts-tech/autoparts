@@ -20,6 +20,7 @@ import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 const PAGE_SIZE = 50;
 
@@ -161,7 +162,7 @@ const CustomersPage = async ({
                   <tr
                     key={customer.id}
                     className={`border-t border-gray-50 transition-colors dark:border-white/10 ${
-                      customer.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
+                      getAdminMasterRowClass(customer.isActive)
                     }`}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">{customer.code ?? "-"}</td>
@@ -197,9 +198,9 @@ const CustomersPage = async ({
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">{customer._count.sales} ครั้ง</td>
                     <td className="px-4 py-3 text-center">
                       {customer.isActive ? (
-                        <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+                        <AdminStatusBadge tone={getAdminActiveBadgeTone(customer.isActive)}>ใช้งาน</AdminStatusBadge>
                       ) : (
-                        <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
+                        <AdminStatusBadge tone={getAdminActiveBadgeTone(customer.isActive)}>ยกเลิก</AdminStatusBadge>
                       )}
                     </td>
                     <td className="px-4 py-3">

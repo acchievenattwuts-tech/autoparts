@@ -17,6 +17,7 @@ import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -139,7 +140,7 @@ const SupplierAdvancesPage = async ({
               </tr>
             ) : (
               advances.map((advance, index) => (
-                <tr key={advance.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${advance.status === "CANCELLED" ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
+                <tr key={advance.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${getAdminDocumentRowClass(advance.status === "CANCELLED")}`}>
                   <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + index + 1}</td>
                   <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{advance.advanceNo}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(advance.advanceDate)}</td>

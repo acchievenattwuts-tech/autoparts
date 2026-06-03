@@ -24,6 +24,7 @@ import AdminTableSection from "@/components/shared/AdminTableSection";
 import ProductMatchChips from "@/components/shared/ProductMatchChips";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import ProductFitmentSummary from "./ProductFitmentSummary";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 const PAGE_SIZE = 30;
 
@@ -367,7 +368,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                     <tr
                       key={product.id}
                       className={`border-t border-gray-50 transition-colors dark:border-white/10 ${
-                        product.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
+                        getAdminMasterRowClass(product.isActive)
                       }`}
                     >
                       <td className="px-4 py-3">
@@ -449,9 +450,9 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {product.isActive ? (
-                          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+                          <AdminStatusBadge tone={getAdminActiveBadgeTone(product.isActive)}>ใช้งาน</AdminStatusBadge>
                         ) : (
-                          <AdminStatusBadge tone="muted">ปิดใช้งาน</AdminStatusBadge>
+                          <AdminStatusBadge tone={getAdminActiveBadgeTone(product.isActive)}>ปิดใช้งาน</AdminStatusBadge>
                         )}
                       </td>
                       <td className="px-4 py-3">

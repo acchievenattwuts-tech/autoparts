@@ -6,6 +6,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 import { formatDateThai } from "@/lib/th-date";
 import {
   createSearchSynonym,
@@ -214,9 +215,7 @@ const EditableRow = ({
   return (
     <tr
       className={`border-b border-gray-50 transition-colors ${
-        row.isActive
-          ? "hover:bg-gray-50 dark:hover:bg-white/5"
-          : "bg-gray-50 opacity-60 dark:bg-white/5"
+        getAdminMasterRowClass(row.isActive)
       }`}
     >
       <td className="px-4 py-3 font-medium text-gray-800 dark:text-slate-100">{row.term}</td>
@@ -241,9 +240,9 @@ const EditableRow = ({
       </td>
       <td className="px-4 py-3">
         {row.isActive ? (
-          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+          <AdminStatusBadge tone={getAdminActiveBadgeTone(row.isActive)}>ใช้งาน</AdminStatusBadge>
         ) : (
-          <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
+          <AdminStatusBadge tone={getAdminActiveBadgeTone(row.isActive)}>ยกเลิก</AdminStatusBadge>
         )}
       </td>
       <td className="px-4 py-3 text-right">

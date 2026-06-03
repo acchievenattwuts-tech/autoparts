@@ -20,6 +20,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 type CategoryRow = Pick<Category, "id" | "name" | "slug" | "isActive" | "createdAt">;
 
@@ -204,7 +205,7 @@ const EditableRow = ({
   return (
     <tr
       className={`border-b border-gray-50 transition-colors ${
-        category.isActive ? "hover:bg-gray-50 dark:hover:bg-white/5" : "bg-gray-50 opacity-60 dark:bg-white/5"
+        getAdminMasterRowClass(category.isActive)
       }`}
     >
       <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
@@ -228,9 +229,9 @@ const EditableRow = ({
       </td>
       <td className="px-4 py-3">
         {category.isActive ? (
-          <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+          <AdminStatusBadge tone={getAdminActiveBadgeTone(category.isActive)}>ใช้งาน</AdminStatusBadge>
         ) : (
-          <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
+          <AdminStatusBadge tone={getAdminActiveBadgeTone(category.isActive)}>ยกเลิก</AdminStatusBadge>
         )}
       </td>
       <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{formatDateThai(category.createdAt)}</td>

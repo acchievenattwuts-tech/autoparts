@@ -6,6 +6,7 @@ import { createCarBrand, toggleCarBrand, createCarModel, toggleCarModel } from "
 import { CarBrand, CarModel } from "@/lib/generated/prisma";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 type CarBrandWithModels = CarBrand & { carModels: CarModel[] };
 
@@ -93,8 +94,8 @@ const BrandAccordion = ({
   };
 
   return (
-    <div className={`overflow-hidden rounded-xl border ${brand.isActive ? "border-gray-200 dark:border-white/10" : "border-gray-200 opacity-60 dark:border-white/10"}`}>
-      <div className={`flex items-center justify-between px-5 py-4 transition-colors ${brand.isActive ? "bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10" : "bg-gray-100 dark:bg-white/5"}`}>
+    <div className={`overflow-hidden rounded-xl border border-gray-200 dark:border-white/10 ${getAdminMasterRowClass(brand.isActive)}`}>
+      <div className={`flex items-center justify-between px-5 py-4 transition-colors ${brand.isActive ? "bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10" : "bg-transparent"}`}>
         <button type="button" className="flex flex-1 items-center gap-3 text-left" onClick={() => setIsOpen(!isOpen)}>
           {isOpen ? (
             <ChevronDown size={18} className="shrink-0 text-gray-500 dark:text-slate-400" />
@@ -106,7 +107,7 @@ const BrandAccordion = ({
             {brand.carModels.length} รุ่น
           </span>
           {!brand.isActive && (
-            <AdminStatusBadge tone="muted">ยกเลิก</AdminStatusBadge>
+            <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge>
           )}
         </button>
         {canCancel && (
@@ -132,11 +133,11 @@ const BrandAccordion = ({
                 <div
                   key={model.id}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${
-                    model.isActive ? "bg-gray-100 dark:bg-white/10" : "bg-gray-50 opacity-60 dark:bg-white/5"
+                    model.isActive ? "bg-gray-100 dark:bg-white/10" : getAdminMasterRowClass(model.isActive)
                   }`}
                 >
                   <span className="text-sm text-gray-700 dark:text-slate-200">{model.name}</span>
-                  {!model.isActive && <span className="text-xs text-gray-400 dark:text-slate-500">(ยกเลิก)</span>}
+                  {!model.isActive && <AdminStatusBadge tone={getAdminActiveBadgeTone(model.isActive)}>ยกเลิก</AdminStatusBadge>}
                   {canCancel && (
                     <button
                       onClick={() => handleToggleModel(model.id, model.isActive)}

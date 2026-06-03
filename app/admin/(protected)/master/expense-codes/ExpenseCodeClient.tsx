@@ -6,6 +6,7 @@ import { Plus, CheckCircle, Pencil, Check, X } from "lucide-react";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 const inputCls =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-orange-400/30";
@@ -228,9 +229,7 @@ export const ExpenseCodeRow = ({
   return (
     <tr
       className={`border-t border-gray-50 transition-colors ${
-        expenseCode.isActive
-          ? "hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/[0.03]"
-          : "bg-gray-50 opacity-60 dark:border-white/10 dark:bg-slate-900/50"
+        getAdminMasterRowClass(expenseCode.isActive)
       }`}
     >
       <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-orange-200">{expenseCode.code}</td>
@@ -248,7 +247,7 @@ export const ExpenseCodeRow = ({
         {expenseCode.description ?? <span className="text-gray-300 dark:text-slate-600">-</span>}
       </td>
       <td className="px-4 py-3 text-center">
-        <AdminStatusBadge tone={expenseCode.isActive ? "success" : "muted"}>
+        <AdminStatusBadge tone={getAdminActiveBadgeTone(expenseCode.isActive)}>
           {expenseCode.isActive ? "ใช้งาน" : "ยกเลิก"}
         </AdminStatusBadge>
       </td>

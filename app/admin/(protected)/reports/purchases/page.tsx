@@ -1,3 +1,4 @@
+import { getAdminReportRowClass } from "@/lib/admin-status-presentation";
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
@@ -242,7 +243,7 @@ export default async function PurchasesReportPage({ searchParams }: PageProps) {
             {rows.map((row: PurchaseRow) => (
               <tr
                 key={`${row.docNo}-${row.rowNo}`}
-                className={`transition-colors hover:bg-gray-50 ${row.status === "CANCELLED" ? "opacity-50 line-through" : ""}`}
+                className={`transition-colors ${getAdminReportRowClass(row.status === "CANCELLED")}`}
               >
                 <td className="px-3 py-2 text-center tabular-nums text-gray-400">{row.rowNo}</td>
                 <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>

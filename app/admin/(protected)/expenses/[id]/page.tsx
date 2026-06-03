@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("expenses.view");
@@ -53,7 +54,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <div className="flex items-center gap-3">
             <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">บันทึกค่าใช้จ่าย</h1>
             {expense.status === "CANCELLED" ? (
-              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">ยกเลิกแล้ว</span>
+              <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
             ) : (
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
             )}

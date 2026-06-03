@@ -15,6 +15,7 @@ import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
+import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import {
@@ -136,7 +137,7 @@ const ReceiptsPage = async ({
               </tr>
             ) : (
               receipts.map((r, idx) => (
-                <tr key={r.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${r.status === "CANCELLED" ? "bg-rose-50/60 opacity-70 dark:bg-rose-400/10" : "hover:bg-slate-50/70 dark:hover:bg-white/5"}`}>
+                <tr key={r.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${getAdminDocumentRowClass(r.status === "CANCELLED")}`}>
                   <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                   <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{r.receiptNo}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(r.receiptDate)}</td>

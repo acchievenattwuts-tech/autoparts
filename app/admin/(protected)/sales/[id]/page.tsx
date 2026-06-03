@@ -8,6 +8,7 @@ import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
@@ -227,7 +228,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             <div className="flex items-center gap-3">
               <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">สรุปข้อมูลใบขาย</h1>
               {sale.status === "CANCELLED" ? (
-                <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">ยกเลิกแล้ว</span>
+                <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
               ) : (
                 <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
               )}

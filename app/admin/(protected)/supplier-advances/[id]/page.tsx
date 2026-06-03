@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import SupplierAdvanceCancelButton from "../SupplierAdvanceCancelButton";
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -65,9 +66,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
           <div className="flex items-center gap-3">
             <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">รายละเอียดเงินมัดจำซัพพลายเออร์</h1>
             {advance.status === "CANCELLED" ? (
-              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">
-                ยกเลิกแล้ว
-              </span>
+              <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
             ) : (
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                 ใช้งาน
@@ -193,9 +192,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
                     </td>
                     <td className="px-3 py-2">
                       {item.payment.status === "CANCELLED" ? (
-                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-rose-500/20 dark:text-rose-300">
-                          ยกเลิกแล้ว
-                        </span>
+                        <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
                       ) : (
                         <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                           ใช้งาน
