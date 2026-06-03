@@ -1,3 +1,4 @@
+import { isLikelyNoiseQuery } from "@/lib/search-noise";
 import { buildSearchVariants, normalizeSearchText } from "@/lib/search-normalization";
 
 export type ProductSearchQualityBucket = "no-result" | "low-result";
@@ -35,6 +36,10 @@ export const classifyProductSearchCandidateAction = (
   normalizedQuery: string,
 ): ProductSearchCandidateAction => {
   if (!normalizedQuery) return "review-noise";
+
+  // Bot / keyboard-mashing / foreign-spam queries → flag as noise so they are
+  // never treated as a real gap (and excluded from synonym auto-apply).
+  if (isLikelyNoiseQuery(normalizedQuery)) return "review-noise";
 
   if (/\b(19|20|21)\d{2}\b/.test(normalizedQuery)) {
     return "fitment-year";

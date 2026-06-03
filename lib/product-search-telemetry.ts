@@ -1,3 +1,4 @@
+import { isLikelyNoiseQuery } from "@/lib/search-noise";
 import { normalizeSearchText } from "@/lib/search-normalization";
 
 type ProductSearchTelemetryInput = {
@@ -66,7 +67,10 @@ export const shouldLogProductSearchTelemetry = ({
 }: Pick<ProductSearchLogInputArgs, "input" | "resultCount">): boolean =>
   resultCount >= 0 &&
   resultCount <= LOW_RESULT_SEARCH_THRESHOLD &&
-  Boolean(cleanText(input.query, MAX_QUERY_LENGTH));
+  Boolean(cleanText(input.query, MAX_QUERY_LENGTH)) &&
+  // Skip bot / keyboard-mashing / foreign-spam queries so the no-result quality
+  // report reflects genuine customer misses, not noise.
+  !isLikelyNoiseQuery(input.query);
 
 export const buildProductSearchLogInput = ({
   input,

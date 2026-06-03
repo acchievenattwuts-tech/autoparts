@@ -97,13 +97,22 @@ const normalizeSearchQuery = (query?: string | null): string | undefined => {
   return normalized ? normalized : undefined;
 };
 
-/** Auto-detect a 4-digit year (1900-2200) in the user query. */
+/**
+ * Auto-detect a 4-digit model year (1900-2200) in the user query.
+ *
+ * Only treats a 4-digit number as a year when it stands alone as a
+ * whitespace-delimited token (e.g. "Vios 2010"). A number glued into a
+ * part-number / code token (e.g. "446610-1950", "EVISC-D1446610-1950") is NOT
+ * a year — otherwise the fitment-year filter would wrongly exclude that part.
+ */
 export const extractYearFromQuery = (query?: string | null): number | null => {
   if (!query) return null;
-  const match = query.match(/\b(19|20|21)\d{2}\b/);
-  if (!match) return null;
-  const y = parseInt(match[0], 10);
-  return y >= 1900 && y <= 2200 ? y : null;
+  for (const token of query.split(/\s+/)) {
+    if (!/^(19|20|21)\d{2}$/.test(token)) continue;
+    const y = parseInt(token, 10);
+    if (y >= 1900 && y <= 2200) return y;
+  }
+  return null;
 };
 
 const normalizeCarModelNames = (input: ProductSearchInput): string[] => {
@@ -465,38 +474,44 @@ async function searchProductIdsV2(
   const isYearOnlyQuery = targetYear !== null && /^\d{4}$/.test(normalizedQuery);
 
   // Year filter:
-  //  - Year-only query (e.g. "2010"): strict — require at least one fitment row
-  //    that explicitly covers the year. Exclude NULL/NULL rows so products
-  //    without year info don't flood results.
-  //  - Mixed query (e.g. "ผ้าเบรค Vios 2010"): lenient — also accept NULL/NULL
-  //    because the text-match clause already constrains the candidate set.
-  const yearFilterClause = targetYear !== null
-    ? isYearOnlyQuery
-      ? Prisma.sql`
-          AND EXISTS (
-            SELECT 1
-            FROM "ProductCarModel" pcm
-            WHERE pcm."productId" = psd.product_id
-              AND (
-                (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
-                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
-                OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
-              )
-          )
-        `
-      : Prisma.sql`
-          AND EXISTS (
-            SELECT 1
-            FROM "ProductCarModel" pcm
-            WHERE pcm."productId" = psd.product_id
-              AND (
-                (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
-                OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
-                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
-                OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
-              )
-          )
-        `
+  //  - Mixed query (e.g. "ผ้าเบรค Vios 2010"): lenient hard AND — also accept
+  //    NULL/NULL because the text-match clause already constrains the set.
+  //  - Year-only query (e.g. "1950"): do NOT hard-filter by year. A bare 4-digit
+  //    number is often a part-number fragment, so the year becomes one of
+  //    several OR candidate paths below (see yearOnlyFitmentExists) and
+  //    yearBoost still ranks true year matches highest.
+  const yearFilterClause = targetYear !== null && !isYearOnlyQuery
+    ? Prisma.sql`
+        AND EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          WHERE pcm."productId" = psd.product_id
+            AND (
+              (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
+              OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+              OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+              OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+            )
+        )
+      `
+    : Prisma.empty;
+
+  // For year-only queries: an explicit fitment-year cover is one acceptable
+  // candidate path, UNIONed with the text/code/oem clause below (so a 4-digit
+  // part-number fragment like "1950" still matches via product_code/oem/text).
+  const yearOnlyFitmentExists = targetYear !== null && isYearOnlyQuery
+    ? Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pcm
+          WHERE pcm."productId" = psd.product_id
+            AND (
+              (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+              OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+              OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+            )
+        )
+      `
     : Prisma.empty;
 
   // Year boost (Q3=C): +700 when a fitment row covers the requested year explicitly
@@ -735,6 +750,31 @@ async function searchProductIdsV2(
     };
   }
 
+  // Candidate-selection OR clause (shared by year-only and non-year queries).
+  // A product enters the ranked set if it matches the query by code/name/oem/
+  // keyword/alias/free-text/FTS/trigram.
+  const textMatchOr = Prisma.sql`
+    f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+    OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
+    OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR psd.search_document @@ ${tsQuery}
+    OR similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
+    OR similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
+    OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
+    OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
+  `;
+
+  // Year-only queries union the text clause with a fitment-year cover so they
+  // match BOTH part-number fragments and products fitting that year.
+  const candidateClause = isYearOnlyQuery
+    ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists})`
+    : Prisma.sql`AND (${textMatchOr})`;
+
   const rows = await db.$queryRaw<RankedSearchRow[]>(Prisma.sql`
     WITH ranked AS (
       SELECT
@@ -789,21 +829,7 @@ async function searchProductIdsV2(
         ) AS score
       FROM product_search_documents psd
       ${exactScope}
-        ${isYearOnlyQuery ? Prisma.empty : Prisma.sql`AND (
-          f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
-          OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
-          OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
-          OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
-          OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
-          OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
-          OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))
-          OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
-          OR psd.search_document @@ ${tsQuery}
-          OR similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
-          OR similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
-          OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
-          OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
-        )`}
+        ${candidateClause}
     )
     SELECT
       ranked.product_id,

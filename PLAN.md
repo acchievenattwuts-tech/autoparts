@@ -51,6 +51,11 @@
   - [x] Phase F4 - Fitment/Year Remediation Flow
   - [x] Phase F5 - Closed-Loop Measurement
   - [x] Phase F6 - Guarded Auto-Apply
+  - [x] Phase F7 - Search-quality hardening (2026-06-03, จาก production diagnostic)
+    - [x] แก้ year-fragment bug: เลขชิ้นส่วน 4 หลัก (เช่น `1950`, `446610-1950`) ไม่ถูกตีความเป็นปีรถอีกต่อไป — `extractYearFromQuery` รับเฉพาะ token ปีเดี่ยว และ year-only query ใช้ UNION (text/code/oem ∪ fitment-year) แทน strict-only (`lib/product-search.ts`)
+    - [x] กรอง bot/keyboard-mash/foreign-spam ออกจาก telemetry + จำแนกเป็น `review-noise` (`lib/search-noise.ts` wired เข้า `product-search-telemetry.ts` + `product-search-log-analysis.ts`)
+    - [x] เติม synonym EN↔TH รุ่นรถยอดนิยมเชิงรุก 51 cluster (idempotent + audited): `prisma/scripts/seed-model-synonyms.ts` — SearchSynonym 134→143 terms
+    - [ ] (Ops) รีวิว no-result report รายสัปดาห์ → เติม SearchSynonym/ProductAlias สำหรับคำที่ miss จริง (ใช้หน้า `reports/product-search-no-result` ที่ตอนนี้กรอง noise แล้ว)
 
 ### 4. Shopee Open Platform Integration (โมดูลแยกอิสระ)
 - สถานะ: **Phase A–E เสร็จ · Phase F core เสร็จ** (schema + sale-core refactor + create-sale service) · เหลือ Phase F UI (approval/filter/report/dashboard)
