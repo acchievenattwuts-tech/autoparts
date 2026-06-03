@@ -40,6 +40,8 @@ const ProductPreviewPage = async ({ params }: Props) => {
       isActive: true,
       salePrice: true,
       costPrice: true,
+      purchaseLastPrice: true,
+      purchaseLastDate: true,
       avgCost: true,
       stock: true,
       minStock: true,
@@ -200,10 +202,16 @@ const ProductPreviewPage = async ({ params }: Props) => {
           <span className="text-xs text-gray-400 dark:text-slate-500">/{product.saleUnitName}</span>
         </MetricCard>
 
-        <MetricCard label="ต้นทุน (ล่าสุด)">
+        <MetricCard label="ราคาซื้อ (ล่าสุด)">
           <span className="text-lg font-semibold text-gray-800 dark:text-slate-100">
-            ฿{Number(product.costPrice).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
+            ฿{Number(product.purchaseLastPrice ?? 0).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
           </span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">/{product.purchaseUnitName}</span>
+          {product.purchaseLastDate && (
+            <span className="basis-full text-xs text-gray-500 dark:text-slate-400">
+              {formatDateTimeThai(product.purchaseLastDate)}
+            </span>
+          )}
         </MetricCard>
 
         <MetricCard label="ต้นทุนเฉลี่ย (MAVG)">
