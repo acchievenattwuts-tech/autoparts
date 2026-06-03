@@ -12,7 +12,7 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { getAllPermissionKeys, hasPermissionAccess } from "@/lib/access-control";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
-import { formatDateTimeThai } from "@/lib/th-date";
+import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -209,7 +209,7 @@ const ProductPreviewPage = async ({ params }: Props) => {
           <span className="text-xs text-gray-400 dark:text-slate-500">/{product.purchaseUnitName}</span>
           {product.purchaseLastDate && (
             <span className="basis-full text-xs text-gray-500 dark:text-slate-400">
-              {formatDateTimeThai(product.purchaseLastDate)}
+              {formatDateThai(product.purchaseLastDate)}
             </span>
           )}
         </MetricCard>
