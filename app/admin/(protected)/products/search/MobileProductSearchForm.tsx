@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, useTransition, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 
-import NavLink from "@/components/shared/NavLink";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 type Option = { id: string; name: string };
@@ -21,6 +20,7 @@ type FilterDraft = {
   statusFilter: string;
   trackingFilter: string;
 };
+type PendingAction = "search" | "filter" | "clear";
 
 type Props = {
   search?: string;
@@ -85,6 +85,8 @@ export default function MobileProductSearchForm({
   currentSearchHref,
 }: Props) {
   const router = useRouter();
+  const [isRoutePending, startRouteTransition] = useTransition();
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [draft, setDraft] = useState<FilterDraft>({
     categoryId: categoryId ?? "",
@@ -114,9 +116,26 @@ export default function MobileProductSearchForm({
     statusFilter,
     trackingFilter,
   ].filter(Boolean).length;
+  const isSubmitting = isRoutePending || pendingAction !== null;
+
+  useEffect(() => {
+    setPendingAction(null);
+  }, [currentSearchHref]);
+
+  const navigateWithFeedback = (href: string, action: PendingAction) => {
+    if (href === currentSearchHref) {
+      setPendingAction(null);
+      return;
+    }
+
+    setPendingAction(action);
+    startRouteTransition(() => {
+      router.push(href);
+    });
+  };
 
   const searchWithCurrentFilters = (query: string) => {
-    router.push(
+    navigateWithFeedback(
       buildUrl({
         search: query.trim(),
         categoryId,
@@ -129,17 +148,16 @@ export default function MobileProductSearchForm({
         statusFilter,
         trackingFilter,
       }),
+      "search",
     );
   };
 
   const applyFilters = () => {
-    router.push(buildUrl({ search, ...draft }));
-    setFilterOpen(false);
+    navigateWithFeedback(buildUrl({ search, ...draft }), "filter");
   };
 
   const clearFilters = () => {
-    router.push(buildUrl({ search }));
-    setFilterOpen(false);
+    navigateWithFeedback(buildUrl({ search }), "clear");
   };
 
   const setSingle = (key: keyof FilterDraft, value: string) => {
@@ -163,16 +181,17 @@ export default function MobileProductSearchForm({
             enhanced="mobile"
             onSubmit={searchWithCurrentFilters}
             adminReturnTo={currentSearchHref}
-            inputClassName="h-12 rounded-xl border-gray-300 bg-white text-[15px] shadow-sm dark:border-white/10 dark:bg-slate-900"
+            inputClassName={`h-12 rounded-xl border-gray-300 bg-white text-[15px] shadow-sm dark:border-white/10 dark:bg-slate-900 ${isSubmitting ? "opacity-75" : ""}`}
           />
         </div>
         <button
           type="button"
           onClick={() => setFilterOpen(true)}
+          disabled={isSubmitting}
           className="relative flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 text-[#1e3a5f] shadow-sm transition active:scale-95 dark:border-white/10 dark:bg-slate-900 dark:text-sky-300"
           aria-label="เปิดตัวกรอง"
         >
-          <SlidersHorizontal size={19} />
+          {pendingAction === "filter" ? <Loader2 size={19} className="animate-spin" /> : <SlidersHorizontal size={19} />}
           <span className="hidden text-sm font-semibold sm:inline">ตัวกรอง</span>
           {activeFilterCount > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1 text-[11px] font-bold text-white">
@@ -182,19 +201,28 @@ export default function MobileProductSearchForm({
         </button>
       </div>
 
+      {isSubmitting ? (
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100">
+          <Loader2 size={14} className="animate-spin" />
+          <span>{pendingAction === "filter" ? "กำลังกรองสินค้า..." : pendingAction === "clear" ? "กำลังล้างตัวกรอง..." : "กำลังค้นหาสินค้า..."}</span>
+        </div>
+      ) : null}
+
       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500 dark:text-slate-400">
         <span className="inline-flex items-center gap-1">
           <Search size={13} />
           พบ {resultCount.toLocaleString("th-TH")} รายการ
         </span>
         {activeFilterCount > 0 ? (
-          <NavLink
-            href="/admin/products/search"
-            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-600 transition hover:text-red-600 dark:bg-white/10 dark:text-slate-300"
+          <button
+            type="button"
+            onClick={() => navigateWithFeedback("/admin/products/search", "clear")}
+            disabled={isSubmitting}
+            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-600 transition hover:text-red-600 disabled:cursor-wait disabled:opacity-70 dark:bg-white/10 dark:text-slate-300"
           >
-            <RotateCcw size={12} />
+            {pendingAction === "clear" ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
             ล้างทั้งหมด
-          </NavLink>
+          </button>
         ) : null}
       </div>
 
@@ -210,6 +238,8 @@ export default function MobileProductSearchForm({
         setSingle={setSingle}
         clearFilters={clearFilters}
         applyFilters={applyFilters}
+        isSubmitting={isSubmitting}
+        pendingAction={pendingAction}
       />
     </div>
   );
@@ -227,6 +257,8 @@ type FilterSheetProps = {
   setSingle: (key: keyof FilterDraft, value: string) => void;
   clearFilters: () => void;
   applyFilters: () => void;
+  isSubmitting: boolean;
+  pendingAction: PendingAction | null;
 };
 
 function FilterSheet(props: FilterSheetProps) {
@@ -246,6 +278,8 @@ function FilterSheetContent({
   setSingle,
   clearFilters,
   applyFilters,
+  isSubmitting,
+  pendingAction,
 }: FilterSheetProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -283,12 +317,16 @@ function FilterSheetContent({
         aria-label="ปิดตัวกรอง"
         onClick={onClose}
       />
-      <div className="absolute inset-x-0 bottom-0 top-10 z-10 flex flex-col overflow-hidden rounded-t-[26px] border border-gray-200 bg-white text-slate-900 shadow-2xl dark:border-slate-600 dark:bg-[#111827] dark:text-white sm:mx-auto sm:max-w-md">
+      <div
+        className="absolute inset-x-0 bottom-0 top-10 z-10 flex flex-col overflow-hidden rounded-t-[26px] border border-gray-200 bg-white text-slate-900 shadow-2xl dark:border-slate-600 dark:bg-[#111827] dark:text-white sm:mx-auto sm:max-w-md"
+        aria-busy={isSubmitting}
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-5 py-4 dark:border-slate-600 dark:bg-[#111827]">
           <h2 className="font-kanit text-lg font-semibold text-slate-950 dark:text-white">ตัวกรอง</h2>
           <button
             type="button"
             onClick={onClose}
+            disabled={isSubmitting}
             className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white"
             aria-label="ปิด"
           >
@@ -296,7 +334,7 @@ function FilterSheetContent({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto bg-white px-5 py-4 dark:bg-[#111827]">
+        <div className="relative flex-1 overflow-y-auto bg-white px-5 py-4 dark:bg-[#111827]">
           <div className="space-y-6">
             <CheckboxList
               title="หมวดหมู่สินค้า"
@@ -357,25 +395,47 @@ function FilterSheetContent({
               onSelect={(id) => setSingle("trackingFilter", id)}
             />
           </div>
+          {isSubmitting ? <FilterPendingOverlay pendingAction={pendingAction} /> : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 bg-white px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] dark:border-slate-600 dark:bg-[#111827]">
           <button
             type="button"
             onClick={clearFilters}
-            className="flex h-12 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:border-red-300 hover:text-red-600 dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:hover:border-red-300 dark:hover:text-red-200"
+            disabled={isSubmitting}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:cursor-wait disabled:opacity-75 dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:hover:border-red-300 dark:hover:text-red-200"
           >
+            {pendingAction === "clear" ? <Loader2 size={15} className="animate-spin" /> : null}
             ล้าง
           </button>
           <button
             type="button"
             onClick={applyFilters}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#df7a32] text-sm font-semibold text-white transition hover:bg-[#cb6a25]"
+            disabled={isSubmitting}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#df7a32] text-sm font-semibold text-white transition hover:bg-[#cb6a25] disabled:cursor-wait disabled:opacity-85"
           >
-            <Check size={16} />
+            {pendingAction === "filter" ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
             ตกลง
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterPendingOverlay({ pendingAction }: { pendingAction: PendingAction | null }) {
+  const label =
+    pendingAction === "clear"
+      ? "กำลังล้างตัวกรอง..."
+      : pendingAction === "filter"
+        ? "กำลังกรองสินค้า..."
+        : "กำลังค้นหาสินค้า...";
+
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-6 backdrop-blur-sm dark:bg-[#111827]/82">
+      <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border border-orange-200 bg-white px-5 py-4 text-center text-sm font-semibold text-slate-900 shadow-xl dark:border-orange-300/40 dark:bg-slate-900 dark:text-white">
+        <Loader2 size={24} className="animate-spin text-[#df7a32]" />
+        <span>{label}</span>
       </div>
     </div>
   );
