@@ -384,7 +384,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
           id: `product:${p.id}`,
           label: `${p.code} — ${p.name}`,
           sublabel: p.isActive ? undefined : "(ปิดการใช้งาน)",
-          href: `/admin/products/${p.id}`,
+          href: `/admin/products/${p.id}/preview`,
         })),
       });
     }

@@ -54,7 +54,7 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
 
   // Personal
   { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode" },
-  { id: "personal-change-password", label: "เปลี่ยนรหัสผ่าน", href: "/admin/profile", group: "personal", keywords: "password รหัสผ่าน profile" },
+  { id: "personal-change-password", label: "เปลี่ยนรหัสผ่าน", href: "/admin/profile/change-password", group: "personal", keywords: "password รหัสผ่าน profile" },
   { id: "personal-logout", label: "ออกจากระบบ", action: "logout", group: "personal", keywords: "logout signout ออก" },
 ];
 

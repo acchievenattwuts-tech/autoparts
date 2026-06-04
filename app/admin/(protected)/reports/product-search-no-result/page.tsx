@@ -10,6 +10,7 @@ import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatCard from "@/components/shared/AdminStatCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import FormSubmitButton from "@/components/shared/FormSubmitButton";
 import { db } from "@/lib/db";
 import { ProductSearchReviewStatus as PrismaProductSearchReviewStatus } from "@/lib/generated/prisma";
 import {
@@ -707,13 +708,12 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                 <p className="text-xs text-emerald-800 dark:text-emerald-100">
                   Apply จะสร้าง/อัปเดต SearchSynonym, บันทึก audit log, mark outcome เป็น applied และใส่ rollback note ให้ทุกรายการ
                 </p>
-                <button
-                  type="submit"
+                <FormSubmitButton
                   disabled={!autoApplyEnabled}
                   className="h-8 rounded-md bg-emerald-700 px-3 text-xs font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-white/10 dark:disabled:text-slate-500"
                 >
                   Auto-apply eligible
-                </button>
+                </FormSubmitButton>
               </form>
             ) : null}
 
@@ -785,12 +785,11 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
               <form key={window.key} action={refreshProductSearchClusterCache}>
                 <input type="hidden" name="windowKey" value={window.key} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <button
-                  type="submit"
+                <FormSubmitButton
                   className="h-9 rounded-md bg-violet-700 px-3 text-xs font-medium text-white hover:bg-violet-800 dark:bg-violet-600 dark:hover:bg-violet-500"
                 >
                   Refresh {window.label}
-                </button>
+                </FormSubmitButton>
               </form>
             ))}
           </div>

@@ -16,6 +16,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import FormSubmitButton from "@/components/shared/FormSubmitButton";
 import { cn } from "@/lib/utils";
 
 import {
@@ -238,12 +239,11 @@ export const ProductSearchReviewSheet = ({
                       />
                     </label>
                   </div>
-                  <button
-                    type="submit"
+                  <FormSubmitButton
                     className="mt-1 h-9 self-start rounded-md bg-[#1e3a5f] px-4 text-xs font-medium text-white hover:bg-[#163055] dark:bg-sky-700 dark:hover:bg-sky-600"
                   >
                     Apply synonym
-                  </button>
+                  </FormSubmitButton>
                 </form>
               </section>
             ) : null}
@@ -287,12 +287,11 @@ export const ProductSearchReviewSheet = ({
                       </select>
                     </label>
                   </div>
-                  <button
-                    type="submit"
+                  <FormSubmitButton
                     className="mt-1 h-9 self-start rounded-md bg-emerald-700 px-4 text-xs font-medium text-white hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
                   >
                     Add alias
-                  </button>
+                  </FormSubmitButton>
                 </form>
               </section>
             ) : null}
@@ -363,12 +362,11 @@ export const ProductSearchReviewSheet = ({
                       </label>
                     </div>
                   </div>
-                  <button
-                    type="submit"
+                  <FormSubmitButton
                     className="mt-1 h-9 self-start rounded-md bg-violet-700 px-4 text-xs font-medium text-white hover:bg-violet-800 dark:bg-violet-600 dark:hover:bg-violet-500"
                   >
                     Add fitment
-                  </button>
+                  </FormSubmitButton>
                 </form>
               </section>
             ) : null}
@@ -391,33 +389,30 @@ export const ProductSearchReviewSheet = ({
                 </label>
                 {/* Segmented control row with icons */}
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="submit"
+                  <FormSubmitButton
                     name="status"
                     value="ignored"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                    className="h-9 gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
                   >
                     <EyeOff className="h-3.5 w-3.5" />
                     Ignore
-                  </button>
-                  <button
-                    type="submit"
+                  </FormSubmitButton>
+                  <FormSubmitButton
                     name="status"
                     value="needs-investigation"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20"
+                    className="h-9 gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20"
                   >
                     <Search className="h-3.5 w-3.5" />
                     Needs investigation
-                  </button>
-                  <button
-                    type="submit"
+                  </FormSubmitButton>
+                  <FormSubmitButton
                     name="status"
                     value="duplicate"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-xs font-medium text-cyan-800 hover:bg-cyan-100 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200 dark:hover:bg-cyan-400/20"
+                    className="h-9 gap-1.5 rounded-md border border-cyan-200 bg-cyan-50 px-3 text-xs font-medium text-cyan-800 hover:bg-cyan-100 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200 dark:hover:bg-cyan-400/20"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     Duplicate
-                  </button>
+                  </FormSubmitButton>
                 </div>
               </form>
             </section>
