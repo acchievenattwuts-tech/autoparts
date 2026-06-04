@@ -23,6 +23,19 @@ type LeafletModule = typeof import("leaflet");
 const DEFAULT_CENTER: [number, number] = [13.7563, 100.5018];
 const DEFAULT_ZOOM = 13;
 
+// PC ไม่มีชิป GPS ต้องใช้ WiFi/IP positioning — การตั้ง enableHighAccuracy:true
+// บนเดสก์ท็อปจะทำให้รอ GPS ที่ไม่มีจน timeout จึงเปิด high accuracy เฉพาะมือถือ
+const isMobileDevice = (): boolean =>
+  typeof navigator !== "undefined" &&
+  /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
+
+// ข้อความ error ตามรหัสของ GeolocationPositionError (อ้างอิงรูปแบบจาก GpsUpdateBanner)
+const GEO_ERROR_MESSAGES: Record<number, string> = {
+  1: "ไม่ได้รับสิทธิ์ใช้ตำแหน่ง — กรุณาเปิดสิทธิ์ Location ของเบราว์เซอร์ และของ Windows (Settings → Privacy → Location)",
+  2: "หาตำแหน่งไม่ได้ — เครื่อง PC ที่ใช้ USB WiFi อาจหาพิกัดไม่ได้ กรุณาแตะแผนที่ ค้นหาสถานที่ หรือกรอกพิกัดแทน",
+  3: "หมดเวลาค้นหาตำแหน่ง — กรุณาลองใหม่ หรือแตะแผนที่เพื่อปักหมุด",
+};
+
 function createPinIcon(L: LeafletModule) {
   return L.divIcon({
     className: "",
@@ -50,6 +63,7 @@ const LocationPinPicker = ({
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const markerRef = useRef<import("leaflet").Marker | null>(null);
   const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState("");
   const [hasPin, setHasPin] = useState(lat !== null && lon !== null);
   const [manualLat, setManualLat] = useState(lat !== null ? lat.toFixed(6) : "");
   const [manualLon, setManualLon] = useState(lon !== null ? lon.toFixed(6) : "");
@@ -114,7 +128,7 @@ const LocationPinPicker = ({
       () => {
         setMapHint("ยังไม่ได้ปักหมุดปลายทาง — กดตำแหน่งปัจจุบันหรือแตะแผนที่เพื่อปักหมุด");
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+      { enableHighAccuracy: isMobileDevice(), timeout: 8000, maximumAge: 60000 },
     );
   };
 
@@ -210,23 +224,37 @@ const LocationPinPicker = ({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setGeoError("อุปกรณ์นี้ไม่รองรับการหาตำแหน่ง — กรุณาแตะแผนที่หรือกรอกพิกัด");
+      return;
+    }
+    setGeoError("");
     setLocating(true);
+    const highAccuracy = isMobileDevice();
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false);
+        setGeoError("");
         const { latitude, longitude } = pos.coords;
         void setMarker(latitude, longitude, 17);
         onChange(latitude, longitude);
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 10000 },
+      (err) => {
+        setLocating(false);
+        setGeoError(GEO_ERROR_MESSAGES[err.code] ?? "เกิดข้อผิดพลาดในการหาตำแหน่ง กรุณาลองใหม่");
+      },
+      {
+        enableHighAccuracy: highAccuracy,
+        timeout: highAccuracy ? 10000 : 12000,
+        maximumAge: highAccuracy ? 0 : 60000,
+      },
     );
   };
 
   const handleClear = () => {
     markerRef.current?.remove();
     markerRef.current = null;
+    setGeoError("");
     setHasPin(false);
     setMapHint("ยังไม่ได้ปักหมุดปลายทาง — กดตำแหน่งปัจจุบันหรือแตะแผนที่เพื่อปักหมุด");
     onChange(null, null);
@@ -345,6 +373,13 @@ const LocationPinPicker = ({
           )}
         </div>
       </div>
+
+      {geoError && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs font-medium text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-300">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          {geoError}
+        </p>
+      )}
 
       <div ref={searchContainerRef} className="relative">
         <div className="relative">
