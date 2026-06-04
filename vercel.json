@@ -7,6 +7,10 @@
     {
       "path": "/api/shopee/cron/pull-orders",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/search/cron/refresh-popularity",
+      "schedule": "0 18 * * *"
     }
   ]
 }

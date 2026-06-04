@@ -20,6 +20,7 @@
     "db:restore": "tsx --env-file=.env prisma/scripts/db-restore.ts",
     "db:push": "prisma db push --accept-data-loss && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "db:setup-search-v2": "tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
+    "refresh:search-popularity": "tsx --env-file=.env.local prisma/scripts/refresh-search-popularity.ts",
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",
     "backfill:fact-profit-channel": "tsx --env-file=.env prisma/scripts/backfill-fact-profit-channel.ts",
     "backfill:claim-stock": "tsx --env-file=.env prisma/scripts/backfill-claim-stock.ts",

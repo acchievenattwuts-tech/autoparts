@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { z } from "zod";
 import {
   getStorefrontProductSearchPageData,
@@ -7,6 +8,7 @@ import {
 } from "@/lib/storefront-product-search";
 import type { SearchProductsResult } from "@/lib/storefront-product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
+import { isLikelyBotUserAgent } from "@/lib/search-bot";
 
 const SearchInputSchema = z.object({
   q: z.string().max(200).optional(),
@@ -96,11 +98,13 @@ export async function searchProductsAction(
       priceMax: priceMax ?? null,
     });
 
+    const userAgent = (await headers()).get("user-agent");
     await logProductSearchTelemetry({
       input: searchInput,
       resultCount: result.total,
       source: "storefront",
       path: "/products/search",
+      isBot: isLikelyBotUserAgent(userAgent),
     });
     return result;
   } catch (error) {

@@ -25,6 +25,7 @@ type ProductSearchLogInputArgs = {
   resultCount: number;
   source: ProductSearchLogSource;
   path: string;
+  isBot?: boolean;
 };
 
 const MAX_QUERY_LENGTH = 200;
@@ -38,15 +39,19 @@ export const buildProductSearchDedupeKey = ({
   query,
   source,
   at,
+  isBot = false,
 }: {
   query: string;
   source: ProductSearchLogSource;
   at: Date;
+  isBot?: boolean;
 }): string => {
   const normalized = normalizeSearchText(query);
   if (!normalized) return "";
   const bucket = Math.floor(at.getTime() / DEDUPE_BUCKET_MS);
-  return `${normalized}|${source}|${bucket}`.slice(0, MAX_DEDUPE_KEY_LENGTH);
+  // Keep bot and human hits of the same query in separate rows so the bot flag
+  // is never overwritten by an upsert across the two traffic kinds.
+  return `${normalized}|${source}|${isBot ? "b1" : "b0"}|${bucket}`.slice(0, MAX_DEDUPE_KEY_LENGTH);
 };
 
 const cleanText = (value: string | null | undefined, maxLength = MAX_FILTER_VALUE_LENGTH): string | undefined => {
@@ -77,6 +82,7 @@ export const buildProductSearchLogInput = ({
   resultCount,
   source,
   path,
+  isBot = false,
 }: ProductSearchLogInputArgs) => {
   const query = cleanText(input.query, MAX_QUERY_LENGTH) ?? "";
   const filters = Object.fromEntries(
@@ -108,6 +114,7 @@ export const buildProductSearchLogInput = ({
     resultCount,
     source,
     path: cleanText(path, MAX_PATH_LENGTH) ?? "",
+    isBot,
   };
 };
 
@@ -122,6 +129,7 @@ export async function logProductSearchTelemetry(args: ProductSearchLogInputArgs)
       query: data.query,
       source: args.source,
       at: now,
+      isBot: data.isBot,
     });
 
     // Fire-and-forget: telemetry must never block the search response.

@@ -1,10 +1,15 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { ChevronDown, Database, Search, Store, Warehouse, Wand2 } from "lucide-react";
 
+import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import AdminStatCard from "@/components/shared/AdminStatCard";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { db } from "@/lib/db";
 import { ProductSearchReviewStatus as PrismaProductSearchReviewStatus } from "@/lib/generated/prisma";
 import {
@@ -109,16 +114,18 @@ const getReviewStatusLabel = (status?: PrismaProductSearchReviewStatus): string 
   return labels[status];
 };
 
-const getReviewStatusClass = (status?: PrismaProductSearchReviewStatus): string => {
+type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info" | "pending" | "muted";
+
+const getReviewStatusTone = (status?: PrismaProductSearchReviewStatus): BadgeTone => {
   const key = status ?? PrismaProductSearchReviewStatus.PENDING;
-  const classes: Record<PrismaProductSearchReviewStatus, string> = {
-    PENDING: "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-slate-200",
-    APPLIED: "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-200",
-    IGNORED: "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300",
-    NEEDS_INVESTIGATION: "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-200",
-    DUPLICATE: "bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-200",
+  const tones: Record<PrismaProductSearchReviewStatus, BadgeTone> = {
+    PENDING: "neutral",
+    APPLIED: "success",
+    IGNORED: "muted",
+    NEEDS_INVESTIGATION: "warning",
+    DUPLICATE: "info",
   };
-  return classes[key];
+  return tones[key];
 };
 
 const getClosedLoopLabel = (status: ProductSearchClosedLoopStatus): string => {
@@ -131,14 +138,14 @@ const getClosedLoopLabel = (status: ProductSearchClosedLoopStatus): string => {
   return labels[status];
 };
 
-const getClosedLoopClass = (status: ProductSearchClosedLoopStatus): string => {
-  const classes: Record<ProductSearchClosedLoopStatus, string> = {
-    unmeasured: "bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-slate-200",
-    improved: "bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-200",
-    unchanged: "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-200",
-    regressed: "bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200",
+const getClosedLoopTone = (status: ProductSearchClosedLoopStatus): BadgeTone => {
+  const tones: Record<ProductSearchClosedLoopStatus, BadgeTone> = {
+    unmeasured: "neutral",
+    improved: "success",
+    unchanged: "warning",
+    regressed: "danger",
   };
-  return classes[status];
+  return tones[status];
 };
 
 const getAutoApplyReasonLabel = (reason: ProductSearchAutoApplyReason): string => {
@@ -169,6 +176,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
     ? (params.outcomeStatus as OutcomeStatusFilter)
     : "all";
   const autoApplyDryRun = params.autoApplyDryRun === "1";
+  const includeBots = params.includeBots === "1";
   const clusterPage = Math.max(1, parseInt(params.clusterPage ?? "1", 10) || 1);
   const autoApplyEnabled = await getSiteConfig()
     .then((config) => config.productSearchAutoApplySynonymsEnabled)
@@ -192,6 +200,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
 
   const where = {
     ...resultCountWhere,
+    ...(includeBots ? {} : { isBot: false }),
     ...(source ? { source } : {}),
     ...(search ? { query: { contains: search, mode: "insensitive" as const } } : {}),
     ...((from || to) ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
@@ -456,7 +465,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <AdminPageHeader
         title="Product Search Quality"
         description={`ติดตามคำค้นหาที่ไม่พบผลลัพธ์และคำค้นหาที่ได้ผลลัพธ์น้อยกว่า ${LOW_RESULT_SEARCH_THRESHOLD} รายการ เพื่อใช้ปรับ SearchSynonym, ProductAlias/OEM และ fitment`}
@@ -464,6 +473,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
 
       <FlashMessage f2Applied={f2Applied} f2Error={f2Error} />
 
+      <AdminFilterToolbar className="mb-0">
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
           ตั้งแต่วันที่
@@ -532,6 +542,10 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             className="h-9 w-[18rem] rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </label>
+        <label className="flex h-9 items-center gap-2 self-end rounded-md border border-input bg-background px-3 text-xs font-medium text-gray-600 dark:text-slate-300">
+          <input type="checkbox" name="includeBots" value="1" defaultChecked={includeBots} className="h-4 w-4 accent-sky-600" />
+          รวม bot
+        </label>
         <AdminSearchSubmitButton className="h-9 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] dark:bg-sky-700 dark:hover:bg-sky-600">
           แสดงรายการ
         </AdminSearchSubmitButton>
@@ -542,101 +556,83 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
           ล้าง
         </Link>
       </AdminSearchForm>
+      </AdminFilterToolbar>
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-          <p className="text-xs text-gray-500 dark:text-slate-400">รวมตามตัวกรอง</p>
-          <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{total.toLocaleString("th-TH")}</p>
+      {/* ── KPI group 1: Search overview ── */}
+      <section className="space-y-2.5">
+        <h2 className="flex items-center gap-2 font-kanit text-sm font-semibold text-slate-600 dark:text-slate-300">
+          <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+          ภาพรวมคำค้น
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <AdminStatCard label="รวมตามตัวกรอง" value={total.toLocaleString("th-TH")} />
+          <AdminStatCard label="No-result" accent="danger" value={noResultTotal.toLocaleString("th-TH")} />
+          <AdminStatCard label="Low-result" accent="warning" value={lowResultTotal.toLocaleString("th-TH")} />
+          <AdminStatCard label="หน้าร้าน" accent="info" icon={<Store className="h-4 w-4" />} value={storefrontTotal.toLocaleString("th-TH")} />
+          <AdminStatCard label="หลังบ้าน" icon={<Warehouse className="h-4 w-4" />} value={adminTotal.toLocaleString("th-TH")} />
         </div>
-        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 shadow-sm dark:border-rose-400/20 dark:bg-rose-400/10">
-          <p className="text-xs text-rose-700 dark:text-rose-200">No-result</p>
-          <p className="font-kanit text-2xl font-bold text-rose-800 dark:text-rose-100">{noResultTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 shadow-sm dark:border-orange-400/20 dark:bg-orange-400/10">
-          <p className="text-xs text-orange-700 dark:text-orange-200">Low-result</p>
-          <p className="font-kanit text-2xl font-bold text-orange-800 dark:text-orange-100">{lowResultTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-4 shadow-sm dark:border-cyan-400/20 dark:bg-cyan-400/10">
-          <p className="text-xs text-cyan-700 dark:text-cyan-200">หน้าร้าน</p>
-          <p className="font-kanit text-2xl font-bold text-cyan-800 dark:text-cyan-100">{storefrontTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10">
-          <p className="text-xs text-amber-700 dark:text-amber-200">หลังบ้าน</p>
-          <p className="font-kanit text-2xl font-bold text-amber-800 dark:text-amber-100">{adminTotal.toLocaleString("th-TH")}</p>
-        </div>
-      </div>
+      </section>
 
-      <div
-        className="grid gap-3 md:grid-cols-3 xl:grid-cols-5"
-        title="ตัวเลขหลัก = review outcome ของ normalized query ที่อยู่ในช่วงตัวกรองด้านบน (Dep 2B); ตัวเลขรองในวงเล็บ = review ที่ทำในช่วงเดียวกัน (Dep 2A)"
+      {/* ── KPI group 2: Review status ── */}
+      <section className="space-y-2.5">
+        <h2
+          className="font-kanit text-sm font-semibold text-slate-600 dark:text-slate-300"
+          title="ตัวเลขหลัก = review outcome ของ normalized query ที่อยู่ในช่วงตัวกรองด้านบน (Dep 2B); hint ด้านล่าง = review ที่ทำในช่วงเดียวกัน (Dep 2A)"
+        >
+          สถานะการรีวิว
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <AdminStatCard label="Pending" value={outcomeInRangePendingTotal.toLocaleString("th-TH")} hint={`Reviewed in range: ${outcomeReviewedPendingTotal.toLocaleString("th-TH")}`} />
+          <AdminStatCard label="Applied" accent="success" value={outcomeInRangeAppliedTotal.toLocaleString("th-TH")} hint={`Reviewed in range: ${outcomeReviewedAppliedTotal.toLocaleString("th-TH")}`} />
+          <AdminStatCard label="Ignored" value={outcomeInRangeIgnoredTotal.toLocaleString("th-TH")} hint={`Reviewed in range: ${outcomeReviewedIgnoredTotal.toLocaleString("th-TH")}`} />
+          <AdminStatCard label="Needs investigation" accent="warning" value={outcomeInRangeNeedsInvestigationTotal.toLocaleString("th-TH")} hint={`Reviewed in range: ${outcomeReviewedNeedsInvestigationTotal.toLocaleString("th-TH")}`} />
+          <AdminStatCard label="Duplicate" accent="info" value={outcomeInRangeDuplicateTotal.toLocaleString("th-TH")} hint={`Reviewed in range: ${outcomeReviewedDuplicateTotal.toLocaleString("th-TH")}`} />
+        </div>
+      </section>
+
+      {/* ── KPI group 3: Closed-loop ── */}
+      <section className="space-y-2.5">
+        <h2 className="font-kanit text-sm font-semibold text-slate-600 dark:text-slate-300">
+          Closed-loop (วัดผลหลัง Apply)
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminStatCard label="Improved" accent="success" value={closedLoopSummary.improved.toLocaleString("th-TH")} />
+          <AdminStatCard label="Unchanged" accent="warning" value={closedLoopSummary.unchanged.toLocaleString("th-TH")} />
+          <AdminStatCard label="Regressed" accent="danger" value={closedLoopSummary.regressed.toLocaleString("th-TH")} />
+          <AdminStatCard label="Unmeasured" value={closedLoopSummary.unmeasured.toLocaleString("th-TH")} />
+        </div>
+      </section>
+
+      <details
+        open={autoApplyDryRun || undefined}
+        className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80"
       >
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-          <p className="text-xs text-gray-500 dark:text-slate-400">Review pending (in range)</p>
-          <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{outcomeInRangePendingTotal.toLocaleString("th-TH")}</p>
-          <p className="text-[11px] text-gray-500 dark:text-slate-400">Reviewed in range: {outcomeReviewedPendingTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10">
-          <p className="text-xs text-emerald-700 dark:text-emerald-200">Applied (in range)</p>
-          <p className="font-kanit text-2xl font-bold text-emerald-800 dark:text-emerald-100">{outcomeInRangeAppliedTotal.toLocaleString("th-TH")}</p>
-          <p className="text-[11px] text-emerald-700/80 dark:text-emerald-200/80">Reviewed in range: {outcomeReviewedAppliedTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <p className="text-xs text-slate-600 dark:text-slate-300">Ignored (in range)</p>
-          <p className="font-kanit text-2xl font-bold text-slate-800 dark:text-slate-100">{outcomeInRangeIgnoredTotal.toLocaleString("th-TH")}</p>
-          <p className="text-[11px] text-slate-600/80 dark:text-slate-300/80">Reviewed in range: {outcomeReviewedIgnoredTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10">
-          <p className="text-xs text-amber-700 dark:text-amber-200">Needs investigation (in range)</p>
-          <p className="font-kanit text-2xl font-bold text-amber-800 dark:text-amber-100">{outcomeInRangeNeedsInvestigationTotal.toLocaleString("th-TH")}</p>
-          <p className="text-[11px] text-amber-700/80 dark:text-amber-200/80">Reviewed in range: {outcomeReviewedNeedsInvestigationTotal.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-4 shadow-sm dark:border-cyan-400/20 dark:bg-cyan-400/10">
-          <p className="text-xs text-cyan-700 dark:text-cyan-200">Duplicate (in range)</p>
-          <p className="font-kanit text-2xl font-bold text-cyan-800 dark:text-cyan-100">{outcomeInRangeDuplicateTotal.toLocaleString("th-TH")}</p>
-          <p className="text-[11px] text-cyan-700/80 dark:text-cyan-200/80">Reviewed in range: {outcomeReviewedDuplicateTotal.toLocaleString("th-TH")}</p>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-400/10">
-          <p className="text-xs text-emerald-700 dark:text-emerald-200">Closed-loop improved</p>
-          <p className="font-kanit text-2xl font-bold text-emerald-800 dark:text-emerald-100">{closedLoopSummary.improved.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm dark:border-amber-400/20 dark:bg-amber-400/10">
-          <p className="text-xs text-amber-700 dark:text-amber-200">Closed-loop unchanged</p>
-          <p className="font-kanit text-2xl font-bold text-amber-800 dark:text-amber-100">{closedLoopSummary.unchanged.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4 shadow-sm dark:border-rose-400/20 dark:bg-rose-400/10">
-          <p className="text-xs text-rose-700 dark:text-rose-200">Closed-loop regressed</p>
-          <p className="font-kanit text-2xl font-bold text-rose-800 dark:text-rose-100">{closedLoopSummary.regressed.toLocaleString("th-TH")}</p>
-        </div>
-        <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-          <p className="text-xs text-gray-500 dark:text-slate-400">Closed-loop unmeasured</p>
-          <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{closedLoopSummary.unmeasured.toLocaleString("th-TH")}</p>
-        </div>
-      </div>
-
-      <section className="rounded-xl border border-sky-100 bg-sky-50 p-4 shadow-sm dark:border-sky-400/20 dark:bg-sky-400/10">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <h2 className="font-kanit text-base font-semibold text-sky-950 dark:text-sky-100">Guarded Auto-Apply</h2>
-            <p className="max-w-3xl text-xs text-sky-800 dark:text-sky-200">
-              Dry-run เฉพาะ candidate แบบ SearchSynonym ที่เสี่ยงต่ำเท่านั้น: ไม่แตะ ProductAlias/OEM, fitment/year, query ที่มีตัวเลขหรือรูปแบบ code และไม่เขียนข้อมูลจนกว่าจะเปิดจากตั้งค่าร้านค้า
-            </p>
-            <p className="text-xs font-medium text-sky-900 dark:text-sky-100">
-              Admin setting: {autoApplyEnabled ? "enabled" : "disabled"} ({autoApplyEnabled ? "เขียนจริงได้หลัง dry-run" : "แสดง dry-run ได้เท่านั้น"})
-            </p>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Wand2 className="h-4 w-4 text-sky-500 dark:text-sky-300" />
+            <span className="font-kanit text-base font-semibold text-slate-950 dark:text-slate-50">Guarded Auto-Apply</span>
+            <AdminStatusBadge tone={autoApplyEnabled ? "success" : "muted"}>
+              {autoApplyEnabled ? "enabled" : "disabled"}
+            </AdminStatusBadge>
           </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-3 border-t border-gray-100 px-4 py-4 dark:border-white/10 sm:px-5">
+          <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">
+            Dry-run เฉพาะ candidate แบบ SearchSynonym ที่เสี่ยงต่ำเท่านั้น: ไม่แตะ ProductAlias/OEM, fitment/year, query ที่มีตัวเลขหรือรูปแบบ code และไม่เขียนข้อมูลจนกว่าจะเปิดจากตั้งค่าร้านค้า
+          </p>
+          <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            Admin setting: {autoApplyEnabled ? "enabled" : "disabled"} ({autoApplyEnabled ? "เขียนจริงได้หลัง dry-run" : "แสดง dry-run ได้เท่านั้น"})
+          </p>
           <Link
             href={autoApplyDryRunUrl}
             className="inline-flex h-9 items-center justify-center rounded-md bg-sky-700 px-4 text-sm font-medium text-white hover:bg-sky-800 dark:bg-sky-600 dark:hover:bg-sky-500"
           >
             Run dry-run
           </Link>
-        </div>
 
         {autoApplyDryRun ? (
-          <div className="mt-4 space-y-3">
+          <div className="mt-1 space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-white/70 bg-white p-3 dark:border-white/10 dark:bg-slate-950/60">
                 <p className="text-xs text-gray-500 dark:text-slate-400">Eligible</p>
@@ -703,16 +699,26 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             </div>
           </div>
         ) : null}
-      </section>
+        </div>
+      </details>
 
-      <section className="rounded-xl border border-violet-100 bg-violet-50 p-4 shadow-sm dark:border-violet-400/20 dark:bg-violet-400/10">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <details className="group overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/5 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Database className="h-4 w-4 text-violet-500 dark:text-violet-300" />
+            <span className="font-kanit text-base font-semibold text-slate-950 dark:text-slate-50">Cluster cache (rolling windows)</span>
+            <AdminStatusBadge tone={useCache ? "success" : cacheStaleButPresent ? "warning" : "muted"}>
+              {useCache ? "ใช้ cache" : "live aggregation"}
+            </AdminStatusBadge>
+          </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-4 dark:border-white/10 sm:px-5 md:flex-row md:items-start md:justify-between">
           <div className="space-y-1">
-            <h2 className="font-kanit text-base font-semibold text-violet-950 dark:text-violet-100">Cluster cache (rolling windows)</h2>
-            <p className="max-w-3xl text-xs text-violet-800 dark:text-violet-200">
+            <p className="max-w-3xl text-xs text-slate-500 dark:text-slate-400">
               Cache cluster aggregation สำหรับช่วง {PRODUCT_SEARCH_CLUSTER_WINDOWS.map((w) => w.label).join(" / ")} — เมื่อตัวกรองวันที่ตรงกับช่วง cache ที่ fresh (&lt;1 ชม.) หน้านี้จะข้าม in-memory aggregation 500 แถวและอ่านจาก cache แทน ครอบคลุม cluster ทั้งหมด ไม่ใช่แค่ top 500
             </p>
-            <p className="text-xs font-medium text-violet-900 dark:text-violet-100">
+            <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
               สถานะปัจจุบัน: {matchedWindow
                 ? useCache
                   ? `กำลังใช้ cache "${matchedWindow.label}" (${cachedRows.length} clusters, computed ${cacheComputedAt ? formatDateTimeThai(cacheComputedAt) : "-"})`
@@ -737,15 +743,13 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             ))}
           </div>
         </div>
-      </section>
+      </details>
 
-      <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-        <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
-          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">Top normalized query clusters</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">
-            รวม query ที่สะกด/เว้นวรรค/เครื่องหมายต่างกันให้อยู่กลุ่มเดียวกัน แสดงสูงสุด {CLUSTER_LIMIT} กลุ่ม{useCache ? ` จาก cache "${matchedWindow?.label ?? ""}" (${cachedRows.length} clusters ทั้งหมด)` : `จากรายการล่าสุด ${ANALYSIS_LIMIT} รายการ (live aggregation)`}
-          </p>
-        </div>
+      <AdminSectionCard
+        title="Top normalized query clusters"
+        description={`รวม query ที่สะกด/เว้นวรรค/เครื่องหมายต่างกันให้อยู่กลุ่มเดียวกัน แสดงสูงสุด ${CLUSTER_LIMIT} กลุ่ม${useCache ? ` จาก cache "${matchedWindow?.label ?? ""}" (${cachedRows.length} clusters ทั้งหมด)` : `จากรายการล่าสุด ${ANALYSIS_LIMIT} รายการ (live aggregation)`}`}
+        bodyClassName="p-0"
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1e3a5f] text-white dark:bg-slate-800">
@@ -763,7 +767,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             <tbody className="divide-y divide-gray-100 dark:divide-white/10">
               {clusters.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-400 dark:text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-gray-400 dark:text-slate-500">
                     ไม่มีข้อมูลตามเงื่อนไขที่เลือก
                   </td>
                 </tr>
@@ -779,17 +783,17 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                     <td className="max-w-[18rem] px-3 py-2">
                       <div className="space-y-1">
                         <p className="font-medium text-gray-900 dark:text-slate-100">{cluster.normalizedQuery}</p>
-                        <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getReviewStatusClass(outcome?.status)}`}>
+                        <AdminStatusBadge tone={getReviewStatusTone(outcome?.status)}>
                           {getReviewStatusLabel(outcome?.status)}
-                        </span>
+                        </AdminStatusBadge>
                         {outcome?.note ? (
                           <p className="line-clamp-2 text-xs text-gray-500 dark:text-slate-400">{outcome.note}</p>
                         ) : null}
                         {closedLoop ? (
                           <div className="space-y-1">
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getClosedLoopClass(closedLoop.status)}`}>
+                            <AdminStatusBadge tone={getClosedLoopTone(closedLoop.status)}>
                               {getClosedLoopLabel(closedLoop.status)}
-                            </span>
+                            </AdminStatusBadge>
                             <p className="text-[11px] text-gray-500 dark:text-slate-400">
                               Before {closedLoop.baseline?.count ?? "-"} / After {closedLoop.after?.count ?? 0}
                             </p>
@@ -804,14 +808,14 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{cluster.count.toLocaleString("th-TH")}</td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{cluster.avgResultCount.toFixed(1)}</td>
                     <td className="px-3 py-2">
-                      <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-white/10 dark:text-slate-200">
+                      <AdminStatusBadge tone={cluster.bucket === "no-result" ? "danger" : "warning"}>
                         {getBucketLabel(cluster.bucket)}
-                      </span>
+                      </AdminStatusBadge>
                     </td>
                     <td className="px-3 py-2 text-gray-700 dark:text-slate-200">
-                      <span className="inline-flex rounded-full bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 dark:bg-sky-400/10 dark:text-sky-200">
+                      <AdminStatusBadge tone="info">
                         {getActionLabel(cluster.candidateAction)}
-                      </span>
+                      </AdminStatusBadge>
                     </td>
                     <td className="px-3 py-2">
                       <ProductSearchReviewSheet
@@ -872,13 +876,13 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             </div>
           </div>
         ) : null}
-      </section>
+      </AdminSectionCard>
 
-      <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-        <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
-          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">รายการล่าสุด</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">แสดงสูงสุด {RECENT_LIMIT} รายการล่าสุดตามตัวกรอง</p>
-        </div>
+      <AdminSectionCard
+        title="รายการล่าสุด"
+        description={`แสดงสูงสุด ${RECENT_LIMIT} รายการล่าสุดตามตัวกรอง`}
+        bodyClassName="p-0"
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-[#1e3a5f] text-white dark:bg-slate-800">
@@ -911,7 +915,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
             </tbody>
           </table>
         </div>
-      </section>
+      </AdminSectionCard>
     </div>
   );
 }

@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS product_search_documents (
   fitment_text text NOT NULL DEFAULT '',
   search_text text NOT NULL DEFAULT '',
   search_document tsvector NOT NULL,
+  stock integer NOT NULL DEFAULT 0,
+  sales_count integer NOT NULL DEFAULT 0,
   product_created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -42,6 +44,15 @@ ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS oem_text text NOT NULL DEFAULT '';
 ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS keyword_text text NOT NULL DEFAULT '';
+-- Phase Q7: popularity / availability ranking signals.
+-- stock is refreshed in real time via build_product_search_text (Product
+-- updates fire the refresh trigger). sales_count is a rolling 90-day units-
+-- sold figure maintained out-of-band by the refresh-search-popularity script
+-- (cron) -- the build function deliberately never overwrites it.
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS stock integer NOT NULL DEFAULT 0;
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS sales_count integer NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_is_active
   ON product_search_documents (is_active);
@@ -88,6 +99,19 @@ CREATE INDEX IF NOT EXISTS idx_psd_keyword_unaccent_trgm
   ON product_search_documents
   USING GIN (f_unaccent(keyword_text) gin_trgm_ops);
 
+-- Phase Q6: accent-insensitive trigram indexes on the "did you mean" candidate
+-- sources. Lets suggestDidYouMean filter with the % operator (index scan)
+-- instead of computing similarity() over EVERY Product / ProductAlias /
+-- SearchSynonym row on each (already-failed) query.
+CREATE INDEX IF NOT EXISTS idx_product_name_unaccent_trgm
+  ON "Product" USING GIN (f_unaccent(lower(name)) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_product_alias_unaccent_trgm
+  ON "ProductAlias" USING GIN (f_unaccent(lower(alias)) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_search_synonym_term_unaccent_trgm
+  ON "SearchSynonym" USING GIN (f_unaccent(lower(term)) gin_trgm_ops);
+
 -- Phase B: return-type changed (added oem_text, keyword_text) — must drop first
 DROP FUNCTION IF EXISTS build_product_search_text(text);
 
@@ -107,6 +131,7 @@ RETURNS TABLE (
   fitment_text text,
   search_text text,
   search_document tsvector,
+  stock integer,
   product_created_at timestamptz
 )
 LANGUAGE sql
@@ -170,6 +195,7 @@ AS $$
       COALESCE(fd.car_brand_text, '') AS car_brand_text,
       COALESCE(fd.car_model_text, '') AS car_model_text,
       COALESCE(fd.fitment_text, '') AS fitment_text,
+      p.stock AS stock,
       p."createdAt" AS product_created_at
     FROM "Product" p
     INNER JOIN "Category" c ON c.id = p."categoryId"
@@ -222,6 +248,7 @@ AS $$
         base.fitment_text
       )))
     ) AS search_document,
+    base.stock,
     base.product_created_at
   FROM base;
 $$;
@@ -251,6 +278,7 @@ BEGIN
     fitment_text,
     search_text,
     search_document,
+    stock,
     product_created_at,
     updated_at
   )
@@ -270,6 +298,7 @@ BEGIN
     built.fitment_text,
     built.search_text,
     built.search_document,
+    built.stock,
     built.product_created_at,
     now()
   FROM build_product_search_text(target_product_id) built
@@ -288,8 +317,11 @@ BEGIN
     fitment_text = EXCLUDED.fitment_text,
     search_text = EXCLUDED.search_text,
     search_document = EXCLUDED.search_document,
+    stock = EXCLUDED.stock,
     product_created_at = EXCLUDED.product_created_at,
     updated_at = now();
+  -- NOTE: sales_count is intentionally NOT touched here; it is owned by the
+  -- popularity refresh job so per-product edits never reset it.
 END;
 $$;
 
@@ -494,6 +526,7 @@ BEGIN
         fitment_text,
         search_text,
         search_document,
+        stock,
         product_created_at,
         updated_at
       )
@@ -513,6 +546,7 @@ BEGIN
         built.fitment_text,
         built.search_text,
         built.search_document,
+        built.stock,
         built.product_created_at,
         now()
       FROM next_batch nb
@@ -532,6 +566,7 @@ BEGIN
         fitment_text = EXCLUDED.fitment_text,
         search_text = EXCLUDED.search_text,
         search_document = EXCLUDED.search_document,
+        stock = EXCLUDED.stock,
         product_created_at = EXCLUDED.product_created_at,
         updated_at = now()
       RETURNING product_id

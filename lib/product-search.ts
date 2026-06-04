@@ -39,6 +39,7 @@ type ProductSearchInput = {
   yearMax?: number | null;
   priceMin?: number | null;
   priceMax?: number | null;
+  stockStatus?: "in_stock" | "low_stock" | "out_of_stock" | null;
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
@@ -212,6 +213,7 @@ const buildProductFilterWhere = (
     | "carBrandNames"
     | "priceMin"
     | "priceMax"
+    | "stockStatus"
   >,
 ): PrismaTypes.ProductWhereInput => {
   const {
@@ -260,6 +262,10 @@ const buildProductFilterWhere = (
     if (priceMin !== null) priceFilter.gte = priceMin;
     if (priceMax !== null) priceFilter.lte = priceMax;
     where.salePrice = priceFilter;
+  }
+
+  if (input.stockStatus === "out_of_stock") {
+    where.stock = { lte: 0 };
   }
 
   const effectiveCarBrandNames = carBrandName
@@ -404,6 +410,16 @@ async function searchProductIdsFallback(
   const yearMin = normalizeYearBound(input.yearMin);
   const yearMax = normalizeYearBound(input.yearMax);
   const where = applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
+
+  if (input.stockStatus === "in_stock" || input.stockStatus === "low_stock") {
+    const stockRows = await db.$queryRaw<{ id: string }[]>(
+      input.stockStatus === "in_stock"
+        ? Prisma.sql`SELECT id FROM "Product" WHERE stock > "minStock"`
+        : Prisma.sql`SELECT id FROM "Product" WHERE stock > 0 AND stock <= "minStock"`,
+    );
+    const stockIds = stockRows.map((r) => r.id);
+    where.id = { in: stockIds.length > 0 ? stockIds : ["__no-stock__"] };
+  }
   const skip = input.skip ?? 0;
   const take = input.take ?? 30;
   const order = input.order ?? "createdAtDesc";
@@ -676,6 +692,14 @@ async function searchProductIdsV2(
       `
     : Prisma.empty;
 
+  const stockStatusClause = input.stockStatus === "out_of_stock"
+    ? Prisma.sql`AND EXISTS (SELECT 1 FROM "Product" p WHERE p.id = psd.product_id AND p.stock <= 0)`
+    : input.stockStatus === "in_stock"
+    ? Prisma.sql`AND EXISTS (SELECT 1 FROM "Product" p WHERE p.id = psd.product_id AND p.stock > p."minStock")`
+    : input.stockStatus === "low_stock"
+    ? Prisma.sql`AND EXISTS (SELECT 1 FROM "Product" p WHERE p.id = psd.product_id AND p.stock > 0 AND p.stock <= p."minStock")`
+    : Prisma.empty;
+
   const exactScope = Prisma.sql`
     WHERE TRUE
       ${isActiveClause}
@@ -692,6 +716,7 @@ async function searchProductIdsV2(
       ${yearRangeClause}
       ${priceMinClause}
       ${priceMaxClause}
+      ${stockStatusClause}
   `;
 
   const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
@@ -825,7 +850,14 @@ async function searchProductIdsV2(
             similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) * 250,
             similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))) * 180,
             similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) * 120
-          )
+          ) +
+
+          -- Phase Q7: popularity / availability tie-breakers. Kept far below the
+          -- exact (1500) / OEM (1400) / contains (600) weights so a best-seller
+          -- or in-stock item only outranks an *otherwise equally relevant* one —
+          -- it can never push a weak match above a strong textual match.
+          CASE WHEN psd.stock > 0 THEN 60 ELSE 0 END +
+          LEAST(psd.sales_count, 100) * 1.2
         ) AS score
       FROM product_search_documents psd
       ${exactScope}
@@ -871,17 +903,23 @@ export async function suggestDidYouMean(
   const q = normalizeSearchQuery(rawQuery);
   if (!q || q.length < 2) return [];
 
-  // Minimum trigram similarity for a suggestion to be useful
-  const MIN_SIMILARITY = 0.25;
-
   try {
+    // Each candidate source is pre-filtered with the pg_trgm `%` operator so the
+    // GIN trigram indexes (Phase Q6) drive an index scan instead of a full-table
+    // similarity() pass. `%` uses pg_trgm.similarity_threshold (default 0.3);
+    // similarity() is then computed only on the small matched set for ranking.
     const rows = await db.$queryRaw<DidYouMeanRow[]>(Prisma.sql`
       WITH candidates AS (
-        SELECT name AS suggestion FROM "Product" WHERE "isActive" = true
+        SELECT name AS suggestion FROM "Product"
+          WHERE "isActive" = true
+            AND f_unaccent(lower(name)) % f_unaccent(lower(${q}))
         UNION ALL
         SELECT alias AS suggestion FROM "ProductAlias"
+          WHERE f_unaccent(lower(alias)) % f_unaccent(lower(${q}))
         UNION ALL
-        SELECT term AS suggestion FROM "SearchSynonym" WHERE "isActive" = true
+        SELECT term AS suggestion FROM "SearchSynonym"
+          WHERE "isActive" = true
+            AND f_unaccent(lower(term)) % f_unaccent(lower(${q}))
       ),
       scored AS (
         SELECT
@@ -897,7 +935,6 @@ export async function suggestDidYouMean(
           suggestion,
           score
         FROM scored
-        WHERE score >= ${MIN_SIMILARITY}
         ORDER BY lower(suggestion), score DESC
       )
       SELECT suggestion, score
@@ -951,6 +988,7 @@ export async function searchProductIds(
     yearMax: normalizeYearBound(input.yearMax),
     priceMin: normalizePriceBound(input.priceMin),
     priceMax: normalizePriceBound(input.priceMax),
+    stockStatus: input.stockStatus ?? null,
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",

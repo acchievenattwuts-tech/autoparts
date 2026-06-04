@@ -464,11 +464,13 @@ model ProductSearchLog {
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
   dedupeKey   String?  @unique @db.VarChar(280)
   hitCount    Int      @default(1)
+  isBot       Boolean  @default(false)
   updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   @@index([createdAt(sort: Desc)])
   @@index([source, createdAt(sort: Desc)])
   @@index([resultCount, createdAt(sort: Desc)])
+  @@index([isBot, createdAt(sort: Desc)])
 }
 
 model ProductSearchReviewOutcome {
