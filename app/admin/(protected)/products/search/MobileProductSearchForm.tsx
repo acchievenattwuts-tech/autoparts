@@ -153,10 +153,12 @@ export default function MobileProductSearchForm({
   };
 
   const applyFilters = () => {
+    setFilterOpen(false);
     navigateWithFeedback(buildUrl({ search, ...draft }), "filter");
   };
 
   const clearFilters = () => {
+    setFilterOpen(false);
     navigateWithFeedback(buildUrl({ search }), "clear");
   };
 
