@@ -14,6 +14,7 @@ import {
   MapPin,
   Megaphone,
   Package,
+  PackageSearch,
   Receipt,
   RefreshCw,
   RotateCcw,
@@ -110,6 +111,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
   {
     section: "ข้อมูลหลัก",
     items: [
+      { label: "ค้นสินค้าบนมือถือ", href: "/admin/products/search", icon: PackageSearch, permission: "products.view", keywords: "mobile product search ค้นสินค้า มือถือ app สินค้า" },
       { label: "สินค้า", href: "/admin/products", icon: Package, permission: "products.view", keywords: "products สินค้า" },
       { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view", keywords: "customers ลูกค้า" },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view", keywords: "suppliers ซัพพลายเออร์ master" },

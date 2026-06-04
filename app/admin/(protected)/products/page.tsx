@@ -86,6 +86,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     carBrandId,
     carModelId,
     isActive: searchIsActive,
+    stockStatus: stockStatus as "in_stock" | "low_stock" | "out_of_stock" | undefined,
     skip: (pageNum - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
     order: "codeDesc" as const,
@@ -184,16 +185,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     searchResult.ids,
   );
 
-  const products = stockStatus
-    ? rawProducts.filter((p) => {
-        const s = Number(p.stock);
-        const min = Number(p.minStock);
-        if (stockStatus === "in_stock") return s > min;
-        if (stockStatus === "low_stock") return s > 0 && s <= min;
-        if (stockStatus === "out_of_stock") return s <= 0;
-        return true;
-      })
-    : rawProducts;
+  const products = rawProducts;
 
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);

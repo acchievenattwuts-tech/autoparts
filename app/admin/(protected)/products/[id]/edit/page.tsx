@@ -13,12 +13,22 @@ import { partitionProductFitments } from "@/lib/product-fitment";
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }
 
-const EditProductPage = async ({ params }: EditProductPageProps) => {
+const getSafeProductReturnTo = (returnTo?: string) => {
+  if (!returnTo) return "/admin/products";
+  if (returnTo === "/admin/products" || returnTo.startsWith("/admin/products?")) return returnTo;
+  if (returnTo === "/admin/products/search" || returnTo.startsWith("/admin/products/search?")) return returnTo;
+  return "/admin/products";
+};
+
+const EditProductPage = async ({ params, searchParams }: EditProductPageProps) => {
   await requirePermission("products.update");
 
   const { id } = await params;
+  const { returnTo } = await searchParams;
+  const safeReturnTo = getSafeProductReturnTo(returnTo);
 
   const [product, categories, carBrands, partsBrands, suppliers] = await Promise.all([
     db.product.findUnique({
@@ -119,7 +129,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Link
-          href="/admin/products"
+          href={safeReturnTo}
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
         >
           <ChevronLeft size={16} />
@@ -139,7 +149,7 @@ const EditProductPage = async ({ params }: EditProductPageProps) => {
         }
       />
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} product={productData} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} product={productData} returnTo={safeReturnTo} />
     </div>
   );
 };

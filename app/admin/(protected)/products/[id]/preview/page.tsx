@@ -16,9 +16,17 @@ import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
 }
 
-const ProductPreviewPage = async ({ params }: Props) => {
+const getSafeProductReturnTo = (returnTo?: string) => {
+  if (!returnTo) return "/admin/products";
+  if (returnTo === "/admin/products" || returnTo.startsWith("/admin/products?")) return returnTo;
+  if (returnTo === "/admin/products/search" || returnTo.startsWith("/admin/products/search?")) return returnTo;
+  return "/admin/products";
+};
+
+const ProductPreviewPage = async ({ params, searchParams }: Props) => {
   await requirePermission("products.view");
 
   const session = await auth();
@@ -28,6 +36,9 @@ const ProductPreviewPage = async ({ params }: Props) => {
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");
 
   const { id } = await params;
+  const { returnTo } = await searchParams;
+  const safeReturnTo = getSafeProductReturnTo(returnTo);
+  const editHref = `/admin/products/${id}/edit?returnTo=${encodeURIComponent(safeReturnTo)}`;
 
   const product = await db.product.findUnique({
     where: { id },
@@ -102,7 +113,7 @@ const ProductPreviewPage = async ({ params }: Props) => {
         actions={
           <div className="flex items-center gap-2">
             <NavLink
-              href="/admin/products"
+              href={safeReturnTo}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-white/5"
             >
               <ChevronLeft size={15} />
@@ -110,7 +121,7 @@ const ProductPreviewPage = async ({ params }: Props) => {
             </NavLink>
             {canUpdate && (
               <NavLink
-                href={`/admin/products/${product.id}/edit`}
+                href={editHref}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]"
               >
                 <Pencil size={14} />

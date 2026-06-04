@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import { cn } from "@/lib/utils";
 
 import {
   applyProductAliasCandidate,
@@ -59,6 +61,22 @@ type Props = {
 
 const aliasKindOptions = ["OEM", "PART_NO", "CROSS_REF", "ALIAS", "KEYWORD", "MISSPELL"] as const;
 
+// The three concrete remediation forms a reviewer can apply. "review-noise" is
+// not a form (it is handled via the status section), so it is not listed here.
+const remediationOptions = [
+  { key: "search-synonym", label: "คำพ้อง (SearchSynonym)" },
+  { key: "product-alias-oem", label: "รหัส/OEM (ProductAlias)" },
+  { key: "fitment-year", label: "รุ่นรถ (ProductFitment)" },
+] as const;
+
+type RemediationKey = (typeof remediationOptions)[number]["key"];
+
+const remediationLabel: Record<RemediationKey, string> = {
+  "search-synonym": "คำพ้อง (SearchSynonym)",
+  "product-alias-oem": "รหัส/OEM (ProductAlias)",
+  "fitment-year": "รุ่นรถ (ProductFitment)",
+};
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const ProductSearchReviewSheet = ({
@@ -69,11 +87,23 @@ export const ProductSearchReviewSheet = ({
   fitmentYearHint,
   returnTo,
 }: Props) => {
+  // The Sheet/Dialog render in a Portal at document.body — OUTSIDE the AdminShell
+  // `.dark` container — so `dark:` variants don't apply unless we re-scope `dark`
+  // here (matches the AdminNotificationBell portal pattern).
+  const isDark = useOptionalAdminTheme()?.isDark ?? false;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLabel, setConfirmLabel] = useState("");
   const pendingFormRef = useRef<HTMLFormElement | null>(null);
   const confirmedRef = useRef(false);
+
+  // Remediation picker — the system suggests one action per cluster, but the
+  // reviewer can override it (e.g. a part number misclassified as fitment-year).
+  const defaultRemediation: RemediationKey =
+    cluster.candidateAction === "product-alias-oem" || cluster.candidateAction === "fitment-year"
+      ? cluster.candidateAction
+      : "search-synonym";
+  const [selectedRemediation, setSelectedRemediation] = useState<RemediationKey>(defaultRemediation);
 
   // SearchableSelect state
   const [productCodeForAlias, setProductCodeForAlias] = useState("");
@@ -127,7 +157,11 @@ export const ProductSearchReviewSheet = ({
           Review
         </SheetTrigger>
 
-        <SheetContent side="right" className="flex w-full max-w-lg flex-col gap-0 overflow-y-auto p-0">
+        <SheetContent
+          side="right"
+          className={cn(isDark && "dark", "flex w-full max-w-lg flex-col gap-0 overflow-y-auto p-0")}
+        >
+          <div className="flex min-h-full flex-1 flex-col border-l border-gray-200 bg-white text-gray-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">
           <SheetHeader className="border-b border-gray-100 px-5 py-4 dark:border-white/10">
             <SheetTitle className="font-kanit text-sm font-semibold text-gray-900 dark:text-slate-100">
               Review: {cluster.normalizedQuery}
@@ -144,8 +178,35 @@ export const ProductSearchReviewSheet = ({
           </SheetHeader>
 
           <div className="flex flex-col gap-5 p-5">
+            {/* ── Remediation picker (reviewer can override the suggested action) ── */}
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-medium text-gray-500 dark:text-slate-400">เลือกวิธีแก้</p>
+              <div className="flex flex-wrap gap-2">
+                {remediationOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setSelectedRemediation(opt.key)}
+                    className={cn(
+                      "h-8 rounded-md border px-3 text-xs font-medium transition-colors",
+                      selectedRemediation === opt.key
+                        ? "border-sky-600 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-500"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {cluster.candidateAction !== selectedRemediation ? (
+                <p className="text-[11px] text-amber-600 dark:text-amber-300">
+                  * ระบบแนะนำ {remediationLabel[defaultRemediation]} — คุณกำลังเลือกวิธีอื่น
+                </p>
+              ) : null}
+            </div>
+
             {/* ── Apply form: SearchSynonym ── */}
-            {cluster.candidateAction === "search-synonym" ? (
+            {selectedRemediation === "search-synonym" ? (
               <section className="rounded-lg border border-sky-100 bg-sky-50 p-4 dark:border-sky-400/20 dark:bg-sky-400/10">
                 <p className="mb-3 text-xs font-semibold text-sky-900 dark:text-sky-100">เพิ่ม SearchSynonym</p>
                 <form
@@ -188,7 +249,7 @@ export const ProductSearchReviewSheet = ({
             ) : null}
 
             {/* ── Apply form: ProductAlias/OEM ── */}
-            {cluster.candidateAction === "product-alias-oem" ? (
+            {selectedRemediation === "product-alias-oem" ? (
               <section className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-400/20 dark:bg-emerald-400/10">
                 <p className="mb-3 text-xs font-semibold text-emerald-900 dark:text-emerald-100">เพิ่ม ProductAlias/OEM</p>
                 <form
@@ -237,7 +298,7 @@ export const ProductSearchReviewSheet = ({
             ) : null}
 
             {/* ── Apply form: Fitment/Year ── */}
-            {cluster.candidateAction === "fitment-year" ? (
+            {selectedRemediation === "fitment-year" ? (
               <section className="rounded-lg border border-violet-100 bg-violet-50 p-4 dark:border-violet-400/20 dark:bg-violet-400/10">
                 <p className="mb-3 text-xs font-semibold text-violet-900 dark:text-violet-100">เพิ่ม ProductFitment</p>
                 <form
@@ -361,12 +422,13 @@ export const ProductSearchReviewSheet = ({
               </form>
             </section>
           </div>
+          </div>
         </SheetContent>
       </Sheet>
 
       {/* ── Confirmation AlertDialog ── (Item 13) */}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className={cn(isDark && "dark")}>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />

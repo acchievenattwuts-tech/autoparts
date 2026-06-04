@@ -21,6 +21,8 @@ import {
   type SearchProductItem,
 } from "@/lib/storefront-product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
+import { isLikelyBotUserAgent } from "@/lib/search-bot";
+import { headers } from "next/headers";
 
 type QueryValue = string | string[] | undefined;
 
@@ -255,6 +257,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       resultCount: searchPageData.total,
       source: "storefront",
       path: "/products",
+      isBot: isLikelyBotUserAgent((await headers()).get("user-agent")),
     });
 
     initialProducts = searchPageData.products;

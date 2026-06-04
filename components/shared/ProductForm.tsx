@@ -116,6 +116,7 @@ interface ProductFormProps {
   partsBrands: PartsBrandOption[];
   suppliers:   SupplierOption[];
   product?:    ProductFormData;
+  returnTo?:    string;
 }
 
 // ─── Shared styles (light + dark) ─────────────────────────────────────────────
@@ -145,7 +146,7 @@ const checkboxCls =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }: ProductFormProps) => {
+const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, returnTo = "/admin/products" }: ProductFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -532,7 +533,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         : await createProduct(formData);
 
       if (result.error) setError(result.error);
-      else router.push("/admin/products");
+      else router.push(returnTo);
     });
   };
 
@@ -1528,7 +1529,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product }:
         </div>
       )}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center sm:justify-end gap-3 pt-2">
-        <button type="button" onClick={() => router.push("/admin/products")}
+        <button type="button" onClick={() => router.push(returnTo)}
           className="px-5 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition-colors dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
           ยกเลิก
         </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal, ChevronDown } from "lucide-react";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
@@ -48,6 +48,24 @@ export default function ProductFilterForm({
   const [brandValue, setBrandValue] = useState(brandId ?? "");
   const [carBrandValue, setCarBrandValue] = useState(carBrandId ?? "");
   const [selectedCarBrandId, setSelectedCarBrandId] = useState(carBrandId ?? "");
+  const [priceMinValue, setPriceMinValue] = useState(priceMin ?? "");
+  const [priceMaxValue, setPriceMaxValue] = useState(priceMax ?? "");
+  const [stockStatusValue, setStockStatusValue] = useState(stockStatus ?? "");
+  const [statusFilterValue, setStatusFilterValue] = useState(statusFilter ?? "");
+  const [trackingFilterValue, setTrackingFilterValue] = useState(trackingFilter ?? "");
+
+  useEffect(() => {
+    setCategoryValue(categoryId ?? "");
+    setBrandValue(brandId ?? "");
+    setCarBrandValue(carBrandId ?? "");
+    setSelectedCarBrandId(carBrandId ?? "");
+    setPriceMinValue(priceMin ?? "");
+    setPriceMaxValue(priceMax ?? "");
+    setStockStatusValue(stockStatus ?? "");
+    setStatusFilterValue(statusFilter ?? "");
+    setTrackingFilterValue(trackingFilter ?? "");
+    setShowMore(Boolean(carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter));
+  }, [categoryId, brandId, carBrandId, carModelId, priceMin, priceMax, stockStatus, statusFilter, trackingFilter]);
 
   const models = useMemo(
     () => carBrands.find((b) => b.id === selectedCarBrandId)?.models ?? [],
@@ -192,7 +210,8 @@ export default function ProductFilterForm({
                   <input
                     type="number"
                     name="priceMin"
-                    defaultValue={priceMin ?? ""}
+                    value={priceMinValue}
+                    onChange={(e) => setPriceMinValue(e.target.value)}
                     placeholder="ต่ำสุด"
                     min={0}
                     className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -201,7 +220,8 @@ export default function ProductFilterForm({
                   <input
                     type="number"
                     name="priceMax"
-                    defaultValue={priceMax ?? ""}
+                    value={priceMaxValue}
+                    onChange={(e) => setPriceMaxValue(e.target.value)}
                     placeholder="สูงสุด"
                     min={0}
                     className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
@@ -214,7 +234,8 @@ export default function ProductFilterForm({
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">สต็อก</p>
                 <select
                   name="stockStatus"
-                  defaultValue={stockStatus ?? ""}
+                  value={stockStatusValue}
+                  onChange={(e) => setStockStatusValue(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 >
                   <option value="">ทั้งหมด</option>
@@ -229,7 +250,8 @@ export default function ProductFilterForm({
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">สถานะ</p>
                 <select
                   name="statusFilter"
-                  defaultValue={statusFilter ?? ""}
+                  value={statusFilterValue}
+                  onChange={(e) => setStatusFilterValue(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 >
                   <option value="">ทั้งหมด</option>
@@ -243,7 +265,8 @@ export default function ProductFilterForm({
                 <p className="text-xs font-medium text-gray-500 dark:text-slate-400">การคำนวณสต็อก</p>
                 <select
                   name="trackingFilter"
-                  defaultValue={trackingFilter ?? ""}
+                  value={trackingFilterValue}
+                  onChange={(e) => setTrackingFilterValue(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                 >
                   <option value="">ทั้งหมด</option>

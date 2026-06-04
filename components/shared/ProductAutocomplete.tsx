@@ -56,6 +56,8 @@ interface Props {
   showSubmitButton?: boolean;
   /** Storefront enhanced UX. */
   enhanced?: "desktop" | "mobile";
+  /** Admin-only return URL appended when selecting a suggestion. */
+  adminReturnTo?: string;
 }
 
 const DEBOUNCE_MS = 200;
@@ -76,6 +78,7 @@ const ProductAutocomplete = ({
   autoFocus,
   showSubmitButton,
   enhanced,
+  adminReturnTo,
 }: Props) => {
   const router = useRouter();
   const id = useId();
@@ -95,6 +98,10 @@ const ProductAutocomplete = ({
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const getDisplayUnitName = (item: AutocompleteItem) =>
     item.saleUnitName || item.reportUnitName || "หน่วย";
+
+  useEffect(() => {
+    setValue(initialValue ?? "");
+  }, [initialValue]);
 
   useEffect(() => {
     setMounted(true);
@@ -185,7 +192,13 @@ const ProductAutocomplete = ({
     if (isNavigating) return;
     setPendingItemId(item.id);
     startNavigation(() => {
-      router.push(mode === "admin" ? item.adminHref : item.href);
+      const href =
+        mode === "admin" && adminReturnTo
+          ? `${item.adminHref}?returnTo=${encodeURIComponent(adminReturnTo)}`
+          : mode === "admin"
+            ? item.adminHref
+            : item.href;
+      router.push(href);
     });
   };
 
@@ -201,7 +214,11 @@ const ProductAutocomplete = ({
   const submitQuery = () => {
     setOpen(false);
     setModalOpen(false);
-    onSubmit?.(value.trim());
+    if (onSubmit) {
+      onSubmit(value.trim());
+      return;
+    }
+    (modalInputRef.current?.form ?? inputRef.current?.form)?.requestSubmit();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

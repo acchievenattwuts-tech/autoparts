@@ -14,6 +14,8 @@ import { searchProductIds } from "@/lib/product-search";
 import { db } from "@/lib/db";
 import { getProductPath } from "@/lib/product-slug";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
+import { isLikelyBotUserAgent } from "@/lib/search-bot";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -83,6 +85,18 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       take: TAKE,
       order: "createdAtDesc",
       cacheProfile,
+    });
+
+    // Feed as-you-type misses into the Product Search Quality report. Fire-and-
+    // forget; the telemetry helper itself only persists no/low-result (≤3),
+    // non-noise queries and dedupes per hour, so prefix typing that returns many
+    // results is naturally filtered out.
+    void logProductSearchTelemetry({
+      input: { query, isActive: true },
+      resultCount: result.total,
+      source: cacheProfile === "admin" ? "admin" : "storefront",
+      path: "/api/search/products/autocomplete",
+      isBot: isLikelyBotUserAgent(request.headers.get("user-agent")),
     });
 
     if (result.ids.length === 0) {

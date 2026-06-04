@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronDown, Database, Search, Store, Warehouse, Wand2 } from "lucide-react";
+import { ChevronDown, Database, Info, Search, Store, Warehouse, Wand2 } from "lucide-react";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -472,6 +472,58 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
       />
 
       <FlashMessage f2Applied={f2Applied} f2Error={f2Error} />
+
+      {/* ── How-to helper (collapsible) ── */}
+      <details className="group overflow-hidden rounded-xl border border-sky-200 bg-sky-50/60 shadow-sm dark:border-sky-400/20 dark:bg-sky-400/5">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-sky-50 dark:hover:bg-sky-400/10 sm:px-5">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-sky-600 dark:text-sky-300" />
+            <span className="font-kanit text-sm font-semibold text-sky-950 dark:text-sky-100">วิธีใช้หน้านี้</span>
+          </div>
+          <ChevronDown className="h-4 w-4 shrink-0 text-sky-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 border-t border-sky-100 px-4 py-4 text-sm text-slate-700 dark:border-sky-400/15 dark:text-slate-200 sm:px-5">
+          <p>
+            หน้านี้รวม <span className="font-medium">คำค้นที่ลูกค้า/แอดมินหาแล้วไม่เจอ (No-result) หรือเจอน้อยกว่า {LOW_RESULT_SEARCH_THRESHOLD} รายการ (Low-result)</span> เพื่อให้ไล่ปรับให้ค้นเจอ — bot ถูกซ่อนโดยค่าเริ่มต้น (ติ๊ก &ldquo;รวม bot&rdquo; เพื่อดู)
+          </p>
+
+          <div className="space-y-1.5">
+            <p className="font-medium text-slate-900 dark:text-slate-100">ขั้นตอนใช้งาน</p>
+            <ol className="ml-4 list-decimal space-y-1">
+              <li>กรองช่วงวันที่ + เลือกประเภท/แหล่งที่มา แล้วกด &ldquo;แสดงรายการ&rdquo;</li>
+              <li>ไล่ดูตาราง <span className="font-medium">Top normalized query clusters</span> (เรียงตามจำนวนครั้งที่ค้น)</li>
+              <li>ดูคอลัมน์ <span className="font-medium">Action</span> ที่ระบบแนะนำ แล้วกด <span className="font-medium">Review</span> เพื่อแก้หรือเปลี่ยนสถานะ</li>
+              <li>สัปดาห์ถัดไปดู <span className="font-medium">Closed-loop = Improved</span> เพื่อยืนยันว่าที่แก้ได้ผล</li>
+            </ol>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <p className="font-medium text-slate-900 dark:text-slate-100">Action ที่ระบบแนะนำ</p>
+              <ul className="space-y-1">
+                <li><span className="font-medium">คำพ้อง (SearchSynonym)</span> — คำที่ลูกค้าเรียกต่างจากในระบบ</li>
+                <li><span className="font-medium">ProductAlias/OEM</span> — รหัส/เบอร์อะไหล่ที่ยังไม่ผูกสินค้า</li>
+                <li><span className="font-medium">รุ่นรถ (Fitment)</span> — รุ่น/ปีที่สินค้ายังไม่รองรับ</li>
+                <li><span className="font-medium">noise</span> — คำขยะ ไม่ต้องแก้</li>
+              </ul>
+            </div>
+            <div className="space-y-1.5">
+              <p className="font-medium text-slate-900 dark:text-slate-100">สถานะการรีวิว</p>
+              <ul className="space-y-1">
+                <li><span className="font-medium">Pending</span> — ยังไม่ได้รีวิว</li>
+                <li><span className="font-medium">Applied</span> — แก้แล้ว (อัตโนมัติเมื่อกด Apply)</li>
+                <li><span className="font-medium">Ignored</span> — เป็นขยะ ไม่ต้องแก้</li>
+                <li><span className="font-medium">Needs investigation</span> — สำคัญแต่ต้องตรวจเพิ่ม</li>
+                <li><span className="font-medium">Duplicate</span> — ซ้ำกับที่จัดการแล้ว</li>
+              </ul>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            * &ldquo;เปลี่ยนสถานะ&rdquo; ใน Review เป็นการติดป้ายการตัดสินใจ ไม่แตะข้อมูลสินค้า — ต่างจากปุ่ม Apply ที่เขียนข้อมูลจริง ทั้งหมดบันทึก audit log และเปลี่ยนทับได้
+          </p>
+        </div>
+      </details>
 
       <AdminFilterToolbar className="mb-0">
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
