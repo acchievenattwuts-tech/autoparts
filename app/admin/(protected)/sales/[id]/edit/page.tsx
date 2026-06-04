@@ -10,6 +10,8 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { activeOrReferencedWhere, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
@@ -43,34 +45,22 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
   const [rawProducts, customers, suppliers] = await Promise.all([
-    saleProductIds.length
-      ? db.product.findMany({
-          where: { id: { in: saleProductIds } },
+    db.product.findMany({
+          where: activeOrReferencedWhere(saleProductIds),
+          orderBy: { code: "asc" },
           select: {
-            id: true, code: true, name: true, description: true,
+            id: true, code: true, name: true, description: true, isActive: true,
             salePrice: true, saleUnitName: true, warrantyDays: true,
-            preferredSupplierId: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
+            preferredSupplierId: true, inventoryTracking: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
             category:          { select: { name: true } },
             brand:             { select: { name: true } },
             aliases:           { select: { alias: true } },
-            preferredSupplier: { select: { name: true } },
+            preferredSupplier: { select: { name: true, isActive: true } },
             units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
           },
-        })
-      : Promise.resolve([]),
-    sale.customerId
-      ? db.customer.findMany({
-          where: { id: sale.customerId },
-          take: 1,
-          select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true },
-        })
-      : Promise.resolve([]),
-    saleSupplierIds.length
-      ? db.supplier.findMany({
-          where: { id: { in: saleSupplierIds } },
-          select: { id: true, name: true, code: true },
-        })
-      : Promise.resolve([]),
+        }),
+    getTransactionCustomers([sale.customerId]),
+    getTransactionSuppliers(saleSupplierIds),
   ]);
 
   // Join ProductLot to get expDate for each SaleItemLot
@@ -113,11 +103,12 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    preferredSupplierId:   p.preferredSupplierId ?? null,
-    preferredSupplierName: p.preferredSupplier?.name ?? null,
-    isLotControl:          p.isLotControl,
+    preferredSupplierId:   p.preferredSupplier?.isActive ? p.preferredSupplierId : null,
+    preferredSupplierName: p.preferredSupplier?.isActive ? p.preferredSupplier.name : null,
+    isLotControl:          isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     lotIssueMethod:        p.lotIssueMethod as string,
     allowExpiredIssue:     p.allowExpiredIssue,
+    isActive:              p.isActive,
   }));
 
   const initialItems = sale.items.map((item) => {

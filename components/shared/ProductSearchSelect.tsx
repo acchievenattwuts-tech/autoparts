@@ -14,6 +14,7 @@ export interface SearchableProduct {
   categoryName: string;
   brandName?: string | null;
   aliases?: string[];
+  isActive?: boolean;
 }
 
 interface Props<T extends SearchableProduct> {
@@ -60,6 +61,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
   const localResults = isQueryReady
     ? products
+        .filter((product) => product.isActive !== false)
         .filter((product) => {
           const normalizedQuery = trimmedQuery.toLowerCase();
           return (

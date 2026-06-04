@@ -9,6 +9,8 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
+import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchase_returns.update");
@@ -49,25 +51,18 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
   const currentProductIds = [...new Set(ret.items.map((item) => item.productId))];
 
   const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
-    currentProductIds.length === 0
-      ? Promise.resolve([])
-      : db.product.findMany({
-          where: { id: { in: currentProductIds } },
+    db.product.findMany({
+          where: activeOrReferencedWhere(currentProductIds),
+          orderBy: { code: "asc" },
           select: {
-            id: true, code: true, name: true, description: true, avgCost: true,
-            isLotControl: true,
+            id: true, code: true, name: true, description: true, avgCost: true, costPrice: true, isActive: true,
+            inventoryTracking: true, isLotControl: true,
             category: { select: { name: true } }, brand: { select: { name: true } },
             aliases:  { select: { alias: true } },
             units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
           },
         }),
-    ret.supplierId
-      ? db.supplier.findMany({
-          where: { id: ret.supplierId },
-          select: { id: true, name: true },
-          take: 1,
-        })
-      : Promise.resolve([]),
+    getTransactionSuppliers([ret.supplierId]),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
@@ -83,10 +78,12 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description, avgCost: Number(p.avgCost),
-    isLotControl: p.isLotControl,
+    costPrice: Number(p.costPrice), inventoryTracking: p.inventoryTracking,
+    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isActive: p.isActive,
   }));
 
   const initialItems = ret.items.map((item) => {

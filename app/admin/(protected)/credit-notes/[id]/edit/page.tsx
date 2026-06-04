@@ -10,6 +10,8 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import { activeOrReferencedWhere, getTransactionCustomers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("credit_notes.update");
@@ -40,21 +42,21 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     ...new Set(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
   ];
 
-  const [rawProducts, config, cashBankAccounts] = await Promise.all([
-    currentProductIds.length === 0
-      ? Promise.resolve([])
-      : db.product.findMany({
-          where: { id: { in: currentProductIds } },
+  const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
+    db.product.findMany({
+          where: activeOrReferencedWhere(currentProductIds),
+          orderBy: { code: "asc" },
           select: {
-            id: true, code: true, name: true, description: true,
+            id: true, code: true, name: true, description: true, isActive: true,
             salePrice: true, saleUnitName: true,
-            isLotControl: true,
+            inventoryTracking: true, isLotControl: true,
             category: { select: { name: true } },
             brand:    { select: { name: true } },
             aliases:  { select: { alias: true } },
             units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
           },
         }),
+    getTransactionCustomers([cn.customerId]),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
@@ -71,10 +73,11 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
     salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
-    isLotControl: p.isLotControl,
+    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isActive: p.isActive,
   }));
 
   const initialItems = cn.items
@@ -135,7 +138,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบลดหนี้</h1>
       <CreditNoteForm
         products={products}
-        customers={[]}
+        customers={customers}
         cashBankAccounts={cashBankAccounts}
         initialSales={initialSales}
         defaultVatType={config.vatType}

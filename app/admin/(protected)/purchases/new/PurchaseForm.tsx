@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createPurchase, searchPurchaseProducts, updatePurchase } from "../actions";
+import { createPurchase, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PurchaseType } from "@/lib/generated/prisma";
@@ -34,7 +34,7 @@ interface ProductOption {
   requireExpiryDate: boolean;
 }
 
-interface SupplierOption { id: string; name: string; creditTerm?: number | null }
+interface SupplierOption { id: string; name: string; creditTerm?: number | null; isActive?: boolean }
 
 interface CashBankAccountOption {
   id: string;
@@ -407,7 +407,7 @@ const PurchaseForm = ({
           <div>
             <label className={labelCls}>ผู้จำหน่าย</label>
             <SearchableSelect
-              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name }))}
+              options={suppliers.map((s): SelectOption => ({ id: s.id, label: s.name, disabled: s.isActive === false }))}
               value={supplierId}
               onChange={handleSupplierChange}
               placeholder="โปรดระบุผู้จำหน่าย"
@@ -588,7 +588,6 @@ const PurchaseForm = ({
                         <ProductSearchSelect
                           products={productOptions}
                           value={item.productId}
-                          searchProducts={searchPurchaseProducts}
                           selectedProduct={prod ?? null}
                           onProductSelect={(product) => applySelectedProduct(i, product)}
                           onChange={(id) => {

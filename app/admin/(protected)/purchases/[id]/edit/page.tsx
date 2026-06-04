@@ -10,13 +10,14 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseForm from "../../new/PurchaseForm";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchases.update");
 
   const { id } = await params;
 
-  const [purchase, suppliers, config, cashBankAccounts] = await Promise.all([
+  const [purchase, config, cashBankAccounts] = await Promise.all([
     db.purchase.findUnique({
       where: { id },
       include: {
@@ -33,7 +34,6 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         },
       },
     }),
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, creditTerm: true } }),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
@@ -41,12 +41,13 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   if (!purchase) notFound();
   if (purchase.status === "CANCELLED") redirect(`/admin/purchases/${id}`);
 
+  const suppliers = await getTransactionSuppliers([purchase.supplierId]);
   const purchaseProductIds = [...new Set(purchase.items.map((item) => item.productId))];
-  const rawProducts = purchaseProductIds.length
-    ? await db.product.findMany({
-        where: { id: { in: purchaseProductIds } },
+  const rawProducts = await db.product.findMany({
+        where: activeOrReferencedWhere(purchaseProductIds),
+        orderBy: { code: "asc" },
         select: {
-          id: true, code: true, name: true, description: true,
+          id: true, code: true, name: true, description: true, isActive: true,
           purchaseUnitName: true, costPrice: true, inventoryTracking: true,
           isLotControl: true, requireExpiryDate: true,
           category: { select: { name: true } },
@@ -54,8 +55,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
           aliases: { select: { alias: true } },
           units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
         },
-      })
-    : [];
+      });
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
@@ -64,6 +64,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isActive: p.isActive,
   }));
 
   const initialItems = purchase.items.map((item) => {

@@ -8,15 +8,37 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseForm from "./PurchaseForm";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchasePage = async () => {
   await requirePermission("purchases.create");
 
-  const [suppliers, config, cashBankAccounts] = await Promise.all([
-    db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, creditTerm: true } }),
+  const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
+    db.product.findMany({
+      where: activeOrReferencedWhere(),
+      orderBy: { code: "asc" },
+      select: {
+        id: true, code: true, name: true, description: true, purchaseUnitName: true, costPrice: true,
+        inventoryTracking: true, isLotControl: true, requireExpiryDate: true,
+        category: { select: { name: true } }, brand: { select: { name: true } },
+        aliases: { select: { alias: true } },
+        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+      },
+    }),
+    getTransactionSuppliers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
+  const products = rawProducts.map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    purchaseUnitName: product.purchaseUnitName, costPrice: Number(product.costPrice),
+    categoryName: product.category.name, brandName: product.brand?.name ?? null,
+    aliases: product.aliases.map((alias) => alias.alias),
+    units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    requireExpiryDate: product.requireExpiryDate,
+  }));
 
   return (
     <div>
@@ -29,7 +51,7 @@ const NewPurchasePage = async () => {
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">สร้างใบซื้อใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบซื้อสินค้า</h1>
-      <PurchaseForm products={[]} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <PurchaseForm products={products} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
     </div>
   );
 };

@@ -10,6 +10,8 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
 import { getThailandDateKey } from "@/lib/th-date";
+import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchaseReturnPage = async ({
   searchParams,
@@ -61,14 +63,29 @@ const NewPurchaseReturnPage = async ({
       : Promise.resolve(null),
   ]);
 
-  const productRows = linkedClaim?.warranty.product ? [linkedClaim.warranty.product] : [];
+  const [productRows, supplierOptions] = await Promise.all([
+    db.product.findMany({
+      where: activeOrReferencedWhere([linkedClaim?.warranty.productId]),
+      orderBy: { code: "asc" },
+      select: {
+        id: true, code: true, name: true, description: true, avgCost: true, costPrice: true, isActive: true,
+        inventoryTracking: true, isLotControl: true,
+        category: { select: { name: true } }, brand: { select: { name: true } },
+        aliases: { select: { alias: true } },
+        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+      },
+    }),
+    getTransactionSuppliers([linkedClaim?.supplierId]),
+  ]);
 
   const products = productRows.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
-    avgCost: Number(p.avgCost), isLotControl: p.isLotControl,
+    avgCost: Number(p.avgCost), costPrice: Number(p.costPrice), inventoryTracking: p.inventoryTracking,
+    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isActive: p.isActive,
   }));
 
   const originalCost = linkedClaim
@@ -79,7 +96,6 @@ const NewPurchaseReturnPage = async ({
     ?? claimProduct?.units.find((unit) => unit.isBase)
     ?? claimProduct?.units[0];
   const claimUnitScale = claimPurchaseUnit ? Number(claimPurchaseUnit.scale) : 1;
-  const supplierOptions = linkedClaim?.supplier ? [linkedClaim.supplier] : [];
   const initialPurchases = linkedClaim?.supplierId
     ? await db.purchase.findMany({
         where: { supplierId: linkedClaim.supplierId },

@@ -8,26 +8,42 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
+import { activeOrReferencedWhere, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewSalePage = async () => {
   await requirePermission("sales.create");
 
-  const [customers, config, suppliers, cashBankAccounts] = await Promise.all([
-    db.customer.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      take: 50,
-      select: { id: true, name: true, phone: true, code: true, shippingAddress: true, creditTerm: true, defaultLatitude: true, defaultLongitude: true },
+  const [rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
+    db.product.findMany({
+      where: activeOrReferencedWhere(),
+      orderBy: { code: "asc" },
+      select: {
+        id: true, code: true, name: true, description: true, salePrice: true, saleUnitName: true,
+        warrantyDays: true, preferredSupplierId: true, inventoryTracking: true, isLotControl: true,
+        lotIssueMethod: true, allowExpiredIssue: true,
+        category: { select: { name: true } }, brand: { select: { name: true } },
+        aliases: { select: { alias: true } }, preferredSupplier: { select: { name: true, isActive: true } },
+        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+      },
     }),
+    getTransactionCustomers(),
     getSiteConfig(),
-    db.supplier.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      take: 50,
-      select: { id: true, name: true, code: true },
-    }),
+    getTransactionSuppliers(),
     getActiveCashBankAccountOptions(),
   ]);
+  const products = rawProducts.map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    salePrice: Number(product.salePrice), saleUnitName: product.saleUnitName,
+    warrantyDays: product.warrantyDays, categoryName: product.category.name,
+    brandName: product.brand?.name ?? null, aliases: product.aliases.map((alias) => alias.alias),
+    units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
+    preferredSupplierId: product.preferredSupplier?.isActive ? product.preferredSupplierId : null,
+    preferredSupplierName: product.preferredSupplier?.isActive ? product.preferredSupplier.name : null,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    lotIssueMethod: product.lotIssueMethod as string,
+    allowExpiredIssue: product.allowExpiredIssue,
+  }));
 
   return (
     <div>
@@ -43,7 +59,7 @@ const NewSalePage = async () => {
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">บันทึกการขายสินค้า</h1>
       <SaleForm
-        products={[]}
+        products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
         customers={customers}

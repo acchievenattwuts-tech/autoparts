@@ -3,7 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, searchPurchaseReturnSuppliers } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots } from "../actions";
 import { CheckCircle, ExternalLink, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -28,6 +28,7 @@ interface ProductOption {
 interface SupplierOption {
   id: string;
   name: string;
+  isActive?: boolean;
 }
 
 interface CashBankAccountOption {
@@ -476,11 +477,10 @@ const PurchaseReturnForm = ({
           <div>
             <label className={labelCls}>ซัพพลายเออร์ <span className="text-red-500">*</span></label>
             <SearchableSelect
-              options={suppliers.map((supplier): SelectOption => ({ id: supplier.id, label: supplier.name }))}
+              options={suppliers.map((supplier): SelectOption => ({ id: supplier.id, label: supplier.name, disabled: supplier.isActive === false }))}
               value={supplierId}
               onChange={handleSupplierChange}
               onOptionSelect={setSelectedSupplierOption}
-              searchOptions={searchPurchaseReturnSuppliers}
               selectedOption={selectedSupplierOption}
               placeholder="โปรดระบุผู้จำหน่าย"
             />
@@ -669,7 +669,6 @@ const PurchaseReturnForm = ({
                         <ProductSearchSelect
                           products={productOptions}
                           value={item.productId}
-                          searchProducts={searchPurchaseReturnProducts}
                           onChange={(id) => {
                             if (!id) clearItemProduct(i);
                           }}

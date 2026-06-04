@@ -9,11 +9,12 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getTransactionCustomers } from "@/lib/transaction-options";
 
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
 
-  const [rawProducts, config, cashBankAccounts] = await Promise.all([
+  const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
@@ -26,6 +27,7 @@ const NewCreditNotePage = async () => {
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
       },
     }),
+    getTransactionCustomers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
@@ -54,7 +56,7 @@ const NewCreditNotePage = async () => {
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
       <CreditNoteForm
         products={products}
-        customers={[]}
+        customers={customers}
         cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

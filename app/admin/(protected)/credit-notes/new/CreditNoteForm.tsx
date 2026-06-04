@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteCustomers } from "../actions";
+import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -14,6 +14,7 @@ import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 interface CustomerOption {
   id: string;
   name: string;
+  isActive?: boolean;
 }
 
 interface CashBankAccountOption {
@@ -353,11 +354,10 @@ const CreditNoteForm = ({
           <div>
             <label className={labelCls}>ลูกค้า <span className="text-red-500">*</span></label>
             <SearchableSelect
-              options={customers.map((customer): SelectOption => ({ id: customer.id, label: customer.name }))}
+              options={customers.map((customer): SelectOption => ({ id: customer.id, label: customer.name, disabled: customer.isActive === false }))}
               value={customerId}
               onChange={handleCustomerChange}
               onOptionSelect={(option) => setCustomerName(option.label)}
-              searchOptions={searchCreditNoteCustomers}
               selectedOption={customerId ? { id: customerId, label: customerName || customerMap.get(customerId)?.name || "" } : null}
               placeholder="โปรดระบุลูกค้า"
             />

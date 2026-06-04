@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createSale, searchSaleCustomers, searchSaleProducts, searchSaleSuppliers, updateSale } from "../actions";
+import { createSale, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -37,12 +37,14 @@ interface ProductOption {
   isLotControl:      boolean;
   lotIssueMethod:    string;
   allowExpiredIssue: boolean;
+  isActive?: boolean;
 }
 
 interface SupplierOption {
   id:   string;
   name: string;
   code: string | null;
+  isActive?: boolean;
 }
 
 interface CashBankAccountOption {
@@ -63,6 +65,7 @@ interface CustomerOption {
   creditTerm:       number | null;
   defaultLatitude:  number | null;
   defaultLongitude: number | null;
+  isActive?: boolean;
 }
 
 interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
@@ -160,8 +163,8 @@ const SaleForm = ({
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
   const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
-  const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>(customers);
-  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>(suppliers);
+  const customerOptions = customers;
+  const supplierOptions = suppliers;
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
@@ -300,45 +303,6 @@ const SaleForm = ({
       return next;
     });
   };
-
-  const rememberCustomers = useCallback((nextCustomers: CustomerOption[]) => {
-    setCustomerOptions((prev) => {
-      const merged = new Map(prev.map((customer) => [customer.id, customer]));
-      for (const customer of nextCustomers) {
-        merged.set(customer.id, customer);
-      }
-      return Array.from(merged.values());
-    });
-  }, []);
-
-  const rememberSuppliers = useCallback((nextSuppliers: SupplierOption[]) => {
-    setSupplierOptions((prev) => {
-      const merged = new Map(prev.map((supplier) => [supplier.id, supplier]));
-      for (const supplier of nextSuppliers) {
-        merged.set(supplier.id, supplier);
-      }
-      return Array.from(merged.values());
-    });
-  }, []);
-
-  const searchCustomerOptions = useCallback(async (query: string): Promise<SelectOption[]> => {
-    const results = await searchSaleCustomers(query);
-    rememberCustomers(results);
-    return results.map((customer): SelectOption => ({
-      id: customer.id,
-      label: customer.name,
-      sublabel: customer.code ?? customer.phone ?? undefined,
-    }));
-  }, [rememberCustomers]);
-
-  const searchSupplierOptions = useCallback(async (query: string): Promise<SelectOption[]> => {
-    const results = await searchSaleSuppliers(query);
-    rememberSuppliers(results);
-    return results.map((supplier): SelectOption => ({
-      id: supplier.id,
-      label: supplier.code ? `[${supplier.code}] ${supplier.name}` : supplier.name,
-    }));
-  }, [rememberSuppliers]);
 
   const clearItemProduct = (itemIndex: number) => {
     clearCachedLots(itemIndex);
@@ -658,10 +622,10 @@ const SaleForm = ({
                 id: c.id,
                 label: c.name,
                 sublabel: c.code ?? undefined,
+                disabled: c.isActive === false,
               }))}
               value={selectedCustomerId}
               onChange={handleCustomerChange}
-              searchOptions={searchCustomerOptions}
               selectedOption={
                 selectedCustomerId
                   ? (() => {
@@ -994,7 +958,6 @@ const SaleForm = ({
                       <ProductSearchSelect
                         products={productOptions}
                         value={item.productId}
-                        searchProducts={searchSaleProducts}
                         selectedProduct={prod ?? null}
                         onProductSelect={(product) => applySelectedProduct(i, product)}
                         onChange={(id) => {
@@ -1006,10 +969,9 @@ const SaleForm = ({
                           <SearchableSelect
                             options={[
                               { id: "", label: "-- ไม่ระบุซัพพลายเออร์ --" },
-                              ...supplierOptions.map((s): SelectOption => ({ id: s.id, label: s.code ? `[${s.code}] ${s.name}` : s.name })),
+                              ...supplierOptions.map((s): SelectOption => ({ id: s.id, label: s.code ? `[${s.code}] ${s.name}` : s.name, disabled: s.isActive === false })),
                             ]}
                             value={item.supplierId}
-                            searchOptions={searchSupplierOptions}
                             selectedOption={
                               item.supplierId
                                 ? (() => {
