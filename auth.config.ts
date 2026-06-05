@@ -26,7 +26,9 @@ export const authConfig: NextAuthConfig = {
       }
 
       if (isAdminRoute) {
-        if (!isLoggedIn) return false;
+        if (!isLoggedIn) {
+          return Response.redirect(new URL("/admin/login", nextUrl));
+        }
         if (mustChangePassword && !isChangePasswordPage) {
           return Response.redirect(new URL("/admin/profile/change-password", nextUrl));
         }

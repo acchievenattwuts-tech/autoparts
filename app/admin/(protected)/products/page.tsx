@@ -8,6 +8,7 @@ import {
 } from "@/lib/access-control";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import NavLink from "@/components/shared/NavLink";
 import { Plus, Pencil, Eye, X, FileText, FileSpreadsheet } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
@@ -63,12 +64,16 @@ function buildRemoveParamUrl(
 }
 
 const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
+  const session = await auth();
+  if (!session?.user) {
+    redirect("/admin/login");
+  }
+
   await requirePermission("products.view");
 
-  const session = await auth();
-  const role = session?.user?.role;
+  const role = session.user.role;
   const permissions =
-    role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
+    role === "ADMIN" ? getAllPermissionKeys() : (session.user.permissions ?? []);
 
   const canCreate = hasPermissionAccess(role, permissions, "products.create");
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");

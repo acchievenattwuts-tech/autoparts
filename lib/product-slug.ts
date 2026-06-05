@@ -224,7 +224,6 @@ export const getProductSlug = (product: ProductSlugInput): string => {
 };
 
 export const getProductPath = ({
-  category: _category,
   product,
 }: {
   category: CategorySlugInput;
@@ -255,12 +254,21 @@ export const shouldRedirectToCanonicalProductPath = ({
   return true;
 };
 
+const safeDecodePathname = (pathname: string): string => {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
+};
+
 export const isLegacyThaiProductPath = (pathname: string): boolean => {
   if (!pathname.startsWith("/product/")) {
     return false;
   }
 
-  return /[^\x00-\x7F]/.test(pathname.slice("/product/".length));
+  const decodedPathname = safeDecodePathname(pathname);
+  return /[^\x00-\x7F]/.test(decodedPathname.slice("/product/".length));
 };
 
 export const getLegacyThaiProductPathRedirectTarget = ({
@@ -270,11 +278,13 @@ export const getLegacyThaiProductPathRedirectTarget = ({
   pathname: string;
   canonicalPath: string;
 }): string | null => {
-  if (pathname === canonicalPath) {
+  const decodedPathname = safeDecodePathname(pathname);
+
+  if (decodedPathname === canonicalPath) {
     return null;
   }
 
-  if (!isLegacyThaiProductPath(pathname)) {
+  if (!isLegacyThaiProductPath(decodedPathname)) {
     return null;
   }
 
