@@ -28,6 +28,12 @@ import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-sta
 
 const PAGE_SIZE = 30;
 
+const numberOrNull = (value?: string): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
 interface ProductsPageProps {
   searchParams: Promise<{
     search?: string;
@@ -78,6 +84,16 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     statusFilter === "active" ? true :
     statusFilter === "inactive" ? false :
     undefined;
+  const normalizedStockStatus: "in_stock" | "low_stock" | "out_of_stock" | undefined =
+    stockStatus === "in_stock" || stockStatus === "low_stock" || stockStatus === "out_of_stock"
+      ? stockStatus
+      : undefined;
+  const inventoryTracking: "TRACKED" | "NON_TRACKED" | undefined =
+    trackingFilter === "tracked"
+      ? "TRACKED"
+      : trackingFilter === "non_tracked"
+        ? "NON_TRACKED"
+        : undefined;
 
   const productSearchInput = {
     query: search,
@@ -86,7 +102,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     carBrandId,
     carModelId,
     isActive: searchIsActive,
-    stockStatus: stockStatus as "in_stock" | "low_stock" | "out_of_stock" | undefined,
+    priceMin: numberOrNull(priceMin),
+    priceMax: numberOrNull(priceMax),
+    stockStatus: normalizedStockStatus,
+    inventoryTracking,
     skip: (pageNum - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
     order: "codeDesc" as const,
@@ -127,21 +146,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     path: "/admin/products",
   });
 
-  const advancedWhere: Record<string, unknown> = {};
-  if (priceMin || priceMax) {
-    advancedWhere.salePrice = {
-      ...(priceMin ? { gte: parseFloat(priceMin) } : {}),
-      ...(priceMax ? { lte: parseFloat(priceMax) } : {}),
-    };
-  }
-  if (trackingFilter === "tracked") advancedWhere.inventoryTracking = "TRACKED";
-  else if (trackingFilter === "non_tracked") advancedWhere.inventoryTracking = "NON_TRACKED";
-
   const rawProducts = sortProductsByIds(
     await db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
-        ...advancedWhere,
       },
       select: {
         id: true,
@@ -520,6 +528,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           ...(brandId ? { brandId } : {}),
           ...(carBrandId ? { carBrandId } : {}),
           ...(carModelId ? { carModelId } : {}),
+          ...(priceMin ? { priceMin } : {}),
+          ...(priceMax ? { priceMax } : {}),
+          ...(stockStatus ? { stockStatus } : {}),
+          ...(statusFilter ? { statusFilter } : {}),
+          ...(trackingFilter ? { trackingFilter } : {}),
         }}
       />
     </div>

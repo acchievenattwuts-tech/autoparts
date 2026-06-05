@@ -6,6 +6,12 @@ import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 const BOM = "\uFEFF";
 const MAX_EXPORT_ROWS = 10000;
 
+const numberOrNull = (value?: string): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
 export type ProductReportFilters = {
   search?: string;
   categoryId?: string;
@@ -88,6 +94,12 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
       : filters.statusFilter === "inactive"
         ? false
         : undefined;
+  const inventoryTracking: "TRACKED" | "NON_TRACKED" | undefined =
+    filters.trackingFilter === "tracked"
+      ? "TRACKED"
+      : filters.trackingFilter === "non_tracked"
+        ? "NON_TRACKED"
+        : undefined;
 
   const searchResult = await searchProductIds({
     query: filters.search,
@@ -96,27 +108,19 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
     carBrandId: filters.carBrandId,
     carModelId: filters.carModelId,
     isActive: searchIsActive,
+    priceMin: numberOrNull(filters.priceMin),
+    priceMax: numberOrNull(filters.priceMax),
+    inventoryTracking,
     skip: 0,
     take: MAX_EXPORT_ROWS,
     order: "codeDesc",
     cacheProfile: "admin",
   });
 
-  const advancedWhere: Record<string, unknown> = {};
-  if (filters.priceMin || filters.priceMax) {
-    advancedWhere.salePrice = {
-      ...(filters.priceMin ? { gte: parseFloat(filters.priceMin) } : {}),
-      ...(filters.priceMax ? { lte: parseFloat(filters.priceMax) } : {}),
-    };
-  }
-  if (filters.trackingFilter === "tracked") advancedWhere.inventoryTracking = "TRACKED";
-  else if (filters.trackingFilter === "non_tracked") advancedWhere.inventoryTracking = "NON_TRACKED";
-
   const rawProducts = sortProductsByIds(
     await db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
-        ...advancedWhere,
       },
       select: {
         id: true,

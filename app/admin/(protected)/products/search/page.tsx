@@ -77,6 +77,12 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     stockStatus === "in_stock" || stockStatus === "low_stock" || stockStatus === "out_of_stock"
       ? stockStatus
       : undefined;
+  const inventoryTracking: "TRACKED" | "NON_TRACKED" | undefined =
+    trackingFilter === "tracked"
+      ? "TRACKED"
+      : trackingFilter === "non_tracked"
+        ? "NON_TRACKED"
+        : undefined;
 
   const productSearchInput = {
     query: search,
@@ -88,6 +94,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     priceMin: numberOrNull(priceMin),
     priceMax: numberOrNull(priceMax),
     stockStatus: normalizedStockStatus,
+    inventoryTracking,
     skip: (pageNum - 1) * PAGE_SIZE,
     take: PAGE_SIZE,
     order: "codeDesc" as const,
@@ -128,15 +135,10 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     path: "/admin/products/search",
   });
 
-  const advancedWhere: Record<string, unknown> = {};
-  if (trackingFilter === "tracked") advancedWhere.inventoryTracking = "TRACKED";
-  else if (trackingFilter === "non_tracked") advancedWhere.inventoryTracking = "NON_TRACKED";
-
   const products = sortProductsByIds(
     await db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
-        ...advancedWhere,
       },
       select: {
         id: true,

@@ -40,6 +40,7 @@ type ProductSearchInput = {
   priceMin?: number | null;
   priceMax?: number | null;
   stockStatus?: "in_stock" | "low_stock" | "out_of_stock" | null;
+  inventoryTracking?: "TRACKED" | "NON_TRACKED" | null;
   skip?: number;
   take?: number;
   order?: ProductSearchOrder;
@@ -214,6 +215,7 @@ const buildProductFilterWhere = (
     | "priceMin"
     | "priceMax"
     | "stockStatus"
+    | "inventoryTracking"
   >,
 ): PrismaTypes.ProductWhereInput => {
   const {
@@ -266,6 +268,10 @@ const buildProductFilterWhere = (
 
   if (input.stockStatus === "out_of_stock") {
     where.stock = { lte: 0 };
+  }
+
+  if (input.inventoryTracking === "TRACKED" || input.inventoryTracking === "NON_TRACKED") {
+    where.inventoryTracking = input.inventoryTracking;
   }
 
   const effectiveCarBrandNames = carBrandName
@@ -700,6 +706,17 @@ async function searchProductIdsV2(
     ? Prisma.sql`AND EXISTS (SELECT 1 FROM "Product" p WHERE p.id = psd.product_id AND p.stock > 0 AND p.stock <= p."minStock")`
     : Prisma.empty;
 
+  const inventoryTrackingClause =
+    input.inventoryTracking === "TRACKED" || input.inventoryTracking === "NON_TRACKED"
+      ? Prisma.sql`
+          AND EXISTS (
+            SELECT 1 FROM "Product" p
+            WHERE p.id = psd.product_id
+              AND p."inventoryTracking" = ${input.inventoryTracking}::"InventoryTracking"
+          )
+        `
+      : Prisma.empty;
+
   const exactScope = Prisma.sql`
     WHERE TRUE
       ${isActiveClause}
@@ -717,6 +734,7 @@ async function searchProductIdsV2(
       ${priceMinClause}
       ${priceMaxClause}
       ${stockStatusClause}
+      ${inventoryTrackingClause}
   `;
 
   const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
@@ -989,6 +1007,7 @@ export async function searchProductIds(
     priceMin: normalizePriceBound(input.priceMin),
     priceMax: normalizePriceBound(input.priceMax),
     stockStatus: input.stockStatus ?? null,
+    inventoryTracking: input.inventoryTracking ?? null,
     skip: input.skip ?? 0,
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",
