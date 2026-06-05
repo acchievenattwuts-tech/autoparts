@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Eye, Pencil, Plus } from "lucide-react";
-import { FulfillmentType, SaleChannel, SalePaymentType, SaleType, ShippingStatus } from "@/lib/generated/prisma";
+import { FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SearchBar from "@/components/shared/SearchBar";
@@ -33,15 +33,6 @@ const paymentMethodLabel: Record<string, string> = {
   TRANSFER: "โอนเงิน",
   CREDIT:   "เครดิต",
 };
-
-const saleTypeLabel: Record<SaleType, string> = {
-  RETAIL:    "ปลีก",
-  WHOLESALE: "ส่ง",
-};
-const saleTypeTone = {
-  RETAIL:    "neutral",
-  WHOLESALE: "info",
-} as const;
 
 const fulfillmentLabel: Record<FulfillmentType, string> = {
   PICKUP:   "หน้าร้าน",
@@ -272,8 +263,7 @@ const SalesPage = async ({
               <th className="w-10 px-4 py-3 text-center font-medium">#</th>
               <th className="px-4 py-3 text-left font-medium">เลขที่ใบขาย</th>
               <th className="px-4 py-3 text-left font-medium">วันที่</th>
-              <th className="px-4 py-3 text-left font-medium">ลูกค้า</th>
-              <th className="px-4 py-3 text-left font-medium">ประเภท</th>
+              <th className="w-[220px] px-4 py-3 text-left font-medium">ลูกค้า</th>
               <th className="px-4 py-3 text-left font-medium">ช่องทาง</th>
               <th className="px-4 py-3 text-left font-medium">ขายสด/เชื่อ</th>
               <th className="px-4 py-3 text-left font-medium">สถานะการชำระ</th>
@@ -289,7 +279,7 @@ const SalesPage = async ({
           <tbody>
             {sales.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={14} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
                   {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการขาย"}
                 </td>
               </tr>
@@ -307,8 +297,7 @@ const SalesPage = async ({
                     <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
-                    <td className="px-4 py-3"><AdminStatusBadge tone={saleTypeTone[s.saleType]}>{saleTypeLabel[s.saleType]}</AdminStatusBadge></td>
+                    <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={channelTone[s.channel]}>{channelLabel[s.channel]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentTypeTone[s.paymentType]}>{paymentTypeLabel[s.paymentType]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentStatusTone[paymentStatus]}>{paymentStatusLabel[paymentStatus]}</AdminStatusBadge></td>
