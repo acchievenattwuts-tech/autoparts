@@ -24,8 +24,6 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.5;
 const SWIPE_THRESHOLD_PX = 72;
 const EDGE_RESISTANCE = 0.35;
-const PAN_BASE_SENSITIVITY = 1.35;
-const PAN_ZOOM_SENSITIVITY = 0.55;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 
@@ -45,6 +43,7 @@ const ProductImageZoomLightbox = ({
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const singleStart = useRef<{ x: number; y: number; lastX: number; lastY: number } | null>(null);
   const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasMultiple = images.length > 1;
   const isZoomed = zoom > 1.01;
@@ -53,10 +52,16 @@ const ProductImageZoomLightbox = ({
 
   const activeImage = images[activeIndex];
   const zoomLabel = useMemo(() => `${Math.round(zoom * 100)}%`, [zoom]);
-  const panSensitivity = useMemo(
-    () => PAN_BASE_SENSITIVITY + Math.max(0, zoom - 1) * PAN_ZOOM_SENSITIVITY,
-    [zoom],
-  );
+
+  // Keep the panned image inside its own overflow so a drag can never fling it
+  // off-screen into the blank/clipped area (which made repeated drags look dead).
+  const clampPan = useCallback((x: number, y: number, z: number) => {
+    const el = viewportRef.current;
+    if (!el || z <= 1) return { x: 0, y: 0 };
+    const maxX = (el.clientWidth * (z - 1)) / 2;
+    const maxY = (el.clientHeight * (z - 1)) / 2;
+    return { x: clamp(x, -maxX, maxX), y: clamp(y, -maxY, maxY) };
+  }, []);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -77,15 +82,16 @@ const ProductImageZoomLightbox = ({
     [images.length, onActiveIndexChange, resetView],
   );
 
-  const adjustZoom = useCallback((delta: number) => {
-    setZoom((current) => {
-      const nextZoom = clamp(Number((current + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
-      if (nextZoom === MIN_ZOOM) {
-        setPan({ x: 0, y: 0 });
-      }
-      return nextZoom;
-    });
-  }, []);
+  const adjustZoom = useCallback(
+    (delta: number) => {
+      setZoom((current) => {
+        const nextZoom = clamp(Number((current + delta).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
+        setPan((p) => clampPan(p.x, p.y, nextZoom));
+        return nextZoom;
+      });
+    },
+    [clampPan],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -188,7 +194,7 @@ const ProductImageZoomLightbox = ({
       if (pinch.dist > 0 && dist > 0) {
         const nextZoom = clamp(Number((pinch.zoom * (dist / pinch.dist)).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
         setZoom(nextZoom);
-        if (nextZoom === MIN_ZOOM) setPan({ x: 0, y: 0 });
+        setPan((p) => clampPan(p.x, p.y, nextZoom));
       }
       return;
     }
@@ -197,13 +203,13 @@ const ProductImageZoomLightbox = ({
     if (!start || pointers.current.size !== 1) return;
 
     if (isZoomed) {
-      // Pan using the incremental delta since the last move so repeated
-      // grab-release-grab gestures never desync from a stale snapshot.
+      // Pan 1:1 with the cursor using the incremental delta since the last move,
+      // then clamp to bounds so the image tracks the pointer and stays in view.
       const stepX = e.clientX - start.lastX;
       const stepY = e.clientY - start.lastY;
       start.lastX = e.clientX;
       start.lastY = e.clientY;
-      setPan((p) => ({ x: p.x + stepX * panSensitivity, y: p.y + stepY * panSensitivity }));
+      setPan((p) => clampPan(p.x + stepX, p.y + stepY, zoom));
       return;
     }
 
@@ -329,6 +335,7 @@ const ProductImageZoomLightbox = ({
         </div>
 
         <div
+          ref={viewportRef}
           className={`relative min-h-0 flex-1 overflow-hidden [touch-action:none] sm:rounded-2xl ${
             isZoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"
           }`}
