@@ -155,20 +155,25 @@ const ProductImageZoomLightbox = ({
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    e.currentTarget.setPointerCapture(e.pointerId);
 
+    // Register the gesture state BEFORE attempting pointer capture. If
+    // setPointerCapture throws (it can on a repeated grab cycle on desktop),
+    // we must not lose the start snapshot or the next drag won't pan.
     if (pointers.current.size === 2) {
       // Two fingers down -> start a pinch gesture, cancel any swipe/pan in progress.
       pinchStart.current = { dist: pinchDistance(), zoom };
       singleStart.current = null;
       setDragOffset(0);
       setIsDragging(true);
-      return;
-    }
-
-    if (pointers.current.size === 1) {
+    } else if (pointers.current.size === 1) {
       singleStart.current = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY };
       setIsDragging(true);
+    }
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Capture is a best-effort optimisation; panning still works without it.
     }
   };
 
