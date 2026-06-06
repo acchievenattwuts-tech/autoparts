@@ -42,7 +42,9 @@ const ProductImageZoomLightbox = ({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const pointerStart = useRef<{ x: number; y: number; pointerId: number; panX: number; panY: number } | null>(null);
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const singleStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasMultiple = images.length > 1;
   const isZoomed = zoom > 1.01;
@@ -61,7 +63,9 @@ const ProductImageZoomLightbox = ({
     setPan({ x: 0, y: 0 });
     setDragOffset(0);
     setIsDragging(false);
-    pointerStart.current = null;
+    pointers.current.clear();
+    singleStart.current = null;
+    pinchStart.current = null;
   }, []);
 
   const goTo = useCallback(
@@ -124,15 +128,49 @@ const ProductImageZoomLightbox = ({
     adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
   };
 
+  const pinchDistance = () => {
+    const points = Array.from(pointers.current.values());
+    if (points.length < 2) return 0;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    pointerStart.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId, panX: pan.x, panY: pan.y };
-    setIsDragging(true);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     e.currentTarget.setPointerCapture(e.pointerId);
+
+    if (pointers.current.size === 2) {
+      // Two fingers down -> start a pinch gesture, cancel any swipe/pan in progress.
+      pinchStart.current = { dist: pinchDistance(), zoom };
+      singleStart.current = null;
+      setDragOffset(0);
+      setIsDragging(true);
+      return;
+    }
+
+    if (pointers.current.size === 1) {
+      singleStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      setIsDragging(true);
+    }
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const start = pointerStart.current;
-    if (!start) return;
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Pinch-to-zoom (mobile two-finger gesture).
+    const pinch = pinchStart.current;
+    if (pinch && pointers.current.size >= 2) {
+      const dist = pinchDistance();
+      if (pinch.dist > 0 && dist > 0) {
+        const nextZoom = clamp(Number((pinch.zoom * (dist / pinch.dist)).toFixed(2)), MIN_ZOOM, MAX_ZOOM);
+        setZoom(nextZoom);
+        if (nextZoom === MIN_ZOOM) setPan({ x: 0, y: 0 });
+      }
+      return;
+    }
+
+    const start = singleStart.current;
+    if (!start || pointers.current.size !== 1) return;
 
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
@@ -155,15 +193,32 @@ const ProductImageZoomLightbox = ({
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    const start = pointerStart.current;
-    if (!start) return;
-    const dx = e.clientX - start.x;
-    if (e.currentTarget.hasPointerCapture(start.pointerId)) {
-      e.currentTarget.releasePointerCapture(start.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    pointerStart.current = null;
+
+    // End of a pinch gesture: clear pinch state, don't trigger a swipe on lift-off.
+    if (pinchStart.current) {
+      pointers.current.delete(e.pointerId);
+      if (pointers.current.size < 2) {
+        pinchStart.current = null;
+        singleStart.current = null;
+        setIsDragging(false);
+        setDragOffset(0);
+      }
+      return;
+    }
+
+    const start = singleStart.current;
+    pointers.current.delete(e.pointerId);
+    if (!start) {
+      setIsDragging(false);
+      return;
+    }
+    singleStart.current = null;
     setIsDragging(false);
 
+    const dx = e.clientX - start.x;
     if (!isZoomed && hasMultiple && Math.abs(dx) > SWIPE_THRESHOLD_PX) {
       if (dx < 0 && activeIndex < images.length - 1) {
         goTo(activeIndex + 1);
