@@ -173,6 +173,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   const [imageUrl, setImageUrl] = useState(productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? "");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [imageUploadCode, setImageUploadCode] = useState(product?.code ?? "");
   const [cropQueue, setCropQueue] = useState<File[]>([]);
   const [cropTotal, setCropTotal] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -354,12 +355,19 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
     try {
       const fd = new FormData();
       fd.append("file", croppedFile);
+      const productCode = product?.code ?? imageUploadCode;
+      if (productCode) {
+        fd.set("productCode", productCode);
+      }
       const result = await uploadProductImage(fd);
       if (result.error) {
         setUploadError(result.error);
         setCropQueue([]);
         setCropTotal(0);
         return;
+      }
+      if (result.uploadCode && !product) {
+        setImageUploadCode(result.uploadCode);
       }
       if (result.url) {
         appendUploadedImage(result.url, croppedFile.name.replace(/\.[^.]+$/, ""));
@@ -496,6 +504,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
     formData.set("preferredSupplierId", preferredSupplierId);
     formData.set("inventoryTracking", inventoryTracking);
     formData.set("imageUrl", imageUrl);
+    formData.set("imageUploadCode", imageUploadCode);
     formData.set("productImages", JSON.stringify(productImages.map((image, index) => ({ ...image, sortOrder: index }))));
     formData.set("isLotControl", String(isNonStock ? false : isLotControl));
     formData.set("requireExpiryDate", String(isNonStock ? false : requireExpiryDate));

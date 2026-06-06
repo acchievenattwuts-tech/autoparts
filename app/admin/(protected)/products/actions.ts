@@ -1,6 +1,5 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import {
@@ -24,6 +23,16 @@ import {
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
+import {
+  buildProductImageObjectPath,
+  copyProductImageUrlToCodeFolder,
+  createProductImageStorageClient,
+  getProductImageStorageConfig,
+  getProductImageObjectPathFromPublicUrl,
+  getPublicProductImageUrl,
+  isProductImageObjectPath,
+  isProductImageObjectPathForCode,
+} from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -94,6 +103,7 @@ const productSchema = z.object({
 });
 
 type ProductInput = z.infer<typeof productSchema>;
+type ProductImageInput = z.infer<typeof productImageSchema>;
 
 const revalidateStorefrontProductCaches = async (productId?: string) => {
   revalidatePath("/admin/products");
@@ -103,6 +113,81 @@ const revalidateStorefrontProductCaches = async (productId?: string) => {
   }
   await revalidateStorefrontCaches();
 };
+
+const getStringFormValue = (formData: FormData, key: string): string => {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
+};
+
+const normalizeRequestedProductCode = (value: string): string | null => {
+  const code = value.trim().toUpperCase();
+  return /^P\d{4,}$/.test(code) ? code : null;
+};
+
+async function resolveCreateProductCode(formData: FormData): Promise<string> {
+  const requestedCode = normalizeRequestedProductCode(getStringFormValue(formData, "imageUploadCode"));
+  if (requestedCode) {
+    const existing = await db.product.findUnique({
+      where: { code: requestedCode },
+      select: { id: true },
+    });
+    if (!existing) {
+      return requestedCode;
+    }
+  }
+
+  return generateProductCode();
+}
+
+async function normalizeProductImagesForCode(
+  productImages: ProductImageInput[],
+  productCode: string,
+): Promise<{ productImages: ProductImageInput[]; error?: string }> {
+  if (productImages.length === 0) {
+    return { productImages };
+  }
+
+  const needsStorageCopy = productImages.some((image) => {
+    const objectPath = getProductImageObjectPathFromPublicUrl(image.url);
+    return objectPath && isProductImageObjectPath(objectPath) && !isProductImageObjectPathForCode(objectPath, productCode);
+  });
+
+  if (!needsStorageCopy) {
+    return { productImages };
+  }
+
+  const config = getProductImageStorageConfig();
+  if (!config) {
+    return { productImages, error: "ไม่พบการตั้งค่า Supabase" };
+  }
+
+  const client = createProductImageStorageClient(config);
+  const copiedUrls = new Map<string, string>();
+  const nextImages: ProductImageInput[] = [];
+
+  for (const image of productImages) {
+    const cachedUrl = copiedUrls.get(image.url);
+    if (cachedUrl) {
+      nextImages.push({ ...image, url: cachedUrl });
+      continue;
+    }
+
+    const result = await copyProductImageUrlToCodeFolder({
+      client,
+      url: image.url,
+      productCode,
+    });
+
+    if (!result.success) {
+      return { productImages, error: "ย้ายรูปสินค้าเข้าโฟลเดอร์ตามรหัสสินค้าไม่สำเร็จ" };
+    }
+
+    copiedUrls.set(image.url, result.url);
+    nextImages.push({ ...image, url: result.url });
+  }
+
+  return { productImages: nextImages };
+}
 
 async function getProductAuditSnapshot(productId: string) {
   const product = await db.product.findUnique({
@@ -475,11 +560,14 @@ export const createProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, compatibleFitments, units, productImages, ...productData } =
+  const { aliases, fitments, compatibleFitments, units, productImages: parsedProductImages, ...productData } =
     result.data;
+  const code = await resolveCreateProductCode(formData);
+  const normalizedImages = await normalizeProductImagesForCode(parsedProductImages, code);
+  if (normalizedImages.error) return { error: normalizedImages.error };
+  const productImages = normalizedImages.productImages;
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
-  const code = await generateProductCode();
   let createdProductId = "";
 
   try {
@@ -606,8 +694,18 @@ export const updateProduct = async (
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
 
-  const { aliases, fitments, compatibleFitments, units, productImages, ...productData } =
+  const { aliases, fitments, compatibleFitments, units, productImages: parsedProductImages, ...productData } =
     result.data;
+  const currentProductForImages = await db.product.findUnique({
+    where: { id },
+    select: { code: true },
+  });
+  if (!currentProductForImages) {
+    return { error: "ไม่พบสินค้า" };
+  }
+  const normalizedImages = await normalizeProductImagesForCode(parsedProductImages, currentProductForImages.code);
+  if (normalizedImages.error) return { error: normalizedImages.error };
+  const productImages = normalizedImages.productImages;
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
 
@@ -811,7 +909,7 @@ export const toggleProduct = async (
 
 export const uploadProductImage = async (
   formData: FormData
-): Promise<{ url?: string; error?: string }> => {
+): Promise<{ url?: string; uploadCode?: string; error?: string }> => {
   try {
     await requirePermission("products.update");
   } catch {
@@ -834,16 +932,16 @@ export const uploadProductImage = async (
     return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp" };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
+  const config = getProductImageStorageConfig();
+  if (!config) {
     return { error: "ไม่พบการตั้งค่า Supabase" };
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const safeFileName = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
-    const filePath = `products/${safeFileName}`;
+    const supabase = createProductImageStorageClient(config);
+    const requestedCode = normalizeRequestedProductCode(getStringFormValue(formData, "productCode"));
+    const uploadCode = requestedCode ?? await generateProductCode();
+    const filePath = buildProductImageObjectPath(uploadCode, ext);
     const buffer = new Uint8Array(await file.arrayBuffer());
 
     const { error: uploadError } = await supabase.storage
@@ -852,8 +950,7 @@ export const uploadProductImage = async (
 
     if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
 
-    const { data: { publicUrl } } = supabase.storage.from("products").getPublicUrl(filePath);
-    return { url: publicUrl };
+    return { url: getPublicProductImageUrl(supabase, filePath), uploadCode };
   } catch {
     return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
   }

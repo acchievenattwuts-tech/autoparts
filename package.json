@@ -24,6 +24,7 @@
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",
     "backfill:fact-profit-channel": "tsx --env-file=.env prisma/scripts/backfill-fact-profit-channel.ts",
     "backfill:claim-stock": "tsx --env-file=.env prisma/scripts/backfill-claim-stock.ts",
+    "migrate:product-images": "tsx --env-file=.env.local prisma/scripts/migrate-product-images-to-code-folders.ts",
     "reconcile:fact-profit": "tsx --env-file=.env prisma/scripts/reconcile-fact-profit.ts",
     "enable:fact-profit-rls": "tsx --env-file=.env prisma/scripts/enable-profit-fact-rls.ts",
     "enable:claim-stock-rls": "tsx --env-file=.env prisma/scripts/enable-claim-stock-rls.ts"
