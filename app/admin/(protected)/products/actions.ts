@@ -27,9 +27,11 @@ import {
   buildProductImageObjectPath,
   copyProductImageUrlToCodeFolder,
   createProductImageStorageClient,
+  deleteProductImageObjects,
   getProductImageStorageConfig,
   getProductImageObjectPathFromPublicUrl,
   getPublicProductImageUrl,
+  isAllowedProductImageUrl,
   isProductImageObjectPath,
   isProductImageObjectPathForCode,
 } from "@/lib/product-image-storage";
@@ -41,6 +43,47 @@ const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp"];
 const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB
 
+/**
+ * Detects the real image type from the file's magic bytes, ignoring the
+ * client-declared MIME type / extension (both spoofable). Returns null when the
+ * signature does not match a permitted raster image format.
+ */
+const sniffImageMimeType = (bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null => {
+  // JPEG: FF D8 FF
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  // WebP: "RIFF" .... "WEBP"
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
+};
+
 // ─── Zod Schemas ─────────────────────────────────────────────────────────────
 
 const productUnitSchema = z.object({
@@ -50,7 +93,11 @@ const productUnitSchema = z.object({
 });
 
 const productImageSchema = z.object({
-  url: z.string().url().max(500),
+  url: z
+    .string()
+    .url()
+    .max(500)
+    .refine(isAllowedProductImageUrl, "URL รูปภาพไม่ถูกต้อง"),
   alt: z.string().max(200).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   isPrimary: z.boolean().default(false),
@@ -81,7 +128,13 @@ const productSchema = z.object({
   purchaseUnitName: z.string().min(1).max(20).default("ชิ้น"),
   reportUnitName: z.string().min(1).max(20).default("ชิ้น"),
   description: z.string().max(2000).optional(),
-  imageUrl: z.string().url().max(500).optional().or(z.literal("")),
+  imageUrl: z
+    .string()
+    .url()
+    .max(500)
+    .refine(isAllowedProductImageUrl, "URL รูปภาพไม่ถูกต้อง")
+    .optional()
+    .or(z.literal("")),
   productImages: z.array(productImageSchema).max(12).default([]),
   // Lot Control (string "true"/"false" from FormData → boolean)
   isLotControl: z.preprocess((v) => v === "true", z.boolean()).default(false),
@@ -142,9 +195,9 @@ async function resolveCreateProductCode(formData: FormData): Promise<string> {
 async function normalizeProductImagesForCode(
   productImages: ProductImageInput[],
   productCode: string,
-): Promise<{ productImages: ProductImageInput[]; error?: string }> {
+): Promise<{ productImages: ProductImageInput[]; orphanedSourceUrls: string[]; error?: string }> {
   if (productImages.length === 0) {
-    return { productImages };
+    return { productImages, orphanedSourceUrls: [] };
   }
 
   const needsStorageCopy = productImages.some((image) => {
@@ -153,17 +206,20 @@ async function normalizeProductImagesForCode(
   });
 
   if (!needsStorageCopy) {
-    return { productImages };
+    return { productImages, orphanedSourceUrls: [] };
   }
 
   const config = getProductImageStorageConfig();
   if (!config) {
-    return { productImages, error: "ไม่พบการตั้งค่า Supabase" };
+    return { productImages, orphanedSourceUrls: [], error: "ไม่พบการตั้งค่า Supabase" };
   }
 
   const client = createProductImageStorageClient(config);
   const copiedUrls = new Map<string, string>();
   const nextImages: ProductImageInput[] = [];
+  // Source temp-upload URLs that were copied into the code folder and are now
+  // unreferenced — caller must delete them after a successful DB commit.
+  const orphanedSources = new Set<string>();
 
   for (const image of productImages) {
     const cachedUrl = copiedUrls.get(image.url);
@@ -179,14 +235,51 @@ async function normalizeProductImagesForCode(
     });
 
     if (!result.success) {
-      return { productImages, error: "ย้ายรูปสินค้าเข้าโฟลเดอร์ตามรหัสสินค้าไม่สำเร็จ" };
+      return { productImages, orphanedSourceUrls: [], error: "ย้ายรูปสินค้าเข้าโฟลเดอร์ตามรหัสสินค้าไม่สำเร็จ" };
     }
 
+    if (result.copied) {
+      orphanedSources.add(image.url);
+    }
     copiedUrls.set(image.url, result.url);
     nextImages.push({ ...image, url: result.url });
   }
 
-  return { productImages: nextImages };
+  return { productImages: nextImages, orphanedSourceUrls: [...orphanedSources] };
+}
+
+/**
+ * Best-effort deletion of orphaned storage objects after a product mutation.
+ * Skips any URL still referenced by a Product.imageUrl or ProductImage.url so
+ * in-use files are never removed. Never throws — cleanup failures must not fail
+ * the surrounding mutation.
+ */
+async function cleanupProductImageObjects(urls: string[]): Promise<void> {
+  const unique = [...new Set(urls.filter((url) => url && isAllowedProductImageUrl(url)))];
+  if (unique.length === 0) return;
+
+  try {
+    const [imageRefs, productRefs] = await Promise.all([
+      db.productImage.findMany({ where: { url: { in: unique } }, select: { url: true } }),
+      db.product.findMany({ where: { imageUrl: { in: unique } }, select: { imageUrl: true } }),
+    ]);
+
+    const referenced = new Set<string>([
+      ...imageRefs.map((row) => row.url),
+      ...productRefs.flatMap((row) => (row.imageUrl ? [row.imageUrl] : [])),
+    ]);
+
+    const deletable = unique.filter((url) => !referenced.has(url));
+    if (deletable.length === 0) return;
+
+    const config = getProductImageStorageConfig();
+    if (!config) return;
+
+    const client = createProductImageStorageClient(config);
+    await deleteProductImageObjects(client, deletable);
+  } catch {
+    // Best-effort: leaked objects can be reclaimed later; never block the mutation.
+  }
 }
 
 async function getProductAuditSnapshot(productId: string) {
@@ -666,6 +759,7 @@ export const createProduct = async (
       });
     }
 
+    await cleanupProductImageObjects(normalizedImages.orphanedSourceUrls);
     await revalidateStorefrontProductCaches(createdProductId);
     return {};
   } catch (err) {
@@ -696,18 +790,30 @@ export const updateProduct = async (
 
   const { aliases, fitments, compatibleFitments, units, productImages: parsedProductImages, ...productData } =
     result.data;
-  const currentProductForImages = await db.product.findUnique({
-    where: { id },
-    select: { code: true },
-  });
+  const [currentProductForImages, existingProductImages] = await Promise.all([
+    db.product.findUnique({
+      where: { id },
+      select: { code: true, imageUrl: true },
+    }),
+    db.productImage.findMany({ where: { productId: id }, select: { url: true } }),
+  ]);
   if (!currentProductForImages) {
     return { error: "ไม่พบสินค้า" };
   }
+  const previousImageUrls = [
+    ...existingProductImages.map((image) => image.url),
+    ...(currentProductForImages.imageUrl ? [currentProductForImages.imageUrl] : []),
+  ];
   const normalizedImages = await normalizeProductImagesForCode(parsedProductImages, currentProductForImages.code);
   if (normalizedImages.error) return { error: normalizedImages.error };
   const productImages = normalizedImages.productImages;
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
+  const finalImageUrls = new Set<string>([
+    ...productImages.map((image) => image.url),
+    ...(primaryImageUrl ? [primaryImageUrl] : []),
+  ]);
+  const removedImageUrls = previousImageUrls.filter((url) => !finalImageUrls.has(url));
 
   if (!isInventoryTracked(productData.inventoryTracking)) {
     const currentProduct = await db.product.findUnique({
@@ -850,6 +956,7 @@ export const updateProduct = async (
       });
     }
 
+    await cleanupProductImageObjects([...removedImageUrls, ...normalizedImages.orphanedSourceUrls]);
     revalidatePath(`/admin/products/${id}/edit`);
     await revalidateStorefrontProductCaches(id);
     return {};
@@ -940,13 +1047,20 @@ export const uploadProductImage = async (
   try {
     const supabase = createProductImageStorageClient(config);
     const requestedCode = normalizeRequestedProductCode(getStringFormValue(formData, "productCode"));
+    const buffer = new Uint8Array(await file.arrayBuffer());
+
+    // Verify the actual file content — never trust the client-declared MIME/extension.
+    const detectedType = sniffImageMimeType(buffer);
+    if (!detectedType) {
+      return { error: "ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ (JPEG, PNG, WebP)" };
+    }
+
     const uploadCode = requestedCode ?? await generateProductCode();
     const filePath = buildProductImageObjectPath(uploadCode, ext);
-    const buffer = new Uint8Array(await file.arrayBuffer());
 
     const { error: uploadError } = await supabase.storage
       .from("products")
-      .upload(filePath, buffer, { contentType: file.type, upsert: false });
+      .upload(filePath, buffer, { contentType: detectedType, upsert: false });
 
     if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
 

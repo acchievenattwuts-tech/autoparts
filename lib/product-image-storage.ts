@@ -86,6 +86,47 @@ export function isProductImageObjectPath(objectPath: string): boolean {
   return objectPath.startsWith(`${PRODUCT_IMAGE_ROOT}/`);
 }
 
+/**
+ * Returns true only when the URL points to an object inside *our* configured
+ * Supabase project's product-image bucket. Used to reject arbitrary external
+ * URLs from being stored on Product.imageUrl / ProductImage.url.
+ */
+export function isAllowedProductImageUrl(url: string): boolean {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return false;
+
+  let parsed: URL;
+  let base: URL;
+  try {
+    parsed = new URL(url);
+    base = new URL(supabaseUrl);
+  } catch {
+    return false;
+  }
+
+  if (parsed.host !== base.host) return false;
+
+  const objectPath = getProductImageObjectPathFromPublicUrl(url);
+  return !!objectPath && isProductImageObjectPath(objectPath);
+}
+
+/**
+ * Best-effort deletion of storage objects from a list of public URLs.
+ * Silently ignores URLs that are not product-image object paths in our bucket.
+ */
+export async function deleteProductImageObjects(
+  client: ProductImageStorageClient,
+  urls: string[],
+): Promise<void> {
+  const paths = urls
+    .map((url) => getProductImageObjectPathFromPublicUrl(url))
+    .filter((path): path is string => !!path && isProductImageObjectPath(path));
+
+  if (paths.length === 0) return;
+
+  await client.storage.from(PRODUCT_IMAGE_BUCKET).remove(paths);
+}
+
 export function isProductImageObjectPathForCode(objectPath: string, productCode: string): boolean {
   return objectPath.startsWith(`${getProductImageFolder(productCode)}/`);
 }
