@@ -43,7 +43,7 @@ const ProductImageZoomLightbox = ({
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const singleStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const singleStart = useRef<{ x: number; y: number; lastX: number; lastY: number } | null>(null);
   const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
   const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const hasMultiple = images.length > 1;
@@ -148,7 +148,7 @@ const ProductImageZoomLightbox = ({
     }
 
     if (pointers.current.size === 1) {
-      singleStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      singleStart.current = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY };
       setIsDragging(true);
     }
   };
@@ -172,16 +172,19 @@ const ProductImageZoomLightbox = ({
     const start = singleStart.current;
     if (!start || pointers.current.size !== 1) return;
 
-    const dx = e.clientX - start.x;
-    const dy = e.clientY - start.y;
-
     if (isZoomed) {
-      setPan({
-        x: start.panX + dx * panSensitivity,
-        y: start.panY + dy * panSensitivity,
-      });
+      // Pan using the incremental delta since the last move so repeated
+      // grab-release-grab gestures never desync from a stale snapshot.
+      const stepX = e.clientX - start.lastX;
+      const stepY = e.clientY - start.lastY;
+      start.lastX = e.clientX;
+      start.lastY = e.clientY;
+      setPan((p) => ({ x: p.x + stepX * panSensitivity, y: p.y + stepY * panSensitivity }));
       return;
     }
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
 
     if (!hasMultiple) return;
     if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
