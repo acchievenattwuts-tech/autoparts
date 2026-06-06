@@ -96,6 +96,25 @@ const ProductImageZoomLightbox = ({
     };
   }, [open]);
 
+  // Make the phone "back" button close the lightbox instead of leaving the page.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    if (!open) return;
+    window.history.pushState({ productImageLightbox: true }, "");
+    const onPopState = () => onCloseRef.current();
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      // Closed via UI (not the back button) -> pop the entry we pushed.
+      if (window.history.state?.productImageLightbox) {
+        window.history.back();
+      }
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
