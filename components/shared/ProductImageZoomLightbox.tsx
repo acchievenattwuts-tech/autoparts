@@ -148,10 +148,18 @@ const ProductImageZoomLightbox = ({
     if (!open) resetView();
   }, [open, resetView]);
 
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-  };
+  // Wheel zoom needs a non-passive native listener: React registers onWheel as
+  // passive, so calling preventDefault there is blocked and spams the console.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!open || !el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [open, adjustZoom]);
 
   const pinchDistance = () => {
     const points = Array.from(pointers.current.values());
@@ -160,6 +168,14 @@ const ProductImageZoomLightbox = ({
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // A primary pointer means a fresh gesture (no other finger/button active).
+    // Drop any pointers left behind by a missed up/cancel — otherwise a leaked
+    // entry makes the next single drag look like a 2-finger pinch (size === 2)
+    // and the image silently zooms instead of panning.
+    if (e.isPrimary) {
+      pointers.current.clear();
+      pinchStart.current = null;
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     // Register the gesture state BEFORE attempting pointer capture. If
@@ -339,7 +355,6 @@ const ProductImageZoomLightbox = ({
           className={`relative min-h-0 flex-1 overflow-hidden [touch-action:none] sm:rounded-2xl ${
             isZoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"
           }`}
-          onWheel={onWheel}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
