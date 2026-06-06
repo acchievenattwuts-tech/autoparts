@@ -24,6 +24,8 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.5;
 const SWIPE_THRESHOLD_PX = 72;
 const EDGE_RESISTANCE = 0.35;
+const PAN_BASE_SENSITIVITY = 1.35;
+const PAN_ZOOM_SENSITIVITY = 0.55;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
 
@@ -49,6 +51,10 @@ const ProductImageZoomLightbox = ({
 
   const activeImage = images[activeIndex];
   const zoomLabel = useMemo(() => `${Math.round(zoom * 100)}%`, [zoom]);
+  const panSensitivity = useMemo(
+    () => PAN_BASE_SENSITIVITY + Math.max(0, zoom - 1) * PAN_ZOOM_SENSITIVITY,
+    [zoom],
+  );
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -132,7 +138,10 @@ const ProductImageZoomLightbox = ({
     const dy = e.clientY - start.y;
 
     if (isZoomed) {
-      setPan({ x: start.panX + dx, y: start.panY + dy });
+      setPan({
+        x: start.panX + dx * panSensitivity,
+        y: start.panY + dy * panSensitivity,
+      });
       return;
     }
 
@@ -275,7 +284,7 @@ const ProductImageZoomLightbox = ({
                         isActive
                           ? {
                               transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-                              transition: isDragging ? "none" : "transform 180ms ease-out",
+                              transition: isDragging ? "none" : "transform 120ms ease-out",
                             }
                           : undefined
                       }
