@@ -104,5 +104,11 @@ export const getSupplierPaymentSupplierOptions = async (
         amountRemain: purchaseOutstanding - creditOutstanding - advanceOutstanding,
       };
     })
-    .filter((supplier) => supplier.id === currentSupplierId || supplier.amountRemain !== 0);
+    .filter(
+      (supplier) =>
+        supplier.id === currentSupplierId ||
+        purchaseBalanceMap.has(supplier.id) ||
+        creditBalanceMap.has(supplier.id) ||
+        advanceBalanceMap.has(supplier.id),
+    );
 };
