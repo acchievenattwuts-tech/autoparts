@@ -148,6 +148,20 @@ export async function appendLineMessage(input: {
   });
 }
 
+/**
+ * Recent messages for a conversation (chronological, oldest → newest) used to
+ * give the AI short-term memory of the ongoing chat. Lightweight select only.
+ */
+export async function getRecentLineMessagesForAi(conversationId: string, take = 10) {
+  const rows = await db.lineMessage.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(take, 1), 30),
+    select: { id: true, direction: true, text: true, messageType: true },
+  });
+  return rows.reverse();
+}
+
 export async function storeLineAiJob(input: {
   conversationId: string;
   lineMessageId?: string | null;

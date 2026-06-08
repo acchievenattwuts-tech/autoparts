@@ -11,12 +11,13 @@ import {
 import { classifyLineImage, type LineImageClassification } from "@/lib/line-image-service";
 import { LINE_AI_SETTINGS_DEFAULTS } from "@/lib/line-ai-settings";
 import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
-import { generateLineSuggestion } from "@/lib/line-ai-service";
+import { generateLineSuggestion, type LineReplyHistoryItem } from "@/lib/line-ai-service";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
   findActiveCustomerIdByLineUserId,
   getOrCreateLineConversation,
+  getRecentLineMessagesForAi,
   hasProcessedLineEvent,
   markOutboundLineMessageSent,
   storeLineAiJob,
@@ -74,6 +75,8 @@ export type LineWebhookProcessorDependencies = {
   ingestPaymentSlip?: typeof ingestPaymentSlip;
   /** Optional override; defaults to the in-app admin bell notification (no Telegram). */
   notifyLineOaNeedsAdmin?: typeof notifyLineOaNeedsAdmin;
+  /** Optional override; defaults to fetching recent messages for AI short-term memory. */
+  getRecentLineMessagesForAi?: typeof getRecentLineMessagesForAi;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -94,7 +97,27 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   classifyLineImage,
   ingestPaymentSlip,
   notifyLineOaNeedsAdmin,
+  getRecentLineMessagesForAi,
 };
+
+/** Maps stored LINE messages to the AI history shape (oldest → newest). */
+function toReplyHistory(
+  rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
+  excludeMessageId: string,
+): LineReplyHistoryItem[] {
+  return rows
+    .filter((row) => row.id !== excludeMessageId)
+    .map((row) => ({
+      role: row.direction === LineMessageDirection.INBOUND ? ("customer" as const) : ("shop" as const),
+      text:
+        row.text?.trim() ||
+        (row.messageType === LineMessageType.IMAGE
+          ? "[รูปภาพ]"
+          : row.messageType === LineMessageType.STICKER
+            ? "[สติกเกอร์]"
+            : "[ข้อความ]"),
+    }));
+}
 
 /**
  * Maps a Gemini-vision image classification onto the intent-router contract so a
@@ -209,11 +232,21 @@ export async function processLineAiReply(
           },
     });
 
+    // Short-term memory: feed recent turns so the reply doesn't re-ask for
+    // details the customer already gave in a previous message (e.g. car model
+    // sent as text, then the part photo in a follow-up message).
+    const recentMessages = await (dependencies.getRecentLineMessagesForAi ?? getRecentLineMessagesForAi)(
+      input.conversation.id,
+      10,
+    ).catch(() => []);
+    const history = toReplyHistory(recentMessages, input.inboundMessage.id);
+
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
     const suggestion = await generateSuggestion({
       intent: input.route.intent,
       originalText: input.text,
       productSearch,
+      history,
     });
 
     const hasReplyToken = canUseReplyToken(config, input.canReply);

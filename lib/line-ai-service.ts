@@ -10,6 +10,12 @@ export type LineAiSuggestionDraft = {
   matchedProducts?: unknown;
 };
 
+/** One prior turn in the conversation, used to give the reply short-term memory. */
+export type LineReplyHistoryItem = {
+  role: "customer" | "shop";
+  text: string;
+};
+
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
   LineIntent.PART_IMAGE_INQUIRY,
@@ -80,6 +86,8 @@ export async function generateLineSuggestion(input: {
   intent: LineIntent;
   originalText?: string | null;
   productSearch?: LineProductSearchBridgeResult | null;
+  /** Recent prior turns (oldest → newest), excluding the current message. */
+  history?: LineReplyHistoryItem[];
 }): Promise<LineAiSuggestionDraft> {
   const fallback = buildConservativeLineSuggestion(input);
 
@@ -127,10 +135,19 @@ function buildLineReplyPrompt(input: {
   intent: LineIntent;
   originalText?: string | null;
   productSearch?: LineProductSearchBridgeResult | null;
+  history?: LineReplyHistoryItem[];
 }): string {
-  const lines: string[] = [
-    `ข้อความจากลูกค้า: ${input.originalText?.trim() || "(ไม่มีข้อความ)"}`,
-  ];
+  const lines: string[] = [];
+
+  if (input.history && input.history.length > 0) {
+    lines.push("ประวัติการสนทนาก่อนหน้า (เก่าสุด → ใหม่สุด) ใช้เป็นบริบท อย่าถามข้อมูลที่ลูกค้าให้ไปแล้วซ้ำ:");
+    for (const turn of input.history) {
+      lines.push(`${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`ข้อความล่าสุดจากลูกค้า: ${input.originalText?.trim() || "(ไม่มีข้อความ อาจเป็นรูปภาพ)"}`);
 
   if (input.productSearch?.searched) {
     if (input.productSearch.needsMoreInfo) {

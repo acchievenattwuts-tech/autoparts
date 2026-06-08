@@ -239,6 +239,7 @@ function createProcessorTestDeps(input?: {
       calls.notifyHandoffs.push({ conversationId: notifyInput.conversationId, text: notifyInput.text });
       return 1;
     },
+    getRecentLineMessagesForAi: async () => [],
   };
 
   return { calls, dependencies };
@@ -405,12 +406,14 @@ test("processor stores suggestion but does not send while conversation is paused
   assert.deepEqual(calls.markedSent, []);
 });
 
-test("processor routes unknown intent to waiting-admin without product-search reply", async () => {
+test("processor routes admin-only intent to waiting-admin without product-search reply", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
 
+  // "หาอะไหล่" is a customer-menu keyword → UNKNOWN + requiresAdmin (handoff),
+  // unlike generic freeform text which now defaults to a product search.
   const result = await processLineWebhookPayload(
-    textPayload("asdf qwer"),
+    textPayload("หาอะไหล่"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
     dependencies,
   );
