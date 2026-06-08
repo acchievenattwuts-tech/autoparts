@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "CONVERSATION_NOT_FOUND" }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return lineAdminApiErrorResponse(error);
   }

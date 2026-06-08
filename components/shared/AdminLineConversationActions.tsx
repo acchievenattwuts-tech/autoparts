@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { AlertCircle, ImagePlus, Pause, Play, Send, UserRoundCheck, X, XCircle } from "lucide-react";
+import { AlertCircle, ImagePlus, Pause, Play, Send, Smile, UserRoundCheck, X, XCircle } from "lucide-react";
 
 type Props = {
   conversationId: string;
@@ -11,6 +11,29 @@ type Props = {
 };
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const QUICK_EMOJIS = [
+  "😀",
+  "😁",
+  "😊",
+  "🙏",
+  "👍",
+  "👌",
+  "❤️",
+  "🎉",
+  "✨",
+  "🚗",
+  "🔧",
+  "❄️",
+  "📦",
+  "💵",
+  "✅",
+  "❌",
+  "📍",
+  "📞",
+  "⏰",
+  "ขอบคุณครับ",
+];
 
 const ERROR_MESSAGES: Record<string, string> = {
   EMPTY_MESSAGE: "กรุณาพิมพ์ข้อความหรือแนบรูปก่อนส่ง",
@@ -54,6 +77,8 @@ export default function AdminLineConversationActions({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   const clearImage = () => {
     setImageFile(null);
@@ -77,6 +102,25 @@ export default function AdminLineConversationActions({
     setImagePreview((current) => {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(file);
+    });
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setText((current) => current + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const nextText = `${text.slice(0, start)}${emoji}${text.slice(end)}`;
+    const nextCursor = start + emoji.length;
+
+    setText(nextText);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCursor, nextCursor);
     });
   };
 
@@ -190,6 +234,7 @@ export default function AdminLineConversationActions({
       {canReply ? (
         <div className="space-y-2">
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={3}
@@ -224,6 +269,32 @@ export default function AdminLineConversationActions({
               className="hidden"
               onChange={handlePickImage}
             />
+            <div className="relative">
+              <button
+                type="button"
+                disabled={pending !== null}
+                onClick={() => setEmojiOpen((open) => !open)}
+                aria-expanded={emojiOpen}
+                aria-label="เลือกอิโมจิ"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                <Smile size={16} />
+              </button>
+              {emojiOpen ? (
+                <div className="absolute bottom-11 left-0 z-20 grid w-64 grid-cols-5 gap-1 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-slate-900">
+                  {QUICK_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => insertEmoji(emoji)}
+                      className="inline-flex h-9 min-w-0 items-center justify-center rounded-md px-1 text-lg hover:bg-gray-100 dark:hover:bg-white/10"
+                    >
+                      <span className="truncate text-center text-sm leading-none">{emoji}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               disabled={pending !== null}

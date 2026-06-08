@@ -86,6 +86,7 @@ export async function getLineConversationMessages(input: {
     where: { conversationId: input.conversationId },
     select: {
       id: true,
+      lineMessageId: true,
       direction: true,
       messageType: true,
       intent: true,

@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic";
 
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Info } from "lucide-react";
@@ -8,9 +7,10 @@ import { ArrowLeft, Info } from "lucide-react";
 import AdminLineConversationActions from "@/components/shared/AdminLineConversationActions";
 import AdminLineConversationCustomerLink from "@/components/shared/AdminLineConversationCustomerLink";
 import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
+import LineConversationMessagePoller from "@/components/shared/LineConversationMessagePoller";
 import LineConversationScrollAnchor from "@/components/shared/LineConversationScrollAnchor";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
+import { LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
 import { getLineConversationMessages } from "@/lib/line-admin-service";
 import { getLinkedCustomerRecentOrders } from "@/lib/line-customer-linkage";
 import { requirePermission } from "@/lib/require-auth";
@@ -63,6 +63,28 @@ function conversationDisplayName(conversation: {
   return conversation.customer ? `${lineName} (${conversation.customer.name})` : lineName;
 }
 
+function messageTypeLabel(message: {
+  intent: LineIntent | null;
+  messageType: LineMessageType;
+}) {
+  if (message.intent && message.intent !== LineIntent.UNKNOWN) return message.intent;
+  if (message.messageType !== LineMessageType.TEXT) return message.messageType;
+  return null;
+}
+
+function messageImageSrc(message: {
+  id: string;
+  imageUrl: string | null;
+  lineMessageId: string | null;
+  messageType: LineMessageType;
+}) {
+  if (message.imageUrl) return message.imageUrl;
+  if (message.messageType === LineMessageType.IMAGE && message.lineMessageId) {
+    return `/api/admin/line-messages/${message.id}/image`;
+  }
+  return null;
+}
+
 export default async function LineConversationDetailPage({ params }: PageProps) {
   const session = await requirePermission("line_conversations.view");
   const { id } = await params;
@@ -84,9 +106,12 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
     ? await getLinkedCustomerRecentOrders({ customerId: conversation.customer.id, take: 5 })
     : [];
   const displayName = conversationDisplayName(conversation);
+  const latestMessageId = messages.at(-1)?.id ?? null;
 
   return (
     <div className="space-y-4">
+      <LineConversationMessagePoller conversationId={conversation.id} latestMessageId={latestMessageId} />
+
       <LineAdminTabNav canViewConversations canViewPaymentSlips={canViewPaymentSlips} />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -196,6 +221,8 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
           <div className="space-y-3">
             {messages.map((message) => {
               const isInbound = message.direction === LineMessageDirection.INBOUND;
+              const typeLabel = messageTypeLabel(message);
+              const imageSrc = messageImageSrc(message);
 
               return (
                 <article
@@ -206,14 +233,14 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
                     <div
                       className={`rounded-2xl px-4 py-3 shadow-sm ${messageBubbleClasses(message.direction)}`}
                     >
-                      {message.imageUrl ? (
-                        <a href={message.imageUrl} target="_blank" rel="noopener noreferrer" className="block">
-                          <Image
-                            src={message.imageUrl}
+                      {imageSrc ? (
+                        <a href={imageSrc} target="_blank" rel="noopener noreferrer" className="block">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- LINE chat images may be proxied through an authenticated route. */}
+                          <img
+                            src={imageSrc}
                             alt="รูปภาพในแชท"
                             width={400}
                             height={400}
-                            sizes="400px"
                             className="h-auto max-h-72 w-auto max-w-full rounded-lg"
                           />
                         </a>
@@ -233,7 +260,7 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
                       <span className="font-medium">
                         {directionLabel(message.direction, displayName, message.adminUser?.name)}
                       </span>
-                      <span>{message.intent ?? message.messageType}</span>
+                      {typeLabel ? <span>{typeLabel}</span> : null}
                       <span>{formatDateTimeThai(message.createdAt, { dateStyle: "medium", timeStyle: "short" })}</span>
                       {message.deliveryMode ? <span>{message.deliveryMode}</span> : null}
                       {message.deliveryStatus ? <span>{message.deliveryStatus}</span> : null}

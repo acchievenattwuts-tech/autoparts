@@ -57,6 +57,21 @@ test("routes greeting without requiring search", () => {
   assert.equal(result.requiresAdmin, false);
 });
 
+test("routes customer menu keywords away from AI/search", () => {
+  for (const text of ["เมนู", "เวลาทำการ", "ติดต่อร้าน", "ติดต่อสอบถาม", "หาอะไหล่", "สอบถามอะไหล่"]) {
+    const result = routeLineIntent({
+      messageType: LineMessageType.TEXT,
+      text,
+    });
+
+    assert.equal(result.intent, LineIntent.UNKNOWN);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, true);
+    assert.equal(result.requiresMoreInfo, false);
+    assert.equal(result.reason, "CUSTOMER_MENU_KEYWORD");
+  }
+});
+
 test("routes image to image analysis before search", () => {
   const result = routeLineIntent({
     messageType: LineMessageType.IMAGE,
