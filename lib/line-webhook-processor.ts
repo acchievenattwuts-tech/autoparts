@@ -33,6 +33,7 @@ import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
+import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -83,6 +84,8 @@ export type LineWebhookProcessorDependencies = {
   getRecentLineMessagesForAi?: typeof getRecentLineMessagesForAi;
   /** Optional override; counts consecutive empty searches for the escalate-to-admin rule. */
   countConsecutiveFailedLineSearches?: typeof countConsecutiveFailedLineSearches;
+  /** Optional override; AI fallback classifier for purchase intent. */
+  classifyPurchaseIntent?: typeof classifyPurchaseIntent;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -106,11 +109,14 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   notifyLineOaNeedsAdmin,
   getRecentLineMessagesForAi,
   countConsecutiveFailedLineSearches,
+  classifyPurchaseIntent,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
+const PURCHASE_HANDOFF_MESSAGE =
+  "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาดูแลเรื่องสั่งซื้อและสรุปราคา/การจัดส่งให้นะคะ รอสักครู่ค่ะ 🙏";
 
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
@@ -244,18 +250,18 @@ export async function processLineAiReply(
           },
     });
 
-    // Escalation rule: if the search step keeps coming back empty (product=0) for
-    // two consecutive turns, stop the AI, hand the conversation to an admin, and
-    // send the customer a polite "we'll get a human on it" message. Only in live
-    // auto-reply mode (not dry-run / AI-off, where nothing is sent automatically).
+    // Live mode = AI is allowed to auto-send. Forced hand-offs below only act in
+    // live mode (dry-run / AI-off never auto-send).
+    const liveMode = autoReplyEnabled && !dryRun;
+
+    // Escalation: search came back empty (product=0) for N consecutive turns.
     const failedSearchCount =
       productSearch.searched && productSearch.result.total === 0
         ? await (dependencies.countConsecutiveFailedLineSearches ?? countConsecutiveFailedLineSearches)(
             input.conversation.id,
           ).catch(() => 0)
         : 0;
-    const shouldEscalateNoResults =
-      failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF && autoReplyEnabled && !dryRun;
+    const shouldEscalateNoResults = failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF;
 
     // Short-term memory: feed recent turns so the reply doesn't re-ask for
     // details the customer already gave in a previous message (e.g. car model
@@ -274,12 +280,48 @@ export async function processLineAiReply(
         ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
         : [];
 
+    // Purchase intent → a human closes the sale. Keyword router first; then a
+    // Gemini fallback only when the customer is plausibly deciding (product
+    // inquiry with matches already shown), to keep the extra call rare.
+    const isKeywordPurchase = input.route.intent === LineIntent.PURCHASE_INTENT;
+    let isPurchaseIntent = isKeywordPurchase;
+    if (
+      !isPurchaseIntent &&
+      liveMode &&
+      products.length > 0 &&
+      (input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
+        input.route.intent === LineIntent.PART_IMAGE_INQUIRY)
+    ) {
+      isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(input.text).catch(
+        () => false,
+      );
+    }
+
+    // A forced hand-off replaces the normal AI reply with a deterministic bridging
+    // message, then routes the conversation to a human.
+    const forcedHandoff: { message: string; reason: string; audit: string; auditPayload: Record<string, unknown> } | null =
+      liveMode && shouldEscalateNoResults
+        ? {
+            message: NO_RESULTS_ESCALATION_MESSAGE,
+            reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}`,
+            audit: "AI_ESCALATE_NO_RESULTS",
+            auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
+          }
+        : liveMode && isPurchaseIntent
+          ? {
+              message: PURCHASE_HANDOFF_MESSAGE,
+              reason: "PURCHASE_INTENT",
+              audit: "AI_PURCHASE_HANDOFF",
+              auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
+            }
+          : null;
+
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    const suggestion = shouldEscalateNoResults
+    const suggestion = forcedHandoff
       ? {
-          suggestedReply: NO_RESULTS_ESCALATION_MESSAGE,
+          suggestedReply: forcedHandoff.message,
           confidence: LineAiConfidence.ADMIN_REQUIRED,
-          reasoningSummary: `Escalated to admin after ${failedSearchCount} consecutive empty searches`,
+          reasoningSummary: forcedHandoff.reason,
           matchedProducts: null,
         }
       : await generateSuggestion({
@@ -301,10 +343,10 @@ export async function processLineAiReply(
       allowPushFallback: config.allowPushFallback ?? false,
     });
 
-    // Force-deliver the escalation message (its ADMIN_REQUIRED confidence would
+    // Force-deliver the bridging message (its ADMIN_REQUIRED confidence would
     // otherwise resolve to a silent handoff). Falls back to a silent handoff only
     // when there is no usable delivery channel.
-    if (shouldEscalateNoResults) {
+    if (forcedHandoff) {
       const deliveryMode = hasReplyToken
         ? LineDeliveryMode.REPLY
         : config.allowPushFallback
@@ -312,8 +354,8 @@ export async function processLineAiReply(
           : LineDeliveryMode.NONE;
       sendDecision =
         deliveryMode === LineDeliveryMode.NONE
-          ? { action: "handoff", deliveryMode, reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}` }
-          : { action: "send", deliveryMode, reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}` };
+          ? { action: "handoff", deliveryMode, reason: forcedHandoff.reason }
+          : { action: "send", deliveryMode, reason: forcedHandoff.reason };
     }
 
     await dependencies.storeLineAiSuggestion({
@@ -341,15 +383,18 @@ export async function processLineAiReply(
     });
 
     // Product cards (Flex) shown alongside the text reply so the customer can tap
-    // through to the real storefront pages. Null when no matches or no base URL.
+    // through to the real storefront pages. Skipped on a forced hand-off (we just
+    // send the bridging message). Null when no matches or no base URL.
     const placeholderImageUrl =
-      products.length > 0 ? await resolveFlexPlaceholderImageUrl().catch(() => null) : null;
-    const productFlex = buildProductFlexMessage({
-      products,
-      searchQuery: productSearch.searched ? productSearch.query : null,
-      total: productSearch.searched ? productSearch.result.total : 0,
-      placeholderImageUrl,
-    });
+      !forcedHandoff && products.length > 0 ? await resolveFlexPlaceholderImageUrl().catch(() => null) : null;
+    const productFlex = forcedHandoff
+      ? null
+      : buildProductFlexMessage({
+          products,
+          searchQuery: productSearch.searched ? productSearch.query : null,
+          total: productSearch.searched ? productSearch.result.total : 0,
+          placeholderImageUrl,
+        });
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
       ...(productFlex ? [productFlex] : []),
@@ -415,10 +460,10 @@ export async function processLineAiReply(
       replied = true;
     }
 
-    // Hand off + pause the AI when escalating after repeated empty searches, or on
-    // a normal admin-required handoff. (Escalation may have force-sent a message,
-    // so it isn't covered by the generic handoff action check.)
-    if (shouldEscalateNoResults || sendDecision.action === "handoff") {
+    // Hand off + pause the AI on a forced hand-off (escalation / purchase intent —
+    // which may have force-sent a bridging message) or a normal admin-required
+    // handoff.
+    if (forcedHandoff || sendDecision.action === "handoff") {
       await dependencies.updateLineConversationState(
         input.conversation.id,
         buildLineConversationStatePatch({
@@ -429,18 +474,18 @@ export async function processLineAiReply(
       );
     }
 
-    if (shouldEscalateNoResults) {
+    if (forcedHandoff) {
       await dependencies.storeLineAiAudit({
         conversationId: input.conversation.id,
-        action: "AI_ESCALATE_NO_RESULTS",
-        payload: { lineEventId: input.lineEventId, failedSearchCount },
+        action: forcedHandoff.audit,
+        payload: forcedHandoff.auditPayload,
       });
     }
 
-    // Notify admins whenever the AI did NOT auto-reply successfully, or when we
-    // escalated after repeated empty searches — i.e. the customer is now waiting
-    // for a human. Deduped per conversation; never throws into the reply flow.
-    if (shouldEscalateNoResults || !(sendDecision.action === "send" && replied)) {
+    // Notify admins whenever the AI did NOT auto-reply successfully, or on a forced
+    // hand-off — i.e. the customer is now waiting for a human. Deduped per
+    // conversation; never throws into the reply flow.
+    if (forcedHandoff || !(sendDecision.action === "send" && replied)) {
       const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
       await notify({
         conversationId: input.conversation.id,

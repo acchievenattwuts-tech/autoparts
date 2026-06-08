@@ -28,6 +28,15 @@ test("routes a short part code/number to searchable product inquiry", () => {
   }
 });
 
+test("routes purchase wording to admin without search", () => {
+  for (const text of ["เอาตัวนี้เลยค่ะ", "สั่งซื้อ 2 อัน", "กี่บาทคะ", "ซื้อเลยค่ะ", "รับของยังไง"]) {
+    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+    assert.equal(result.intent, LineIntent.PURCHASE_INTENT, `expected purchase intent for "${text}"`);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, true);
+  }
+});
+
 test("routes payment wording away from product search", () => {
   const result = routeLineIntent({
     messageType: LineMessageType.TEXT,

@@ -84,6 +84,7 @@ function createProcessorTestDeps(input?: {
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
   imageHints?: string[];
   failedSearchCount?: number;
+  purchaseIntent?: boolean;
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -243,6 +244,7 @@ function createProcessorTestDeps(input?: {
     getRecentLineMessagesForAi: async () => [],
     getLineProductSummaries: async () => [],
     countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
+    classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
   };
 
   return { calls, dependencies };
@@ -451,6 +453,25 @@ test("escalates to admin (waiting + notify + send-off message) after repeated em
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.ok(calls.auditActions.includes("AI_ESCALATE_NO_RESULTS"));
   assert.equal(calls.notifyHandoffs.length, 1);
+});
+
+test("purchase keyword hands off to admin with a bridging message", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("เอาตัวนี้เลยค่ะ สั่งซื้อ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /แอดมินมาดูแลเรื่องสั่งซื้อ/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.ok(calls.auditActions.includes("AI_PURCHASE_HANDOFF"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  // No product search/cards for a pure purchase keyword.
+  assert.deepEqual(calls.searches, []);
 });
 
 test("processor handles a new event and skips an already-seen event in the same batch", async () => {
