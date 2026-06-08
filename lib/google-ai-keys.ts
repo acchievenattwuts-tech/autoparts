@@ -73,10 +73,19 @@ async function ensureKeyRows(keyRefs: string[]): Promise<void> {
 }
 
 /**
- * Returns the currently usable keys, ordered so the least-recently-used key is
- * tried first (spreads load evenly across all accounts). Keys that are DISABLED
- * or still inside their cooldown window are excluded.
+ * Returns the currently usable keys, excluding DISABLED keys and those still in a
+ * cooldown window. Ordering is controlled by GOOGLE_AI_KEY_STRATEGY:
+ *  - "sticky" (default): most-recently-used key first, so consecutive requests
+ *    reuse the same warm key and benefit from Gemini implicit prompt caching
+ *    (≈90% off the repeated system-instruction tokens). Cooling keys are still
+ *    excluded, so it falls back to the next key under bursts/rate-limits.
+ *  - "spread": least-recently-used first (round-robin) — spreads load evenly,
+ *    but defeats prompt caching. Use if a single key keeps hitting RPM limits.
  */
+function isStickyKeyStrategy(): boolean {
+  return (process.env.GOOGLE_AI_KEY_STRATEGY ?? "sticky").trim().toLowerCase() !== "spread";
+}
+
 export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
   const configured = getConfiguredGeminiKeys();
   if (configured.length === 0) {
@@ -96,7 +105,9 @@ export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
       status: { not: AiApiKeyStatus.DISABLED },
       OR: [{ status: AiApiKeyStatus.AVAILABLE }, { cooldownUntil: { lte: now } }],
     },
-    orderBy: [{ lastUsedAt: { sort: "asc", nulls: "first" } }],
+    orderBy: isStickyKeyStrategy()
+      ? [{ lastUsedAt: { sort: "desc", nulls: "last" } }]
+      : [{ lastUsedAt: { sort: "asc", nulls: "first" } }],
     select: { keyRef: true },
   });
 
