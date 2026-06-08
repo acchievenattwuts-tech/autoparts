@@ -67,7 +67,7 @@ export async function getLineProductSummaries(ids: string[]): Promise<LineMatche
   const byId = new Map(rows.map((row) => [row.id, row]));
   return ids
     .map((id) => byId.get(id))
-    .filter((row): row is { id: string; name: string; code: string | null } => Boolean(row))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .map((row) => ({ name: row.name, code: row.code }));
 }
 
