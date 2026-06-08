@@ -39,6 +39,8 @@ export async function runPaymentSlipOcr(content: LineMessageContent | null): Pro
       json: true,
       maxOutputTokens: 500,
       temperature: 0,
+      // OCR extraction — disable thinking so the JSON isn't truncated.
+      thinkingLevel: "NONE",
     });
     return parsePaymentSlipOcr(text);
   } catch {

@@ -124,6 +124,8 @@ export async function classifyLineImage(input: {
       json: true,
       maxOutputTokens: 300,
       temperature: 0,
+      // Extraction task — disable thinking so the JSON isn't truncated.
+      thinkingLevel: "NONE",
     });
 
     return {

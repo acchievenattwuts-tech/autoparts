@@ -76,8 +76,11 @@ export async function generateLineSuggestion(input: {
     const { suggestedReply } = await generateGeminiContent({
       prompt,
       systemInstruction: LINE_AI_SYSTEM_INSTRUCTION,
-      maxOutputTokens: 400,
+      maxOutputTokens: 600,
       temperature: 0.4,
+      // Conservative shop replies don't need deep reasoning; HIGH thinking would
+      // consume the output budget and truncate the message mid-sentence.
+      thinkingLevel: "NONE",
     }).then((result) => ({ suggestedReply: result.text.trim() }));
 
     if (!suggestedReply) {

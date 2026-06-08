@@ -46,6 +46,12 @@ export type GeminiGenerateInput = {
   temperature?: number;
   /** When true, asks Gemini to return application/json. */
   json?: boolean;
+  /**
+   * Per-call reasoning depth override (HIGH | LOW | NONE). Defaults to the global
+   * `GOOGLE_AI_THINKING_LEVEL` env / HIGH. Use "NONE" for short or extraction-style
+   * tasks so reasoning tokens don't eat into `maxOutputTokens` and truncate output.
+   */
+  thinkingLevel?: "HIGH" | "LOW" | "NONE";
 };
 
 export type GeminiGenerateResult = {
@@ -97,7 +103,7 @@ async function callGeminiOnce(secret: string, input: GeminiGenerateInput): Promi
   const model = getModel();
   const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(secret)}`;
 
-  const thinkingLevel = getThinkingLevel();
+  const thinkingLevel = input.thinkingLevel?.trim().toUpperCase() || getThinkingLevel();
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: buildParts(input) }],
     generationConfig: {
