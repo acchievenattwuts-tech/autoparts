@@ -23,8 +23,7 @@ const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|�
 const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
 const SHOP_INFO_RE =
-  /(เวลาทำการ|เวลาเปิด|เปิดกี่โมง|กี่โมง|ปิดกี่โมง|ติดต่อร้าน|เบอร์โทร|เบอร์ร้าน|ร้านอยู่ไหน|ที่ตั้งร้าน)/i;
-const CONTACT_GUIDE_RE = /(ติดต่อสอบถาม|ขอสอบถามข้อมูล)/i;
+  /(เวลาทำการ|เวลาเปิด|เปิดกี่โมง|กี่โมง|ปิดกี่โมง|ติดต่อร้าน|ติดต่อสอบถาม|ขอสอบถามข้อมูล|เบอร์โทร|เบอร์ร้าน|ร้านอยู่ไหน|ที่ตั้งร้าน)/i;
 const PRODUCT_HINT_RE =
   /(คอมแอร์|คอมเพรสเซอร์|แผงแอร์|คอยล์เย็น|วาล์ว|ไดเออร์|โบลเวอร์|พัดลม|กรองแอร์|หม้อน้ำ|อะไหล่|เบอร์|รุ่น|ปี|รถ|vios|city|jazz|civic|altis|toyota|honda|isuzu|mazda|nissan|mitsubishi|\b[a-z0-9-]*\d[a-z0-9-]*\b)/i;
 
@@ -115,17 +114,6 @@ function routeText(text: string): LineIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "GREETING",
-    };
-  }
-
-  if (CONTACT_GUIDE_RE.test(normalized)) {
-    return {
-      intent: LineIntent.SHOP_INFO,
-      allowsSearch: false,
-      requiresAdmin: false,
-      requiresImageAnalysis: false,
-      requiresMoreInfo: false,
-      reason: "CONTACT_GUIDE_KEYWORD",
     };
   }
 

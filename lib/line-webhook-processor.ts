@@ -117,46 +117,19 @@ const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาดูแลเรื่องสั่งซื้อและสรุปราคา/การจัดส่งให้นะคะ รอสักครู่ค่ะ 🙏";
-const SHOP_INFO_MESSAGE = `🕐 เวลาทำการ
-เปิดทุกวัน จันทร์ - อาทิตย์
-เวลา 08:30 - 18:00 น.
+const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
-📌 ระหว่างนี้สามารถใช้บริการผ่านเมนูด้านล่างได้
-• ดูบิล / ใบเสร็จของคุณ
-• เช็กยอดค้างชำระ
-• ดูประกันสินค้า
-• ค้นหาอะไหล่ในเว็บไซต์
+ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์ รบกวนแจ้ง 3 อย่างนี้
+เดี๋ยวจูนค้นให้ทันทีเลยค่ะ 👇
+1️⃣ ยี่ห้อ / รุ่นรถ (เช่น Toyota Vios 2020)
+2️⃣ อะไหล่ที่ต้องการ (เช่น คอมเพรสเซอร์, แผงร้อน, ตู้แอร์)
+3️⃣ รูปอะไหล่เก่า (ถ้ามี จะช่วยให้ระบุรุ่นแม่นขึ้น)
 
-💻 หากใช้งานผ่าน LINE PC
-กรุณาพิมพ์คำว่า “เมนู” แล้วกดส่ง
-เพื่อเปิดใช้งานบริการของเรา
+💻 ใช้งานผ่าน LINE PC: พิมพ์คำว่า “เมนู” เพื่อเปิดบริการ
 
 📞 โทรสอบถาม: 065-751-7873
-(กรุณาติดต่อในเวลาทำการ)
-
 📍 แผนที่ร้าน: https://maps.app.goo.gl/VeXeuTUA9CjTuxhEA
-
-ขออภัยในความไม่สะดวกค่ะ 🙏`;
-const CONTACT_GUIDE_MESSAGE = `🔧 ยินดีให้บริการค่ะ
-
-เพื่อให้ค้นหาอะไหล่แอร์ได้รวดเร็วและแม่นยำขึ้น
-รบกวนแจ้งข้อมูล 3 อย่างนี้นะคะ 👇
-
-1️⃣ ยี่ห้อ / รุ่นรถ
-เช่น Toyota Vios 2020, Honda Civic FD
-
-2️⃣ อะไหล่ที่ต้องการ
-เช่น คอมเพรสเซอร์แอร์, แผงร้อน, ตู้แอร์
-
-3️⃣ รูปอะไหล่เก่า หรือรูปชิ้นส่วนที่ต้องการ
-ถ้ามีรูปภาพ จะช่วยให้ระบุรุ่นได้แม่นยำยิ่งขึ้นค่ะ
-
-💻 หากใช้งานผ่าน LINE PC
-กรุณาพิมพ์คำว่า “เมนู” แล้วกดส่ง
-เพื่อเปิดใช้งานบริการของเรา
-
-ส่งข้อมูลมาได้เลยค่ะ เดี๋ยวจูนช่วยค้นหาให้ทันทีค่ะ 🙏
-(เวลาทำการ เปิดทุกวัน 08:30 - 18:00 น.)`;
+🕐 เปิดทุกวัน จันทร์ - อาทิตย์ เวลา 08:30 - 18:00 น. ค่ะ 🙏`;
 
 // "เมนู" / "menu" opens LINE's rich menu (handled by LINE itself). The AI must
 // stay silent and active — no reply, no handoff — and wait for the next message.
@@ -384,12 +357,7 @@ export async function processLineAiReply(
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
           : liveMode && input.route.intent === LineIntent.SHOP_INFO
-            ? {
-                message:
-                  input.route.reason === "CONTACT_GUIDE_KEYWORD" ? CONTACT_GUIDE_MESSAGE : SHOP_INFO_MESSAGE,
-                reason: input.route.reason,
-                handoff: false,
-              }
+            ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
             : null;
 
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;

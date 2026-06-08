@@ -440,7 +440,7 @@ test("shop-info keyword is auto-answered with the canned reply, no handoff", asy
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /เวลาทำการ/);
+  assert.match(calls.replies[0]?.text ?? "", /08:30 - 18:00/);
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 0);
   assert.deepEqual(calls.searches, []);

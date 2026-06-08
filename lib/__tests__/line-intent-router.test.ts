@@ -90,11 +90,11 @@ test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
   }
 });
 
-test("routes ติดต่อสอบถาม to the contact-guide reply", () => {
+test("routes ติดต่อสอบถาม to the shop-info reply", () => {
   const result = routeLineIntent({ messageType: LineMessageType.TEXT, text: "ติดต่อสอบถาม" });
   assert.equal(result.intent, LineIntent.SHOP_INFO);
   assert.equal(result.requiresAdmin, false);
-  assert.equal(result.reason, "CONTACT_GUIDE_KEYWORD");
+  assert.equal(result.reason, "SHOP_INFO_KEYWORD");
 });
 
 test("routes part-finding phrases to product inquiry (searchable)", () => {
