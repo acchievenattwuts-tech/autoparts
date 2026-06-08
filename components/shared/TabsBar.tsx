@@ -28,6 +28,8 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/supplier-advances": "เงินมัดจำซัพพลายเออร์",
   "/admin/supplier-payments": "จ่ายชำระซัพพลายเออร์",
   "/admin/sales": "บันทึกการขาย",
+  "/admin/line-conversations": "LINE OA Conversations",
+  "/admin/line-payment-slips": "สลิปการชำระเงิน (LINE)",
   "/admin/credit-notes": "Credit Note (CN)",
   "/admin/receipts": "ใบเสร็จรับเงิน",
   "/admin/delivery": "คิวจัดส่ง",
