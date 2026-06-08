@@ -144,6 +144,7 @@ function buildLineReplyPrompt(input: {
   originalText?: string | null;
   productSearch?: LineProductSearchBridgeResult | null;
   history?: LineReplyHistoryItem[];
+  products?: LineProductSummary[];
 }): string {
   const lines: string[] = [];
 
