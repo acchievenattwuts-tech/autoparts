@@ -415,10 +415,9 @@ test("processor routes admin-only intent to waiting-admin without product-search
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
 
-  // "หาอะไหล่" is a customer-menu keyword → UNKNOWN + requiresAdmin (handoff),
-  // unlike generic freeform text which now defaults to a product search.
+  // A claim/return message → requiresAdmin (handoff), no product search.
   const result = await processLineWebhookPayload(
-    textPayload("หาอะไหล่"),
+    textPayload("ขอเคลมของพัง"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
     dependencies,
   );
@@ -428,6 +427,23 @@ test("processor routes admin-only intent to waiting-admin without product-search
   assert.deepEqual(calls.searches, []);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.deepEqual(calls.replies, []);
+});
+
+test("shop-info keyword is auto-answered with the canned reply, no handoff", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("ขอเมนูหน่อยค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /เวลาทำการ/);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.deepEqual(calls.searches, []);
 });
 
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {

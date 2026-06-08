@@ -117,6 +117,24 @@ const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาดูแลเรื่องสั่งซื้อและสรุปราคา/การจัดส่งให้นะคะ รอสักครู่ค่ะ 🙏";
+const SHOP_INFO_MESSAGE = `🕐 เวลาทำการ
+เปิดทุกวัน จันทร์ - อาทิตย์
+เวลา 08:30 - 18:00 น.
+
+📌 ระหว่างนี้สามารถใช้บริการผ่านเมนูด้านล่างได้
+• ดูบิล / ใบเสร็จของคุณ
+• เช็กยอดค้างชำระ
+• ดูประกันสินค้า
+• ค้นหาอะไหล่ในเว็บไซต์
+
+💻 หากใช้งานผ่าน LINE PC
+กรุณาพิมพ์คำว่า “เมนู” แล้วกดส่ง
+เพื่อเปิดใช้งานบริการของเรา
+
+📞 โทรสอบถาม: 065-751-7873
+(กรุณาติดต่อในเวลาทำการ)
+
+ขออภัยในความไม่สะดวกค่ะ 🙏`;
 
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
@@ -297,18 +315,23 @@ export async function processLineAiReply(
       );
     }
 
-    // A forced hand-off replaces the normal AI reply with a deterministic bridging
-    // message, then routes the conversation to a human.
-    const forcedHandoff: {
-      message: string;
-      reason: string;
-      audit: string;
-      auditPayload: Record<string, string | number | null>;
-    } | null =
+    // A forced response replaces the normal AI reply with a deterministic message.
+    // `handoff: true` also routes the conversation to a human (escalation / purchase
+    // intent); `handoff: false` is an auto-answer that keeps the AI active (shop info).
+    const forcedResponse:
+      | {
+          message: string;
+          reason: string;
+          handoff: boolean;
+          audit?: string;
+          auditPayload?: Record<string, string | number | null>;
+        }
+      | null =
       liveMode && shouldEscalateNoResults
         ? {
             message: NO_RESULTS_ESCALATION_MESSAGE,
             reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}`,
+            handoff: true,
             audit: "AI_ESCALATE_NO_RESULTS",
             auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
           }
@@ -316,17 +339,20 @@ export async function processLineAiReply(
           ? {
               message: PURCHASE_HANDOFF_MESSAGE,
               reason: "PURCHASE_INTENT",
+              handoff: true,
               audit: "AI_PURCHASE_HANDOFF",
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
-          : null;
+          : liveMode && input.route.intent === LineIntent.SHOP_INFO
+            ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
+            : null;
 
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    const suggestion = forcedHandoff
+    const suggestion = forcedResponse
       ? {
-          suggestedReply: forcedHandoff.message,
-          confidence: LineAiConfidence.ADMIN_REQUIRED,
-          reasoningSummary: forcedHandoff.reason,
+          suggestedReply: forcedResponse.message,
+          confidence: forcedResponse.handoff ? LineAiConfidence.ADMIN_REQUIRED : LineAiConfidence.POSSIBLE_MATCH,
+          reasoningSummary: forcedResponse.reason,
           matchedProducts: null,
         }
       : await generateSuggestion({
@@ -348,10 +374,10 @@ export async function processLineAiReply(
       allowPushFallback: config.allowPushFallback ?? false,
     });
 
-    // Force-deliver the bridging message (its ADMIN_REQUIRED confidence would
-    // otherwise resolve to a silent handoff). Falls back to a silent handoff only
-    // when there is no usable delivery channel.
-    if (forcedHandoff) {
+    // Force-deliver the forced-response message (a handoff's ADMIN_REQUIRED
+    // confidence would otherwise resolve to a silent handoff). Falls back to a
+    // silent handoff only when there is no usable delivery channel.
+    if (forcedResponse) {
       const deliveryMode = hasReplyToken
         ? LineDeliveryMode.REPLY
         : config.allowPushFallback
@@ -359,8 +385,8 @@ export async function processLineAiReply(
           : LineDeliveryMode.NONE;
       sendDecision =
         deliveryMode === LineDeliveryMode.NONE
-          ? { action: "handoff", deliveryMode, reason: forcedHandoff.reason }
-          : { action: "send", deliveryMode, reason: forcedHandoff.reason };
+          ? { action: "handoff", deliveryMode, reason: forcedResponse.reason }
+          : { action: "send", deliveryMode, reason: forcedResponse.reason };
     }
 
     await dependencies.storeLineAiSuggestion({
@@ -391,8 +417,8 @@ export async function processLineAiReply(
     // through to the real storefront pages. Skipped on a forced hand-off (we just
     // send the bridging message). Null when no matches or no base URL.
     const placeholderImageUrl =
-      !forcedHandoff && products.length > 0 ? await resolveFlexPlaceholderImageUrl().catch(() => null) : null;
-    const productFlex = forcedHandoff
+      !forcedResponse && products.length > 0 ? await resolveFlexPlaceholderImageUrl().catch(() => null) : null;
+    const productFlex = forcedResponse
       ? null
       : buildProductFlexMessage({
           products,
@@ -467,8 +493,8 @@ export async function processLineAiReply(
 
     // Hand off + pause the AI on a forced hand-off (escalation / purchase intent —
     // which may have force-sent a bridging message) or a normal admin-required
-    // handoff.
-    if (forcedHandoff || sendDecision.action === "handoff") {
+    // handoff. A non-handoff forced response (e.g. shop info) keeps the AI active.
+    if (forcedResponse?.handoff || sendDecision.action === "handoff") {
       await dependencies.updateLineConversationState(
         input.conversation.id,
         buildLineConversationStatePatch({
@@ -479,18 +505,19 @@ export async function processLineAiReply(
       );
     }
 
-    if (forcedHandoff) {
+    if (forcedResponse?.audit) {
       await dependencies.storeLineAiAudit({
         conversationId: input.conversation.id,
-        action: forcedHandoff.audit,
-        payload: forcedHandoff.auditPayload,
+        action: forcedResponse.audit,
+        payload: forcedResponse.auditPayload ?? {},
       });
     }
 
     // Notify admins whenever the AI did NOT auto-reply successfully, or on a forced
     // hand-off — i.e. the customer is now waiting for a human. Deduped per
-    // conversation; never throws into the reply flow.
-    if (forcedHandoff || !(sendDecision.action === "send" && replied)) {
+    // conversation; never throws into the reply flow. (Shop-info auto-replies do
+    // not notify.)
+    if (forcedResponse?.handoff || !(sendDecision.action === "send" && replied)) {
       const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
       await notify({
         conversationId: input.conversation.id,

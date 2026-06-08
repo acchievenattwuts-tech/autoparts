@@ -79,18 +79,24 @@ test("routes greeting without requiring search", () => {
   assert.equal(result.requiresAdmin, false);
 });
 
-test("routes customer menu keywords away from AI/search", () => {
-  for (const text of ["เมนู", "เวลาทำการ", "ติดต่อร้าน", "ติดต่อสอบถาม", "หาอะไหล่", "สอบถามอะไหล่"]) {
-    const result = routeLineIntent({
-      messageType: LineMessageType.TEXT,
-      text,
-    });
+test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
+  for (const text of ["เมนู", "เวลาทำการ", "ติดต่อร้าน", "ติดต่อสอบถาม", "ร้านเปิดกี่โมง"]) {
+    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
 
-    assert.equal(result.intent, LineIntent.UNKNOWN);
+    assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
     assert.equal(result.allowsSearch, false);
-    assert.equal(result.requiresAdmin, true);
-    assert.equal(result.requiresMoreInfo, false);
-    assert.equal(result.reason, "CUSTOMER_MENU_KEYWORD");
+    assert.equal(result.requiresAdmin, false);
+    assert.equal(result.reason, "SHOP_INFO_KEYWORD");
+  }
+});
+
+test("routes part-finding phrases to product inquiry (searchable)", () => {
+  for (const text of ["หาอะไหล่", "สอบถามอะไหล่"]) {
+    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+
+    assert.equal(result.intent, LineIntent.PRODUCT_INQUIRY_TEXT, `expected product inquiry for "${text}"`);
+    assert.equal(result.allowsSearch, true);
+    assert.equal(result.requiresAdmin, false);
   }
 });
 
