@@ -137,6 +137,33 @@ const SHOP_INFO_MESSAGE = `🕐 เวลาทำการ
 📍 แผนที่ร้าน: https://maps.app.goo.gl/VeXeuTUA9CjTuxhEA
 
 ขออภัยในความไม่สะดวกค่ะ 🙏`;
+const CONTACT_GUIDE_MESSAGE = `🔧 ยินดีให้บริการค่ะ
+
+เพื่อให้ค้นหาอะไหล่แอร์ได้รวดเร็วและแม่นยำขึ้น
+รบกวนแจ้งข้อมูล 3 อย่างนี้นะคะ 👇
+
+1️⃣ ยี่ห้อ / รุ่นรถ
+เช่น Toyota Vios 2020, Honda Civic FD
+
+2️⃣ อะไหล่ที่ต้องการ
+เช่น คอมเพรสเซอร์แอร์, แผงร้อน, ตู้แอร์
+
+3️⃣ รูปอะไหล่เก่า หรือรูปชิ้นส่วนที่ต้องการ
+ถ้ามีรูปภาพ จะช่วยให้ระบุรุ่นได้แม่นยำยิ่งขึ้นค่ะ
+
+💻 หากใช้งานผ่าน LINE PC
+กรุณาพิมพ์คำว่า “เมนู” แล้วกดส่ง
+เพื่อเปิดใช้งานบริการของเรา
+
+ส่งข้อมูลมาได้เลยค่ะ เดี๋ยวจูนช่วยค้นหาให้ทันทีค่ะ 🙏
+(เวลาทำการ เปิดทุกวัน 08:30 - 18:00 น.)`;
+
+// "เมนู" / "menu" opens LINE's rich menu (handled by LINE itself). The AI must
+// stay silent and active — no reply, no handoff — and wait for the next message.
+const MENU_COMMAND_RE = /^(เมนู|menu)$/i;
+function isMenuCommand(text: string | null | undefined): boolean {
+  return Boolean(text && MENU_COMMAND_RE.test(text.trim()));
+}
 
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
@@ -242,6 +269,17 @@ export async function processLineAiReply(
     startedAt,
   });
 
+  // "เมนู" opens LINE's rich menu — ignore it entirely (no reply, no handoff, AI
+  // stays active and waits for the next message).
+  if (isMenuCommand(input.text)) {
+    await dependencies.updateLineAiJob(input.jobId, {
+      status: LineAiJobStatus.COMPLETED,
+      result: { action: "ignored_menu_command" },
+      finishedAt: new Date(),
+    });
+    return { replied: false };
+  }
+
   try {
     const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
     const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -346,7 +384,12 @@ export async function processLineAiReply(
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
           : liveMode && input.route.intent === LineIntent.SHOP_INFO
-            ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
+            ? {
+                message:
+                  input.route.reason === "CONTACT_GUIDE_KEYWORD" ? CONTACT_GUIDE_MESSAGE : SHOP_INFO_MESSAGE,
+                reason: input.route.reason,
+                handoff: false,
+              }
             : null;
 
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;

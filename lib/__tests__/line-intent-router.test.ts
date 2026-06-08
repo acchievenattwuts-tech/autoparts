@@ -80,7 +80,7 @@ test("routes greeting without requiring search", () => {
 });
 
 test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
-  for (const text of ["เมนู", "เวลาทำการ", "ติดต่อร้าน", "ติดต่อสอบถาม", "ร้านเปิดกี่โมง"]) {
+  for (const text of ["เวลาทำการ", "ติดต่อร้าน", "ร้านเปิดกี่โมง", "เบอร์โทรร้าน"]) {
     const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
 
     assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
@@ -88,6 +88,13 @@ test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
     assert.equal(result.requiresAdmin, false);
     assert.equal(result.reason, "SHOP_INFO_KEYWORD");
   }
+});
+
+test("routes ติดต่อสอบถาม to the contact-guide reply", () => {
+  const result = routeLineIntent({ messageType: LineMessageType.TEXT, text: "ติดต่อสอบถาม" });
+  assert.equal(result.intent, LineIntent.SHOP_INFO);
+  assert.equal(result.requiresAdmin, false);
+  assert.equal(result.reason, "CONTACT_GUIDE_KEYWORD");
 });
 
 test("routes part-finding phrases to product inquiry (searchable)", () => {

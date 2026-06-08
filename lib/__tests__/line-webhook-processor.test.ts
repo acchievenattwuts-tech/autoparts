@@ -434,7 +434,7 @@ test("shop-info keyword is auto-answered with the canned reply, no handoff", asy
   const { calls, dependencies } = createProcessorTestDeps();
 
   const result = await processLineWebhookPayload(
-    textPayload("ขอเมนูหน่อยค่ะ"),
+    textPayload("ร้านเปิดกี่โมงคะ"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
     dependencies,
   );
@@ -444,6 +444,24 @@ test("shop-info keyword is auto-answered with the canned reply, no handoff", asy
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 0);
   assert.deepEqual(calls.searches, []);
+});
+
+test("'เมนู' is ignored entirely — no reply, no handoff, AI stays active", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("เมนู"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 0);
+  assert.deepEqual(calls.replies, []);
+  assert.deepEqual(calls.pushes, []);
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.suggestions.length, 0);
 });
 
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
