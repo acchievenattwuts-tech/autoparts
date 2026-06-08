@@ -162,6 +162,32 @@ export async function getRecentLineMessagesForAi(conversationId: string, take = 
   return rows.reverse();
 }
 
+/**
+ * Counts how many of the most-recent product searches in this conversation came
+ * back empty, consecutively (newest first, stopping at the first non-empty / non-
+ * search). Reads the PRODUCT_SEARCH_SUMMARY audit trail. Used to escalate to an
+ * admin after repeated no-result searches.
+ */
+export async function countConsecutiveFailedLineSearches(conversationId: string): Promise<number> {
+  const rows = await db.lineAiAuditLog.findMany({
+    where: { conversationId, action: "PRODUCT_SEARCH_SUMMARY" },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    select: { payload: true },
+  });
+
+  let count = 0;
+  for (const row of rows) {
+    const payload = row.payload as { searched?: boolean; total?: number } | null;
+    if (payload && payload.searched === true && (payload.total ?? 0) === 0) {
+      count += 1;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
 export async function storeLineAiJob(input: {
   conversationId: string;
   lineMessageId?: string | null;

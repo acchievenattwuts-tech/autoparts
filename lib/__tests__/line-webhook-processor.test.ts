@@ -83,6 +83,7 @@ function createProcessorTestDeps(input?: {
   linkedCustomerId?: string | null;
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
   imageHints?: string[];
+  failedSearchCount?: number;
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -241,6 +242,7 @@ function createProcessorTestDeps(input?: {
     },
     getRecentLineMessagesForAi: async () => [],
     getLineProductSummaries: async () => [],
+    countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
   };
 
   return { calls, dependencies };
@@ -424,6 +426,31 @@ test("processor routes admin-only intent to waiting-admin without product-search
   assert.deepEqual(calls.searches, []);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.deepEqual(calls.replies, []);
+});
+
+test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
+  dependencies.searchLineProductInquiry = async () => ({
+    searched: true,
+    reason: "SEARCHED_PRODUCT_INQUIRY",
+    query: "vios 1234",
+    result: { ids: [], total: 0, mode: "v2" },
+    needsMoreInfo: true,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("vios 1234"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.replies.length, 1);
+  assert.match(calls.replies[0]?.text ?? "", /ส่งต่อให้แอดมิน/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.ok(calls.auditActions.includes("AI_ESCALATE_NO_RESULTS"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("processor handles a new event and skips an already-seen event in the same batch", async () => {

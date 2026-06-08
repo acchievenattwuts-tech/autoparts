@@ -1,4 +1,5 @@
 import {
+  LineAiConfidence,
   LineAiSuggestionStatus,
   LineAiJobStatus,
   LineAiJobType,
@@ -15,6 +16,7 @@ import { generateLineSuggestion, type LineReplyHistoryItem } from "@/lib/line-ai
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
+  countConsecutiveFailedLineSearches,
   findActiveCustomerIdByLineUserId,
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
@@ -79,6 +81,8 @@ export type LineWebhookProcessorDependencies = {
   notifyLineOaNeedsAdmin?: typeof notifyLineOaNeedsAdmin;
   /** Optional override; defaults to fetching recent messages for AI short-term memory. */
   getRecentLineMessagesForAi?: typeof getRecentLineMessagesForAi;
+  /** Optional override; counts consecutive empty searches for the escalate-to-admin rule. */
+  countConsecutiveFailedLineSearches?: typeof countConsecutiveFailedLineSearches;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -101,7 +105,12 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   ingestPaymentSlip,
   notifyLineOaNeedsAdmin,
   getRecentLineMessagesForAi,
+  countConsecutiveFailedLineSearches,
 };
+
+const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
+const NO_RESULTS_ESCALATION_MESSAGE =
+  "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
 
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
@@ -235,6 +244,19 @@ export async function processLineAiReply(
           },
     });
 
+    // Escalation rule: if the search step keeps coming back empty (product=0) for
+    // two consecutive turns, stop the AI, hand the conversation to an admin, and
+    // send the customer a polite "we'll get a human on it" message. Only in live
+    // auto-reply mode (not dry-run / AI-off, where nothing is sent automatically).
+    const failedSearchCount =
+      productSearch.searched && productSearch.result.total === 0
+        ? await (dependencies.countConsecutiveFailedLineSearches ?? countConsecutiveFailedLineSearches)(
+            input.conversation.id,
+          ).catch(() => 0)
+        : 0;
+    const shouldEscalateNoResults =
+      failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF && autoReplyEnabled && !dryRun;
+
     // Short-term memory: feed recent turns so the reply doesn't re-ask for
     // details the customer already gave in a previous message (e.g. car model
     // sent as text, then the part photo in a follow-up message).
@@ -253,16 +275,23 @@ export async function processLineAiReply(
         : [];
 
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    const suggestion = await generateSuggestion({
-      intent: input.route.intent,
-      originalText: input.text,
-      productSearch,
-      history,
-      products,
-    });
+    const suggestion = shouldEscalateNoResults
+      ? {
+          suggestedReply: NO_RESULTS_ESCALATION_MESSAGE,
+          confidence: LineAiConfidence.ADMIN_REQUIRED,
+          reasoningSummary: `Escalated to admin after ${failedSearchCount} consecutive empty searches`,
+          matchedProducts: null,
+        }
+      : await generateSuggestion({
+          intent: input.route.intent,
+          originalText: input.text,
+          productSearch,
+          history,
+          products,
+        });
 
     const hasReplyToken = canUseReplyToken(config, input.canReply);
-    const sendDecision = resolveLineAiSendDecision({
+    let sendDecision = resolveLineAiSendDecision({
       autoReplyEnabled,
       dryRun,
       conversationStatus: input.conversation.aiStatus,
@@ -271,6 +300,21 @@ export async function processLineAiReply(
       hasReplyToken,
       allowPushFallback: config.allowPushFallback ?? false,
     });
+
+    // Force-deliver the escalation message (its ADMIN_REQUIRED confidence would
+    // otherwise resolve to a silent handoff). Falls back to a silent handoff only
+    // when there is no usable delivery channel.
+    if (shouldEscalateNoResults) {
+      const deliveryMode = hasReplyToken
+        ? LineDeliveryMode.REPLY
+        : config.allowPushFallback
+          ? LineDeliveryMode.PUSH
+          : LineDeliveryMode.NONE;
+      sendDecision =
+        deliveryMode === LineDeliveryMode.NONE
+          ? { action: "handoff", deliveryMode, reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}` }
+          : { action: "send", deliveryMode, reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}` };
+    }
 
     await dependencies.storeLineAiSuggestion({
       conversationId: input.conversation.id,
@@ -371,7 +415,10 @@ export async function processLineAiReply(
       replied = true;
     }
 
-    if (sendDecision.action === "handoff") {
+    // Hand off + pause the AI when escalating after repeated empty searches, or on
+    // a normal admin-required handoff. (Escalation may have force-sent a message,
+    // so it isn't covered by the generic handoff action check.)
+    if (shouldEscalateNoResults || sendDecision.action === "handoff") {
       await dependencies.updateLineConversationState(
         input.conversation.id,
         buildLineConversationStatePatch({
@@ -382,11 +429,18 @@ export async function processLineAiReply(
       );
     }
 
-    // Notify admins whenever the AI did NOT auto-reply successfully — i.e. the
-    // customer is now waiting for a human (handoff, AI off, dry-run, paused
-    // conversation, or failed delivery). Deduped per conversation; never throws
-    // into the reply flow.
-    if (!(sendDecision.action === "send" && replied)) {
+    if (shouldEscalateNoResults) {
+      await dependencies.storeLineAiAudit({
+        conversationId: input.conversation.id,
+        action: "AI_ESCALATE_NO_RESULTS",
+        payload: { lineEventId: input.lineEventId, failedSearchCount },
+      });
+    }
+
+    // Notify admins whenever the AI did NOT auto-reply successfully, or when we
+    // escalated after repeated empty searches — i.e. the customer is now waiting
+    // for a human. Deduped per conversation; never throws into the reply flow.
+    if (shouldEscalateNoResults || !(sendDecision.action === "send" && replied)) {
       const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
       await notify({
         conversationId: input.conversation.id,
