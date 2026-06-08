@@ -15,6 +15,19 @@ test("routes product inquiry text to searchable intent", () => {
   assert.equal(result.requiresAdmin, false);
 });
 
+test("routes a short part code/number to searchable product inquiry", () => {
+  for (const text of ["508 o", "508", "tv12", "6pk1234", "134a"]) {
+    const result = routeLineIntent({
+      messageType: LineMessageType.TEXT,
+      text,
+    });
+
+    assert.equal(result.intent, LineIntent.PRODUCT_INQUIRY_TEXT, `expected product inquiry for "${text}"`);
+    assert.equal(result.allowsSearch, true, `expected search enabled for "${text}"`);
+    assert.equal(result.requiresAdmin, false);
+  }
+});
+
 test("routes payment wording away from product search", () => {
   const result = routeLineIntent({
     messageType: LineMessageType.TEXT,

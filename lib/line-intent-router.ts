@@ -22,7 +22,7 @@ const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|�
 const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|เสีย|พัง|ชำรุด|เปลี่ยนสินค้า|รับประกัน|claim|return)/i;
 const CUSTOMER_MENU_RE = /(เมนู|เวลาทำการ|ติดต่อร้าน|ติดต่อสอบถาม|หาอะไหล่|สอบถามอะไหล่)/i;
 const PRODUCT_HINT_RE =
-  /(คอมแอร์|คอมเพรสเซอร์|แผงแอร์|คอยล์เย็น|วาล์ว|ไดเออร์|โบลเวอร์|พัดลม|กรองแอร์|หม้อน้ำ|อะไหล่|เบอร์|รุ่น|ปี|รถ|vios|city|jazz|civic|altis|toyota|honda|isuzu|mazda|nissan|mitsubishi|\b[a-z0-9-]*\d[a-z0-9-]{3,}\b)/i;
+  /(คอมแอร์|คอมเพรสเซอร์|แผงแอร์|คอยล์เย็น|วาล์ว|ไดเออร์|โบลเวอร์|พัดลม|กรองแอร์|หม้อน้ำ|อะไหล่|เบอร์|รุ่น|ปี|รถ|vios|city|jazz|civic|altis|toyota|honda|isuzu|mazda|nissan|mitsubishi|\b[a-z0-9-]*\d[a-z0-9-]*\b)/i;
 
 function routeText(text: string): LineIntentRouteResult {
   const normalized = text.trim();
