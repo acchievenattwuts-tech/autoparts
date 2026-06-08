@@ -30,6 +30,7 @@ import { buildLineConversationStatePatch } from "@/lib/line-conversation-service
 import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
+import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -295,6 +296,18 @@ export async function processLineAiReply(
       },
     });
 
+    // Product cards (Flex) shown alongside the text reply so the customer can tap
+    // through to the real storefront pages. Null when no matches or no base URL.
+    const productFlex = buildProductFlexMessage({
+      products,
+      searchQuery: productSearch.searched ? productSearch.query : null,
+      total: productSearch.searched ? productSearch.result.total : 0,
+    });
+    const outboundMessages = [
+      textMessage(suggestion.suggestedReply),
+      ...(productFlex ? [productFlex] : []),
+    ];
+
     let replied = false;
     if (
       sendDecision.action === "send" &&
@@ -316,7 +329,7 @@ export async function processLineAiReply(
       await dependencies.replyLineMessage({
         channelAccessToken: config.channelAccessToken,
         replyToken: input.replyToken,
-        messages: [textMessage(suggestion.suggestedReply)],
+        messages: outboundMessages,
       });
 
       await dependencies.markOutboundLineMessageSent({
@@ -345,7 +358,7 @@ export async function processLineAiReply(
       await dependencies.pushLineMessages({
         channelAccessToken: config.channelAccessToken,
         recipientIds: [input.lineUserId],
-        messages: [textMessage(suggestion.suggestedReply)],
+        messages: outboundMessages,
       });
 
       await dependencies.markOutboundLineMessageSent({

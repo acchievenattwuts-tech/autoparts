@@ -50,25 +50,35 @@ export type LineProductSearchBridgeResult =
 export type LineMatchedProductSummary = {
   name: string;
   code: string | null;
+  slug: string | null;
+  imageUrl: string | null;
+  salePrice: number;
 };
 
 /**
- * Fetches lightweight summaries (name + code) for matched product ids, preserving
- * the search rank order. Names come straight from the catalog — never fabricated —
- * so the reply can show the customer what was actually found.
+ * Fetches summaries (name, code, slug, image, price) for matched product ids,
+ * preserving the search rank order. Values come straight from the catalog — never
+ * fabricated — so the reply can show the customer what was actually found and link
+ * to the real storefront pages.
  */
 export async function getLineProductSummaries(ids: string[]): Promise<LineMatchedProductSummary[]> {
   if (ids.length === 0) return [];
   const { db } = await import("@/lib/db");
   const rows = await db.product.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, code: true },
+    select: { id: true, name: true, code: true, slug: true, imageUrl: true, salePrice: true },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return ids
     .map((id) => byId.get(id))
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
-    .map((row) => ({ name: row.name, code: row.code }));
+    .map((row) => ({
+      name: row.name,
+      code: row.code,
+      slug: row.slug,
+      imageUrl: row.imageUrl,
+      salePrice: Number(row.salePrice),
+    }));
 }
 
 function normalizeSearchSeed(value?: string | null) {
