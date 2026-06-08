@@ -35,6 +35,7 @@ import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-pr
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/line-fitment-extract";
+import { answerFromLineFaq } from "@/lib/line-faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -87,6 +88,8 @@ export type LineWebhookProcessorDependencies = {
   countConsecutiveFailedLineSearches?: typeof countConsecutiveFailedLineSearches;
   /** Optional override; AI fallback classifier for purchase intent. */
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
+  /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
+  answerFromLineFaq?: typeof answerFromLineFaq;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -111,6 +114,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   getRecentLineMessagesForAi,
   countConsecutiveFailedLineSearches,
   classifyPurchaseIntent,
+  answerFromLineFaq,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -368,6 +372,18 @@ export async function processLineAiReply(
       );
     }
 
+    // FAQ grounding: when a product search comes back empty, the "question" may not
+    // be about a product at all (e.g. shipping/warranty/how-to-order). Try one
+    // grounded answer from the shop FAQ (จูน's voice, never fabricated) before
+    // asking for more info or escalating. Only on empty results to bound cost.
+    const faqAnswer =
+      liveMode && productSearch.searched && productSearch.result.total === 0
+        ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
+            answered: false,
+            reply: "",
+          }))
+        : { answered: false, reply: "" };
+
     // A forced response replaces the normal AI reply with a deterministic message.
     // `handoff: true` also routes the conversation to a human (escalation / purchase
     // intent); `handoff: false` is an auto-answer that keeps the AI active (shop info).
@@ -380,15 +396,17 @@ export async function processLineAiReply(
           auditPayload?: Record<string, string | number | null>;
         }
       | null =
-      liveMode && shouldEscalateNoResults
-        ? {
-            message: NO_RESULTS_ESCALATION_MESSAGE,
-            reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}`,
-            handoff: true,
-            audit: "AI_ESCALATE_NO_RESULTS",
-            auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
-          }
-        : liveMode && isPurchaseIntent
+      faqAnswer.answered
+        ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
+        : liveMode && shouldEscalateNoResults
+          ? {
+              message: NO_RESULTS_ESCALATION_MESSAGE,
+              reason: `ESCALATE_NO_RESULTS_x${failedSearchCount}`,
+              handoff: true,
+              audit: "AI_ESCALATE_NO_RESULTS",
+              auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
+            }
+          : liveMode && isPurchaseIntent
           ? {
               message: PURCHASE_HANDOFF_MESSAGE,
               reason: "PURCHASE_INTENT",

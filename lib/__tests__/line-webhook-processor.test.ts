@@ -85,6 +85,7 @@ function createProcessorTestDeps(input?: {
   imageHints?: string[];
   failedSearchCount?: number;
   purchaseIntent?: boolean;
+  faqReply?: string;
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -245,6 +246,8 @@ function createProcessorTestDeps(input?: {
     getLineProductSummaries: async () => [],
     countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
+    answerFromLineFaq: async () =>
+      input?.faqReply ? { answered: true, reply: input.faqReply } : { answered: false, reply: "" },
   };
 
   return { calls, dependencies };
@@ -463,6 +466,30 @@ test("'เมนู' is ignored entirely — no reply, no handoff, AI stays acti
   assert.equal(calls.notifyHandoffs.length, 0);
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.suggestions.length, 0);
+});
+
+test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ faqReply: "ร้านส่งต่างจังหวัดได้ค่ะ 🙏" });
+  // Empty product search → FAQ gets a chance before asking-more/escalating.
+  dependencies.searchLineProductInquiry = async () => ({
+    searched: true,
+    reason: "SEARCHED_PRODUCT_INQUIRY",
+    query: "asdf qwer",
+    result: { ids: [], total: 0, mode: "v2", matchReasons: {} },
+    needsMoreInfo: true,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("asdf qwer"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /ส่งต่างจังหวัด/);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
 });
 
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
