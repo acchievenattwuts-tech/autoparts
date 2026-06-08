@@ -1,8 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, ImagePlus, Pause, Play, Send, Smile, UserRoundCheck, X, XCircle } from "lucide-react";
+
+import { LINE_AI_DRAFT_USE_EVENT } from "@/components/shared/LineAiDraftUseButton";
 
 type Props = {
   conversationId: string;
@@ -79,6 +81,21 @@ export default function AdminLineConversationActions({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+
+  useEffect(() => {
+    const handleUseDraft = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      if (!detail?.text) return;
+      setText(detail.text);
+      window.requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(detail.text.length, detail.text.length);
+      });
+    };
+
+    window.addEventListener(LINE_AI_DRAFT_USE_EVENT, handleUseDraft);
+    return () => window.removeEventListener(LINE_AI_DRAFT_USE_EVENT, handleUseDraft);
+  }, []);
 
   const clearImage = () => {
     setImageFile(null);

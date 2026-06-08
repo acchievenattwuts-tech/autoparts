@@ -7,6 +7,7 @@ import { ArrowLeft, Info } from "lucide-react";
 import AdminLineConversationActions from "@/components/shared/AdminLineConversationActions";
 import AdminLineConversationCustomerLink from "@/components/shared/AdminLineConversationCustomerLink";
 import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
+import LineAiDraftUseButton from "@/components/shared/LineAiDraftUseButton";
 import LineConversationMessagePoller from "@/components/shared/LineConversationMessagePoller";
 import LineConversationScrollAnchor from "@/components/shared/LineConversationScrollAnchor";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -266,6 +267,29 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
                       {message.deliveryStatus ? <span>{message.deliveryStatus}</span> : null}
                       {message.adminUser ? <span>by {message.adminUser.name}</span> : null}
                     </div>
+                    {isInbound && message.aiSuggestions.length > 0 ? (
+                      <div className="mt-1 w-full max-w-xl rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-200">
+                            <span>AI draft</span>
+                            <span>{message.aiSuggestions[0].status}</span>
+                            <span>{message.aiSuggestions[0].confidence}</span>
+                            {message.aiSuggestions[0].deliveryMode ? (
+                              <span>{message.aiSuggestions[0].deliveryMode}</span>
+                            ) : null}
+                          </div>
+                          <LineAiDraftUseButton text={message.aiSuggestions[0].suggestedReply} />
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap break-words leading-6 [overflow-wrap:anywhere]">
+                          {message.aiSuggestions[0].suggestedReply}
+                        </p>
+                        {message.aiSuggestions[0].reasoningSummary ? (
+                          <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-200/80">
+                            {message.aiSuggestions[0].reasoningSummary}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               );
