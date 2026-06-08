@@ -125,13 +125,18 @@ function routeText(text: string): LineIntentRouteResult {
     };
   }
 
+  // Default: in a parts shop, any freeform message that isn't one of the special
+  // admin intents (payment/shipping/claim/price/order) or a greeting/menu is most
+  // likely a product question (e.g. a Thai part name or car model not in the hint
+  // list). Try a catalog search rather than silently handing off to an admin — a
+  // weak/empty result degrades to a polite "ask for more info" downstream.
   return {
-    intent: LineIntent.UNKNOWN,
-    allowsSearch: false,
-    requiresAdmin: true,
+    intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+    allowsSearch: true,
+    requiresAdmin: false,
     requiresImageAnalysis: false,
-    requiresMoreInfo: true,
-    reason: "NO_ROUTING_RULE_MATCH",
+    requiresMoreInfo: false,
+    reason: "DEFAULT_PRODUCT_INQUIRY",
   };
 }
 

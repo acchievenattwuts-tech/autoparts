@@ -95,14 +95,27 @@ test("routes image to image analysis before search", () => {
   assert.equal(result.requiresImageAnalysis, true);
 });
 
-test("routes unknown text to admin without search", () => {
-  const result = routeLineIntent({
-    messageType: LineMessageType.TEXT,
-    text: "asdf qwer",
-  });
+test("defaults freeform text (Thai part name / car model) to a product search", () => {
+  for (const text of ["คอยเย็น ดีแม็ก", "พัดลมหม้อน้ำ triton", "asdf qwer"]) {
+    const result = routeLineIntent({
+      messageType: LineMessageType.TEXT,
+      text,
+    });
 
-  assert.equal(result.intent, LineIntent.UNKNOWN);
-  assert.equal(result.allowsSearch, false);
-  assert.equal(result.requiresAdmin, true);
-  assert.equal(result.requiresMoreInfo, true);
+    assert.equal(result.intent, LineIntent.PRODUCT_INQUIRY_TEXT, `expected product inquiry for "${text}"`);
+    assert.equal(result.allowsSearch, true, `expected search enabled for "${text}"`);
+    assert.equal(result.requiresAdmin, false);
+  }
+});
+
+test("still routes the special intents (payment/claim/etc.) away from product search", () => {
+  // Sanity: the default-to-search fallback must not swallow admin-only intents.
+  assert.equal(
+    routeLineIntent({ messageType: LineMessageType.TEXT, text: "โอนเงินแล้วค่ะ" }).intent,
+    LineIntent.PAYMENT_SLIP_IMAGE,
+  );
+  assert.equal(
+    routeLineIntent({ messageType: LineMessageType.TEXT, text: "ขอเคลมสินค้า" }).intent,
+    LineIntent.CLAIM_OR_RETURN,
+  );
 });
