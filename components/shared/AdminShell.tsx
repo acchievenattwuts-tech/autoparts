@@ -5,8 +5,7 @@ import { useState } from "react";
 import { AlertTriangle, Menu } from "lucide-react";
 
 import AdminSidebar from "@/components/shared/AdminSidebar";
-import AdminNotificationBell from "@/components/shared/AdminNotificationBell";
-import AdminLineCustomerNotifications from "@/components/shared/AdminLineCustomerNotifications";
+import AdminNotificationCenter from "@/components/shared/AdminNotificationCenter";
 import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
 import AdminUserMenu from "@/components/shared/AdminUserMenu";
@@ -73,10 +72,11 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
           <div className="flex-1" />
           <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50 px-2 py-1 dark:border-white/10 dark:bg-white/5">
             <QuickSearchLauncher role={role} permissions={permissions} userId={userId} />
-            <AdminNotificationBell userId={userId} />
-            {canViewCustomerNotifications ? (
-              <AdminLineCustomerNotifications userId={userId} canUpdateCustomer={canUpdateCustomer} />
-            ) : null}
+            <AdminNotificationCenter
+              userId={userId}
+              canViewCustomerNotifications={canViewCustomerNotifications}
+              canUpdateCustomer={canUpdateCustomer}
+            />
             <AdminThemeToggle />
             <AdminUserMenu username={username} />
           </div>

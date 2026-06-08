@@ -1,4 +1,9 @@
-export const ADMIN_LINE_NOTIFICATION_POLL_INTERVAL_MS = 5 * 60_000;
+import {
+  ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS,
+  shouldPollNotificationSummary,
+} from "@/components/shared/admin-notification-center-utils";
+
+export const ADMIN_LINE_NOTIFICATION_POLL_INTERVAL_MS = ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS;
 
 type ShouldPollLineCustomerSummaryParams = {
   now: number;
@@ -6,12 +11,6 @@ type ShouldPollLineCustomerSummaryParams = {
   isDocumentHidden: boolean;
 };
 
-export function shouldPollLineCustomerSummary({
-  now,
-  lastFetchedAt,
-  isDocumentHidden,
-}: ShouldPollLineCustomerSummaryParams): boolean {
-  if (isDocumentHidden) return false;
-  if (lastFetchedAt <= 0) return true;
-  return now - lastFetchedAt >= ADMIN_LINE_NOTIFICATION_POLL_INTERVAL_MS;
+export function shouldPollLineCustomerSummary(params: ShouldPollLineCustomerSummaryParams): boolean {
+  return shouldPollNotificationSummary(params);
 }
