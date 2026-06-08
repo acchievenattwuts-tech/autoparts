@@ -1,7 +1,7 @@
 import { LineIntent } from "@/lib/generated/prisma";
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
-import { fetchLineMessageContent } from "@/lib/line-messaging";
+import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
 
 export type LineImageKind = "part_image" | "payment_slip" | "unknown_image";
 export type LineImageConfidence = "LOW" | "MEDIUM" | "HIGH";
@@ -13,6 +13,7 @@ export type LineImageClassification = {
   searchHints: string[];
   confidence: LineImageConfidence;
   reason: string;
+  content?: LineMessageContent;
 };
 
 const UNKNOWN_FALLBACK: LineImageClassification = {
@@ -125,7 +126,10 @@ export async function classifyLineImage(input: {
       temperature: 0,
     });
 
-    return parseLineImageClassification(text);
+    return {
+      ...parseLineImageClassification(text),
+      content,
+    };
   } catch {
     return { ...UNKNOWN_FALLBACK, reason: "IMAGE_CLASSIFICATION_ERROR" };
   }

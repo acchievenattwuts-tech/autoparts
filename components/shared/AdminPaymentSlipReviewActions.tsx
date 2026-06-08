@@ -46,7 +46,7 @@ export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
           className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-200 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-400/30 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
         >
           <CheckCircle2 size={15} />
-          ยืนยันการชำระ
+          ยืนยันผลตรวจสลิป
         </button>
         <button
           type="button"
@@ -69,7 +69,7 @@ export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
       </div>
       {error ? <p className="text-xs text-red-600 dark:text-red-300">{error}</p> : null}
       <p className="text-xs text-gray-500 dark:text-slate-400">
-        การยืนยันที่นี่เป็นการบันทึกผลตรวจสอบสลิปเท่านั้น ไม่กระทบใบเสร็จ/บัญชีลูกหนี้โดยอัตโนมัติ
+        การยืนยันที่นี่เป็นการบันทึกผลตรวจสอบสลิปเท่านั้น ไม่ใช่การออกใบเสร็จหรือปิดบัญชีลูกหนี้อัตโนมัติ
       </p>
     </div>
   );

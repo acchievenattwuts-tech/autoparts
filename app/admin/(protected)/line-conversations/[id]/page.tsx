@@ -166,7 +166,7 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
                   {formatDateTimeThai(message.createdAt, { dateStyle: "medium", timeStyle: "short" })}
                 </p>
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-800 dark:text-slate-200">
+              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-gray-800 dark:text-slate-200 [overflow-wrap:anywhere]">
                 {message.text ?? message.imageUrl ?? "(no text)"}
               </p>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">

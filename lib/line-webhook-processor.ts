@@ -1,5 +1,7 @@
 import {
   LineAiSuggestionStatus,
+  LineAiJobStatus,
+  LineAiJobType,
   LineDeliveryMode,
   LineDeliveryStatus,
   LineIntent,
@@ -17,13 +19,15 @@ import {
   getOrCreateLineConversation,
   hasProcessedLineEvent,
   markOutboundLineMessageSent,
+  storeLineAiJob,
   storeLineAiAudit,
   storeLineAiSuggestion,
+  updateLineAiJob,
   updateLineConversationState,
 } from "@/lib/line-conversation-repository";
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
 import { routeLineIntent } from "@/lib/line-intent-router";
-import { replyLineMessage } from "@/lib/line-messaging";
+import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -34,6 +38,10 @@ export type LineWebhookProcessorConfig = {
   dryRun?: boolean;
   /** When true, part-image vision hints are fed into product search (default off). */
   imageSearchEnabled?: boolean;
+  lineProfilesByUserId?: Record<string, { displayName?: string | null; pictureUrl?: string | null }>;
+  allowPushFallback?: boolean;
+  receivedAt?: Date;
+  replyTokenMaxAgeMs?: number;
 };
 
 export type LineWebhookProcessResult = {
@@ -52,8 +60,11 @@ export type LineWebhookProcessorDependencies = {
   storeLineAiAudit: typeof storeLineAiAudit;
   storeLineAiSuggestion: typeof storeLineAiSuggestion;
   markOutboundLineMessageSent: typeof markOutboundLineMessageSent;
+  storeLineAiJob: typeof storeLineAiJob;
+  updateLineAiJob: typeof updateLineAiJob;
   searchLineProductInquiry: typeof searchLineProductInquiry;
   replyLineMessage: typeof replyLineMessage;
+  pushLineMessages: typeof pushLineMessages;
   /** Optional override; defaults to the Gemini-backed generator with rule-based fallback. */
   generateLineSuggestion?: typeof generateLineSuggestion;
   /** Optional override; defaults to the Gemini-vision classifier with safe fallback. */
@@ -71,8 +82,11 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   storeLineAiAudit,
   storeLineAiSuggestion,
   markOutboundLineMessageSent,
+  storeLineAiJob,
+  updateLineAiJob,
   searchLineProductInquiry,
   replyLineMessage,
+  pushLineMessages,
   generateLineSuggestion,
   classifyLineImage,
   ingestPaymentSlip,
@@ -128,6 +142,203 @@ function textMessage(text: string): LinePushMessage {
   };
 }
 
+function canUseReplyToken(config: LineWebhookProcessorConfig, canReply: boolean) {
+  if (!canReply || !config.channelAccessToken) return false;
+
+  const receivedAt = config.receivedAt;
+  if (!receivedAt) return true;
+
+  const maxAgeMs = config.replyTokenMaxAgeMs ?? 45_000;
+  return Date.now() - receivedAt.getTime() <= maxAgeMs;
+}
+
+export type ProcessLineAiReplyInput = {
+  jobId: string;
+  conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
+  inboundMessage: Awaited<ReturnType<typeof appendLineMessage>>;
+  lineUserId: string;
+  replyToken: string | null;
+  canReply: boolean;
+  messageType: LineMessageType;
+  route: ReturnType<typeof routeLineIntent>;
+  text: string | null;
+  imageClassification: LineImageClassification | null;
+  lineEventId: string | null;
+};
+
+export async function processLineAiReply(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+) {
+  const startedAt = new Date();
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.PROCESSING,
+    startedAt,
+  });
+
+  try {
+    const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+    const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+    const productSearch = await dependencies.searchLineProductInquiry({
+      route: input.route,
+      text: input.text,
+      extractedImageHints: input.imageClassification?.searchHints ?? null,
+    });
+
+    await dependencies.storeLineAiAudit({
+      conversationId: input.conversation.id,
+      action: "PRODUCT_SEARCH_SUMMARY",
+      payload: productSearch.searched
+        ? {
+            lineEventId: input.lineEventId,
+            searched: true,
+            query: productSearch.query,
+            total: productSearch.result.total,
+            returnedCount: productSearch.result.ids.length,
+            needsMoreInfo: productSearch.needsMoreInfo,
+          }
+        : {
+            lineEventId: input.lineEventId,
+            searched: false,
+            reason: productSearch.reason,
+          },
+    });
+
+    const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
+    const suggestion = await generateSuggestion({
+      intent: input.route.intent,
+      originalText: input.text,
+      productSearch,
+    });
+
+    const hasReplyToken = canUseReplyToken(config, input.canReply);
+    const sendDecision = resolveLineAiSendDecision({
+      autoReplyEnabled,
+      dryRun,
+      conversationStatus: input.conversation.aiStatus,
+      route: input.route,
+      confidence: suggestion.confidence,
+      hasReplyToken,
+      allowPushFallback: config.allowPushFallback ?? false,
+    });
+
+    await dependencies.storeLineAiSuggestion({
+      conversationId: input.conversation.id,
+      lineMessageId: input.inboundMessage.id,
+      intent: input.route.intent,
+      suggestedReply: suggestion.suggestedReply,
+      confidence: suggestion.confidence,
+      matchedProducts: suggestion.matchedProducts ? JSON.parse(JSON.stringify(suggestion.matchedProducts)) : null,
+      reasoningSummary: suggestion.reasoningSummary,
+      status: sendDecision.action === "send" ? LineAiSuggestionStatus.SENT : LineAiSuggestionStatus.DRAFT,
+      deliveryMode: sendDecision.deliveryMode,
+      sentAt: sendDecision.action === "send" ? new Date() : null,
+    });
+
+    await dependencies.storeLineAiAudit({
+      conversationId: input.conversation.id,
+      action: "AI_SEND_DECISION",
+      payload: {
+        lineEventId: input.lineEventId,
+        action: sendDecision.action,
+        deliveryMode: sendDecision.deliveryMode,
+        reason: sendDecision.reason,
+      },
+    });
+
+    let replied = false;
+    if (
+      sendDecision.action === "send" &&
+      sendDecision.deliveryMode === LineDeliveryMode.REPLY &&
+      input.replyToken &&
+      config.channelAccessToken
+    ) {
+      const outboundMessage = await dependencies.appendLineMessage({
+        conversationId: input.conversation.id,
+        lineUserId: input.lineUserId,
+        direction: LineMessageDirection.OUTBOUND_AI,
+        messageType: input.messageType,
+        intent: input.route.intent,
+        text: suggestion.suggestedReply,
+        deliveryMode: LineDeliveryMode.REPLY,
+        deliveryStatus: LineDeliveryStatus.PENDING,
+      });
+
+      await dependencies.replyLineMessage({
+        channelAccessToken: config.channelAccessToken,
+        replyToken: input.replyToken,
+        messages: [textMessage(suggestion.suggestedReply)],
+      });
+
+      await dependencies.markOutboundLineMessageSent({
+        messageId: outboundMessage.id,
+        deliveryMode: LineDeliveryMode.REPLY,
+      });
+      replied = true;
+    }
+
+    if (
+      sendDecision.action === "send" &&
+      sendDecision.deliveryMode === LineDeliveryMode.PUSH &&
+      config.channelAccessToken
+    ) {
+      const outboundMessage = await dependencies.appendLineMessage({
+        conversationId: input.conversation.id,
+        lineUserId: input.lineUserId,
+        direction: LineMessageDirection.OUTBOUND_AI,
+        messageType: input.messageType,
+        intent: input.route.intent,
+        text: suggestion.suggestedReply,
+        deliveryMode: LineDeliveryMode.PUSH,
+        deliveryStatus: LineDeliveryStatus.PENDING,
+      });
+
+      await dependencies.pushLineMessages({
+        channelAccessToken: config.channelAccessToken,
+        recipientIds: [input.lineUserId],
+        messages: [textMessage(suggestion.suggestedReply)],
+      });
+
+      await dependencies.markOutboundLineMessageSent({
+        messageId: outboundMessage.id,
+        deliveryMode: LineDeliveryMode.PUSH,
+      });
+      replied = true;
+    }
+
+    if (sendDecision.action === "handoff") {
+      await dependencies.updateLineConversationState(
+        input.conversation.id,
+        buildLineConversationStatePatch({
+          type: "waiting_admin",
+          at: new Date(),
+          reason: sendDecision.reason,
+        }),
+      );
+    }
+
+    await dependencies.updateLineAiJob(input.jobId, {
+      status: LineAiJobStatus.COMPLETED,
+      result: {
+        action: sendDecision.action,
+        deliveryMode: sendDecision.deliveryMode,
+        replied,
+      },
+      finishedAt: new Date(),
+    });
+
+    return { replied };
+  } catch (error) {
+    await dependencies.updateLineAiJob(input.jobId, {
+      status: LineAiJobStatus.FAILED,
+      error: error instanceof Error ? error.message.slice(0, 500) : "Unknown LINE AI job failure",
+      finishedAt: new Date(),
+    });
+    throw error;
+  }
+}
+
 export async function processLineWebhookPayload(
   payload: { events?: unknown[] },
   config: LineWebhookProcessorConfig,
@@ -135,8 +346,6 @@ export async function processLineWebhookPayload(
 ): Promise<LineWebhookProcessResult> {
   // Toggles come from the admin settings page (resolved by the caller). Safe
   // defaults when omitted: AI off, dry-run on, image-search off.
-  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
-  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
   const imageSearchEnabled = config.imageSearchEnabled ?? LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled;
   const events = normalizeLineWebhookEvents(payload as Parameters<typeof normalizeLineWebhookEvents>[0]);
   const result: LineWebhookProcessResult = {
@@ -158,9 +367,12 @@ export async function processLineWebhookPayload(
     }
 
     const customerId = await dependencies.findActiveCustomerIdByLineUserId(event.lineUserId);
+    const lineProfile = config.lineProfilesByUserId?.[event.lineUserId] ?? null;
     const conversation = await dependencies.getOrCreateLineConversation({
       lineUserId: event.lineUserId,
       customerId,
+      displayName: lineProfile?.displayName ?? null,
+      pictureUrl: lineProfile?.pictureUrl ?? null,
     });
 
     let route = routeLineIntent({
@@ -198,6 +410,7 @@ export async function processLineWebhookPayload(
           conversationId: conversation.id,
           lineUserId: event.lineUserId,
           lineMessageId: event.lineMessageId,
+          content: imageClassification.content ?? null,
         });
 
         await dependencies.storeLineAiAudit({
@@ -258,116 +471,52 @@ export async function processLineWebhookPayload(
       },
     });
 
-    if (!autoReplyEnabled) {
-      result.processedCount += 1;
-      continue;
-    }
-
-    const productSearch = await dependencies.searchLineProductInquiry({
-      route,
-      text: event.text,
-      extractedImageHints: imageClassification?.searchHints ?? null,
-    });
-
-    await dependencies.storeLineAiAudit({
-      conversationId: conversation.id,
-      action: "PRODUCT_SEARCH_SUMMARY",
-      payload: productSearch.searched
-        ? {
-            lineEventId: event.lineEventId,
-            searched: true,
-            query: productSearch.query,
-            total: productSearch.result.total,
-            returnedCount: productSearch.result.ids.length,
-            needsMoreInfo: productSearch.needsMoreInfo,
-          }
-        : {
-            lineEventId: event.lineEventId,
-            searched: false,
-            reason: productSearch.reason,
-          },
-    });
-
-    const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    const suggestion = await generateSuggestion({
-      intent: route.intent,
-      originalText: event.text,
-      productSearch,
-    });
-
-    const sendDecision = resolveLineAiSendDecision({
-      autoReplyEnabled,
-      dryRun,
-      conversationStatus: conversation.aiStatus,
-      route,
-      confidence: suggestion.confidence,
-      hasReplyToken: event.canReply && Boolean(config.channelAccessToken),
-      allowPushFallback: false,
-    });
-
-    await dependencies.storeLineAiSuggestion({
+    const aiJob = await dependencies.storeLineAiJob({
       conversationId: conversation.id,
       lineMessageId: inboundMessage.id,
-      intent: route.intent,
-      suggestedReply: suggestion.suggestedReply,
-      confidence: suggestion.confidence,
-      matchedProducts: suggestion.matchedProducts ? JSON.parse(JSON.stringify(suggestion.matchedProducts)) : null,
-      reasoningSummary: suggestion.reasoningSummary,
-      status: sendDecision.action === "send" ? LineAiSuggestionStatus.SENT : LineAiSuggestionStatus.DRAFT,
-      deliveryMode: sendDecision.deliveryMode,
-      sentAt: sendDecision.action === "send" ? new Date() : null,
-    });
-
-    await dependencies.storeLineAiAudit({
-      conversationId: conversation.id,
-      action: "AI_SEND_DECISION",
+      jobType:
+        event.messageType === LineMessageType.IMAGE
+          ? imageClassification?.kind === "payment_slip"
+            ? LineAiJobType.PAYMENT_SLIP_OCR
+            : LineAiJobType.IMAGE_ANALYSIS
+          : LineAiJobType.TEXT_REPLY,
+      status: LineAiJobStatus.PENDING,
       payload: {
         lineEventId: event.lineEventId,
-        action: sendDecision.action,
-        deliveryMode: sendDecision.deliveryMode,
-        reason: sendDecision.reason,
+        lineUserId: event.lineUserId,
+        replyToken: event.replyToken,
+        canReply: event.canReply,
+        messageType: event.messageType,
+        text: event.text,
+        route,
+        imageClassification: imageClassification
+          ? {
+              kind: imageClassification.kind,
+              intent: imageClassification.intent,
+              searchHints: imageClassification.searchHints,
+              confidence: imageClassification.confidence,
+              reason: imageClassification.reason,
+            }
+          : null,
       },
     });
 
-    if (
-      sendDecision.action === "send" &&
-      sendDecision.deliveryMode === LineDeliveryMode.REPLY &&
-      event.replyToken &&
-      config.channelAccessToken
-    ) {
-      const outboundMessage = await dependencies.appendLineMessage({
-        conversationId: conversation.id,
-        lineUserId: event.lineUserId,
-        direction: LineMessageDirection.OUTBOUND_AI,
-        messageType: event.messageType,
-        intent: route.intent,
-        text: suggestion.suggestedReply,
-        deliveryMode: LineDeliveryMode.REPLY,
-        deliveryStatus: LineDeliveryStatus.PENDING,
-      });
+    const replyResult = await processLineAiReply({
+      jobId: aiJob.id,
+      conversation,
+      inboundMessage,
+      lineUserId: event.lineUserId,
+      replyToken: event.replyToken,
+      canReply: event.canReply,
+      messageType: event.messageType,
+      route,
+      text: event.text,
+      imageClassification,
+      lineEventId: event.lineEventId,
+    }, config, dependencies);
 
-      await dependencies.replyLineMessage({
-        channelAccessToken: config.channelAccessToken,
-        replyToken: event.replyToken,
-        messages: [textMessage(suggestion.suggestedReply)],
-      });
-
-      await dependencies.markOutboundLineMessageSent({
-        messageId: outboundMessage.id,
-        deliveryMode: LineDeliveryMode.REPLY,
-      });
+    if (replyResult.replied) {
       result.repliedCount += 1;
-    }
-
-    if (sendDecision.action === "handoff") {
-      await dependencies.updateLineConversationState(
-        conversation.id,
-        buildLineConversationStatePatch({
-          type: "waiting_admin",
-          at: new Date(),
-          reason: sendDecision.reason,
-        }),
-      );
     }
 
     result.processedCount += 1;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { AuditAction, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import { getAuditActorFromSession, getRequestContext, writeAuditLog } from "@/lib/audit-log";
+import { parsePaymentSlipReviewBody } from "@/lib/line-admin-validation";
 import { lineAdminApiErrorResponse } from "@/lib/line-admin-api";
 import {
   getPaymentSlipById,
@@ -25,12 +26,8 @@ export async function POST(
     const session = await requirePermission("line_payment_slips.manage");
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const decision = typeof body.decision === "string" ? body.decision : "";
+    const { decision } = parsePaymentSlipReviewBody(body);
     const nextStatus = DECISION_TO_STATUS[decision];
-
-    if (!nextStatus) {
-      return NextResponse.json({ error: "INVALID_DECISION" }, { status: 400 });
-    }
 
     const existing = await getPaymentSlipById(id);
     if (!existing) {

@@ -18,7 +18,61 @@ type LineWebhookEvent = {
   };
 };
 
+type CapturedLineRecipient = {
+  savedCount: number;
+  lineUserId: string | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+};
+
+async function captureLineRecipientFromEvent(event: LineWebhookEvent, config: ReturnType<typeof getLineDailySummaryConfig>) {
+  const source = event.source;
+  if (!source) {
+    return {
+      savedCount: 0,
+      lineUserId: null,
+      displayName: null,
+      pictureUrl: null,
+    } satisfies CapturedLineRecipient;
+  }
+
+  let displayName: string | null = null;
+  let pictureUrl: string | null = null;
+  if (source.userId && config.channelAccessToken) {
+    try {
+      const profile = await fetchLineUserProfile({
+        channelAccessToken: config.channelAccessToken,
+        userId: source.userId,
+      });
+      displayName = profile?.displayName ?? null;
+      pictureUrl = profile?.pictureUrl ?? null;
+    } catch (error) {
+      console.warn(
+        `[line-webhook] profile lookup failed for ${source.userId}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  }
+
+  const saved = await upsertLineRecipientFromWebhook({
+    userId: source.userId ?? null,
+    groupId: source.groupId ?? null,
+    roomId: source.roomId ?? null,
+    eventType: event.type ?? null,
+    displayName,
+  });
+
+  return {
+    savedCount: saved.length,
+    lineUserId: source.userId ?? null,
+    displayName,
+    pictureUrl,
+  } satisfies CapturedLineRecipient;
+}
+
 export async function POST(request: Request) {
+  const receivedAt = new Date();
   const config = getLineDailySummaryConfig();
   if (!config.channelSecret) {
     return Response.json(
@@ -42,43 +96,16 @@ export async function POST(request: Request) {
   }
 
   const events = payload.events ?? [];
-  let capturedCount = 0;
-
-  for (const event of events) {
-    const source = event.source;
-    if (!source) {
-      continue;
-    }
-
-    let displayName: string | null = null;
-    if (source.userId && config.channelAccessToken) {
-      try {
-        const profile = await fetchLineUserProfile({
-          channelAccessToken: config.channelAccessToken,
-          userId: source.userId,
-        });
-        displayName = profile?.displayName ?? null;
-      } catch (error) {
-        console.warn(
-          `[line-webhook] profile lookup failed for ${source.userId}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        );
-      }
-    }
-
-    const saved = await upsertLineRecipientFromWebhook({
-      userId: source.userId ?? null,
-      groupId: source.groupId ?? null,
-      roomId: source.roomId ?? null,
-      eventType: event.type ?? null,
-      displayName,
-    });
-
-    if (saved.length > 0) {
-      capturedCount += saved.length;
-    }
-  }
+  const capturedRecipients = await Promise.all(events.map((event) => captureLineRecipientFromEvent(event, config)));
+  const capturedCount = capturedRecipients.reduce((sum, recipient) => sum + recipient.savedCount, 0);
+  const lineProfilesByUserId = Object.fromEntries(
+    capturedRecipients
+      .filter((recipient) => recipient.lineUserId && (recipient.displayName || recipient.pictureUrl))
+      .map((recipient) => [
+        recipient.lineUserId as string,
+        { displayName: recipient.displayName, pictureUrl: recipient.pictureUrl },
+      ]),
+  );
 
   let aiAgentResult: Awaited<ReturnType<typeof processLineWebhookPayload>> | null = null;
   try {
@@ -88,6 +115,10 @@ export async function POST(request: Request) {
       autoReplyEnabled: aiSettings.autoReplyEnabled,
       dryRun: aiSettings.dryRun,
       imageSearchEnabled: aiSettings.imageSearchEnabled,
+      lineProfilesByUserId,
+      allowPushFallback: true,
+      receivedAt,
+      replyTokenMaxAgeMs: 45_000,
     });
   } catch (error) {
     console.error("[line-webhook] AI agent processing failed", error);

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, Pause, Play, Send, UserRoundCheck, XCircle } from "lucide-react";
+import { AlertCircle, Pause, Play, Send, UserRoundCheck, XCircle } from "lucide-react";
 
 type Props = {
   conversationId: string;
@@ -64,7 +64,7 @@ export default function AdminLineConversationActions({
             className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
           >
             <Pause size={15} />
-            Pause AI
+            พัก AI (Pause)
           </button>
           <button
             type="button"
@@ -73,7 +73,7 @@ export default function AdminLineConversationActions({
             className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
           >
             <Play size={15} />
-            Resume AI
+            เปิด AI ต่อ (Resume)
           </button>
           <button
             type="button"
@@ -88,7 +88,7 @@ export default function AdminLineConversationActions({
             className="inline-flex h-9 items-center gap-2 rounded-md border border-amber-200 px-3 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-400/30 dark:text-amber-200 dark:hover:bg-amber-500/10"
           >
             <UserRoundCheck size={15} />
-            Waiting admin
+            รอแอดมิน (Waiting)
           </button>
           <button
             type="button"
@@ -97,7 +97,7 @@ export default function AdminLineConversationActions({
             className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
           >
             <XCircle size={15} />
-            Close
+            ปิดเคส (Close)
           </button>
         </div>
       ) : null}
@@ -108,7 +108,7 @@ export default function AdminLineConversationActions({
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={3}
-            placeholder="Type admin reply"
+            placeholder="พิมพ์ข้อความตอบลูกค้าผ่าน LINE"
             className="w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
           <button
@@ -120,14 +120,14 @@ export default function AdminLineConversationActions({
             className="inline-flex h-9 items-center gap-2 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-600 dark:hover:bg-sky-500"
           >
             <Send size={15} />
-            Send via LINE
+            ส่งผ่าน LINE
           </button>
         </div>
       ) : null}
 
       {error ? (
         <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">
-          <CheckCircle2 size={15} className="rotate-45" />
+          <AlertCircle size={15} />
           {error}
         </div>
       ) : null}

@@ -109,7 +109,7 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
                       {conversation.lineUserId}
                     </p>
                     <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">
-                      {conversation.customer?.phone ?? "No linked customer phone"}
+                      {conversation.customer?.phone ?? "ยังไม่พบลูกค้าในระบบที่เชื่อมโยง"}
                     </p>
                   </div>
                   <div className="shrink-0 text-left text-xs text-gray-500 dark:text-slate-400 md:text-right">

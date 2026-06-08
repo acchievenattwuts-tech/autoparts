@@ -12,6 +12,7 @@ import {
 import {
   type LineWebhookProcessorDependencies,
 } from "@/lib/line-webhook-processor";
+import type { LineMessageContent } from "@/lib/line-messaging";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
@@ -22,11 +23,14 @@ type TestCalls = {
   statePatchTypes: string[];
   suggestions: Array<{ confidence: LineAiConfidence; deliveryMode?: LineDeliveryMode | null }>;
   replies: Array<{ replyToken: string; text: string }>;
+  pushes: Array<{ recipientIds: string[]; text: string }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
   searches: string[];
   conversationInputs: Array<{ lineUserId: string; customerId?: string | null }>;
+  conversationProfileInputs: Array<{ displayName?: string | null; pictureUrl?: string | null }>;
   ocrCalls: number;
   createdSlips: Array<{ conversationId: string; lineUserId: string }>;
+  reusedSlipContent: boolean;
 };
 
 function textPayload(text: string, lineEventId = "event-1") {
@@ -86,11 +90,14 @@ function createProcessorTestDeps(input?: {
     statePatchTypes: [],
     suggestions: [],
     replies: [],
+    pushes: [],
     markedSent: [],
     searches: [],
     conversationInputs: [],
+    conversationProfileInputs: [],
     ocrCalls: 0,
     createdSlips: [],
+    reusedSlipContent: false,
   };
   let messageSeq = 0;
   const duplicateEventIds = new Set(input?.duplicateEventIds ?? []);
@@ -100,7 +107,14 @@ function createProcessorTestDeps(input?: {
       Boolean(input?.duplicate) || (typeof lineEventId === "string" && duplicateEventIds.has(lineEventId)),
     findActiveCustomerIdByLineUserId: async () => input?.linkedCustomerId ?? null,
     getOrCreateLineConversation: async (conversationInput) => {
-      calls.conversationInputs.push(conversationInput);
+      calls.conversationInputs.push({
+        lineUserId: conversationInput.lineUserId,
+        customerId: conversationInput.customerId,
+      });
+      calls.conversationProfileInputs.push({
+        displayName: conversationInput.displayName,
+        pictureUrl: conversationInput.pictureUrl,
+      });
       return ({
         id: `conversation-${conversationInput.lineUserId}`,
         lineUserId: conversationInput.lineUserId,
@@ -136,6 +150,13 @@ function createProcessorTestDeps(input?: {
       });
       return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiSuggestion"]>>;
     },
+    storeLineAiJob: async (jobInput) =>
+      ({
+        id: `job-${calls.conversationInputs.length}`,
+        ...jobInput,
+      }) as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiJob"]>>,
+    updateLineAiJob: async () =>
+      ({}) as Awaited<ReturnType<LineWebhookProcessorDependencies["updateLineAiJob"]>>,
     markOutboundLineMessageSent: async (input) => {
       calls.markedSent.push(input);
       return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["markOutboundLineMessageSent"]>>;
@@ -167,6 +188,16 @@ function createProcessorTestDeps(input?: {
         replyToken: input.replyToken,
       };
     },
+    pushLineMessages: async (input) => {
+      calls.pushes.push({
+        recipientIds: input.recipientIds,
+        text: input.messages[0]?.type === "text" ? input.messages[0].text : "",
+      });
+      return {
+        sentCount: input.recipientIds.length,
+        recipientIds: input.recipientIds,
+      };
+    },
     classifyLineImage: async () => {
       const kind = input?.imageKind ?? "part_image";
       const intent =
@@ -185,6 +216,7 @@ function createProcessorTestDeps(input?: {
     },
     ingestPaymentSlip: async (slipInput) => {
       calls.ocrCalls += 1;
+      calls.reusedSlipContent = Boolean(slipInput.content);
       calls.createdSlips.push({ conversationId: slipInput.conversationId, lineUserId: slipInput.lineUserId });
       return {
         slipId: "slip-1",
@@ -204,6 +236,13 @@ function createProcessorTestDeps(input?: {
   };
 
   return { calls, dependencies };
+}
+
+function testImageContent(): LineMessageContent {
+  return {
+    mimeType: "image/jpeg",
+    dataBase64: Buffer.from("test-image").toString("base64"),
+  };
 }
 
 test("processor ignores duplicate webhook events without appending messages", async () => {
@@ -245,6 +284,7 @@ test("processor creates conversation message and sends webhook reply via replyMe
   ]);
   assert.equal(calls.replies.length, 1);
   assert.equal(calls.replies[0]?.replyToken, "reply-token-1");
+  assert.deepEqual(calls.pushes, []);
   assert.deepEqual(calls.markedSent, [{ messageId: "message-2", deliveryMode: LineDeliveryMode.REPLY }]);
   assert.ok(calls.auditActions.includes("INBOUND_EVENT_ACCEPTED"));
   assert.ok(calls.auditActions.includes("PRODUCT_SEARCH_SUMMARY"));
@@ -262,6 +302,58 @@ test("processor links conversation to exact active customer line user id", async
 
   assert.equal(result.processedCount, 1);
   assert.deepEqual(calls.conversationInputs, [{ lineUserId: "line-user-1", customerId: "customer-1" }]);
+});
+
+test("processor falls back to push when reply token is too old for safe reply", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("vios 1234"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      allowPushFallback: true,
+      receivedAt: new Date(Date.now() - 90_000),
+      replyTokenMaxAgeMs: 45_000,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.replies, []);
+  assert.equal(calls.pushes.length, 1);
+  assert.deepEqual(calls.pushes[0]?.recipientIds, ["line-user-1"]);
+  assert.deepEqual(calls.markedSent, [{ messageId: "message-2", deliveryMode: LineDeliveryMode.PUSH }]);
+});
+
+test("processor stores line profile name as conversation fallback when no customer is linked", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("สอบถามอะไหล่"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: false,
+      dryRun: false,
+      lineProfilesByUserId: {
+        "line-user-1": {
+          displayName: "คุณสมชาย",
+          pictureUrl: "https://line.example/avatar.jpg",
+        },
+      },
+    },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.conversationInputs, [{ lineUserId: "line-user-1", customerId: null }]);
+  assert.deepEqual(calls.conversationProfileInputs, [
+    { displayName: "คุณสมชาย", pictureUrl: "https://line.example/avatar.jpg" },
+  ]);
 });
 
 test("processor stores suggestion but does not send while conversation is paused", async () => {
@@ -344,6 +436,29 @@ test("processor routes a payment-slip image to admin and never hits product sear
   ]);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.deepEqual(calls.replies, []);
+});
+
+test("processor reuses classified payment-slip image content for slip ingest", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ imageKind: "payment_slip" });
+
+  dependencies.classifyLineImage = async () => ({
+    kind: "payment_slip",
+    intent: LineIntent.PAYMENT_SLIP_IMAGE,
+    searchHints: [],
+    confidence: "HIGH",
+    reason: "TEST_STUB",
+    content: testImageContent(),
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-reuse"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(calls.reusedSlipContent, true);
 });
 
 test("processor enters image workflow for a part image without product search", async () => {

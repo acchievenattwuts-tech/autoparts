@@ -94,7 +94,7 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
             width={400}
             height={600}
             loading="lazy"
-            className="max-h-[70vh] w-auto rounded-md border border-gray-100 dark:border-white/10"
+            className="h-auto max-h-[70vh] max-w-full rounded-md border border-gray-100 object-contain dark:border-white/10"
           />
         </div>
       ) : slip.imageUrl ? (

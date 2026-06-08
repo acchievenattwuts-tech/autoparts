@@ -1,5 +1,5 @@
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
-import { fetchLineMessageContent } from "@/lib/line-messaging";
+import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
 import { runPaymentSlipOcr } from "@/lib/line-payment-slip-ocr";
 import { createPaymentSlip, setPaymentSlipImagePath } from "@/lib/line-payment-slip-repository";
 import type { PaymentSlipOcr } from "@/lib/line-payment-slip-service";
@@ -23,9 +23,10 @@ export async function ingestPaymentSlip(input: {
   conversationId: string;
   lineUserId: string;
   lineMessageId: string | null;
+  content?: LineMessageContent | null;
 }): Promise<IngestPaymentSlipResult> {
-  let content = null;
-  if (input.channelAccessToken && input.lineMessageId) {
+  let content = input.content ?? null;
+  if (!content && input.channelAccessToken && input.lineMessageId) {
     try {
       content = await fetchLineMessageContent({
         channelAccessToken: input.channelAccessToken,

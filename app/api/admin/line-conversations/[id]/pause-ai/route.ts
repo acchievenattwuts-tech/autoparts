@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { parseLineConversationReasonBody } from "@/lib/line-admin-validation";
 import { lineAdminApiErrorResponse } from "@/lib/line-admin-api";
 import { pauseLineConversation } from "@/lib/line-admin-service";
 import { requirePermission } from "@/lib/require-auth";
@@ -11,7 +12,7 @@ export async function POST(
     const session = await requirePermission("line_conversations.manage");
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
-    const reason = typeof body.reason === "string" ? body.reason : null;
+    const { reason } = parseLineConversationReasonBody(body);
 
     const conversation = await pauseLineConversation({
       conversationId: id,

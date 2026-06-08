@@ -25,6 +25,16 @@ export function lineAdminApiErrorResponse(error: unknown) {
     return NextResponse.json({ error: "EMPTY_MESSAGE" }, { status: 400 });
   }
 
+  if (
+    message === "INVALID_DECISION" ||
+    message === "INVALID_REASON_PAYLOAD" ||
+    message === "INVALID_REPLY_PAYLOAD" ||
+    message === "MESSAGE_TOO_LONG" ||
+    message === "REASON_TOO_LONG"
+  ) {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
   if (message === "LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN_NOT_CONFIGURED") {
     return NextResponse.json(
       { error: "LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN_NOT_CONFIGURED" },
