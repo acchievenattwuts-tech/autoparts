@@ -115,6 +115,9 @@ const companySchema = z.object({
   vat_rate: z.coerce.number().min(0).max(100).transform(String),
   delivery_commission_percent: z.coerce.number().min(0).max(100).transform(String),
   product_search_auto_apply_synonyms_enabled: z.enum(["true", "false"]),
+  line_ai_auto_reply_enabled: z.enum(["true", "false"]),
+  line_ai_dry_run: z.enum(["true", "false"]),
+  line_ai_image_search_enabled: z.enum(["true", "false"]),
 });
 
 export async function updateCompanySettings(formData: FormData) {

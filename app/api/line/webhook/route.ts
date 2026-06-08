@@ -5,7 +5,9 @@ import {
   getLineDailySummaryConfig,
   verifyLineWebhookSignature,
 } from "@/lib/line-messaging";
+import { getLineAiSettings } from "@/lib/line-ai-settings";
 import { upsertLineRecipientFromWebhook } from "@/lib/line-recipient";
+import { processLineWebhookPayload } from "@/lib/line-webhook-processor";
 
 type LineWebhookEvent = {
   type?: string;
@@ -78,7 +80,20 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({ ok: true, capturedCount });
+  let aiAgentResult: Awaited<ReturnType<typeof processLineWebhookPayload>> | null = null;
+  try {
+    const aiSettings = await getLineAiSettings();
+    aiAgentResult = await processLineWebhookPayload(payload, {
+      channelAccessToken: config.channelAccessToken,
+      autoReplyEnabled: aiSettings.autoReplyEnabled,
+      dryRun: aiSettings.dryRun,
+      imageSearchEnabled: aiSettings.imageSearchEnabled,
+    });
+  } catch (error) {
+    console.error("[line-webhook] AI agent processing failed", error);
+  }
+
+  return Response.json({ ok: true, capturedCount, aiAgentResult });
 }
 
 export async function GET() {

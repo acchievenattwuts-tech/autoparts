@@ -5,6 +5,13 @@ import {
   PRODUCT_SEARCH_AUTO_APPLY_SYNONYMS_ENABLED_KEY,
   parseProductSearchAutoApplyEnabledSetting,
 } from "@/lib/product-search-auto-apply";
+import {
+  LINE_AI_AUTO_REPLY_KEY,
+  LINE_AI_DRY_RUN_KEY,
+  LINE_AI_IMAGE_SEARCH_KEY,
+  LINE_AI_SETTINGS_DEFAULTS,
+  parseBoolSetting,
+} from "@/lib/line-ai-settings";
 
 export interface SiteConfig {
   shopName: string;
@@ -38,6 +45,9 @@ export interface SiteConfig {
   vatRate: number; // e.g. 7
   deliveryCommissionPercent: number;
   productSearchAutoApplySynonymsEnabled: boolean;
+  lineAiAutoReplyEnabled: boolean;
+  lineAiDryRun: boolean;
+  lineAiImageSearchEnabled: boolean;
 }
 
 export const defaultSiteConfig: SiteConfig = {
@@ -72,6 +82,9 @@ export const defaultSiteConfig: SiteConfig = {
   vatRate: 7,
   deliveryCommissionPercent: 30,
   productSearchAutoApplySynonymsEnabled: false,
+  lineAiAutoReplyEnabled: LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled,
+  lineAiDryRun: LINE_AI_SETTINGS_DEFAULTS.dryRun,
+  lineAiImageSearchEnabled: LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
 };
 
 export const getSiteConfig = unstable_cache(
@@ -114,6 +127,15 @@ export const getSiteConfig = unstable_cache(
       ),
       productSearchAutoApplySynonymsEnabled: parseProductSearchAutoApplyEnabledSetting(
         map[PRODUCT_SEARCH_AUTO_APPLY_SYNONYMS_ENABLED_KEY],
+      ),
+      lineAiAutoReplyEnabled: parseBoolSetting(
+        map[LINE_AI_AUTO_REPLY_KEY],
+        LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled,
+      ),
+      lineAiDryRun: parseBoolSetting(map[LINE_AI_DRY_RUN_KEY], LINE_AI_SETTINGS_DEFAULTS.dryRun),
+      lineAiImageSearchEnabled: parseBoolSetting(
+        map[LINE_AI_IMAGE_SEARCH_KEY],
+        LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
       ),
     };
   },

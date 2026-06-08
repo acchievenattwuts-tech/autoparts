@@ -1,10 +1,15 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { LineDailySummaryTargetMode, LineRecipientType } from "@/lib/generated/prisma";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { resolveLineDailySummaryRecipientIds } from "@/lib/line-recipient";
+import { verifyLineWebhookSignature } from "@/lib/line-webhook-signature";
+
+export { verifyLineWebhookSignature };
 
 const LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push";
+const LINE_REPLY_API_URL = "https://api.line.me/v2/bot/message/reply";
 const LINE_PROFILE_API_URL = "https://api.line.me/v2/bot/profile";
+const LINE_CONTENT_API_BASE = "https://api-data.line.me/v2/bot/message";
+const MAX_LINE_CONTENT_BYTES = 6 * 1024 * 1024; // 6MB cap before base64 inlining to Gemini.
 const LINE_PUSH_MAX_ATTEMPTS = 3;
 const LINE_PUSH_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
@@ -18,6 +23,11 @@ export type LineDailySummaryConfig = {
 export type LinePushResult = {
   sentCount: number;
   recipientIds: string[];
+};
+
+export type LineReplyResult = {
+  sent: boolean;
+  replyToken: string;
 };
 
 export type LineUserProfile = {
@@ -111,6 +121,49 @@ export async function fetchLineUserProfile(params: {
     displayName: payload.displayName?.trim() || null,
     pictureUrl: payload.pictureUrl?.trim() || null,
     statusMessage: payload.statusMessage?.trim() || null,
+  };
+}
+
+export type LineMessageContent = {
+  mimeType: string;
+  dataBase64: string;
+};
+
+/**
+ * Fetches a LINE message's binary content (e.g. an image) on demand via the
+ * content API. LINE retains content only for a limited window, so callers must
+ * use it immediately and persist any derived data they need. Returns null when
+ * the content is gone (404/410); throws on other upstream failures.
+ */
+export async function fetchLineMessageContent(params: {
+  channelAccessToken: string;
+  messageId: string;
+}): Promise<LineMessageContent | null> {
+  const { channelAccessToken, messageId } = params;
+
+  const response = await fetch(
+    `${LINE_CONTENT_API_BASE}/${encodeURIComponent(messageId)}/content`,
+    { headers: { Authorization: `Bearer ${channelAccessToken}` } },
+  );
+
+  if (response.status === 404 || response.status === 410) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
+    throw new Error(`LINE content fetch failed (${response.status}): ${body}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength === 0 || arrayBuffer.byteLength > MAX_LINE_CONTENT_BYTES) {
+    return null;
+  }
+
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+  return {
+    mimeType,
+    dataBase64: Buffer.from(arrayBuffer).toString("base64"),
   };
 }
 
@@ -259,27 +312,6 @@ export async function resolveConfiguredLineRecipients(
   };
 }
 
-export function verifyLineWebhookSignature(params: {
-  channelSecret: string;
-  body: string;
-  signature: string | null;
-}) {
-  const { channelSecret, body, signature } = params;
-
-  if (!signature) {
-    return false;
-  }
-
-  const expected = createHmac("sha256", channelSecret).update(body).digest("base64");
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-
-  return (
-    actualBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(actualBuffer, expectedBuffer)
-  );
-}
-
 export async function pushLineMessages(params: {
   channelAccessToken: string;
   recipientIds: string[];
@@ -298,5 +330,35 @@ export async function pushLineMessages(params: {
   return {
     sentCount: recipientIds.length,
     recipientIds,
+  };
+}
+
+export async function replyLineMessage(params: {
+  channelAccessToken: string;
+  replyToken: string;
+  messages: LinePushMessage[];
+}): Promise<LineReplyResult> {
+  const { channelAccessToken, replyToken, messages } = params;
+
+  const response = await fetch(LINE_REPLY_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${channelAccessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      replyToken,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
+    throw new Error(`LINE reply failed (${response.status}): ${body}`);
+  }
+
+  return {
+    sent: true,
+    replyToken,
   };
 }

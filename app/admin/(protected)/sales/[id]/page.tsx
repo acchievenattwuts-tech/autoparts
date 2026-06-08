@@ -57,6 +57,9 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     vatType: map["vat_type"] ?? defaultSiteConfig.vatType,
     vatRate: Number(map["vat_rate"] ?? defaultSiteConfig.vatRate),
     productSearchAutoApplySynonymsEnabled: defaultSiteConfig.productSearchAutoApplySynonymsEnabled,
+    lineAiAutoReplyEnabled: defaultSiteConfig.lineAiAutoReplyEnabled,
+    lineAiDryRun: defaultSiteConfig.lineAiDryRun,
+    lineAiImageSearchEnabled: defaultSiteConfig.lineAiImageSearchEnabled,
   };
 };
 

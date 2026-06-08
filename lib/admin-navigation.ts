@@ -13,6 +13,7 @@ import {
   ListChecks,
   MapPin,
   Megaphone,
+  MessageCircle,
   Package,
   PackageSearch,
   Receipt,
@@ -31,6 +32,7 @@ import {
   Users,
   Wallet,
   Languages,
+  KeyRound,
 } from "lucide-react";
 
 import type { PermissionKey } from "@/lib/access-control";
@@ -63,6 +65,8 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view", keywords: "delivery dispatch shipping" },
       { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view", keywords: "receipt รับชำระ" },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view", keywords: "credit note cn ลดหนี้" },
+      { label: "LINE OA Conversations", href: "/admin/line-conversations", icon: MessageCircle, permission: "line_conversations.view", keywords: "line oa chat conversations ai agent reply customer" },
+      { label: "สลิปการชำระเงิน (LINE)", href: "/admin/line-payment-slips", icon: Receipt, permission: "line_payment_slips.view", keywords: "line payment slip สลิป โอนเงิน หลักฐานการโอน ตรวจสลิป ชำระเงิน ocr" },
     ],
   },
   {
@@ -138,6 +142,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ผู้ใช้งาน", href: "/admin/users", icon: Users, permission: "admin.users.view", keywords: "users ผู้ใช้งาน admin" },
       { label: "บทบาทและสิทธิ์", href: "/admin/roles", icon: ShieldCheck, permission: "admin.roles.view", keywords: "roles permissions บทบาท สิทธิ์" },
       { label: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "audit_log.view", keywords: "audit log" },
+      { label: "AI Keys (Gemini)", href: "/admin/line-ai-keys", icon: KeyRound, permission: "line_ai_keys.view", keywords: "ai key gemini google line oa api key rotation fallback rate limit quota สถานะ คีย์" },
     ],
   },
 ] as const;

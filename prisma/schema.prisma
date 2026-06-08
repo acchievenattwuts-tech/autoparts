@@ -39,6 +39,9 @@ model User {
   deliveryProofs                DeliveryProof[]
   expenses                      Expense[]
   lineSummaryDispatches         LineDailySummaryDispatch[]
+  lineConversationsAssigned     LineConversation[]         @relation("LineConversationAssignedAdmin")
+  lineMessagesAdminAuthored     LineMessage[]              @relation("LineMessageAdminAuthor")
+  paymentSlipsReviewed          PaymentSlip[]              @relation("PaymentSlipReviewer")
   purchases                     Purchase[]
   purchaseReturns               PurchaseReturn[]
   receipts                      Receipt[]
@@ -105,6 +108,169 @@ model LineDailySummaryDispatch {
   @@index([reportDayKey, dispatchKind])
   @@index([status, createdAt])
   @@index([triggeredByUserId])
+}
+
+model LineConversation {
+  id                    String                   @id @default(cuid())
+  lineUserId            String                   @unique
+  displayName           String?
+  pictureUrl            String?
+  aiStatus              LineConversationAiStatus @default(ACTIVE)
+  customerId            String?
+  assignedAdminId       String?
+  pausedReason          String?
+  lastCustomerMessageAt DateTime?                @db.Timestamptz(3)
+  lastAdminMessageAt    DateTime?                @db.Timestamptz(3)
+  pausedAt              DateTime?                @db.Timestamptz(3)
+  resumedAt             DateTime?                @db.Timestamptz(3)
+  closedAt              DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+  assignedAdmin         User?                    @relation("LineConversationAssignedAdmin", fields: [assignedAdminId], references: [id])
+  customer              Customer?                @relation(fields: [customerId], references: [id])
+  messages              LineMessage[]
+  aiJobs                LineAiJob[]
+  aiSuggestions         LineAiSuggestion[]
+  auditLogs             LineAiAuditLog[]
+  paymentSlips          PaymentSlip[]
+
+  @@index([aiStatus, updatedAt])
+  @@index([assignedAdminId])
+  @@index([customerId])
+  @@index([lastCustomerMessageAt])
+}
+
+model LineMessage {
+  id             String               @id @default(cuid())
+  conversationId String
+  lineUserId     String
+  lineMessageId  String?
+  lineEventId    String?              @unique
+  replyToken     String?
+  direction      LineMessageDirection
+  messageType    LineMessageType
+  intent         LineIntent?
+  text           String?
+  imageUrl       String?
+  rawEvent       Json?
+  deliveryMode   LineDeliveryMode?
+  deliveryStatus LineDeliveryStatus?
+  adminUserId    String?
+  sentAt         DateTime?            @db.Timestamptz(3)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  adminUser      User?                @relation("LineMessageAdminAuthor", fields: [adminUserId], references: [id])
+  conversation   LineConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  aiJobs         LineAiJob[]
+  aiSuggestions  LineAiSuggestion[]
+
+  @@index([conversationId, createdAt])
+  @@index([lineUserId, createdAt])
+  @@index([lineMessageId])
+  @@index([direction, createdAt])
+  @@index([intent, createdAt])
+}
+
+model LineAiJob {
+  id             String           @id @default(cuid())
+  conversationId String
+  lineMessageId  String?
+  jobType        LineAiJobType
+  status         LineAiJobStatus  @default(PENDING)
+  payload        Json?
+  result         Json?
+  error          String?
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  startedAt      DateTime?        @db.Timestamptz(3)
+  finishedAt     DateTime?        @db.Timestamptz(3)
+  conversation   LineConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lineMessage    LineMessage?     @relation(fields: [lineMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([lineMessageId])
+  @@index([jobType, status, createdAt])
+}
+
+model LineAiSuggestion {
+  id               String                 @id @default(cuid())
+  conversationId   String
+  lineMessageId    String?
+  intent           LineIntent?
+  suggestedReply   String
+  confidence       LineAiConfidence
+  matchedProducts  Json?
+  reasoningSummary String?
+  status           LineAiSuggestionStatus @default(DRAFT)
+  deliveryMode     LineDeliveryMode?
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+  sentAt           DateTime?              @db.Timestamptz(3)
+  conversation     LineConversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lineMessage      LineMessage?           @relation(fields: [lineMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([lineMessageId])
+  @@index([intent, confidence])
+  @@index([status, createdAt])
+}
+
+model LineAiAuditLog {
+  id             String            @id @default(cuid())
+  conversationId String?
+  action         String
+  payload        Json?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  conversation   LineConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([action, createdAt])
+}
+
+model PaymentSlip {
+  id                       String                        @id @default(cuid())
+  conversationId           String
+  lineUserId               String
+  lineMessageId            String?
+  imageUrl                 String?
+  detectedAmount           Decimal?                      @db.Decimal(10, 2)
+  detectedTransferDatetime DateTime?                     @db.Timestamptz(3)
+  detectedBank             String?
+  detectedSenderName       String?
+  detectedReceiverName     String?
+  detectedReferenceNo      String?
+  matchedSaleId            String?
+  verificationStatus       PaymentSlipVerificationStatus @default(PENDING_REVIEW)
+  rawOcr                   Json?
+  createdAt                DateTime                      @default(now()) @db.Timestamptz(3)
+  reviewedAt               DateTime?                     @db.Timestamptz(3)
+  reviewedById             String?
+  conversation             LineConversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  matchedSale              Sale?                         @relation(fields: [matchedSaleId], references: [id])
+  reviewedBy               User?                         @relation("PaymentSlipReviewer", fields: [reviewedById], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([lineUserId, createdAt])
+  @@index([lineMessageId])
+  @@index([matchedSaleId])
+  @@index([verificationStatus, createdAt])
+  @@index([reviewedById])
+}
+
+model AiApiKeyState {
+  id             String           @id @default(cuid())
+  keyRef         String           @unique
+  provider       AiApiKeyProvider @default(GOOGLE_GEMINI)
+  status         AiApiKeyStatus   @default(AVAILABLE)
+  cooldownUntil  DateTime?        @db.Timestamptz(3)
+  lastError      String?
+  requestCount   Int              @default(0)
+  successCount   Int              @default(0)
+  errorCount     Int              @default(0)
+  rateLimitCount Int              @default(0)
+  lastUsedAt     DateTime?        @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([provider, status, cooldownUntil])
+  @@index([provider, lastUsedAt])
 }
 
 model ContentPost {
@@ -665,6 +831,7 @@ model Customer {
   source           String       @default("ADMIN")
   defaultLatitude  Float?
   defaultLongitude Float?
+  lineConversations LineConversation[]
   creditNotes      CreditNote[]
   receipts         Receipt[]
   sales            Sale[]
@@ -729,6 +896,7 @@ model Sale {
   user                    User                     @relation(fields: [userId], references: [id])
   items                   SaleItem[]
   warranties              Warranty[]
+  paymentSlips            PaymentSlip[]
   shopeeOrderImport       ShopeeOrderImport?
 
   @@index([cashBankAccountId])
@@ -1567,6 +1735,8 @@ model product_search_documents {
   updated_at          DateTime                @default(now()) @db.Timestamptz(6)
   oem_text            String                  @default("")
   keyword_text        String                  @default("")
+  sales_count         Int                     @default(0)
+  stock               Int                     @default(0)
 
   @@index([product_created_at(sort: Desc)], map: "idx_product_search_documents_created_at")
   @@index([search_document], map: "idx_product_search_documents_document", type: Gin)
@@ -1629,6 +1799,104 @@ enum LineDailySummaryDispatchStatus {
   SENT
   FAILED
   SKIPPED
+}
+
+enum LineConversationAiStatus {
+  ACTIVE
+  PAUSED_BY_ADMIN
+  WAITING_ADMIN
+  CLOSED
+}
+
+enum LineMessageDirection {
+  INBOUND
+  OUTBOUND_AI
+  OUTBOUND_ADMIN
+  SYSTEM
+}
+
+enum LineMessageType {
+  TEXT
+  IMAGE
+  STICKER
+  POSTBACK
+  FOLLOW
+  UNKNOWN
+}
+
+enum LineIntent {
+  PRODUCT_INQUIRY_TEXT
+  PART_IMAGE_INQUIRY
+  PAYMENT_SLIP_IMAGE
+  SHIPPING_ADDRESS
+  ORDER_STATUS
+  PRICE_NEGOTIATION
+  CLAIM_OR_RETURN
+  GREETING
+  UNKNOWN
+}
+
+enum LineAiJobType {
+  CLASSIFY_INTENT
+  TEXT_REPLY
+  IMAGE_OCR
+  IMAGE_ANALYSIS
+  PAYMENT_SLIP_OCR
+  PAYMENT_SLIP_MATCH
+}
+
+enum LineAiJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum LineAiConfidence {
+  CONFIRMED
+  POSSIBLE_MATCH
+  NEED_MORE_INFO
+  NOT_FOUND
+  ADMIN_REQUIRED
+}
+
+enum LineAiSuggestionStatus {
+  DRAFT
+  SENT
+  REJECTED
+  EDITED_BY_ADMIN
+}
+
+enum LineDeliveryMode {
+  REPLY
+  PUSH
+  NONE
+}
+
+enum LineDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum PaymentSlipVerificationStatus {
+  PENDING_REVIEW
+  MATCHED_PENDING_ADMIN_CONFIRM
+  CONFIRMED_BY_ADMIN
+  REJECTED
+  NEEDS_MORE_INFO
+}
+
+enum AiApiKeyProvider {
+  GOOGLE_GEMINI
+}
+
+enum AiApiKeyStatus {
+  AVAILABLE
+  COOLING_DOWN
+  DISABLED
 }
 
 enum ContentChannel {

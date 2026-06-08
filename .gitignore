@@ -31,6 +31,9 @@
 /.claude/launch.json
 /.codex-*.log
 /.codex-*.err.log
+/.tmp-*.log
+/.tmp-*.err.log
+/.tmp-*.out.log
 /testsprite_tests/
 
 # debug

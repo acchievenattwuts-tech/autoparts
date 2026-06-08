@@ -107,6 +107,9 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
   const [productSearchAutoApplySynonymsEnabled, setProductSearchAutoApplySynonymsEnabled] = useState(
     config.productSearchAutoApplySynonymsEnabled,
   );
+  const [lineAiAutoReplyEnabled, setLineAiAutoReplyEnabled] = useState(config.lineAiAutoReplyEnabled);
+  const [lineAiDryRun, setLineAiDryRun] = useState(config.lineAiDryRun);
+  const [lineAiImageSearchEnabled, setLineAiImageSearchEnabled] = useState(config.lineAiImageSearchEnabled);
 
   const handleLogoChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -359,6 +362,64 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
             onChange={setProductSearchAutoApplySynonymsEnabled}
             label={productSearchAutoApplySynonymsEnabled ? "เปิด" : "ปิด"}
           />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-2 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
+          LINE OA AI Agent
+        </h2>
+        <p className="mb-4 text-xs text-gray-500 dark:text-slate-400">
+          ควบคุมผู้ช่วย AI ตอบแชท LINE — ระบบจะเก็บบทสนทนาเสมอ สวิตช์เหล่านี้คุมเฉพาะการตอบ/ค้นหาเท่านั้น
+        </p>
+
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 border-b border-gray-50 pb-4 dark:border-white/5 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-2xl space-y-1">
+              <p className="text-sm font-medium text-gray-800 dark:text-slate-100">เปิดใช้งาน AI ตอบแชท</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                สวิตช์หลัก — ปิด = AI ไม่ทำงาน (เก็บแชทอย่างเดียว), เปิด = AI อ่านข้อความและคิดคำตอบ
+              </p>
+            </div>
+            <Toggle
+              name="line_ai_auto_reply_enabled"
+              checked={lineAiAutoReplyEnabled}
+              onChange={setLineAiAutoReplyEnabled}
+              label={lineAiAutoReplyEnabled ? "เปิด" : "ปิด"}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 border-b border-gray-50 pb-4 dark:border-white/5 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-2xl space-y-1">
+              <p className="text-sm font-medium text-gray-800 dark:text-slate-100">โหมดซ้อม (Dry-run)</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                เปิด = AI คิดคำตอบแต่<strong>ไม่ส่งหาลูกค้า</strong> (เก็บไว้ให้ตรวจก่อน), ปิด = ส่งจริง
+                — มีผลเฉพาะเมื่อเปิดสวิตช์หลักแล้ว แนะนำให้เปิดไว้ช่วงทดลอง
+              </p>
+            </div>
+            <Toggle
+              name="line_ai_dry_run"
+              checked={lineAiDryRun}
+              onChange={setLineAiDryRun}
+              label={lineAiDryRun ? "เปิด" : "ปิด"}
+            />
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="max-w-2xl space-y-1">
+              <p className="text-sm font-medium text-gray-800 dark:text-slate-100">ค้นหาสินค้าจากรูปอะไหล่อัตโนมัติ</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                เปิด = เมื่อลูกค้าส่งรูปอะไหล่ AI จะดึงคำใบ้แล้วค้นเว็บร้านเสนอรายการใกล้เคียง (แบบระมัดระวัง),
+                ปิด = ส่งรูปให้แอดมินดูเอง
+              </p>
+            </div>
+            <Toggle
+              name="line_ai_image_search_enabled"
+              checked={lineAiImageSearchEnabled}
+              onChange={setLineAiImageSearchEnabled}
+              label={lineAiImageSearchEnabled ? "เปิด" : "ปิด"}
+            />
+          </div>
         </div>
       </div>
 
