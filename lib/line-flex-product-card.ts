@@ -22,9 +22,30 @@ function getStorefrontBaseUrl(): string | null {
   return raw ? raw.replace(/\/+$/, "") : null;
 }
 
-function getPlaceholderImageUrl(): string | null {
+function getEnvPlaceholderImageUrl(): string | null {
   const raw = process.env.LINE_FLEX_PLACEHOLDER_IMAGE_URL?.trim();
   return raw && /^https:\/\//i.test(raw) ? raw : null;
+}
+
+/**
+ * Resolves the placeholder image for image-less product cards: the shop logo from
+ * store settings (shopLogoUrl) first, then the LINE_FLEX_PLACEHOLDER_IMAGE_URL env
+ * as a fallback. Relative logo paths are made absolute with the storefront base URL.
+ * Returns null when nothing usable is configured (card then omits the image).
+ */
+export async function resolveFlexPlaceholderImageUrl(): Promise<string | null> {
+  const baseUrl = getStorefrontBaseUrl();
+  try {
+    const { getSiteConfig } = await import("@/lib/site-config");
+    const logo = (await getSiteConfig()).shopLogoUrl?.trim();
+    if (logo) {
+      if (/^https:\/\//i.test(logo)) return logo;
+      if (logo.startsWith("/") && baseUrl) return `${baseUrl}${logo}`;
+    }
+  } catch {
+    /* fall through to env */
+  }
+  return getEnvPlaceholderImageUrl();
 }
 
 function productUrl(baseUrl: string, product: LineMatchedProductSummary): string {
@@ -127,11 +148,13 @@ export function buildProductFlexMessage(input: {
   products: LineMatchedProductSummary[];
   searchQuery: string | null;
   total: number;
+  /** Resolved shop-logo/placeholder; falls back to the env value when omitted. */
+  placeholderImageUrl?: string | null;
 }): LineFlexMessage | null {
   const baseUrl = getStorefrontBaseUrl();
   if (!baseUrl || input.products.length === 0) return null;
 
-  const placeholderImageUrl = getPlaceholderImageUrl();
+  const placeholderImageUrl = input.placeholderImageUrl ?? getEnvPlaceholderImageUrl();
   const shown = input.products.slice(0, MAX_CARDS);
 
   if (shown.length === 1) {

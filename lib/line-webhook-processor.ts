@@ -30,7 +30,7 @@ import { buildLineConversationStatePatch } from "@/lib/line-conversation-service
 import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
-import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
+import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -298,10 +298,13 @@ export async function processLineAiReply(
 
     // Product cards (Flex) shown alongside the text reply so the customer can tap
     // through to the real storefront pages. Null when no matches or no base URL.
+    const placeholderImageUrl =
+      products.length > 0 ? await resolveFlexPlaceholderImageUrl().catch(() => null) : null;
     const productFlex = buildProductFlexMessage({
       products,
       searchQuery: productSearch.searched ? productSearch.query : null,
       total: productSearch.searched ? productSearch.result.total : 0,
+      placeholderImageUrl,
     });
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
