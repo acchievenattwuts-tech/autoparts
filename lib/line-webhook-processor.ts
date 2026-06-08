@@ -134,6 +134,8 @@ const SHOP_INFO_MESSAGE = `🕐 เวลาทำการ
 📞 โทรสอบถาม: 065-751-7873
 (กรุณาติดต่อในเวลาทำการ)
 
+📍 แผนที่ร้าน: https://maps.app.goo.gl/VeXeuTUA9CjTuxhEA
+
 ขออภัยในความไม่สะดวกค่ะ 🙏`;
 
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
