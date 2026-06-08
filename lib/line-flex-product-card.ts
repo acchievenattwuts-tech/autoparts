@@ -14,6 +14,7 @@ import { getProductSlug } from "@/lib/product-slug";
  */
 
 const BRAND_COLOR = "#1e3a5f";
+const PRICE_COLOR = "#e60033";
 const MUTED_COLOR = "#888888";
 const MAX_CARDS = 10; // LINE allows up to 12 bubbles per carousel; keep margin for the view-all card.
 
@@ -84,12 +85,23 @@ function buildProductBubble(
     bodyContents.push({ type: "text", text: `รหัส ${product.code}`, size: "xs", color: MUTED_COLOR });
   }
   bodyContents.push({
-    type: "text",
-    text: priceText(product.salePrice),
-    size: "sm",
-    weight: "bold",
-    color: BRAND_COLOR,
-    margin: "sm",
+    type: "box",
+    layout: "vertical",
+    margin: "md",
+    paddingAll: "sm",
+    cornerRadius: "md",
+    backgroundColor: "#fff0f3",
+    contents: [
+      {
+        type: "text",
+        text: priceText(product.salePrice),
+        size: "xl",
+        weight: "bold",
+        color: PRICE_COLOR,
+        align: "center",
+        wrap: true,
+      },
+    ],
   });
 
   return {

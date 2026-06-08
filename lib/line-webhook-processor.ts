@@ -299,7 +299,12 @@ export async function processLineAiReply(
 
     // A forced hand-off replaces the normal AI reply with a deterministic bridging
     // message, then routes the conversation to a human.
-    const forcedHandoff: { message: string; reason: string; audit: string; auditPayload: Record<string, unknown> } | null =
+    const forcedHandoff: {
+      message: string;
+      reason: string;
+      audit: string;
+      auditPayload: Record<string, string | number | null>;
+    } | null =
       liveMode && shouldEscalateNoResults
         ? {
             message: NO_RESULTS_ESCALATION_MESSAGE,
