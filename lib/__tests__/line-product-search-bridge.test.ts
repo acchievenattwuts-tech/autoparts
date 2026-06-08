@@ -78,10 +78,48 @@ test("weak search results require more information", async () => {
       text: "คอมแอร์รุ่นไม่ชัด",
     },
     async () => ({ ids: [], total: 0, mode: "v2", matchReasons: {} }),
+    async () => [],
   );
 
   assert.equal(result.searched, true);
   assert.equal(result.needsMoreInfo, true);
+});
+
+test("combines message text with carried-over context terms into one query", async () => {
+  let captured = "";
+  const result = await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอมแอร์",
+      contextHints: ["วีออส", "2017"],
+    },
+    async (input) => {
+      captured = input.query ?? "";
+      return { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(captured, "คอมแอร์ วีออส 2017");
+});
+
+test("retries with a did-you-mean suggestion when the first search is empty", async () => {
+  const queries: string[] = [];
+  const result = await searchLineProductInquiry(
+    { route: searchableRoute, text: "คอมแarr" },
+    async (input) => {
+      queries.push(input.query ?? "");
+      return input.query === "คอมแอร์"
+        ? { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} }
+        : { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["คอมแอร์"],
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(result.needsMoreInfo, false);
+  assert.equal(result.query, "คอมแอร์");
+  assert.deepEqual(queries, ["คอมแarr", "คอมแอร์"]);
 });
 
 test("part image inquiry searches using extracted vision hints when allowed", async () => {
@@ -107,7 +145,7 @@ test("part image inquiry searches using extracted vision hints when allowed", as
   );
 
   assert.equal(result.searched, true);
-  assert.equal(result.query, "คอมแอร์");
+  assert.equal(result.query, "คอมแอร์ vios");
   assert.equal(calls.length, 1);
 });
 

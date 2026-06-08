@@ -34,6 +34,7 @@ import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
+import { extractFitmentTerms } from "@/lib/line-fitment-extract";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -157,6 +158,20 @@ function handoffAckForIntent(intent: LineIntent): string {
   }
 }
 
+/** Most recent customer turn's fitment terms (car/year), for search memory. */
+function findRecentFitmentTerms(
+  rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
+  excludeMessageId: string,
+): string[] {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i];
+    if (row.id === excludeMessageId || row.direction !== LineMessageDirection.INBOUND) continue;
+    const terms = extractFitmentTerms(row.text);
+    if (terms.length > 0) return terms;
+  }
+  return [];
+}
+
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
   rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
@@ -275,10 +290,25 @@ export async function processLineAiReply(
   try {
     const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
     const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+
+    // Recent turns power both the reply's short-term memory and the search context.
+    const recentMessages = await (dependencies.getRecentLineMessagesForAi ?? getRecentLineMessagesForAi)(
+      input.conversation.id,
+      10,
+    ).catch(() => []);
+    const history = toReplyHistory(recentMessages, input.inboundMessage.id);
+
+    // Search memory: when the current message has no car/year of its own, carry over
+    // the most recent car/year the customer mentioned so the search stays on-target
+    // (e.g. they said "วีออส 2017" then just sent a photo).
+    const contextHints =
+      extractFitmentTerms(input.text).length > 0 ? [] : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
+
     const productSearch = await dependencies.searchLineProductInquiry({
       route: input.route,
       text: input.text,
       extractedImageHints: input.imageClassification?.searchHints ?? null,
+      contextHints,
     });
 
     await dependencies.storeLineAiAudit({
@@ -312,15 +342,6 @@ export async function processLineAiReply(
           ).catch(() => 0)
         : 0;
     const shouldEscalateNoResults = failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF;
-
-    // Short-term memory: feed recent turns so the reply doesn't re-ask for
-    // details the customer already gave in a previous message (e.g. car model
-    // sent as text, then the part photo in a follow-up message).
-    const recentMessages = await (dependencies.getRecentLineMessagesForAi ?? getRecentLineMessagesForAi)(
-      input.conversation.id,
-      10,
-    ).catch(() => []);
-    const history = toReplyHistory(recentMessages, input.inboundMessage.id);
 
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of

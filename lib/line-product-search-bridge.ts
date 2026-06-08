@@ -24,6 +24,8 @@ export type LineProductSearchBridgeInput = {
   text?: string | null;
   extractedPartNumber?: string | null;
   extractedImageHints?: string[] | null;
+  /** Car/brand/year terms carried over from earlier turns (short-term memory). */
+  contextHints?: string[] | null;
   fitmentHints?: {
     carBrandName?: string | null;
     carModelName?: string | null;
@@ -81,24 +83,52 @@ export async function getLineProductSummaries(ids: string[]): Promise<LineMatche
     }));
 }
 
+const MAX_QUERY_LENGTH = 120;
+
 function normalizeSearchSeed(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-function buildSearchQuery(input: LineProductSearchBridgeInput) {
-  const seeds = [
-    normalizeSearchSeed(input.extractedPartNumber),
-    normalizeSearchSeed(input.text),
-    ...(input.extractedImageHints ?? []).map((hint) => normalizeSearchSeed(hint)),
-  ].filter((seed): seed is string => Boolean(seed));
+/**
+ * Builds the search query. An explicit part number wins outright (keep exact-code
+ * matching precise). Otherwise combine the message text, vision hints, and carried-
+ * over context terms into one query — token-deduped, order preserved, length capped
+ * — which the V2 search ranks the same way the storefront handles full queries.
+ */
+function buildSearchQuery(input: LineProductSearchBridgeInput): string | null {
+  const partNumber = normalizeSearchSeed(input.extractedPartNumber);
+  if (partNumber) return partNumber.slice(0, MAX_QUERY_LENGTH);
 
-  return seeds[0] ?? null;
+  const sources = [
+    input.text,
+    ...(input.extractedImageHints ?? []),
+    ...(input.contextHints ?? []),
+  ];
+
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const source of sources) {
+    const normalized = normalizeSearchSeed(source);
+    if (!normalized) continue;
+    for (const token of normalized.split(/\s+/)) {
+      const key = token.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      tokens.push(token);
+    }
+  }
+
+  if (tokens.length === 0) return null;
+  return tokens.join(" ").slice(0, MAX_QUERY_LENGTH).trim() || null;
 }
+
+type SuggestFn = (query: string) => Promise<string[]>;
 
 export async function searchLineProductInquiry(
   input: LineProductSearchBridgeInput,
   searchFn?: ProductSearchFn,
+  suggestFn?: SuggestFn,
 ): Promise<LineProductSearchBridgeResult> {
   const searchableIntent =
     input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
@@ -140,6 +170,40 @@ export async function searchLineProductInquiry(
     take: input.take ?? 5,
     cacheProfile: "admin",
   });
+
+  // No hits → try a "did you mean" spelling/synonym correction and re-search once.
+  if (result.total === 0) {
+    const resolvedSuggestFn =
+      suggestFn ??
+      (async (rawQuery: string) => {
+        const { suggestDidYouMean } = await import("@/lib/product-search");
+        return suggestDidYouMean(rawQuery);
+      });
+
+    const suggestions = await resolvedSuggestFn(query).catch(() => []);
+    for (const suggestion of suggestions) {
+      const normalizedSuggestion = normalizeSearchSeed(suggestion);
+      if (!normalizedSuggestion || normalizedSuggestion.toLowerCase() === query.toLowerCase()) continue;
+
+      const retry = await resolvedSearchFn({
+        query: normalizedSuggestion,
+        isActive: true,
+        skip: 0,
+        take: input.take ?? 5,
+        cacheProfile: "admin",
+      });
+
+      if (retry.total > 0) {
+        return {
+          searched: true,
+          reason: `DID_YOU_MEAN:${normalizedSuggestion}`,
+          query: normalizedSuggestion,
+          result: retry,
+          needsMoreInfo: false,
+        };
+      }
+    }
+  }
 
   return {
     searched: true,
