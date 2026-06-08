@@ -1,5 +1,6 @@
 import type { LineFlexMessage } from "@/lib/line-daily-summary";
 import type { LineMatchedProductSummary } from "@/lib/line-product-search-bridge";
+import { getProductSlug } from "@/lib/product-slug";
 
 /**
  * Builds a LINE Flex message that shows matched catalog products as cards with a
@@ -49,9 +50,15 @@ export async function resolveFlexPlaceholderImageUrl(): Promise<string | null> {
 }
 
 function productUrl(baseUrl: string, product: LineMatchedProductSummary): string {
-  return product.slug
-    ? `${baseUrl}/product/${product.slug}`
-    : `${baseUrl}/products?q=${encodeURIComponent(product.name)}`;
+  // Canonical product URL embeds the id at the end of the slug (the detail page
+  // resolves the product via extractProductIdFromSlug), so build it the same way
+  // the storefront does — never from a bare Product.slug.
+  const slug = getProductSlug({
+    productName: product.name,
+    productId: product.id,
+    productCode: product.code,
+  });
+  return `${baseUrl}/product/${slug}`;
 }
 
 function searchUrl(baseUrl: string, query: string): string {

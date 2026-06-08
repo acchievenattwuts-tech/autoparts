@@ -48,34 +48,34 @@ export type LineProductSearchBridgeResult =
     };
 
 export type LineMatchedProductSummary = {
+  id: string;
   name: string;
   code: string | null;
-  slug: string | null;
   imageUrl: string | null;
   salePrice: number;
 };
 
 /**
- * Fetches summaries (name, code, slug, image, price) for matched product ids,
+ * Fetches summaries (id, name, code, image, price) for matched product ids,
  * preserving the search rank order. Values come straight from the catalog — never
  * fabricated — so the reply can show the customer what was actually found and link
- * to the real storefront pages.
+ * to the real storefront pages (the canonical product URL embeds the id).
  */
 export async function getLineProductSummaries(ids: string[]): Promise<LineMatchedProductSummary[]> {
   if (ids.length === 0) return [];
   const { db } = await import("@/lib/db");
   const rows = await db.product.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, code: true, slug: true, imageUrl: true, salePrice: true },
+    select: { id: true, name: true, code: true, imageUrl: true, salePrice: true },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return ids
     .map((id) => byId.get(id))
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .map((row) => ({
+      id: row.id,
       name: row.name,
       code: row.code,
-      slug: row.slug,
       imageUrl: row.imageUrl,
       salePrice: Number(row.salePrice),
     }));

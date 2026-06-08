@@ -9,9 +9,9 @@ delete process.env.APP_BASE_URL;
 delete process.env.LINE_FLEX_PLACEHOLDER_IMAGE_URL;
 
 const product = (over: Partial<LineMatchedProductSummary> = {}): LineMatchedProductSummary => ({
+  id: "p1",
   name: "คอยล์เย็น วีออส",
   code: "CL-001",
-  slug: "coil-vios",
   imageUrl: "https://img.example.com/a.jpg",
   salePrice: 1200,
   ...over,
@@ -28,13 +28,14 @@ test("single product builds a bubble linking to the product page", () => {
   const contents = msg.contents as Record<string, unknown>;
   assert.equal(contents.type, "bubble");
   const json = JSON.stringify(msg);
-  assert.match(json, /https:\/\/shop\.example\.com\/product\/coil-vios/);
+  // Canonical URL embeds the product id at the end of the slug.
+  assert.match(json, /https:\/\/shop\.example\.com\/product\/[^"]*-p1/);
   assert.match(json, /฿1,200/);
 });
 
 test("multiple products build a carousel with a view-all bubble to the search page", () => {
   const msg = buildProductFlexMessage({
-    products: [product(), product({ slug: "coil-2", name: "คอยล์ 2" })],
+    products: [product(), product({ id: "p2", name: "คอยล์ 2" })],
     searchQuery: "วีออส",
     total: 25,
   });
