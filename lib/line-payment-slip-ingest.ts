@@ -24,6 +24,8 @@ export async function ingestPaymentSlip(input: {
   lineUserId: string;
   lineMessageId: string | null;
   content?: LineMessageContent | null;
+  /** OCR already extracted during image classification — reuse it to avoid a 2nd vision call. */
+  ocr?: PaymentSlipOcr | null;
 }): Promise<IngestPaymentSlipResult> {
   let content = input.content ?? null;
   if (!content && input.channelAccessToken && input.lineMessageId) {
@@ -37,7 +39,9 @@ export async function ingestPaymentSlip(input: {
     }
   }
 
-  const ocr = await runPaymentSlipOcr(content);
+  // Reuse OCR captured in the single classify+OCR vision call; only fall back to a
+  // dedicated OCR call when it wasn't provided.
+  const ocr = input.ocr ?? (await runPaymentSlipOcr(content));
 
   const slip = await createPaymentSlip({
     conversationId: input.conversationId,

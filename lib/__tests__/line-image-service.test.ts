@@ -28,6 +28,26 @@ test("parses a payment slip and forces empty search hints", async () => {
   assert.deepEqual(result.searchHints, []);
 });
 
+test("parses slip OCR fields from the same classification response", async () => {
+  const { parseLineImageClassification } = await import("@/lib/line-image-service");
+  const result = parseLineImageClassification(
+    '{"kind":"payment_slip","searchHints":[],"confidence":"HIGH","reason":"สลิป","ocr":{"amount":1500,"bank":"กสิกรไทย","referenceNo":"REF123","transferDatetime":null,"senderName":null,"receiverName":null,"rawText":null}}',
+  );
+
+  assert.equal(result.kind, "payment_slip");
+  assert.equal(result.ocr?.amount, 1500);
+  assert.equal(result.ocr?.bank, "กสิกรไทย");
+  assert.equal(result.ocr?.referenceNo, "REF123");
+});
+
+test("part image has null ocr", async () => {
+  const { parseLineImageClassification } = await import("@/lib/line-image-service");
+  const result = parseLineImageClassification(
+    '{"kind":"part_image","searchHints":["คอมแอร์"],"confidence":"MEDIUM","reason":"x"}',
+  );
+  assert.equal(result.ocr, null);
+});
+
 test("falls back to unknown for unparseable output", async () => {
   const { parseLineImageClassification } = await import("@/lib/line-image-service");
   const result = parseLineImageClassification("not json at all");

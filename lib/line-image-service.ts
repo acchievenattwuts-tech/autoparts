@@ -2,6 +2,7 @@ import { LineIntent } from "@/lib/generated/prisma";
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
+import { parsePaymentSlipOcr, type PaymentSlipOcr } from "@/lib/line-payment-slip-service";
 
 export type LineImageKind = "part_image" | "payment_slip" | "unknown_image";
 export type LineImageConfidence = "LOW" | "MEDIUM" | "HIGH";
@@ -13,6 +14,8 @@ export type LineImageClassification = {
   searchHints: string[];
   confidence: LineImageConfidence;
   reason: string;
+  /** Slip fields read in the SAME vision call (only for payment_slip; else null). */
+  ocr?: PaymentSlipOcr | null;
   content?: LineMessageContent;
 };
 
@@ -22,6 +25,7 @@ const UNKNOWN_FALLBACK: LineImageClassification = {
   searchHints: [],
   confidence: "LOW",
   reason: "IMAGE_CLASSIFICATION_UNAVAILABLE",
+  ocr: null,
 };
 
 const CLASSIFY_PROMPT = [
@@ -31,9 +35,10 @@ const CLASSIFY_PROMPT = [
   '- "payment_slip": สลิป/หลักฐานการโอนเงิน/การชำระเงินจากธนาคารหรือแอปธนาคาร',
   '- "unknown_image": รูปอื่นที่ไม่เข้าสองประเภทข้างต้น',
   "ถ้าเป็น part_image ให้ดึงคำใบ้สำหรับค้นหา (ยี่ห้อ รุ่นรถ เบอร์อะไหล่ ข้อความบนชิ้นส่วน) ใส่ใน searchHints",
-  "ถ้าเป็น payment_slip ห้ามใส่ searchHints ใด ๆ (ต้องเป็น array ว่าง)",
+  "ถ้าเป็น payment_slip ห้ามใส่ searchHints ใด ๆ (ต้องเป็น array ว่าง) และให้อ่านข้อมูลในสลิปใส่ใน ocr ด้วย (อ่านเฉพาะที่เห็นจริง ไม่พบให้ใส่ null)",
+  "ถ้าไม่ใช่สลิป ให้ ocr เป็น null",
   "ตอบเป็น JSON ล้วนเท่านั้น ห้ามมี markdown:",
-  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ"}',
+  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ","ocr":{"amount":ตัวเลขหรือ null,"transferDatetime":"ISO 8601 หรือ null","bank":"...","senderName":"...","receiverName":"...","referenceNo":"...","rawText":"..."}}',
 ].join("\n");
 
 function intentForKind(kind: LineImageKind): LineIntent {
@@ -71,6 +76,7 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
       searchHints?: unknown;
       confidence?: unknown;
       reason?: unknown;
+      ocr?: unknown;
     };
     const kind = normalizeKind(parsed.kind);
     const searchHints =
@@ -82,12 +88,20 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
             .slice(0, 8)
         : [];
 
+    // Slip OCR fields come back in the same response — reuse the slip parser so
+    // there is no separate vision call for OCR.
+    const ocr =
+      kind === "payment_slip" && parsed.ocr && typeof parsed.ocr === "object"
+        ? parsePaymentSlipOcr(JSON.stringify(parsed.ocr))
+        : null;
+
     return {
       kind,
       intent: intentForKind(kind),
       searchHints,
       confidence: normalizeConfidence(parsed.confidence),
       reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 200) : "GEMINI_VISION",
+      ocr,
     };
   } catch {
     return UNKNOWN_FALLBACK;
@@ -122,7 +136,8 @@ export async function classifyLineImage(input: {
       prompt: CLASSIFY_PROMPT,
       images: [{ mimeType: content.mimeType, dataBase64: content.dataBase64 }],
       json: true,
-      maxOutputTokens: 300,
+      // Higher cap: a slip response now also carries OCR fields in the same call.
+      maxOutputTokens: 600,
       temperature: 0,
       // Extraction task — disable thinking so the JSON isn't truncated.
       thinkingLevel: "NONE",

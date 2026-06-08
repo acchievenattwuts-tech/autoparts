@@ -714,6 +714,7 @@ export async function processLineWebhookPayload(
           lineUserId: event.lineUserId,
           lineMessageId: event.lineMessageId,
           content: imageClassification.content ?? null,
+          ocr: imageClassification.ocr ?? null,
         });
 
         await dependencies.storeLineAiAudit({
