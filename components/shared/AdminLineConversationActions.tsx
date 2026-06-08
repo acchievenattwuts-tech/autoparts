@@ -1,14 +1,33 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { AlertCircle, Pause, Play, Send, UserRoundCheck, XCircle } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertCircle, ImagePlus, Pause, Play, Send, UserRoundCheck, X, XCircle } from "lucide-react";
 
 type Props = {
   conversationId: string;
   canReply: boolean;
   canManage: boolean;
 };
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const ERROR_MESSAGES: Record<string, string> = {
+  EMPTY_MESSAGE: "กรุณาพิมพ์ข้อความหรือแนบรูปก่อนส่ง",
+  EMPTY_IMAGE: "ไม่พบไฟล์รูปภาพ",
+  IMAGE_TOO_LARGE: "ขนาดรูปต้องไม่เกิน 5MB",
+  UNSUPPORTED_IMAGE_TYPE: "รองรับเฉพาะรูป JPEG, PNG หรือ WebP",
+  MESSAGE_TOO_LONG: "ข้อความยาวเกินกำหนด",
+  IMAGE_UPLOAD_FAILED: "อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง",
+  LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN_NOT_CONFIGURED: "ยังไม่ได้ตั้งค่า LINE Channel Access Token",
+  CONVERSATION_NOT_FOUND: "ไม่พบบทสนทนานี้",
+  FORBIDDEN: "ไม่มีสิทธิ์ส่งข้อความ",
+  UNAUTHORIZED: "กรุณาเข้าสู่ระบบใหม่",
+};
+
+function friendlyError(code: string): string {
+  return ERROR_MESSAGES[code] ?? "ส่งข้อความไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+}
 
 async function postJson(path: string, body?: unknown) {
   const response = await fetch(path, {
@@ -30,22 +49,88 @@ export default function AdminLineConversationActions({
 }: Props) {
   const router = useRouter();
   const [text, setText] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handlePickImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(friendlyError("IMAGE_TOO_LARGE"));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    setImageFile(file);
+    setImagePreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(file);
+    });
+  };
 
   const runAction = async (action: string, path: string, body?: unknown) => {
     setPending(action);
     setError(null);
     try {
       await postJson(path, body);
-      if (action === "send") setText("");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "REQUEST_FAILED");
+      setError(friendlyError(err instanceof Error ? err.message : "REQUEST_FAILED"));
     } finally {
       setPending(null);
     }
   };
+
+  const handleSend = async () => {
+    const trimmed = text.trim();
+    if (!trimmed && !imageFile) return;
+
+    setPending("send");
+    setError(null);
+    try {
+      const path = `/api/admin/line-conversations/${conversationId}/send-message`;
+      let response: Response;
+      if (imageFile) {
+        const formData = new FormData();
+        formData.set("image", imageFile);
+        if (trimmed) formData.set("text", trimmed);
+        response = await fetch(path, { method: "POST", body: formData });
+      } else {
+        response = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: trimmed }),
+        });
+      }
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error ?? `REQUEST_FAILED_${response.status}`);
+      }
+
+      setText("");
+      clearImage();
+      router.refresh();
+    } catch (err) {
+      setError(friendlyError(err instanceof Error ? err.message : "REQUEST_FAILED"));
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const sendDisabled = pending !== null || (text.trim().length === 0 && !imageFile);
 
   return (
     <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/70">
@@ -108,20 +193,56 @@ export default function AdminLineConversationActions({
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={3}
-            placeholder="พิมพ์ข้อความตอบลูกค้าผ่าน LINE"
+            placeholder="พิมพ์ข้อความตอบลูกค้าผ่าน LINE (แนบรูปได้)"
             className="w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
-          <button
-            type="button"
-            disabled={pending !== null || text.trim().length === 0}
-            onClick={() =>
-              runAction("send", `/api/admin/line-conversations/${conversationId}/send-message`, { text })
-            }
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-600 dark:hover:bg-sky-500"
-          >
-            <Send size={15} />
-            ส่งผ่าน LINE
-          </button>
+
+          {imagePreview ? (
+            <div className="relative inline-block">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset */}
+              <img
+                src={imagePreview}
+                alt="ตัวอย่างรูปที่จะส่ง"
+                className="max-h-40 rounded-md border border-gray-200 object-contain dark:border-white/10"
+              />
+              <button
+                type="button"
+                onClick={clearImage}
+                aria-label="ลบรูป"
+                className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-900 text-white shadow hover:bg-gray-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : null}
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handlePickImage}
+            />
+            <button
+              type="button"
+              disabled={pending !== null}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
+            >
+              <ImagePlus size={15} />
+              แนบรูป
+            </button>
+            <button
+              type="button"
+              disabled={sendDisabled}
+              onClick={handleSend}
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[#1e3a5f] px-4 text-sm font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-600 dark:hover:bg-sky-500"
+            >
+              <Send size={15} />
+              {pending === "send" ? "กำลังส่ง…" : "ส่งผ่าน LINE"}
+            </button>
+          </div>
         </div>
       ) : null}
 

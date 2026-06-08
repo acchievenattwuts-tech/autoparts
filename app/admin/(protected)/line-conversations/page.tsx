@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { Info, MessageCircle } from "lucide-react";
 
+import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -37,9 +38,16 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
   const conversations = await listLineConversations({ status, take: 80 });
   const canReply = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.reply");
   const canManage = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.manage");
+  const canViewPaymentSlips = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "line_payment_slips.view",
+  );
 
   return (
     <div className="space-y-4">
+      <LineAdminTabNav canViewConversations canViewPaymentSlips={canViewPaymentSlips} />
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] dark:bg-sky-500/10 dark:text-sky-200">
@@ -82,6 +90,14 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
             Clear
           </Link>
         </AdminSearchForm>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <Info size={16} className="mt-0.5 shrink-0" />
+        <p>
+          ตอบลูกค้าจากในระบบนี้เท่านั้น — ข้อความที่ตอบผ่าน{" "}
+          <span className="font-semibold">LINE Official Account Manager</span> จะไม่แสดงที่นี่ (ข้อจำกัดของ LINE)
+        </p>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950/70">

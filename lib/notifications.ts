@@ -97,6 +97,47 @@ export async function createNotification(input: CreateNotificationInput): Promis
   return result.count;
 }
 
+const LINE_OA_PREVIEW_MAX_LENGTH = 80;
+
+/**
+ * Notifies all admins that a LINE OA customer is waiting for a human reply.
+ * Fired whenever the AI agent does NOT auto-reply successfully (handoff, AI off,
+ * dry-run, paused/waiting conversation, or failed delivery).
+ *
+ * Deduped per conversation: only one UNREAD notification exists at a time, so a
+ * burst of customer messages never spams the bell. A fresh row is created again
+ * once every admin has read the previous one. In-app only (no Telegram).
+ */
+export async function notifyLineOaNeedsAdmin(input: {
+  conversationId: string;
+  displayName?: string | null;
+  text?: string | null;
+  messageType?: string | null;
+}): Promise<number> {
+  const who = input.displayName?.trim() || "ลูกค้า LINE";
+  const trimmed = input.text?.trim();
+  const preview = trimmed
+    ? trimmed.length > LINE_OA_PREVIEW_MAX_LENGTH
+      ? `${trimmed.slice(0, LINE_OA_PREVIEW_MAX_LENGTH)}…`
+      : trimmed
+    : input.messageType === "IMAGE"
+      ? "[รูปภาพ]"
+      : input.messageType === "STICKER"
+        ? "[สติกเกอร์]"
+        : "[ข้อความใหม่]";
+
+  return createNotification({
+    type: NotificationType.LINE_OA_HANDOFF,
+    severity: NotificationSeverity.WARNING,
+    title: "ลูกค้า LINE OA รอแอดมินตอบ",
+    body: `${who}: ${preview}`,
+    link: `/admin/line-conversations/${input.conversationId}`,
+    entityType: "LineConversation",
+    entityId: input.conversationId,
+    dedupeKey: `line-oa-handoff:${input.conversationId}`,
+  });
+}
+
 export type NotificationListItem = {
   id: string;
   type: NotificationType;

@@ -5,6 +5,8 @@ import { ReceiptText } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import {
   formatPaymentSlipBaht,
@@ -22,15 +24,22 @@ type PageProps = {
 const statusOptions = Object.values(PaymentSlipVerificationStatus);
 
 export default async function LinePaymentSlipsPage({ searchParams }: PageProps) {
-  await requirePermission("line_payment_slips.view");
+  const session = await requirePermission("line_payment_slips.view");
   const params = await searchParams;
   const status = statusOptions.includes(params.status as PaymentSlipVerificationStatus)
     ? (params.status as PaymentSlipVerificationStatus)
     : null;
   const slips = await listPaymentSlips({ status, take: 80 });
+  const canViewConversations = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "line_conversations.view",
+  );
 
   return (
     <div className="space-y-4">
+      <LineAdminTabNav canViewConversations={canViewConversations} canViewPaymentSlips />
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] dark:bg-sky-500/10 dark:text-sky-200">

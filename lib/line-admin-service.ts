@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
+import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { getLineDailySummaryConfig, pushLineMessages } from "@/lib/line-messaging";
+import { storeLineChatImage } from "@/lib/line-chat-image-storage";
 import {
   LineConversationAiStatus,
   LineDeliveryMode,
@@ -80,7 +82,7 @@ export async function getLineConversationMessages(input: {
 
   if (!conversation) return null;
 
-  const messages = await db.lineMessage.findMany({
+  const latestMessages = await db.lineMessage.findMany({
     where: { conversationId: input.conversationId },
     select: {
       id: true,
@@ -95,9 +97,11 @@ export async function getLineConversationMessages(input: {
       sentAt: true,
       createdAt: true,
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     take: normalizeTake(input.take),
   });
+
+  const messages = latestMessages.reverse();
 
   return { conversation, messages };
 }
@@ -190,10 +194,12 @@ export async function closeLineConversation(input: {
 export async function sendLineAdminMessage(input: {
   conversationId: string;
   adminUserId: string;
-  text: string;
+  text?: string | null;
+  /** Optional image to attach. Re-encoded to a LINE-compatible JPEG before sending. */
+  image?: { buffer: Buffer } | null;
 }) {
-  const text = input.text.trim();
-  if (!text) {
+  const text = input.text?.trim() ?? "";
+  if (!text && !input.image) {
     throw new Error("EMPTY_MESSAGE");
   }
 
@@ -211,25 +217,54 @@ export async function sendLineAdminMessage(input: {
     throw new Error("LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN_NOT_CONFIGURED");
   }
 
-  const message = await appendLineMessage({
-    conversationId: conversation.id,
-    lineUserId: conversation.lineUserId,
-    direction: LineMessageDirection.OUTBOUND_ADMIN,
-    messageType: LineMessageType.TEXT,
-    text,
-    deliveryMode: LineDeliveryMode.PUSH,
-    deliveryStatus: LineDeliveryStatus.PENDING,
-    adminUserId: input.adminUserId,
-  });
+  // Build the outbound payload + matching DB rows in send order (image first,
+  // then the text caption). Each entry becomes one LINE message and one bubble.
+  const lineMessages: LinePushMessage[] = [];
+  const appendedMessageIds: string[] = [];
+
+  if (input.image) {
+    const stored = await storeLineChatImage({ buffer: input.image.buffer });
+    lineMessages.push({
+      type: "image",
+      originalContentUrl: stored.originalUrl,
+      previewImageUrl: stored.previewUrl,
+    });
+    const imageRow = await appendLineMessage({
+      conversationId: conversation.id,
+      lineUserId: conversation.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_ADMIN,
+      messageType: LineMessageType.IMAGE,
+      imageUrl: stored.originalUrl,
+      deliveryMode: LineDeliveryMode.PUSH,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+      adminUserId: input.adminUserId,
+    });
+    appendedMessageIds.push(imageRow.id);
+  }
+
+  if (text) {
+    lineMessages.push({ type: "text", text });
+    const textRow = await appendLineMessage({
+      conversationId: conversation.id,
+      lineUserId: conversation.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_ADMIN,
+      messageType: LineMessageType.TEXT,
+      text,
+      deliveryMode: LineDeliveryMode.PUSH,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+      adminUserId: input.adminUserId,
+    });
+    appendedMessageIds.push(textRow.id);
+  }
 
   await pushLineMessages({
     channelAccessToken: config.channelAccessToken,
     recipientIds: [conversation.lineUserId],
-    messages: [{ type: "text", text }],
+    messages: lineMessages,
   });
 
-  await db.lineMessage.update({
-    where: { id: message.id },
+  await db.lineMessage.updateMany({
+    where: { id: { in: appendedMessageIds } },
     data: {
       deliveryStatus: LineDeliveryStatus.SENT,
       sentAt: new Date(),
@@ -251,9 +286,11 @@ export async function sendLineAdminMessage(input: {
     payload: {
       adminUserId: input.adminUserId,
       deliveryMode: LineDeliveryMode.PUSH,
-      messageId: message.id,
+      messageIds: appendedMessageIds,
+      hasImage: Boolean(input.image),
+      hasText: Boolean(text),
     },
   });
 
-  return { ok: true, messageId: message.id };
+  return { ok: true, messageId: appendedMessageIds[0], messageIds: appendedMessageIds };
 }

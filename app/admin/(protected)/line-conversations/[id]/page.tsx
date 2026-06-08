@@ -1,13 +1,16 @@
 export const dynamic = "force-dynamic";
 
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, UserRound } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
 
 import AdminLineConversationActions from "@/components/shared/AdminLineConversationActions";
 import AdminLineConversationCustomerLink from "@/components/shared/AdminLineConversationCustomerLink";
+import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
+import LineConversationScrollAnchor from "@/components/shared/LineConversationScrollAnchor";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { LineMessageDirection } from "@/lib/generated/prisma";
+import { LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
 import { getLineConversationMessages } from "@/lib/line-admin-service";
 import { getLinkedCustomerRecentOrders } from "@/lib/line-customer-linkage";
 import { requirePermission } from "@/lib/require-auth";
@@ -24,20 +27,40 @@ type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-function directionLabel(direction: LineMessageDirection) {
-  if (direction === LineMessageDirection.INBOUND) return "Customer";
-  if (direction === LineMessageDirection.OUTBOUND_ADMIN) return "Admin";
+function directionLabel(
+  direction: LineMessageDirection,
+  conversationName: string,
+  adminName?: string | null,
+) {
+  if (direction === LineMessageDirection.INBOUND) return conversationName;
+  if (direction === LineMessageDirection.OUTBOUND_ADMIN) return adminName ?? "Admin";
   return "AI";
 }
 
-function messageClasses(direction: LineMessageDirection) {
+function messageBubbleClasses(direction: LineMessageDirection) {
   if (direction === LineMessageDirection.INBOUND) {
-    return "border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950/70";
+    return "rounded-bl-sm bg-white text-gray-900 ring-1 ring-gray-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-white/10";
   }
   if (direction === LineMessageDirection.OUTBOUND_ADMIN) {
-    return "border-sky-200 bg-sky-50 dark:border-sky-400/30 dark:bg-sky-500/10";
+    return "rounded-br-sm bg-[#1e3a5f] text-white dark:bg-sky-600";
   }
-  return "border-emerald-200 bg-emerald-50 dark:border-emerald-400/30 dark:bg-emerald-500/10";
+  return "rounded-br-sm bg-emerald-600 text-white dark:bg-emerald-500";
+}
+
+function messageMetaClasses(direction: LineMessageDirection) {
+  if (direction === LineMessageDirection.INBOUND) {
+    return "text-gray-500 dark:text-slate-400";
+  }
+  return "text-gray-500 dark:text-slate-400 md:text-right";
+}
+
+function conversationDisplayName(conversation: {
+  displayName: string | null;
+  lineUserId: string;
+  customer: { name: string } | null;
+}) {
+  const lineName = conversation.displayName ?? conversation.lineUserId;
+  return conversation.customer ? `${lineName} (${conversation.customer.name})` : lineName;
 }
 
 export default async function LineConversationDetailPage({ params }: PageProps) {
@@ -49,15 +72,23 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
 
   const canReply = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.reply");
   const canManage = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.manage");
+  const canViewPaymentSlips = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "line_payment_slips.view",
+  );
   const { conversation, messages } = result;
 
   const isLinked = Boolean(conversation.customer?.id);
   const recentOrders = conversation.customer?.id
     ? await getLinkedCustomerRecentOrders({ customerId: conversation.customer.id, take: 5 })
     : [];
+  const displayName = conversationDisplayName(conversation);
 
   return (
     <div className="space-y-4">
+      <LineAdminTabNav canViewConversations canViewPaymentSlips={canViewPaymentSlips} />
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <Link
@@ -68,7 +99,7 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
             Back
           </Link>
           <h1 className="mt-3 font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">
-            {conversation.customer?.name ?? conversation.displayName ?? conversation.lineUserId}
+            {displayName}
           </h1>
           <p className="mt-1 font-mono text-xs text-gray-500 dark:text-slate-400">{conversation.lineUserId}</p>
         </div>
@@ -84,8 +115,6 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
           ) : null}
         </div>
       </div>
-
-      <AdminLineConversationActions conversationId={conversation.id} canReply={canReply} canManage={canManage} />
 
       <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/70">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -149,39 +178,78 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
         ) : null}
       </div>
 
-      <div className="space-y-3">
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <Info size={16} className="mt-0.5 shrink-0" />
+        <p>
+          กรุณาตอบลูกค้าจากหน้านี้เท่านั้น — ข้อความที่ตอบผ่านแอป/เว็บ{" "}
+          <span className="font-semibold">LINE Official Account Manager</span> จะไม่แสดงในประวัติแชทนี้
+          เนื่องจากข้อจำกัดของ LINE (ระบบไม่สามารถดึงข้อความที่ส่งจาก OA Manager กลับมาได้)
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-slate-950/40">
         {messages.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-200 px-4 py-10 text-center text-sm text-gray-500 dark:border-white/10 dark:text-slate-400">
             No messages found
           </div>
         ) : (
-          messages.map((message) => (
-            <article key={message.id} className={`rounded-lg border p-4 ${messageClasses(message.direction)}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  {message.direction === LineMessageDirection.INBOUND ? <UserRound size={16} /> : <Bot size={16} />}
-                  <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
-                    {directionLabel(message.direction)}
-                  </p>
-                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs text-gray-600 dark:bg-white/10 dark:text-slate-300">
-                    {message.intent ?? message.messageType}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  {formatDateTimeThai(message.createdAt, { dateStyle: "medium", timeStyle: "short" })}
-                </p>
-              </div>
-              <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-gray-800 dark:text-slate-200 [overflow-wrap:anywhere]">
-                {message.text ?? message.imageUrl ?? "(no text)"}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-slate-400">
-                {message.deliveryMode ? <span>{message.deliveryMode}</span> : null}
-                {message.deliveryStatus ? <span>{message.deliveryStatus}</span> : null}
-                {message.adminUser ? <span>by {message.adminUser.name}</span> : null}
-              </div>
-            </article>
-          ))
+          <div className="space-y-3">
+            {messages.map((message) => {
+              const isInbound = message.direction === LineMessageDirection.INBOUND;
+
+              return (
+                <article
+                  key={message.id}
+                  className={`flex ${isInbound ? "justify-start" : "justify-end"}`}
+                >
+                  <div className={`flex max-w-[82%] flex-col gap-1 ${isInbound ? "items-start" : "items-end"}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-3 shadow-sm ${messageBubbleClasses(message.direction)}`}
+                    >
+                      {message.imageUrl ? (
+                        <a href={message.imageUrl} target="_blank" rel="noopener noreferrer" className="block">
+                          <Image
+                            src={message.imageUrl}
+                            alt="รูปภาพในแชท"
+                            width={400}
+                            height={400}
+                            sizes="400px"
+                            className="h-auto max-h-72 w-auto max-w-full rounded-lg"
+                          />
+                        </a>
+                      ) : message.messageType === LineMessageType.IMAGE ? (
+                        <p className="text-sm italic leading-6 opacity-80">[รูปภาพ]</p>
+                      ) : message.messageType === LineMessageType.STICKER ? (
+                        <p className="text-sm italic leading-6 opacity-80">[สติกเกอร์]</p>
+                      ) : (
+                        <p className="whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
+                          {message.text ?? "(no text)"}
+                        </p>
+                      )}
+                    </div>
+                    <div
+                      className={`flex max-w-full flex-wrap gap-x-2 gap-y-1 text-xs ${messageMetaClasses(message.direction)}`}
+                    >
+                      <span className="font-medium">
+                        {directionLabel(message.direction, displayName, message.adminUser?.name)}
+                      </span>
+                      <span>{message.intent ?? message.messageType}</span>
+                      <span>{formatDateTimeThai(message.createdAt, { dateStyle: "medium", timeStyle: "short" })}</span>
+                      {message.deliveryMode ? <span>{message.deliveryMode}</span> : null}
+                      {message.deliveryStatus ? <span>{message.deliveryStatus}</span> : null}
+                      {message.adminUser ? <span>by {message.adminUser.name}</span> : null}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+            <LineConversationScrollAnchor messageCount={messages.length} />
+          </div>
         )}
+      </div>
+
+      <div className="sticky bottom-0 z-10 bg-slate-100/95 pb-1 pt-1 backdrop-blur dark:bg-[#08111f]/95">
+        <AdminLineConversationActions conversationId={conversation.id} canReply={canReply} canManage={canManage} />
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ type TestCalls = {
   ocrCalls: number;
   createdSlips: Array<{ conversationId: string; lineUserId: string }>;
   reusedSlipContent: boolean;
+  notifyHandoffs: Array<{ conversationId: string; text?: string | null }>;
 };
 
 function textPayload(text: string, lineEventId = "event-1") {
@@ -98,6 +99,7 @@ function createProcessorTestDeps(input?: {
     ocrCalls: 0,
     createdSlips: [],
     reusedSlipContent: false,
+    notifyHandoffs: [],
   };
   let messageSeq = 0;
   const duplicateEventIds = new Set(input?.duplicateEventIds ?? []);
@@ -233,6 +235,10 @@ function createProcessorTestDeps(input?: {
         imageStored: true,
       };
     },
+    notifyLineOaNeedsAdmin: async (notifyInput) => {
+      calls.notifyHandoffs.push({ conversationId: notifyInput.conversationId, text: notifyInput.text });
+      return 1;
+    },
   };
 
   return { calls, dependencies };
@@ -288,6 +294,28 @@ test("processor creates conversation message and sends webhook reply via replyMe
   assert.deepEqual(calls.markedSent, [{ messageId: "message-2", deliveryMode: LineDeliveryMode.REPLY }]);
   assert.ok(calls.auditActions.includes("INBOUND_EVENT_ACCEPTED"));
   assert.ok(calls.auditActions.includes("PRODUCT_SEARCH_SUMMARY"));
+  // AI replied successfully → no admin handoff notification.
+  assert.deepEqual(calls.notifyHandoffs, []);
+});
+
+test("processor notifies admins when AI cannot auto-reply (conversation paused)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    conversationStatus: LineConversationAiStatus.PAUSED_BY_ADMIN,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("vios 1234"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.repliedCount, 0);
+  // No auto-reply was delivered → exactly one handoff notification for the conversation.
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.equal(calls.notifyHandoffs[0]?.conversationId, "conversation-line-user-1");
+  assert.equal(calls.notifyHandoffs[0]?.text, "vios 1234");
 });
 
 test("processor links conversation to exact active customer line user id", async () => {

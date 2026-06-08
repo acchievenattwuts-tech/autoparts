@@ -30,6 +30,7 @@ import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import { searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
+import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 
 export type LineWebhookProcessorConfig = {
@@ -71,6 +72,8 @@ export type LineWebhookProcessorDependencies = {
   classifyLineImage?: typeof classifyLineImage;
   /** Optional override; defaults to the full slip ingest (fetch → OCR → store). */
   ingestPaymentSlip?: typeof ingestPaymentSlip;
+  /** Optional override; defaults to the in-app admin bell notification (no Telegram). */
+  notifyLineOaNeedsAdmin?: typeof notifyLineOaNeedsAdmin;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -90,6 +93,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   generateLineSuggestion,
   classifyLineImage,
   ingestPaymentSlip,
+  notifyLineOaNeedsAdmin,
 };
 
 /**
@@ -316,6 +320,25 @@ export async function processLineAiReply(
           reason: sendDecision.reason,
         }),
       );
+    }
+
+    // Notify admins whenever the AI did NOT auto-reply successfully — i.e. the
+    // customer is now waiting for a human (handoff, AI off, dry-run, paused
+    // conversation, or failed delivery). Deduped per conversation; never throws
+    // into the reply flow.
+    if (!(sendDecision.action === "send" && replied)) {
+      const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+      await notify({
+        conversationId: input.conversation.id,
+        displayName: input.conversation.displayName,
+        text: input.text,
+        messageType: input.messageType,
+      }).catch((error) => {
+        console.warn(
+          "[line-webhook] admin handoff notification skipped/failed:",
+          error instanceof Error ? error.message : "unknown",
+        );
+      });
     }
 
     await dependencies.updateLineAiJob(input.jobId, {

@@ -2346,6 +2346,7 @@ enum NotificationType {
   SHOPEE_AUTH_REVOKED
   SHOPEE_RETURN_REVIEW
   SHOPEE_DELIVERY_EXCEPTION
+  LINE_OA_HANDOFF
 }
 
 enum NotificationSeverity {

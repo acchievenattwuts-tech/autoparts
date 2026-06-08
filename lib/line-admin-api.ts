@@ -30,7 +30,10 @@ export function lineAdminApiErrorResponse(error: unknown) {
     message === "INVALID_REASON_PAYLOAD" ||
     message === "INVALID_REPLY_PAYLOAD" ||
     message === "MESSAGE_TOO_LONG" ||
-    message === "REASON_TOO_LONG"
+    message === "REASON_TOO_LONG" ||
+    message === "EMPTY_IMAGE" ||
+    message === "IMAGE_TOO_LARGE" ||
+    message === "UNSUPPORTED_IMAGE_TYPE"
   ) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
@@ -40,6 +43,14 @@ export function lineAdminApiErrorResponse(error: unknown) {
       { error: "LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN_NOT_CONFIGURED" },
       { status: 503 },
     );
+  }
+
+  if (
+    message === "LINE_CHAT_IMAGE_STORAGE_NOT_CONFIGURED" ||
+    message.startsWith("LINE_CHAT_IMAGE_UPLOAD_FAILED") ||
+    message.startsWith("CREATE_BUCKET_FAILED")
+  ) {
+    return NextResponse.json({ error: "IMAGE_UPLOAD_FAILED" }, { status: 502 });
   }
 
   console.error("[line-admin-api] request failed", error);

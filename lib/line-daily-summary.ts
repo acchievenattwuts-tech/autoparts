@@ -61,7 +61,13 @@ export type LineFlexMessage = {
   contents: Record<string, unknown>;
 };
 
-export type LinePushMessage = LineTextMessage | LineFlexMessage;
+export type LineImageMessage = {
+  type: "image";
+  originalContentUrl: string;
+  previewImageUrl: string;
+};
+
+export type LinePushMessage = LineTextMessage | LineFlexMessage | LineImageMessage;
 
 export type LineDailySummary = {
   reportDayKey: string;

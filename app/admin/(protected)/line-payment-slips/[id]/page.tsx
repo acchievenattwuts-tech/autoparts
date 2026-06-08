@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import AdminPaymentSlipReviewActions from "@/components/shared/AdminPaymentSlipReviewActions";
+import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
 import { hasPermissionAccess } from "@/lib/access-control";
 import {
   formatPaymentSlipBaht,
@@ -32,6 +33,11 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
     session.user.permissions,
     "line_payment_slips.manage",
   );
+  const canViewConversations = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "line_conversations.view",
+  );
 
   const slipImageUrl = slip.imageUrl ? await createPaymentSlipSignedUrl(slip.imageUrl) : null;
 
@@ -51,6 +57,8 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-4">
+      <LineAdminTabNav canViewConversations={canViewConversations} canViewPaymentSlips />
+
       <div>
         <Link
           href="/admin/line-payment-slips"
