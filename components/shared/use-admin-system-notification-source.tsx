@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCheck, LoaderCircle, RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 
 import type { AdminNotificationSection } from "@/components/shared/admin-notification-center-types";
 import {
@@ -51,11 +52,13 @@ export function useAdminSystemNotificationSource({
   isOpen,
   closePanel,
 }: UseAdminSystemNotificationSourceParams): AdminNotificationSection {
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
+  const [pendingMarkAllRead, setPendingMarkAllRead] = useState(false);
   const lastFetchedAtRef = useRef<number>(0);
 
   const fetchSummary = useCallback(async () => {
@@ -86,6 +89,7 @@ export function useAdminSystemNotificationSource({
       }
       const data = (await response.json()) as { items: NotificationItem[] };
       setItems(data.items);
+      setPendingMarkAllRead(data.items.some((item) => !item.readAt));
     } catch {
       setListError(true);
     } finally {
@@ -120,6 +124,19 @@ export function useAdminSystemNotificationSource({
       /* ignore */
     }
   }, []);
+
+  const openNotification = useCallback(
+    async (item: NotificationItem, isUnread: boolean) => {
+      if (isUnread) {
+        await markOneRead(item.id);
+      }
+      closePanel();
+      if (item.link) {
+        router.push(item.link);
+      }
+    },
+    [closePanel, markOneRead, router],
+  );
 
   useEffect(() => {
     void fetchSummary();
@@ -171,8 +188,20 @@ export function useAdminSystemNotificationSource({
 
   useEffect(() => {
     if (!isOpen) return;
+    setPendingMarkAllRead(false);
     void fetchList();
   }, [fetchList, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || loadingList || listError || !pendingMarkAllRead) return;
+
+    const frameId = window.requestAnimationFrame(() => {
+      void markAllRead();
+      setPendingMarkAllRead(false);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isOpen, listError, loadingList, markAllRead, pendingMarkAllRead]);
 
   const content = loadingList ? (
     <div className="flex items-center gap-2 px-4 py-6 text-sm text-slate-500 dark:text-slate-400">
@@ -219,9 +248,9 @@ export function useAdminSystemNotificationSource({
           <Link
             key={item.id}
             href={item.link}
-            onClick={() => {
-              if (isUnread) void markOneRead(item.id);
-              closePanel();
+            onClick={(event) => {
+              event.preventDefault();
+              void openNotification(item, isUnread);
             }}
           >
             {contentNode}
@@ -231,9 +260,7 @@ export function useAdminSystemNotificationSource({
             key={item.id}
             type="button"
             className="block w-full text-left"
-            onClick={() => {
-              if (isUnread) void markOneRead(item.id);
-            }}
+            onClick={() => void openNotification(item, isUnread)}
           >
             {contentNode}
           </button>
