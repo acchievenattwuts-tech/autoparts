@@ -66,6 +66,43 @@ export async function getOrCreateLineConversation(input: {
   });
 }
 
+/**
+ * Manually links (or unlinks with null) a conversation to a customer. This only
+ * sets `LineConversation.customerId` — it never touches `Customer.lineUserId`
+ * (which belongs to the LIFF/Login channel and must stay intact). Use this when
+ * the OA Messaging-API userId differs from the LIFF userId (cross-provider).
+ */
+export async function setLineConversationCustomer(input: {
+  conversationId: string;
+  customerId: string | null;
+}) {
+  return db.lineConversation.update({
+    where: { id: input.conversationId },
+    data: { customerId: input.customerId },
+    select: { id: true, customerId: true },
+  });
+}
+
+/** Lightweight customer search (active only) for the manual-link picker. */
+export async function searchCustomersForConversationLink(input: { query: string; take?: number }) {
+  const query = input.query.trim();
+  if (!query) return [];
+
+  return db.customer.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { code: { contains: query, mode: "insensitive" } },
+        { phone: { contains: query } },
+      ],
+    },
+    select: { id: true, code: true, name: true, phone: true },
+    orderBy: { name: "asc" },
+    take: Math.min(20, Math.max(1, input.take ?? 10)),
+  });
+}
+
 export async function updateLineConversationState(conversationId: string, patch: LineConversationStatePatch) {
   return db.lineConversation.update({
     where: { id: conversationId },

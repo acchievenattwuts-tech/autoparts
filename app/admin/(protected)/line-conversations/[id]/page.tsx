@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, UserRound } from "lucide-react";
 
 import AdminLineConversationActions from "@/components/shared/AdminLineConversationActions";
+import AdminLineConversationCustomerLink from "@/components/shared/AdminLineConversationCustomerLink";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { LineMessageDirection } from "@/lib/generated/prisma";
 import { getLineConversationMessages } from "@/lib/line-admin-service";
@@ -98,7 +99,7 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
                 : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300"
             }`}
           >
-            {isLinked ? "เชื่อมโยงแล้ว (ตรงจาก LINE ID)" : "ยังไม่เชื่อมโยง"}
+            {isLinked ? "เชื่อมโยงแล้ว" : "ยังไม่เชื่อมโยง"}
           </span>
         </div>
 
@@ -138,10 +139,14 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
           </div>
         ) : (
           <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">
-            บทสนทนานี้ยังไม่ผูกกับลูกค้าในระบบ — ระบบจะไม่เดา/ผูกอัตโนมัติจากหลักฐานอ่อน
-            สามารถผูกได้โดยให้ลูกค้าเชื่อม LINE ผ่าน LIFF
+            บทสนทนานี้ยังไม่ผูกกับลูกค้าในระบบ — ระบบจะผูกอัตโนมัติเฉพาะเมื่อ LINE ID ตรงกัน
+            (LIFF กับ OA ต้องอยู่ Provider เดียวกัน) หากไม่ตรง ให้ผูกด้วยมือด้านล่าง
           </p>
         )}
+
+        {canManage ? (
+          <AdminLineConversationCustomerLink conversationId={conversation.id} isLinked={isLinked} />
+        ) : null}
       </div>
 
       <div className="space-y-3">
