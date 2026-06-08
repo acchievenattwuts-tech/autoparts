@@ -411,11 +411,11 @@ test("processor stores suggestion but does not send while conversation is paused
   assert.deepEqual(calls.markedSent, []);
 });
 
-test("processor routes admin-only intent to waiting-admin without product-search reply", async () => {
+test("admin-only intent sends a polite ack, then hands off to admin (no search)", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
 
-  // A claim/return message → requiresAdmin (handoff), no product search.
+  // A claim/return message → requiresAdmin: acknowledge politely, then hand off.
   const result = await processLineWebhookPayload(
     textPayload("ขอเคลมของพัง"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
@@ -423,10 +423,11 @@ test("processor routes admin-only intent to waiting-admin without product-search
   );
 
   assert.equal(result.processedCount, 1);
-  assert.equal(result.repliedCount, 0);
+  assert.equal(result.repliedCount, 1);
   assert.deepEqual(calls.searches, []);
+  assert.match(calls.replies[0]?.text ?? "", /เคลม/);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
-  assert.deepEqual(calls.replies, []);
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("shop-info keyword is auto-answered with the canned reply, no handoff", async () => {
@@ -540,7 +541,7 @@ test("processor routes a payment-slip image to admin and never hits product sear
   );
 
   assert.equal(result.processedCount, 1);
-  assert.equal(result.repliedCount, 0);
+  assert.equal(result.repliedCount, 1);
   assert.deepEqual(calls.searches, []);
   assert.ok(calls.auditActions.includes("IMAGE_CLASSIFIED"));
   assert.ok(calls.auditActions.includes("PAYMENT_SLIP_OCR"));
@@ -549,7 +550,8 @@ test("processor routes a payment-slip image to admin and never hits product sear
     { conversationId: "conversation-line-user-1", lineUserId: "line-user-1" },
   ]);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
-  assert.deepEqual(calls.replies, []);
+  // Polite ack sent before the admin hand-off.
+  assert.match(calls.replies[0]?.text ?? "", /ชำระเงิน/);
 });
 
 test("processor reuses classified payment-slip image content for slip ingest", async () => {
@@ -587,9 +589,10 @@ test("processor enters image workflow for a part image without product search", 
 
   assert.equal(result.processedCount, 1);
   assert.ok(calls.auditActions.includes("IMAGE_CLASSIFIED"));
-  // Part images are conservative: no auto product search, handed to admin.
+  // Part images are conservative: no auto product search, acked then handed to admin.
   assert.deepEqual(calls.searches, []);
-  assert.deepEqual(calls.replies, []);
+  assert.match(calls.replies[0]?.text ?? "", /แอดมิน/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
 });
 
 test("part image searches the catalog when image-search flag is on and hints exist", async () => {

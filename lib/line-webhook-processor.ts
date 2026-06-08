@@ -138,6 +138,25 @@ function isMenuCommand(text: string | null | undefined): boolean {
   return Boolean(text && MENU_COMMAND_RE.test(text.trim()));
 }
 
+/** Polite acknowledgement sent to the customer right before an admin hand-off, so
+ *  the AI never goes silent. Tailored per intent. */
+function handoffAckForIntent(intent: LineIntent): string {
+  switch (intent) {
+    case LineIntent.PAYMENT_SLIP_IMAGE:
+      return "รับทราบเรื่องการชำระเงินค่ะ 🙏 เดี๋ยวแอดมินตรวจสอบและยืนยันให้นะคะ รอสักครู่ค่ะ";
+    case LineIntent.PRICE_NEGOTIATION:
+      return "เรื่องราคา/ส่วนลด เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
+    case LineIntent.CLAIM_OR_RETURN:
+      return "เรื่องเคลม/เปลี่ยน-คืนสินค้า เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
+    case LineIntent.SHIPPING_ADDRESS:
+      return "รับทราบเรื่องที่อยู่/การจัดส่งค่ะ 🙏 เดี๋ยวแอดมินดำเนินการให้นะคะ";
+    case LineIntent.ORDER_STATUS:
+      return "เดี๋ยวแอดมินช่วยเช็กสถานะ/พัสดุให้นะคะ 🙏 รอสักครู่ค่ะ";
+    default:
+      return "รับทราบค่ะ 🙏 เดี๋ยวแอดมินมาช่วยดูแลต่อให้นะคะ รอสักครู่ค่ะ";
+  }
+}
+
 /** Maps stored LINE messages to the AI history shape (oldest → newest). */
 function toReplyHistory(
   rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
@@ -361,7 +380,7 @@ export async function processLineAiReply(
             : null;
 
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    const suggestion = forcedResponse
+    let suggestion = forcedResponse
       ? {
           suggestedReply: forcedResponse.message,
           confidence: forcedResponse.handoff ? LineAiConfidence.ADMIN_REQUIRED : LineAiConfidence.POSSIBLE_MATCH,
@@ -400,6 +419,24 @@ export async function processLineAiReply(
         deliveryMode === LineDeliveryMode.NONE
           ? { action: "handoff", deliveryMode, reason: forcedResponse.reason }
           : { action: "send", deliveryMode, reason: forcedResponse.reason };
+    }
+
+    // Normal admin hand-off (payment, address, status, price, claim, unknown, low
+    // confidence): acknowledge the customer politely first so the AI never goes
+    // silent, then still hand off to a human. (action === "handoff" already implies
+    // live mode; a conversation that's already waiting resolves to store_only.)
+    let handoffAfterSend = false;
+    if (!forcedResponse && sendDecision.action === "handoff") {
+      const deliveryMode = hasReplyToken
+        ? LineDeliveryMode.REPLY
+        : config.allowPushFallback
+          ? LineDeliveryMode.PUSH
+          : LineDeliveryMode.NONE;
+      if (deliveryMode !== LineDeliveryMode.NONE) {
+        suggestion = { ...suggestion, suggestedReply: handoffAckForIntent(input.route.intent) };
+        sendDecision = { action: "send", deliveryMode, reason: `HANDOFF_ACK_${sendDecision.reason}` };
+        handoffAfterSend = true;
+      }
     }
 
     await dependencies.storeLineAiSuggestion({
@@ -507,7 +544,7 @@ export async function processLineAiReply(
     // Hand off + pause the AI on a forced hand-off (escalation / purchase intent —
     // which may have force-sent a bridging message) or a normal admin-required
     // handoff. A non-handoff forced response (e.g. shop info) keeps the AI active.
-    if (forcedResponse?.handoff || sendDecision.action === "handoff") {
+    if (forcedResponse?.handoff || handoffAfterSend || sendDecision.action === "handoff") {
       await dependencies.updateLineConversationState(
         input.conversation.id,
         buildLineConversationStatePatch({
@@ -530,7 +567,7 @@ export async function processLineAiReply(
     // hand-off — i.e. the customer is now waiting for a human. Deduped per
     // conversation; never throws into the reply flow. (Shop-info auto-replies do
     // not notify.)
-    if (forcedResponse?.handoff || !(sendDecision.action === "send" && replied)) {
+    if (forcedResponse?.handoff || handoffAfterSend || !(sendDecision.action === "send" && replied)) {
       const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
       await notify({
         conversationId: input.conversation.id,
