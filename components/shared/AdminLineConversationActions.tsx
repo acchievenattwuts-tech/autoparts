@@ -85,11 +85,12 @@ export default function AdminLineConversationActions({
   useEffect(() => {
     const handleUseDraft = (event: Event) => {
       const detail = (event as CustomEvent<{ text?: string }>).detail;
-      if (!detail?.text) return;
-      setText(detail.text);
+      const draftText = detail?.text;
+      if (!draftText) return;
+      setText(draftText);
       window.requestAnimationFrame(() => {
         textareaRef.current?.focus();
-        textareaRef.current?.setSelectionRange(detail.text.length, detail.text.length);
+        textareaRef.current?.setSelectionRange(draftText.length, draftText.length);
       });
     };
 
