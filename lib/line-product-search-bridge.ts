@@ -47,6 +47,30 @@ export type LineProductSearchBridgeResult =
       needsMoreInfo: boolean;
     };
 
+export type LineMatchedProductSummary = {
+  name: string;
+  code: string | null;
+};
+
+/**
+ * Fetches lightweight summaries (name + code) for matched product ids, preserving
+ * the search rank order. Names come straight from the catalog — never fabricated —
+ * so the reply can show the customer what was actually found.
+ */
+export async function getLineProductSummaries(ids: string[]): Promise<LineMatchedProductSummary[]> {
+  if (ids.length === 0) return [];
+  const { db } = await import("@/lib/db");
+  const rows = await db.product.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, code: true },
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((row): row is { id: string; name: string; code: string | null } => Boolean(row))
+    .map((row) => ({ name: row.name, code: row.code }));
+}
+
 function normalizeSearchSeed(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;

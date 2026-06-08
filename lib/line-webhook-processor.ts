@@ -29,7 +29,7 @@ import {
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
 import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
-import { searchLineProductInquiry } from "@/lib/line-product-search-bridge";
+import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -65,6 +65,7 @@ export type LineWebhookProcessorDependencies = {
   storeLineAiJob: typeof storeLineAiJob;
   updateLineAiJob: typeof updateLineAiJob;
   searchLineProductInquiry: typeof searchLineProductInquiry;
+  getLineProductSummaries: typeof getLineProductSummaries;
   replyLineMessage: typeof replyLineMessage;
   pushLineMessages: typeof pushLineMessages;
   /** Optional override; defaults to the Gemini-backed generator with rule-based fallback. */
@@ -91,6 +92,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   storeLineAiJob,
   updateLineAiJob,
   searchLineProductInquiry,
+  getLineProductSummaries,
   replyLineMessage,
   pushLineMessages,
   generateLineSuggestion,
@@ -241,12 +243,21 @@ export async function processLineAiReply(
     ).catch(() => []);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
 
+    // Pull real catalog names for matched ids so the reply can show the customer
+    // what was actually found (with a "verify before ordering" caveat) instead of
+    // gatekeeping on chassis/OEM numbers they usually can't provide.
+    const products =
+      productSearch.searched && productSearch.result.ids.length > 0
+        ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
+        : [];
+
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
     const suggestion = await generateSuggestion({
       intent: input.route.intent,
       originalText: input.text,
       productSearch,
       history,
+      products,
     });
 
     const hasReplyToken = canUseReplyToken(config, input.canReply);

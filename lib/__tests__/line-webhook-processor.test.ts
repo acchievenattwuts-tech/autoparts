@@ -240,6 +240,7 @@ function createProcessorTestDeps(input?: {
       return 1;
     },
     getRecentLineMessagesForAi: async () => [],
+    getLineProductSummaries: async () => [],
   };
 
   return { calls, dependencies };

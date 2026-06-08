@@ -16,6 +16,12 @@ export type LineReplyHistoryItem = {
   text: string;
 };
 
+/** A matched catalog product to present to the customer (names are never fabricated). */
+export type LineProductSummary = {
+  name: string;
+  code: string | null;
+};
+
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
   LineIntent.PART_IMAGE_INQUIRY,
@@ -88,6 +94,8 @@ export async function generateLineSuggestion(input: {
   productSearch?: LineProductSearchBridgeResult | null;
   /** Recent prior turns (oldest → newest), excluding the current message. */
   history?: LineReplyHistoryItem[];
+  /** Matched catalog products to present to the customer (real names from the DB). */
+  products?: LineProductSummary[];
 }): Promise<LineAiSuggestionDraft> {
   const fallback = buildConservativeLineSuggestion(input);
 
@@ -149,18 +157,29 @@ function buildLineReplyPrompt(input: {
 
   lines.push(`ข้อความล่าสุดจากลูกค้า: ${input.originalText?.trim() || "(ไม่มีข้อความ อาจเป็นรูปภาพ)"}`);
 
-  if (input.productSearch?.searched) {
+  if (input.products && input.products.length > 0) {
+    lines.push("รายการสินค้าที่พบในระบบ (เบื้องต้น ใกล้เคียงกับที่ลูกค้าถาม):");
+    for (const product of input.products) {
+      lines.push(`- ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`);
+    }
+    lines.push(
+      "ให้นำเสนอรายการเหล่านี้กับลูกค้าได้เลยเพื่อช่วยตัดสินใจเบื้องต้น โดยใช้ชื่อสินค้าตามนี้ ห้ามแต่งชื่อ/รหัสเพิ่มเอง",
+    );
+    lines.push(
+      "ย้ำกับลูกค้าว่าเป็นการเทียบเบื้องต้นจากข้อมูลที่ได้ และแนะนำให้ตรวจสอบ/ยืนยันความเข้ากันกับทางร้านอีกครั้งก่อนสั่งซื้อ ไม่ต้องบังคับให้ลูกค้าระบุเลขตัวถังหรือรหัส OEM",
+    );
+  } else if (input.productSearch?.searched) {
     if (input.productSearch.needsMoreInfo) {
       lines.push(
-        "ผลการค้นหาสินค้า: ยังไม่พบรายการที่ยืนยันได้ชัดเจน ให้ขอข้อมูลเพิ่มอย่างสุภาพ ห้ามเดาสินค้า",
+        "ผลการค้นหาสินค้า: ยังไม่พบรายการที่ตรงในระบบ ให้สอบถามรายละเอียดเพิ่มอย่างเป็นกันเอง เช่น รุ่นรถ ปีรถ หรือรูปอะไหล่เดิม (ไม่จำเป็นต้องมีเลขตัวถังหรือรหัส OEM) ห้ามเดาสินค้า",
       );
     } else {
       lines.push(
-        `ผลการค้นหาสินค้า: พบรายการใกล้เคียง ${input.productSearch.result.total} รายการ ให้ตอบแบบเบื้องต้นและแนะนำให้เทียบรุ่นรถ/ปีรถ/เบอร์อะไหล่ก่อนสั่งซื้อ`,
+        `ผลการค้นหาสินค้า: พบรายการใกล้เคียง ${input.productSearch.result.total} รายการ ให้เสนอเบื้องต้นและแนะนำให้ตรวจสอบกับทางร้านก่อนสั่งซื้อ`,
       );
     }
   } else {
-    lines.push("ผลการค้นหาสินค้า: ไม่ได้ค้นหา ให้ทักทายและถามรายละเอียดอะไหล่ที่ต้องการ");
+    lines.push("ผลการค้นหาสินค้า: ไม่ได้ค้นหา ให้ทักทายและถามรายละเอียดอะไหล่ที่ต้องการอย่างเป็นกันเอง");
   }
 
   lines.push("กรุณาร่างข้อความตอบลูกค้า 1 ข้อความ ตามกฎความปลอดภัยทั้งหมด");
@@ -171,6 +190,7 @@ export function buildConservativeLineSuggestion(input: {
   intent: LineIntent;
   originalText?: string | null;
   productSearch?: LineProductSearchBridgeResult | null;
+  products?: LineProductSummary[];
 }): LineAiSuggestionDraft {
   if (input.intent === LineIntent.GREETING) {
     return {
@@ -194,9 +214,15 @@ export function buildConservativeLineSuggestion(input: {
       };
     }
 
+    const productLines = (input.products ?? [])
+      .slice(0, 5)
+      .map((product) => `• ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`)
+      .join("\n");
+
     return {
-      suggestedReply:
-        "เบื้องต้นพบรายการที่ใกล้เคียงกับข้อมูลในร้านค่ะ แนะนำให้เทียบรุ่นรถ ปีรถ และเบอร์อะไหล่เดิมก่อนสั่งซื้อ เพื่อยืนยันความเข้ากันได้อีกครั้งนะคะ",
+      suggestedReply: productLines
+        ? `เบื้องต้นพบรายการที่ใกล้เคียงในร้านค่ะ 😊\n${productLines}\nเป็นการเทียบเบื้องต้นนะคะ แนะนำให้ตรวจสอบกับทางร้านอีกครั้งก่อนสั่งซื้อค่ะ`
+        : "เบื้องต้นพบรายการที่ใกล้เคียงในร้านค่ะ 😊 เป็นการเทียบเบื้องต้น แนะนำให้ตรวจสอบกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ",
       confidence: LineAiConfidence.POSSIBLE_MATCH,
       reasoningSummary: "Product search returned candidate products; reply remains conservative.",
       matchedProducts: input.productSearch.result,
