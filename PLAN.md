@@ -96,6 +96,7 @@
     - sync ตอนแก้สินค้า: `reembedProductSearchDocument()` (`lib/product-embedding-sync.ts`) เรียกผ่าน `after()` ใน createProduct/updateProduct (fire-and-forget, ไม่ block response)
     - hybrid ใน `searchProductIdsV2`: vector recall (cosine, reuse exactScope filters เดิม) → inject เป็น candidate (`OR v.product_id IS NOT NULL`) + score boost (sim × 500, ต่ำกว่า exact/oem/contains) ใน ranked query เดียว → pagination/total semantics คงเดิม
     - unit tests: embeddings helpers 4
+    - resolver part-type→category: `matchPartTypeToCategoryHint()` ใน `lib/line-fitment-resolve.ts` map คำที่ลูกค้า/AI พูด ("วาล์วแอร์", "คอยเย็น", "แผงแอร์"...) → หมวดจริงในระบบ (19 หมวด, alias เรียง specific→generic กันชน "วาล์ว"/"หม้อน้ำ"/"คอม") ก่อน fallback equals/contains → category hard filter ทำงานแม้คำพูดไม่ตรงชื่อหมวด + unit tests 3
     - **ขั้นตอนเปิดใช้:** 1) `npm run db:setup-search-v2` ✅ (รันแล้ว — vector ext + คอลัมน์ + HNSW) 2) `npm run backfill:embeddings` ✅ (embed 598/598 สำเร็จ) 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel env **(เหลือขั้นนี้ — production ยังไม่เปิด)**
     - ทดสอบจริงแล้ว: "หม้อน้ำ mazda 2" → หม้อน้ำ Mazda 2 ขึ้นอันดับ 1 (sim 0.84), "ตัวทำความเย็นแอร์วีออส" → เจอคอยล์เย็น/แผงแอร์ Vios (semantic เข้าใจคำบรรยาย)
 

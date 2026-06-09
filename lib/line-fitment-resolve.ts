@@ -28,6 +28,60 @@ const trimOrNull = (value?: string | null): string | null => {
 };
 
 /**
+ * Maps colloquial part-type words (what customers / the AI actually say) to a
+ * distinctive substring of the real category name in the system, so a hard
+ * category filter can be applied even when the spoken term differs from the
+ * catalog category (e.g. "วาล์วแอร์" → category "วาล์ว (Expansion Valve)",
+ * "คอยเย็น" → "คอยล์เย็น (Evaporator)").
+ *
+ * ORDER MATTERS: more specific entries come first so an ambiguous substring
+ * (e.g. "วาล์ว" in both Expansion Valve and Compressor Control Valve, or
+ * "หม้อน้ำ" in Radiator / Radiator Cap / Coolant) resolves to the right one.
+ * The `categoryMatch` value is matched against the real category name with a
+ * case-insensitive `contains`, so it stays bound to the live categories rather
+ * than hardcoding the full name.
+ */
+type PartTypeAlias = { keywords: string[]; categoryMatch: string };
+const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
+  { keywords: ["คอนโทรลวาล์ว", "control valve"], categoryMatch: "Compressor Control Valve" },
+  { keywords: ["วาล์วแอร์", "วาล์วตู้", "expansion valve", "วาล์ว"], categoryMatch: "(Expansion Valve)" },
+  { keywords: ["น้ำมันคอม", "compressor oil"], categoryMatch: "Compressor Oil" },
+  { keywords: ["หน้าครัช", "หน้าคลัช", "คลัชคอม", "มูเล่คอม", "clutch"], categoryMatch: "Compressor Clutch" },
+  { keywords: ["คอมแอร์", "คอมเพรสเซอร์", "compressor"], categoryMatch: "(Compressor)" },
+  { keywords: ["คอยล์เย็น", "คอยเย็น", "ตู้แอร์", "ตู้เย็น", "evaporator"], categoryMatch: "(Evaporator)" },
+  { keywords: ["คอยล์ร้อน", "แผงแอร์", "แผงร้อน", "รังผึ้งแอร์", "condenser"], categoryMatch: "(Condenser)" },
+  { keywords: ["กรองแอร์", "ฟิลเตอร์แอร์", "cabin"], categoryMatch: "Cabin air filter" },
+  { keywords: ["กรองอากาศ", "ไส้กรองอากาศ", "air filter"], categoryMatch: "(Air Filter)" },
+  { keywords: ["ดรายเออร์", "ไดเออร์", "drier", "receiver"], categoryMatch: "Drier" },
+  { keywords: ["รีซิสเตอร์", "resistor"], categoryMatch: "Blower Motor Resistor" },
+  { keywords: ["โบเวอร์", "พัดลมแอร์", "มอเตอร์ตู้แอร์", "พัดลมตู้แอร์", "blower"], categoryMatch: "Blower Motor)" },
+  {
+    keywords: ["มอเตอร์พัดลม", "พัดลมหน้าแผง", "พัดลมหม้อน้ำ", "พัดลมหน้าเครื่อง", "condenser fan"],
+    categoryMatch: "Condenser Fan Motor",
+  },
+  { keywords: ["ใบพัดลม", "ใบพัด", "fan blade"], categoryMatch: "Cooling Fan Blade" },
+  { keywords: ["ฝาหม้อน้ำ", "ฝาปิดหม้อน้ำ", "radiator cap"], categoryMatch: "Radiator Cap" },
+  { keywords: ["น้ำยาหล่อเย็น", "คูลแลนท์", "coolant"], categoryMatch: "Radiator Coolant" },
+  { keywords: ["สายน้ำยา", "ท่อน้ำยา", "a/c hose"], categoryMatch: "A/C Hose" },
+  { keywords: ["หม้อน้ำ", "radiator"], categoryMatch: "(Radiator)" },
+];
+
+/**
+ * Returns the distinctive category-name substring for a colloquial part-type, or
+ * null when none matches. Pure + exported for unit testing.
+ */
+export const matchPartTypeToCategoryHint = (partType: string | null | undefined): string | null => {
+  const p = partType?.trim().toLowerCase();
+  if (!p) return null;
+  for (const alias of PART_TYPE_CATEGORY_ALIASES) {
+    if (alias.keywords.some((keyword) => p.includes(keyword.toLowerCase()))) {
+      return alias.categoryMatch;
+    }
+  }
+  return null;
+};
+
+/**
  * Case-insensitive resolution against CarBrand / CarModel / Category. Prefers an
  * exact (insensitive) name match; for car models, scopes to the resolved brand and
  * falls back to a `contains` match (e.g. AI "Mazda 2" vs master "2").
@@ -41,6 +95,10 @@ export async function resolveLineFitmentFilters(
 
   const filters: LineFitmentFilters = {};
 
+  // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
+  // fall back to a direct equals/contains on the spoken part-type.
+  const categoryHint = matchPartTypeToCategoryHint(partType);
+
   try {
     const [brandRow, categoryRow] = await Promise.all([
       carBrand
@@ -49,7 +107,12 @@ export async function resolveLineFitmentFilters(
             select: { id: true, name: true },
           })
         : Promise.resolve(null),
-      partType
+      categoryHint
+        ? db.category.findFirst({
+            where: { isActive: true, name: { contains: categoryHint, mode: "insensitive" } },
+            select: { name: true },
+          })
+        : partType
         ? db.category.findFirst({
             where: {
               isActive: true,
