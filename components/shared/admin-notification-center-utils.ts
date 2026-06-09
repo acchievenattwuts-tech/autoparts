@@ -1,4 +1,4 @@
-export const ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS = 5 * 60_000;
+export const ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS = 10 * 60_000;
 
 type ShouldPollNotificationSummaryParams = {
   now: number;

@@ -195,3 +195,18 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
   });
   return result.count;
 }
+
+/**
+ * Cleanup job: deletes read notifications older than 30 days. Runs nightly.
+ * Returns the count of deleted rows.
+ */
+export async function cleanupOldNotifications(daysOld = 30): Promise<number> {
+  const cutoffDate = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000);
+  const result = await db.notification.deleteMany({
+    where: {
+      readAt: { not: null }, // only read notifications
+      createdAt: { lt: cutoffDate }, // older than daysOld
+    },
+  });
+  return result.count;
+}

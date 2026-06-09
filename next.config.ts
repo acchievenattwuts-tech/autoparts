@@ -72,6 +72,9 @@ const nextConfig: NextConfig = {
     staticGenerationRetryCount: 2,
     staticGenerationMaxConcurrency: 4,
     staticGenerationMinPagesPerWorker: 40,
+    // Enable instrumentation hook for background services (cron jobs, etc.)
+    // @ts-expect-error — instrumentationHook is valid in Next.js 15.1+
+    instrumentationHook: true,
   },
 
   async headers() {
