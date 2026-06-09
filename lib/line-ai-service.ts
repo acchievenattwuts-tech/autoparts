@@ -139,38 +139,100 @@ export async function generateLineSuggestion(input: {
   }
 }
 
-const SEARCH_QUERY_SYSTEM_INSTRUCTION = [
-  "คุณคือตัวช่วยสร้าง 'คำค้นหาสินค้า' ให้ระบบค้นหาอะไหล่แอร์รถยนต์ของร้าน",
-  "หน้าที่: อ่านบทสนทนาทั้งหมด แล้วสรุป 'สิ่งที่ลูกค้ากำลังตามหาตอนนี้' ออกมาเป็นคำค้นสั้น ๆ บรรทัดเดียว",
+const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
+  "คุณคือตัวช่วยแยกแยะ 'สิ่งที่ลูกค้ากำลังตามหา' จากบทสนทนา เพื่อป้อนให้ระบบค้นหาอะไหล่แอร์รถยนต์",
+  "อ่านบทสนทนาทั้งหมด แล้วตอบกลับเป็น JSON object บรรทัดเดียวเท่านั้น (ไม่มีคำอธิบาย ไม่มี markdown):",
+  "",
+  "{",
+  '  "query": "คำค้นสั้น ๆ รวมทุกอย่างที่ลูกค้าบอก (ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี)",',
+  '  "partType": "ชนิดอะไหล่ เช่น หม้อน้ำ คอยล์เย็น คอมแอร์ แผงแอร์ กรองแอร์ (ถ้าไม่ทราบใส่ null)",',
+  '  "carBrand": "ยี่ห้อรถ เช่น Mazda Toyota Isuzu (ถ้าไม่ทราบใส่ null)",',
+  '  "carModel": "รุ่นรถ เช่น Mazda 2, D-Max, Vios (ถ้าไม่ทราบใส่ null)",',
+  '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null',
+  "}",
   "",
   "กฎ:",
-  "- รวมข้อมูลที่ลูกค้าทยอยพิมพ์มาหลายข้อความให้เป็นคำค้นเดียว (เช่น ข้อความก่อนบอกชนิดอะไหล่+รุ่นรถ ข้อความล่าสุดบอกปี → รวมทั้งหมด)",
-  "- รูปแบบที่ต้องการ: ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี (เท่าที่ลูกค้าให้มา)",
-  "- แปลงปีย่อ 2 หลักเป็นปี ค.ศ. 4 หลัก เช่น 'ปี 06' → '2006', 'ปี 2560' (พ.ศ.) → '2017'",
-  "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ห้ามเดารุ่น/ปี/ชนิดอะไหล่เพิ่มเอง",
-  "- ตอบเฉพาะคำค้นบรรทัดเดียว ห้ามมีคำอธิบาย ห้ามขึ้นบรรทัดใหม่ ห้ามใส่เครื่องหมายคำพูด",
-  "- ถ้าสรุปคำค้นไม่ได้เลย (ลูกค้ายังไม่ได้บอกว่าหาอะไร) ให้ตอบว่า NONE",
+  "- รวมข้อมูลที่ลูกค้าทยอยพิมพ์มาหลายข้อความ (เช่น ก่อนหน้าบอกชนิดอะไหล่+รุ่นรถ ล่าสุดบอกปี → รวมทั้งหมด)",
+  "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
+  "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null (ยกเว้น query ที่ต้องมีเสมอถ้าลูกค้าบอกว่าหาอะไร)",
+  '- ถ้าลูกค้ายังไม่ได้บอกว่าหาอะไรเลย ให้ตอบ {"query": null}',
 ].join("\n");
 
 const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
+const MIN_SEARCH_YEAR = 1950;
+const MAX_SEARCH_YEAR = 2100;
+
+/** Structured search intent distilled from the conversation (Part B). `query` is
+ *  the consolidated free-text; the rest are optional hard-filter hints resolved
+ *  against master data downstream. */
+export type LineSearchIntent = {
+  query: string;
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+};
+
+const cleanIntentString = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.replace(/[\r\n]+/g, " ").trim();
+  if (!trimmed || trimmed.toLowerCase() === "null" || trimmed.toUpperCase() === "NONE") return null;
+  return trimmed;
+};
+
+const cleanIntentYear = (value: unknown): number | null => {
+  const num = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
+  if (!Number.isInteger(num) || num < MIN_SEARCH_YEAR || num > MAX_SEARCH_YEAR) return null;
+  return num;
+};
 
 /**
- * Consolidates the running "search subject" from the whole conversation into a
- * single query string, so a customer who drip-feeds details ("คอยเย็น d max" →
- * "ปี 06") gets a search on the COMBINED intent ("คอยล์เย็น d-max 2006") rather
- * than just the latest raw fragment. This is the search-side counterpart to the
- * reply generator, which already reads full history.
+ * Parses the model's JSON reply into a LineSearchIntent. Pure + defensive: strips
+ * markdown fences, tolerates extra prose around the object, and returns null when
+ * there's no usable `query`. Exported for unit testing.
+ */
+export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
+  if (!raw) return null;
+  // Grab the first {...} block so stray prose / code fences don't break parsing.
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+
+  const obj = parsed as Record<string, unknown>;
+  const query = cleanIntentString(obj.query);
+  if (!query) return null;
+
+  return {
+    query: query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim(),
+    partType: cleanIntentString(obj.partType),
+    carBrand: cleanIntentString(obj.carBrand),
+    carModel: cleanIntentString(obj.carModel),
+    year: cleanIntentYear(obj.year),
+  };
+};
+
+/**
+ * Extracts the running search intent from the whole conversation so a customer who
+ * drip-feeds details ("คอยเย็น d max" → "ปี 06") is searched on the COMBINED subject
+ * ("คอยล์เย็น d-max 2006"), and so we can apply precise fitment hard-filters
+ * (brand/model/category) resolved downstream — not just free text.
  *
  * Returns null whenever Gemini is unavailable, the intent isn't searchable, the
- * model declines (NONE), or anything errors — the caller then falls back to the
- * deterministic query builder (latest text + carried-over fitment terms), so a
- * failure here never blocks or worsens the search.
+ * model declines, or anything errors — the caller then falls back to the latest
+ * raw text + deterministic fitment carryover, so a failure never worsens search.
  */
-export async function consolidateLineSearchQuery(input: {
+export async function extractLineSearchIntent(input: {
   intent: LineIntent;
   latestText?: string | null;
   history?: LineReplyHistoryItem[];
-}): Promise<string | null> {
+}): Promise<LineSearchIntent | null> {
   const searchable =
     input.intent === LineIntent.PRODUCT_INQUIRY_TEXT || input.intent === LineIntent.PART_IMAGE_INQUIRY;
   // Only worth a model call on a follow-up turn: with no prior history the latest
@@ -185,24 +247,18 @@ export async function consolidateLineSearchQuery(input: {
       ...input.history.map((turn) => `${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`),
       `ลูกค้า (ข้อความล่าสุด): ${input.latestText?.trim() || "(ไม่มีข้อความ อาจเป็นรูปภาพ)"}`,
       "",
-      "สรุปคำค้นหาสินค้าที่ลูกค้ากำลังตามหาตอนนี้ (บรรทัดเดียว):",
+      "ตอบเป็น JSON object บรรทัดเดียวตามรูปแบบที่กำหนด:",
     ];
 
     const { text } = await generateGeminiContent({
       prompt: lines.join("\n"),
-      systemInstruction: SEARCH_QUERY_SYSTEM_INSTRUCTION,
-      maxOutputTokens: 60,
+      systemInstruction: SEARCH_INTENT_SYSTEM_INSTRUCTION,
+      maxOutputTokens: 160,
       temperature: 0,
       thinkingLevel: "NONE",
     });
 
-    const cleaned = text
-      .replace(/[\r\n]+/g, " ")
-      .replace(/^["'`]+|["'`]+$/g, "")
-      .trim();
-
-    if (!cleaned || cleaned.toUpperCase() === "NONE") return null;
-    return cleaned.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() || null;
+    return parseLineSearchIntent(text);
   } catch {
     return null;
   }

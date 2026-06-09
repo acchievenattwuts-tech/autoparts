@@ -14,10 +14,11 @@ import { classifyLineImage, type LineImageClassification } from "@/lib/line-imag
 import { LINE_AI_SETTINGS_DEFAULTS } from "@/lib/line-ai-settings";
 import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
 import {
-  consolidateLineSearchQuery,
+  extractLineSearchIntent,
   generateLineSuggestion,
   type LineReplyHistoryItem,
 } from "@/lib/line-ai-service";
+import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
@@ -101,9 +102,12 @@ export type LineWebhookProcessorDependencies = {
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
   /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
   answerFromLineFaq?: typeof answerFromLineFaq;
-  /** Optional override; consolidates the running search subject from conversation
-   *  history into one query (search-side short-term memory for drip-fed details). */
-  consolidateLineSearchQuery?: typeof consolidateLineSearchQuery;
+  /** Optional override; extracts the running search subject + structured fitment
+   *  hints from conversation history (search-side memory for drip-fed details). */
+  extractLineSearchIntent?: typeof extractLineSearchIntent;
+  /** Optional override; resolves AI fitment hints to canonical master-data names
+   *  for use as precise hard filters in product search. */
+  resolveLineFitmentFilters?: typeof resolveLineFitmentFilters;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -130,7 +134,8 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   countPendingPaymentSlipsForConversation,
   classifyPurchaseIntent,
   answerFromLineFaq,
-  consolidateLineSearchQuery,
+  extractLineSearchIntent,
+  resolveLineFitmentFilters,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -434,14 +439,26 @@ export async function processLineAiReply(
 
     // Search-side short-term memory. A customer who drip-feeds details ("คอยเย็น
     // d max" → "ปี 06") must search on the COMBINED subject, not the latest
-    // fragment. Primary: let the AI consolidate the running query from history.
-    // Fallback (Gemini off / first turn / declines): the deterministic builder
-    // (latest text + carried-over car/year fitment terms).
-    const consolidatedQuery = await (dependencies.consolidateLineSearchQuery ?? consolidateLineSearchQuery)({
+    // fragment. Primary: the AI extracts the running query + structured fitment
+    // hints from history. Fallback (Gemini off / first turn / declines): the
+    // deterministic builder (latest text + carried-over car/year fitment terms).
+    const searchIntent = await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
       intent: input.route.intent,
       latestText: input.text,
       history,
     }).catch(() => null);
+    const consolidatedQuery = searchIntent?.query ?? null;
+
+    // Resolve the AI's brand/model/part-type hints to canonical master-data names
+    // for use as precise hard filters (drops anything that doesn't resolve, so a
+    // typo can never zero-out the search — the free-text query still runs).
+    const fitmentFilters: LineFitmentFilters = searchIntent
+      ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
+          partType: searchIntent.partType,
+          carBrand: searchIntent.carBrand,
+          carModel: searchIntent.carModel,
+        }).catch((): LineFitmentFilters => ({}))
+      : {};
 
     // When the AI gave us a consolidated query it already merged the whole
     // subject, so the narrow fitment carryover is redundant. Otherwise keep the
@@ -457,6 +474,12 @@ export async function processLineAiReply(
       text: consolidatedQuery ?? input.text,
       extractedImageHints: input.imageClassification?.searchHints ?? null,
       contextHints,
+      fitmentHints: {
+        categoryName: fitmentFilters.categoryName ?? null,
+        carBrandName: fitmentFilters.carBrandName ?? null,
+        carModelName: fitmentFilters.carModelName ?? null,
+        fitmentYear: searchIntent?.year ?? null,
+      },
     });
 
     if (consolidatedQuery) {
@@ -467,6 +490,10 @@ export async function processLineAiReply(
           lineEventId: input.lineEventId,
           latestText: input.text,
           consolidatedQuery,
+          categoryName: fitmentFilters.categoryName ?? null,
+          carBrandName: fitmentFilters.carBrandName ?? null,
+          carModelName: fitmentFilters.carModelName ?? null,
+          fitmentYear: searchIntent?.year ?? null,
         },
       });
     }

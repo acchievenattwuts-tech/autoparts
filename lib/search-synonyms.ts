@@ -112,4 +112,46 @@ export async function expandQueryTokens(rawQuery: string): Promise<string[]> {
   return Array.from(expanded);
 }
 
+/**
+ * Group-aware expansion for AND-across-concepts search. Splits the query into its
+ * whitespace "concepts" (each typed word) and returns, per concept, that word plus
+ * its synonym cluster. The search layer then builds an AND across groups and an OR
+ * within each group's synonyms — e.g. "หม้อน้ำ mazda 2" →
+ * [["หม้อน้ำ","radiator",...], ["mazda","มาสด้า"], ["2"]] → (หม้อน้ำ|…) & (mazda|…) & (2)
+ * so a product must match every concept, not just any one of them.
+ *
+ * (`expandQueryTokens` stays as the flat OR-recall fallback used when the strict
+ * AND query returns nothing.)
+ */
+export async function expandQueryTokenGroups(rawQuery: string): Promise<string[][]> {
+  const normalized = normalizeSearchText(rawQuery);
+  if (!normalized) return [];
+
+  const conceptTokens = normalized.split(/\s+/).filter(Boolean);
+  if (conceptTokens.length === 0) return [];
+
+  const rows = await loadActiveSynonyms();
+  const map = rows.length > 0 ? buildExpansionMap(rows) : null;
+
+  const groups: string[][] = [];
+  for (const token of conceptTokens) {
+    const cluster = new Set<string>([token]);
+    if (map) {
+      for (const variant of buildSearchVariants(token)) {
+        const hit = map.get(variant);
+        if (hit) {
+          for (const synonym of hit) {
+            const normalizedSynonym = normalizeSearchText(synonym);
+            if (normalizedSynonym) cluster.add(normalizedSynonym);
+            if (cluster.size >= MAX_SYNONYMS_PER_TERM + 1) break;
+          }
+        }
+      }
+    }
+    groups.push(Array.from(cluster));
+  }
+
+  return groups;
+}
+
 export const SEARCH_SYNONYM_CACHE_TAG = SYNONYM_CACHE_TAG;

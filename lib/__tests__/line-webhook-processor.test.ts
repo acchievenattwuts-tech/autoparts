@@ -26,6 +26,15 @@ type TestCalls = {
   pushes: Array<{ recipientIds: string[]; text: string }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
   searches: string[];
+  searchFitmentHints: Array<
+    | {
+        categoryName?: string | null;
+        carBrandName?: string | null;
+        carModelName?: string | null;
+        fitmentYear?: number | null;
+      }
+    | null
+  >;
   conversationInputs: Array<{ lineUserId: string; customerId?: string | null }>;
   conversationProfileInputs: Array<{ displayName?: string | null; pictureUrl?: string | null }>;
   ocrCalls: number;
@@ -102,6 +111,11 @@ function createProcessorTestDeps(input?: {
   faqReply?: string;
   lastCustomerMessageAt?: Date | null;
   consolidatedQuery?: string | null;
+  intentPartType?: string | null;
+  intentCarBrand?: string | null;
+  intentCarModel?: string | null;
+  intentYear?: number | null;
+  fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -113,6 +127,7 @@ function createProcessorTestDeps(input?: {
     pushes: [],
     markedSent: [],
     searches: [],
+    searchFitmentHints: [],
     conversationInputs: [],
     conversationProfileInputs: [],
     ocrCalls: 0,
@@ -188,6 +203,7 @@ function createProcessorTestDeps(input?: {
         return { searched: false, reason: "NON_SEARCHABLE_INTENT", query: null, result: null };
       }
       calls.searches.push(input.text ?? (input.extractedImageHints ?? []).join(" "));
+      calls.searchFitmentHints.push(input.fitmentHints ?? null);
       return {
         searched: true,
         reason: "SEARCHED_PRODUCT_INQUIRY",
@@ -265,9 +281,19 @@ function createProcessorTestDeps(input?: {
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
     answerFromLineFaq: async () =>
       input?.faqReply ? { answered: true, reply: input.faqReply } : { answered: false, reply: "" },
-    // Default: no consolidation (mirrors Gemini-off / first-turn), so the search
+    // Default: no extraction (mirrors Gemini-off / first-turn), so the search
     // falls back to the latest text. Tests that exercise carryover set it.
-    consolidateLineSearchQuery: async () => input?.consolidatedQuery ?? null,
+    extractLineSearchIntent: async () =>
+      input?.consolidatedQuery
+        ? {
+            query: input.consolidatedQuery,
+            partType: input?.intentPartType ?? null,
+            carBrand: input?.intentCarBrand ?? null,
+            carModel: input?.intentCarModel ?? null,
+            year: input?.intentYear ?? null,
+          }
+        : null,
+    resolveLineFitmentFilters: async () => input?.fitmentFilters ?? {},
   };
 
   return { calls, dependencies };
@@ -550,6 +576,34 @@ test("drip-fed follow-up searches the AI-consolidated query, not the latest frag
   assert.equal(result.processedCount, 1);
   assert.deepEqual(calls.searches, ["คอยล์เย็น d-max 2006"]);
   assert.ok(calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
+});
+
+test("resolved fitment hints are passed as hard filters to search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ mazda 2",
+    intentCarBrand: "Mazda",
+    intentCarModel: "Mazda 2",
+    intentPartType: "หม้อน้ำ",
+    intentYear: 2015,
+    // Resolver confirmed these against master data.
+    fitmentFilters: { categoryName: "หม้อน้ำ", carBrandName: "Mazda", carModelName: "2" },
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ปี 15"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.searches, ["หม้อน้ำ mazda 2"]);
+  assert.deepEqual(calls.searchFitmentHints[0], {
+    categoryName: "หม้อน้ำ",
+    carBrandName: "Mazda",
+    carModelName: "2",
+    fitmentYear: 2015,
+  });
 });
 
 test("search falls back to latest text when AI consolidation declines", async () => {

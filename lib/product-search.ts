@@ -7,8 +7,49 @@ import {
   PRODUCT_SEARCH_TAG,
   type ProductSearchCacheProfile,
 } from "@/lib/product-search-cache";
-import { expandQueryTokens } from "@/lib/search-synonyms";
+import { expandQueryTokenGroups } from "@/lib/search-synonyms";
 import { normalizeSearchText } from "@/lib/search-normalization";
+
+/** A bare 1-2 digit number (e.g. the "2" in "Mazda 2"). Must NOT become a `:*`
+ *  prefix lexeme — otherwise it matches every token starting with that digit
+ *  (all 20xx model years in fitment text), exploding the result set. Matched as
+ *  an exact lexeme instead so it still constrains to the model token. */
+const SHORT_NUMBER_TOKEN_RE = /^\d{1,2}$/;
+
+/** Sanitize one query token into a `to_tsquery` lexeme expression (Thai/alnum
+ *  only). Short bare numbers stay exact; everything else gets prefix matching. */
+const tokenToTsLexeme = (token: string): string | null => {
+  const cleaned = token
+    .replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return null;
+  return cleaned
+    .split(" ")
+    .map((word) => (SHORT_NUMBER_TOKEN_RE.test(word) ? word : `${word}:*`))
+    .join(" & ");
+};
+
+/**
+ * Builds the `to_tsquery` expression from grouped concept tokens.
+ *  - mode "and": every concept must match (groups joined by &) — precise.
+ *  - mode "or":  any concept may match (groups joined by |) — the recall fallback.
+ * Within each group, synonyms are always OR'd. Returns "" when nothing usable.
+ */
+export const buildTsQueryExpression = (groups: string[][], mode: "and" | "or"): string => {
+  const groupExpressions: string[] = [];
+  for (const group of groups) {
+    const lexemes = group
+      .map(tokenToTsLexeme)
+      .filter((expr): expr is string => Boolean(expr))
+      .map((expr) => `(${expr})`);
+    if (lexemes.length === 0) continue;
+    groupExpressions.push(lexemes.join(" | "));
+  }
+  if (groupExpressions.length === 0) return "";
+  const joiner = mode === "and" ? " & " : " | ";
+  return groupExpressions.map((expr) => `(${expr})`).join(joiner);
+};
 
 const SEARCH_V2_CODE_SIMILARITY = 0.2;
 const SEARCH_V2_NAME_SIMILARITY = 0.18;
@@ -464,29 +505,38 @@ async function searchProductIdsV2(
   const prefixQuery = `${normalizedQuery}%`;
   const containsQuery = `%${normalizedQuery}%`;
 
-  // Phase D: expand user query through the synonym dictionary so search covers
-  // bi-directional matches (e.g. "คอมแอร์" → also tries "compressor"/"คอมเพรสเซอร์").
-  const expandedTokens = await expandQueryTokens(normalizedQuery);
-
-  // Build a single OR-tsquery from all expanded tokens. We sanitize each token
-  // into the simple `to_tsquery` lexeme form (alphanumeric and Thai chars only;
-  // anything else becomes a space) so user input can never inject tsquery syntax.
-  const sanitizedTsTokens = expandedTokens
-    .map((token) => token.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ").trim())
-    .map((token) => token.replace(/\s+/g, " "))
-    .filter((token) => token.length > 0)
-    .map((token) => token.split(" ").map((word) => `${word}:*`).join(" & "))
-    .filter((expr) => expr.length > 0);
-
-  const tsQueryExpression = sanitizedTsTokens.length > 0
-    ? sanitizedTsTokens.map((expr) => `(${expr})`).join(" | ")
-    : normalizedQuery.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
-
-  // Phase Q2: pass query through f_unaccent so it matches the unaccented tsvector index.
-  const tsQuery = Prisma.sql`to_tsquery('simple', f_unaccent(${tsQueryExpression}))`;
-
   // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
   const targetYear = input.fitmentYear ?? extractYearFromQuery(normalizedQuery);
+
+  // Phase D + AND-scope: expand the query into per-concept synonym groups, then
+  // build a precise AND-across-concepts tsquery ("หม้อน้ำ" & "mazda" & "2") with a
+  // broad OR query kept as the recall fallback. Sanitization into simple lexemes
+  // (Thai/alnum only) means user input can never inject tsquery syntax.
+  const tokenGroups = await expandQueryTokenGroups(normalizedQuery);
+
+  // Drop the detected model-year token from the FTS clause: the year is enforced
+  // separately by yearFilterClause / yearBoost against the fitment range, so
+  // requiring it as a literal lexeme would wrongly exclude products whose fitment
+  // is stored as a range (e.g. "2008-2012" has no standalone "2010" token).
+  const ftsGroups =
+    targetYear !== null
+      ? tokenGroups.filter((group) => !(group.length === 1 && group[0] === String(targetYear)))
+      : tokenGroups;
+
+  const andExpression = buildTsQueryExpression(ftsGroups, "and");
+  const orExpression = buildTsQueryExpression(ftsGroups, "or");
+  const safeFallbackExpression =
+    normalizedQuery.replace(/[^\p{L}\p{M}\p{N}_-]+/gu, " ").trim() || normalizedQuery;
+
+  // Primary = AND (precise); OR fallback only matters when ≥2 concepts exist.
+  const primaryExpression = andExpression || orExpression || safeFallbackExpression;
+  const fallbackExpression = orExpression || safeFallbackExpression;
+  const hasMultipleConcepts = ftsGroups.length > 1 && fallbackExpression !== primaryExpression;
+
+  // Phase Q2: pass query through f_unaccent so it matches the unaccented tsvector index.
+  const buildTsQuery = (expression: string) =>
+    Prisma.sql`to_tsquery('simple', f_unaccent(${expression}))`;
+  const tsQuery = buildTsQuery(primaryExpression);
 
   // When the user types a pure 4-digit year (e.g. "1901"), the fitment_text
   // stores ranges as literal "1900-1904" so substring/FTS won't match interior
@@ -795,8 +845,9 @@ async function searchProductIdsV2(
 
   // Candidate-selection OR clause (shared by year-only and non-year queries).
   // A product enters the ranked set if it matches the query by code/name/oem/
-  // keyword/alias/free-text/FTS/trigram.
-  const textMatchOr = Prisma.sql`
+  // keyword/alias/free-text/FTS/trigram. The FTS clause (`@@ tsQuery`) is the only
+  // term that varies between the precise AND query and the OR recall fallback.
+  const buildTextMatchOr = (ts: PrismaTypes.Sql) => Prisma.sql`
     f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
     OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
     OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
@@ -805,20 +856,22 @@ async function searchProductIdsV2(
     OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
     OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))
     OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
-    OR psd.search_document @@ ${tsQuery}
+    OR psd.search_document @@ ${ts}
     OR similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
     OR similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
     OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
     OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
   `;
 
-  // Year-only queries union the text clause with a fitment-year cover so they
-  // match BOTH part-number fragments and products fitting that year.
-  const candidateClause = isYearOnlyQuery
-    ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists})`
-    : Prisma.sql`AND (${textMatchOr})`;
+  const runRankedQuery = (ts: PrismaTypes.Sql) => {
+    const textMatchOr = buildTextMatchOr(ts);
+    // Year-only queries union the text clause with a fitment-year cover so they
+    // match BOTH part-number fragments and products fitting that year.
+    const candidateClause = isYearOnlyQuery
+      ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists})`
+      : Prisma.sql`AND (${textMatchOr})`;
 
-  const rows = await db.$queryRaw<RankedSearchRow[]>(Prisma.sql`
+    return db.$queryRaw<RankedSearchRow[]>(Prisma.sql`
     WITH ranked AS (
       SELECT
         psd.product_id,
@@ -853,8 +906,8 @@ async function searchProductIdsV2(
 
           -- Full-text rank
           CASE
-            WHEN psd.search_document @@ ${tsQuery}
-            THEN ts_rank_cd(psd.search_document, ${tsQuery}) * 220
+            WHEN psd.search_document @@ ${ts}
+            THEN ts_rank_cd(psd.search_document, ${ts}) * 220
             ELSE 0
           END +
 
@@ -896,6 +949,15 @@ async function searchProductIdsV2(
     OFFSET ${skip}
     LIMIT ${take}
   `);
+  };
+
+  // Precise AND query first. If a multi-concept query comes back empty (AND was
+  // too strict for this catalog's wording), fall back to the broad OR query so we
+  // never regress to "no results" where the old OR behaviour would have matched.
+  let rows = await runRankedQuery(tsQuery);
+  if (rows.length === 0 && hasMultipleConcepts) {
+    rows = await runRankedQuery(buildTsQuery(fallbackExpression));
+  }
 
   return {
     ids: rows.map((row) => row.product_id),

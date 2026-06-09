@@ -4,6 +4,7 @@ import type { LineIntentRouteResult } from "@/lib/line-intent-router";
 type ProductSearchInput = {
   query?: string | null;
   isActive?: boolean;
+  categoryName?: string | null;
   carBrandName?: string | null;
   carModelName?: string | null;
   fitmentYear?: number | null;
@@ -27,6 +28,7 @@ export type LineProductSearchBridgeInput = {
   /** Car/brand/year terms carried over from earlier turns (short-term memory). */
   contextHints?: string[] | null;
   fitmentHints?: {
+    categoryName?: string | null;
     carBrandName?: string | null;
     carModelName?: string | null;
     fitmentYear?: number | null;
@@ -163,6 +165,7 @@ export async function searchLineProductInquiry(
   const result = await resolvedSearchFn({
     query,
     isActive: true,
+    categoryName: input.fitmentHints?.categoryName ?? null,
     carBrandName: input.fitmentHints?.carBrandName ?? null,
     carModelName: input.fitmentHints?.carModelName ?? null,
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,

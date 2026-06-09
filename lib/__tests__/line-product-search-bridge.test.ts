@@ -35,6 +35,7 @@ test("searchable product inquiry calls existing search contract", async () => {
     {
       query: "คอมแอร์ vios 2012",
       isActive: true,
+      categoryName: null,
       carBrandName: null,
       carModelName: null,
       fitmentYear: null,
