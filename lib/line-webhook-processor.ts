@@ -447,18 +447,25 @@ export async function processLineAiReply(
       latestText: input.text,
       history,
     }).catch(() => null);
-    const consolidatedQuery = searchIntent?.query ?? null;
+
+    // Intent-gated retrieval: when the AI says the latest message isn't a product
+    // lookup (shop info / greeting / thanks / chitchat), DON'T search and DON'T
+    // attach product cards — even if earlier turns were about a part. This stops
+    // stale product context leaking into answers to "ร้านอยู่ที่ไหน" etc.
+    const isNonProductTurn = searchIntent?.isProductQuery === false;
+    const consolidatedQuery = isNonProductTurn ? null : searchIntent?.query ?? null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
-    const fitmentFilters: LineFitmentFilters = searchIntent
-      ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
-          partType: searchIntent.partType,
-          carBrand: searchIntent.carBrand,
-          carModel: searchIntent.carModel,
-        }).catch((): LineFitmentFilters => ({}))
-      : {};
+    const fitmentFilters: LineFitmentFilters =
+      searchIntent && !isNonProductTurn
+        ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
+            partType: searchIntent.partType,
+            carBrand: searchIntent.carBrand,
+            carModel: searchIntent.carModel,
+          }).catch((): LineFitmentFilters => ({}))
+        : {};
 
     // When the AI gave us a consolidated query it already merged the whole
     // subject, so the narrow fitment carryover is redundant. Otherwise keep the
@@ -469,18 +476,30 @@ export async function processLineAiReply(
         ? []
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
-    const productSearch = await dependencies.searchLineProductInquiry({
-      route: input.route,
-      text: consolidatedQuery ?? input.text,
-      extractedImageHints: input.imageClassification?.searchHints ?? null,
-      contextHints,
-      fitmentHints: {
-        categoryName: fitmentFilters.categoryName ?? null,
-        carBrandName: fitmentFilters.carBrandName ?? null,
-        carModelName: fitmentFilters.carModelName ?? null,
-        fitmentYear: searchIntent?.year ?? null,
-      },
-    });
+    const productSearch = isNonProductTurn
+      ? ({ searched: false, reason: "NON_PRODUCT_TURN", query: null, result: null } as Awaited<
+          ReturnType<typeof searchLineProductInquiry>
+        >)
+      : await dependencies.searchLineProductInquiry({
+          route: input.route,
+          text: consolidatedQuery ?? input.text,
+          extractedImageHints: input.imageClassification?.searchHints ?? null,
+          contextHints,
+          fitmentHints: {
+            categoryName: fitmentFilters.categoryName ?? null,
+            carBrandName: fitmentFilters.carBrandName ?? null,
+            carModelName: fitmentFilters.carModelName ?? null,
+            fitmentYear: searchIntent?.year ?? null,
+          },
+        });
+
+    if (isNonProductTurn) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "SEARCH_SKIPPED_NON_PRODUCT",
+        payload: { lineEventId: input.lineEventId, latestText: input.text },
+      });
+    }
 
     if (consolidatedQuery) {
       fireAndForgetAudit(dependencies, {

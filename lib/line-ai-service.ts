@@ -144,6 +144,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "อ่านบทสนทนาทั้งหมด แล้วตอบกลับเป็น JSON object บรรทัดเดียวเท่านั้น (ไม่มีคำอธิบาย ไม่มี markdown):",
   "",
   "{",
+  '  "isProductQuery": true|false  // ข้อความล่าสุดเป็นการ "ถามหา/ค้นหาสินค้า/อะไหล่" หรือไม่',
   '  "query": "คำค้นสั้น ๆ รวมทุกอย่างที่ลูกค้าบอก (ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี)",',
   '  "partType": "ชนิดอะไหล่ เช่น หม้อน้ำ คอยล์เย็น คอมแอร์ แผงแอร์ กรองแอร์ (ถ้าไม่ทราบใส่ null)",',
   '  "carBrand": "ยี่ห้อรถ เช่น Mazda Toyota Isuzu (ถ้าไม่ทราบใส่ null)",',
@@ -152,10 +153,11 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "}",
   "",
   "กฎ:",
+  '- isProductQuery=false เมื่อข้อความล่าสุด "ไม่ใช่" การหาสินค้า เช่น ถามที่ตั้งร้าน/เวลาเปิด/เบอร์โทร ทักทาย ขอบคุณ ตอบรับ (ครับ/ค่ะ/โอเค) หรือคุยเล่น → กรณีนี้ใส่ "query": null และไม่ต้องเดาสินค้าจากบทสนทนาก่อนหน้า',
+  "- isProductQuery=true เฉพาะเมื่อข้อความล่าสุดสื่อว่ากำลังหาอะไหล่ (รวมถึงการให้รายละเอียดเพิ่ม เช่น บอกปี/รุ่น ต่อจากที่ถามหาสินค้าไว้)",
   "- รวมข้อมูลที่ลูกค้าทยอยพิมพ์มาหลายข้อความ (เช่น ก่อนหน้าบอกชนิดอะไหล่+รุ่นรถ ล่าสุดบอกปี → รวมทั้งหมด)",
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
-  "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null (ยกเว้น query ที่ต้องมีเสมอถ้าลูกค้าบอกว่าหาอะไร)",
-  '- ถ้าลูกค้ายังไม่ได้บอกว่าหาอะไรเลย ให้ตอบ {"query": null}',
+  "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
 ].join("\n");
 
 const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
@@ -164,9 +166,12 @@ const MAX_SEARCH_YEAR = 2100;
 
 /** Structured search intent distilled from the conversation (Part B). `query` is
  *  the consolidated free-text; the rest are optional hard-filter hints resolved
- *  against master data downstream. */
+ *  against master data downstream. `isProductQuery` is false when the latest
+ *  message isn't actually a part lookup (shop info, greeting, thanks, chitchat) —
+ *  the caller then skips product search + cards entirely. */
 export type LineSearchIntent = {
   query: string;
+  isProductQuery: boolean;
   partType: string | null;
   carBrand: string | null;
   carModel: string | null;
@@ -206,11 +211,18 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const obj = parsed as Record<string, unknown>;
+  // Default true so an older/short reply that omits the flag keeps the previous
+  // (product-search) behaviour; only an explicit false marks a non-product turn.
+  const isProductQuery = obj.isProductQuery !== false;
   const query = cleanIntentString(obj.query);
-  if (!query) return null;
+
+  // Non-product turn (shop info / greeting / thanks): valid even with no query —
+  // the caller uses this to SKIP search + cards. A product turn must have a query.
+  if (isProductQuery && !query) return null;
 
   return {
-    query: query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim(),
+    query: query ? query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() : "",
+    isProductQuery,
     partType: cleanIntentString(obj.partType),
     carBrand: cleanIntentString(obj.carBrand),
     carModel: cleanIntentString(obj.carModel),

@@ -6,15 +6,29 @@ process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_te
 test("parses a clean JSON intent object", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
   const intent = parseLineSearchIntent(
-    '{"query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015}',
+    '{"isProductQuery":true,"query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015}',
   );
   assert.deepEqual(intent, {
     query: "หม้อน้ำ mazda 2",
+    isProductQuery: true,
     partType: "หม้อน้ำ",
     carBrand: "Mazda",
     carModel: "Mazda 2",
     year: 2015,
   });
+});
+
+test("defaults isProductQuery to true when the field is omitted", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const intent = parseLineSearchIntent('{"query":"คอยล์เย็น vios"}');
+  assert.equal(intent?.isProductQuery, true);
+});
+
+test("non-product turn is valid even with null query", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const intent = parseLineSearchIntent('{"isProductQuery":false,"query":null}');
+  assert.equal(intent?.isProductQuery, false);
+  assert.equal(intent?.query, "");
 });
 
 test("tolerates markdown fences and surrounding prose", async () => {

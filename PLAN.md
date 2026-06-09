@@ -100,6 +100,11 @@
     - **ขั้นตอนเปิดใช้:** 1) `npm run db:setup-search-v2` ✅ (รันแล้ว — vector ext + คอลัมน์ + HNSW) 2) `npm run backfill:embeddings` ✅ (embed 598/598 สำเร็จ) 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel env **(เหลือขั้นนี้ — production ยังไม่เปิด)**
     - ทดสอบจริงแล้ว: "หม้อน้ำ mazda 2" → หม้อน้ำ Mazda 2 ขึ้นอันดับ 1 (sim 0.84), "ตัวทำความเย็นแอร์วีออส" → เจอคอยล์เย็น/แผงแอร์ Vios (semantic เข้าใจคำบรรยาย)
 
+  - [x] (18) Intent-gated retrieval (กันสินค้าหลุดมาตอบคำถามทั่วไป — เคส "ร้านอยู่ที่ไหน" ดันรายการคอมแอร์ Vigo + การ์ดมาด้วย):
+    - **A.** ขยาย `SHOP_INFO_RE` ใน `lib/line-intent-router.ts` ครอบ "ร้านอยู่ที่ไหน/อยู่ที่ไหน/พิกัด/แผนที่/ไปยังไง/เปิดไหม/สาขา..." → route SHOP_INFO (ตอบ canned ไม่ค้น ไม่แปะการ์ด)
+    - **B.** `extractLineSearchIntent` คืน `isProductQuery` — ถ้าข้อความล่าสุดไม่ใช่การหาสินค้า (ถามข้อมูลร้าน/ทักทาย/ขอบคุณ/คุยเล่น) → `isProductQuery=false`, query=null. `processLineAiReply` gate: non-product turn → **ข้าม search + ไม่แปะการ์ด + ไม่ carryover** (audit `SEARCH_SKIPPED_NON_PRODUCT`) ไม่ให้บริบทสินค้าเก่าหลุดเข้าคำตอบ
+    - unit tests: processor non-product 1 + parse isProductQuery 2
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`

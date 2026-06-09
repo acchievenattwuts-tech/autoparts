@@ -116,6 +116,7 @@ function createProcessorTestDeps(input?: {
   intentCarModel?: string | null;
   intentYear?: number | null;
   fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
+  nonProductTurn?: boolean;
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -284,9 +285,19 @@ function createProcessorTestDeps(input?: {
     // Default: no extraction (mirrors Gemini-off / first-turn), so the search
     // falls back to the latest text. Tests that exercise carryover set it.
     extractLineSearchIntent: async () =>
-      input?.consolidatedQuery
+      input?.nonProductTurn
+        ? {
+            query: "",
+            isProductQuery: false,
+            partType: null,
+            carBrand: null,
+            carModel: null,
+            year: null,
+          }
+        : input?.consolidatedQuery
         ? {
             query: input.consolidatedQuery,
+            isProductQuery: true,
             partType: input?.intentPartType ?? null,
             carBrand: input?.intentCarBrand ?? null,
             carModel: input?.intentCarModel ?? null,
@@ -604,6 +615,25 @@ test("resolved fitment hints are passed as hard filters to search", async () => 
     carModelName: "2",
     fitmentYear: 2015,
   });
+});
+
+test("non-product turn skips search and product cards entirely", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // "ขอบคุณมากค่ะ" routes to PRODUCT_INQUIRY_TEXT (allowsSearch) by default, so
+  // without intent-gating it WOULD search; the AI flags it non-product → skip.
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ขอบคุณมากค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  // No product search ran, and no SEARCH_QUERY_CONSOLIDATED audit.
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.auditActions.includes("SEARCH_SKIPPED_NON_PRODUCT"));
+  assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
 test("search falls back to latest text when AI consolidation declines", async () => {
