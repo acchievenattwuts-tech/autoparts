@@ -9,8 +9,8 @@ import {
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-004";
-/** text-embedding-004 returns 768-dim vectors. Kept in sync with the
+const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
+/** Embedding size requested via outputDimensionality. Kept in sync with the
  *  `embedding vector(768)` column in product_search_documents. */
 export const GEMINI_EMBEDDING_DIMENSIONS = 768;
 // Gemini 3 thinkingLevel enum is upper-case: HIGH | LOW (NONE disables thinking).
@@ -213,27 +213,23 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
   );
 }
 
-function extractEmbeddings(payload: unknown, expected: number): number[][] {
+function extractEmbedding(payload: unknown): number[] {
   if (typeof payload !== "object" || payload === null) return [];
-  const embeddings = (payload as { embeddings?: unknown }).embeddings;
-  if (!Array.isArray(embeddings) || embeddings.length !== expected) return [];
-  const out: number[][] = [];
-  for (const item of embeddings) {
-    const values = (item as { values?: unknown }).values;
-    if (!Array.isArray(values) || values.length === 0) return [];
-    out.push(values as number[]);
-  }
-  return out;
+  const embedding = (payload as { embedding?: { values?: unknown } }).embedding;
+  const values = embedding?.values;
+  return Array.isArray(values) ? (values as number[]) : [];
 }
 
-async function batchEmbedOnce(secret: string, texts: string[]): Promise<number[][]> {
+async function embedContentOnce(secret: string, text: string): Promise<number[]> {
   const model = getEmbeddingModel();
-  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:batchEmbedContents?key=${encodeURIComponent(secret)}`;
+  // gemini-embedding-001 supports `embedContent` (single) — NOT the legacy
+  // `batchEmbedContents`. outputDimensionality trims the native vector to the
+  // 768 dims stored in product_search_documents.embedding.
+  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(secret)}`;
   const body = {
-    requests: texts.map((text) => ({
-      model: `models/${model}`,
-      content: { parts: [{ text }] },
-    })),
+    model: `models/${model}`,
+    content: { parts: [{ text }] },
+    outputDimensionality: GEMINI_EMBEDDING_DIMENSIONS,
   };
 
   const controller = new AbortController();
@@ -254,16 +250,18 @@ async function batchEmbedOnce(secret: string, texts: string[]): Promise<number[]
       );
     }
     const payload = (await response.json()) as unknown;
-    return extractEmbeddings(payload, texts.length);
+    return extractEmbedding(payload);
   } finally {
     clearTimeout(timeout);
   }
 }
 
 /**
- * Embeds one or more texts via Gemini (text-embedding-004 by default) with the
- * same multi-key rotation/cooldown as generation. Returns one 768-dim vector per
- * input (same order). Throws {@link AllGeminiKeysExhaustedError} when no key can
+ * Embeds one or more texts via Gemini (gemini-embedding-001 by default, 768d)
+ * with the same multi-key rotation/cooldown as generation. Returns one vector per
+ * input (same order). A bad-request/model error (400/404) aborts immediately
+ * WITHOUT cooling down keys — every key would fail identically, and it is not a
+ * key-health problem. Throws {@link AllGeminiKeysExhaustedError} when no key can
  * serve the request — callers degrade to lexical-only search on failure.
  */
 export async function generateGeminiEmbedding(texts: string[]): Promise<number[][]> {
@@ -280,15 +278,24 @@ export async function generateGeminiEmbedding(texts: string[]): Promise<number[]
   let lastError: unknown = null;
   for (const key of keys) {
     try {
-      const vectors = await batchEmbedOnce(key.secret, texts);
-      if (vectors.length !== texts.length) {
-        throw new Error("EMBED_RESPONSE_COUNT_MISMATCH");
+      const vectors: number[][] = [];
+      for (const text of texts) {
+        const vector = await embedContentOnce(key.secret, text);
+        if (vector.length !== GEMINI_EMBEDDING_DIMENSIONS) {
+          throw new Error(`EMBED_DIM_MISMATCH:${vector.length}`);
+        }
+        vectors.push(vector);
       }
       await markGeminiKeySuccess(key.keyRef);
       return vectors;
     } catch (error) {
       lastError = error;
       if (error instanceof GeminiHttpError) {
+        // Bad request / model not found: not a key issue — all keys would fail
+        // the same way. Abort without touching key health.
+        if (error.status === 400 || error.status === 404) {
+          throw new AllGeminiKeysExhaustedError(`GEMINI_EMBED_REQUEST_ERROR:${error.message}`);
+        }
         if (error.status === 429) {
           await markGeminiKeyRateLimited(key.keyRef, { daily: error.isDailyQuota, message: error.message });
           continue;
@@ -297,7 +304,7 @@ export async function generateGeminiEmbedding(texts: string[]): Promise<number[]
           await markGeminiKeyTransientError(key.keyRef, error.message);
           continue;
         }
-        if (error.status === 400 || error.status === 401 || error.status === 403) {
+        if (error.status === 401 || error.status === 403) {
           await markGeminiKeyDisabled(key.keyRef, error.message);
           continue;
         }
