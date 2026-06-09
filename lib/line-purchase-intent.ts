@@ -1,5 +1,6 @@
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
+import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/line-ai-service";
 
 /**
  * Lightweight classifier that decides whether a customer message expresses intent
@@ -30,6 +31,8 @@ export async function classifyPurchaseIntent(text: string | null | undefined): P
       maxOutputTokens: 50,
       temperature: 0,
       thinkingLevel: "NONE",
+      timeoutMs: CHAT_CALL_TIMEOUT_MS,
+      maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");

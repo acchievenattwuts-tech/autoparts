@@ -1,6 +1,7 @@
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import { storefrontFaqItems } from "@/lib/storefront-content";
+import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/line-ai-service";
 
 /**
  * Answers general customer questions grounded ONLY in the shop's real FAQ
@@ -40,6 +41,8 @@ export async function answerFromLineFaq(input: { text?: string | null }): Promis
       maxOutputTokens: 400,
       temperature: 0.3,
       thinkingLevel: "NONE",
+      timeoutMs: CHAT_CALL_TIMEOUT_MS,
+      maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
 
     const start = text.indexOf("{");

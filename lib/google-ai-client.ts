@@ -56,6 +56,17 @@ export type GeminiGenerateInput = {
    * tasks so reasoning tokens don't eat into `maxOutputTokens` and truncate output.
    */
   thinkingLevel?: "HIGH" | "LOW" | "NONE";
+  /**
+   * Per-call HTTP timeout (ms). Defaults to {@link REQUEST_TIMEOUT_MS}. Interactive
+   * chat calls pass a tighter value so a hung key fails over fast instead of
+   * burning the full 30s (which previously stacked across key rotation into >60s).
+   */
+  timeoutMs?: number;
+  /**
+   * Max number of keys to try before giving up (default: all available). Chat
+   * calls cap this low so a bad streak can't stack many timeouts in one turn.
+   */
+  maxKeyAttempts?: number;
 };
 
 export type GeminiGenerateResult = {
@@ -130,7 +141,7 @@ async function callGeminiOnce(secret: string, input: GeminiGenerateInput): Promi
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), input.timeoutMs ?? REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
@@ -173,7 +184,11 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
 
   let lastError: unknown = null;
 
-  for (const key of keys) {
+  // Cap how many keys we'll try in one call so a bad streak can't stack many
+  // timeouts into a single (interactive) turn.
+  const attemptKeys = input.maxKeyAttempts ? keys.slice(0, Math.max(1, input.maxKeyAttempts)) : keys;
+
+  for (const key of attemptKeys) {
     try {
       const text = await callGeminiOnce(key.secret, input);
       await markGeminiKeySuccess(key.keyRef);

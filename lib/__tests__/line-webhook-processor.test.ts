@@ -636,6 +636,31 @@ test("non-product turn skips search and product cards entirely", async () => {
   assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
+test("deadline fallback still replies on the free token when generate is too slow", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+  // Reply generation never returns in time.
+  dependencies.generateLineSuggestion = () => new Promise<never>(() => {});
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยล์เย็น vios"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      // 41s elapsed: past the 40s generation deadline (45s − 5s margin) but the
+      // reply token (≤45s) is still valid → fallback must go out on the token.
+      receivedAt: new Date(Date.now() - 41_000),
+      replyTokenMaxAgeMs: 45_000,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.replies.length, 1);
+  assert.ok(calls.auditActions.includes("AI_DEADLINE_FALLBACK"));
+});
+
 test("search falls back to latest text when AI consolidation declines", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ consolidatedQuery: null });

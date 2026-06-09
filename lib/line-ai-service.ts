@@ -22,6 +22,12 @@ export type LineProductSummary = {
   code: string | null;
 };
 
+// Interactive chat calls fail over fast (don't burn the full 30s on a hung key)
+// and try only a few keys, so one turn can't stack timeouts past the reply-token
+// window. Background jobs (embeddings/backfill) keep the client defaults.
+export const CHAT_CALL_TIMEOUT_MS = 15_000;
+export const CHAT_MAX_KEY_ATTEMPTS = 3;
+
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
   LineIntent.PART_IMAGE_INQUIRY,
@@ -120,6 +126,8 @@ export async function generateLineSuggestion(input: {
       // Conservative shop replies don't need deep reasoning; HIGH thinking would
       // consume the output budget and truncate the message mid-sentence.
       thinkingLevel: "NONE",
+      timeoutMs: CHAT_CALL_TIMEOUT_MS,
+      maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     }).then((result) => ({ suggestedReply: result.text.trim() }));
 
     if (!suggestedReply) {
@@ -268,6 +276,8 @@ export async function extractLineSearchIntent(input: {
       maxOutputTokens: 160,
       temperature: 0,
       thinkingLevel: "NONE",
+      timeoutMs: CHAT_CALL_TIMEOUT_MS,
+      maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
 
     return parseLineSearchIntent(text);
@@ -375,4 +385,36 @@ export function buildConservativeLineSuggestion(input: {
     confidence: LineAiConfidence.ADMIN_REQUIRED,
     reasoningSummary: `Intent ${input.intent} is not safe for automatic detailed reply.`,
   };
+}
+
+/**
+ * Deterministic reply used when the Gemini reply doesn't return before the
+ * reply-token deadline (so we still answer within the FREE reply window instead
+ * of paying for a push). Written in จูน's voice and references the customer's
+ * subject + the SAME matched products/cards — only the prose is templated; the
+ * product results shown are identical to the live path.
+ */
+export function buildJuneDeadlineReply(input: {
+  query?: string | null;
+  products?: LineProductSummary[];
+}): string {
+  const subject = input.query?.trim();
+  const products = input.products ?? [];
+
+  if (products.length === 0) {
+    return subject
+      ? `สำหรับ "${subject}" ตอนนี้จูนขอเวลาตรวจสอบเพิ่มอีกนิดนะคะ 🙏 รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิม/เบอร์บนตัวอะไหล่เพิ่มเติม จะได้ช่วยเทียบให้แม่นยำขึ้นค่ะ`
+      : "รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมเพิ่มเติมนะคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ 🙏";
+  }
+
+  const productLines = products
+    .slice(0, 5)
+    .map((product) => `• ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`)
+    .join("\n");
+
+  const opener = subject
+    ? `สำหรับ "${subject}" เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊`
+    : "เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊";
+
+  return `${opener}\n${productLines}\nเป็นการเทียบเบื้องต้นนะคะ รบกวนเช็กกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ 🙏`;
 }

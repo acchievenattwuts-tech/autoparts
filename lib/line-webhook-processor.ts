@@ -14,6 +14,7 @@ import { classifyLineImage, type LineImageClassification } from "@/lib/line-imag
 import { LINE_AI_SETTINGS_DEFAULTS } from "@/lib/line-ai-settings";
 import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
 import {
+  buildJuneDeadlineReply,
   extractLineSearchIntent,
   generateLineSuggestion,
   type LineReplyHistoryItem,
@@ -139,6 +140,9 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
+// Safety margin before the reply-token window closes: send the (deterministic)
+// reply this many ms early so it still goes out on the FREE reply token.
+const REPLY_DEADLINE_MARGIN_MS = 5_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
 const PURCHASE_HANDOFF_MESSAGE =
@@ -557,6 +561,27 @@ export async function processLineAiReply(
         ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
         : [];
 
+    // (#2) Kick the reply generation off NOW, in parallel with the purchase-intent
+    // classification below — neither depends on the other, so this removes one
+    // sequential Gemini call from the critical path on the slow product-match
+    // turns. If a forced response (purchase / escalate / FAQ / shop info) ends up
+    // winning, this result is simply discarded.
+    const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
+    const wantEarlyGenerate =
+      liveMode &&
+      (input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
+        input.route.intent === LineIntent.PART_IMAGE_INQUIRY ||
+        input.route.intent === LineIntent.GREETING);
+    const earlyGeneratePromise = wantEarlyGenerate
+      ? generateSuggestion({
+          intent: input.route.intent,
+          originalText: input.text,
+          productSearch,
+          history,
+          products,
+        }).catch(() => null)
+      : null;
+
     // Purchase intent → a human closes the sale. Keyword router first; then a
     // Gemini fallback only when the customer is plausibly deciding (product
     // inquiry with matches already shown), to keep the extra call rare.
@@ -620,21 +645,76 @@ export async function processLineAiReply(
             ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
             : null;
 
-    const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
-    let suggestion = forcedResponse
-      ? {
-          suggestedReply: forcedResponse.message,
-          confidence: forcedResponse.handoff ? LineAiConfidence.ADMIN_REQUIRED : LineAiConfidence.POSSIBLE_MATCH,
-          reasoningSummary: forcedResponse.reason,
-          matchedProducts: null,
-        }
-      : await generateSuggestion({
+    let suggestion: {
+      suggestedReply: string;
+      confidence: LineAiConfidence;
+      reasoningSummary: string;
+      matchedProducts?: unknown;
+    };
+
+    if (forcedResponse) {
+      suggestion = {
+        suggestedReply: forcedResponse.message,
+        confidence: forcedResponse.handoff ? LineAiConfidence.ADMIN_REQUIRED : LineAiConfidence.POSSIBLE_MATCH,
+        reasoningSummary: forcedResponse.reason,
+        matchedProducts: null,
+      };
+    } else {
+      // (#3) Deadline guard: the reply must land inside the FREE reply-token
+      // window (≈45s), so we race the Gemini reply against the remaining budget.
+      // If it doesn't return in time (a hung key, etc.), fall back to a จูน-voiced
+      // deterministic reply that still presents the SAME matched products/cards —
+      // only the prose is templated — so we never miss the token (→ no paid push).
+      const genPromise =
+        earlyGeneratePromise ??
+        generateSuggestion({
           intent: input.route.intent,
           originalText: input.text,
           productSearch,
           history,
           products,
+        }).catch(() => null);
+
+      const tokenBudgetMs = config.replyTokenMaxAgeMs ?? 45_000;
+      const elapsedMs = config.receivedAt
+        ? Date.now() - config.receivedAt.getTime()
+        : Date.now() - pipelineStartedAtMs;
+      const remainingMs = tokenBudgetMs - elapsedMs - REPLY_DEADLINE_MARGIN_MS;
+
+      const DEADLINE = Symbol("deadline");
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const raced =
+        remainingMs <= 0
+          ? DEADLINE
+          : await Promise.race([
+              genPromise,
+              new Promise<typeof DEADLINE>((resolve) => {
+                timer = setTimeout(() => resolve(DEADLINE), remainingMs);
+              }),
+            ]);
+      if (timer) clearTimeout(timer);
+
+      if (raced && raced !== DEADLINE) {
+        suggestion = raced;
+      } else {
+        suggestion = {
+          suggestedReply: buildJuneDeadlineReply({ query: consolidatedQuery ?? input.text, products }),
+          confidence: products.length > 0 ? LineAiConfidence.POSSIBLE_MATCH : LineAiConfidence.NEED_MORE_INFO,
+          reasoningSummary: raced === DEADLINE ? "DEADLINE_FALLBACK" : "GENERATE_FAILED_FALLBACK",
+          matchedProducts: productSearch.searched ? productSearch.result : null,
+        };
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action: "AI_DEADLINE_FALLBACK",
+          payload: {
+            lineEventId: input.lineEventId,
+            reason: raced === DEADLINE ? "DEADLINE" : "GENERATE_FAILED",
+            remainingMs,
+            productCount: products.length,
+          },
         });
+      }
+    }
 
     const hasReplyToken = canUseReplyToken(config, input.canReply);
     let sendDecision = resolveLineAiSendDecision({

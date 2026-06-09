@@ -105,6 +105,12 @@
     - **B.** `extractLineSearchIntent` คืน `isProductQuery` — ถ้าข้อความล่าสุดไม่ใช่การหาสินค้า (ถามข้อมูลร้าน/ทักทาย/ขอบคุณ/คุยเล่น) → `isProductQuery=false`, query=null. `processLineAiReply` gate: non-product turn → **ข้าม search + ไม่แปะการ์ด + ไม่ carryover** (audit `SEARCH_SKIPPED_NON_PRODUCT`) ไม่ให้บริบทสินค้าเก่าหลุดเข้าคำตอบ
     - unit tests: processor non-product 1 + parse isProductQuery 2
 
+  - [x] (19) Latency: ตอบให้ทันใน reply-token window (ฟรี ไม่ต้องใช้ push) — ข้อมูลจริงพบ tail หลุด 60-118 วิ จาก Gemini call ค้างชน timeout 30 วิ แล้ว rotate key สะสม:
+    - **(1)** เพิ่ม `timeoutMs`+`maxKeyAttempts` ใน `generateGeminiContent`; chat calls (generate/extract/purchase-intent/faq) ใช้ `CHAT_CALL_TIMEOUT_MS=15s` + `CHAT_MAX_KEY_ATTEMPTS=3` → key ที่ค้าง fail over เร็ว ไม่เผา 30 วิ (งาน embedding/backfill ใช้ default เดิม)
+    - **(2)** รัน `classifyPurchaseIntent` + `generateLineSuggestion` แบบขนาน (เริ่ม generate ล่วงหน้าใน product path) → ตัด 1 call ออกจาก critical path; ผลลัพธ์เหมือนเดิม
+    - **(3)** Deadline guard: race reply gen กับเวลาที่เหลือใน token window (margin 5s); ถ้าไม่ทัน → `buildJuneDeadlineReply()` ตอบสไตล์จูน + แสดงสินค้า/การ์ดชุดเดิมครบ (ต่างแค่ถ้อยคำ) ส่งทัน reply token เสมอ + audit `AI_DEADLINE_FALLBACK`
+    - unit tests: deadline fallback 1; รวม LINE suite 43+ ผ่าน
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`
