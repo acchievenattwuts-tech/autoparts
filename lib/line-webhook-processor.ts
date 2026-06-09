@@ -633,6 +633,48 @@ export async function processLineAiReply(
 
     return { replied };
   } catch (error) {
+    // Layer-6 safety net: when the AI pipeline throws unexpectedly, the customer
+    // must never go silent and admins must be alerted. Best-effort only — every
+    // fallback step is wrapped so a failure here can never override the original
+    // error or block the job-failed bookkeeping below.
+    const FALLBACK_TEXT = "ขออนุญาตส่งต่อให้แอดมินค่ะ จะติดต่อกลับในทันทีค่ะ 🙏";
+
+    if (config.channelAccessToken) {
+      try {
+        if (canUseReplyToken(config, input.canReply) && input.replyToken) {
+          await dependencies.replyLineMessage({
+            channelAccessToken: config.channelAccessToken,
+            replyToken: input.replyToken,
+            messages: [textMessage(FALLBACK_TEXT)],
+          });
+        } else if (config.allowPushFallback) {
+          await dependencies.pushLineMessages({
+            channelAccessToken: config.channelAccessToken,
+            recipientIds: [input.lineUserId],
+            messages: [textMessage(FALLBACK_TEXT)],
+          });
+        }
+      } catch (sendError) {
+        console.warn(
+          "[line-webhook-processor] fallback send failed:",
+          sendError instanceof Error ? sendError.message : "unknown",
+        );
+      }
+    }
+
+    const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+    await notify({
+      conversationId: input.conversation.id,
+      displayName: input.conversation.displayName,
+      text: input.text,
+      messageType: input.messageType,
+    }).catch((notifyError) => {
+      console.warn(
+        "[line-webhook-processor] fallback admin notify failed:",
+        notifyError instanceof Error ? notifyError.message : "unknown",
+      );
+    });
+
     await dependencies.updateLineAiJob(input.jobId, {
       status: LineAiJobStatus.FAILED,
       error: error instanceof Error ? error.message.slice(0, 500) : "Unknown LINE AI job failure",

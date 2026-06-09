@@ -40,7 +40,7 @@ export function getTelegramConfig(): TelegramConfig {
 }
 
 export function shouldSendTelegramForNotification(type: NotificationType): boolean {
-  return type.startsWith("SHOPEE_");
+  return type.startsWith("SHOPEE_") || type === NotificationType.LINE_OA_HANDOFF;
 }
 
 function severityLabel(severity: NotificationSeverity): string {
