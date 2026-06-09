@@ -5,6 +5,7 @@ import { Info, MessageCircle } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import LineConversationStatusSwitcher from "@/components/shared/LineConversationStatusSwitcher";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { LineConversationAiStatus, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import { listLineConversations } from "@/lib/line-admin-service";
@@ -118,20 +119,34 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-white/10">
             {conversations.map((conversation) => (
-              <Link
+              <div
                 key={conversation.id}
-                href={`/admin/line-conversations/${conversation.id}`}
-                className="block px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-white/5"
+                className="group relative px-4 py-4 transition-colors hover:bg-gray-50 dark:hover:bg-white/5"
               >
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                {/* Full-row click target — sits behind the badge/switcher so they remain interactive. */}
+                <Link
+                  href={`/admin/line-conversations/${conversation.id}`}
+                  aria-label={`เปิดบทสนทนา ${conversation.customer?.name ?? conversation.displayName ?? conversation.lineUserId}`}
+                  className="absolute inset-0 z-0"
+                />
+                <div className="pointer-events-none relative z-10 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate font-medium text-gray-900 dark:text-slate-100">
                         {conversation.customer?.name ?? conversation.displayName ?? conversation.lineUserId}
                       </p>
-                      <span className={statusBadge(conversation.aiStatus)}>
-                        {STATUS_BADGE_LABELS[conversation.aiStatus]}
-                      </span>
+                      {canManage ? (
+                        <span className="pointer-events-auto">
+                          <LineConversationStatusSwitcher
+                            conversationId={conversation.id}
+                            currentStatus={conversation.aiStatus}
+                          />
+                        </span>
+                      ) : (
+                        <span className={statusBadge(conversation.aiStatus)}>
+                          {STATUS_BADGE_LABELS[conversation.aiStatus]}
+                        </span>
+                      )}
                       {conversation.paymentSlips.map((slip) => (
                         <span
                           key={slip.id}
@@ -170,7 +185,7 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
                     {conversation.assignedAdmin ? <p className="mt-1">Owner: {conversation.assignedAdmin.name}</p> : null}
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
