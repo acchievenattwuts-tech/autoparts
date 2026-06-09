@@ -3,6 +3,30 @@ import { NotificationSeverity, NotificationType } from "@/lib/generated/prisma";
 const TELEGRAM_SEND_MESSAGE_URL = "https://api.telegram.org/bot";
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
+/**
+ * Thai-language labels for every NotificationType — used in the Telegram
+ * "type:" line so admins reading the chat see a readable Thai description
+ * instead of the raw enum name.
+ */
+const notificationTypeThaiLabel: Record<NotificationType, string> = {
+  GENERAL: "แจ้งเตือนทั่วไป",
+  SHOPEE_ORDER_IMPORTED: "นำเข้าออเดอร์ Shopee สำเร็จ",
+  SHOPEE_ORDER_FAILED: "นำเข้าออเดอร์ Shopee ล้มเหลว",
+  SHOPEE_STOCK_SYNC_FAILED: "ซิงค์สต็อก Shopee ล้มเหลว",
+  SHOPEE_TOKEN_EXPIRING: "Token Shopee ใกล้หมดอายุ",
+  SHOPEE_AUTH_REVOKED: "การเชื่อมต่อ Shopee ถูกยกเลิก",
+  SHOPEE_RETURN_REVIEW: "Shopee คืนสินค้า ต้องตรวจสอบ",
+  SHOPEE_DELIVERY_EXCEPTION: "Shopee มีปัญหาจัดส่ง",
+  LINE_OA_HANDOFF: "ลูกค้า LINE OA รอแอดมินตอบ",
+  LINE_NEW_CUSTOMER: "ลูกค้าใหม่จาก LINE",
+  LINE_OLD_CUSTOMER_LINKED: "ลูกค้าเก่าผูก LINE",
+  LINE_OLD_CUSTOMER_RELINKED: "ลูกค้าเก่าผูก LINE ใหม่",
+};
+
+export function getNotificationTypeThaiLabel(type: NotificationType): string {
+  return notificationTypeThaiLabel[type] ?? type;
+}
+
 export type TelegramConfig = {
   botToken: string | null;
   chatIds: string[];
@@ -61,7 +85,7 @@ export function buildTelegramNotificationText(payload: TelegramNotificationPaylo
   const lines = [
     `[${severityLabel(payload.severity)}] ${payload.title}`,
     payload.body?.trim() || null,
-    `type: ${payload.type}`,
+    `ประเภท: ${getNotificationTypeThaiLabel(payload.type)}`,
   ];
 
   const base = appBaseUrl?.replace(/\/+$/, "");
@@ -71,7 +95,7 @@ export function buildTelegramNotificationText(payload: TelegramNotificationPaylo
       : base
         ? `${base}${payload.link.startsWith("/") ? "" : "/"}${payload.link}`
         : payload.link;
-    lines.push(`link: ${href}`);
+    lines.push(`ลิงก์: ${href}`);
   }
 
   return lines.filter(Boolean).join("\n").slice(0, TELEGRAM_MAX_MESSAGE_LENGTH);

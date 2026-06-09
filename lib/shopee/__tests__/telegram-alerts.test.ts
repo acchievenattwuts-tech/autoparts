@@ -32,8 +32,8 @@ describe("Telegram alerts", () => {
     );
 
     assert.match(text, /^\[WARNING\] Shopee return ต้อง review/);
-    assert.match(text, /type: SHOPEE_RETURN_REVIEW/);
-    assert.match(text, /link: https:\/\/www\.sriwanparts\.com\/admin\/marketplace\/shopee\/orders\?status=CANCELLED_REVIEW/);
+    assert.match(text, /ประเภท: Shopee คืนสินค้า ต้องตรวจสอบ/);
+    assert.match(text, /ลิงก์: https:\/\/www\.sriwanparts\.com\/admin\/marketplace\/shopee\/orders\?status=CANCELLED_REVIEW/);
   });
 });
 
