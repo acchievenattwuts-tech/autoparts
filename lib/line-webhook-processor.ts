@@ -3,6 +3,7 @@ import {
   LineAiSuggestionStatus,
   LineAiJobStatus,
   LineAiJobType,
+  LineConversationAiStatus,
   LineDeliveryMode,
   LineDeliveryStatus,
   LineIntent,
@@ -12,7 +13,11 @@ import {
 import { classifyLineImage, type LineImageClassification } from "@/lib/line-image-service";
 import { LINE_AI_SETTINGS_DEFAULTS } from "@/lib/line-ai-settings";
 import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
-import { generateLineSuggestion, type LineReplyHistoryItem } from "@/lib/line-ai-service";
+import {
+  consolidateLineSearchQuery,
+  generateLineSuggestion,
+  type LineReplyHistoryItem,
+} from "@/lib/line-ai-service";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
@@ -96,6 +101,9 @@ export type LineWebhookProcessorDependencies = {
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
   /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
   answerFromLineFaq?: typeof answerFromLineFaq;
+  /** Optional override; consolidates the running search subject from conversation
+   *  history into one query (search-side short-term memory for drip-fed details). */
+  consolidateLineSearchQuery?: typeof consolidateLineSearchQuery;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -122,6 +130,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   countPendingPaymentSlipsForConversation,
   classifyPurchaseIntent,
   answerFromLineFaq,
+  consolidateLineSearchQuery,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -148,6 +157,87 @@ const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่
 const MENU_COMMAND_RE = /^(เมนู|menu)$/i;
 function isMenuCommand(text: string | null | undefined): boolean {
   return Boolean(text && MENU_COMMAND_RE.test(text.trim()));
+}
+
+// A sticker is almost always a conversation-closer ("thanks / ok 🙏" after a slip
+// or a wrapped-up chat), not a question. Routing it through the normal pipeline
+// makes it land on UNKNOWN → admin hand-off, which (a) replies with the generic
+// "รับทราบค่ะ เดี๋ยวแอดมินมาดูแล" filler — repeated every sticker — and (b) freezes
+// the AI + pings admins for nothing. Policy: greet ONCE on a fresh / long-idle
+// contact (so a sticker that opens a brand-new chat still gets a hello), otherwise
+// stay completely silent. Never hand off, never notify on a sticker.
+const STICKER_GREETING_REWAKE_MS = 6 * 60 * 60 * 1000; // 6h since the last customer turn
+const STICKER_GREETING_MESSAGE =
+  "สวัสดีค่ะ 🙏 มีอะไรให้ศรีวรรณช่วยดูแลคะ แจ้งยี่ห้อ/รุ่นรถ และอะไหล่ที่ต้องการได้เลยค่ะ";
+
+async function handleStickerEvent(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+): Promise<{ replied: boolean }> {
+  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+  const liveMode = autoReplyEnabled && !dryRun;
+
+  const prevCustomerAt = input.conversation.lastCustomerMessageAt;
+  const isFreshContact =
+    !prevCustomerAt || Date.now() - prevCustomerAt.getTime() > STICKER_GREETING_REWAKE_MS;
+  const hasReplyToken = canUseReplyToken(config, input.canReply);
+
+  // Greet only when the AI is allowed to send, the conversation is still AI-owned
+  // (not paused/handed off/closed), it's a fresh contact, and we can actually reply.
+  const shouldGreet =
+    liveMode &&
+    isFreshContact &&
+    input.conversation.aiStatus === LineConversationAiStatus.ACTIVE &&
+    hasReplyToken &&
+    Boolean(input.replyToken) &&
+    Boolean(config.channelAccessToken);
+
+  let replied = false;
+  if (shouldGreet && input.replyToken && config.channelAccessToken) {
+    const outboundMessage = await dependencies.appendLineMessage({
+      conversationId: input.conversation.id,
+      lineUserId: input.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_AI,
+      messageType: input.messageType,
+      intent: LineIntent.GREETING,
+      text: STICKER_GREETING_MESSAGE,
+      deliveryMode: LineDeliveryMode.REPLY,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+    });
+    await dependencies.replyLineMessage({
+      channelAccessToken: config.channelAccessToken,
+      replyToken: input.replyToken,
+      messages: [textMessage(STICKER_GREETING_MESSAGE)],
+    });
+    await dependencies.markOutboundLineMessageSent({
+      messageId: outboundMessage.id,
+      deliveryMode: LineDeliveryMode.REPLY,
+    });
+    replied = true;
+  }
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: "STICKER_HANDLED",
+    payload: {
+      lineEventId: input.lineEventId,
+      greeted: replied,
+      isFreshContact,
+      reason: replied ? "GREETED_FRESH_CONTACT" : "SILENT",
+    },
+  });
+
+  // No admin hand-off, no notification, no state change — the AI stays active and
+  // simply waits for the next (real) message.
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.COMPLETED,
+    result: { action: replied ? "sticker_greeted" : "sticker_ignored", replied },
+    finishedAt: new Date(),
+  });
+
+  return { replied };
 }
 
 /** Polite acknowledgement sent to the customer right before an admin hand-off, so
@@ -325,6 +415,12 @@ export async function processLineAiReply(
     return { replied: false };
   }
 
+  // Stickers never enter the search / hand-off / notify pipeline — greet once on a
+  // fresh contact, otherwise stay silent (see handleStickerEvent).
+  if (input.messageType === LineMessageType.STICKER) {
+    return handleStickerEvent(input, config, dependencies);
+  }
+
   try {
     const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
     const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -336,18 +432,44 @@ export async function processLineAiReply(
     ).catch(() => []);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
 
-    // Search memory: when the current message has no car/year of its own, carry over
-    // the most recent car/year the customer mentioned so the search stays on-target
-    // (e.g. they said "วีออส 2017" then just sent a photo).
-    const contextHints =
-      extractFitmentTerms(input.text).length > 0 ? [] : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
+    // Search-side short-term memory. A customer who drip-feeds details ("คอยเย็น
+    // d max" → "ปี 06") must search on the COMBINED subject, not the latest
+    // fragment. Primary: let the AI consolidate the running query from history.
+    // Fallback (Gemini off / first turn / declines): the deterministic builder
+    // (latest text + carried-over car/year fitment terms).
+    const consolidatedQuery = await (dependencies.consolidateLineSearchQuery ?? consolidateLineSearchQuery)({
+      intent: input.route.intent,
+      latestText: input.text,
+      history,
+    }).catch(() => null);
+
+    // When the AI gave us a consolidated query it already merged the whole
+    // subject, so the narrow fitment carryover is redundant. Otherwise keep the
+    // deterministic carryover so a follow-up with no car/year still stays on-target.
+    const contextHints = consolidatedQuery
+      ? []
+      : extractFitmentTerms(input.text).length > 0
+        ? []
+        : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
     const productSearch = await dependencies.searchLineProductInquiry({
       route: input.route,
-      text: input.text,
+      text: consolidatedQuery ?? input.text,
       extractedImageHints: input.imageClassification?.searchHints ?? null,
       contextHints,
     });
+
+    if (consolidatedQuery) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "SEARCH_QUERY_CONSOLIDATED",
+        payload: {
+          lineEventId: input.lineEventId,
+          latestText: input.text,
+          consolidatedQuery,
+        },
+      });
+    }
 
     fireAndForgetAudit(dependencies, {
       conversationId: input.conversation.id,

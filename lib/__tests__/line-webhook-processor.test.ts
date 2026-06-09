@@ -76,6 +76,20 @@ function imagePayload(lineEventId = "event-img-1") {
   };
 }
 
+function stickerPayload(lineEventId = "event-sticker-1") {
+  return {
+    events: [
+      {
+        type: "message",
+        webhookEventId: lineEventId,
+        replyToken: `reply-${lineEventId}`,
+        source: { type: "user", userId: "line-user-1" },
+        message: { id: `message-${lineEventId}`, type: "sticker" },
+      },
+    ],
+  };
+}
+
 function createProcessorTestDeps(input?: {
   duplicate?: boolean;
   duplicateEventIds?: string[];
@@ -86,6 +100,8 @@ function createProcessorTestDeps(input?: {
   failedSearchCount?: number;
   purchaseIntent?: boolean;
   faqReply?: string;
+  lastCustomerMessageAt?: Date | null;
+  consolidatedQuery?: string | null;
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -125,6 +141,7 @@ function createProcessorTestDeps(input?: {
         lineUserId: conversationInput.lineUserId,
         customerId: conversationInput.customerId,
         aiStatus: input?.conversationStatus ?? LineConversationAiStatus.ACTIVE,
+        lastCustomerMessageAt: input?.lastCustomerMessageAt ?? null,
       }) as Awaited<ReturnType<LineWebhookProcessorDependencies["getOrCreateLineConversation"]>>;
     },
     appendLineMessage: async (message) => {
@@ -248,6 +265,9 @@ function createProcessorTestDeps(input?: {
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
     answerFromLineFaq: async () =>
       input?.faqReply ? { answered: true, reply: input.faqReply } : { answered: false, reply: "" },
+    // Default: no consolidation (mirrors Gemini-off / first-turn), so the search
+    // falls back to the latest text. Tests that exercise carryover set it.
+    consolidateLineSearchQuery: async () => input?.consolidatedQuery ?? null,
   };
 
   return { calls, dependencies };
@@ -466,6 +486,85 @@ test("'เมนู' is ignored entirely — no reply, no handoff, AI stays acti
   assert.equal(calls.notifyHandoffs.length, 0);
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.suggestions.length, 0);
+});
+
+test("sticker on a fresh contact greets once, no handoff, no notify", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // lastCustomerMessageAt = null → treated as a fresh contact.
+  const { calls, dependencies } = createProcessorTestDeps({ lastCustomerMessageAt: null });
+
+  const result = await processLineWebhookPayload(
+    stickerPayload(),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.replies.length, 1);
+  assert.match(calls.replies[0]?.text ?? "", /สวัสดีค่ะ/);
+  // Never search, never hand off, never notify on a sticker.
+  assert.deepEqual(calls.searches, []);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.ok(calls.auditActions.includes("STICKER_HANDLED"));
+});
+
+test("sticker mid-conversation is silent — no reply, no handoff, no notify", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // A recent customer turn → the sticker is a conversation-closer, stay silent.
+  const { calls, dependencies } = createProcessorTestDeps({
+    lastCustomerMessageAt: new Date(Date.now() - 60_000),
+  });
+
+  const result = await processLineWebhookPayload(
+    stickerPayload(),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.repliedCount, 0);
+  assert.deepEqual(calls.replies, []);
+  assert.deepEqual(calls.pushes, []);
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  // Only the inbound sticker is appended — no outbound greeting.
+  assert.deepEqual(calls.appendedDirections, [LineMessageDirection.INBOUND]);
+});
+
+test("drip-fed follow-up searches the AI-consolidated query, not the latest fragment", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // Customer earlier said "คอยเย็น d max", now just sends "ปี 06". The AI consolidates
+  // the running subject; the search must run on that, not on "ปี 06" alone.
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยล์เย็น d-max 2006",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ปี 06"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.searches, ["คอยล์เย็น d-max 2006"]);
+  assert.ok(calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
+});
+
+test("search falls back to latest text when AI consolidation declines", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ consolidatedQuery: null });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยเย็น vios"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.searches, ["คอยเย็น vios"]);
+  assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
 test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", async () => {
