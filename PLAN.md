@@ -66,7 +66,7 @@
   - [docs/shopee/USER-TASKS.md](/D:/autoparts/docs/shopee/USER-TASKS.md) — งานที่เจ้าของร้านต้องทำเอง
 
 ### 5. LINE OA + AI Chat Hardening (2026-06-09)
-- สถานะ: **review-driven hardening รอบแรกเสร็จ** (13 ข้อจาก code review) · เหลือ ops task: รัน `prisma db push` สำหรับ index ใหม่
+- สถานะ: **review-driven hardening รอบแรกเสร็จสมบูรณ์** (13 ข้อจาก code review + `prisma db push` รัน index ใหม่แล้ว 2026-06-09)
 - หลักการ: ปรับ reliability/performance ของ webhook + AI pipeline โดยไม่เปลี่ยน business logic / พฤติกรรมที่ลูกค้ารู้สึกได้
 - ไฟล์หลัก: `app/api/line/webhook/route.ts`, `lib/line-webhook-processor.ts`, `lib/line-conversation-repository.ts`, `lib/line-ai-job-worker.ts`, `lib/line-intent-router.ts`, `app/api/line/ai-jobs/reconcile/route.ts`
 - งานที่ทำเสร็จ:
@@ -80,10 +80,8 @@
   - [x] (9) เปลี่ยน audit writes 7 จุด (debug/metric) เป็น fire-and-forget ตัด round-trip ออกจาก reply latency
   - [x] (10) Dedupe LINE profile fetch ต่อ userId ใน webhook payload เดียวกัน
   - [x] (11) เก็บ `pipelineDurationMs` ใน AI_SEND_DECISION audit เพื่อวัด p95
-  - [x] (12) เพิ่ม composite index `LineAiAuditLog [conversationId, action, createdAt desc]` (schema แก้แล้ว — **ต้องรัน `prisma db push`**)
+  - [x] (12) เพิ่ม composite index `LineAiAuditLog [conversationId, action, createdAt desc]` (schema แก้แล้ว + `prisma db push` แล้ว 2026-06-09)
   - [x] (13) Cap history แต่ละ turn ที่ 400 ตัวอักษร กัน Gemini prompt budget ล้น/ตอบถูกตัด
-- งานที่ต้องทำต่อ (Ops):
-  - [ ] รัน `prisma db push` เพื่อสร้าง composite index ของข้อ 12 บน Supabase
 
 ## Source Of Truth Map
 ### Product and Inventory
