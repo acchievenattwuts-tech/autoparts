@@ -486,3 +486,21 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
   current month. Read-only aggregation in
   [lib/line-payment-slip-reviewer-stats.ts](/D:/autoparts/lib/line-payment-slip-reviewer-stats.ts);
   no mutation, no AuditLog.
+
+## Admin Notification System
+
+### Polling & Alerts
+- **Polling interval**: 10 minutes (refresh bell status; paused when tab is hidden).
+- **Telegram alerts**: Shopee (6 types: order imported, failed, stock sync failed, token expiring, auth revoked,
+  return review, delivery exception) + LINE OA handoff. Set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_IDS` env vars.
+- **In-app only**: GENERAL alerts (by design; not sent to Telegram).
+- **Dedup**: per-conversation for LINE OA (prevent spam bursts).
+
+### Auto-Cleanup (Node.js Cron Job)
+- **Schedule**: 2 AM daily (Bangkok time).
+- **Action**: Delete read notifications (readAt not null) older than 30 days.
+- **Code**:
+  - `lib/notification-cleanup-service.ts` — cron initialization
+  - `lib/notifications.ts:cleanupOldNotifications()` — cleanup logic
+  - `instrumentation.ts` — Next.js startup hook (registered via `experimentalHook: true` in next.config.ts)
+  - Dependency: `node-cron` installed
