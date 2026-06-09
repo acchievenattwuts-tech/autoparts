@@ -139,6 +139,75 @@ export async function generateLineSuggestion(input: {
   }
 }
 
+const SEARCH_QUERY_SYSTEM_INSTRUCTION = [
+  "คุณคือตัวช่วยสร้าง 'คำค้นหาสินค้า' ให้ระบบค้นหาอะไหล่แอร์รถยนต์ของร้าน",
+  "หน้าที่: อ่านบทสนทนาทั้งหมด แล้วสรุป 'สิ่งที่ลูกค้ากำลังตามหาตอนนี้' ออกมาเป็นคำค้นสั้น ๆ บรรทัดเดียว",
+  "",
+  "กฎ:",
+  "- รวมข้อมูลที่ลูกค้าทยอยพิมพ์มาหลายข้อความให้เป็นคำค้นเดียว (เช่น ข้อความก่อนบอกชนิดอะไหล่+รุ่นรถ ข้อความล่าสุดบอกปี → รวมทั้งหมด)",
+  "- รูปแบบที่ต้องการ: ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี (เท่าที่ลูกค้าให้มา)",
+  "- แปลงปีย่อ 2 หลักเป็นปี ค.ศ. 4 หลัก เช่น 'ปี 06' → '2006', 'ปี 2560' (พ.ศ.) → '2017'",
+  "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ห้ามเดารุ่น/ปี/ชนิดอะไหล่เพิ่มเอง",
+  "- ตอบเฉพาะคำค้นบรรทัดเดียว ห้ามมีคำอธิบาย ห้ามขึ้นบรรทัดใหม่ ห้ามใส่เครื่องหมายคำพูด",
+  "- ถ้าสรุปคำค้นไม่ได้เลย (ลูกค้ายังไม่ได้บอกว่าหาอะไร) ให้ตอบว่า NONE",
+].join("\n");
+
+const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
+
+/**
+ * Consolidates the running "search subject" from the whole conversation into a
+ * single query string, so a customer who drip-feeds details ("คอยเย็น d max" →
+ * "ปี 06") gets a search on the COMBINED intent ("คอยล์เย็น d-max 2006") rather
+ * than just the latest raw fragment. This is the search-side counterpart to the
+ * reply generator, which already reads full history.
+ *
+ * Returns null whenever Gemini is unavailable, the intent isn't searchable, the
+ * model declines (NONE), or anything errors — the caller then falls back to the
+ * deterministic query builder (latest text + carried-over fitment terms), so a
+ * failure here never blocks or worsens the search.
+ */
+export async function consolidateLineSearchQuery(input: {
+  intent: LineIntent;
+  latestText?: string | null;
+  history?: LineReplyHistoryItem[];
+}): Promise<string | null> {
+  const searchable =
+    input.intent === LineIntent.PRODUCT_INQUIRY_TEXT || input.intent === LineIntent.PART_IMAGE_INQUIRY;
+  // Only worth a model call on a follow-up turn: with no prior history the latest
+  // message already IS the full query, so we skip the call entirely (no extra cost).
+  if (!searchable || !hasGeminiKeysConfigured() || !input.history || input.history.length === 0) {
+    return null;
+  }
+
+  try {
+    const lines: string[] = [
+      "บทสนทนา (เก่าสุด → ใหม่สุด):",
+      ...input.history.map((turn) => `${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`),
+      `ลูกค้า (ข้อความล่าสุด): ${input.latestText?.trim() || "(ไม่มีข้อความ อาจเป็นรูปภาพ)"}`,
+      "",
+      "สรุปคำค้นหาสินค้าที่ลูกค้ากำลังตามหาตอนนี้ (บรรทัดเดียว):",
+    ];
+
+    const { text } = await generateGeminiContent({
+      prompt: lines.join("\n"),
+      systemInstruction: SEARCH_QUERY_SYSTEM_INSTRUCTION,
+      maxOutputTokens: 60,
+      temperature: 0,
+      thinkingLevel: "NONE",
+    });
+
+    const cleaned = text
+      .replace(/[\r\n]+/g, " ")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .trim();
+
+    if (!cleaned || cleaned.toUpperCase() === "NONE") return null;
+    return cleaned.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 function buildLineReplyPrompt(input: {
   intent: LineIntent;
   originalText?: string | null;

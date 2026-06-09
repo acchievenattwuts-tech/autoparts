@@ -19,3 +19,17 @@ test("returns empty when no fitment terms", () => {
 test("dedupes repeated terms", () => {
   assert.deepEqual(extractFitmentTerms("civic civic 2020 2020"), ["civic", "2020"]);
 });
+
+test("matches spaced model name 'd max'", () => {
+  assert.deepEqual(extractFitmentTerms("คอยเย็น d max"), ["d max"]);
+});
+
+test("expands plausible two-digit Thai shorthand year 'ปี 06' to 2006", () => {
+  assert.deepEqual(extractFitmentTerms("ปี 06"), ["2006"]);
+  assert.deepEqual(extractFitmentTerms("คอยเย็น d max ปี 06"), ["d max", "2006"]);
+});
+
+test("ignores ambiguous high two-digit year (e.g. 'ปี 60') in the deterministic fallback", () => {
+  // 60 > SHORT_YEAR_MAX (could be พ.ศ. 2560); left to the AI consolidation step.
+  assert.deepEqual(extractFitmentTerms("ปี 60"), []);
+});

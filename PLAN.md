@@ -82,6 +82,8 @@
   - [x] (11) เก็บ `pipelineDurationMs` ใน AI_SEND_DECISION audit เพื่อวัด p95
   - [x] (12) เพิ่ม composite index `LineAiAuditLog [conversationId, action, createdAt desc]` (schema แก้แล้ว + `prisma db push` แล้ว 2026-06-09)
   - [x] (13) Cap history แต่ละ turn ที่ 400 ตัวอักษร กัน Gemini prompt budget ล้น/ตอบถูกตัด
+  - [x] (14) Sticker handler: สติกเกอร์ไม่เข้า search/handoff/notify pipeline อีกต่อไป — เดิมตก UNKNOWN → handoff → ตอบ "รับทราบค่ะ เดี๋ยวแอดมินมาดูแล" ซ้ำ + freeze AI + ping แอดมินทุกใบ. ใหม่: ทักทายครั้งเดียวเมื่อเป็น contact ใหม่/ห่าง > 6 ชม. (`lastCustomerMessageAt` snapshot), นอกนั้นนิ่งสนิท ไม่ตั้ง waiting_admin ไม่แจ้งเตือน (`handleStickerEvent` ใน `lib/line-webhook-processor.ts`) + เพิ่ม audit `STICKER_HANDLED` + 2 unit tests
+  - [x] (15) AI-consolidated search query (แก้ปัญหา drip-feed): เดิมลูกค้าทยอยพิมพ์ ("คอยเย็น d max" → "ปี 06") แล้ว search ใช้แค่ข้อความล่าสุด "ปี 06" → เจอ 516 รายการมั่ว (ทั้งการ์ดสินค้า + ลิงก์ `?q=ปี 06`). ใหม่: `consolidateLineSearchQuery()` ใน `lib/line-ai-service.ts` ให้ Gemini รวมหัวข้อที่ลูกค้าตามหาจากบทสนทนาเป็นคำค้นเดียว (ชนิดอะไหล่+รุ่น+ปี, แปลงปีย่อ 2 หลัก) แล้ว `processLineAiReply` ป้อน query นั้นเข้า search แทน raw text (เรียกเฉพาะเทิร์น follow-up ที่มี history → เทิร์นแรกไม่เพิ่ม call). Fallback ปลอดภัย: Gemini off/error/ตอบ NONE → ใช้ logic เดิม (latest text + fitment carryover). แถมปิดรูรั่ว regex ใน `lib/line-fitment-extract.ts`: รองรับ "d max" เว้นวรรค + ขยาย "ปี NN" 2 หลัก (00–35) → ค.ศ. + audit `SEARCH_QUERY_CONSOLIDATED` + unit tests (processor 2 + fitment 3)
 
 ## Source Of Truth Map
 ### Product and Inventory
