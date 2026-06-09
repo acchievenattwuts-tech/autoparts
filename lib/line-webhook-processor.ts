@@ -14,12 +14,15 @@ import { classifyLineImage, type LineImageClassification } from "@/lib/line-imag
 import { LINE_AI_SETTINGS_DEFAULTS } from "@/lib/line-ai-settings";
 import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
 import {
+  buildJuneAskDetailsReply,
   buildJuneDeadlineReply,
+  buildJuneSocialReply,
   extractLineSearchIntent,
   generateLineSuggestion,
   type LineReplyHistoryItem,
 } from "@/lib/line-ai-service";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
+import { GUARD_GROUPS, groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
@@ -249,6 +252,74 @@ async function handleStickerEvent(
   return { replied };
 }
 
+/**
+ * Handles a `social` message (ขอบคุณ / โอเค / คุยเล่นสั้น ๆ): a short warm ack — or
+ * stays silent when it's just a closing ack right after the shop replied (the last
+ * history turn is from the shop), to avoid back-and-forth ping-pong. Never searches,
+ * never hands off, never notifies. Respects admin take-over (only replies when the
+ * conversation is still AI-active).
+ */
+async function handleSocialTurn(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  history: LineReplyHistoryItem[],
+): Promise<{ replied: boolean }> {
+  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+  const liveMode = autoReplyEnabled && !dryRun;
+
+  // Closing ack right after the shop's own reply → stay silent.
+  const isClosingAck = history[history.length - 1]?.role === "shop";
+  const hasReplyToken = canUseReplyToken(config, input.canReply);
+
+  const shouldReply =
+    liveMode &&
+    input.conversation.aiStatus === LineConversationAiStatus.ACTIVE &&
+    !isClosingAck &&
+    hasReplyToken &&
+    Boolean(input.replyToken) &&
+    Boolean(config.channelAccessToken);
+
+  let replied = false;
+  if (shouldReply && input.replyToken && config.channelAccessToken) {
+    const outboundMessage = await dependencies.appendLineMessage({
+      conversationId: input.conversation.id,
+      lineUserId: input.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_AI,
+      messageType: input.messageType,
+      intent: LineIntent.GREETING,
+      text: buildJuneSocialReply(),
+      deliveryMode: LineDeliveryMode.REPLY,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+    });
+    await dependencies.replyLineMessage({
+      channelAccessToken: config.channelAccessToken,
+      replyToken: input.replyToken,
+      messages: [textMessage(buildJuneSocialReply())],
+    });
+    await dependencies.markOutboundLineMessageSent({
+      messageId: outboundMessage.id,
+      deliveryMode: LineDeliveryMode.REPLY,
+    });
+    replied = true;
+  }
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: "SOCIAL_HANDLED",
+    payload: { lineEventId: input.lineEventId, replied, isClosingAck },
+  });
+
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.COMPLETED,
+    result: { action: replied ? "social_reply" : "social_silent", replied },
+    finishedAt: new Date(),
+  });
+
+  return { replied };
+}
+
 /** Polite acknowledgement sent to the customer right before an admin hand-off, so
  *  the AI never goes silent. Tailored per intent. */
 function handoffAckForIntent(intent: LineIntent): string {
@@ -441,29 +512,70 @@ export async function processLineAiReply(
     ).catch(() => []);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
 
-    // Search-side short-term memory. A customer who drip-feeds details ("คอยเย็น
-    // d max" → "ปี 06") must search on the COMBINED subject, not the latest
-    // fragment. Primary: the AI extracts the running query + structured fitment
-    // hints from history. Fallback (Gemini off / first turn / declines): the
-    // deterministic builder (latest text + carried-over car/year fitment terms).
-    const searchIntent = await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
-      intent: input.route.intent,
-      latestText: input.text,
-      history,
-    }).catch(() => null);
+    // ── Routing: AI intent classification (Layer-2) ───────────────────────────
+    // Layer-1 (regex) already produced input.route. For high-stakes groups
+    // (payment/price/claim/purchase) the keyword match is AUTHORITATIVE — we don't
+    // ask the AI (guard). Otherwise the AI classifies the message into a group; on
+    // failure we fall back to the deterministic Layer-1 result so the turn never
+    // breaks. The classifier also distils the consolidated product query/hints.
+    // Image turns keep their existing image route (PART_IMAGE_INQUIRY /
+    // PAYMENT_SLIP_IMAGE from the vision classifier) — the text classifier only
+    // applies to text messages.
+    const isTextTurn = input.messageType === LineMessageType.TEXT;
+    const layer1Group = intentToGroup(input.route.intent);
+    const regexGuardHit = GUARD_GROUPS.has(layer1Group);
+    const shouldClassify = isTextTurn && !regexGuardHit;
+    const searchIntent = shouldClassify
+      ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
+          intent: input.route.intent,
+          latestText: input.text,
+          history,
+        }).catch(() => null)
+      : null;
+    const classifyFailed = shouldClassify && searchIntent === null;
+    const group: LineMessageGroup = shouldClassify ? searchIntent?.group ?? layer1Group : layer1Group;
 
-    // Intent-gated retrieval: when the AI says the latest message isn't a product
-    // lookup (shop info / greeting / thanks / chitchat), DON'T search and DON'T
-    // attach product cards — even if earlier turns were about a part. This stops
-    // stale product context leaking into answers to "ร้านอยู่ที่ไหน" etc.
-    const isNonProductTurn = searchIntent?.isProductQuery === false;
+    // Effective route from the group (reuses the existing forced-response / hand-off
+    // / policy machinery). general_faq / social / other have no 1:1 intent → keep
+    // the Layer-1 route and drive them with the flags below. Non-text turns keep
+    // their original route untouched.
+    const route = isTextTurn ? groupToRoute(group) ?? input.route : input.route;
+    const tryFaqThenAsk = isTextTurn && (group === "general_faq" || group === "other");
+
+    fireAndForgetAudit(dependencies, {
+      conversationId: input.conversation.id,
+      action: "INTENT_CLASSIFIED",
+      payload: {
+        lineEventId: input.lineEventId,
+        group,
+        source: regexGuardHit
+          ? "regex_guard"
+          : !isTextTurn
+            ? "image_route"
+            : classifyFailed
+              ? "regex_fallback"
+              : "ai",
+        routedIntent: route.intent,
+      },
+    });
+
+    // social (ขอบคุณ/โอเค/คุยเล่น) → brief ack, or stay silent when it's just a
+    // closing ack right after the shop replied. Handled inline like a sticker.
+    if (group === "social") {
+      return handleSocialTurn(input, config, dependencies, history);
+    }
+
+    // Intent-gated retrieval: only `product` turns search + attach cards. Every
+    // other group answers from a template/FAQ or hands off — so stale product
+    // context can never leak into answers to "ร้านอยู่ที่ไหน" etc.
+    const isNonProductTurn = group !== "product";
     const consolidatedQuery = isNonProductTurn ? null : searchIntent?.query ?? null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
     const fitmentFilters: LineFitmentFilters =
-      searchIntent && !isNonProductTurn
+      !isNonProductTurn && searchIntent
         ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
             partType: searchIntent.partType,
             carBrand: searchIntent.carBrand,
@@ -485,7 +597,7 @@ export async function processLineAiReply(
           ReturnType<typeof searchLineProductInquiry>
         >)
       : await dependencies.searchLineProductInquiry({
-          route: input.route,
+          route,
           text: consolidatedQuery ?? input.text,
           extractedImageHints: input.imageClassification?.searchHints ?? null,
           contextHints,
@@ -569,12 +681,12 @@ export async function processLineAiReply(
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
     const wantEarlyGenerate =
       liveMode &&
-      (input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
-        input.route.intent === LineIntent.PART_IMAGE_INQUIRY ||
-        input.route.intent === LineIntent.GREETING);
+      (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
+        route.intent === LineIntent.PART_IMAGE_INQUIRY ||
+        route.intent === LineIntent.GREETING);
     const earlyGeneratePromise = wantEarlyGenerate
       ? generateSuggestion({
-          intent: input.route.intent,
+          intent: route.intent,
           originalText: input.text,
           productSearch,
           history,
@@ -585,14 +697,14 @@ export async function processLineAiReply(
     // Purchase intent → a human closes the sale. Keyword router first; then a
     // Gemini fallback only when the customer is plausibly deciding (product
     // inquiry with matches already shown), to keep the extra call rare.
-    const isKeywordPurchase = input.route.intent === LineIntent.PURCHASE_INTENT;
+    const isKeywordPurchase = route.intent === LineIntent.PURCHASE_INTENT;
     let isPurchaseIntent = isKeywordPurchase;
     if (
       !isPurchaseIntent &&
       liveMode &&
       products.length > 0 &&
-      (input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
-        input.route.intent === LineIntent.PART_IMAGE_INQUIRY)
+      (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
+        route.intent === LineIntent.PART_IMAGE_INQUIRY)
     ) {
       isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(input.text).catch(
         () => false,
@@ -608,7 +720,8 @@ export async function processLineAiReply(
     // to an admin.
     const faqAnswer =
       liveMode &&
-      ((isNonProductTurn && input.route.intent !== LineIntent.SHOP_INFO) ||
+      (tryFaqThenAsk ||
+        (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
         (productSearch.searched && productSearch.result.total === 0))
         ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
             answered: false,
@@ -646,9 +759,18 @@ export async function processLineAiReply(
               audit: "AI_PURCHASE_HANDOFF",
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
-          : liveMode && input.route.intent === LineIntent.SHOP_INFO
+          : liveMode && route.intent === LineIntent.SHOP_INFO
             ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
-            : null;
+            : liveMode && tryFaqThenAsk
+              ? {
+                  // general_faq / other that the FAQ couldn't answer → ask the
+                  // customer for details in จูน's voice (keep the conversation
+                  // moving), never a silent admin hand-off.
+                  message: buildJuneAskDetailsReply(),
+                  reason: "OTHER_ASK_DETAILS",
+                  handoff: false,
+                }
+              : null;
 
     let suggestion: {
       suggestedReply: string;
@@ -673,7 +795,7 @@ export async function processLineAiReply(
       const genPromise =
         earlyGeneratePromise ??
         generateSuggestion({
-          intent: input.route.intent,
+          intent: route.intent,
           originalText: input.text,
           productSearch,
           history,
@@ -726,16 +848,24 @@ export async function processLineAiReply(
       autoReplyEnabled,
       dryRun,
       conversationStatus: input.conversation.aiStatus,
-      route: input.route,
+      route,
       confidence: suggestion.confidence,
       hasReplyToken,
       allowPushFallback: config.allowPushFallback ?? false,
     });
 
+    // Never auto-send (even a template/FAQ answer) once an admin has taken over the
+    // conversation (paused / waiting-admin / closed) — the human is handling it.
+    const conversationBlocked =
+      input.conversation.aiStatus === LineConversationAiStatus.PAUSED_BY_ADMIN ||
+      input.conversation.aiStatus === LineConversationAiStatus.WAITING_ADMIN ||
+      input.conversation.aiStatus === LineConversationAiStatus.CLOSED;
+
     // Force-deliver the forced-response message (a handoff's ADMIN_REQUIRED
     // confidence would otherwise resolve to a silent handoff). Falls back to a
-    // silent handoff only when there is no usable delivery channel.
-    if (forcedResponse) {
+    // silent handoff only when there is no usable delivery channel. Suppressed
+    // when the conversation is admin-owned (above).
+    if (forcedResponse && !conversationBlocked) {
       const deliveryMode = hasReplyToken
         ? LineDeliveryMode.REPLY
         : config.allowPushFallback
@@ -759,7 +889,7 @@ export async function processLineAiReply(
           ? LineDeliveryMode.PUSH
           : LineDeliveryMode.NONE;
       if (deliveryMode !== LineDeliveryMode.NONE) {
-        suggestion = { ...suggestion, suggestedReply: handoffAckForIntent(input.route.intent) };
+        suggestion = { ...suggestion, suggestedReply: handoffAckForIntent(route.intent) };
         sendDecision = { action: "send", deliveryMode, reason: `HANDOFF_ACK_${sendDecision.reason}` };
         handoffAfterSend = true;
       }
@@ -768,7 +898,7 @@ export async function processLineAiReply(
     await dependencies.storeLineAiSuggestion({
       conversationId: input.conversation.id,
       lineMessageId: input.inboundMessage.id,
-      intent: input.route.intent,
+      intent: route.intent,
       suggestedReply: suggestion.suggestedReply,
       confidence: suggestion.confidence,
       matchedProducts: suggestion.matchedProducts ? JSON.parse(JSON.stringify(suggestion.matchedProducts)) : null,
@@ -820,7 +950,7 @@ export async function processLineAiReply(
         lineUserId: input.lineUserId,
         direction: LineMessageDirection.OUTBOUND_AI,
         messageType: input.messageType,
-        intent: input.route.intent,
+        intent: route.intent,
         text: suggestion.suggestedReply,
         deliveryMode: LineDeliveryMode.REPLY,
         deliveryStatus: LineDeliveryStatus.PENDING,
@@ -849,7 +979,7 @@ export async function processLineAiReply(
         lineUserId: input.lineUserId,
         direction: LineMessageDirection.OUTBOUND_AI,
         messageType: input.messageType,
-        intent: input.route.intent,
+        intent: route.intent,
         text: suggestion.suggestedReply,
         deliveryMode: LineDeliveryMode.PUSH,
         deliveryStatus: LineDeliveryStatus.PENDING,

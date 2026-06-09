@@ -2,6 +2,7 @@ import { LineAiConfidence, LineIntent } from "@/lib/generated/prisma";
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import type { LineProductSearchBridgeResult } from "@/lib/line-product-search-bridge";
+import { isLineMessageGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 
 export type LineAiSuggestionDraft = {
   suggestedReply: string;
@@ -148,22 +149,35 @@ export async function generateLineSuggestion(input: {
 }
 
 const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
-  "คุณคือตัวช่วยแยกแยะ 'สิ่งที่ลูกค้ากำลังตามหา' จากบทสนทนา เพื่อป้อนให้ระบบค้นหาอะไหล่แอร์รถยนต์",
-  "อ่านบทสนทนาทั้งหมด แล้วตอบกลับเป็น JSON object บรรทัดเดียวเท่านั้น (ไม่มีคำอธิบาย ไม่มี markdown):",
+  "คุณคือตัวจัดกลุ่มข้อความลูกค้าในแชทร้านอะไหล่แอร์รถยนต์ (ศรีวรรณอะไหล่แอร์)",
+  "อ่านบทสนทนาทั้งหมด โฟกัสที่ 'ข้อความล่าสุด' แล้วตอบเป็น JSON object บรรทัดเดียวเท่านั้น (ไม่มีคำอธิบาย ไม่มี markdown):",
   "",
   "{",
-  '  "isProductQuery": true|false  // ข้อความล่าสุดเป็นการ "ถามหา/ค้นหาสินค้า/อะไหล่" หรือไม่',
-  '  "query": "คำค้นสั้น ๆ รวมทุกอย่างที่ลูกค้าบอก (ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี)",',
+  '  "group": "<ชื่อกลุ่ม>",',
+  '  "query": "คำค้นสั้น ๆ รวมทุกอย่างที่ลูกค้าบอก (ชนิดอะไหล่ + ยี่ห้อ/รุ่นรถ + ปี) — เฉพาะเมื่อ group=product",',
   '  "partType": "ชนิดอะไหล่ เช่น หม้อน้ำ คอยล์เย็น คอมแอร์ แผงแอร์ กรองแอร์ (ถ้าไม่ทราบใส่ null)",',
   '  "carBrand": "ยี่ห้อรถ เช่น Mazda Toyota Isuzu (ถ้าไม่ทราบใส่ null)",',
   '  "carModel": "รุ่นรถ เช่น Mazda 2, D-Max, Vios (ถ้าไม่ทราบใส่ null)",',
   '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null',
   "}",
   "",
+  "กลุ่ม (เลือก 1):",
+  "- product = ถามหา/ค้นหาอะไหล่ หรือให้รายละเอียดเพิ่ม (ปี/รุ่น) ต่อจากที่ถามหาสินค้า",
+  "- shop_info = ที่ตั้งร้าน/เวลาเปิด-ปิด/เบอร์โทร/แผนที่/มีหน้าร้านไหม/ไปร้านยังไง",
+  "- general_faq = วิธีสั่งซื้อ/วิธีค้นหา/ส่งต่างจังหวัดไหม/นโยบายร้าน (คำถามทั่วไปที่ไม่ใช่ตัวสินค้า)",
+  "- payment = แจ้งโอน/ส่งสลิป/ถามวิธีชำระเงิน",
+  "- shipping_address = แจ้งที่อยู่/ขอให้จัดส่ง",
+  "- order_status = ติดตามพัสดุ/สถานะออเดอร์",
+  "- price_negotiation = ต่อราคา/ขอส่วนลด",
+  "- claim_or_return = เคลม/คืน/เปลี่ยนสินค้า/ของเสีย-ชำรุด",
+  "- purchase = ตกลงซื้อ/สั่งเลย/ถามเลขบัญชี-วิธีโอนเพื่อจะจ่าย",
+  "- greeting = ทักทายอย่างเดียว (สวัสดี/หวัดดี)",
+  "- social = ขอบคุณ/ตอบรับ (ครับ/ค่ะ/โอเค/รับทราบ)/คุยเล่นสั้น ๆ",
+  "- other = ไม่แน่ใจ/จัดกลุ่มไม่ได้",
+  "",
   "กฎ:",
-  '- isProductQuery=false เมื่อข้อความล่าสุด "ไม่ใช่" การหาสินค้า เช่น ถามที่ตั้งร้าน/เวลาเปิด/เบอร์โทร ทักทาย ขอบคุณ ตอบรับ (ครับ/ค่ะ/โอเค) หรือคุยเล่น → กรณีนี้ใส่ "query": null และไม่ต้องเดาสินค้าจากบทสนทนาก่อนหน้า',
-  "- isProductQuery=true เฉพาะเมื่อข้อความล่าสุดสื่อว่ากำลังหาอะไหล่ (รวมถึงการให้รายละเอียดเพิ่ม เช่น บอกปี/รุ่น ต่อจากที่ถามหาสินค้าไว้)",
-  "- รวมข้อมูลที่ลูกค้าทยอยพิมพ์มาหลายข้อความ (เช่น ก่อนหน้าบอกชนิดอะไหล่+รุ่นรถ ล่าสุดบอกปี → รวมทั้งหมด)",
+  "- ถ้าไม่มั่นใจว่าเข้ากลุ่มไหน ให้ตอบ group=other (อย่าเดาเป็น product)",
+  "- query ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่นใส่ null) — และรวมข้อมูลที่ทยอยพิมพ์หลายข้อความเข้าด้วยกัน",
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
   "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
 ].join("\n");
@@ -172,12 +186,12 @@ const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
 const MIN_SEARCH_YEAR = 1950;
 const MAX_SEARCH_YEAR = 2100;
 
-/** Structured search intent distilled from the conversation (Part B). `query` is
- *  the consolidated free-text; the rest are optional hard-filter hints resolved
- *  against master data downstream. `isProductQuery` is false when the latest
- *  message isn't actually a part lookup (shop info, greeting, thanks, chitchat) —
- *  the caller then skips product search + cards entirely. */
+/** Classified intent + structured search hints distilled from the conversation.
+ *  `group` drives routing (product / shop_info / payment / ... / other). `query`
+ *  and the fitment hints are only meaningful for `group === "product"`.
+ *  `isProductQuery` is kept as a convenience mirror of `group === "product"`. */
 export type LineSearchIntent = {
+  group: LineMessageGroup;
   query: string;
   isProductQuery: boolean;
   partType: string | null;
@@ -219,16 +233,24 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const obj = parsed as Record<string, unknown>;
-  // Default true so an older/short reply that omits the flag keeps the previous
-  // (product-search) behaviour; only an explicit false marks a non-product turn.
-  const isProductQuery = obj.isProductQuery !== false;
-  const query = cleanIntentString(obj.query);
 
-  // Non-product turn (shop info / greeting / thanks): valid even with no query —
-  // the caller uses this to SKIP search + cards. A product turn must have a query.
-  if (isProductQuery && !query) return null;
+  // Resolve the group. Back-compat: an older reply with only `isProductQuery`
+  // maps to product/other; an unknown/missing group is treated as `other` (the
+  // safe "try FAQ then ask" path) rather than guessed as a product search.
+  const groupRaw = typeof obj.group === "string" ? obj.group.trim().toLowerCase() : "";
+  const group: LineMessageGroup = isLineMessageGroup(groupRaw)
+    ? groupRaw
+    : obj.isProductQuery === true
+      ? "product"
+      : obj.isProductQuery === false
+        ? "other"
+        : "other";
+
+  const query = cleanIntentString(obj.query);
+  const isProductQuery = group === "product";
 
   return {
+    group,
     query: query ? query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() : "",
     isProductQuery,
     partType: cleanIntentString(obj.partType),
@@ -239,32 +261,30 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
 };
 
 /**
- * Extracts the running search intent from the whole conversation so a customer who
- * drip-feeds details ("คอยเย็น d max" → "ปี 06") is searched on the COMBINED subject
- * ("คอยล์เย็น d-max 2006"), and so we can apply precise fitment hard-filters
- * (brand/model/category) resolved downstream — not just free text.
+ * Classifies the latest message into a {@link LineMessageGroup} AND, for product
+ * turns, distils the consolidated search query + fitment hints from the whole
+ * conversation (so drip-fed details "คอยเย็น d max" → "ปี 06" search the COMBINED
+ * subject). Runs on EVERY text turn (first turn included) so routing is robust to
+ * phrasing — the caller (processor) decides when to skip it (e.g. a keyword guard
+ * hit). The `intent` arg is unused now but kept for the dependency signature.
  *
- * Returns null whenever Gemini is unavailable, the intent isn't searchable, the
- * model declines, or anything errors — the caller then falls back to the latest
- * raw text + deterministic fitment carryover, so a failure never worsens search.
+ * Returns null only when Gemini is unavailable or the reply can't be parsed — the
+ * caller then falls back to the deterministic Layer-1 (regex) routing.
  */
 export async function extractLineSearchIntent(input: {
   intent: LineIntent;
   latestText?: string | null;
   history?: LineReplyHistoryItem[];
 }): Promise<LineSearchIntent | null> {
-  const searchable =
-    input.intent === LineIntent.PRODUCT_INQUIRY_TEXT || input.intent === LineIntent.PART_IMAGE_INQUIRY;
-  // Only worth a model call on a follow-up turn: with no prior history the latest
-  // message already IS the full query, so we skip the call entirely (no extra cost).
-  if (!searchable || !hasGeminiKeysConfigured() || !input.history || input.history.length === 0) {
+  if (!hasGeminiKeysConfigured()) {
     return null;
   }
 
   try {
+    const history = input.history ?? [];
     const lines: string[] = [
       "บทสนทนา (เก่าสุด → ใหม่สุด):",
-      ...input.history.map((turn) => `${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`),
+      ...history.map((turn) => `${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`),
       `ลูกค้า (ข้อความล่าสุด): ${input.latestText?.trim() || "(ไม่มีข้อความ อาจเป็นรูปภาพ)"}`,
       "",
       "ตอบเป็น JSON object บรรทัดเดียวตามรูปแบบที่กำหนด:",
@@ -417,4 +437,19 @@ export function buildJuneDeadlineReply(input: {
     : "เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊";
 
   return `${opener}\n${productLines}\nเป็นการเทียบเบื้องต้นนะคะ รบกวนเช็กกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ 🙏`;
+}
+
+/**
+ * Deterministic จูน-voiced "ask for details" reply, used for the `other` group
+ * when the FAQ can't answer, and as the classify-failure fallback. Keeps the
+ * conversation moving (never a robotic dead-end / silent handoff) and works even
+ * when the LLM itself is unavailable.
+ */
+export function buildJuneAskDetailsReply(): string {
+  return "ขอโทษนะคะ 🙏 รบกวนแจ้งรุ่นรถ ปีรถ และอะไหล่ที่ต้องการ หรือส่งรูปอะไหล่เดิม/เบอร์บนตัวอะไหล่มาได้เลยค่ะ เดี๋ยวจูนช่วยเช็กให้นะคะ 😊";
+}
+
+/** Short, warm acknowledgement for the `social` group (thanks / ok / chit-chat). */
+export function buildJuneSocialReply(): string {
+  return "ยินดีค่ะ 🙏 มีอะไรให้จูนช่วยเพิ่มเติม แจ้งได้เลยนะคะ 😊";
 }

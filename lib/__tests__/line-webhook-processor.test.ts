@@ -117,6 +117,19 @@ function createProcessorTestDeps(input?: {
   intentYear?: number | null;
   fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
   nonProductTurn?: boolean;
+  intentGroup?:
+    | "product"
+    | "shop_info"
+    | "general_faq"
+    | "payment"
+    | "shipping_address"
+    | "order_status"
+    | "price_negotiation"
+    | "claim_or_return"
+    | "purchase"
+    | "greeting"
+    | "social"
+    | "other";
 }) {
   const calls: TestCalls = {
     appendedDirections: [],
@@ -287,6 +300,7 @@ function createProcessorTestDeps(input?: {
     extractLineSearchIntent: async () =>
       input?.nonProductTurn
         ? {
+            group: input?.intentGroup ?? "other",
             query: "",
             isProductQuery: false,
             partType: null,
@@ -296,6 +310,7 @@ function createProcessorTestDeps(input?: {
           }
         : input?.consolidatedQuery
         ? {
+            group: "product",
             query: input.consolidatedQuery,
             isProductQuery: true,
             partType: input?.intentPartType ?? null,
@@ -656,6 +671,57 @@ test("non-product turn is answered from FAQ (not handed off) when the FAQ covers
   assert.deepEqual(calls.searches, []);
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 0);
+});
+
+test("social group gets a brief ack and never searches", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "social" });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ขอบคุณมากค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /ยินดี/);
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.auditActions.includes("SOCIAL_HANDLED"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("shop_info group answers from the canned shop message, no search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "shop_info" });
+
+  const result = await processLineWebhookPayload(
+    textPayload("อยากทราบเกี่ยวกับร้านหน่อยค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /08:30 - 18:00/);
+  assert.deepEqual(calls.searches, []);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("template/FAQ answers are suppressed once an admin has taken over", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    nonProductTurn: true,
+    intentGroup: "shop_info",
+    conversationStatus: LineConversationAiStatus.PAUSED_BY_ADMIN,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ร้านอยู่ไหนคะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 0);
+  assert.deepEqual(calls.replies, []);
 });
 
 test("deadline fallback still replies on the free token when generate is too slow", async () => {

@@ -111,6 +111,15 @@
     - **(3)** Deadline guard: race reply gen กับเวลาที่เหลือใน token window (margin 5s); ถ้าไม่ทัน → `buildJuneDeadlineReply()` ตอบสไตล์จูน + แสดงสินค้า/การ์ดชุดเดิมครบ (ต่างแค่ถ้อยคำ) ส่งทัน reply token เสมอ + audit `AI_DEADLINE_FALLBACK`
     - unit tests: deadline fallback 1; รวม LINE suite 43+ ผ่าน
 
+  - [x] (20) AI Intent Classifier (hybrid routing — แทน regex จับกลุ่มคำที่เปราะ):
+    - `lib/line-intent-groups.ts` (ใหม่): 12 กลุ่ม (`product`/`shop_info`/`general_faq`/`payment`/`shipping_address`/`order_status`/`price_negotiation`/`claim_or_return`/`purchase`/`greeting`/`social`/`other`) + `groupToRoute`/`intentToGroup`/`GUARD_GROUPS` (single source of truth)
+    - `extractLineSearchIntent` → คืน `group` + product fields, ทำงาน **ทุกข้อความ** (รวมข้อความแรก, A=ข); ไม่มั่นใจ → `other`
+    - processor: Layer-1 regex (guard payment/claim/price/purchase override + เมนู) → Layer-2 AI group → route ตามกลุ่ม (reuse forced-response/handoff/policy เดิม)
+    - `general_faq`/`other` → ลอง FAQ ก่อน, ไม่เจอ → `buildJuneAskDetailsReply()` ถามต่อสไตล์จูน (ไม่ handoff/ไม่ dead-end)
+    - `social` → `handleSocialTurn`: ack สั้น หรือนิ่งถ้าเป็น ack ปิดท้าย (กันวนซ้ำ)
+    - safety: **ไม่มี flag เปิดใช้เลย**; classify ล่ม → fallback regex routing; รูปภาพไปทาง image path เดิม (text classifier เฉพาะข้อความ); เคารพ paused/waiting_admin (ไม่เด้งแทรกตอนแอดมินรับช่วง); audit `INTENT_CLASSIFIED {group, source, routedIntent}` + `SOCIAL_HANDLED`; classify timeout 15s
+    - unit tests: groups mapping 6 + parse group 7 + processor (social/shop_info/paused/non-product/FAQ) + เดิมทั้งหมด
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`

@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
-test("parses a clean JSON intent object", async () => {
+test("parses a product classification with consolidated query", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
   const intent = parseLineSearchIntent(
-    '{"isProductQuery":true,"query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015}',
+    '{"group":"product","query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015}',
   );
   assert.deepEqual(intent, {
+    group: "product",
     query: "หม้อน้ำ mazda 2",
     isProductQuery: true,
     partType: "หม้อน้ำ",
@@ -18,22 +19,29 @@ test("parses a clean JSON intent object", async () => {
   });
 });
 
-test("defaults isProductQuery to true when the field is omitted", async () => {
+test("non-product group is valid with no query (isProductQuery false)", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
-  const intent = parseLineSearchIntent('{"query":"คอยล์เย็น vios"}');
-  assert.equal(intent?.isProductQuery, true);
-});
-
-test("non-product turn is valid even with null query", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
-  const intent = parseLineSearchIntent('{"isProductQuery":false,"query":null}');
+  const intent = parseLineSearchIntent('{"group":"shop_info","query":null}');
+  assert.equal(intent?.group, "shop_info");
   assert.equal(intent?.isProductQuery, false);
   assert.equal(intent?.query, "");
 });
 
+test("unknown/missing group falls back to 'other' (never guessed as product)", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  assert.equal(parseLineSearchIntent('{"query":"อะไรสักอย่าง"}')?.group, "other");
+  assert.equal(parseLineSearchIntent('{"group":"weird"}')?.group, "other");
+});
+
+test("back-compat: isProductQuery true → product, false → other", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  assert.equal(parseLineSearchIntent('{"isProductQuery":true,"query":"คอยล์เย็น vios"}')?.group, "product");
+  assert.equal(parseLineSearchIntent('{"isProductQuery":false}')?.group, "other");
+});
+
 test("tolerates markdown fences and surrounding prose", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
-  const intent = parseLineSearchIntent('```json\n{"query":"คอยล์เย็น vios","year":null}\n```');
+  const intent = parseLineSearchIntent('```json\n{"group":"product","query":"คอยล์เย็น vios","year":null}\n```');
   assert.equal(intent?.query, "คอยล์เย็น vios");
   assert.equal(intent?.year, null);
 });
@@ -41,16 +49,15 @@ test("tolerates markdown fences and surrounding prose", async () => {
 test("normalizes 'null' strings and out-of-range years to null", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
   const intent = parseLineSearchIntent(
-    '{"query":"กรองแอร์ vigo","carBrand":"null","carModel":"","year":"99"}',
+    '{"group":"product","query":"กรองแอร์ vigo","carBrand":"null","carModel":"","year":"99"}',
   );
   assert.equal(intent?.carBrand, null);
   assert.equal(intent?.carModel, null);
   assert.equal(intent?.year, null);
 });
 
-test("returns null when there is no usable query", async () => {
+test("returns null only when the reply isn't parseable JSON", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
-  assert.equal(parseLineSearchIntent('{"query":null}'), null);
   assert.equal(parseLineSearchIntent("not json at all"), null);
   assert.equal(parseLineSearchIntent(""), null);
 });
