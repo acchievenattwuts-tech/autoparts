@@ -3,12 +3,15 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Info, MessageCircle } from "lucide-react";
 
-import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { LineConversationAiStatus } from "@/lib/generated/prisma";
+import { LineConversationAiStatus, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import { listLineConversations } from "@/lib/line-admin-service";
+import {
+  paymentSlipStatusBadgeClass,
+  paymentSlipStatusLabel,
+} from "@/lib/line-payment-slip-display";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
 
@@ -17,6 +20,20 @@ type PageProps = {
 };
 
 const statusOptions = Object.values(LineConversationAiStatus);
+
+const STATUS_LABELS: Record<LineConversationAiStatus, string> = {
+  ACTIVE: "AI ทำงาน (Active)",
+  PAUSED_BY_ADMIN: "พัก AI (Pause)",
+  WAITING_ADMIN: "รอแอดมิน (Waiting)",
+  CLOSED: "ปิดเคส (Close)",
+};
+
+const STATUS_BADGE_LABELS: Record<LineConversationAiStatus, string> = {
+  ACTIVE: "AI ทำงาน",
+  PAUSED_BY_ADMIN: "พัก AI",
+  WAITING_ADMIN: "รอแอดมิน",
+  CLOSED: "ปิดเคส",
+};
 
 function statusBadge(status: LineConversationAiStatus) {
   const classes: Record<LineConversationAiStatus, string> = {
@@ -38,16 +55,9 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
   const conversations = await listLineConversations({ status, take: 80 });
   const canReply = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.reply");
   const canManage = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.manage");
-  const canViewPaymentSlips = hasPermissionAccess(
-    session.user.role,
-    session.user.permissions,
-    "line_payment_slips.view",
-  );
 
   return (
     <div className="space-y-4">
-      <LineAdminTabNav canViewConversations canViewPaymentSlips={canViewPaymentSlips} />
-
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] dark:bg-sky-500/10 dark:text-sky-200">
@@ -74,10 +84,10 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
               defaultValue={status ?? ""}
               className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
             >
-              <option value="">All</option>
+              <option value="">ทั้งหมด (All)</option>
               {statusOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {STATUS_LABELS[option]}
                 </option>
               ))}
             </select>
@@ -119,7 +129,26 @@ export default async function LineConversationsPage({ searchParams }: PageProps)
                       <p className="truncate font-medium text-gray-900 dark:text-slate-100">
                         {conversation.customer?.name ?? conversation.displayName ?? conversation.lineUserId}
                       </p>
-                      <span className={statusBadge(conversation.aiStatus)}>{conversation.aiStatus}</span>
+                      <span className={statusBadge(conversation.aiStatus)}>
+                        {STATUS_BADGE_LABELS[conversation.aiStatus]}
+                      </span>
+                      {conversation.paymentSlips.map((slip) => (
+                        <span
+                          key={slip.id}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            paymentSlipStatusBadgeClass[
+                              slip.verificationStatus as PaymentSlipVerificationStatus
+                            ]
+                          }`}
+                          title="สถานะสลิปรอตรวจสอบ"
+                        >
+                          สลิป: {
+                            paymentSlipStatusLabel[
+                              slip.verificationStatus as PaymentSlipVerificationStatus
+                            ]
+                          }
+                        </span>
+                      ))}
                     </div>
                     <p className="mt-1 truncate font-mono text-xs text-gray-500 dark:text-slate-400">
                       {conversation.lineUserId}

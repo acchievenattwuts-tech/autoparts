@@ -1,12 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ReceiptText } from "lucide-react";
+import { Images, ReceiptText } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
-import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
-import { hasPermissionAccess } from "@/lib/access-control";
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import {
   formatPaymentSlipBaht,
@@ -24,22 +22,15 @@ type PageProps = {
 const statusOptions = Object.values(PaymentSlipVerificationStatus);
 
 export default async function LinePaymentSlipsPage({ searchParams }: PageProps) {
-  const session = await requirePermission("line_payment_slips.view");
+  await requirePermission("line_payment_slips.view");
   const params = await searchParams;
   const status = statusOptions.includes(params.status as PaymentSlipVerificationStatus)
     ? (params.status as PaymentSlipVerificationStatus)
     : null;
   const slips = await listPaymentSlips({ status, take: 80 });
-  const canViewConversations = hasPermissionAccess(
-    session.user.role,
-    session.user.permissions,
-    "line_conversations.view",
-  );
 
   return (
     <div className="space-y-4">
-      <LineAdminTabNav canViewConversations={canViewConversations} canViewPaymentSlips />
-
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] dark:bg-sky-500/10 dark:text-sky-200">
@@ -55,30 +46,38 @@ export default async function LinePaymentSlipsPage({ searchParams }: PageProps) 
           </div>
         </div>
 
-        <AdminSearchForm action="/admin/line-payment-slips" className="flex flex-wrap items-end gap-2 space-y-0">
-          <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
-            สถานะ
-            <select
-              name="status"
-              defaultValue={status ?? ""}
-              className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-            >
-              <option value="">ทั้งหมด</option>
-              {statusOptions.map((option) => (
-                <option key={option} value={option}>
-                  {paymentSlipStatusLabel[option]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <AdminSearchSubmitButton className="h-10 rounded-md">กรอง</AdminSearchSubmitButton>
+        <div className="flex flex-wrap items-end gap-2">
           <Link
-            href="/admin/line-payment-slips"
-            className="inline-flex h-10 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+            href="/admin/line-payment-slips/gallery"
+            className="inline-flex h-10 items-center gap-1.5 rounded-md bg-[#1e3a5f]/10 px-4 text-sm font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/15 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/15"
           >
-            ล้าง
+            <Images size={16} /> ดูแกลเลอรี
           </Link>
-        </AdminSearchForm>
+          <AdminSearchForm action="/admin/line-payment-slips" className="flex flex-wrap items-end gap-2 space-y-0">
+            <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
+              สถานะ
+              <select
+                name="status"
+                defaultValue={status ?? ""}
+                className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-900 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+              >
+                <option value="">ทั้งหมด</option>
+                {statusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {paymentSlipStatusLabel[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <AdminSearchSubmitButton className="h-10 rounded-md">กรอง</AdminSearchSubmitButton>
+            <Link
+              href="/admin/line-payment-slips"
+              className="inline-flex h-10 items-center rounded-md bg-gray-100 px-4 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+            >
+              ล้าง
+            </Link>
+          </AdminSearchForm>
+        </div>
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950/70">

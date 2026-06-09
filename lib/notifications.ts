@@ -113,6 +113,9 @@ export async function notifyLineOaNeedsAdmin(input: {
   displayName?: string | null;
   text?: string | null;
   messageType?: string | null;
+  /** When > 0, the title is suffixed with "(มีสลิปรอตรวจสอบ)" so admins can
+   * triage payment-slip cases without opening the conversation. */
+  pendingSlipCount?: number;
 }): Promise<number> {
   const who = input.displayName?.trim() || "ลูกค้า LINE";
   const trimmed = input.text?.trim();
@@ -126,10 +129,12 @@ export async function notifyLineOaNeedsAdmin(input: {
         ? "[สติกเกอร์]"
         : "[ข้อความใหม่]";
 
+  const slipSuffix = (input.pendingSlipCount ?? 0) > 0 ? " (มีสลิปรอตรวจสอบ)" : "";
+
   return createNotification({
     type: NotificationType.LINE_OA_HANDOFF,
     severity: NotificationSeverity.WARNING,
-    title: "ลูกค้า LINE OA รอแอดมินตอบ",
+    title: `ลูกค้า LINE OA รอแอดมินตอบ${slipSuffix}`,
     body: `${who}: ${preview}`,
     link: `/admin/line-conversations/${input.conversationId}`,
     entityType: "LineConversation",

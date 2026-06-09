@@ -239,6 +239,8 @@ model PaymentSlip {
   matchedSaleId            String?
   verificationStatus       PaymentSlipVerificationStatus @default(PENDING_REVIEW)
   rawOcr                   Json?
+  imageSignedUrl           String?
+  imageSignedUrlExpiresAt  DateTime?                     @db.Timestamptz(3)
   createdAt                DateTime                      @default(now()) @db.Timestamptz(3)
   reviewedAt               DateTime?                     @db.Timestamptz(3)
   reviewedById             String?

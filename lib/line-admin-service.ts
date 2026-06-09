@@ -20,6 +20,12 @@ function normalizeTake(value?: number | null) {
   return Math.min(MAX_TAKE, Math.max(1, Math.trunc(value)));
 }
 
+const PENDING_SLIP_STATUSES = [
+  "PENDING_REVIEW",
+  "MATCHED_PENDING_ADMIN_CONFIRM",
+  "NEEDS_MORE_INFO",
+] as const;
+
 export async function listLineConversations(input: {
   status?: LineConversationAiStatus | null;
   take?: number | null;
@@ -53,6 +59,12 @@ export async function listLineConversations(input: {
         select: {
           messages: true,
         },
+      },
+      paymentSlips: {
+        where: { verificationStatus: { in: [...PENDING_SLIP_STATUSES] } },
+        select: { id: true, verificationStatus: true },
+        orderBy: { createdAt: "desc" },
+        take: 5,
       },
     },
     orderBy: [

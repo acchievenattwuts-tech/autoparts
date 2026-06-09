@@ -396,7 +396,10 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
 - Payment-slip OCR is the one place financial data leaves the system. It can be disabled by
   not configuring Gemini keys (AI falls back to rule-based and admin-only handling).
 - Payment-slip images are stored in a **private** Supabase bucket and shown to admins only via
-  short-lived signed URLs; rejected slips are deleted.
+  signed URLs; rejected slips are deleted. The detail/review page uses a short-lived (5-min)
+  signed URL; the gallery caches a longer-lived (7-day) signed URL per slip in
+  `PaymentSlip.imageSignedUrl` / `imageSignedUrlExpiresAt` and refreshes them in batch only when
+  missing/near-expiry, so browsing many slips makes near-zero Supabase Storage calls.
 
 ## Acceptance Criteria
 
@@ -417,3 +420,39 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
 - [x] Do not merge AI suggestion state directly into sales/receipt/accounting truth. (respected)
 - [x] Do not add broad schema refactors unrelated to conversation handling. (respected)
 - [x] Do not change admin print forms or unrelated admin theme work as part of this feature unless a directly related admin page is introduced. (respected)
+
+## Post-Launch Enhancements
+
+### Reliability & Alerts
+- [x] **Layer-6 safety net** in `processLineAiReply()` catch block: when the AI pipeline throws
+  unexpectedly, the customer still gets a polite fallback ("ขออนุญาตส่งต่อให้แอดมินค่ะ จะติดต่อกลับในทันทีค่ะ 🙏")
+  via reply token (else push), admins are notified, and the original error/FAILED-job bookkeeping is
+  preserved. Every fallback step is wrapped so it can never override the original error.
+- [x] **Telegram alerts for handoffs**: `shouldSendTelegramForNotification()` now also fires for
+  `LINE_OA_HANDOFF` (was Shopee-only). The existing in-app bell + dedupe key (`line-oa-handoff:<id>`)
+  are reused, so a burst of customer messages never spams Telegram. Requires `TELEGRAM_BOT_TOKEN` +
+  `TELEGRAM_CHAT_IDS`.
+- [x] **Pending-slip hint on handoff notifications**: `notifyLineOaNeedsAdmin()` takes
+  `pendingSlipCount`; when > 0 the title is suffixed "(มีสลิปรอตรวจสอบ)" so admins can triage
+  payment-slip cases from the bell/Telegram without opening the conversation.
+
+### Admin Surface
+- [x] **Slip status on the conversations list**: `listLineConversations()` includes pending slips
+  (PENDING_REVIEW / MATCHED_PENDING_ADMIN_CONFIRM / NEEDS_MORE_INFO); each renders as a "สลิป: …"
+  badge next to the conversation status, reusing `paymentSlipStatusLabel` / `paymentSlipStatusBadgeClass`.
+- [x] **Thai status labels** on the conversations list (filter dropdown + badges) instead of raw enums.
+- [x] Removed the secondary `LineAdminTabNav` (Conversations | Payment slips) — top nav already covers it;
+  component deleted, all four LINE OA pages updated.
+
+### Payment-Slip Gallery (Phase 3)
+- [x] Route `/admin/line-payment-slips/gallery` (reuses `line_payment_slips.view`; `force-dynamic` + `loading.tsx`).
+- [x] Browse slips by date range / status / bank / sender; effective date = transfer date, else
+  received date (marked `*` + amber note). Infinite scroll via `IntersectionObserver` + the
+  `loadMorePaymentSlipGalleryAction` Server Action (re-verifies permission; view-only, no mutation).
+- [x] Click a thumbnail → lightbox with full image, details, keyboard ←/→, download, and a link to
+  the review page.
+- [x] **Supabase load reduction**: 7-day signed URLs cached in `PaymentSlip.imageSignedUrl` /
+  `imageSignedUrlExpiresAt`; cache-miss/near-expiry rows refreshed in ONE batch call
+  (`createPaymentSlipSignedUrlsBatch`); `next/image` adds Vercel CDN + lazy-load + browser cache.
+- [x] Read model isolated in [lib/line-payment-slip-gallery.ts](/D:/autoparts/lib/line-payment-slip-gallery.ts);
+  never confirms a payment or touches receipts/AR/stock (view-only, no AuditLog needed).

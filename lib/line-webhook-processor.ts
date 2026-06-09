@@ -17,6 +17,7 @@ import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
   countConsecutiveFailedLineSearches,
+  countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
@@ -86,6 +87,9 @@ export type LineWebhookProcessorDependencies = {
   getRecentLineMessagesForAi?: typeof getRecentLineMessagesForAi;
   /** Optional override; counts consecutive empty searches for the escalate-to-admin rule. */
   countConsecutiveFailedLineSearches?: typeof countConsecutiveFailedLineSearches;
+  /** Optional override; counts payment slips on the conversation that still need
+   *  admin attention, so the handoff notification title can hint about it. */
+  countPendingPaymentSlipsForConversation?: typeof countPendingPaymentSlipsForConversation;
   /** Optional override; AI fallback classifier for purchase intent. */
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
   /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
@@ -113,6 +117,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   notifyLineOaNeedsAdmin,
   getRecentLineMessagesForAi,
   countConsecutiveFailedLineSearches,
+  countPendingPaymentSlipsForConversation,
   classifyPurchaseIntent,
   answerFromLineFaq,
 };
@@ -148,7 +153,7 @@ function isMenuCommand(text: string | null | undefined): boolean {
 function handoffAckForIntent(intent: LineIntent): string {
   switch (intent) {
     case LineIntent.PAYMENT_SLIP_IMAGE:
-      return "รับทราบเรื่องการชำระเงินค่ะ 🙏 เดี๋ยวแอดมินตรวจสอบและยืนยันให้นะคะ รอสักครู่ค่ะ";
+      return "ขอบคุณค่ะ ทางร้านได้รับสลิปเรียบร้อยแล้วนะคะ 🙏\nขอเวลาให้แอดมินตรวจสอบยอดโอนสักครู่ แล้วจะแจ้งกลับให้ทราบทางแชทนี้ค่ะ";
     case LineIntent.PRICE_NEGOTIATION:
       return "เรื่องราคา/ส่วนลด เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
     case LineIntent.CLAIM_OR_RETURN:
@@ -608,11 +613,14 @@ export async function processLineAiReply(
     // not notify.)
     if (forcedResponse?.handoff || handoffAfterSend || !(sendDecision.action === "send" && replied)) {
       const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+      const countPending = dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
+      const pendingSlipCount = await countPending(input.conversation.id).catch(() => 0);
       await notify({
         conversationId: input.conversation.id,
         displayName: input.conversation.displayName,
         text: input.text,
         messageType: input.messageType,
+        pendingSlipCount,
       }).catch((error) => {
         console.warn(
           "[line-webhook] admin handoff notification skipped/failed:",
@@ -663,11 +671,14 @@ export async function processLineAiReply(
     }
 
     const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+    const countPending = dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
+    const pendingSlipCount = await countPending(input.conversation.id).catch(() => 0);
     await notify({
       conversationId: input.conversation.id,
       displayName: input.conversation.displayName,
       text: input.text,
       messageType: input.messageType,
+      pendingSlipCount,
     }).catch((notifyError) => {
       console.warn(
         "[line-webhook-processor] fallback admin notify failed:",

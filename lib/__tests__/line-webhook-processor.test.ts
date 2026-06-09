@@ -577,8 +577,10 @@ test("processor routes a payment-slip image to admin and never hits product sear
     { conversationId: "conversation-line-user-1", lineUserId: "line-user-1" },
   ]);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
-  // Polite ack sent before the admin hand-off.
-  assert.match(calls.replies[0]?.text ?? "", /ชำระเงิน/);
+  assert.equal(
+    calls.replies[0]?.text ?? "",
+    "ขอบคุณค่ะ ทางร้านได้รับสลิปเรียบร้อยแล้วนะคะ 🙏\nขอเวลาให้แอดมินตรวจสอบยอดโอนสักครู่ แล้วจะแจ้งกลับให้ทราบทางแชทนี้ค่ะ",
+  );
 });
 
 test("processor reuses classified payment-slip image content for slip ingest", async () => {

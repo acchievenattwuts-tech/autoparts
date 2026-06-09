@@ -6,7 +6,6 @@ import { ArrowLeft, Info } from "lucide-react";
 
 import AdminLineConversationActions from "@/components/shared/AdminLineConversationActions";
 import AdminLineConversationCustomerLink from "@/components/shared/AdminLineConversationCustomerLink";
-import LineAdminTabNav from "@/components/shared/LineAdminTabNav";
 import LineAiDraftUseButton from "@/components/shared/LineAiDraftUseButton";
 import LineConversationMessagePoller from "@/components/shared/LineConversationMessagePoller";
 import LineConversationScrollAnchor from "@/components/shared/LineConversationScrollAnchor";
@@ -95,11 +94,6 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
 
   const canReply = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.reply");
   const canManage = hasPermissionAccess(session.user.role, session.user.permissions, "line_conversations.manage");
-  const canViewPaymentSlips = hasPermissionAccess(
-    session.user.role,
-    session.user.permissions,
-    "line_payment_slips.view",
-  );
   const { conversation, messages } = result;
 
   const isLinked = Boolean(conversation.customer?.id);
@@ -112,8 +106,6 @@ export default async function LineConversationDetailPage({ params }: PageProps) 
   return (
     <div className="space-y-4">
       <LineConversationMessagePoller conversationId={conversation.id} latestMessageId={latestMessageId} />
-
-      <LineAdminTabNav canViewConversations canViewPaymentSlips={canViewPaymentSlips} />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>

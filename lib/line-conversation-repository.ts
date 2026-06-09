@@ -188,6 +188,22 @@ export async function countConsecutiveFailedLineSearches(conversationId: string)
   return count;
 }
 
+/**
+ * Counts payment slips on this conversation that still need admin attention
+ * (not yet confirmed or rejected). Used to enrich the "customer waiting for admin"
+ * notification title with a slip-status hint.
+ */
+export async function countPendingPaymentSlipsForConversation(conversationId: string): Promise<number> {
+  return db.paymentSlip.count({
+    where: {
+      conversationId,
+      verificationStatus: {
+        in: ["PENDING_REVIEW", "MATCHED_PENDING_ADMIN_CONFIRM", "NEEDS_MORE_INFO"],
+      },
+    },
+  });
+}
+
 export async function storeLineAiJob(input: {
   conversationId: string;
   lineMessageId?: string | null;

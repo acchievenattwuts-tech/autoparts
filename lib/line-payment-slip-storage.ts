@@ -15,6 +15,15 @@ const MAX_DIMENSION = 1000; // px — enough to read amounts/reference numbers.
 const WEBP_QUALITY = 60;
 const SIGNED_URL_TTL_SECONDS = 300;
 
+/**
+ * Gallery view caches signed URLs in the DB (PaymentSlip.imageSignedUrl) to avoid
+ * a Supabase Storage call per thumbnail on every page render. A long TTL keeps the
+ * cache warm; URLs are refreshed in batch only when they are missing or within the
+ * refresh buffer of expiry.
+ */
+export const GALLERY_SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+export const GALLERY_SIGNED_URL_REFRESH_BUFFER_MS = 24 * 60 * 60 * 1000; // refresh when < 1 day left
+
 function getServiceClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -109,4 +118,31 @@ export async function createPaymentSlipSignedUrl(path: string): Promise<string |
   } catch {
     return null;
   }
+}
+
+/**
+ * Creates signed URLs for many slip paths in ONE Supabase call (instead of N).
+ * Returns a Map keyed by object path. Best-effort: paths that fail are simply
+ * absent from the map, and a total failure returns an empty map.
+ */
+export async function createPaymentSlipSignedUrlsBatch(
+  paths: string[],
+  ttlSeconds: number,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const client = getServiceClient();
+  if (!client || paths.length === 0) return result;
+
+  try {
+    const { data, error } = await client.storage.from(BUCKET).createSignedUrls(paths, ttlSeconds);
+    if (error || !data) return result;
+    for (const item of data) {
+      if (item.path && item.signedUrl) {
+        result.set(item.path, item.signedUrl);
+      }
+    }
+  } catch {
+    /* best-effort — caller falls back to whatever is cached */
+  }
+  return result;
 }
