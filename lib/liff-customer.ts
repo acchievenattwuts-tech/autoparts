@@ -3,6 +3,51 @@ import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/cu
 import { db } from "@/lib/db";
 import { generateCustomerCode } from "@/lib/entity-code";
 import { AuditAction } from "@/lib/generated/prisma";
+import { notifyLineCustomerLinked, type LineCustomerLinkKind } from "@/lib/notifications";
+
+/**
+ * Checks whether an existing customer was previously unlinked by an admin. Used
+ * to distinguish a fresh re-link (worth flagging) from a routine first link.
+ */
+async function isCustomerPreviouslyUnlinkedByAdmin(customerId: string): Promise<boolean> {
+  const log = await db.auditLog.findFirst({
+    where: {
+      action: AuditAction.UPDATE,
+      entityType: "Customer",
+      entityId: customerId,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { meta: true },
+  });
+  return (
+    typeof log?.meta === "object" &&
+    log.meta !== null &&
+    !Array.isArray(log.meta) &&
+    "lineUnlinkedByAdmin" in log.meta &&
+    (log.meta as { lineUnlinkedByAdmin?: boolean }).lineUnlinkedByAdmin === true
+  );
+}
+
+/**
+ * Best-effort: dispatch the in-app bell + Telegram for a LINE customer linkage.
+ * Wrapped so the LIFF flow never fails just because a notification failed.
+ */
+async function safeNotifyLineCustomerLinked(input: {
+  kind: LineCustomerLinkKind;
+  customerId: string;
+  customerName: string;
+  customerCode?: string | null;
+  phone?: string | null;
+}): Promise<void> {
+  try {
+    await notifyLineCustomerLinked(input);
+  } catch (error) {
+    console.warn(
+      "[liff-customer] LINE customer notification skipped:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  }
+}
 
 const PHONE_LOOKUP_LIMIT = 5;
 const PHONE_LOOKUP_WINDOW_MS = 60 * 60 * 1000;
@@ -182,6 +227,10 @@ export async function resolveLiffCustomerFromPhone(input: {
   }
 
   if (matchedCustomer) {
+    // Determine link kind BEFORE the update so a relink is detected based on
+    // pre-existing admin-unlink history (not the link we're about to create).
+    const wasUnlinkedByAdmin = await isCustomerPreviouslyUnlinkedByAdmin(matchedCustomer.id);
+
     const customer = await db.customer.update({
       where: { id: matchedCustomer.id },
       data: {
@@ -197,6 +246,15 @@ export async function resolveLiffCustomerFromPhone(input: {
       customerId: customer.id,
       customerRef: customer.code ?? customer.name,
       meta: { lineUserId: input.lineUserId, phone: normalizedPhone },
+    });
+
+    // Iron rule §8: notifications go to the bell AND Telegram together.
+    await safeNotifyLineCustomerLinked({
+      kind: wasUnlinkedByAdmin ? "LINE_OLD_CUSTOMER_RELINKED" : "LINE_OLD_CUSTOMER_LINKED",
+      customerId: customer.id,
+      customerName: customer.name,
+      customerCode: customer.code,
+      phone: normalizedPhone,
     });
 
     return { status: "LINKED", customerId: customer.id, customerName: customer.name };
@@ -220,6 +278,15 @@ export async function resolveLiffCustomerFromPhone(input: {
     customerId: customer.id,
     customerRef: customer.code ?? customer.name,
     meta: { lineUserId: input.lineUserId, phone: normalizedPhone, source: "LINE_LIFF" },
+  });
+
+  // Iron rule §8: notifications go to the bell AND Telegram together.
+  await safeNotifyLineCustomerLinked({
+    kind: "LINE_NEW_CUSTOMER",
+    customerId: customer.id,
+    customerName: customer.name,
+    customerCode: customer.code,
+    phone: normalizedPhone,
   });
 
   return { status: "REGISTERED", customerId: customer.id, customerName: customer.name };

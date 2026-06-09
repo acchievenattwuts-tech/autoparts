@@ -7,10 +7,15 @@ import {
   shouldSendTelegramForNotification,
 } from "@/lib/telegram";
 
-describe("Shopee Telegram alerts", () => {
-  it("only sends Telegram alerts for Shopee notifications", () => {
+describe("Telegram alerts", () => {
+  it("sends Telegram alerts for every notification type except GENERAL", () => {
+    // Iron rule: bell + Telegram fire together (GENERAL is the only opt-out).
     assert.equal(shouldSendTelegramForNotification(NotificationType.SHOPEE_ORDER_IMPORTED), true);
     assert.equal(shouldSendTelegramForNotification(NotificationType.SHOPEE_STOCK_SYNC_FAILED), true);
+    assert.equal(shouldSendTelegramForNotification(NotificationType.LINE_OA_HANDOFF), true);
+    assert.equal(shouldSendTelegramForNotification(NotificationType.LINE_NEW_CUSTOMER), true);
+    assert.equal(shouldSendTelegramForNotification(NotificationType.LINE_OLD_CUSTOMER_LINKED), true);
+    assert.equal(shouldSendTelegramForNotification(NotificationType.LINE_OLD_CUSTOMER_RELINKED), true);
     assert.equal(shouldSendTelegramForNotification(NotificationType.GENERAL), false);
   });
 

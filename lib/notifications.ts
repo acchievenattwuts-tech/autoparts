@@ -197,6 +197,67 @@ export async function markAllNotificationsRead(userId: string): Promise<number> 
 }
 
 /**
+ * LINE customer-linkage notification kinds (mirrors the API derived linkKind).
+ */
+export type LineCustomerLinkKind =
+  | "LINE_NEW_CUSTOMER"
+  | "LINE_OLD_CUSTOMER_LINKED"
+  | "LINE_OLD_CUSTOMER_RELINKED";
+
+const lineCustomerNotificationConfig: Record<
+  LineCustomerLinkKind,
+  { type: NotificationType; title: string; severity: NotificationSeverity }
+> = {
+  LINE_NEW_CUSTOMER: {
+    type: NotificationType.LINE_NEW_CUSTOMER,
+    title: "ลูกค้าใหม่จาก LINE",
+    severity: NotificationSeverity.INFO,
+  },
+  LINE_OLD_CUSTOMER_LINKED: {
+    type: NotificationType.LINE_OLD_CUSTOMER_LINKED,
+    title: "ลูกค้าเก่าผูก LINE",
+    severity: NotificationSeverity.INFO,
+  },
+  LINE_OLD_CUSTOMER_RELINKED: {
+    type: NotificationType.LINE_OLD_CUSTOMER_RELINKED,
+    title: "ลูกค้าเก่าผูก LINE ใหม่",
+    severity: NotificationSeverity.WARNING,
+  },
+};
+
+/**
+ * Notifies admins when a customer links/relinks/registers via LINE. Fires the
+ * in-app bell (Notification table) AND Telegram in one call — never call only
+ * one half (iron rule §8: notifications are always paired).
+ *
+ * Deduped per customer so a quick double-tap (e.g., link + immediate profile
+ * update) doesn't create duplicate unread rows.
+ */
+export async function notifyLineCustomerLinked(input: {
+  kind: LineCustomerLinkKind;
+  customerId: string;
+  customerName: string;
+  customerCode?: string | null;
+  phone?: string | null;
+}): Promise<number> {
+  const config = lineCustomerNotificationConfig[input.kind];
+  const bodyParts = [input.customerName];
+  if (input.customerCode) bodyParts.push(input.customerCode);
+  if (input.phone) bodyParts.push(input.phone);
+
+  return createNotification({
+    type: config.type,
+    severity: config.severity,
+    title: config.title,
+    body: bodyParts.join(" · "),
+    link: `/admin/customers/${input.customerId}`,
+    entityType: "Customer",
+    entityId: input.customerId,
+    dedupeKey: `line-customer-link:${input.customerId}:${input.kind}`,
+  });
+}
+
+/**
  * Cleanup job: deletes read notifications older than 30 days. Runs nightly.
  * Returns the count of deleted rows.
  */

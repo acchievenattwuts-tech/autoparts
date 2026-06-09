@@ -40,7 +40,10 @@ export function getTelegramConfig(): TelegramConfig {
 }
 
 export function shouldSendTelegramForNotification(type: NotificationType): boolean {
-  return type.startsWith("SHOPEE_") || type === NotificationType.LINE_OA_HANDOFF;
+  // Iron rule: every notification type that admins see in the bell MUST also send
+  // Telegram. The only exception is GENERAL (a free-form catch-all for internal
+  // dev notes, never a real customer event).
+  return type !== NotificationType.GENERAL;
 }
 
 function severityLabel(severity: NotificationSeverity): string {

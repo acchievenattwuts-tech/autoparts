@@ -5,10 +5,16 @@ import Image from "next/image";
 import { ImageOff, LoaderCircle } from "lucide-react";
 
 import PaymentSlipLightbox from "@/components/shared/PaymentSlipLightbox";
-import {
-  paymentSlipStatusBadgeClass,
-  paymentSlipStatusLabel,
-} from "@/lib/line-payment-slip-display";
+import { paymentSlipStatusLabel } from "@/lib/line-payment-slip-display";
+import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
+
+const galleryStatusBadgeClass: Record<PaymentSlipVerificationStatus, string> = {
+  PENDING_REVIEW: "bg-amber-500 text-white ring-amber-300 dark:bg-amber-400 dark:text-amber-950 dark:ring-amber-200",
+  MATCHED_PENDING_ADMIN_CONFIRM: "bg-sky-600 text-white ring-sky-300 dark:bg-sky-400 dark:text-sky-950 dark:ring-sky-200",
+  CONFIRMED_BY_ADMIN: "bg-emerald-600 text-white ring-emerald-300 dark:bg-emerald-400 dark:text-emerald-950 dark:ring-emerald-200",
+  REJECTED: "bg-red-600 text-white ring-red-300 dark:bg-red-400 dark:text-red-950 dark:ring-red-200",
+  NEEDS_MORE_INFO: "bg-gray-700 text-white ring-gray-300 dark:bg-slate-200 dark:text-slate-900 dark:ring-slate-100",
+};
 import type {
   PaymentSlipGalleryFilters,
   PaymentSlipGalleryItem,
@@ -118,7 +124,7 @@ const PaymentSlipGallery = ({
                 </div>
               )}
               <span
-                className={`absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${paymentSlipStatusBadgeClass[item.status]}`}
+                className={`absolute left-1.5 top-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide shadow-md ring-2 ring-inset ${galleryStatusBadgeClass[item.status]}`}
               >
                 {paymentSlipStatusLabel[item.status]}
               </span>
