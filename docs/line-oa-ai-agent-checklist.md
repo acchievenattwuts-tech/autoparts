@@ -456,3 +456,14 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
   (`createPaymentSlipSignedUrlsBatch`); `next/image` adds Vercel CDN + lazy-load + browser cache.
 - [x] Read model isolated in [lib/line-payment-slip-gallery.ts](/D:/autoparts/lib/line-payment-slip-gallery.ts);
   never confirms a payment or touches receipts/AR/stock (view-only, no AuditLog needed).
+
+### Bank-Transfer Reconciliation (Phase 1)
+- [x] Route `/admin/line-payment-slips/reconciliation` (reuses `line_payment_slips.view`; `force-dynamic` + `loading.tsx`).
+- [x] Per-day comparison: confirmed slips (`CONFIRMED_BY_ADMIN`, sum `detectedAmount`, effective date =
+  transfer date else received date) **vs** ACTIVE receipts with `paymentMethod = TRANSFER`
+  (sum `totalAmount`, by `receiptDate`), plus a slip − receipt variance per day and in total.
+- [x] Aggregate/period comparison only — slips and receipts are **not** line-matched
+  (`matchedSaleId` stays null). Read-only: never writes receipts/AR/stock, no AuditLog needed.
+- [x] Date range defaults to the current month (reports reconcile a period); variance ~0 shows green,
+  otherwise amber. Logic isolated in
+  [lib/line-payment-slip-reconciliation.ts](/D:/autoparts/lib/line-payment-slip-reconciliation.ts).

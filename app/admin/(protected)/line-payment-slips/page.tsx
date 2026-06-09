@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { Images, ReceiptText } from "lucide-react";
+import { Images, ReceiptText, Scale } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -52,6 +52,12 @@ export default async function LinePaymentSlipsPage({ searchParams }: PageProps) 
             className="inline-flex h-10 items-center gap-1.5 rounded-md bg-[#1e3a5f]/10 px-4 text-sm font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/15 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/15"
           >
             <Images size={16} /> ดูแกลเลอรี
+          </Link>
+          <Link
+            href="/admin/line-payment-slips/reconciliation"
+            className="inline-flex h-10 items-center gap-1.5 rounded-md bg-[#1e3a5f]/10 px-4 text-sm font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/15 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/15"
+          >
+            <Scale size={16} /> กระทบยอดเงินโอน
           </Link>
           <AdminSearchForm action="/admin/line-payment-slips" className="flex flex-wrap items-end gap-2 space-y-0">
             <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
