@@ -9,6 +9,15 @@ import {
 } from "@/lib/product-search-cache";
 import { expandQueryTokenGroups } from "@/lib/search-synonyms";
 import { normalizeSearchText } from "@/lib/search-normalization";
+import { embedQuery, toPgVectorLiteral } from "@/lib/embeddings";
+
+// Hybrid search (Phase 1): how many nearest-neighbour products to pull by vector
+// similarity, and how much a perfect semantic match (cosine sim = 1) adds to the
+// rank score. Kept below the exact-code (1500) / OEM (1400) / contains (600)
+// weights so semantics enriches recall + ranking without overriding a strong
+// textual/exact match.
+const SEARCH_V2_VECTOR_RECALL_LIMIT = 100;
+const SEARCH_V2_VECTOR_WEIGHT = 500;
 
 /** A bare 1-2 digit number (e.g. the "2" in "Mazda 2"). Must NOT become a `:*`
  *  prefix lexeme — otherwise it matches every token starting with that digit
@@ -843,10 +852,47 @@ async function searchProductIdsV2(
     };
   }
 
+  // Semantic recall (Phase 1, gated). When enabled, pull the nearest products by
+  // embedding cosine distance under the SAME hard filters (exactScope), to inject
+  // as extra candidates + a rank boost in the ranked query below. Skipped for
+  // year-only queries, and any failure (keys exhausted, extension missing, flag
+  // off) degrades to pure lexical search — so this is purely additive.
+  const queryEmbedding = isYearOnlyQuery ? null : await embedQuery(normalizedQuery);
+  let vectorMatches: Array<{ product_id: string; sim: number }> = [];
+  if (queryEmbedding) {
+    try {
+      const qvec = toPgVectorLiteral(queryEmbedding);
+      vectorMatches = await db.$queryRaw<Array<{ product_id: string; sim: number }>>(Prisma.sql`
+        SELECT psd.product_id, (1 - (psd.embedding <=> ${qvec}::vector))::float8 AS sim
+        FROM product_search_documents psd
+        ${exactScope}
+          AND psd.embedding IS NOT NULL
+        ORDER BY psd.embedding <=> ${qvec}::vector
+        LIMIT ${SEARCH_V2_VECTOR_RECALL_LIMIT}
+      `);
+    } catch (error) {
+      console.error("Semantic recall failed; falling back to lexical-only search.", error);
+      vectorMatches = [];
+    }
+  }
+
+  const hasVector = vectorMatches.length > 0;
+  const vectorCte = hasVector
+    ? Prisma.sql`vec(product_id, sim) AS (VALUES ${Prisma.join(
+        vectorMatches.map((m) => Prisma.sql`(${m.product_id}::text, ${m.sim}::float8)`),
+      )}),`
+    : Prisma.empty;
+  const vectorJoin = hasVector ? Prisma.sql`LEFT JOIN vec v ON v.product_id = psd.product_id` : Prisma.empty;
+  const vectorCandidate = hasVector ? Prisma.sql`OR v.product_id IS NOT NULL` : Prisma.empty;
+  const vectorScore = hasVector
+    ? Prisma.sql`+ COALESCE(v.sim, 0) * ${SEARCH_V2_VECTOR_WEIGHT}`
+    : Prisma.empty;
+
   // Candidate-selection OR clause (shared by year-only and non-year queries).
   // A product enters the ranked set if it matches the query by code/name/oem/
-  // keyword/alias/free-text/FTS/trigram. The FTS clause (`@@ tsQuery`) is the only
-  // term that varies between the precise AND query and the OR recall fallback.
+  // keyword/alias/free-text/FTS/trigram, OR by semantic similarity (vector). The
+  // FTS clause (`@@ tsQuery`) is the only term that varies between the precise AND
+  // query and the OR recall fallback.
   const buildTextMatchOr = (ts: PrismaTypes.Sql) => Prisma.sql`
     f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
     OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
@@ -868,11 +914,11 @@ async function searchProductIdsV2(
     // Year-only queries union the text clause with a fitment-year cover so they
     // match BOTH part-number fragments and products fitting that year.
     const candidateClause = isYearOnlyQuery
-      ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists})`
-      : Prisma.sql`AND (${textMatchOr})`;
+      ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists} ${vectorCandidate})`
+      : Prisma.sql`AND (${textMatchOr} ${vectorCandidate})`;
 
     return db.$queryRaw<RankedSearchRow[]>(Prisma.sql`
-    WITH ranked AS (
+    WITH ${vectorCte} ranked AS (
       SELECT
         psd.product_id,
         psd.product_created_at,
@@ -929,8 +975,13 @@ async function searchProductIdsV2(
           -- it can never push a weak match above a strong textual match.
           CASE WHEN psd.stock > 0 THEN 60 ELSE 0 END +
           LEAST(psd.sales_count, 100) * 1.2
+
+          -- Semantic similarity boost (Phase 1 hybrid). Empty when vector recall
+          -- is unavailable/disabled, so the score is identical to lexical-only.
+          ${vectorScore}
         ) AS score
       FROM product_search_documents psd
+      ${vectorJoin}
       ${exactScope}
         ${candidateClause}
     )

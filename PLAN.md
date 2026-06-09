@@ -88,6 +88,15 @@
     - **A. core search** (`lib/product-search.ts` + `lib/search-synonyms.ts`): เดิม FTS แตก token แล้ว **OR** กันทั้งหมด + เลขสั้น "2" กลายเป็น `2:*` → match ทุกปี 20xx → ระเบิด. ใหม่: `expandQueryTokenGroups()` แยก query เป็น "คอนเซ็ปต์" แล้ว `buildTsQueryExpression()` ทำ **AND ข้ามคอนเซ็ปต์ / OR ภายใน synonym** + เลข 1-2 หลักเป็น exact lexeme (ไม่ prefix). มี **OR-fallback**: ถ้า AND (หลายคอนเซ็ปต์) ได้ 0 แถว → รันซ้ำด้วย OR กันเคสเจอ 0. กระทบทั้งเว็บ+LINE
     - **B. LINE structured filters**: `extractLineSearchIntent()` คืน {query, partType, carBrand, carModel, year}; `resolveLineFitmentFilters()` (`lib/line-fitment-resolve.ts`) map ชื่อ → master data จริง (CarBrand/CarModel/Category, case-insensitive) แล้วส่งเป็น **hard filter** เข้า search ผ่าน bridge `fitmentHints` (+เพิ่ม `categoryName`). ปลอดภัย: hint ที่ resolve ไม่ได้จะถูก drop (ไม่ทำให้เจอ 0)
     - unit tests: tsquery builder 6 + parseLineSearchIntent 4 + processor (resolved fitment hints) 1
+  - [ ] (17) Hybrid semantic search (Phase 1 — ยกระดับคุณภาพ retrieval) — **โค้ดเสร็จ + build ผ่าน, รอเปิดใช้งานจริง**:
+    - **Gated ทั้งหมด** ด้วย env `PRODUCT_SEARCH_SEMANTIC=on` (default off) → ถ้าไม่เปิด/ไม่มี embedding/ล้มเหลว = lexical เดิมเป๊ะ ไม่กระทบ logic อื่น
+    - embedding client: `generateGeminiEmbedding()` ใน `lib/google-ai-client.ts` (text-embedding-004, 768d) ใช้ key rotation เดียวกับ generate; helper `lib/embeddings.ts` (`embedQuery`, `embedTexts`, `buildProductEmbeddingText`, `toPgVectorLiteral`, `isSemanticSearchEnabled`)
+    - schema (อนุมัติแล้ว, รันผ่าน `npm run db:setup-search-v2`): `CREATE EXTENSION vector` + `product_search_documents.embedding vector(768)` + HNSW cosine index. คอลัมน์ embedding ถูกกันออกจาก `refresh_product_search_document` upsert (เหมือน sales_count) → text refresh ไม่ลบ vector
+    - backfill: `npm run backfill:embeddings` (`prisma/scripts/backfill-embeddings.ts`, batch 50, idempotent, `--all` เพื่อ re-embed)
+    - sync ตอนแก้สินค้า: `reembedProductSearchDocument()` (`lib/product-embedding-sync.ts`) เรียกผ่าน `after()` ใน createProduct/updateProduct (fire-and-forget, ไม่ block response)
+    - hybrid ใน `searchProductIdsV2`: vector recall (cosine, reuse exactScope filters เดิม) → inject เป็น candidate (`OR v.product_id IS NOT NULL`) + score boost (sim × 500, ต่ำกว่า exact/oem/contains) ใน ranked query เดียว → pagination/total semantics คงเดิม
+    - unit tests: embeddings helpers 4
+    - **ขั้นตอนเปิดใช้ (ยังไม่ทำ — รอยืนยัน):** 1) `npm run db:setup-search-v2` 2) `npm run backfill:embeddings` 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on`
 
 ## Source Of Truth Map
 ### Product and Inventory

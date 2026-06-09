@@ -9,6 +9,10 @@ import {
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-004";
+/** text-embedding-004 returns 768-dim vectors. Kept in sync with the
+ *  `embedding vector(768)` column in product_search_documents. */
+export const GEMINI_EMBEDDING_DIMENSIONS = 768;
 // Gemini 3 thinkingLevel enum is upper-case: HIGH | LOW (NONE disables thinking).
 const DEFAULT_THINKING_LEVEL = "HIGH";
 const DEFAULT_MAX_OUTPUT_TOKENS = 800;
@@ -63,6 +67,10 @@ type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: str
 
 function getModel(): string {
   return process.env.GOOGLE_AI_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+function getEmbeddingModel(): string {
+  return process.env.GOOGLE_AI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
 }
 
 function getThinkingLevel(): string {
@@ -202,5 +210,103 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
 
   throw new AllGeminiKeysExhaustedError(
     `ALL_GEMINI_KEYS_FAILED:${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+function extractEmbeddings(payload: unknown, expected: number): number[][] {
+  if (typeof payload !== "object" || payload === null) return [];
+  const embeddings = (payload as { embeddings?: unknown }).embeddings;
+  if (!Array.isArray(embeddings) || embeddings.length !== expected) return [];
+  const out: number[][] = [];
+  for (const item of embeddings) {
+    const values = (item as { values?: unknown }).values;
+    if (!Array.isArray(values) || values.length === 0) return [];
+    out.push(values as number[]);
+  }
+  return out;
+}
+
+async function batchEmbedOnce(secret: string, texts: string[]): Promise<number[][]> {
+  const model = getEmbeddingModel();
+  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:batchEmbedContents?key=${encodeURIComponent(secret)}`;
+  const body = {
+    requests: texts.map((text) => ({
+      model: `models/${model}`,
+      content: { parts: [{ text }] },
+    })),
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errorBody = (await response.text()).slice(0, 800);
+      throw new GeminiHttpError(
+        response.status,
+        `GEMINI_EMBED_HTTP_${response.status}:${errorBody}`,
+        response.status === 429 && detectDailyQuota(errorBody),
+      );
+    }
+    const payload = (await response.json()) as unknown;
+    return extractEmbeddings(payload, texts.length);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Embeds one or more texts via Gemini (text-embedding-004 by default) with the
+ * same multi-key rotation/cooldown as generation. Returns one 768-dim vector per
+ * input (same order). Throws {@link AllGeminiKeysExhaustedError} when no key can
+ * serve the request — callers degrade to lexical-only search on failure.
+ */
+export async function generateGeminiEmbedding(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  if (!hasGeminiKeysConfigured()) {
+    throw new AllGeminiKeysExhaustedError("NO_GEMINI_KEYS_CONFIGURED");
+  }
+
+  const keys = await getAvailableGeminiKeys();
+  if (keys.length === 0) {
+    throw new AllGeminiKeysExhaustedError("ALL_GEMINI_KEYS_COOLING_DOWN_OR_DISABLED");
+  }
+
+  let lastError: unknown = null;
+  for (const key of keys) {
+    try {
+      const vectors = await batchEmbedOnce(key.secret, texts);
+      if (vectors.length !== texts.length) {
+        throw new Error("EMBED_RESPONSE_COUNT_MISMATCH");
+      }
+      await markGeminiKeySuccess(key.keyRef);
+      return vectors;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof GeminiHttpError) {
+        if (error.status === 429) {
+          await markGeminiKeyRateLimited(key.keyRef, { daily: error.isDailyQuota, message: error.message });
+          continue;
+        }
+        if (error.status >= 500) {
+          await markGeminiKeyTransientError(key.keyRef, error.message);
+          continue;
+        }
+        if (error.status === 400 || error.status === 401 || error.status === 403) {
+          await markGeminiKeyDisabled(key.keyRef, error.message);
+          continue;
+        }
+      }
+      await markGeminiKeyTransientError(key.keyRef, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  throw new AllGeminiKeysExhaustedError(
+    `ALL_GEMINI_EMBED_KEYS_FAILED:${lastError instanceof Error ? lastError.message : String(lastError)}`,
   );
 }

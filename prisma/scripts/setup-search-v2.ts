@@ -9,6 +9,8 @@ if (!connectionString) {
 const setupSql = `
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS unaccent;
+-- Phase 1 (hybrid search): pgvector for semantic embeddings (text-embedding-004, 768d).
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- IMMUTABLE wrapper around unaccent so it can be used in expression indexes.
 -- (unaccent() itself is marked STABLE which prevents direct use in CREATE INDEX.)
@@ -53,6 +55,13 @@ ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS stock integer NOT NULL DEFAULT 0;
 ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS sales_count integer NOT NULL DEFAULT 0;
+-- Phase 1 (hybrid search): semantic embedding vector. Populated by app code
+-- (backfill + per-product hook), NEVER by the SQL refresh trigger — like
+-- sales_count it is deliberately excluded from refresh_product_search_document's
+-- ON CONFLICT update so a text edit keeps the (briefly stale) vector until the
+-- app re-embeds. NULL until backfilled; lexical search ignores NULL embeddings.
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS embedding vector(768);
 
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_is_active
   ON product_search_documents (is_active);
@@ -81,6 +90,12 @@ CREATE INDEX IF NOT EXISTS idx_product_search_documents_oem_trgm
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_keyword_trgm
   ON product_search_documents
   USING GIN (keyword_text gin_trgm_ops);
+
+-- Phase 1 (hybrid search): HNSW index for cosine similarity over the embedding.
+-- Safe to create while the column is all-NULL; it simply starts empty.
+CREATE INDEX IF NOT EXISTS idx_psd_embedding_hnsw
+  ON product_search_documents
+  USING hnsw (embedding vector_cosine_ops);
 
 -- Phase Q2: accent-insensitive trigram indexes (use f_unaccent IMMUTABLE wrapper)
 CREATE INDEX IF NOT EXISTS idx_psd_search_text_unaccent_trgm

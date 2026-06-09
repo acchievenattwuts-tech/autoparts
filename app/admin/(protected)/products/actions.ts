@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath, updateTag } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import {
   diffEntity,
@@ -36,6 +37,7 @@ import {
   isProductImageObjectPathForCode,
 } from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
+import { reembedProductSearchDocument } from "@/lib/product-embedding-sync";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -761,6 +763,12 @@ export const createProduct = async (
 
     await cleanupProductImageObjects(normalizedImages.orphanedSourceUrls);
     await revalidateStorefrontProductCaches(createdProductId);
+    // Refresh the semantic embedding off the response path (after the DB trigger
+    // has rebuilt the search-document text). No-op when semantic search is off.
+    if (createdProductId) {
+      const reembedId = createdProductId;
+      after(() => reembedProductSearchDocument(reembedId));
+    }
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
@@ -959,6 +967,9 @@ export const updateProduct = async (
     await cleanupProductImageObjects([...removedImageUrls, ...normalizedImages.orphanedSourceUrls]);
     revalidatePath(`/admin/products/${id}/edit`);
     await revalidateStorefrontProductCaches(id);
+    // Refresh the semantic embedding off the response path (text/fitment may have
+    // changed). No-op when semantic search is off.
+    after(() => reembedProductSearchDocument(id));
     return {};
   } catch (err) {
     if (err instanceof Error && err.message.includes("Unique constraint")) {
