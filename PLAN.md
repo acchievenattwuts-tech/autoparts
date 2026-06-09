@@ -90,13 +90,14 @@
     - unit tests: tsquery builder 6 + parseLineSearchIntent 4 + processor (resolved fitment hints) 1
   - [ ] (17) Hybrid semantic search (Phase 1 — ยกระดับคุณภาพ retrieval) — **โค้ดเสร็จ + build ผ่าน, รอเปิดใช้งานจริง**:
     - **Gated ทั้งหมด** ด้วย env `PRODUCT_SEARCH_SEMANTIC=on` (default off) → ถ้าไม่เปิด/ไม่มี embedding/ล้มเหลว = lexical เดิมเป๊ะ ไม่กระทบ logic อื่น
-    - embedding client: `generateGeminiEmbedding()` ใน `lib/google-ai-client.ts` (text-embedding-004, 768d) ใช้ key rotation เดียวกับ generate; helper `lib/embeddings.ts` (`embedQuery`, `embedTexts`, `buildProductEmbeddingText`, `toPgVectorLiteral`, `isSemanticSearchEnabled`)
+    - embedding client: `generateGeminiEmbedding()` ใน `lib/google-ai-client.ts` (**gemini-embedding-001** ผ่าน `embedContent` + `outputDimensionality=768` — text-embedding-004 ไม่รองรับบน key นี้) ใช้ key rotation เดียวกับ generate (400/404 ไม่ cooldown key); helper `lib/embeddings.ts` (`embedQuery`, `embedTexts`, `buildProductEmbeddingText`, `toPgVectorLiteral`, `isSemanticSearchEnabled`)
     - schema (อนุมัติแล้ว, รันผ่าน `npm run db:setup-search-v2`): `CREATE EXTENSION vector` + `product_search_documents.embedding vector(768)` + HNSW cosine index. คอลัมน์ embedding ถูกกันออกจาก `refresh_product_search_document` upsert (เหมือน sales_count) → text refresh ไม่ลบ vector
     - backfill: `npm run backfill:embeddings` (`prisma/scripts/backfill-embeddings.ts`, batch 50, idempotent, `--all` เพื่อ re-embed)
     - sync ตอนแก้สินค้า: `reembedProductSearchDocument()` (`lib/product-embedding-sync.ts`) เรียกผ่าน `after()` ใน createProduct/updateProduct (fire-and-forget, ไม่ block response)
     - hybrid ใน `searchProductIdsV2`: vector recall (cosine, reuse exactScope filters เดิม) → inject เป็น candidate (`OR v.product_id IS NOT NULL`) + score boost (sim × 500, ต่ำกว่า exact/oem/contains) ใน ranked query เดียว → pagination/total semantics คงเดิม
     - unit tests: embeddings helpers 4
-    - **ขั้นตอนเปิดใช้ (ยังไม่ทำ — รอยืนยัน):** 1) `npm run db:setup-search-v2` 2) `npm run backfill:embeddings` 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on`
+    - **ขั้นตอนเปิดใช้:** 1) `npm run db:setup-search-v2` ✅ (รันแล้ว — vector ext + คอลัมน์ + HNSW) 2) `npm run backfill:embeddings` ✅ (embed 598/598 สำเร็จ) 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel env **(เหลือขั้นนี้ — production ยังไม่เปิด)**
+    - ทดสอบจริงแล้ว: "หม้อน้ำ mazda 2" → หม้อน้ำ Mazda 2 ขึ้นอันดับ 1 (sim 0.84), "ตัวทำความเย็นแอร์วีออส" → เจอคอยล์เย็น/แผงแอร์ Vios (semantic เข้าใจคำบรรยาย)
 
 ## Source Of Truth Map
 ### Product and Inventory
