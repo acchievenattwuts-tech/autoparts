@@ -15,9 +15,22 @@ import type {
   LineMessageType,
   PaymentSlipVerificationStatus,
 } from "@/lib/line-conversation-types";
-import type { Prisma } from "@/lib/generated/prisma";
+import { Prisma } from "@/lib/generated/prisma";
 
 type JsonInput = Prisma.InputJsonValue;
+
+/** Thrown by `appendLineMessage` when the inbound row loses the race to a
+ *  concurrent insert with the same `lineEventId` (LINE re-delivery). Callers
+ *  treat it as "this event was already processed" and skip the rest of the
+ *  pipeline. */
+export class DuplicateLineEventError extends Error {
+  readonly lineEventId: string;
+  constructor(lineEventId: string) {
+    super(`Duplicate LINE event ${lineEventId}`);
+    this.name = "DuplicateLineEventError";
+    this.lineEventId = lineEventId;
+  }
+}
 
 export async function hasProcessedLineEvent(lineEventId: string | null | undefined) {
   if (!lineEventId) return false;
@@ -127,25 +140,40 @@ export async function appendLineMessage(input: {
   adminUserId?: string | null;
   sentAt?: Date | null;
 }) {
-  return db.lineMessage.create({
-    data: {
-      conversationId: input.conversationId,
-      lineUserId: input.lineUserId,
-      lineMessageId: input.lineMessageId ?? null,
-      lineEventId: input.lineEventId ?? null,
-      replyToken: input.replyToken ?? null,
-      direction: input.direction,
-      messageType: input.messageType,
-      intent: input.intent ?? null,
-      text: input.text ?? null,
-      imageUrl: input.imageUrl ?? null,
-      rawEvent: input.rawEvent ?? undefined,
-      deliveryMode: input.deliveryMode ?? null,
-      deliveryStatus: input.deliveryStatus ?? null,
-      adminUserId: input.adminUserId ?? null,
-      sentAt: input.sentAt ?? null,
-    },
-  });
+  try {
+    return await db.lineMessage.create({
+      data: {
+        conversationId: input.conversationId,
+        lineUserId: input.lineUserId,
+        lineMessageId: input.lineMessageId ?? null,
+        lineEventId: input.lineEventId ?? null,
+        replyToken: input.replyToken ?? null,
+        direction: input.direction,
+        messageType: input.messageType,
+        intent: input.intent ?? null,
+        text: input.text ?? null,
+        imageUrl: input.imageUrl ?? null,
+        rawEvent: input.rawEvent ?? undefined,
+        deliveryMode: input.deliveryMode ?? null,
+        deliveryStatus: input.deliveryStatus ?? null,
+        adminUserId: input.adminUserId ?? null,
+        sentAt: input.sentAt ?? null,
+      },
+    });
+  } catch (error) {
+    // Race fallback: webhook + LINE re-delivery can both pass the upfront
+    // `hasProcessedLineEvent` check before either commits. The unique index on
+    // `lineEventId` then rejects the second insert — translate it so callers
+    // can skip the duplicate cleanly.
+    if (
+      input.lineEventId &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      throw new DuplicateLineEventError(input.lineEventId);
+    }
+    throw error;
+  }
 }
 
 /**

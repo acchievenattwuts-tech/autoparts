@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 
+import { after } from "next/server";
+
 import {
   fetchLineUserProfile,
   getLineDailySummaryConfig,
@@ -71,6 +73,62 @@ async function captureLineRecipientFromEvent(event: LineWebhookEvent, config: Re
   } satisfies CapturedLineRecipient;
 }
 
+/**
+ * Heavy webhook work: LINE profile lookups + the full AI pipeline (classify →
+ * search → suggest → reply). Runs in the background via `after()` so the
+ * webhook can ACK LINE within milliseconds — LINE re-delivers on a slow ACK,
+ * and a slow ACK also burns the reply-token window. Every failure is swallowed
+ * here (logged + admin-notified downstream); the cron worker
+ * (`/api/line/ai-jobs/process`) is the failsafe for any job left PENDING if
+ * this background promise crashes mid-flight.
+ */
+async function processWebhookInBackground(
+  payload: { events?: LineWebhookEvent[] },
+  config: ReturnType<typeof getLineDailySummaryConfig>,
+  receivedAt: Date,
+) {
+  try {
+    const events = payload.events ?? [];
+    // Dedupe profile fetches: a single webhook payload often carries multiple
+    // events from the same userId (e.g. a text + an image). Share one in-flight
+    // LINE profile lookup per userId so we don't burn API quota.
+    const profileCache = new Map<string, ReturnType<typeof captureLineRecipientFromEvent>>();
+    const capturedRecipients = await Promise.all(
+      events.map((event) => {
+        const userId = event.source?.userId;
+        if (!userId) return captureLineRecipientFromEvent(event, config);
+        const cached = profileCache.get(userId);
+        if (cached) return cached;
+        const pending = captureLineRecipientFromEvent(event, config);
+        profileCache.set(userId, pending);
+        return pending;
+      }),
+    );
+    const lineProfilesByUserId = Object.fromEntries(
+      capturedRecipients
+        .filter((recipient) => recipient.lineUserId && (recipient.displayName || recipient.pictureUrl))
+        .map((recipient) => [
+          recipient.lineUserId as string,
+          { displayName: recipient.displayName, pictureUrl: recipient.pictureUrl },
+        ]),
+    );
+
+    const aiSettings = await getLineAiSettings();
+    await processLineWebhookPayload(payload, {
+      channelAccessToken: config.channelAccessToken,
+      autoReplyEnabled: aiSettings.autoReplyEnabled,
+      dryRun: aiSettings.dryRun,
+      imageSearchEnabled: aiSettings.imageSearchEnabled,
+      lineProfilesByUserId,
+      allowPushFallback: true,
+      receivedAt,
+      replyTokenMaxAgeMs: 45_000,
+    });
+  } catch (error) {
+    console.error("[line-webhook] AI agent background processing failed", error);
+  }
+}
+
 export async function POST(request: Request) {
   const receivedAt = new Date();
   const config = getLineDailySummaryConfig();
@@ -95,36 +153,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "INVALID_JSON" }, { status: 400 });
   }
 
-  const events = payload.events ?? [];
-  const capturedRecipients = await Promise.all(events.map((event) => captureLineRecipientFromEvent(event, config)));
-  const capturedCount = capturedRecipients.reduce((sum, recipient) => sum + recipient.savedCount, 0);
-  const lineProfilesByUserId = Object.fromEntries(
-    capturedRecipients
-      .filter((recipient) => recipient.lineUserId && (recipient.displayName || recipient.pictureUrl))
-      .map((recipient) => [
-        recipient.lineUserId as string,
-        { displayName: recipient.displayName, pictureUrl: recipient.pictureUrl },
-      ]),
-  );
+  // ACK LINE immediately, then run profile lookups + the AI pipeline in the
+  // background. `after()` keeps the serverless function alive until the
+  // promise settles, so the reply token is still fresh when the pipeline runs.
+  after(processWebhookInBackground(payload, config, receivedAt));
 
-  let aiAgentResult: Awaited<ReturnType<typeof processLineWebhookPayload>> | null = null;
-  try {
-    const aiSettings = await getLineAiSettings();
-    aiAgentResult = await processLineWebhookPayload(payload, {
-      channelAccessToken: config.channelAccessToken,
-      autoReplyEnabled: aiSettings.autoReplyEnabled,
-      dryRun: aiSettings.dryRun,
-      imageSearchEnabled: aiSettings.imageSearchEnabled,
-      lineProfilesByUserId,
-      allowPushFallback: true,
-      receivedAt,
-      replyTokenMaxAgeMs: 45_000,
-    });
-  } catch (error) {
-    console.error("[line-webhook] AI agent processing failed", error);
-  }
-
-  return Response.json({ ok: true, capturedCount, aiAgentResult });
+  return Response.json({ ok: true, accepted: payload.events?.length ?? 0 });
 }
 
 export async function GET() {

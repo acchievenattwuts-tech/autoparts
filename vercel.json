@@ -15,6 +15,10 @@
     {
       "path": "/api/line/ai-jobs/process",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/line/ai-jobs/reconcile",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

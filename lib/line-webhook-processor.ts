@@ -16,6 +16,7 @@ import { generateLineSuggestion, type LineReplyHistoryItem } from "@/lib/line-ai
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   appendLineMessage,
+  DuplicateLineEventError,
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
@@ -81,7 +82,8 @@ export type LineWebhookProcessorDependencies = {
   classifyLineImage?: typeof classifyLineImage;
   /** Optional override; defaults to the full slip ingest (fetch → OCR → store). */
   ingestPaymentSlip?: typeof ingestPaymentSlip;
-  /** Optional override; defaults to the in-app admin bell notification (no Telegram). */
+  /** Optional override; defaults to the admin bell + Telegram dispatch via
+   *  `createNotification()` (Iron Rule §8 — bell and Telegram are paired). */
   notifyLineOaNeedsAdmin?: typeof notifyLineOaNeedsAdmin;
   /** Optional override; defaults to fetching recent messages for AI short-term memory. */
   getRecentLineMessagesForAi?: typeof getRecentLineMessagesForAi;
@@ -167,6 +169,25 @@ function handoffAckForIntent(intent: LineIntent): string {
   }
 }
 
+/** Fires a LineAiAuditLog write without awaiting its DB round-trip — the
+ *  audit row carries debug/metric data, not state-machine truth, so the
+ *  webhook pipeline shouldn't pay its latency cost. Failures degrade to a
+ *  warn line; we never lose the customer reply because an audit insert
+ *  flaked. The synchronous body of the dep call still runs in-place, so call
+ *  ordering (and the existing test assertions on `auditActions`) is preserved. */
+function fireAndForgetAudit(
+  dependencies: LineWebhookProcessorDependencies,
+  input: Parameters<LineWebhookProcessorDependencies["storeLineAiAudit"]>[0],
+): void {
+  void dependencies.storeLineAiAudit(input).catch((error) => {
+    console.warn(
+      "[line-webhook-processor] audit write failed",
+      input.action,
+      error instanceof Error ? error.message : "unknown",
+    );
+  });
+}
+
 /** Most recent customer turn's fitment terms (car/year), for search memory. */
 function findRecentFitmentTerms(
   rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
@@ -181,23 +202,30 @@ function findRecentFitmentTerms(
   return [];
 }
 
-/** Maps stored LINE messages to the AI history shape (oldest → newest). */
+/** Maps stored LINE messages to the AI history shape (oldest → newest).
+ *  Caps each turn at `HISTORY_TURN_MAX_CHARS` so an unusually long customer
+ *  message can't blow the Gemini prompt budget and truncate the reply. */
+const HISTORY_TURN_MAX_CHARS = 400;
 function toReplyHistory(
   rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
   excludeMessageId: string,
 ): LineReplyHistoryItem[] {
   return rows
     .filter((row) => row.id !== excludeMessageId)
-    .map((row) => ({
-      role: row.direction === LineMessageDirection.INBOUND ? ("customer" as const) : ("shop" as const),
-      text:
-        row.text?.trim() ||
-        (row.messageType === LineMessageType.IMAGE
+    .map((row) => {
+      const fallback =
+        row.messageType === LineMessageType.IMAGE
           ? "[รูปภาพ]"
           : row.messageType === LineMessageType.STICKER
             ? "[สติกเกอร์]"
-            : "[ข้อความ]"),
-    }));
+            : "[ข้อความ]";
+      const raw = row.text?.trim() || fallback;
+      const text = raw.length > HISTORY_TURN_MAX_CHARS ? `${raw.slice(0, HISTORY_TURN_MAX_CHARS)}…` : raw;
+      return {
+        role: row.direction === LineMessageDirection.INBOUND ? ("customer" as const) : ("shop" as const),
+        text,
+      };
+    });
 }
 
 /**
@@ -280,6 +308,7 @@ export async function processLineAiReply(
   dependencies: LineWebhookProcessorDependencies,
 ) {
   const startedAt = new Date();
+  const pipelineStartedAtMs = Date.now();
   await dependencies.updateLineAiJob(input.jobId, {
     status: LineAiJobStatus.PROCESSING,
     startedAt,
@@ -320,7 +349,7 @@ export async function processLineAiReply(
       contextHints,
     });
 
-    await dependencies.storeLineAiAudit({
+    fireAndForgetAudit(dependencies, {
       conversationId: input.conversation.id,
       action: "PRODUCT_SEARCH_SUMMARY",
       payload: productSearch.searched
@@ -496,7 +525,7 @@ export async function processLineAiReply(
       sentAt: sendDecision.action === "send" ? new Date() : null,
     });
 
-    await dependencies.storeLineAiAudit({
+    fireAndForgetAudit(dependencies, {
       conversationId: input.conversation.id,
       action: "AI_SEND_DECISION",
       payload: {
@@ -504,6 +533,7 @@ export async function processLineAiReply(
         action: sendDecision.action,
         deliveryMode: sendDecision.deliveryMode,
         reason: sendDecision.reason,
+        pipelineDurationMs: Date.now() - pipelineStartedAtMs,
       },
     });
 
@@ -600,7 +630,7 @@ export async function processLineAiReply(
     }
 
     if (forcedResponse?.audit) {
-      await dependencies.storeLineAiAudit({
+      fireAndForgetAudit(dependencies, {
         conversationId: input.conversation.id,
         action: forcedResponse.audit,
         payload: forcedResponse.auditPayload ?? {},
@@ -722,6 +752,7 @@ export async function processLineWebhookPayload(
       continue;
     }
 
+    try {
     const customerId = await dependencies.findActiveCustomerIdByLineUserId(event.lineUserId);
     const lineProfile = config.lineProfilesByUserId?.[event.lineUserId] ?? null;
     const conversation = await dependencies.getOrCreateLineConversation({
@@ -745,7 +776,7 @@ export async function processLineWebhookPayload(
       });
       route = applyImageClassificationToRoute(route, imageClassification, imageSearchEnabled);
 
-      await dependencies.storeLineAiAudit({
+      fireAndForgetAudit(dependencies, {
         conversationId: conversation.id,
         action: "IMAGE_CLASSIFIED",
         payload: {
@@ -770,7 +801,7 @@ export async function processLineWebhookPayload(
           ocr: imageClassification.ocr ?? null,
         });
 
-        await dependencies.storeLineAiAudit({
+        fireAndForgetAudit(dependencies, {
           conversationId: conversation.id,
           action: "PAYMENT_SLIP_OCR",
           payload: {
@@ -800,7 +831,7 @@ export async function processLineWebhookPayload(
       rawEvent: event.rawEvent,
     });
 
-    await dependencies.storeLineAiAudit({
+    fireAndForgetAudit(dependencies, {
       conversationId: conversation.id,
       action: "INBOUND_EVENT_ACCEPTED",
       payload: {
@@ -816,7 +847,7 @@ export async function processLineWebhookPayload(
       buildLineConversationStatePatch({ type: "customer_message", at: inboundMessage.createdAt }),
     );
 
-    await dependencies.storeLineAiAudit({
+    fireAndForgetAudit(dependencies, {
       conversationId: conversation.id,
       action: "INTENT_ROUTED",
       payload: {
@@ -877,6 +908,21 @@ export async function processLineWebhookPayload(
     }
 
     result.processedCount += 1;
+    } catch (error) {
+      // Race fallback: a concurrent processor inserted the inbound row first.
+      // Count as duplicate, never re-process — the other worker owns the reply.
+      if (error instanceof DuplicateLineEventError) {
+        result.duplicateCount += 1;
+        continue;
+      }
+      // Any other error: log and continue with the next event in the batch so
+      // one bad event never starves the rest of a multi-event payload.
+      console.error(
+        "[line-webhook-processor] event failed; continuing with batch",
+        { lineEventId: event.lineEventId, error: error instanceof Error ? error.message : String(error) },
+      );
+      result.skippedCount += 1;
+    }
   }
 
   return result;

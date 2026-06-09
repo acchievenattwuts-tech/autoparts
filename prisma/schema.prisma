@@ -222,6 +222,7 @@ model LineAiAuditLog {
 
   @@index([conversationId, createdAt])
   @@index([action, createdAt])
+  @@index([conversationId, action, createdAt(sort: Desc)])
 }
 
 model PaymentSlip {

@@ -82,18 +82,34 @@ export async function processPendingLineAiJobs(input?: {
   const take = Math.min(Math.max(input?.take ?? 10, 1), 25);
   const aiSettings = await getLineAiSettings();
   const stalePendingBefore = new Date(Date.now() - 60_000);
-  const jobs = await db.lineAiJob.findMany({
-    where: {
-      status: LineAiJobStatus.PENDING,
-      createdAt: { lt: stalePendingBefore },
-    },
-    orderBy: { createdAt: "asc" },
-    take,
-    include: {
-      conversation: true,
-      lineMessage: true,
-    },
-  });
+
+  // Atomic claim: lock and flip PENDING → PROCESSING in one statement so two
+  // overlapping cron runs (or a cron racing the inline webhook handler) can
+  // never pick the same job. `SKIP LOCKED` keeps each runner moving past rows
+  // another worker already holds.
+  const claimed = await db.$queryRaw<Array<{ id: string }>>`
+    UPDATE "LineAiJob"
+    SET status = 'PROCESSING'::"LineAiJobStatus", "startedAt" = NOW()
+    WHERE id IN (
+      SELECT id FROM "LineAiJob"
+      WHERE status = 'PENDING'::"LineAiJobStatus"
+        AND "createdAt" < ${stalePendingBefore}
+      ORDER BY "createdAt" ASC
+      LIMIT ${take}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id`;
+
+  const jobs = claimed.length
+    ? await db.lineAiJob.findMany({
+        where: { id: { in: claimed.map((row) => row.id) } },
+        orderBy: { createdAt: "asc" },
+        include: {
+          conversation: true,
+          lineMessage: true,
+        },
+      })
+    : [];
 
   const summary = {
     picked: jobs.length,
