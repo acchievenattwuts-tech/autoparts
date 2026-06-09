@@ -636,6 +636,28 @@ test("non-product turn skips search and product cards entirely", async () => {
   assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
+test("non-product turn is answered from FAQ (not handed off) when the FAQ covers it", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // A general question the keyword router didn't catch as SHOP_INFO; AI flags it
+  // non-product and the FAQ can answer → reply with the FAQ answer, no handoff.
+  const { calls, dependencies } = createProcessorTestDeps({
+    nonProductTurn: true,
+    faqReply: "ร้านศรีวรรณอยู่ปทุมธานีค่ะ 🙏",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("อยากทราบข้อมูลร้านหน่อยค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /ปทุมธานี/);
+  assert.deepEqual(calls.searches, []);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
+});
+
 test("deadline fallback still replies on the free token when generate is too slow", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();

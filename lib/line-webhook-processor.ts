@@ -599,12 +599,17 @@ export async function processLineAiReply(
       );
     }
 
-    // FAQ grounding: when a product search comes back empty, the "question" may not
-    // be about a product at all (e.g. shipping/warranty/how-to-order). Try one
-    // grounded answer from the shop FAQ (จูน's voice, never fabricated) before
-    // asking for more info or escalating. Only on empty results to bound cost.
+    // FAQ grounding (จูน's voice, never fabricated). Try a grounded answer when:
+    //  - a product search came back empty (the "question" may be shipping/warranty/
+    //    how-to-order, not a part), OR
+    //  - it's a NON-product turn that the keyword router didn't already route to the
+    //    canned SHOP_INFO answer (e.g. "ร้านคุณอยู่ไหน" phrased so the regex misses).
+    // This lets the AI actually ANSWER a general/shop question instead of punting it
+    // to an admin.
     const faqAnswer =
-      liveMode && productSearch.searched && productSearch.result.total === 0
+      liveMode &&
+      ((isNonProductTurn && input.route.intent !== LineIntent.SHOP_INFO) ||
+        (productSearch.searched && productSearch.result.total === 0))
         ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
