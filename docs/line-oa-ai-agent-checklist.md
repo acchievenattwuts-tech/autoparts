@@ -469,3 +469,11 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
 - [x] Date range defaults to the current month (reports reconcile a period); variance ~0 shows green,
   otherwise amber. Logic isolated in
   [lib/line-payment-slip-reconciliation.ts](/D:/autoparts/lib/line-payment-slip-reconciliation.ts).
+
+### Customer Payment History (Phase 4)
+- [x] Customer detail page (`/admin/customers/[id]`) gains a "ประวัติสลิปโอนเงิน (LINE)" section listing
+  that customer's slips (date / amount / bank / sender / reference / status) with a link to each slip's
+  review page. Slips resolve via `LineConversation.customerId` (`listPaymentSlipsByCustomer`).
+- [x] **PII gate**: the section only renders for admins who also hold `line_payment_slips.view`
+  (a `customers.view`-only user never sees slip data); query is skipped entirely otherwise. View-only,
+  no image fetched on this page (links out to the slip detail).

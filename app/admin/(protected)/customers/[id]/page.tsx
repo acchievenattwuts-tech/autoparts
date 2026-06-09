@@ -4,7 +4,10 @@ import { db } from "@/lib/db";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
-import { SaleType, PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
+import { SaleType, PaymentMethod, PaymentSlipVerificationStatus, SalePaymentType } from "@/lib/generated/prisma";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { listPaymentSlipsByCustomer } from "@/lib/line-payment-slip-repository";
+import { paymentSlipStatusLabel } from "@/lib/line-payment-slip-display";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -12,6 +15,17 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatCard from "@/components/shared/AdminStatCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+
+const slipStatusTone: Record<
+  PaymentSlipVerificationStatus,
+  "success" | "info" | "warning" | "danger" | "neutral"
+> = {
+  PENDING_REVIEW: "warning",
+  MATCHED_PENDING_ADMIN_CONFIRM: "info",
+  CONFIRMED_BY_ADMIN: "success",
+  REJECTED: "danger",
+  NEEDS_MORE_INFO: "neutral",
+};
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL:    "ปลีก",
@@ -44,11 +58,18 @@ const statusTone: Record<SaleStatus, "danger" | "warning" | "success"> = {
 };
 
 const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
-  await requirePermission("customers.view");
+  const session = await requirePermission("customers.view");
 
   const { id } = await params;
 
-  const [customer, creditSales, receipts, creditNotes] = await Promise.all([
+  // Payment slips are PII — only show them to admins who can view LINE slips.
+  const canViewSlips = hasPermissionAccess(
+    session.user.role,
+    session.user.permissions,
+    "line_payment_slips.view",
+  );
+
+  const [customer, creditSales, receipts, creditNotes, paymentSlips] = await Promise.all([
     db.customer.findUnique({
       where: { id },
       include: {
@@ -97,6 +118,8 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
       where: { customerId: id, settlementType: "CREDIT_DEBT" },
       select: { cnNo: true, totalAmount: true, cnDate: true },
     }),
+
+    canViewSlips ? listPaymentSlipsByCustomer(id) : Promise.resolve([]),
   ]);
 
   if (!customer) notFound();
@@ -303,6 +326,59 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                 ))}
               </tbody>
             </table>
+        </AdminTableSection>
+      )}
+
+      {canViewSlips && paymentSlips.length > 0 && (
+        <AdminTableSection title="ประวัติสลิปโอนเงิน (LINE)">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่โอน</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนเงิน</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ธนาคาร / ผู้โอน</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขอ้างอิง</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {paymentSlips.map((slip) => (
+                <tr key={slip.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
+                    {formatDateThai(slip.detectedTransferDatetime ?? slip.createdAt)}
+                    {slip.detectedTransferDatetime ? "" : " *"}
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-gray-900 dark:text-slate-100">
+                    {slip.detectedAmount !== null
+                      ? Number(slip.detectedAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })
+                      : "-"}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
+                    {slip.detectedBank ?? "-"}
+                    {slip.detectedSenderName ? ` · ${slip.detectedSenderName}` : ""}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">
+                    {slip.detectedReferenceNo ?? "-"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <AdminStatusBadge tone={slipStatusTone[slip.verificationStatus]}>
+                      {paymentSlipStatusLabel[slip.verificationStatus]}
+                    </AdminStatusBadge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <NavLink
+                      href={`/admin/line-payment-slips/${slip.id}`}
+                      className="text-xs text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"
+                      hideSpinner
+                    >
+                      ดูสลิป
+                    </NavLink>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </AdminTableSection>
       )}
 

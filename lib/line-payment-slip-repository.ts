@@ -76,6 +76,29 @@ export async function listPaymentSlips(input: {
   });
 }
 
+/**
+ * Lists a customer's LINE payment slips (newest first) via their linked
+ * conversation (`LineConversation.customerId`). View-only; no image URLs are
+ * resolved here — the customer page links out to the slip detail page instead.
+ */
+export async function listPaymentSlipsByCustomer(customerId: string, take = 30) {
+  return db.paymentSlip.findMany({
+    where: { conversation: { customerId } },
+    select: {
+      id: true,
+      detectedAmount: true,
+      detectedTransferDatetime: true,
+      detectedBank: true,
+      detectedSenderName: true,
+      detectedReferenceNo: true,
+      verificationStatus: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take,
+  });
+}
+
 export async function getPaymentSlipById(id: string) {
   return db.paymentSlip.findUnique({
     where: { id },
