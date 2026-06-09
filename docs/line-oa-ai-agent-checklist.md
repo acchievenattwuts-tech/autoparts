@@ -477,3 +477,12 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
 - [x] **PII gate**: the section only renders for admins who also hold `line_payment_slips.view`
   (a `customers.view`-only user never sees slip data); query is skipped entirely otherwise. View-only,
   no image fetched on this page (links out to the slip detail).
+
+### Reviewer Productivity Stats (Phase 8)
+- [x] Route `/admin/line-payment-slips/reviewer-stats` (reuses `line_payment_slips.view`; `force-dynamic`
+  + `loading.tsx`). Per-reviewer: slips reviewed, outcome breakdown (confirmed / rejected / needs-info),
+  and average time from slip arrival (`createdAt`) to decision (`reviewedAt`).
+- [x] Counts only acted-on slips (`reviewedById` set, `reviewedAt` in range); date range defaults to the
+  current month. Read-only aggregation in
+  [lib/line-payment-slip-reviewer-stats.ts](/D:/autoparts/lib/line-payment-slip-reviewer-stats.ts);
+  no mutation, no AuditLog.
