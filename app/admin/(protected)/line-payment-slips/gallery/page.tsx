@@ -22,6 +22,8 @@ type PageProps = {
     status?: string;
     bank?: string;
     sender?: string;
+    reference?: string;
+    amount?: string;
   }>;
 };
 
@@ -29,12 +31,15 @@ export default async function LinePaymentSlipGalleryPage({ searchParams }: PageP
   await requirePermission("line_payment_slips.view");
   const params = await searchParams;
 
+  const amountValue = params.amount ? Number(params.amount) : NaN;
   const filters: PaymentSlipGalleryFilters = {
     from: params.from?.trim() || null,
     to: params.to?.trim() || null,
     status: normalizeGalleryStatus(params.status),
     bank: params.bank?.trim() || null,
     sender: params.sender?.trim() || null,
+    reference: params.reference?.trim() || null,
+    amount: Number.isFinite(amountValue) ? amountValue : null,
   };
 
   const [firstPage, summary, banks] = await Promise.all([
@@ -76,6 +81,8 @@ export default async function LinePaymentSlipGalleryPage({ searchParams }: PageP
           status: filters.status ?? "",
           bank: filters.bank ?? "",
           sender: filters.sender ?? "",
+          reference: filters.reference ?? "",
+          amount: filters.amount !== null ? String(filters.amount) : "",
         }}
       />
 

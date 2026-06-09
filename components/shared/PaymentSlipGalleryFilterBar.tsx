@@ -17,6 +17,8 @@ type PaymentSlipGalleryFilterBarProps = {
     status: string;
     bank: string;
     sender: string;
+    reference: string;
+    amount: string;
   };
 };
 
@@ -74,6 +76,28 @@ const PaymentSlipGalleryFilterBar = ({ banks, current }: PaymentSlipGalleryFilte
           defaultValue={current.sender}
           placeholder="ชื่อผู้โอน"
           className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
+        เลขอ้างอิง
+        <input
+          type="text"
+          name="reference"
+          defaultValue={current.reference}
+          placeholder="เลขอ้างอิงในสลิป"
+          className={inputClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-gray-600 dark:text-slate-300">
+        จำนวนเงิน
+        <input
+          type="number"
+          name="amount"
+          defaultValue={current.amount}
+          placeholder="ยอดเป๊ะ"
+          step="0.01"
+          min="0"
+          className={`${inputClass} w-28`}
         />
       </label>
       <AdminSearchSubmitButton className="h-10 rounded-md">กรอง</AdminSearchSubmitButton>

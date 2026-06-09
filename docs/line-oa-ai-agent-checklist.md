@@ -446,9 +446,11 @@ flip them without a redeploy (stored in `SiteContent`, read uncached on each eve
 
 ### Payment-Slip Gallery (Phase 3)
 - [x] Route `/admin/line-payment-slips/gallery` (reuses `line_payment_slips.view`; `force-dynamic` + `loading.tsx`).
-- [x] Browse slips by date range / status / bank / sender; effective date = transfer date, else
-  received date (marked `*` + amber note). Infinite scroll via `IntersectionObserver` + the
-  `loadMorePaymentSlipGalleryAction` Server Action (re-verifies permission; view-only, no mutation).
+- [x] Browse slips by date range / status / bank / sender / **reference no** / **exact amount**
+  (Phase 2 lookup filters folded into the gallery — no separate search page); effective date =
+  transfer date, else received date (marked `*` + amber note). Infinite scroll via
+  `IntersectionObserver` + the `loadMorePaymentSlipGalleryAction` Server Action (re-verifies
+  permission; view-only, no mutation).
 - [x] Click a thumbnail → lightbox with full image, details, keyboard ←/→, download, and a link to
   the review page.
 - [x] **Supabase load reduction**: 7-day signed URLs cached in `PaymentSlip.imageSignedUrl` /

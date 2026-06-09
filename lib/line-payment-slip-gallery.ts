@@ -22,6 +22,10 @@ export type PaymentSlipGalleryFilters = {
   status?: PaymentSlipVerificationStatus | null;
   bank?: string | null;
   sender?: string | null;
+  /** Substring match on the slip's reference number. */
+  reference?: string | null;
+  /** Exact match on the detected transfer amount (baht). */
+  amount?: number | null;
 };
 
 /** Plain serializable item sent to the client gallery/lightbox. */
@@ -74,6 +78,14 @@ function buildGalleryWhere(filters: PaymentSlipGalleryFilters): Prisma.PaymentSl
 
   if (filters.sender?.trim()) {
     and.push({ detectedSenderName: { contains: filters.sender.trim(), mode: "insensitive" } });
+  }
+
+  if (filters.reference?.trim()) {
+    and.push({ detectedReferenceNo: { contains: filters.reference.trim(), mode: "insensitive" } });
+  }
+
+  if (typeof filters.amount === "number" && Number.isFinite(filters.amount)) {
+    and.push({ detectedAmount: filters.amount });
   }
 
   return and.length > 0 ? { AND: and } : {};
