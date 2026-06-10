@@ -117,3 +117,27 @@ test("parseProfitExplanationResult returns fallback for invalid JSON", async () 
   assert.equal(result.confidence, "low");
   assert.match(result.limitations[0] ?? "", /JSON/);
 });
+
+test("parseProfitExplanationResult extracts JSON object from surrounding prose", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult(
+    [
+      "Here is the analysis:",
+      JSON.stringify({
+        summary: "Embedded JSON summary",
+        confidence: "medium",
+        facts: [],
+        drivers: [],
+        anomalies: [],
+        recommendedChecks: [],
+        limitations: [],
+      }),
+      "Hope this helps.",
+    ].join("\n"),
+    evidence,
+  );
+
+  assert.equal(result.confidence, "medium");
+  assert.equal(result.summary, "Embedded JSON summary");
+});

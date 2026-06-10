@@ -28,6 +28,46 @@ function stripJsonFence(text: string): string {
     .trim();
 }
 
+function extractFirstJsonObject(text: string): string | null {
+  const input = stripJsonFence(text);
+  const start = input.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < input.length; index += 1) {
+    const char = input[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return input.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 function asText(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.slice(0, 800) : fallback;
 }
@@ -50,7 +90,7 @@ export function parseProfitExplanationResult(
 ): ProfitExplanationResult {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stripJsonFence(text));
+    parsed = JSON.parse(extractFirstJsonObject(text) ?? stripJsonFence(text));
   } catch {
     return fallbackResult("AI ส่ง JSON ไม่ถูกต้อง");
   }

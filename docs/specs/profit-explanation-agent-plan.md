@@ -387,6 +387,7 @@ Implementation must pass these checks:
 - [x] Create failing tests in `lib/__tests__/profit-explanation-service.test.ts`.
 - [x] Test valid JSON parsing.
 - [x] Test markdown-wrapped JSON parsing if needed.
+- [x] Test JSON object extraction from surrounding prose.
 - [x] Test invalid JSON fallback.
 - [x] Test unsupported evidence refs are rejected or moved to limitations.
 - [x] Test mutation claims are rejected.
