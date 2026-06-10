@@ -4,9 +4,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 
 import { changeLineConversationStatusAction } from "@/app/admin/(protected)/line-conversations/actions";
+import {
+  getLineConversationCurrentBadgeClassName,
+  getLineConversationDropdownClassName,
+  getLineConversationMenuItemClassName,
+} from "@/components/shared/line-conversation-status-switcher-styles";
 import { LineConversationAiStatus } from "@/lib/generated/prisma";
 import { cn } from "@/lib/utils";
-import { getLineConversationDropdownClassName } from "@/components/shared/line-conversation-status-switcher-styles";
 
 const STATUS_LABELS: Record<LineConversationAiStatus, string> = {
   ACTIVE: "AI ทำงาน",
@@ -16,9 +20,12 @@ const STATUS_LABELS: Record<LineConversationAiStatus, string> = {
 };
 
 const STATUS_CLASSES: Record<LineConversationAiStatus, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25",
-  PAUSED_BY_ADMIN: "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25",
-  WAITING_ADMIN: "bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-500/15 dark:text-sky-200 dark:hover:bg-sky-500/25",
+  ACTIVE:
+    "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-500/25",
+  PAUSED_BY_ADMIN:
+    "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25",
+  WAITING_ADMIN:
+    "bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-500/15 dark:text-sky-200 dark:hover:bg-sky-500/25",
   CLOSED: "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/15",
 };
 
@@ -30,7 +37,7 @@ const STATUS_ORDER: LineConversationAiStatus[] = [
 ];
 
 const CLOSE_CONFIRM_MESSAGE =
-  "ปิดเคสนี้? AI จะหยุดทำงานและไม่รับข้อความใหม่จนกว่าจะกลับมาเปิด — ยืนยันหรือไม่?";
+  "ปิดเคสนี้? AI จะหยุดทำงานและไม่รับข้อความใหม่จนกว่าจะกลับมาเปิด ยืนยันหรือไม่?";
 
 type Props = {
   conversationId: string;
@@ -44,7 +51,6 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
   const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const handleClick = (event: MouseEvent) => {
@@ -61,7 +67,6 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
     };
   }, [open]);
 
-  // Re-sync if the server rerenders with a new status.
   useEffect(() => {
     setStatus(currentStatus);
   }, [currentStatus]);
@@ -71,20 +76,19 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
     setErrorMsg(null);
     if (next === status) return;
 
-    // Only "CLOSED" is destructive enough to warrant a confirm prompt.
     if (next === LineConversationAiStatus.CLOSED) {
       if (!window.confirm(CLOSE_CONFIRM_MESSAGE)) return;
     }
 
     const previous = status;
-    setStatus(next); // optimistic
+    setStatus(next);
     startTransition(async () => {
       const result = await changeLineConversationStatusAction({
         conversationId,
         status: next,
       });
       if (!result.ok) {
-        setStatus(previous); // rollback
+        setStatus(previous);
         setErrorMsg(result.error);
       }
     });
@@ -127,15 +131,12 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
                 event.preventDefault();
                 handleChange(option);
               }}
-              className={cn(
-                "block w-full px-3 py-2 text-left text-xs font-medium transition-colors",
-                option === status
-                  ? "bg-gray-50 text-gray-900 dark:bg-white/5 dark:text-slate-100"
-                  : "text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/5",
-              )}
+              className={getLineConversationMenuItemClassName(option === status)}
             >
-              {STATUS_LABELS[option]}
-              {option === status ? <span className="ml-1 text-gray-400">(ปัจจุบัน)</span> : null}
+              <span>{STATUS_LABELS[option]}</span>
+              {option === status ? (
+                <span className={getLineConversationCurrentBadgeClassName()}>(ปัจจุบัน)</span>
+              ) : null}
             </button>
           ))}
         </div>
