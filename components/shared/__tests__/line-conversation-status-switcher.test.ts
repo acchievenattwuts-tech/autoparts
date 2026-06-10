@@ -11,6 +11,8 @@ import {
 test("status dropdown uses an opaque surface and stronger separation in dark mode", () => {
   const className = getLineConversationDropdownClassName();
 
+  assert.match(className, /\bfixed\b/);
+  assert.match(className, /z-\[1000\]/);
   assert.match(className, /\bborder-slate-200\/90\b/);
   assert.match(className, /\bbg-white\/98\b/);
   assert.match(className, /\bshadow-xl\b/);
@@ -31,7 +33,7 @@ test("current status badge stacks under the menu label instead of colliding inli
   assert.match(badgeClassName, /\btext-sky-600\b/);
 });
 
-test("open status switcher rises above later conversation rows", () => {
+test("open status switcher keeps its trigger above row links while the menu is portaled", () => {
   const closedClassName = getLineConversationContainerClassName(false);
   const openClassName = getLineConversationContainerClassName(true);
 

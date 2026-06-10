@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 
 import { changeLineConversationStatusAction } from "@/app/admin/(protected)/line-conversations/actions";
@@ -49,22 +50,47 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<LineConversationAiStatus>(currentStatus);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; minWidth: number; top: number } | null>(null);
   const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const updateMenuPosition = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuPosition({
+      left: rect.left,
+      minWidth: Math.max(160, rect.width),
+      top: rect.bottom + 4,
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handleClick = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (containerRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const handleViewportChange = () => updateMenuPosition();
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
     };
   }, [open]);
 
@@ -98,6 +124,7 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
   return (
     <div ref={containerRef} className={getLineConversationContainerClassName(open)}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={(event) => {
           event.preventDefault();
@@ -117,11 +144,18 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
         <ChevronDown size={12} className={cn("transition-transform", open && "rotate-180")} />
       </button>
 
-      {open ? (
+      {open && menuPosition
+        ? createPortal(
         <div
+          ref={dropdownRef}
           role="menu"
           onClick={(event) => event.stopPropagation()}
           className={getLineConversationDropdownClassName()}
+          style={{
+            left: menuPosition.left,
+            minWidth: menuPosition.minWidth,
+            top: menuPosition.top,
+          }}
         >
           {STATUS_ORDER.map((option) => (
             <button
@@ -140,8 +174,10 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
               ) : null}
             </button>
           ))}
-        </div>
-      ) : null}
+        </div>,
+          document.body,
+        )
+        : null}
 
       {errorMsg ? (
         <p
