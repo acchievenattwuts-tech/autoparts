@@ -85,6 +85,38 @@ test("parseProfitExplanationResult rejects mutation claims and returns fallback"
   assert.match(result.summary, /ไม่สามารถสรุป/);
 });
 
+test("parseProfitExplanationResult allows advisory checks about possible price changes", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult(
+    JSON.stringify({
+      summary: "ควรตรวจสอบว่ามีการปรับราคาหรือส่วนลดในช่วงนี้หรือไม่",
+      confidence: "medium",
+      facts: [],
+      drivers: [
+        {
+          title: "Margin ลดลง",
+          explanation: "ควรตรวจสอบการปรับราคา ส่วนลด หรือรายการขายที่ margin ต่ำ",
+          impact: "negative",
+          evidenceRefs: ["summary:selected"],
+        },
+      ],
+      anomalies: [],
+      recommendedChecks: [
+        {
+          label: "ตรวจสอบราคา",
+          reason: "เป็นคำแนะนำเท่านั้น ไม่ได้บอกว่า AI แก้ไขข้อมูล",
+        },
+      ],
+      limitations: [],
+    }),
+    evidence,
+  );
+
+  assert.equal(result.confidence, "medium");
+  assert.equal(result.drivers[0]?.title, "Margin ลดลง");
+});
+
 test("parseProfitExplanationResult accepts markdown wrapped JSON", async () => {
   const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
 

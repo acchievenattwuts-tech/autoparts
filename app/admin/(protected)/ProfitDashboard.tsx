@@ -523,6 +523,8 @@ const ProfitDashboard = async ({
         </div>
       </section>
 
+      <ProfitExplanationPanel filters={data.filters} />
+
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_1fr]">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
           <div className="mb-4 flex items-center justify-between">
@@ -662,8 +664,6 @@ const ProfitDashboard = async ({
           </div>
         </section>
       </div>
-
-      <ProfitExplanationPanel filters={data.filters} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

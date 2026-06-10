@@ -6,7 +6,9 @@ import {
   type ProfitExplanationResult,
 } from "@/lib/profit-explanation/schema";
 
-const MUTATION_CLAIM_RE = /(ปรับราคา|แก้ไข|อนุมัติ|ลบ|โพสต์|กระทบยอด|สร้างบิล|ปรับสต็อก|changed|updated|deleted|approved|posted|reconciled|created)/i;
+const TH_MUTATION_ACTION_RE = /(ปรับราคา|แก้ไข|อนุมัติ|ลบ|โพสต์|กระทบยอด|สร้างบิล|ปรับสต็อก)/;
+const TH_COMPLETED_MARKER_RE = /(ให้แล้ว|แล้ว|เรียบร้อย|สำเร็จ)/;
+const EN_MUTATION_CLAIM_RE = /\b(i|we|system|ai)\b.{0,40}\b(changed|updated|deleted|approved|posted|reconciled|created)\b/i;
 
 function fallbackResult(reason: string): ProfitExplanationResult {
   return {
@@ -84,6 +86,24 @@ function asSeverity(value: unknown): "high" | "medium" | "low" {
   return value === "high" || value === "medium" || value === "low" ? value : "low";
 }
 
+function hasMutationClaim(value: unknown): boolean {
+  const text = JSON.stringify(value);
+  if (EN_MUTATION_CLAIM_RE.test(text)) {
+    return true;
+  }
+
+  const actionMatch = TH_MUTATION_ACTION_RE.exec(text);
+  if (!actionMatch) {
+    return false;
+  }
+
+  const start = Math.max(0, actionMatch.index - 30);
+  const end = Math.min(text.length, actionMatch.index + actionMatch[0].length + 30);
+  const surrounding = text.slice(start, end);
+
+  return /(ระบบ|AI|เอไอ|ฉัน|เรา)/i.test(surrounding) && TH_COMPLETED_MARKER_RE.test(surrounding);
+}
+
 export function parseProfitExplanationResult(
   text: string,
   evidence: ProfitExplanationEvidence,
@@ -100,7 +120,7 @@ export function parseProfitExplanationResult(
   }
 
   const raw = parsed as Record<string, unknown>;
-  if (MUTATION_CLAIM_RE.test(JSON.stringify(raw))) {
+  if (hasMutationClaim(raw)) {
     return fallbackResult("AI response มีข้อความที่สื่อว่าแก้ไขข้อมูล จึงถูกปฏิเสธ");
   }
 
