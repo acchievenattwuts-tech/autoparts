@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getLineConversationContainerClassName,
   getLineConversationDropdownClassName,
   getLineConversationCurrentBadgeClassName,
   getLineConversationMenuItemClassName,
@@ -28,4 +29,13 @@ test("current status badge stacks under the menu label instead of colliding inli
   assert.match(badgeClassName, /\bmt-1\b/);
   assert.match(badgeClassName, /text-\[11px\]/);
   assert.match(badgeClassName, /\btext-sky-600\b/);
+});
+
+test("open status switcher rises above later conversation rows", () => {
+  const closedClassName = getLineConversationContainerClassName(false);
+  const openClassName = getLineConversationContainerClassName(true);
+
+  assert.match(closedClassName, /\brelative\b/);
+  assert.doesNotMatch(closedClassName, /\bz-50\b/);
+  assert.match(openClassName, /\bz-50\b/);
 });

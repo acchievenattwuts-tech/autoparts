@@ -5,6 +5,7 @@ import { ChevronDown, LoaderCircle } from "lucide-react";
 
 import { changeLineConversationStatusAction } from "@/app/admin/(protected)/line-conversations/actions";
 import {
+  getLineConversationContainerClassName,
   getLineConversationCurrentBadgeClassName,
   getLineConversationDropdownClassName,
   getLineConversationMenuItemClassName,
@@ -95,7 +96,7 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
   };
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className={getLineConversationContainerClassName(open)}>
       <button
         type="button"
         onClick={(event) => {

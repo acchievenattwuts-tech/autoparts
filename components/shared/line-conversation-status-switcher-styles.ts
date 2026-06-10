@@ -1,3 +1,7 @@
+export function getLineConversationContainerClassName(isOpen: boolean) {
+  return ["relative inline-block", isOpen ? "z-50" : ""].filter(Boolean).join(" ");
+}
+
 export function getLineConversationDropdownClassName() {
   return [
     "absolute left-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-lg border",
