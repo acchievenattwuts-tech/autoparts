@@ -7,6 +7,7 @@ import {
   getInitialPaymentSlipStatus,
   parsePaymentSlipOcr,
 } from "@/lib/line-payment-slip-service";
+import { formatDateTimeThai } from "@/lib/th-date";
 
 test("payment slip submissions start as admin review only", () => {
   assert.equal(getInitialPaymentSlipStatus(), PaymentSlipVerificationStatus.PENDING_REVIEW);
@@ -35,6 +36,40 @@ test("parses payment-slip OCR fields and normalizes the amount", () => {
   assert.equal(ocr.senderName, "สมชาย");
   assert.equal(ocr.referenceNo, "0123456789");
   assert.ok(ocr.transferDatetimeIso?.startsWith("2026-06-08T"));
+});
+
+test("payment-slip OCR treats slip transfer time as Bangkok wall-clock time", () => {
+  const ocr = parsePaymentSlipOcr(
+    '{"amount":"4,180.00","transferDatetime":"2026-06-10T18:26:00Z","bank":"Krungthai"}',
+  );
+
+  assert.equal(
+    formatDateTimeThai(ocr.transferDatetimeIso as string, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    "10 มิ.ย. 2026 18:26",
+  );
+});
+
+test("payment-slip OCR normalizes Buddhist years in transfer datetime", () => {
+  const ocr = parsePaymentSlipOcr(
+    '{"amount":"4,180.00","transferDatetime":"2569-06-10T18:26:00","bank":"Krungthai"}',
+  );
+
+  assert.equal(
+    formatDateTimeThai(ocr.transferDatetimeIso as string, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    "10 มิ.ย. 2026 18:26",
+  );
 });
 
 test("payment-slip OCR returns empty fields for unparseable output", () => {

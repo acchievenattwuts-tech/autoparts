@@ -1,4 +1,5 @@
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
+import { THAILAND_UTC_OFFSET } from "@/lib/th-date";
 
 export function getInitialPaymentSlipStatus() {
   return PaymentSlipVerificationStatus.PENDING_REVIEW;
@@ -51,10 +52,24 @@ function cleanAmount(value: unknown): number | null {
   return null;
 }
 
-function cleanIsoDatetime(value: unknown): string | null {
+function cleanSlipTransferDatetime(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
+
+  const match = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+  );
+  if (match) {
+    const [, rawYear, month, day, hour, minute, second = "00"] = match;
+    const year = Number(rawYear);
+    const normalizedYear = year > 2400 ? year - 543 : year;
+    const parsed = new Date(
+      `${String(normalizedYear).padStart(4, "0")}-${month}-${day}T${hour}:${minute}:${second}${THAILAND_UTC_OFFSET}`,
+    );
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
@@ -78,7 +93,7 @@ export function parsePaymentSlipOcr(raw: string): PaymentSlipOcr {
     const parsed = JSON.parse(jsonText) as Record<string, unknown>;
     return {
       amount: cleanAmount(parsed.amount),
-      transferDatetimeIso: cleanIsoDatetime(parsed.transferDatetime),
+      transferDatetimeIso: cleanSlipTransferDatetime(parsed.transferDatetime),
       bank: cleanString(parsed.bank, 80),
       senderName: cleanString(parsed.senderName, 120),
       receiverName: cleanString(parsed.receiverName, 120),
