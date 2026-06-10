@@ -2,7 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, ImagePlus, Pause, Play, Send, Smile, UserRoundCheck, X, XCircle } from "lucide-react";
+import {
+  AlertCircle,
+  ImagePlus,
+  LoaderCircle,
+  Pause,
+  Play,
+  Send,
+  Smile,
+  UserRoundCheck,
+  X,
+  XCircle,
+} from "lucide-react";
 
 import { LINE_AI_DRAFT_USE_EVENT } from "@/components/shared/LineAiDraftUseButton";
 
@@ -48,6 +59,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   CONVERSATION_NOT_FOUND: "ไม่พบบทสนทนานี้",
   FORBIDDEN: "ไม่มีสิทธิ์ส่งข้อความ",
   UNAUTHORIZED: "กรุณาเข้าสู่ระบบใหม่",
+};
+
+const ACTION_LABELS: Record<string, { idle: string; pending: string }> = {
+  pause: { idle: "พัก AI (Pause)", pending: "กำลังพัก AI..." },
+  resume: { idle: "เปิด AI ต่อ (Resume)", pending: "กำลังเปิด AI..." },
+  waiting: { idle: "รอแอดมิน (Waiting)", pending: "กำลังบันทึก..." },
+  close: { idle: "ปิดเคส (Close)", pending: "กำลังปิดเคส..." },
 };
 
 function friendlyError(code: string): string {
@@ -210,8 +228,8 @@ export default function AdminLineConversationActions({
             }
             className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
           >
-            <Pause size={15} />
-            พัก AI (Pause)
+            {pending === "pause" ? <LoaderCircle size={15} className="animate-spin" /> : <Pause size={15} />}
+            {pending === "pause" ? ACTION_LABELS.pause.pending : ACTION_LABELS.pause.idle}
           </button>
           <button
             type="button"
@@ -219,8 +237,8 @@ export default function AdminLineConversationActions({
             onClick={() => runAction("resume", `/api/admin/line-conversations/${conversationId}/resume-ai`)}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
           >
-            <Play size={15} />
-            เปิด AI ต่อ (Resume)
+            {pending === "resume" ? <LoaderCircle size={15} className="animate-spin" /> : <Play size={15} />}
+            {pending === "resume" ? ACTION_LABELS.resume.pending : ACTION_LABELS.resume.idle}
           </button>
           <button
             type="button"
@@ -234,8 +252,12 @@ export default function AdminLineConversationActions({
             }
             className="inline-flex h-9 items-center gap-2 rounded-md border border-amber-200 px-3 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-400/30 dark:text-amber-200 dark:hover:bg-amber-500/10"
           >
-            <UserRoundCheck size={15} />
-            รอแอดมิน (Waiting)
+            {pending === "waiting" ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <UserRoundCheck size={15} />
+            )}
+            {pending === "waiting" ? ACTION_LABELS.waiting.pending : ACTION_LABELS.waiting.idle}
           </button>
           <button
             type="button"
@@ -243,8 +265,8 @@ export default function AdminLineConversationActions({
             onClick={() => runAction("close", `/api/admin/line-conversations/${conversationId}/close`)}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
           >
-            <XCircle size={15} />
-            ปิดเคส (Close)
+            {pending === "close" ? <LoaderCircle size={15} className="animate-spin" /> : <XCircle size={15} />}
+            {pending === "close" ? ACTION_LABELS.close.pending : ACTION_LABELS.close.idle}
           </button>
         </div>
       ) : null}

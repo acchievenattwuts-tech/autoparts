@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Link2, Search, Unlink } from "lucide-react";
+import { Link2, LoaderCircle, Search, Unlink } from "lucide-react";
 
 type CustomerHit = {
   id: string;
@@ -22,7 +22,8 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<CustomerHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"link" | "unlink" | null>(null);
+  const [pendingCustomerId, setPendingCustomerId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const search = async () => {
@@ -42,7 +43,8 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
   };
 
   const setCustomer = async (customerId: string | null) => {
-    setPending(true);
+    setPending(customerId ? "link" : "unlink");
+    setPendingCustomerId(customerId);
     setError(null);
     try {
       const res = await fetch(`/api/admin/line-conversations/${conversationId}/link-customer`, {
@@ -61,7 +63,8 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
     } catch (err) {
       setError(err instanceof Error ? err.message : "REQUEST_FAILED");
     } finally {
-      setPending(false);
+      setPending(null);
+      setPendingCustomerId(null);
     }
   };
 
@@ -71,21 +74,21 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          disabled={pending}
+          disabled={pending !== null}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
         >
-          <Link2 size={13} />
+          {pending === "link" ? <LoaderCircle size={13} className="animate-spin" /> : <Link2 size={13} />}
           {isLinked ? "เปลี่ยนลูกค้าที่ผูก" : "ผูกลูกค้าด้วยมือ"}
         </button>
         {isLinked ? (
           <button
             type="button"
             onClick={() => setCustomer(null)}
-            disabled={pending}
+            disabled={pending !== null}
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 px-2.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
           >
-            <Unlink size={13} />
-            ยกเลิกการผูก
+            {pending === "unlink" ? <LoaderCircle size={13} className="animate-spin" /> : <Unlink size={13} />}
+            {pending === "unlink" ? "กำลังยกเลิก..." : "ยกเลิกการผูก"}
           </button>
         ) : null}
       </div>
@@ -123,7 +126,7 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
                   <button
                     type="button"
                     onClick={() => setCustomer(customer.id)}
-                    disabled={pending}
+                    disabled={pending !== null}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-60 dark:hover:bg-white/5"
                   >
                     <span className="min-w-0">
@@ -132,7 +135,12 @@ export default function AdminLineConversationCustomerLink({ conversationId, isLi
                         <span className="ml-2 font-mono text-xs text-gray-500 dark:text-slate-400">{customer.code}</span>
                       ) : null}
                     </span>
-                    {customer.phone ? (
+                    {pendingCustomerId === customer.id ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-gray-500 dark:text-slate-400">
+                        <LoaderCircle size={12} className="animate-spin" />
+                        กำลังผูก...
+                      </span>
+                    ) : customer.phone ? (
                       <span className="shrink-0 text-xs text-gray-500 dark:text-slate-400">{customer.phone}</span>
                     ) : null}
                   </button>

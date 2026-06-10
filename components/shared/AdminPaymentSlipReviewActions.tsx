@@ -2,13 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, HelpCircle, XCircle } from "lucide-react";
+import { CheckCircle2, HelpCircle, LoaderCircle, XCircle } from "lucide-react";
 
 type Props = {
   slipId: string;
 };
 
 type Decision = "confirm" | "reject" | "needs_info";
+
+const DECISION_LABELS: Record<Decision, { idle: string; pending: string }> = {
+  confirm: {
+    idle: "ยืนยันผลตรวจสลิป",
+    pending: "กำลังยืนยัน...",
+  },
+  needs_info: {
+    idle: "ขอข้อมูลเพิ่ม",
+    pending: "กำลังบันทึก...",
+  },
+  reject: {
+    idle: "ปฏิเสธ",
+    pending: "กำลังปฏิเสธ...",
+  },
+};
 
 export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
   const router = useRouter();
@@ -45,8 +60,8 @@ export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
           onClick={() => review("confirm")}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-200 px-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-400/30 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
         >
-          <CheckCircle2 size={15} />
-          ยืนยันผลตรวจสลิป
+          {pending === "confirm" ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+          {pending === "confirm" ? DECISION_LABELS.confirm.pending : DECISION_LABELS.confirm.idle}
         </button>
         <button
           type="button"
@@ -54,8 +69,8 @@ export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
           onClick={() => review("needs_info")}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-amber-200 px-3 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-400/30 dark:text-amber-200 dark:hover:bg-amber-500/10"
         >
-          <HelpCircle size={15} />
-          ขอข้อมูลเพิ่ม
+          {pending === "needs_info" ? <LoaderCircle size={15} className="animate-spin" /> : <HelpCircle size={15} />}
+          {pending === "needs_info" ? DECISION_LABELS.needs_info.pending : DECISION_LABELS.needs_info.idle}
         </button>
         <button
           type="button"
@@ -63,8 +78,8 @@ export default function AdminPaymentSlipReviewActions({ slipId }: Props) {
           onClick={() => review("reject")}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-400/30 dark:text-red-200 dark:hover:bg-red-500/10"
         >
-          <XCircle size={15} />
-          ปฏิเสธ
+          {pending === "reject" ? <LoaderCircle size={15} className="animate-spin" /> : <XCircle size={15} />}
+          {pending === "reject" ? DECISION_LABELS.reject.pending : DECISION_LABELS.reject.idle}
         </button>
       </div>
       {error ? <p className="text-xs text-red-600 dark:text-red-300">{error}</p> : null}
