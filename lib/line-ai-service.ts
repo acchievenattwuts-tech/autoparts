@@ -337,6 +337,22 @@ function buildLineReplyPrompt(input: {
       "สำคัญ: เรียงรายการในคำตอบ 'ตามลำดับที่ให้มาเป๊ะ' ห้ามสลับ/จัดลำดับใหม่ เพราะต้องตรงกับการ์ดสินค้าที่ส่งคู่กัน",
     );
     lines.push(
+      [
+        "รูปแบบการแสดงรายการสินค้า (ต้องทำตามนี้เป๊ะ เพื่อให้แต่ละรายการแยกชัดอ่านง่าย):",
+        "- ขึ้นรายการแรกด้วยการเว้นบรรทัดว่าง 1 บรรทัดจากข้อความเปิด",
+        "- แต่ละสินค้าขึ้นต้นด้วยเลขลำดับอิโมจิ 1️⃣ 2️⃣ 3️⃣ ... ตามด้วยชื่อสินค้าเต็ม",
+        "- บรรทัดถัดมาของสินค้านั้นใส่รหัสในรูปแบบ '🏷️ รหัส <รหัส>' (ถ้าสินค้าไม่มีรหัสให้ข้ามบรรทัดนี้)",
+        "- คั่นระหว่างสินค้าแต่ละรายการด้วยเส้น '━━━━━━━━━━━━━━' บรรทัดเดียว",
+        "- หลังรายการสุดท้ายเว้นบรรทัดว่าง 1 บรรทัดก่อนข้อความปิดท้าย",
+        "ตัวอย่างรูปแบบ:",
+        "1️⃣ ชื่อสินค้า A",
+        "🏷️ รหัส P0001",
+        "━━━━━━━━━━━━━━",
+        "2️⃣ ชื่อสินค้า B",
+        "🏷️ รหัส P0002",
+      ].join("\n"),
+    );
+    lines.push(
       "ย้ำกับลูกค้าว่าเป็นการเทียบเบื้องต้นจากข้อมูลที่ได้ และแนะนำให้ตรวจสอบ/ยืนยันความเข้ากันกับทางร้านอีกครั้งก่อนสั่งซื้อ ไม่ต้องบังคับให้ลูกค้าระบุเลขตัวถังหรือรหัส OEM",
     );
   } else if (input.productSearch?.searched) {
@@ -357,6 +373,28 @@ function buildLineReplyPrompt(input: {
   return lines.join("\n");
 }
 
+/** Divider between product items in customer-facing list messages (style A). */
+const PRODUCT_LIST_DIVIDER = "━━━━━━━━━━━━━━";
+const PRODUCT_LIST_NUMBER_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+
+/**
+ * Formats matched products as a clear, separated list block (style A): each item
+ * is numbered, the product code is on its own highlighted line, and items are
+ * split by a divider so they read as distinct entries. Shared by every
+ * customer-facing list reply so the deterministic templates and the live AI path
+ * stay visually identical. Returns "" when there are no products.
+ */
+export function formatProductListBlock(products: LineProductSummary[]): string {
+  return products
+    .slice(0, 5)
+    .map((product, index) => {
+      const number = PRODUCT_LIST_NUMBER_EMOJI[index] ?? `${index + 1}.`;
+      const codeLine = product.code ? `\n🏷️ รหัส ${product.code}` : "";
+      return `${number} ${product.name}${codeLine}`;
+    })
+    .join(`\n${PRODUCT_LIST_DIVIDER}\n`);
+}
+
 export function buildConservativeLineSuggestion(input: {
   intent: LineIntent;
   originalText?: string | null;
@@ -365,7 +403,7 @@ export function buildConservativeLineSuggestion(input: {
 }): LineAiSuggestionDraft {
   if (input.intent === LineIntent.GREETING) {
     return {
-      suggestedReply: "สวัสดีค่ะ ต้องการสอบถามอะไหล่แอร์รถยนต์รุ่นไหนดีคะ รบกวนส่งรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมมาได้เลยนะคะ",
+      suggestedReply: "สวัสดีค่ะ 😊 จูนช่วยหาอะไหล่แอร์ให้ได้เลยค่ะ รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมมาได้เลยนะคะ",
       confidence: LineAiConfidence.NEED_MORE_INFO,
       reasoningSummary: "Greeting only; ask for vehicle or part details before search.",
     };
@@ -385,14 +423,11 @@ export function buildConservativeLineSuggestion(input: {
       };
     }
 
-    const productLines = (input.products ?? [])
-      .slice(0, 5)
-      .map((product) => `• ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`)
-      .join("\n");
+    const productLines = formatProductListBlock(input.products ?? []);
 
     return {
       suggestedReply: productLines
-        ? `เบื้องต้นพบรายการที่ใกล้เคียงในร้านค่ะ 😊\n${productLines}\nเป็นการเทียบเบื้องต้นนะคะ แนะนำให้ตรวจสอบกับทางร้านอีกครั้งก่อนสั่งซื้อค่ะ`
+        ? `เบื้องต้นพบรายการที่ใกล้เคียงในร้านค่ะ 😊\n\n${productLines}\n\nเป็นการเทียบเบื้องต้นนะคะ แนะนำให้ตรวจสอบกับทางร้านอีกครั้งก่อนสั่งซื้อค่ะ`
         : "เบื้องต้นพบรายการที่ใกล้เคียงในร้านค่ะ 😊 เป็นการเทียบเบื้องต้น แนะนำให้ตรวจสอบกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ",
       confidence: LineAiConfidence.POSSIBLE_MATCH,
       reasoningSummary: "Product search returned candidate products; reply remains conservative.",
@@ -401,7 +436,7 @@ export function buildConservativeLineSuggestion(input: {
   }
 
   return {
-    suggestedReply: "ขออนุญาตส่งต่อให้แอดมินตรวจสอบเพิ่มเติมให้อีกครั้งนะคะ",
+    suggestedReply: "ขอส่งต่อให้แอดมินช่วยตรวจสอบเพิ่มเติมให้นะคะ 🙏",
     confidence: LineAiConfidence.ADMIN_REQUIRED,
     reasoningSummary: `Intent ${input.intent} is not safe for automatic detailed reply.`,
   };
@@ -427,16 +462,13 @@ export function buildJuneDeadlineReply(input: {
       : "รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมเพิ่มเติมนะคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ 🙏";
   }
 
-  const productLines = products
-    .slice(0, 5)
-    .map((product) => `• ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`)
-    .join("\n");
+  const productLines = formatProductListBlock(products);
 
   const opener = subject
     ? `สำหรับ "${subject}" เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊`
     : "เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊";
 
-  return `${opener}\n${productLines}\nเป็นการเทียบเบื้องต้นนะคะ รบกวนเช็กกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ 🙏`;
+  return `${opener}\n\n${productLines}\n\nเป็นการเทียบเบื้องต้นนะคะ รบกวนเช็กกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ 🙏`;
 }
 
 /**

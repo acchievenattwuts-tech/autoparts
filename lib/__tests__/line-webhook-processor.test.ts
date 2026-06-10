@@ -824,7 +824,7 @@ test("purchase keyword hands off to admin with a bridging message", async () => 
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /แอดมินมาดูแลเรื่องสั่งซื้อ/);
+  assert.match(calls.replies[0]?.text ?? "", /แอดมินมาช่วยสรุปราคา/);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.ok(calls.auditActions.includes("AI_PURCHASE_HANDOFF"));
   assert.equal(calls.notifyHandoffs.length, 1);

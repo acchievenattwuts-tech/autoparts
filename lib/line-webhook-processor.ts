@@ -147,9 +147,9 @@ const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
 // reply this many ms early so it still goes out on the FREE reply token.
 const REPLY_DEADLINE_MARGIN_MS = 5_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
-  "ขอโทษนะคะ 🙏 จูนยังหาสินค้าที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขออนุญาตส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมเพิ่มเติม ส่งมาได้เลยค่ะ จะได้ช่วยหาให้แม่นยำขึ้นค่ะ";
+  "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
-  "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาดูแลเรื่องสั่งซื้อและสรุปราคา/การจัดส่งให้นะคะ รอสักครู่ค่ะ 🙏";
+  "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์ รบกวนแจ้ง 3 อย่างนี้
@@ -180,7 +180,7 @@ function isMenuCommand(text: string | null | undefined): boolean {
 // stay completely silent. Never hand off, never notify on a sticker.
 const STICKER_GREETING_REWAKE_MS = 6 * 60 * 60 * 1000; // 6h since the last customer turn
 const STICKER_GREETING_MESSAGE =
-  "สวัสดีค่ะ 🙏 มีอะไรให้ศรีวรรณช่วยดูแลคะ แจ้งยี่ห้อ/รุ่นรถ และอะไหล่ที่ต้องการได้เลยค่ะ";
+  "สวัสดีค่ะ 🙏 จูนยินดีช่วยดูแลค่ะ รบกวนแจ้งยี่ห้อ/รุ่นรถ ปีรถ และอะไหล่ที่ต้องการได้เลยนะคะ เดี๋ยวจูนช่วยหาให้ค่ะ 😊";
 
 async function handleStickerEvent(
   input: ProcessLineAiReplyInput,
@@ -1058,7 +1058,7 @@ export async function processLineAiReply(
     // must never go silent and admins must be alerted. Best-effort only — every
     // fallback step is wrapped so a failure here can never override the original
     // error or block the job-failed bookkeeping below.
-    const FALLBACK_TEXT = "ขออนุญาตส่งต่อให้แอดมินค่ะ จะติดต่อกลับในทันทีค่ะ 🙏";
+    const FALLBACK_TEXT = "ขอส่งต่อให้แอดมินช่วยดูแลต่อนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 🙏";
 
     if (config.channelAccessToken) {
       try {
