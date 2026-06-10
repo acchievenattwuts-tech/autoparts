@@ -24,7 +24,7 @@ The runtime toggles live in the admin page **ตั้งค่าร้าน�
 
 ## AI Provider — Google Gemini Multi-Key Fallback
 
-- The AI suggestion layer uses Google Gemini (free tier) via `GOOGLE_AI_API_KEY_1..10`.
+- The AI suggestion layer uses Google Gemini (free tier) via `GOOGLE_AI_API_KEY_1..30`.
 - Secrets live in server env only; the `AiApiKeyState` table tracks per-key health (cooldown / disabled / counters) shared across all serverless instances.
 - Key selection: least-recently-used available key first, to spread load across accounts.
 - Fallback behavior:
@@ -77,7 +77,7 @@ To re-enable a `DISABLED` key after fixing/replacing the secret, set its `status
 ## Rollout
 
 1. Deploy schema and code with disabled mode.
-2. Add 1–10 `GOOGLE_AI_API_KEY_*` secrets in the environment (Vercel + `.env.local`); confirm Supabase keys exist (for slip image storage).
+2. Add 1–30 `GOOGLE_AI_API_KEY_*` secrets in the environment (Vercel + `.env.local`); confirm Supabase keys exist (for slip image storage).
 3. In ตั้งค่าร้านค้า → "LINE OA AI Agent", enable AI + keep dry-run on; inspect captured conversations/suggestions (Gemini drafts stored, nothing sent).
 4. Verify admin takeover and duplicate handling; send a test slip and confirm it appears in /admin/line-payment-slips with image + OCR.
 5. Inspect `AiApiKeyState` to confirm key rotation/cooldown behaves as expected.

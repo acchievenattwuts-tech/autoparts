@@ -8,11 +8,11 @@ This feature must read all credentials server-side only. Do not expose these var
   - Used to verify `x-line-signature` from the raw webhook body.
 - `LINE_MESSAGING_API_CHANNEL_ACCESS_TOKEN`
   - Used for LINE profile lookup, `replyMessage`, and push fallback/admin replies.
-- `GOOGLE_AI_API_KEY_1` .. `GOOGLE_AI_API_KEY_10`
-  - Google Gemini API keys (free tier) from up to 10 separate Google accounts.
+- `GOOGLE_AI_API_KEY_1` .. `GOOGLE_AI_API_KEY_30`
+  - Google Gemini API keys (free tier) from up to 30 separate Google accounts.
   - The AI suggestion/vision layer rotates least-recently-used first and falls back
     to the next key automatically when one hits a rate/quota limit.
-  - At least one key must be present for AI replies; the system runs with 1–10 keys.
+  - At least one key must be present for AI replies; the system runs with 1–30 keys.
   - Per-key health (cooldown / disabled) is tracked in the `AiApiKeyState` table so
     all serverless instances share the same rotation state.
 

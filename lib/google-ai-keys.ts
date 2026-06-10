@@ -4,7 +4,7 @@ import { AiApiKeyProvider, AiApiKeyStatus } from "@/lib/generated/prisma";
 /**
  * Multi-key rotation/fallback registry for Google Gemini free-tier API keys.
  *
- * - Secrets live ONLY in server env vars (GOOGLE_AI_API_KEY_1..5). They are never
+ * - Secrets live ONLY in server env vars (GOOGLE_AI_API_KEY_1..30). They are never
  *   stored in the database — the DB only tracks per-key health so that all Vercel
  *   serverless instances share the same "this key is cooling down" knowledge.
  * - When a key hits a rate/quota limit it is put into COOLING_DOWN until a timed
@@ -12,7 +12,7 @@ import { AiApiKeyProvider, AiApiKeyStatus } from "@/lib/generated/prisma";
  */
 
 const PROVIDER = AiApiKeyProvider.GOOGLE_GEMINI;
-const MAX_KEYS = 10;
+const MAX_KEYS = 30;
 
 // Per-minute (RPM) burst limit — short cooldown, the quota refills every minute.
 const RATE_LIMIT_COOLDOWN_MS = 60_000;
@@ -43,7 +43,7 @@ function keyRefForIndex(index: number): string {
 
 /**
  * Reads the configured Gemini keys from env (1..MAX_KEYS). Only keys that are
- * actually present (non-empty) are returned, so you can run with 1–10 keys.
+ * actually present (non-empty) are returned, so you can run with 1–30 keys.
  */
 export function getConfiguredGeminiKeys(): GeminiKeyHandle[] {
   const configured: GeminiKeyHandle[] = [];

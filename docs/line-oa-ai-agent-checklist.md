@@ -140,7 +140,7 @@ Rule reminder: this checklist is for scoped additive work only. Prefer extending
   - [x] LINE channel secret
   - [x] LINE channel access token
   - [x] Supabase URL / service role
-  - [x] Google Gemini API keys (`GOOGLE_AI_API_KEY_1..10`, multi-key fallback)
+  - [x] Google Gemini API keys (`GOOGLE_AI_API_KEY_1..30`, multi-key fallback)
   - [x] Gemini model + daily cooldown (`GOOGLE_AI_MODEL`, `GOOGLE_AI_DAILY_COOLDOWN_MINUTES`)
   - [x] AI auto-reply enable switch
   - [x] AI dry-run switch
@@ -149,7 +149,7 @@ Rule reminder: this checklist is for scoped additive work only. Prefer extending
 ### AI Provider: Google Gemini (Multi-Key Fallback)
 
 - [x] Use Google Gemini (free tier) as the AI suggestion provider for the LINE agent (OpenAI removed from this flow).
-- [x] Support up to 10 keys from separate Google accounts (`GOOGLE_AI_API_KEY_1..10`); run with 1–10 keys.
+- [x] Support up to 30 keys from separate Google accounts (`GOOGLE_AI_API_KEY_1..30`); run with 1–30 keys.
 - [x] Store API key secrets in server env only — never in the database.
 - [x] Track per-key health in the `AiApiKeyState` table so all serverless instances share rotation state.
 - [x] Select least-recently-used available key first to spread load evenly.

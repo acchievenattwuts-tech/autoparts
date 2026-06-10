@@ -91,7 +91,7 @@ export default async function LineAiKeysPage() {
 
       {configuredCount === 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
-          ยังไม่ได้ตั้งค่า <code className="font-mono">GOOGLE_AI_API_KEY_1..10</code> ใน environment — AI agent
+          ยังไม่ได้ตั้งค่า <code className="font-mono">GOOGLE_AI_API_KEY_1..30</code> ใน environment — AI agent
           จะใช้คำตอบสำรองแบบ rule-based จนกว่าจะใส่ key
         </div>
       ) : null}
