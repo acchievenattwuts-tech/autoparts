@@ -12,7 +12,8 @@ import { AiApiKeyProvider, AiApiKeyStatus } from "@/lib/generated/prisma";
  */
 
 const PROVIDER = AiApiKeyProvider.GOOGLE_GEMINI;
-const MAX_KEYS = 30;
+export const MAX_GEMINI_KEYS = 30;
+const MAX_KEYS = MAX_GEMINI_KEYS;
 
 // Per-minute (RPM) burst limit — short cooldown, the quota refills every minute.
 const RATE_LIMIT_COOLDOWN_MS = 60_000;

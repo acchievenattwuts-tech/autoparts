@@ -5,7 +5,7 @@ import { KeyRound } from "lucide-react";
 import AdminAiKeyResetButton from "@/components/shared/AdminAiKeyResetButton";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { AiApiKeyStatus } from "@/lib/generated/prisma";
-import { listAiApiKeyStates, type AiApiKeyStateView } from "@/lib/google-ai-keys";
+import { listAiApiKeyStates, MAX_GEMINI_KEYS, type AiApiKeyStateView } from "@/lib/google-ai-keys";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
 
@@ -74,7 +74,7 @@ export default async function LineAiKeysPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "ตั้งค่าแล้ว", value: `${configuredCount} / 10`, tone: "text-gray-900 dark:text-slate-100" },
+          { label: "ตั้งค่าแล้ว", value: `${configuredCount} / ${MAX_GEMINI_KEYS}`, tone: "text-gray-900 dark:text-slate-100" },
           { label: "พร้อมใช้", value: availableCount, tone: "text-emerald-600 dark:text-emerald-300" },
           { label: "พักชั่วคราว", value: coolingCount, tone: "text-amber-600 dark:text-amber-300" },
           { label: "ปิดใช้", value: disabledCount, tone: "text-red-600 dark:text-red-300" },
