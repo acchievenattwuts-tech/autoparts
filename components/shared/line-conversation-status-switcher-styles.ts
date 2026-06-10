@@ -22,3 +22,7 @@ export function getLineConversationMenuItemClassName(isCurrent: boolean) {
 export function getLineConversationCurrentBadgeClassName() {
   return "mt-1 text-[11px] font-semibold text-sky-600 dark:text-sky-300";
 }
+
+export function getLineConversationPortalThemeClassName(isDark: boolean) {
+  return isDark ? "dark contents" : "contents";
+}

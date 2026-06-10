@@ -10,6 +10,7 @@ import {
   getLineConversationCurrentBadgeClassName,
   getLineConversationDropdownClassName,
   getLineConversationMenuItemClassName,
+  getLineConversationPortalThemeClassName,
 } from "@/components/shared/line-conversation-status-switcher-styles";
 import { LineConversationAiStatus } from "@/lib/generated/prisma";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
   const [status, setStatus] = useState<LineConversationAiStatus>(currentStatus);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ left: number; minWidth: number; top: number } | null>(null);
+  const [isPortalDark, setIsPortalDark] = useState(false);
   const [isPending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -68,6 +70,14 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
 
   useLayoutEffect(() => {
     if (!open) return;
+    const trigger = buttonRef.current;
+    setIsPortalDark(
+      Boolean(
+        trigger?.closest(".dark") ||
+          document.documentElement.classList.contains("dark") ||
+          document.body.classList.contains("dark"),
+      ),
+    );
     updateMenuPosition();
   }, [open]);
 
@@ -146,37 +156,39 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
 
       {open && menuPosition
         ? createPortal(
-        <div
-          ref={dropdownRef}
-          role="menu"
-          onClick={(event) => event.stopPropagation()}
-          className={getLineConversationDropdownClassName()}
-          style={{
-            left: menuPosition.left,
-            minWidth: menuPosition.minWidth,
-            top: menuPosition.top,
-          }}
-        >
-          {STATUS_ORDER.map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="menuitem"
-              onClick={(event) => {
-                event.preventDefault();
-                handleChange(option);
-              }}
-              className={getLineConversationMenuItemClassName(option === status)}
-            >
-              <span>{STATUS_LABELS[option]}</span>
-              {option === status ? (
-                <span className={getLineConversationCurrentBadgeClassName()}>(ปัจจุบัน)</span>
-              ) : null}
-            </button>
-          ))}
-        </div>,
-          document.body,
-        )
+            <div className={getLineConversationPortalThemeClassName(isPortalDark)}>
+              <div
+                ref={dropdownRef}
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
+                className={getLineConversationDropdownClassName()}
+                style={{
+                  left: menuPosition.left,
+                  minWidth: menuPosition.minWidth,
+                  top: menuPosition.top,
+                }}
+              >
+                {STATUS_ORDER.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    role="menuitem"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleChange(option);
+                    }}
+                    className={getLineConversationMenuItemClassName(option === status)}
+                  >
+                    <span>{STATUS_LABELS[option]}</span>
+                    {option === status ? (
+                      <span className={getLineConversationCurrentBadgeClassName()}>(ปัจจุบัน)</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
         : null}
 
       {errorMsg ? (

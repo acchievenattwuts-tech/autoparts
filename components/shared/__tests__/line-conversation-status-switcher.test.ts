@@ -6,6 +6,7 @@ import {
   getLineConversationDropdownClassName,
   getLineConversationCurrentBadgeClassName,
   getLineConversationMenuItemClassName,
+  getLineConversationPortalThemeClassName,
 } from "../line-conversation-status-switcher-styles";
 
 test("status dropdown uses an opaque surface and stronger separation in dark mode", () => {
@@ -40,4 +41,9 @@ test("open status switcher keeps its trigger above row links while the menu is p
   assert.match(closedClassName, /\brelative\b/);
   assert.doesNotMatch(closedClassName, /\bz-50\b/);
   assert.match(openClassName, /\bz-50\b/);
+});
+
+test("portaled status dropdown preserves dark theme context", () => {
+  assert.equal(getLineConversationPortalThemeClassName(false), "contents");
+  assert.equal(getLineConversationPortalThemeClassName(true), "dark contents");
 });
