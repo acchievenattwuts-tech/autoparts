@@ -16,6 +16,11 @@ export type LineIntentRouteResult = {
 
 const GREETING_RE = /^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|hello\b|hi\b)/i;
 const PAYMENT_RE = /(สลิป|โอน|โอนแล้ว|ชำระ|จ่ายแล้ว|ยอดเงิน|ธนาคาร|พร้อมเพย์|promptpay|transfer|slip)/i;
+// คำถามเชิง "มีบริการส่งไหม / ส่งยังไง / ค่าส่งคิดยังไง" — เป็นคำถามข้อมูลร้าน
+// (ไม่ใช่การแจ้งที่อยู่จริง) ให้ตอบเองด้วย SHOP_INFO/FAQ แทนการเด้งแอดมิน ต้อง
+// เช็กก่อน SHIPPING_ADDRESS_RE เพราะคำว่า "จัดส่ง/ส่งของ" ซ้อนกันอยู่.
+const SHIPPING_SERVICE_INQUIRY_RE =
+  /(มีบริการ(จัด)?ส่ง|(จัด)?ส่ง(ของ)?(ได้|ทั่วประเทศ)?\s*(ไหม|มั้ย|หรือเปล่า|รึเปล่า)|ส่งต่างจังหวัด|ส่งทั่วประเทศ|ค่า(จัด)?ส่งคิด(ยังไง|อย่างไร)|(จัด)?ส่งยังไง|ส่งกี่วัน|ส่งนานไหม)/i;
 const SHIPPING_ADDRESS_RE = /(ที่อยู่|จัดส่ง|ส่งของ|ปลายทาง|ตำบล|อำเภอ|จังหวัด|รหัสไปรษณีย์|postcode|address)/i;
 const ORDER_STATUS_RE = /(สถานะ|เลขพัสดุ|ติดตาม|tracking|ของถึง|ส่งหรือยัง|ออเดอร์|order)/i;
 const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|ต่อราคา|แพง|ราคาสุด|ขอราคา|ส่วนลด|discount)/i;
@@ -45,6 +50,19 @@ function routeText(text: string): LineIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "PAYMENT_KEYWORD",
+    };
+  }
+
+  // "ถามว่ามีบริการส่งไหม / ค่าส่งคิดยังไง" → ตอบเองด้วยข้อมูลร้าน ไม่เด้งแอดมิน.
+  // ต้องเช็กก่อน SHIPPING_ADDRESS_RE ที่จับคำว่า "จัดส่ง/ส่งของ" เหมือนกัน.
+  if (SHIPPING_SERVICE_INQUIRY_RE.test(normalized)) {
+    return {
+      intent: LineIntent.SHOP_INFO,
+      allowsSearch: false,
+      requiresAdmin: false,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "SHIPPING_SERVICE_INQUIRY",
     };
   }
 

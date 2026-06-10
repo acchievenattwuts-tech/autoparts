@@ -58,6 +58,24 @@ test("routes shipping address away from product search", () => {
   assert.equal(result.allowsSearch, false);
 });
 
+test("routes shipping-service questions to the AI shop-info reply (no admin)", () => {
+  for (const text of [
+    "มีบริการจัดส่งไหม",
+    "ส่งต่างจังหวัดได้ไหม",
+    "ส่งทั่วประเทศไหม",
+    "ค่าจัดส่งคิดยังไง",
+    "ค่าส่งคิดอย่างไร",
+    "ส่งกี่วัน",
+  ]) {
+    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+
+    assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, false, `expected no admin handoff for "${text}"`);
+    assert.equal(result.reason, "SHIPPING_SERVICE_INQUIRY");
+  }
+});
+
 test("routes claim and return to admin", () => {
   const result = routeLineIntent({
     messageType: LineMessageType.TEXT,
