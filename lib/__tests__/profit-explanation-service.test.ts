@@ -84,3 +84,36 @@ test("parseProfitExplanationResult rejects mutation claims and returns fallback"
   assert.equal(result.confidence, "low");
   assert.match(result.summary, /ไม่สามารถสรุป/);
 });
+
+test("parseProfitExplanationResult accepts markdown wrapped JSON", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult(
+    [
+      "```json",
+      JSON.stringify({
+        summary: "สรุปจาก JSON ที่ถูกห่อด้วย markdown",
+        confidence: "medium",
+        facts: [],
+        drivers: [],
+        anomalies: [],
+        recommendedChecks: [],
+        limitations: [],
+      }),
+      "```",
+    ].join("\n"),
+    evidence,
+  );
+
+  assert.equal(result.confidence, "medium");
+  assert.equal(result.summary, "สรุปจาก JSON ที่ถูกห่อด้วย markdown");
+});
+
+test("parseProfitExplanationResult returns fallback for invalid JSON", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult("not json", evidence);
+
+  assert.equal(result.confidence, "low");
+  assert.match(result.limitations[0] ?? "", /JSON/);
+});

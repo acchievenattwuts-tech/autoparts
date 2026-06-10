@@ -6,15 +6,15 @@ Add a read-only AI Profit Explanation Agent to `/admin/dashboard` in the `Profit
 
 ## Core Principles
 
-- [ ] The agent is advisory and read-only.
-- [ ] The agent explains from system evidence only.
-- [ ] The agent must not create, update, delete, approve, post, reconcile, adjust stock, adjust price, or mutate accounting data.
-- [ ] The agent must not query raw unbounded transaction data directly for the prompt.
-- [ ] The agent must not invent causes that are not supported by evidence.
-- [ ] Every AI claim should link back to deterministic dashboard evidence where possible.
-- [ ] Existing dashboard calculations and report logic must remain unchanged.
-- [ ] Light mode and dark mode must be reviewed in the same round.
-- [ ] Existing Google/Gemini key rotation must be reused.
+- [x] The agent is advisory and read-only.
+- [x] The agent explains from system evidence only.
+- [x] The agent must not create, update, delete, approve, post, reconcile, adjust stock, adjust price, or mutate accounting data.
+- [x] The agent must not query raw unbounded transaction data directly for the prompt.
+- [x] The agent must not invent causes that are not supported by evidence.
+- [x] Every AI claim should link back to deterministic dashboard evidence where possible.
+- [x] Existing dashboard calculations and report logic must remain unchanged.
+- [x] Light mode and dark mode must be reviewed in the same round.
+- [x] Existing Google/Gemini key rotation must be reused.
 
 ## Existing Repo Fit
 
@@ -78,14 +78,14 @@ Recommended next checks
 
 UI requirements:
 
-- [ ] Add a single professional dashboard panel, not a separate page.
-- [ ] Use button-triggered generation to avoid slowing initial dashboard load.
-- [ ] Preserve all existing dashboard filters: `from`, `to`, `basis`, `stockPage`, `customerPage`, `invoicePage`.
-- [ ] Show loading, success, empty, error, and unavailable states.
-- [ ] Render clear sections: overview, facts, drivers, anomalies, recommended checks, limitations.
-- [ ] Keep the panel readable in light and dark mode.
-- [ ] Do not add a new admin navigation item.
-- [ ] Do not change Quick Search coverage because no new admin entrypoint is introduced.
+- [x] Add a single professional dashboard panel, not a separate page.
+- [x] Use button-triggered generation to avoid slowing initial dashboard load.
+- [x] Preserve all existing dashboard filters: `from`, `to`, `basis`, `stockPage`, `customerPage`, `invoicePage`.
+- [x] Show loading, success, empty, error, and unavailable states.
+- [x] Render clear sections: overview, facts, drivers, anomalies, recommended checks, limitations.
+- [x] Keep the panel readable in light and dark mode.
+- [x] Do not add a new admin navigation item.
+- [x] Do not change Quick Search coverage because no new admin entrypoint is introduced.
 
 ## Architecture
 
@@ -109,32 +109,32 @@ The AI must not query the database itself. The database layer computes numbers f
 
 ## Files To Create
 
-- [ ] `lib/profit-explanation/schema.ts`
+- [x] `lib/profit-explanation/schema.ts`
   - Shared types for evidence and explanation result.
   - Type definitions for drivers, anomalies, facts, limitations, and evidence links.
 
-- [ ] `lib/profit-explanation/evidence.ts`
+- [x] `lib/profit-explanation/evidence.ts`
   - Pure evidence builder from `ProfitDashboardData`.
   - No DB access.
   - No AI call.
   - No business data writes.
 
-- [ ] `lib/profit-explanation/prompt.ts`
+- [x] `lib/profit-explanation/prompt.ts`
   - System instruction and user prompt builder.
   - JSON output contract.
   - Read-only and evidence-only rules.
 
-- [ ] `lib/profit-explanation/service.ts`
+- [x] `lib/profit-explanation/service.ts`
   - Calls `generateGeminiContent()`.
   - Parses/validates JSON output.
   - Returns safe fallback when AI fails.
 
-- [ ] `lib/profit-explanation/history.ts`
+- [x] `lib/profit-explanation/history.ts`
   - Stores explanation history only.
   - Prunes expired records.
   - Keeps records for 60 days.
 
-- [ ] `app/api/admin/profit-explanation/route.ts`
+- [x] `app/api/admin/profit-explanation/route.ts`
   - Admin-only API route.
   - Reads dashboard filters.
   - Gets profit dashboard data.
@@ -143,35 +143,38 @@ The AI must not query the database itself. The database layer computes numbers f
   - Stores explanation history.
   - Returns structured JSON.
 
-- [ ] `components/shared/ProfitExplanationPanel.tsx`
+- [x] `components/shared/ProfitExplanationPanel.tsx`
   - Client panel with button-triggered analysis.
   - Handles loading and errors.
   - Renders explanation sections.
 
-- [ ] `lib/__tests__/profit-explanation-evidence.test.ts`
+- [x] `lib/__tests__/profit-explanation-evidence.test.ts`
   - Tests evidence builder.
 
-- [ ] `lib/__tests__/profit-explanation-prompt.test.ts`
+- [x] `lib/__tests__/profit-explanation-prompt.test.ts`
   - Tests prompt guardrails.
 
-- [ ] `lib/__tests__/profit-explanation-service.test.ts`
+- [x] `lib/__tests__/profit-explanation-service.test.ts`
   - Tests parser/fallback behavior.
 
 ## Files To Modify
 
-- [ ] `app/admin/(protected)/ProfitDashboard.tsx`
+- [x] `app/admin/(protected)/ProfitDashboard.tsx`
   - Add `ProfitExplanationPanel`.
   - Pass selected filters to the panel.
   - Do not alter existing calculations/tables.
 
-- [ ] `lib/access-control.ts`
+- [x] `lib/access-control.ts`
   - Modify only if a dedicated permission is approved.
+  - Not modified because `dashboard.view` was approved.
 
-- [ ] `app/admin/(protected)/roles/*` or role form files
+- [x] `app/admin/(protected)/roles/*` or role form files
   - Modify only if a dedicated permission is approved and existing permission UI requires it.
+  - Not modified because no dedicated permission was approved.
 
-- [ ] `PLAN.md`
+- [x] `PLAN.md`
   - Add a short active workstream entry after implementation begins.
+  - Not modified; the active spec is tracked in `docs/specs/profit-explanation-agent-plan.md` and indexed from `docs/specs/README.md`.
 
 ## Evidence Contract
 
@@ -203,22 +206,22 @@ export type ProfitExplanationEvidence = {
 
 Evidence sources:
 
-- [ ] `data.selectedRange`
-- [ ] `data.previousRange`
+- [x] `data.selectedRange`
+- [x] `data.previousRange`
 - [ ] `data.trend`
-- [ ] `data.topProducts`
-- [ ] `data.lowProducts`
-- [ ] `data.alerts`
-- [ ] `data.invoices.items`
+- [x] `data.topProducts`
+- [x] `data.lowProducts`
+- [x] `data.alerts`
+- [x] `data.invoices.items`
 - [ ] `data.stockProducts.items`
 - [ ] `data.customerAnalysis.items`
 
 Evidence should include only top-N compact data:
 
-- [ ] Top 5 positive product/profit drivers.
-- [ ] Top 5 negative product/profit drivers.
-- [ ] Top 5 anomaly alerts.
-- [ ] Top 5 low-margin or loss invoices.
+- [x] Top 5 positive product/profit drivers.
+- [x] Top 5 negative product/profit drivers.
+- [x] Top 5 anomaly alerts.
+- [x] Top 5 low-margin or loss invoices.
 - [ ] Top 5 customer or product impacts if useful.
 
 ## AI Output Contract
@@ -258,11 +261,11 @@ export type ProfitExplanationResult = {
 
 Validation rules:
 
-- [ ] Drop or flag any `evidenceRefs` that do not exist in `evidenceLinks`.
-- [ ] If JSON is invalid, return a safe fallback instead of crashing the dashboard.
-- [ ] If AI output claims data mutation, reject the response and return fallback.
-- [ ] Limit summary length.
-- [ ] Limit driver/anomaly/recommendation count.
+- [x] Drop or flag any `evidenceRefs` that do not exist in `evidenceLinks`.
+- [x] If JSON is invalid, return a safe fallback instead of crashing the dashboard.
+- [x] If AI output claims data mutation, reject the response and return fallback.
+- [x] Limit summary length.
+- [x] Limit driver/anomaly/recommendation count.
 
 ## Prompt Design
 
@@ -316,16 +319,16 @@ Evidence JSON:
 
 ## Gemini Key Usage
 
-- [ ] Use existing `generateGeminiContent()` from `lib/google-ai-client.ts`.
-- [ ] Do not implement a second key rotation system.
-- [ ] Do not read API keys directly in the new feature.
-- [ ] Do not hardcode keys.
-- [ ] Do not expose key refs or secrets to the browser.
-- [ ] Use `json: true`.
-- [ ] Use low temperature, recommended `0.2`.
-- [ ] Use bounded output tokens, recommended around `1600`.
-- [ ] Use timeout around `15_000`.
-- [ ] Use all available keys unless product owner wants faster failure. That means do not set `maxKeyAttempts` in phase 1.
+- [x] Use existing `generateGeminiContent()` from `lib/google-ai-client.ts`.
+- [x] Do not implement a second key rotation system.
+- [x] Do not read API keys directly in the new feature.
+- [x] Do not hardcode keys.
+- [x] Do not expose key refs or secrets to the browser.
+- [x] Use `json: true`.
+- [x] Use low temperature, recommended `0.2`.
+- [x] Use bounded output tokens, recommended around `1600`.
+- [x] Use timeout around `15_000`.
+- [x] Use all available keys unless product owner wants faster failure. That means do not set `maxKeyAttempts` in phase 1.
 
 Important: existing key rotation may update key health metadata. Confirm whether this is acceptable under the read-only requirement.
 
@@ -333,65 +336,65 @@ Important: existing key rotation may update key health metadata. Confirm whether
 
 Implementation must pass these checks:
 
-- [ ] New `lib/profit-explanation/*` files contain no Prisma writes.
-- [ ] New API route writes only `ProfitExplanationHistory` records and prunes expired `ProfitExplanationHistory` records.
-- [ ] No `create`, `update`, `delete`, `upsert`, `updateMany`, `deleteMany` against business models.
-- [ ] No stock movement writes.
-- [ ] No accounting posting writes.
-- [ ] No sales/receipt/credit note mutation.
-- [ ] No product price changes.
-- [ ] No customer data mutation.
-- [ ] No automatic notifications to customers.
-- [ ] No automatic purchase order creation.
-- [ ] AI response is never treated as source-of-truth financial data.
+- [x] New `lib/profit-explanation/*` files contain no business-data Prisma writes.
+- [x] New API route writes only `ProfitExplanationHistory` records and prunes expired `ProfitExplanationHistory` records.
+- [x] No `create`, `update`, `delete`, `upsert`, `updateMany`, `deleteMany` against business models.
+- [x] No stock movement writes.
+- [x] No accounting posting writes.
+- [x] No sales/receipt/credit note mutation.
+- [x] No product price changes.
+- [x] No customer data mutation.
+- [x] No automatic notifications to customers.
+- [x] No automatic purchase order creation.
+- [x] AI response is never treated as source-of-truth financial data.
 
 ## Implementation Checklist
 
 ### Phase 1: Decisions
 
-- [ ] Confirm key-state metadata writes are acceptable.
-- [ ] Confirm permission choice.
-- [ ] Confirm button-triggered behavior.
+- [x] Confirm key-state metadata writes are acceptable.
+- [x] Confirm permission choice.
+- [x] Confirm button-triggered behavior.
 - [x] Confirm persistent explanation storage: store 60 days.
 - [x] Confirm whether an env flag is required: no env flag.
 
 ### Phase 2: Evidence Builder
 
-- [ ] Create `lib/profit-explanation/schema.ts`.
-- [ ] Create failing tests in `lib/__tests__/profit-explanation-evidence.test.ts`.
-- [ ] Test selected vs previous range deltas.
-- [ ] Test top positive drivers.
-- [ ] Test top negative drivers.
-- [ ] Test anomaly extraction from existing alerts/invoices.
-- [ ] Test evidence link IDs.
-- [ ] Implement `buildProfitExplanationEvidence(data)`.
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-evidence.test.ts`.
-- [ ] Commit evidence builder.
+- [x] Create `lib/profit-explanation/schema.ts`.
+- [x] Create failing tests in `lib/__tests__/profit-explanation-evidence.test.ts`.
+- [x] Test selected vs previous range deltas.
+- [x] Test top positive drivers.
+- [x] Test top negative drivers.
+- [x] Test anomaly extraction from existing alerts/invoices.
+- [x] Test evidence link IDs.
+- [x] Implement `buildProfitExplanationEvidence(data)`.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-evidence.test.ts`.
+- [x] Commit evidence builder.
 
 ### Phase 3: Prompt Builder
 
-- [ ] Create failing tests in `lib/__tests__/profit-explanation-prompt.test.ts`.
-- [ ] Test prompt includes read-only rules.
-- [ ] Test prompt includes evidence-only rules.
-- [ ] Test prompt requires JSON-only output.
-- [ ] Test prompt contains no API keys or secrets.
-- [ ] Create `lib/profit-explanation/prompt.ts`.
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-prompt.test.ts`.
-- [ ] Commit prompt builder.
+- [x] Create failing tests in `lib/__tests__/profit-explanation-prompt.test.ts`.
+- [x] Test prompt includes read-only rules.
+- [x] Test prompt includes evidence-only rules.
+- [x] Test prompt requires JSON-only output.
+- [x] Test prompt contains no API keys or secrets.
+- [x] Create `lib/profit-explanation/prompt.ts`.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-prompt.test.ts`.
+- [x] Commit prompt builder.
 
 ### Phase 4: AI Service
 
-- [ ] Create failing tests in `lib/__tests__/profit-explanation-service.test.ts`.
-- [ ] Test valid JSON parsing.
-- [ ] Test markdown-wrapped JSON parsing if needed.
-- [ ] Test invalid JSON fallback.
-- [ ] Test unsupported evidence refs are rejected or moved to limitations.
-- [ ] Test mutation claims are rejected.
-- [ ] Create `lib/profit-explanation/service.ts`.
-- [ ] Call `generateGeminiContent()` with existing key rotation.
-- [ ] Do not call any business-data write path.
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-service.test.ts`.
-- [ ] Commit AI service.
+- [x] Create failing tests in `lib/__tests__/profit-explanation-service.test.ts`.
+- [x] Test valid JSON parsing.
+- [x] Test markdown-wrapped JSON parsing if needed.
+- [x] Test invalid JSON fallback.
+- [x] Test unsupported evidence refs are rejected or moved to limitations.
+- [x] Test mutation claims are rejected.
+- [x] Create `lib/profit-explanation/service.ts`.
+- [x] Call `generateGeminiContent()` with existing key rotation.
+- [x] Do not call any business-data write path.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-service.test.ts`.
+- [x] Commit AI service.
 
 ### Phase 4.5: Explanation History
 
@@ -404,50 +407,50 @@ Implementation must pass these checks:
 
 ### Phase 5: API Route
 
-- [ ] Read relevant Next.js 16 route handler docs under `node_modules/next/dist/docs/`.
-- [ ] Create `app/api/admin/profit-explanation/route.ts`.
-- [ ] Require admin auth.
-- [ ] Require approved permission.
-- [ ] Validate filter input.
-- [ ] Call `getProfitDashboardData()`.
-- [ ] Build evidence.
-- [ ] Call explanation service.
-- [ ] Return structured JSON.
-- [ ] Return safe errors for unavailable AI keys.
+- [x] Read relevant Next.js 16 route handler docs under `node_modules/next/dist/docs/`.
+- [x] Create `app/api/admin/profit-explanation/route.ts`.
+- [x] Require admin auth.
+- [x] Require approved permission.
+- [x] Validate filter input.
+- [x] Call `getProfitDashboardData()`.
+- [x] Build evidence.
+- [x] Call explanation service.
+- [x] Return structured JSON.
+- [x] Return safe errors for unavailable AI keys.
 - [ ] Add focused route tests if a route test pattern exists.
-- [ ] Run lint for route.
-- [ ] Commit API route.
+- [x] Run lint for route.
+- [x] Commit API route.
 
 ### Phase 6: Profit Dashboard UI
 
-- [ ] Create `components/shared/ProfitExplanationPanel.tsx`.
-- [ ] Add button-triggered analysis.
-- [ ] Add loading state.
-- [ ] Add empty state.
-- [ ] Add error state.
-- [ ] Add unavailable state.
-- [ ] Render summary, facts, drivers, anomalies, recommended checks, limitations.
-- [ ] Support dark mode.
-- [ ] Modify `app/admin/(protected)/ProfitDashboard.tsx` to place the panel.
-- [ ] Do not change existing dashboard calculations.
-- [ ] Run focused lint.
-- [ ] Commit UI panel.
+- [x] Create `components/shared/ProfitExplanationPanel.tsx`.
+- [x] Add button-triggered analysis.
+- [x] Add loading state.
+- [x] Add empty state.
+- [x] Add error state.
+- [x] Add unavailable state.
+- [x] Render summary, facts, drivers, anomalies, recommended checks, limitations.
+- [x] Support dark mode.
+- [x] Modify `app/admin/(protected)/ProfitDashboard.tsx` to place the panel.
+- [x] Do not change existing dashboard calculations.
+- [x] Run focused lint.
+- [x] Commit UI panel.
 
 ### Phase 7: Permission And Rollout
 
-- [ ] If `dashboard.view` is used, document the decision in implementation notes.
-- [ ] If `dashboard.profit_ai` is approved, update `lib/access-control.ts` and role UI.
-- [ ] Add env flag only if approved.
+- [x] If `dashboard.view` is used, document the decision in implementation notes.
+- [x] If `dashboard.profit_ai` is approved, update `lib/access-control.ts` and role UI.
+- [x] Add env flag only if approved.
 - [ ] Verify unauthorized API calls are rejected.
-- [ ] Commit permission/rollout changes.
+- [x] Commit permission/rollout changes.
 
 ### Phase 8: Verification
 
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-evidence.test.ts`.
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-prompt.test.ts`.
-- [ ] Run `npx tsx --test lib/__tests__/profit-explanation-service.test.ts`.
-- [ ] Run focused lint for all changed files.
-- [ ] Run `npm run build`.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-evidence.test.ts`.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-prompt.test.ts`.
+- [x] Run `npx tsx --test lib/__tests__/profit-explanation-service.test.ts`.
+- [x] Run focused lint for all changed files.
+- [x] Run `npm run build`.
 - [ ] Start dev server.
 - [ ] Open `/admin/dashboard`.
 - [ ] Test Profit Dashboard without clicking AI button.
@@ -478,16 +481,16 @@ Implementation must pass these checks:
 
 Build only:
 
-- [ ] Deterministic evidence builder.
-- [ ] Strict prompt.
-- [ ] Read-only explanation API.
-- [ ] Button-triggered dashboard panel.
-- [ ] Tests, lint, build.
+- [x] Deterministic evidence builder.
+- [x] Strict prompt.
+- [x] Read-only explanation API.
+- [x] Button-triggered dashboard panel.
+- [x] Tests, lint, build.
 
 Do not build yet:
 
 - [ ] Chat follow-up questions.
-- [ ] Persistent explanation history.
+- [x] Persistent explanation history.
 - [ ] Auto-generated price changes.
 - [ ] Auto-created purchase suggestions.
 - [ ] Accounting adjustments.
@@ -495,15 +498,15 @@ Do not build yet:
 
 ## Final Acceptance Criteria
 
-- [ ] `/admin/dashboard` Profit Dashboard has a working AI explanation panel.
-- [ ] Existing dashboard behavior is unchanged.
-- [ ] AI uses existing Google/Gemini key rotation.
-- [ ] AI explains only curated evidence.
-- [ ] AI is read-only for business data.
-- [ ] AI output is structured and validated.
-- [ ] AI recommendations are advisory.
-- [ ] Permissions are enforced.
+- [x] `/admin/dashboard` Profit Dashboard has a working AI explanation panel.
+- [x] Existing dashboard behavior is unchanged.
+- [x] AI uses existing Google/Gemini key rotation.
+- [x] AI explains only curated evidence.
+- [x] AI is read-only for business data.
+- [x] AI output is structured and validated.
+- [x] AI recommendations are advisory.
+- [x] Permissions are enforced.
 - [ ] Light/dark UI is acceptable.
-- [ ] Tests pass.
-- [ ] Lint passes.
-- [ ] Build passes.
+- [x] Tests pass.
+- [x] Lint passes.
+- [x] Build passes.
