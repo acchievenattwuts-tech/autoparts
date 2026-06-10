@@ -15,6 +15,7 @@ import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanel";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import ProfitExplanationPanel from "@/components/shared/ProfitExplanationPanel";
 import {
   getProfitDashboardData,
   getRevenueAmountByBasis,
@@ -661,6 +662,8 @@ const ProfitDashboard = async ({
           </div>
         </section>
       </div>
+
+      <ProfitExplanationPanel filters={data.filters} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

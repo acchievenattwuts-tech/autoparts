@@ -1,0 +1,86 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
+
+const evidence = {
+  filters: { from: "2026-06-01", to: "2026-06-10", basis: "ex_vat" as const },
+  selectedRange: {
+    salesAmountExVat: 100,
+    salesAmountIncVat: 107,
+    costAmount: 60,
+    expenseAmount: 10,
+    grossProfit: 40,
+    netProfitAmount: 30,
+    marginPct: 40,
+  },
+  previousRange: {
+    salesAmountExVat: 90,
+    salesAmountIncVat: 96.3,
+    costAmount: 55,
+    expenseAmount: 8,
+    grossProfit: 35,
+    netProfitAmount: 27,
+    marginPct: 38.89,
+  },
+  deltas: {
+    salesAmount: 10,
+    costAmount: 5,
+    expenseAmount: 2,
+    grossProfit: 5,
+    netProfitAmount: 3,
+    marginPct: 1.11,
+  },
+  topPositiveDrivers: [],
+  topNegativeDrivers: [],
+  anomalies: [],
+  evidenceLinks: [{ id: "summary:selected", label: "Selected", href: "/admin/dashboard" }],
+};
+
+test("parseProfitExplanationResult accepts valid JSON and drops unsupported refs", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult(
+    JSON.stringify({
+      summary: "กำไรเพิ่มขึ้นจากยอดขายและมาร์จินที่ดีขึ้น",
+      confidence: "high",
+      facts: [{ label: "Net Profit", value: "30", source: "system" }],
+      drivers: [
+        {
+          title: "ยอดขายเพิ่ม",
+          explanation: "อ้างอิงจากสรุปช่วงที่เลือก",
+          impact: "positive",
+          amount: 3,
+          evidenceRefs: ["summary:selected", "missing"],
+        },
+      ],
+      anomalies: [],
+      recommendedChecks: [],
+      limitations: [],
+    }),
+    evidence,
+  );
+
+  assert.equal(result.confidence, "high");
+  assert.deepEqual(result.drivers[0]?.evidenceRefs, ["summary:selected"]);
+});
+
+test("parseProfitExplanationResult rejects mutation claims and returns fallback", async () => {
+  const { parseProfitExplanationResult } = await import("@/lib/profit-explanation/service");
+
+  const result = parseProfitExplanationResult(
+    JSON.stringify({
+      summary: "ระบบปรับราคาขายให้แล้ว",
+      confidence: "high",
+      facts: [],
+      drivers: [],
+      anomalies: [],
+      recommendedChecks: [],
+      limitations: [],
+    }),
+    evidence,
+  );
+
+  assert.equal(result.confidence, "low");
+  assert.match(result.summary, /ไม่สามารถสรุป/);
+});

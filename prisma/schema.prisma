@@ -42,6 +42,7 @@ model User {
   lineConversationsAssigned     LineConversation[]         @relation("LineConversationAssignedAdmin")
   lineMessagesAdminAuthored     LineMessage[]              @relation("LineMessageAdminAuthor")
   paymentSlipsReviewed          PaymentSlip[]              @relation("PaymentSlipReviewer")
+  profitExplanationHistories    ProfitExplanationHistory[]
   purchases                     Purchase[]
   purchaseReturns               PurchaseReturn[]
   receipts                      Receipt[]
@@ -274,6 +275,29 @@ model AiApiKeyState {
 
   @@index([provider, status, cooldownUntil])
   @@index([provider, lastUsedAt])
+}
+
+model ProfitExplanationHistory {
+  id            String                  @id @default(cuid())
+  filterHash    String
+  fromDate      String
+  toDate        String
+  basis         String
+  requestedById String?
+  promptVersion String
+  keyRef        String?
+  status        ProfitExplanationStatus @default(SUCCESS)
+  evidence      Json
+  result        Json?
+  errorCode     String?
+  errorMessage  String?
+  createdAt     DateTime                @default(now()) @db.Timestamptz(3)
+  expiresAt     DateTime                @db.Timestamptz(3)
+  requestedBy   User?                   @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([filterHash, createdAt])
+  @@index([expiresAt])
+  @@index([requestedById, createdAt])
 }
 
 model ContentPost {
@@ -1902,6 +1926,11 @@ enum AiApiKeyStatus {
   AVAILABLE
   COOLING_DOWN
   DISABLED
+}
+
+enum ProfitExplanationStatus {
+  SUCCESS
+  FAILED
 }
 
 enum ContentChannel {
