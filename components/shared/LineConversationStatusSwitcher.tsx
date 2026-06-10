@@ -6,6 +6,7 @@ import { ChevronDown, LoaderCircle } from "lucide-react";
 import { changeLineConversationStatusAction } from "@/app/admin/(protected)/line-conversations/actions";
 import { LineConversationAiStatus } from "@/lib/generated/prisma";
 import { cn } from "@/lib/utils";
+import { getLineConversationDropdownClassName } from "@/components/shared/line-conversation-status-switcher-styles";
 
 const STATUS_LABELS: Record<LineConversationAiStatus, string> = {
   ACTIVE: "AI ทำงาน",
@@ -115,7 +116,7 @@ const LineConversationStatusSwitcher = ({ conversationId, currentStatus }: Props
         <div
           role="menu"
           onClick={(event) => event.stopPropagation()}
-          className="absolute left-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-white/10 dark:bg-slate-900"
+          className={getLineConversationDropdownClassName()}
         >
           {STATUS_ORDER.map((option) => (
             <button
