@@ -172,7 +172,9 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "- claim_or_return = เคลม/คืน/เปลี่ยนสินค้า/ของเสีย-ชำรุด",
   "- purchase = ตกลงซื้อ/สั่งเลย/ถามเลขบัญชี-วิธีโอนเพื่อจะจ่าย",
   "- greeting = ทักทายอย่างเดียว (สวัสดี/หวัดดี)",
-  "- social = ขอบคุณ/ตอบรับ (ครับ/ค่ะ/โอเค/รับทราบ)/คุยเล่นสั้น ๆ",
+  "- social = ขอบคุณ/ตอบรับสั้น ๆ ที่ไม่ต้องการคำตอบ (ครับ/ค่ะ/โอเค/รับทราบ/จ้า)",
+  "- smalltalk = ถามตัวตน/ความสามารถ/คุยเล่นที่ต้องการคำตอบ (จูนคือใคร, เป็นบอทไหม, เป็นคนหรือ AI, ชื่ออะไร, ทำอะไรได้บ้าง, เก่งจัง)",
+  "- out_of_scope = ถามเรื่องที่ไม่เกี่ยวกับร้านอะไหล่แอร์รถยนต์เลย (ดินฟ้าอากาศ, การเมือง, เรื่องส่วนตัว, ขำขัน, เรื่องทั่วไป)",
   "- other = ไม่แน่ใจ/จัดกลุ่มไม่ได้",
   "",
   "กฎ:",
@@ -484,4 +486,86 @@ export function buildJuneAskDetailsReply(): string {
 /** Short, warm acknowledgement for the `social` group (thanks / ok / chit-chat). */
 export function buildJuneSocialReply(): string {
   return "ยินดีค่ะ 🙏 มีอะไรให้จูนช่วยเพิ่มเติม แจ้งได้เลยนะคะ 😊";
+}
+
+/** Deterministic fallback for the `smalltalk` group (identity / capability /
+ *  chit-chat that wants an answer) — used when Gemini is unavailable or the
+ *  reply-token budget is too low to generate. Always steers back to parts. */
+export function buildJuneSmalltalkReply(): string {
+  return "จูนเป็นผู้ช่วยร้านศรีวรรณอะไหล่แอร์ค่ะ 😊 ช่วยค้นหาอะไหล่แอร์รถยนต์ให้ตรงรุ่นได้เลยนะคะ ลองส่งรุ่นรถ ปีรถ หรือรูปอะไหล่เดิมมาได้เลยค่ะ 🚗";
+}
+
+/** Deterministic fallback for the `out_of_scope` group — politely declines the
+ *  off-topic request and steers back to parts. */
+export function buildJuneOutOfScopeReply(): string {
+  return "ขอโทษนะคะ จูนดูแลเฉพาะเรื่องอะไหล่แอร์รถยนต์ค่ะ 🙏 ถ้าต้องการหาอะไหล่ บอกรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมมาได้เลยนะคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ 😊";
+}
+
+/**
+ * Per-group scope guardrail for the conversational groups. Lets the model write
+ * the wording itself while hard-bounding what it may talk about and forcing it
+ * to steer back to finding parts. The global safety rules in
+ * {@link LINE_AI_SYSTEM_INSTRUCTION} (no fabricated price/stock, no promises)
+ * still apply on top of these.
+ */
+const SCOPED_CONVERSATIONAL_DIRECTIVE: Partial<Record<LineMessageGroup, string>> = {
+  smalltalk: [
+    "บริบท: ลูกค้าทักทาย/ถามตัวตน/ถามความสามารถ/คุยเล่น (เช่น 'จูนคือใคร' 'เป็นบอทไหม' 'ทำอะไรได้')",
+    "ให้แนะนำตัวสั้น ๆ ว่าเป็น 'จูน' ผู้ช่วยร้านศรีวรรณอะไหล่แอร์ อย่างเป็นกันเอง 1-2 บรรทัด",
+    "ตอบคำถามตามจริงได้ (เช่น เป็นผู้ช่วย AI ของร้าน) แต่ห้ามออกนอกบทบาทแอดมินร้านอะไหล่",
+    "แล้ว 'วกกลับ' ชวนลูกค้าบอกรุ่นรถ/ปีรถ หรือส่งรูปอะไหล่เดิม เพื่อช่วยค้นหาอะไหล่ ปิดท้ายด้วยการชวนเรื่องอะไหล่เสมอ",
+  ].join("\n"),
+  out_of_scope: [
+    "บริบท: ลูกค้าถามเรื่องที่ไม่เกี่ยวกับร้านอะไหล่แอร์รถยนต์เลย",
+    "ให้ปฏิเสธอย่างสุภาพและเป็นมิตรว่าจูนดูแลเฉพาะเรื่องอะไหล่แอร์รถยนต์",
+    "ห้ามให้ข้อมูล ความเห็น หรือคำตอบเรื่องนอกขอบเขตนั้น (เช่น การเมือง ดินฟ้าอากาศ เรื่องส่วนตัว)",
+    "แล้ววกกลับชวนลูกค้าให้สอบถามอะไหล่แอร์ที่ต้องการ ปิดท้ายด้วยการชวนเรื่องอะไหล่",
+  ].join("\n"),
+};
+
+/**
+ * Generates a scoped, จูน-voiced reply for a conversational group
+ * (`smalltalk` / `out_of_scope`). The model writes the wording but the
+ * per-group directive + global system instruction hard-bound the scope and
+ * force a steer back to finding parts. Any failure (no keys, timeout, empty)
+ * degrades to the deterministic template so the customer always gets a reply.
+ */
+export async function generateScopedConversationalReply(input: {
+  group: LineMessageGroup;
+  latestText?: string | null;
+  history?: LineReplyHistoryItem[];
+}): Promise<string> {
+  const fallback =
+    input.group === "out_of_scope" ? buildJuneOutOfScopeReply() : buildJuneSmalltalkReply();
+  const directive = SCOPED_CONVERSATIONAL_DIRECTIVE[input.group];
+  if (!directive || !hasGeminiKeysConfigured()) return fallback;
+
+  try {
+    const lines: string[] = [];
+    if (input.history && input.history.length > 0) {
+      lines.push("ประวัติการสนทนาก่อนหน้า (เก่าสุด → ใหม่สุด) ใช้เป็นบริบท:");
+      for (const turn of input.history) {
+        lines.push(`${turn.role === "customer" ? "ลูกค้า" : "ร้าน"}: ${turn.text}`);
+      }
+      lines.push("");
+    }
+    lines.push(`ข้อความล่าสุดจากลูกค้า: ${input.latestText?.trim() || "(ไม่มีข้อความ)"}`);
+    lines.push("");
+    lines.push(directive);
+    lines.push("กรุณาร่างข้อความตอบลูกค้า 1 ข้อความ สั้น กระชับ ไม่เกิน 3 บรรทัด ตามกฎความปลอดภัยทั้งหมด");
+
+    const { text } = await generateGeminiContent({
+      prompt: lines.join("\n"),
+      systemInstruction: LINE_AI_SYSTEM_INSTRUCTION,
+      maxOutputTokens: 400,
+      temperature: 0.5,
+      thinkingLevel: "NONE",
+      timeoutMs: CHAT_CALL_TIMEOUT_MS,
+      maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+    });
+
+    return text.trim() || fallback;
+  } catch {
+    return fallback;
+  }
 }

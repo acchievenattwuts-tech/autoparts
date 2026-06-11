@@ -33,6 +33,13 @@ test("flag-driven groups have no 1:1 route", () => {
   assert.equal(groupToRoute("general_faq"), null);
   assert.equal(groupToRoute("other"), null);
   assert.equal(groupToRoute("social"), null);
+  assert.equal(groupToRoute("smalltalk"), null);
+  assert.equal(groupToRoute("out_of_scope"), null);
+});
+
+test("smalltalk and out_of_scope are valid non-product groups", () => {
+  assert.equal(isLineMessageGroup("smalltalk"), true);
+  assert.equal(isLineMessageGroup("out_of_scope"), true);
 });
 
 test("intentToGroup round-trips the regex intents (UNKNOWN → other)", () => {

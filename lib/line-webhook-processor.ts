@@ -16,9 +16,12 @@ import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
 import {
   buildJuneAskDetailsReply,
   buildJuneDeadlineReply,
+  buildJuneOutOfScopeReply,
+  buildJuneSmalltalkReply,
   buildJuneSocialReply,
   extractLineSearchIntent,
   generateLineSuggestion,
+  generateScopedConversationalReply,
   type LineReplyHistoryItem,
 } from "@/lib/line-ai-service";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
@@ -112,6 +115,10 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; resolves AI fitment hints to canonical master-data names
    *  for use as precise hard filters in product search. */
   resolveLineFitmentFilters?: typeof resolveLineFitmentFilters;
+  /** Optional override; AI-generates a scoped จูน-voiced reply for the
+   *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
+   *  scope and steers back to parts). */
+  generateScopedConversationalReply?: typeof generateScopedConversationalReply;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -140,6 +147,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   answerFromLineFaq,
   extractLineSearchIntent,
   resolveLineFitmentFilters,
+  generateScopedConversationalReply,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -322,6 +330,105 @@ async function handleSocialTurn(
   return { replied };
 }
 
+/**
+ * Handles the `smalltalk` / `out_of_scope` groups: the AI writes its own
+ * จูน-voiced reply (bounded by the per-group scope directive + global safety
+ * rules, always steering back to parts) instead of a fixed template. Mirrors
+ * `handleSocialTurn`'s delivery/policy plumbing, but:
+ *  - delivers on the reply token, or PUSH when the token's gone and fallback is on;
+ *  - is budget-aware — if the reply-token window is nearly closed (or AI is off /
+ *    not deliverable), it skips the Gemini call and uses the deterministic
+ *    template so the message still goes out on the free reply token;
+ *  - never hands off to an admin (these groups are auto-answerable).
+ */
+async function handleScopedConversationalTurn(
+  group: "smalltalk" | "out_of_scope",
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  history: LineReplyHistoryItem[],
+): Promise<{ replied: boolean }> {
+  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+  const liveMode = autoReplyEnabled && !dryRun;
+
+  const hasReplyToken = canUseReplyToken(config, input.canReply);
+  const deliveryMode = hasReplyToken
+    ? LineDeliveryMode.REPLY
+    : config.allowPushFallback
+      ? LineDeliveryMode.PUSH
+      : LineDeliveryMode.NONE;
+  const canDeliver =
+    liveMode &&
+    input.conversation.aiStatus === LineConversationAiStatus.ACTIVE &&
+    deliveryMode !== LineDeliveryMode.NONE &&
+    Boolean(config.channelAccessToken);
+
+  const template = group === "out_of_scope" ? buildJuneOutOfScopeReply() : buildJuneSmalltalkReply();
+
+  // Budget-aware: only spend a Gemini call when we can actually deliver AND the
+  // reply-token window still has room; otherwise use the template immediately.
+  const usedAi = canDeliver && replyTokenRemainingMs(config) >= SCOPED_GENERATION_MIN_BUDGET_MS;
+  const reply = usedAi
+    ? await (dependencies.generateScopedConversationalReply ?? generateScopedConversationalReply)({
+        group,
+        latestText: input.text,
+        history,
+      }).catch(() => template)
+    : template;
+
+  let replied = false;
+  if (canDeliver && config.channelAccessToken) {
+    const outboundMessage = await dependencies.appendLineMessage({
+      conversationId: input.conversation.id,
+      lineUserId: input.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_AI,
+      messageType: input.messageType,
+      intent: LineIntent.GREETING,
+      text: reply,
+      deliveryMode,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+    });
+
+    if (deliveryMode === LineDeliveryMode.REPLY && input.replyToken) {
+      await dependencies.replyLineMessage({
+        channelAccessToken: config.channelAccessToken,
+        replyToken: input.replyToken,
+        messages: [textMessage(reply)],
+      });
+    } else {
+      await dependencies.pushLineMessages({
+        channelAccessToken: config.channelAccessToken,
+        recipientIds: [input.lineUserId],
+        messages: [textMessage(reply)],
+      });
+    }
+
+    await dependencies.markOutboundLineMessageSent({ messageId: outboundMessage.id, deliveryMode });
+    replied = true;
+  }
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: "SCOPED_CONVERSATIONAL_HANDLED",
+    payload: {
+      lineEventId: input.lineEventId,
+      group,
+      replied,
+      usedAi,
+      deliveryMode,
+    },
+  });
+
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.COMPLETED,
+    result: { action: `${group}_reply`, replied, usedAi },
+    finishedAt: new Date(),
+  });
+
+  return { replied };
+}
+
 /** Polite acknowledgement sent to the customer right before an admin hand-off, so
  *  the AI never goes silent. Tailored per intent. */
 function handoffAckForIntent(intent: LineIntent): string {
@@ -460,6 +567,18 @@ function canUseReplyToken(config: LineWebhookProcessorConfig, canReply: boolean)
   return Date.now() - receivedAt.getTime() <= maxAgeMs;
 }
 
+// Minimum reply-token budget required to attempt an AI generation for a scoped
+// conversational reply. Below this we use the deterministic template so the
+// reply still goes out on the free reply token instead of timing out.
+const SCOPED_GENERATION_MIN_BUDGET_MS = 8_000;
+
+/** Reply-token budget (ms) still available before the send-early deadline. */
+function replyTokenRemainingMs(config: LineWebhookProcessorConfig): number {
+  const maxAgeMs = config.replyTokenMaxAgeMs ?? 45_000;
+  if (!config.receivedAt) return maxAgeMs;
+  return maxAgeMs - (Date.now() - config.receivedAt.getTime()) - REPLY_DEADLINE_MARGIN_MS;
+}
+
 export type ProcessLineAiReplyInput = {
   jobId: string;
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
@@ -561,10 +680,17 @@ export async function processLineAiReply(
       },
     });
 
-    // social (ขอบคุณ/โอเค/คุยเล่น) → brief ack, or stay silent when it's just a
-    // closing ack right after the shop replied. Handled inline like a sticker.
+    // social (ขอบคุณ/โอเค) → brief ack, or stay silent when it's just a closing
+    // ack right after the shop replied. Handled inline like a sticker.
     if (group === "social") {
       return handleSocialTurn(input, config, dependencies, history);
+    }
+
+    // smalltalk (จูนคือใคร/ทำอะไรได้) / out_of_scope (นอกเรื่องร้าน) → the AI
+    // writes its own scoped reply (in จูน's voice, bounded to the role, always
+    // steering back to parts). Never an admin hand-off.
+    if (group === "smalltalk" || group === "out_of_scope") {
+      return handleScopedConversationalTurn(group, input, config, dependencies, history);
     }
 
     // Intent-gated retrieval: only `product` turns search + attach cards. Every

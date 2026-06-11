@@ -18,6 +18,8 @@ export type LineMessageGroup =
   | "purchase"
   | "greeting"
   | "social"
+  | "smalltalk"
+  | "out_of_scope"
   | "other";
 
 export const LINE_MESSAGE_GROUPS: readonly LineMessageGroup[] = [
@@ -32,6 +34,8 @@ export const LINE_MESSAGE_GROUPS: readonly LineMessageGroup[] = [
   "purchase",
   "greeting",
   "social",
+  "smalltalk",
+  "out_of_scope",
   "other",
 ];
 
@@ -64,6 +68,8 @@ export const NON_PRODUCT_GROUPS: ReadonlySet<LineMessageGroup> = new Set<LineMes
   "purchase",
   "greeting",
   "social",
+  "smalltalk",
+  "out_of_scope",
   "other",
 ]);
 
@@ -109,6 +115,8 @@ export function groupToRoute(group: LineMessageGroup): LineIntentRouteResult | n
     case "general_faq":
     case "other":
     case "social":
+    case "smalltalk":
+    case "out_of_scope":
       return null;
   }
 }

@@ -25,6 +25,7 @@ type TestCalls = {
   replies: Array<{ replyToken: string; text: string }>;
   pushes: Array<{ recipientIds: string[]; text: string }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
+  scopedReplyGroups: string[];
   searches: string[];
   searchFitmentHints: Array<
     | {
@@ -129,6 +130,8 @@ function createProcessorTestDeps(input?: {
     | "purchase"
     | "greeting"
     | "social"
+    | "smalltalk"
+    | "out_of_scope"
     | "other";
 }) {
   const calls: TestCalls = {
@@ -140,6 +143,7 @@ function createProcessorTestDeps(input?: {
     replies: [],
     pushes: [],
     markedSent: [],
+    scopedReplyGroups: [],
     searches: [],
     searchFitmentHints: [],
     conversationInputs: [],
@@ -687,6 +691,46 @@ test("social group gets a brief ack and never searches", async () => {
   assert.match(calls.replies[0]?.text ?? "", /ยินดี/);
   assert.deepEqual(calls.searches, []);
   assert.ok(calls.auditActions.includes("SOCIAL_HANDLED"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("smalltalk group gets an AI scoped reply, no search, no handoff", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "smalltalk" });
+  dependencies.generateScopedConversationalReply = async ({ group }) => {
+    calls.scopedReplyGroups.push(group);
+    return "จูนเป็นผู้ช่วยร้านศรีวรรณค่ะ 😊 อยากหาอะไหล่รุ่นไหนดีคะ";
+  };
+
+  const result = await processLineWebhookPayload(
+    textPayload("จูนคือใคร"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /จูน/);
+  assert.deepEqual(calls.searches, []);
+  assert.deepEqual(calls.scopedReplyGroups, ["smalltalk"]);
+  assert.ok(calls.auditActions.includes("SCOPED_CONVERSATIONAL_HANDLED"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("out_of_scope group declines politely via scoped reply, no search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "out_of_scope" });
+
+  const result = await processLineWebhookPayload(
+    textPayload("วันนี้อากาศเป็นยังไงบ้าง"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  // No injected generator + no Gemini keys in test → deterministic template.
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /อะไหล่แอร์/);
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.auditActions.includes("SCOPED_CONVERSATIONAL_HANDLED"));
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
 });
 
