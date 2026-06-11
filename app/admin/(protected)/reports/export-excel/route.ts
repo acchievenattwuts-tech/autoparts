@@ -46,6 +46,7 @@ import {
   buildARRegisterExcel,
   buildAPRegisterExcel,
 } from "@/lib/ar-ap-register-queries";
+import { getReportExportRowLimit } from "@/lib/report-export-limits";
 import { formatDateThai } from "@/lib/th-date";
 
 const HEADER_FILL: ExcelJS.Fill = {
@@ -469,6 +470,7 @@ export async function GET(request: Request) {
 
   const filters = parseReportQueryFilters(params);
   const dateRange = `${filters.fromStr}-to-${filters.toStr}`;
+  const exportRowLimit = getReportExportRowLimit(type);
 
   let buffer: Blob;
   let fileName: string;
@@ -529,31 +531,31 @@ export async function GET(request: Request) {
       break;
     }
     case "purchases": {
-      const rows = await queryPurchaseRows(filters, null);
+      const rows = await queryPurchaseRows(filters, exportRowLimit);
       buffer = await buildPurchasesExcel(rows, "รายงานซื้อ");
       fileName = `purchase-report-${dateRange}.xlsx`;
       break;
     }
     case "credit-notes": {
-      const rows = await queryCreditNoteRows(filters, null);
+      const rows = await queryCreditNoteRows(filters, exportRowLimit);
       buffer = await buildCreditNotesExcel(rows, "รายงานใบลดหนี้");
       fileName = `credit-note-report-${dateRange}.xlsx`;
       break;
     }
     case "daily-receipt": {
-      const rows = await queryDailyReceiptRows(filters, null);
+      const rows = await queryDailyReceiptRows(filters, exportRowLimit);
       buffer = await buildDailyReceiptExcel(rows, "รับเงินประจำวัน");
       fileName = `daily-receipt-${dateRange}.xlsx`;
       break;
     }
     case "daily-payment": {
-      const rows = await queryDailyPaymentRows(filters, null);
+      const rows = await queryDailyPaymentRows(filters, exportRowLimit);
       buffer = await buildDailyPaymentExcel(rows, "จ่ายเงินประจำวัน");
       fileName = `daily-payment-${dateRange}.xlsx`;
       break;
     }
     default: {
-      const rows = await querySalesRows(filters, null);
+      const rows = await querySalesRows(filters, exportRowLimit);
       buffer = await buildSalesExcel(rows, "รายงานขาย");
       fileName = `sale-report-${dateRange}.xlsx`;
       break;

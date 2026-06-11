@@ -15,7 +15,7 @@ const ReportTableShell = ({
   return (
     <div
       className={cn(
-        "-mx-4 overflow-x-auto border-y border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950 dark:[&_tbody]:divide-white/10 dark:[&_td]:text-slate-200 dark:[&_tfoot]:border-white/10 dark:[&_tfoot]:bg-slate-900 dark:[&_th]:border-white/10 dark:[&_tr:hover]:bg-white/5 sm:mx-0 sm:rounded-lg sm:border",
+        "-mx-4 overflow-x-auto border-y border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950 dark:[&_tbody]:!divide-white/10 dark:[&_td]:!text-slate-200 dark:[&_tfoot]:!border-white/10 dark:[&_tfoot]:!bg-slate-900 dark:[&_th]:!border-white/10 dark:[&_tr:hover]:!bg-white/5 sm:mx-0 sm:rounded-lg sm:border",
         className,
       )}
     >

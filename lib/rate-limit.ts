@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { buildRateLimitResult } from "@/lib/rate-limit-result";
 
 export type RateLimitOptions = {
   key: string;
@@ -38,35 +39,35 @@ export const checkRateLimit = async ({
 }: RateLimitOptions): Promise<RateLimitResult> => {
   const now = new Date();
   const nowMs = now.getTime();
+  const windowEnd = new Date(nowMs + windowMs);
 
-  const incremented = await db.apiThrottle.updateMany({
-    where: { key, windowEnd: { gt: now } },
-    data: { count: { increment: 1 } },
-  });
+  const [bucket] = await db.$queryRaw<
+    { count: number; windowEnd: Date }[]
+  >`
+    INSERT INTO "ApiThrottle" ("key", "count", "windowEnd", "updatedAt")
+    VALUES (${key}, 1, ${windowEnd}, ${now})
+    ON CONFLICT ("key") DO UPDATE SET
+      "count" = CASE
+        WHEN "ApiThrottle"."windowEnd" <= ${now} THEN 1
+        ELSE "ApiThrottle"."count" + 1
+      END,
+      "windowEnd" = CASE
+        WHEN "ApiThrottle"."windowEnd" <= ${now} THEN ${windowEnd}
+        ELSE "ApiThrottle"."windowEnd"
+      END,
+      "updatedAt" = ${now}
+    RETURNING "count", "windowEnd"
+  `;
 
-  if (incremented.count === 0) {
-    const windowEnd = new Date(nowMs + windowMs);
-    await db.apiThrottle.upsert({
-      where: { key },
-      create: { key, count: 1, windowEnd },
-      update: { count: 1, windowEnd },
-    });
-    void maybeSweepExpired(nowMs);
+  void maybeSweepExpired(nowMs);
+
+  if (!bucket) {
     return { ok: true, remaining: Math.max(0, limit - 1), resetAt: windowEnd.getTime() };
   }
 
-  const bucket = await db.apiThrottle.findUnique({
-    where: { key },
-    select: { count: true, windowEnd: true },
+  return buildRateLimitResult({
+    count: Number(bucket.count),
+    limit,
+    resetAt: bucket.windowEnd.getTime(),
   });
-
-  if (!bucket) {
-    return { ok: true, remaining: Math.max(0, limit - 1), resetAt: nowMs + windowMs };
-  }
-
-  const resetAt = bucket.windowEnd.getTime();
-  if (bucket.count > limit) {
-    return { ok: false, remaining: 0, resetAt };
-  }
-  return { ok: true, remaining: Math.max(0, limit - bucket.count), resetAt };
 };

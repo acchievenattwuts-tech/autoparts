@@ -1163,6 +1163,8 @@ model Expense {
   items                 ExpenseItem[]
 
   @@index([cashBankAccountId])
+  @@index([expenseDate(sort: Desc), status])
+  @@index([cashBankAccountId, expenseDate(sort: Desc), status])
 }
 
 model DeliveryCommissionRun {
@@ -1339,6 +1341,8 @@ model CreditNote {
   receiptItems      ReceiptItem[]
 
   @@index([cashBankAccountId])
+  @@index([cnDate(sort: Desc), status])
+  @@index([cashBankAccountId, cnDate(sort: Desc), status])
 }
 
 model CreditNoteItem {
@@ -1396,6 +1400,8 @@ model PurchaseReturn {
 
   @@index([cashBankAccountId])
   @@index([claimId])
+  @@index([returnDate(sort: Desc), status])
+  @@index([cashBankAccountId, returnDate(sort: Desc), status])
   @@index([settlementType])
 }
 
@@ -1466,6 +1472,8 @@ model Receipt {
   items              ReceiptItem[]
 
   @@index([cashBankAccountId])
+  @@index([receiptDate(sort: Desc), status])
+  @@index([cashBankAccountId, receiptDate(sort: Desc), status])
 }
 
 model CashBankAccount {
@@ -1608,6 +1616,8 @@ model SupplierAdvance {
   supplierPayments  SupplierPaymentItem[]
 
   @@index([advanceDate])
+  @@index([advanceDate(sort: Desc), status])
+  @@index([cashBankAccountId, advanceDate(sort: Desc), status])
   @@index([supplierId, status])
   @@index([cashBankAccountId])
   @@index([userId])
@@ -1634,6 +1644,8 @@ model SupplierPayment {
   items             SupplierPaymentItem[]
 
   @@index([paymentDate])
+  @@index([paymentDate(sort: Desc), status])
+  @@index([cashBankAccountId, paymentDate(sort: Desc), status])
   @@index([supplierId, status])
   @@index([cashBankAccountId])
   @@index([userId])
@@ -1758,6 +1770,7 @@ model product_search_documents {
   fitment_text        String                  @default("")
   search_text         String                  @default("")
   search_document     Unsupported("tsvector")
+  embedding           Unsupported("vector(768)")?
   product_created_at  DateTime                @db.Timestamptz(6)
   updated_at          DateTime                @default(now()) @db.Timestamptz(6)
   oem_text            String                  @default("")

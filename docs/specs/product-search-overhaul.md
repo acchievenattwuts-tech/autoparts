@@ -167,7 +167,7 @@ model ProductAlias {
 - Audit log: ProductFitment changes
 
 ## Post-Phase-C Follow-ups — DONE
-- [x] npm script `db:push` — รวม `prisma db push --accept-data-loss` + `setup-search-v2.ts` กันลืม (Finding #5)
+- [x] npm script `db:push` — รวม `prisma db push` + `setup-search-v2.ts` กันลืม; destructive push ถูกแยกเป็น `db:push:accept-data-loss` (Finding #5)
 - [x] npm script `db:setup-search-v2` — shortcut สำหรับ rebuild search docs
 
 ## Phase D — DONE

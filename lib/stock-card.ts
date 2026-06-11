@@ -20,6 +20,13 @@ import { db } from "@/lib/db";
 // Type for Prisma transaction client
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
+export async function lockProductForStockMutation(
+  tx: Pick<TxClient, "$queryRaw">,
+  productId: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE`;
+}
+
 function sqlStringLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -62,6 +69,8 @@ export async function recalculateStockCard(
   tx: TxClient,
   productId: string
 ): Promise<void> {
+  await lockProductForStockMutation(tx, productId);
+
   const rows = await tx.stockCard.findMany({
     where: { productId },
     orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
@@ -199,6 +208,8 @@ export async function writeStockCard(
   tx: TxClient,
   input: StockCardInput
 ): Promise<string> {
+  await lockProductForStockMutation(tx, input.productId);
+
   const qIn = input.qtyIn;
   const qOut = input.qtyOut;
   const pIn = input.priceIn;

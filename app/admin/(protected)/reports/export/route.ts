@@ -44,6 +44,7 @@ import {
   buildARRegisterCsv,
   buildAPRegisterCsv,
 } from "@/lib/ar-ap-register-queries";
+import { getReportExportRowLimit } from "@/lib/report-export-limits";
 
 const BOM = "\uFEFF";
 
@@ -76,6 +77,7 @@ export async function GET(request: Request) {
 
   const filters = parseReportQueryFilters(params);
   const dateRange = `${filters.fromStr}-to-${filters.toStr}`;
+  const exportRowLimit = getReportExportRowLimit(type);
 
   let csv: string;
   let fileName: string;
@@ -136,32 +138,32 @@ export async function GET(request: Request) {
       break;
     }
     case "purchases": {
-      const rows = await queryPurchaseRows(filters, null);
+      const rows = await queryPurchaseRows(filters, exportRowLimit);
       csv = buildPurchasesCsv(rows);
       fileName = `purchase-report-${dateRange}.csv`;
       break;
     }
     case "credit-notes": {
-      const rows = await queryCreditNoteRows(filters, null);
+      const rows = await queryCreditNoteRows(filters, exportRowLimit);
       csv = buildCreditNotesCsv(rows);
       fileName = `credit-note-report-${dateRange}.csv`;
       break;
     }
     case "daily-receipt": {
-      const rows = await queryDailyReceiptRows(filters, null);
+      const rows = await queryDailyReceiptRows(filters, exportRowLimit);
       csv = buildDailyReceiptCsv(rows);
       fileName = `daily-receipt-${dateRange}.csv`;
       break;
     }
     case "daily-payment": {
-      const rows = await queryDailyPaymentRows(filters, null);
+      const rows = await queryDailyPaymentRows(filters, exportRowLimit);
       csv = buildDailyPaymentCsv(rows);
       fileName = `daily-payment-${dateRange}.csv`;
       break;
     }
     default: {
       // sales
-      const rows = await querySalesRows(filters, null);
+      const rows = await querySalesRows(filters, exportRowLimit);
       csv = buildSalesCsv(rows);
       fileName = `sale-report-${dateRange}.csv`;
       break;
