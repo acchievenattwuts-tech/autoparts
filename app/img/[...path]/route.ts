@@ -3,6 +3,11 @@ import {
   buildPublicProductImageUrl,
   isProductImageObjectPath,
 } from "@/lib/product-image-url";
+import {
+  getProductImageProxyContentType,
+  PRODUCT_IMAGE_PROXY_TIMEOUT_MS,
+  withProductImageProxyTimeout,
+} from "@/lib/product-image-proxy";
 
 /**
  * Same-origin product-image CDN proxy.
@@ -41,12 +46,18 @@ export async function GET(
   }
 
   let upstream: Response;
+  const abortController = new AbortController();
   try {
-    upstream = await fetch(buildPublicProductImageUrl(SUPABASE_URL, objectPath), {
-      // We add our own long-lived Cache-Control below; do not let fetch cache
-      // an error body.
-      cache: "no-store",
-    });
+    upstream = await withProductImageProxyTimeout(
+      fetch(buildPublicProductImageUrl(SUPABASE_URL, objectPath), {
+        // We add our own long-lived Cache-Control below; do not let fetch cache
+        // an error body.
+        cache: "no-store",
+        signal: abortController.signal,
+      }),
+      PRODUCT_IMAGE_PROXY_TIMEOUT_MS,
+      () => abortController.abort(),
+    );
   } catch {
     return new Response("Upstream image fetch failed", { status: 502 });
   }
@@ -55,7 +66,7 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  const contentType = upstream.headers.get("content-type") ?? "application/octet-stream";
+  const contentType = getProductImageProxyContentType(objectPath, upstream.headers);
 
   return new Response(upstream.body, {
     status: 200,
