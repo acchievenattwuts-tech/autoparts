@@ -8,7 +8,7 @@ import {
   type ProductSearchCacheProfile,
 } from "@/lib/product-search-cache";
 import { expandQueryTokenGroups } from "@/lib/search-synonyms";
-import { normalizeSearchText } from "@/lib/search-normalization";
+import { buildSearchVariants, normalizeSearchText } from "@/lib/search-normalization";
 import { embedQuery, toPgVectorLiteral } from "@/lib/embeddings";
 
 // Hybrid search (Phase 1): how many nearest-neighbour products to pull by vector
@@ -78,6 +78,7 @@ type ProductSearchInput = {
   carBrandName?: string | null;
   carModelName?: string | null;
   carModelNames?: string[] | null;
+  requiredTokens?: string[] | null;
   /** Optional explicit fitment year filter (e.g. user selected from dropdown) */
   fitmentYear?: number | null;
   /** Multi-select storefront filters (Phase Filter-UI) */
@@ -99,6 +100,9 @@ type ProductSearchInput = {
 
 const normalizeStringArray = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+
+const normalizeRequiredTokens = (values?: string[] | null): string[] =>
+  Array.from(new Set((values ?? []).map((value) => normalizeSearchText(value)).filter(Boolean)));
 
 const normalizeYearBound = (value?: number | null): number | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
@@ -165,6 +169,106 @@ export const extractYearFromQuery = (query?: string | null): number | null => {
     if (y >= 1900 && y <= 2200) return y;
   }
   return null;
+};
+
+type InferredTwoDigitYear = {
+  year: number;
+  sourceToken: string;
+};
+
+const twoDigitYearToFullYear = (token: string): number | null => {
+  if (!/^\d{2}$/.test(token)) return null;
+  const value = Number(token);
+  if (value <= 35) return 2000 + value;
+  if (value >= 80) return 1900 + value;
+  return null;
+};
+
+export const inferTwoDigitYearFromQueryWithVehicleEvidence = (
+  query: string | null | undefined,
+  vehicleEvidenceTerms: string[],
+): InferredTwoDigitYear | null => {
+  const normalized = normalizeSearchQuery(query);
+  if (!normalized) return null;
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  if (tokens.length < 2) return null;
+
+  const sourceToken = tokens[tokens.length - 1];
+  const year = twoDigitYearToFullYear(sourceToken);
+  if (year === null) return null;
+
+  const evidenceSet = new Set(vehicleEvidenceTerms.map(normalizeSearchText).filter(Boolean));
+  if (evidenceSet.size === 0) return null;
+
+  const queryTerms = tokens.slice(0, -1);
+  const hasVehicleEvidence = queryTerms.some((term) =>
+    buildSearchVariants(term).some((variant) => evidenceSet.has(variant)),
+  );
+
+  return hasVehicleEvidence ? { year, sourceToken } : null;
+};
+
+const getVehicleEvidenceTermsForTwoDigitYear = async (
+  normalizedQuery: string,
+): Promise<string[]> => {
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const sourceToken = tokens[tokens.length - 1];
+  if (tokens.length < 2 || twoDigitYearToFullYear(sourceToken) === null) return [];
+
+  const evidenceCandidates = Array.from(
+    new Set(
+      tokens
+        .slice(0, -1)
+        .flatMap((token) => buildSearchVariants(token))
+        .map(normalizeSearchText)
+        .filter((token) => token.length >= 2),
+    ),
+  );
+  if (evidenceCandidates.length === 0) return [];
+
+  const rows = await db.$queryRaw<Array<{ term: string }>>(Prisma.sql`
+    SELECT term
+    FROM (
+      ${Prisma.join(
+        evidenceCandidates.map((term) => Prisma.sql`SELECT ${term}::text AS term`),
+        " UNION ALL ",
+      )}
+    ) AS candidate_terms
+    WHERE EXISTS (
+      SELECT 1
+      FROM product_search_documents psd
+      WHERE f_unaccent(lower(psd.car_model_text)) LIKE f_unaccent(lower('%' || candidate_terms.term || '%'))
+         OR f_unaccent(lower(psd.car_brand_text)) LIKE f_unaccent(lower('%' || candidate_terms.term || '%'))
+    )
+  `);
+
+  return rows.map((row) => row.term);
+};
+
+const resolveQueryYear = async (
+  normalizedQuery?: string | null,
+  explicitFitmentYear?: number | null,
+): Promise<{ year: number | null; sourceToken: string | null }> => {
+  if (typeof explicitFitmentYear === "number") {
+    return { year: explicitFitmentYear, sourceToken: String(explicitFitmentYear) };
+  }
+
+  const fourDigitYear = extractYearFromQuery(normalizedQuery);
+  if (fourDigitYear !== null) {
+    return { year: fourDigitYear, sourceToken: String(fourDigitYear) };
+  }
+
+  if (!normalizedQuery) return { year: null, sourceToken: null };
+
+  const vehicleEvidenceTerms = await getVehicleEvidenceTermsForTwoDigitYear(normalizedQuery);
+  const inferred = inferTwoDigitYearFromQueryWithVehicleEvidence(
+    normalizedQuery,
+    vehicleEvidenceTerms,
+  );
+  return inferred
+    ? { year: inferred.year, sourceToken: inferred.sourceToken }
+    : { year: null, sourceToken: null };
 };
 
 const normalizeCarModelNames = (input: ProductSearchInput): string[] => {
@@ -259,6 +363,7 @@ const buildProductFilterWhere = (
     | "carBrandName"
     | "carModelName"
     | "carModelNames"
+    | "requiredTokens"
     | "categoryNames"
     | "brandIds"
     | "carBrandNames"
@@ -283,6 +388,7 @@ const buildProductFilterWhere = (
   const where: PrismaTypes.ProductWhereInput = {};
   const searchWhere = buildProductSearchWhere(query);
   const normalizedCarModelNames = normalizeCarModelNames({ carModelName, carModelNames });
+  const requiredTokens = normalizeRequiredTokens(input.requiredTokens);
   const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
   const normalizedBrandIds = normalizeStringArray(input.brandIds);
   const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
@@ -366,11 +472,51 @@ const buildProductFilterWhere = (
   }
 
   if (!searchWhere) {
-    return where;
+    return applyRequiredTokenFilter(where, requiredTokens);
   }
 
   return {
-    AND: [where, searchWhere],
+    AND: [applyRequiredTokenFilter(where, requiredTokens), searchWhere],
+  };
+};
+
+const buildRequiredTokenCondition = (token: string): PrismaTypes.ProductWhereInput => ({
+  OR: [
+    { name: { contains: token, mode: "insensitive" } },
+    { code: { contains: token, mode: "insensitive" } },
+    { description: { contains: token, mode: "insensitive" } },
+    { aliases: { some: { alias: { contains: token, mode: "insensitive" } } } },
+    {
+      carModels: {
+        some: {
+          OR: [
+            { submodel: { contains: token, mode: "insensitive" } },
+            { engineCode: { contains: token, mode: "insensitive" } },
+            { engineSize: { contains: token, mode: "insensitive" } },
+            { note: { contains: token, mode: "insensitive" } },
+            { carModel: { name: { contains: token, mode: "insensitive" } } },
+            { carModel: { carBrand: { name: { contains: token, mode: "insensitive" } } } },
+          ],
+        },
+      },
+    },
+    { category: { name: { contains: token, mode: "insensitive" } } },
+    { brand: { name: { contains: token, mode: "insensitive" } } },
+  ],
+});
+
+const applyRequiredTokenFilter = (
+  where: PrismaTypes.ProductWhereInput,
+  requiredTokens: string[],
+): PrismaTypes.ProductWhereInput => {
+  if (requiredTokens.length === 0) return where;
+  const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+  return {
+    ...where,
+    AND: [
+      ...existingAnd,
+      ...requiredTokens.map((token) => buildRequiredTokenCondition(token)),
+    ],
   };
 };
 
@@ -462,7 +608,7 @@ async function searchProductIdsFallback(
   input: ProductSearchInput,
 ): Promise<ProductSearchResult> {
   const baseWhere = buildProductFilterWhere(input);
-  const targetYear = input.fitmentYear ?? extractYearFromQuery(input.query);
+  const { year: targetYear } = await resolveQueryYear(input.query, input.fitmentYear);
   const yearMin = normalizeYearBound(input.yearMin);
   const yearMax = normalizeYearBound(input.yearMax);
   const where = applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
@@ -504,6 +650,7 @@ async function searchProductIdsV2(
 ): Promise<ProductSearchResult> {
   const normalizedQuery = normalizeSearchQuery(input.query);
   const normalizedCarModelNames = normalizeCarModelNames(input);
+  const requiredTokens = normalizeRequiredTokens(input.requiredTokens);
 
   if (!normalizedQuery) {
     return searchProductIdsFallback(input);
@@ -515,7 +662,10 @@ async function searchProductIdsV2(
   const containsQuery = `%${normalizedQuery}%`;
 
   // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
-  const targetYear = input.fitmentYear ?? extractYearFromQuery(normalizedQuery);
+  const { year: targetYear, sourceToken: targetYearSourceToken } = await resolveQueryYear(
+    normalizedQuery,
+    input.fitmentYear,
+  );
 
   // Phase D + AND-scope: expand the query into per-concept synonym groups, then
   // build a precise AND-across-concepts tsquery ("หม้อน้ำ" & "mazda" & "2") with a
@@ -529,7 +679,13 @@ async function searchProductIdsV2(
   // is stored as a range (e.g. "2008-2012" has no standalone "2010" token).
   const ftsGroups =
     targetYear !== null
-      ? tokenGroups.filter((group) => !(group.length === 1 && group[0] === String(targetYear)))
+      ? tokenGroups.filter(
+          (group) =>
+            !(
+              group.length === 1 &&
+              (group[0] === String(targetYear) || group[0] === targetYearSourceToken)
+            ),
+        )
       : tokenGroups;
 
   const andExpression = buildTsQueryExpression(ftsGroups, "and");
@@ -776,6 +932,27 @@ async function searchProductIdsV2(
         `
       : Prisma.empty;
 
+  const requiredTokensClause = requiredTokens.length > 0
+    ? Prisma.sql`
+        AND ${Prisma.join(
+          requiredTokens.map((token) => {
+            const containsToken = `%${token}%`;
+            return Prisma.sql`(
+              f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.product_description)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsToken}))
+              OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsToken}))
+            )`;
+          }),
+          " AND ",
+        )}
+      `
+    : Prisma.empty;
+
   const exactScope = Prisma.sql`
     WHERE TRUE
       ${isActiveClause}
@@ -794,6 +971,7 @@ async function searchProductIdsV2(
       ${priceMaxClause}
       ${stockStatusClause}
       ${inventoryTrackingClause}
+      ${requiredTokensClause}
   `;
 
   const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
@@ -1111,6 +1289,7 @@ export async function searchProductIds(
     carModelId: input.carModelId ?? "",
     carBrandName: input.carBrandName ?? "",
     carModelNames: normalizeCarModelNames(input),
+    requiredTokens: normalizeRequiredTokens(input.requiredTokens),
     fitmentYear: input.fitmentYear ?? null,
     categoryNames: normalizeStringArray(input.categoryNames),
     brandIds: normalizeStringArray(input.brandIds),

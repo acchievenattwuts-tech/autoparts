@@ -1,5 +1,6 @@
 import { LineIntent } from "@/lib/generated/prisma";
 import type { LineIntentRouteResult } from "@/lib/line-intent-router";
+import { extractLineRequiredSearchTokens } from "@/lib/line-search-guards";
 
 type ProductSearchInput = {
   query?: string | null;
@@ -8,6 +9,7 @@ type ProductSearchInput = {
   carBrandName?: string | null;
   carModelName?: string | null;
   fitmentYear?: number | null;
+  requiredTokens?: string[] | null;
   skip?: number;
   take?: number;
   cacheProfile?: "admin" | "storefront";
@@ -154,6 +156,7 @@ export async function searchLineProductInquiry(
       result: null,
     };
   }
+  const requiredTokens = extractLineRequiredSearchTokens(query);
 
   const resolvedSearchFn =
     searchFn ??
@@ -169,6 +172,7 @@ export async function searchLineProductInquiry(
     carBrandName: input.fitmentHints?.carBrandName ?? null,
     carModelName: input.fitmentHints?.carModelName ?? null,
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
+    ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
     skip: 0,
     take: input.take ?? 5,
     cacheProfile: "admin",
@@ -191,6 +195,7 @@ export async function searchLineProductInquiry(
       const retry = await resolvedSearchFn({
         query: normalizedSuggestion,
         isActive: true,
+        ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
         skip: 0,
         take: input.take ?? 5,
         cacheProfile: "admin",

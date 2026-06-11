@@ -323,7 +323,14 @@ function createProcessorTestDeps(input?: {
             year: input?.intentYear ?? null,
           }
         : null,
-    resolveLineFitmentFilters: async () => input?.fitmentFilters ?? {},
+    resolveLineFitmentFilters: async (filterInput) => {
+      const configured = input?.fitmentFilters ?? {};
+      return {
+        categoryName: configured.categoryName,
+        carBrandName: filterInput.carBrand ? configured.carBrandName : undefined,
+        carModelName: filterInput.carModel ? configured.carModelName : undefined,
+      };
+    },
   };
 
   return { calls, dependencies };
@@ -633,6 +640,58 @@ test("resolved fitment hints are passed as hard filters to search", async () => 
     carBrandName: "Mazda",
     carModelName: "2",
     fitmentYear: 2015,
+  });
+});
+
+test("ungrounded AI car model rewrite falls back to the customer's literal query", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอมแอร์ Isuzu D-Max",
+    intentPartType: "คอมแอร์",
+    intentCarBrand: "Isuzu",
+    intentCarModel: "D-Max",
+    fitmentFilters: { categoryName: "คอมแอร์ (Compressor)", carBrandName: "Isuzu", carModelName: "D-Max" },
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอม dragon 709"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.searches, ["คอม dragon 709"]);
+  assert.deepEqual(calls.searchFitmentHints[0], {
+    categoryName: "คอมแอร์ (Compressor)",
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+  });
+});
+
+test("grounded Dragon Eye rewrite keeps resolved Isuzu Dragon Eye hard filters", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอมแอร์ Isuzu Dragon Eye 709",
+    intentPartType: "คอมแอร์",
+    intentCarBrand: "Isuzu",
+    intentCarModel: "Dragon Eye",
+    fitmentFilters: { categoryName: "คอมแอร์ (Compressor)", carBrandName: "Isuzu", carModelName: "Dragon Eye" },
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอม dragon 709"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.deepEqual(calls.searches, ["คอมแอร์ Isuzu Dragon Eye 709"]);
+  assert.deepEqual(calls.searchFitmentHints[0], {
+    categoryName: "คอมแอร์ (Compressor)",
+    carBrandName: "Isuzu",
+    carModelName: "Dragon Eye",
+    fitmentYear: null,
   });
 });
 

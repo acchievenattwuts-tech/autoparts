@@ -26,6 +26,7 @@ import ProductMatchChips from "@/components/shared/ProductMatchChips";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import ProductFitmentSummary from "./ProductFitmentSummary";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 const PAGE_SIZE = 30;
 
@@ -99,6 +100,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
       : trackingFilter === "non_tracked"
         ? "NON_TRACKED"
         : undefined;
+  const requiredTokens = extractProductSearchRequiredTokens(search);
 
   const productSearchInput = {
     query: search,
@@ -115,6 +117,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     take: PAGE_SIZE,
     order: "codeDesc" as const,
     cacheProfile: "admin" as const,
+    ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
   };
 
   const [searchResult, categories, partsBrands, carBrands] = await Promise.all([

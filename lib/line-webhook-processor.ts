@@ -54,6 +54,7 @@ import { answerFromLineFaq } from "@/lib/line-faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
+import { guardLineSearchIntent } from "@/lib/line-search-guards";
 
 export type LineWebhookProcessorConfig = {
   channelAccessToken: string | null;
@@ -697,17 +698,25 @@ export async function processLineAiReply(
     // other group answers from a template/FAQ or hands off — so stale product
     // context can never leak into answers to "ร้านอยู่ที่ไหน" etc.
     const isNonProductTurn = group !== "product";
-    const consolidatedQuery = isNonProductTurn ? null : searchIntent?.query ?? null;
+    const guardedSearch = isNonProductTurn
+      ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
+      : guardLineSearchIntent({ intent: searchIntent, latestText: input.text, history });
+    const guardedSearchIntent = guardedSearch.intent;
+    const consolidatedQuery = isNonProductTurn
+      ? null
+      : guardedSearch.forceLiteralQuery
+        ? input.text?.trim() || null
+        : guardedSearchIntent?.query ?? null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
     const fitmentFilters: LineFitmentFilters =
-      !isNonProductTurn && searchIntent
+      !isNonProductTurn && guardedSearchIntent
         ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
-            partType: searchIntent.partType,
-            carBrand: searchIntent.carBrand,
-            carModel: searchIntent.carModel,
+            partType: guardedSearchIntent.partType,
+            carBrand: guardedSearchIntent.carBrand,
+            carModel: guardedSearchIntent.carModel,
           }).catch((): LineFitmentFilters => ({}))
         : {};
 
@@ -733,7 +742,7 @@ export async function processLineAiReply(
             categoryName: fitmentFilters.categoryName ?? null,
             carBrandName: fitmentFilters.carBrandName ?? null,
             carModelName: fitmentFilters.carModelName ?? null,
-            fitmentYear: searchIntent?.year ?? null,
+            fitmentYear: guardedSearchIntent?.year ?? null,
           },
         });
 
@@ -756,7 +765,9 @@ export async function processLineAiReply(
           categoryName: fitmentFilters.categoryName ?? null,
           carBrandName: fitmentFilters.carBrandName ?? null,
           carModelName: fitmentFilters.carModelName ?? null,
-          fitmentYear: searchIntent?.year ?? null,
+          fitmentYear: guardedSearchIntent?.year ?? null,
+          forceLiteralQuery: guardedSearch.forceLiteralQuery,
+          requiredTokens: guardedSearch.requiredTokens,
         },
       });
     }

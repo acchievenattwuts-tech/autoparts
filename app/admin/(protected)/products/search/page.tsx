@@ -14,6 +14,7 @@ import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
+import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 import MobileProductSearchForm from "./MobileProductSearchForm";
 
@@ -84,6 +85,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
       : trackingFilter === "non_tracked"
         ? "NON_TRACKED"
         : undefined;
+  const requiredTokens = extractProductSearchRequiredTokens(search);
 
   const productSearchInput = {
     query: search,
@@ -100,6 +102,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     take: PAGE_SIZE,
     order: "codeDesc" as const,
     cacheProfile: "admin" as const,
+    ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
   };
 
   const [searchResult, categories, partsBrands, carBrands] = await Promise.all([

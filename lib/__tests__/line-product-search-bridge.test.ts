@@ -184,3 +184,34 @@ test("part number seed takes precedence over free text", async () => {
   assert.equal(result.searched, true);
   assert.equal(result.query, "447220-1234");
 });
+
+test("numeric model or part tokens are sent as required tokens for LINE search", async () => {
+  const calls: unknown[] = [];
+
+  const result = await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอม dragon 709",
+    },
+    async (input) => {
+      calls.push(input);
+      return { ids: ["p-dragon"], total: 1, mode: "v2", matchReasons: { "p-dragon": ["name"] } };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.deepEqual(calls, [
+    {
+      query: "คอม dragon 709",
+      isActive: true,
+      categoryName: null,
+      carBrandName: null,
+      carModelName: null,
+      fitmentYear: null,
+      requiredTokens: ["709"],
+      skip: 0,
+      take: 5,
+      cacheProfile: "admin",
+    },
+  ]);
+});

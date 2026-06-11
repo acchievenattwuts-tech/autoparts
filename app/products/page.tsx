@@ -89,6 +89,8 @@ const buildRenderNonce = (input: {
   pageStart: number;
   pageEnd: number;
   totalPages: number;
+  requiredTokenFallbackUsed?: boolean;
+  requiredTokens?: string[];
 }): string =>
   JSON.stringify({
     q: input.q ?? "",
@@ -108,6 +110,8 @@ const buildRenderNonce = (input: {
     pageStart: input.pageStart,
     pageEnd: input.pageEnd,
     totalPages: input.totalPages,
+    requiredTokenFallbackUsed: input.requiredTokenFallbackUsed ?? false,
+    requiredTokens: input.requiredTokens ?? [],
   });
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
@@ -203,6 +207,9 @@ const ProductsPage = async ({ searchParams }: Props) => {
   let initialTotal: number;
   let initialDidYouMean: string[] = [];
   let initialMeta: { pageStart: number; pageEnd: number; totalPages: number };
+  let initialRequiredTokenFallback:
+    | { requiredTokens: string[]; usedFallback: boolean }
+    | undefined;
 
   if (!hasFilter) {
     // Landing mode: use ISR-cached landing data
@@ -214,6 +221,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       pageEnd: initialProducts.length,
       totalPages: Math.max(1, Math.ceil(totalProducts / STOREFRONT_PRODUCTS_PER_PAGE)),
     };
+    initialRequiredTokenFallback = undefined;
   } else {
     // Search mode: route stays request-time, but repeated identical searches reuse
     // the cached page payload from the shared storefront search helper.
@@ -269,6 +277,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       pageEnd: searchPageData.pageEnd,
       totalPages: searchPageData.totalPages,
     };
+    initialRequiredTokenFallback = searchPageData.requiredTokenFallback;
   }
 
   const renderNonce = buildRenderNonce({
@@ -289,6 +298,8 @@ const ProductsPage = async ({ searchParams }: Props) => {
     pageStart: initialMeta.pageStart,
     pageEnd: initialMeta.pageEnd,
     totalPages: initialMeta.totalPages,
+    requiredTokenFallbackUsed: initialRequiredTokenFallback?.usedFallback,
+    requiredTokens: initialRequiredTokenFallback?.requiredTokens,
   });
 
   return (
@@ -326,6 +337,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
               priceMax,
             }}
             initialMeta={initialMeta}
+            initialRequiredTokenFallback={initialRequiredTokenFallback}
             filterData={filterData}
             lineUrl={config.shopLineUrl}
             basePath="/products"

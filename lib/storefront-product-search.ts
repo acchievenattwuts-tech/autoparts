@@ -10,6 +10,7 @@ import {
   sortProductsByIds,
   suggestDidYouMean,
 } from "@/lib/product-search";
+import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 export const STOREFRONT_PRODUCTS_PER_PAGE = 24;
 
@@ -83,6 +84,10 @@ export type SearchProductsResult = {
   totalPages: number;
   pageStart: number;
   pageEnd: number;
+  requiredTokenFallback?: {
+    requiredTokens: string[];
+    usedFallback: boolean;
+  };
 };
 
 type SearchProductRecord = Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }>;
@@ -159,12 +164,50 @@ const serializeSearchProduct = (product: SearchProductRecord): SearchProductItem
   carModels: product.carModels,
 });
 
+type StorefrontSearchProductIds = typeof searchProductIds;
+type StorefrontSearchInput = Parameters<StorefrontSearchProductIds>[0];
+type StorefrontSearchResult = Awaited<ReturnType<StorefrontSearchProductIds>>;
+
+export async function runStorefrontProductSearchWithRequiredTokenFallback(
+  input: StorefrontSearchInput,
+  searchProductIdsFn: StorefrontSearchProductIds = searchProductIds,
+): Promise<{
+  searchResult: StorefrontSearchResult;
+  requiredTokenFallback?: {
+    requiredTokens: string[];
+    usedFallback: boolean;
+  };
+}> {
+  const requiredTokens = extractProductSearchRequiredTokens(input.query);
+  if (requiredTokens.length === 0) {
+    return { searchResult: await searchProductIdsFn(input) };
+  }
+
+  const strictResult = await searchProductIdsFn({
+    ...input,
+    requiredTokens,
+  });
+  if (strictResult.total > 0) {
+    return {
+      searchResult: strictResult,
+      requiredTokenFallback: { requiredTokens, usedFallback: false },
+    };
+  }
+
+  const fallbackResult = await searchProductIdsFn(input);
+  return {
+    searchResult: fallbackResult,
+    requiredTokenFallback: { requiredTokens, usedFallback: true },
+  };
+}
+
 const getCachedStorefrontProductSearchPageData = unstable_cache(
   async (
     input: NormalizedStorefrontProductSearchInput,
   ): Promise<SearchProductsResult> => {
     const skip = (input.page - 1) * STOREFRONT_PRODUCTS_PER_PAGE;
-    const searchResult = await searchProductIds({
+    const { searchResult, requiredTokenFallback } =
+      await runStorefrontProductSearchWithRequiredTokenFallback({
       query: input.q,
       isActive: true,
       categoryName: input.category,
@@ -213,6 +256,7 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
       totalPages,
       pageStart,
       pageEnd,
+      ...(requiredTokenFallback ? { requiredTokenFallback } : {}),
     };
   },
   ["storefront-product-search-page-data"],

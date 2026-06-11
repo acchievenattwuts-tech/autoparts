@@ -46,3 +46,19 @@ test("sanitizes punctuation and drops empty groups", async () => {
   assert.equal(buildTsQueryExpression([["d-max"], ["!!!"]], "and"), "((d-max:*))");
   assert.equal(buildTsQueryExpression([], "and"), "");
 });
+
+test("infers a trailing two-digit year only when a vehicle evidence token is present", async () => {
+  const { inferTwoDigitYearFromQueryWithVehicleEvidence } = await import("@/lib/product-search");
+
+  assert.deepEqual(
+    inferTwoDigitYearFromQueryWithVehicleEvidence("vios 03", ["vios"]),
+    { year: 2003, sourceToken: "03" },
+  );
+  assert.equal(inferTwoDigitYearFromQueryWithVehicleEvidence("คอม 03", ["vios"]), null);
+  assert.equal(inferTwoDigitYearFromQueryWithVehicleEvidence("vios 36", ["vios"]), null);
+  assert.deepEqual(
+    inferTwoDigitYearFromQueryWithVehicleEvidence("vios 99", ["vios"]),
+    { year: 1999, sourceToken: "99" },
+  );
+  assert.equal(inferTwoDigitYearFromQueryWithVehicleEvidence("dragon 709", ["dragon"]), null);
+});
