@@ -7,6 +7,7 @@ import { Plus, X, Upload, Loader2, Trash2, ZoomIn } from "lucide-react";
 import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -1210,7 +1211,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
           <div className="flex-shrink-0">
             {imageUrl ? (
               <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
-                <Image src={imageUrl} alt="preview" fill className="object-cover" sizes="128px" />
+                <Image src={toProductImageCdnPath(imageUrl) ?? imageUrl} alt="preview" fill className="object-cover" sizes="128px" />
                 <button type="button" onClick={() => removeProductImage(imageUrl)}
                   className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors">
                   <X size={12} />
@@ -1242,7 +1243,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
                       className={`relative block aspect-square w-full cursor-zoom-in overflow-hidden rounded-lg ${image.isPrimary ? "ring-2 ring-[#1e3a5f] dark:ring-sky-400" : ""}`}
                       aria-label="ดูรูปขนาดใหญ่"
                     >
-                      <Image src={image.url} alt={image.alt || `product-${index + 1}`} fill className="object-cover" sizes="96px" />
+                      <Image src={toProductImageCdnPath(image.url) ?? image.url} alt={image.alt || `product-${index + 1}`} fill className="object-cover" sizes="96px" />
                       <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
                         <ZoomIn size={18} />
                       </span>
@@ -1287,7 +1288,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
               </button>
               <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white dark:bg-slate-950">
                 <Image
-                  src={previewUrl}
+                  src={toProductImageCdnPath(previewUrl) ?? previewUrl}
                   alt="preview"
                   fill
                   className="object-contain"

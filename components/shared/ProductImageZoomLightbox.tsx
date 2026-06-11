@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, X } from "lucide-react";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 export interface ProductZoomImage {
   url: string;
@@ -378,7 +379,7 @@ const ProductImageZoomLightbox = ({
                     }`}
                   >
                     <Image
-                      src={image.url}
+                      src={toProductImageCdnPath(image.url) ?? image.url}
                       alt={image.alt}
                       fill
                       className="pointer-events-none select-none object-contain"
@@ -440,7 +441,7 @@ const ProductImageZoomLightbox = ({
                     aria-current={isActive ? "true" : undefined}
                   >
                     <Image
-                      src={image.url}
+                      src={toProductImageCdnPath(image.url) ?? image.url}
                       alt={image.alt}
                       fill
                       sizes="64px"

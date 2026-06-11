@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, PackageSearch, ZoomIn } from "lucide-react";
 import ProductImageZoomLightbox from "@/components/shared/ProductImageZoomLightbox";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 interface GalleryImage {
   url: string;
@@ -196,7 +197,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
               return (
                 <div key={`${image.url}-main-${index}`} className="relative h-full w-full shrink-0">
                   <Image
-                    src={image.url}
+                    src={toProductImageCdnPath(image.url) ?? image.url}
                     alt={image.alt}
                     fill
                     sizes="(max-width: 1024px) 100vw, 45vw"
@@ -282,7 +283,7 @@ const ProductImageGallery = ({ images, productName }: Props) => {
                   aria-current={isActive ? "true" : undefined}
                 >
                   <Image
-                    src={image.url}
+                    src={toProductImageCdnPath(image.url) ?? image.url}
                     alt={image.alt || `${productName} image ${index + 1}`}
                     fill
                     sizes="(max-width: 640px) 80px, 64px"

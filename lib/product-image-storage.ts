@@ -1,7 +1,28 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  PRODUCT_IMAGE_BUCKET,
+  buildProductImageObjectPath,
+  getProductImageObjectPathFromPublicUrl,
+  isProductImageObjectPath,
+  isProductImageObjectPathForCode,
+} from "@/lib/product-image-url";
 
-export const PRODUCT_IMAGE_BUCKET = "products";
-export const PRODUCT_IMAGE_ROOT = "products";
+// Re-export the pure URL helpers so existing server-side importers of this module
+// keep their current API. New client-safe code should import from
+// `@/lib/product-image-url` directly (it has no `@supabase/supabase-js` dependency).
+export {
+  PRODUCT_IMAGE_BUCKET,
+  PRODUCT_IMAGE_ROOT,
+  PRODUCT_IMAGE_CDN_PREFIX,
+  sanitizeProductImageCode,
+  getProductImageFolder,
+  buildProductImageObjectPath,
+  buildPublicProductImageUrl,
+  getProductImageObjectPathFromPublicUrl,
+  isProductImageObjectPath,
+  isProductImageObjectPathForCode,
+  toProductImageCdnPath,
+} from "@/lib/product-image-url";
 
 type ProductImageStorageClient = SupabaseClient;
 
@@ -29,61 +50,12 @@ export function createProductImageStorageClient(config: ProductImageStorageConfi
   return createClient(config.supabaseUrl, config.serviceRoleKey);
 }
 
-export function sanitizeProductImageCode(code: string): string {
-  const normalized = code.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized || "uncoded";
-}
-
-export function getProductImageFolder(productCode: string): string {
-  return `${PRODUCT_IMAGE_ROOT}/${sanitizeProductImageCode(productCode)}`;
-}
-
-export function buildProductImageObjectPath(productCode: string, extension: string): string {
-  const safeExt = extension.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-  return `${getProductImageFolder(productCode)}/${Date.now()}-${crypto.randomUUID()}.${safeExt}`;
-}
-
 export function getPublicProductImageUrl(client: ProductImageStorageClient, objectPath: string): string {
   const {
     data: { publicUrl },
   } = client.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(objectPath);
 
   return publicUrl;
-}
-
-export function buildPublicProductImageUrl(supabaseUrl: string, objectPath: string): string {
-  const baseUrl = supabaseUrl.replace(/\/+$/g, "");
-  return `${baseUrl}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${encodeURI(objectPath)}`;
-}
-
-export function getProductImageObjectPathFromPublicUrl(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-
-  const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`;
-  const markerIndex = parsed.pathname.indexOf(marker);
-  if (markerIndex === -1) {
-    return null;
-  }
-
-  const encodedPath = parsed.pathname.slice(markerIndex + marker.length);
-  if (!encodedPath) {
-    return null;
-  }
-
-  try {
-    return decodeURIComponent(encodedPath);
-  } catch {
-    return encodedPath;
-  }
-}
-
-export function isProductImageObjectPath(objectPath: string): boolean {
-  return objectPath.startsWith(`${PRODUCT_IMAGE_ROOT}/`);
 }
 
 /**
@@ -125,10 +97,6 @@ export async function deleteProductImageObjects(
   if (paths.length === 0) return;
 
   await client.storage.from(PRODUCT_IMAGE_BUCKET).remove(paths);
-}
-
-export function isProductImageObjectPathForCode(objectPath: string, productCode: string): boolean {
-  return objectPath.startsWith(`${getProductImageFolder(productCode)}/`);
 }
 
 export async function copyProductImageUrlToCodeFolder({

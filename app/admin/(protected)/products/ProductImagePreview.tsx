@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { ZoomIn } from "lucide-react";
 import ProductImageZoomLightbox, { type ProductZoomImage } from "@/components/shared/ProductImageZoomLightbox";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 interface Props {
   imageUrl?: string | null;
@@ -36,7 +37,7 @@ const ProductImagePreview = ({ imageUrl, images, alt, size = "sm" }: Props) => {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  const thumbSrc = galleryImages[0]?.url;
+  const thumbSrc = toProductImageCdnPath(galleryImages[0]?.url) ?? galleryImages[0]?.url;
 
   const openAt = (index: number) => {
     setActiveIndex(index);

@@ -10,6 +10,7 @@ import ProductFitmentSummary from "@/app/admin/(protected)/products/ProductFitme
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
@@ -246,7 +247,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                 stockNum <= 0 ? "out" :
                 stockNum <= minStockNum ? "low" :
                 "ok";
-              const primaryImage = product.imageUrl || product.images[0]?.url || null;
+              const rawPrimaryImage = product.imageUrl || product.images[0]?.url || null;
+              const primaryImage = toProductImageCdnPath(rawPrimaryImage);
               const displayUnit = product.saleUnitName || product.reportUnitName;
 
               return (

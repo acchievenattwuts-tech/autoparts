@@ -120,6 +120,17 @@
     - safety: **ไม่มี flag เปิดใช้เลย**; classify ล่ม → fallback regex routing; รูปภาพไปทาง image path เดิม (text classifier เฉพาะข้อความ); เคารพ paused/waiting_admin (ไม่เด้งแทรกตอนแอดมินรับช่วง); audit `INTENT_CLASSIFIED {group, source, routedIntent}` + `SOCIAL_HANDLED`; classify timeout 15s
     - unit tests: groups mapping 6 + parse group 7 + processor (social/shop_info/paused/non-product/FAQ) + เดิมทั้งหมด
 
+### 6. Image Egress Reduction — Vercel CDN Proxy (2026-06-11)
+- บริบท: Supabase Free ใกล้ชน limit Egress (3.675/5GB) + Cached Egress (3.662/5GB, เข้า grace period ถึง 15 มิ.ย.) ขณะที่ Vercel Pro มี headroom เหลือมาก ($5.43/$20) → ย้ายการ serve รูปสินค้าไปผ่าน Vercel CDN
+- หลักการ: client / crawler / next-image optimizer → `/img/<objectPath>` (Vercel CDN cache, immutable 1 ปี) → Supabase Storage (ดึงครั้งเดียวต่อ cache window) ไม่แตะข้อมูลใน DB
+- [x] เพิ่ม `lib/product-image-url.ts` — pure URL helper (no `@supabase/supabase-js`, client-safe) + `toProductImageCdnPath()` (idempotent, no-op กับ url ที่ไม่ใช่ product bucket); `product-image-storage.ts` re-export ให้ importer เดิมไม่ต้องแก้
+- [x] เพิ่ม route handler `app/img/[...path]/route.ts` — proxy public object จาก Supabase + `Cache-Control: public, max-age/s-maxage=31536000, immutable`; จำกัดเฉพาะ object path ใน bucket `products/` (กัน open proxy)
+- [x] ยกเว้น `/img` จาก middleware matcher (`proxy.ts`) — ไม่ให้ auth()/bot-check รันต่อ request รูป
+- [x] ชี้ `next/image` src ผ่าน `/img` ทุกจุดที่ render รูปสินค้า: `ProductCard`, `ProductImageGallery`, `ProductImageZoomLightbox`, `ProductAutocomplete`, admin `ProductImagePreview` / `ProductForm` (display เท่านั้น, formData/DB คงเป็น URL Supabase เดิม) / `products/search`
+- [x] JSON-LD/ItemList ใช้ absolute CDN URL: `ProductJsonLd` (product detail), `products/page.tsx`, `products/[categorySlug]/page.tsx` → ตัด bot ดูดรูปจาก Supabase ตรง
+- [ ] (Ops) หลัง deploy: เฝ้าดู Supabase Egress/Cached Egress ควรลดลงชัดเจน + ตรวจ Vercel Image Optimization usage ไม่พุ่งเกินงบ
+- [ ] (ทางเลือก, ยังไม่ทำ) migrate `Product.imageUrl`/`ProductImage.url` ใน DB ให้เป็น CDN path — ชะลอไว้เพราะกระทบ logic ownership ใน `product-image-storage.ts` และไม่จำเป็นเมื่อใช้ render-time helper แล้ว
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`

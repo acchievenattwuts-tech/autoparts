@@ -15,6 +15,7 @@ import ScrollReveal from "@/components/shared/ScrollReveal";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
 import { getCategorySeoDescription } from "@/lib/category-seo-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
@@ -275,7 +276,9 @@ const CategoryPage = async ({ params, searchParams }: Props) => {
               product,
             }),
           ),
-          image: product.imageUrl ?? undefined,
+          image: product.imageUrl
+            ? absoluteUrl(toProductImageCdnPath(product.imageUrl) ?? product.imageUrl)
+            : undefined,
         }))}
       />
     </>

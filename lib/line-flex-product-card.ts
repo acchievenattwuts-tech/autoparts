@@ -1,6 +1,7 @@
 import type { LineFlexMessage } from "@/lib/line-daily-summary";
 import type { LineMatchedProductSummary } from "@/lib/line-product-search-bridge";
 import { getProductSlug } from "@/lib/product-slug";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 /**
  * Builds a LINE Flex message that shows matched catalog products as cards with a
@@ -76,7 +77,14 @@ function buildProductBubble(
   placeholderImageUrl: string | null,
 ): Record<string, unknown> {
   const url = productUrl(baseUrl, product);
-  const imageUrl = product.imageUrl || placeholderImageUrl;
+  // Route the product image through our same-origin CDN proxy so LINE fetches the
+  // thumbnail from the Vercel CDN instead of Supabase Storage directly. LINE needs
+  // an absolute HTTPS URL, so prefix the storefront base URL. Non-product / external
+  // URLs are left untouched.
+  const cdnPath = toProductImageCdnPath(product.imageUrl);
+  const productImageUrl =
+    cdnPath && cdnPath.startsWith("/img/") ? `${baseUrl}${cdnPath}` : product.imageUrl;
+  const imageUrl = productImageUrl || placeholderImageUrl;
 
   const bodyContents: Record<string, unknown>[] = [
     { type: "text", text: product.name, weight: "bold", size: "sm", wrap: true, maxLines: 3 },

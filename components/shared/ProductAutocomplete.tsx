@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Search, Loader2, ArrowLeft, ArrowRight, X } from "lucide-react";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 interface AutocompleteItem {
   id: string;
@@ -315,7 +316,7 @@ const ProductAutocomplete = ({
                         <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 dark:bg-slate-800">
                           {item.imageUrl ? (
                             <Image
-                              src={item.imageUrl}
+                              src={toProductImageCdnPath(item.imageUrl) ?? item.imageUrl}
                               alt={item.name}
                               fill
                               className="object-cover"
@@ -754,7 +755,7 @@ const ProductAutocomplete = ({
                         <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md bg-gray-100 dark:bg-slate-800">
                           {item.imageUrl ? (
                             <Image
-                              src={item.imageUrl}
+                              src={toProductImageCdnPath(item.imageUrl) ?? item.imageUrl}
                               alt={item.name}
                               fill
                               className="object-cover"

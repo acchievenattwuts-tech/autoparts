@@ -7,6 +7,7 @@ import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
 import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 type ProductForCard = {
   id: string;
@@ -95,7 +96,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
       <div className="relative aspect-square w-full shrink-0 overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50">
         {product.imageUrl ? (
           <Image
-            src={product.imageUrl}
+            src={toProductImageCdnPath(product.imageUrl) ?? product.imageUrl}
             alt={`${product.name}${product.brand ? ` ${product.brand.name}` : ""} | อะไหล่แอร์รถยนต์ ${product.category.name}`}
             fill
             className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.1] motion-reduce:transform-none motion-reduce:transition-none"

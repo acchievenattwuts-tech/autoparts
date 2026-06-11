@@ -20,6 +20,7 @@ import ProductPageViewReporter from "@/components/analytics/ProductPageViewRepor
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
@@ -625,7 +626,11 @@ const ProductDetailPage = async ({ params }: Props) => {
       <ProductJsonLd
         name={product.name}
         description={description}
-        imageUrl={product.imageUrl}
+        imageUrl={
+          product.imageUrl
+            ? absoluteUrl(toProductImageCdnPath(product.imageUrl) ?? product.imageUrl)
+            : null
+        }
         brandName={product.brand?.name}
         sku={product.code}
         url={canonicalUrl}

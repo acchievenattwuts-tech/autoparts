@@ -10,6 +10,7 @@ import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductsHero from "./ProductsHero";
 import SearchResults from "./search/SearchResults";
 import { absoluteUrl } from "@/lib/seo";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getProductPath } from "@/lib/product-slug";
 import {
   getStorefrontProductFilters,
@@ -352,7 +353,9 @@ const ProductsPage = async ({ searchParams }: Props) => {
                 product,
               }),
             ),
-            image: product.imageUrl ?? undefined,
+            image: product.imageUrl
+              ? absoluteUrl(toProductImageCdnPath(product.imageUrl) ?? product.imageUrl)
+              : undefined,
           }))}
         />
       )}
