@@ -1,5 +1,6 @@
 import type { SiteConfig } from "@/lib/site-config";
-import { LOCAL_SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { absoluteUrl, LOCAL_SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import JsonLd from "./JsonLd";
 
 interface LocalBusinessJsonLdProps {
@@ -7,6 +8,10 @@ interface LocalBusinessJsonLdProps {
 }
 
 const LocalBusinessJsonLd = ({ config }: LocalBusinessJsonLdProps) => {
+  const logoUrl = config.shopLogoUrl
+    ? absoluteUrl(toPublicStorageCdnPath(config.shopLogoUrl) ?? config.shopLogoUrl)
+    : undefined;
+
   return (
     <JsonLd
       data={{
@@ -14,8 +19,8 @@ const LocalBusinessJsonLd = ({ config }: LocalBusinessJsonLdProps) => {
         "@type": "AutoPartsStore",
         name: config.shopName || SITE_NAME,
         url: SITE_URL,
-        image: config.shopLogoUrl || undefined,
-        logo: config.shopLogoUrl || undefined,
+        image: logoUrl,
+        logo: logoUrl,
         telephone: config.shopPhone || undefined,
         email: config.shopEmail || undefined,
         address: config.shopAddress

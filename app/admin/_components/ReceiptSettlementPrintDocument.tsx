@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { formatDateThai } from "@/lib/th-date";
 
 type NumericLike = number | string | { toString(): string };
@@ -162,6 +163,8 @@ export default function ReceiptSettlementPrintDocument({
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasSupportBlock = receipt.paymentMethod === "CASH" || receipt.paymentMethod === "TRANSFER" || Boolean(receivedTransferAccount);
+  const shopLogoSrc = toPublicStorageCdnPath(shopConfig.shopLogoUrl) ?? shopConfig.shopLogoUrl ?? "";
+  const signerSignatureSrc = toPublicStorageCdnPath(receipt.signerSignatureUrl) ?? receipt.signerSignatureUrl ?? "";
 
   return (
     <div
@@ -173,7 +176,7 @@ export default function ReceiptSettlementPrintDocument({
           {shopConfig.shopLogoUrl ? (
             <div className="relative h-14 w-14 shrink-0 overflow-hidden">
               <Image
-                src={shopConfig.shopLogoUrl}
+                src={shopLogoSrc}
                 alt="Shop logo"
                 fill
                 className="object-contain"
@@ -347,7 +350,7 @@ export default function ReceiptSettlementPrintDocument({
               <div className="flex h-16 items-end justify-center px-4">
                 {receipt.signerSignatureUrl ? (
                   <Image
-                    src={receipt.signerSignatureUrl}
+                    src={signerSignatureSrc}
                     alt={`ลายเซ็น ${signerDisplayName}`}
                     width={200}
                     height={64}

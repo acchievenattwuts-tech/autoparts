@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -73,6 +74,7 @@ const getInitials = (shopName: string) =>
 
 const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
   const router = useRouter();
+  const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl ?? "";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -180,7 +182,7 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
             {shopLogoUrl ? (
               <div className="relative h-16 w-16 overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm">
                 <Image
-                  src={shopLogoUrl}
+                  src={shopLogoSrc}
                   alt={`${shopName} logo`}
                   fill
                   sizes="64px"

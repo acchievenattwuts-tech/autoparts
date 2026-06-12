@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { absoluteUrl } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +14,8 @@ export const contentType = "image/png";
 
 export default async function Icon() {
   const config = await getPublicSiteConfig();
-  const logoUrl = config.shopLogoUrl?.trim();
+  const rawLogoUrl = config.shopLogoUrl?.trim();
+  const logoUrl = rawLogoUrl ? absoluteUrl(toPublicStorageCdnPath(rawLogoUrl) ?? rawLogoUrl) : null;
   const shopName = config.shopName?.trim() || "ศรีวรรณ อะไหล่แอร์";
   const initials =
     shopName

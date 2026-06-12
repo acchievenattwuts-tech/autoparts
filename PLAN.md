@@ -128,6 +128,10 @@
 - [x] ยกเว้น `/img` จาก middleware matcher (`proxy.ts`) — ไม่ให้ auth()/bot-check รันต่อ request รูป
 - [x] ชี้ `next/image` src ผ่าน `/img` ทุกจุดที่ render รูปสินค้า: `ProductCard`, `ProductImageGallery`, `ProductImageZoomLightbox`, `ProductAutocomplete`, admin `ProductImagePreview` / `ProductForm` (display เท่านั้น, formData/DB คงเป็น URL Supabase เดิม) / `products/search`
 - [x] JSON-LD/ItemList ใช้ absolute CDN URL: `ProductJsonLd` (product detail), `products/page.tsx`, `products/[categorySlug]/page.tsx` → ตัด bot ดูดรูปจาก Supabase ตรง
+- [x] 2026-06-12: ขยาย `/img` เป็น allowlisted public-storage proxy สำหรับ `products/settings/*`, `products/users/signatures/*`, `products/delivery-proofs/*`, และ bucket `line-chat/*` โดยยัง block path อื่นและ `payment-slips/*`
+- [x] 2026-06-12: ชี้โลโก้ร้าน, LINE QR, ลายเซ็น, หลักฐานจัดส่ง, LINE chat image, icon/JSON-LD, และ LINE Flex placeholder ผ่าน `/img` แบบ render-time; ค่า URL ใน DB ยังเป็นค่าเดิม ไม่ต้อง migrate
+- [x] 2026-06-12: payment slips ยังเป็น private signed URL และ render ด้วย native `<img>` แทน `next/image` เพื่อไม่นำข้อมูลส่วนตัวเข้า shared image optimizer/CDN cache
+- [x] 2026-06-12: ลบ Supabase `images.remotePatterns` ออกจาก `next.config.ts` เพื่อบังคับไม่ให้ `next/image` ดึง Supabase ตรง; ยังเก็บ CSP `img-src` Supabase ไว้สำหรับ signed/private image และ fallback ที่ตั้งใจไว้
 - [ ] (Ops) หลัง deploy: เฝ้าดู Supabase Egress/Cached Egress ควรลดลงชัดเจน + ตรวจ Vercel Image Optimization usage ไม่พุ่งเกินงบ
 - [ ] (ทางเลือก, ยังไม่ทำ) migrate `Product.imageUrl`/`ProductImage.url` ใน DB ให้เป็น CDN path — ชะลอไว้เพราะกระทบ logic ownership ใน `product-image-storage.ts` และไม่จำเป็นเมื่อใช้ render-time helper แล้ว
 

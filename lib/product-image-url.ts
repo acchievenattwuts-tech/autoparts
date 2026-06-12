@@ -9,6 +9,7 @@
 
 export const PRODUCT_IMAGE_BUCKET = "products";
 export const PRODUCT_IMAGE_ROOT = "products";
+export const LINE_CHAT_IMAGE_BUCKET = "line-chat";
 
 /**
  * Same-origin prefix served by `app/img/[...path]/route.ts`. Requests to this
@@ -16,6 +17,20 @@ export const PRODUCT_IMAGE_ROOT = "products";
  * fetched once per cache window instead of on every client/bot/optimizer request.
  */
 export const PRODUCT_IMAGE_CDN_PREFIX = "/img";
+
+export type PublicStorageCdnBucket = typeof PRODUCT_IMAGE_BUCKET | typeof LINE_CHAT_IMAGE_BUCKET;
+
+export type PublicStorageCdnTarget = {
+  bucket: PublicStorageCdnBucket;
+  objectPath: string;
+};
+
+const PRODUCT_BUCKET_PUBLIC_ROOTS = [
+  `${PRODUCT_IMAGE_ROOT}/`,
+  "settings/",
+  "users/signatures/",
+  "delivery-proofs/",
+] as const;
 
 export function sanitizeProductImageCode(code: string): string {
   const normalized = code.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -34,6 +49,14 @@ export function buildProductImageObjectPath(productCode: string, extension: stri
 export function buildPublicProductImageUrl(supabaseUrl: string, objectPath: string): string {
   const baseUrl = supabaseUrl.replace(/\/+$/g, "");
   return `${baseUrl}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${encodeURI(objectPath)}`;
+}
+
+export function buildSupabasePublicStorageUrl(
+  supabaseUrl: string,
+  target: PublicStorageCdnTarget,
+): string {
+  const baseUrl = supabaseUrl.replace(/\/+$/g, "");
+  return `${baseUrl}/storage/v1/object/public/${target.bucket}/${encodeURI(target.objectPath)}`;
 }
 
 export function getProductImageObjectPathFromPublicUrl(url: string): string | null {
@@ -66,6 +89,36 @@ export function isProductImageObjectPath(objectPath: string): boolean {
   return objectPath.startsWith(`${PRODUCT_IMAGE_ROOT}/`);
 }
 
+function hasUnsafePathSegment(objectPath: string): boolean {
+  return objectPath
+    .split("/")
+    .some((segment) => segment === "" || segment === "." || segment === "..");
+}
+
+function isAllowedProductsBucketPublicPath(objectPath: string): boolean {
+  return PRODUCT_BUCKET_PUBLIC_ROOTS.some((root) => objectPath.startsWith(root));
+}
+
+function encodeCdnObjectPath(objectPath: string): string {
+  return objectPath.split("/").map(encodeURIComponent).join("/");
+}
+
+export function resolvePublicStorageCdnTarget(routePath: string): PublicStorageCdnTarget | null {
+  if (!routePath || hasUnsafePathSegment(routePath)) return null;
+
+  if (routePath.startsWith(`${LINE_CHAT_IMAGE_BUCKET}/`)) {
+    const objectPath = routePath.slice(`${LINE_CHAT_IMAGE_BUCKET}/`.length);
+    if (!objectPath || hasUnsafePathSegment(objectPath)) return null;
+    return { bucket: LINE_CHAT_IMAGE_BUCKET, objectPath };
+  }
+
+  if (isAllowedProductsBucketPublicPath(routePath)) {
+    return { bucket: PRODUCT_IMAGE_BUCKET, objectPath: routePath };
+  }
+
+  return null;
+}
+
 export function isProductImageObjectPathForCode(objectPath: string, productCode: string): boolean {
   return objectPath.startsWith(`${getProductImageFolder(productCode)}/`);
 }
@@ -92,4 +145,45 @@ export function toProductImageCdnPath(url: string | null | undefined): string | 
 
   const encoded = objectPath.split("/").map(encodeURIComponent).join("/");
   return `${PRODUCT_IMAGE_CDN_PREFIX}/${encoded}`;
+}
+
+/**
+ * Converts allowlisted public Supabase Storage URLs into same-origin CDN paths.
+ * Private buckets and unrecognized public paths are returned unchanged.
+ */
+export function toPublicStorageCdnPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith(`${PRODUCT_IMAGE_CDN_PREFIX}/`)) return url;
+
+  for (const bucket of [PRODUCT_IMAGE_BUCKET, LINE_CHAT_IMAGE_BUCKET] as const) {
+    const marker = `/storage/v1/object/public/${bucket}/`;
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return url;
+    }
+
+    const markerIndex = parsed.pathname.indexOf(marker);
+    if (markerIndex === -1) continue;
+
+    const encodedPath = parsed.pathname.slice(markerIndex + marker.length);
+    if (!encodedPath) return url;
+
+    let objectPath: string;
+    try {
+      objectPath = decodeURIComponent(encodedPath);
+    } catch {
+      objectPath = encodedPath;
+    }
+
+    const routePath =
+      bucket === LINE_CHAT_IMAGE_BUCKET ? `${LINE_CHAT_IMAGE_BUCKET}/${objectPath}` : objectPath;
+    const target = resolvePublicStorageCdnTarget(routePath);
+    if (!target) return url;
+
+    return `${PRODUCT_IMAGE_CDN_PREFIX}/${encodeCdnObjectPath(routePath)}`;
+  }
+
+  return url;
 }

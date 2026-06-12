@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { formatDateThai } from "@/lib/th-date";
 
 type NumericLike = number | string | { toString(): string };
@@ -192,6 +193,8 @@ export default function SalesDeliveryPrintDocument({
   const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
   const transferSlipLineId = shopConfig.shopLineId?.trim() || null;
+  const shopLogoSrc = toPublicStorageCdnPath(shopConfig.shopLogoUrl) ?? shopConfig.shopLogoUrl ?? "";
+  const signerSignatureSrc = toPublicStorageCdnPath(sale.signerSignatureUrl) ?? sale.signerSignatureUrl ?? "";
 
   return (
     <div
@@ -204,7 +207,7 @@ export default function SalesDeliveryPrintDocument({
           {shopConfig.shopLogoUrl ? (
             <div className="relative h-14 w-14 shrink-0 overflow-hidden">
               <Image
-                src={shopConfig.shopLogoUrl}
+                src={shopLogoSrc}
                 alt="Shop logo"
                 fill
                 className="object-contain"
@@ -489,7 +492,7 @@ export default function SalesDeliveryPrintDocument({
               <div className="flex h-16 items-end justify-center px-4">
                 {sale.signerSignatureUrl ? (
                   <Image
-                    src={sale.signerSignatureUrl}
+                    src={signerSignatureSrc}
                     alt={`ลายเซ็น ${signerDisplayName}`}
                     width={200}
                     height={64}

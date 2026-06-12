@@ -12,15 +12,21 @@ import {
 // `@/lib/product-image-url` directly (it has no `@supabase/supabase-js` dependency).
 export {
   PRODUCT_IMAGE_BUCKET,
+  LINE_CHAT_IMAGE_BUCKET,
   PRODUCT_IMAGE_ROOT,
   PRODUCT_IMAGE_CDN_PREFIX,
+  type PublicStorageCdnBucket,
+  type PublicStorageCdnTarget,
   sanitizeProductImageCode,
   getProductImageFolder,
   buildProductImageObjectPath,
   buildPublicProductImageUrl,
+  buildSupabasePublicStorageUrl,
   getProductImageObjectPathFromPublicUrl,
   isProductImageObjectPath,
   isProductImageObjectPathForCode,
+  resolvePublicStorageCdnTarget,
+  toPublicStorageCdnPath,
   toProductImageCdnPath,
 } from "@/lib/product-image-url";
 

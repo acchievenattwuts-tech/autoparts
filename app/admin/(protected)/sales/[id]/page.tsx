@@ -9,6 +9,7 @@ import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
@@ -412,7 +413,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
               </div>
             ) : (
               <div className="space-y-4">
-                {sale.deliveryProofs.map((proof) => (
+                {sale.deliveryProofs.map((proof) => {
+                  const signatureImageSrc = toPublicStorageCdnPath(proof.signatureImageUrl) ?? proof.signatureImageUrl ?? "";
+                  const deliveryPhotoSrc = toPublicStorageCdnPath(proof.deliveryPhotoUrl) ?? proof.deliveryPhotoUrl ?? "";
+
+                  return (
                   <article
                     key={proof.id}
                     className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-white/10 dark:bg-slate-950"
@@ -434,7 +439,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                           <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">ลายเซ็นผู้รับ</p>
                           <div className="rounded-2xl border border-gray-200 bg-white p-3">
                             <Image
-                              src={proof.signatureImageUrl}
+                              src={signatureImageSrc}
                               alt="ลายเซ็นผู้รับ"
                               width={640}
                               height={256}
@@ -450,13 +455,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                         <div>
                           <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">รูปหลักฐานการส่ง</p>
                           <a
-                            href={proof.deliveryPhotoUrl}
+                            href={deliveryPhotoSrc}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="block overflow-hidden rounded-2xl border border-gray-200 bg-white"
                           >
                             <Image
-                              src={proof.deliveryPhotoUrl}
+                              src={deliveryPhotoSrc}
                               alt="รูปหลักฐานการส่ง"
                               width={1200}
                               height={900}
@@ -475,7 +480,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                       </p>
                     ) : null}
                   </article>
-                ))}
+                  );
+                })}
                 {sale._count.deliveryProofs > sale.deliveryProofs.length ? (
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-slate-950 dark:text-slate-400">
                     แสดง {sale.deliveryProofs.length.toLocaleString("th-TH")} รายการล่าสุดจากทั้งหมด{" "}

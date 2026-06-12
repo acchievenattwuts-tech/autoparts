@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { db } from "@/lib/db";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 
@@ -109,7 +110,11 @@ const DeliveryProofsPage = async ({
         </div>
       ) : (
         <div className="space-y-4">
-          {proofs.map((proof) => (
+          {proofs.map((proof) => {
+            const signatureImageSrc = toPublicStorageCdnPath(proof.signatureImageUrl) ?? proof.signatureImageUrl ?? "";
+            const deliveryPhotoSrc = toPublicStorageCdnPath(proof.deliveryPhotoUrl) ?? proof.deliveryPhotoUrl ?? "";
+
+            return (
             <article
               key={proof.id}
               className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900"
@@ -133,7 +138,7 @@ const DeliveryProofsPage = async ({
                     </p>
                     <div className="rounded-xl border border-gray-200 bg-white p-3">
                       <Image
-                        src={proof.signatureImageUrl}
+                        src={signatureImageSrc}
                         alt="ลายเซ็นผู้รับ"
                         width={640}
                         height={256}
@@ -151,13 +156,13 @@ const DeliveryProofsPage = async ({
                       รูปหลักฐานการส่ง
                     </p>
                     <a
-                      href={proof.deliveryPhotoUrl}
+                      href={deliveryPhotoSrc}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="block overflow-hidden rounded-xl border border-gray-200 bg-white"
                     >
                       <Image
-                        src={proof.deliveryPhotoUrl}
+                        src={deliveryPhotoSrc}
                         alt="รูปหลักฐานการส่ง"
                         width={1200}
                         height={900}
@@ -176,7 +181,8 @@ const DeliveryProofsPage = async ({
                 </p>
               ) : null}
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
 

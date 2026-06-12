@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { ImageOff, LoaderCircle } from "lucide-react";
 
 import PaymentSlipLightbox from "@/components/shared/PaymentSlipLightbox";
@@ -110,13 +109,13 @@ const PaymentSlipGallery = ({
           >
             <div className="relative aspect-[3/4] w-full bg-gray-100 dark:bg-slate-900">
               {item.imageUrl ? (
-                <Image
+                // Private signed URL. Keep it out of Next/Vercel image caches.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={item.imageUrl}
                   alt={`สลิป ${item.senderName ?? ""}`}
-                  fill
                   loading="lazy"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 16vw"
-                  className="object-cover transition-transform group-hover:scale-[1.03]"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-[1.03]"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-gray-300 dark:text-slate-600">

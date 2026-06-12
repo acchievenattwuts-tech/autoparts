@@ -1,7 +1,7 @@
 import type { LineFlexMessage } from "@/lib/line-daily-summary";
 import type { LineMatchedProductSummary } from "@/lib/line-product-search-bridge";
 import { getProductSlug } from "@/lib/product-slug";
-import { toProductImageCdnPath } from "@/lib/product-image-url";
+import { toProductImageCdnPath, toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 /**
  * Builds a LINE Flex message that shows matched catalog products as cards with a
@@ -42,8 +42,9 @@ export async function resolveFlexPlaceholderImageUrl(): Promise<string | null> {
     const { getSiteConfig } = await import("@/lib/site-config");
     const logo = (await getSiteConfig()).shopLogoUrl?.trim();
     if (logo) {
-      if (/^https:\/\//i.test(logo)) return logo;
-      if (logo.startsWith("/") && baseUrl) return `${baseUrl}${logo}`;
+      const cdnLogo = toPublicStorageCdnPath(logo) ?? logo;
+      if (/^https:\/\//i.test(cdnLogo)) return cdnLogo;
+      if (cdnLogo.startsWith("/") && baseUrl) return `${baseUrl}${cdnLogo}`;
     }
   } catch {
     /* fall through to env */

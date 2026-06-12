@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 interface LineCTAProps {
   lineUrl?: string;
@@ -16,6 +17,7 @@ const LineCTA = ({
   shopName = "",
 }: LineCTAProps) => {
   const lineTarget = lineUrl;
+  const lineQrSrc = toPublicStorageCdnPath(lineQrUrl) ?? lineQrUrl ?? "";
 
   return (
     <section className="relative overflow-hidden bg-[#1e3a5f] py-20">
@@ -71,7 +73,7 @@ const LineCTA = ({
             <div className="w-64 rounded-3xl bg-white p-8 text-center shadow-2xl">
               <div className="relative mx-auto mb-4 h-44 w-44">
                 <Image
-                  src={lineQrUrl || "/qr-line.png"}
+                  src={lineQrSrc || "/qr-line.png"}
                   alt={`QR Code LINE OA ${shopName}`}
                   fill
                   sizes="176px"

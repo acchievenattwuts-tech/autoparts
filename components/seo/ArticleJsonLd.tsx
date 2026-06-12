@@ -1,4 +1,6 @@
 import JsonLd from "./JsonLd";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { absoluteUrl } from "@/lib/seo";
 
 interface ArticleJsonLdProps {
   title: string;
@@ -27,6 +29,11 @@ const ArticleJsonLd = ({
   about = [],
   mentions = [],
 }: ArticleJsonLdProps) => {
+  const articleImageUrl = imageUrl ? absoluteUrl(toPublicStorageCdnPath(imageUrl) ?? imageUrl) : undefined;
+  const publisherLogoSrc = publisherLogoUrl
+    ? absoluteUrl(toPublicStorageCdnPath(publisherLogoUrl) ?? publisherLogoUrl)
+    : undefined;
+
   return (
     <JsonLd
       data={{
@@ -37,7 +44,7 @@ const ArticleJsonLd = ({
         url,
         datePublished,
         dateModified,
-        image: imageUrl || undefined,
+        image: articleImageUrl,
         author: {
           "@type": "Organization",
           name: authorName,
@@ -59,10 +66,10 @@ const ArticleJsonLd = ({
         publisher: {
           "@type": "Organization",
           name: publisherName,
-          logo: publisherLogoUrl
+          logo: publisherLogoSrc
             ? {
                 "@type": "ImageObject",
-                url: publisherLogoUrl,
+                url: publisherLogoSrc,
               }
             : undefined,
         },

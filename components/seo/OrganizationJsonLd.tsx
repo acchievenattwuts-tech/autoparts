@@ -1,5 +1,6 @@
 import type { SiteConfig } from "@/lib/site-config";
-import { LOCAL_SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { absoluteUrl, LOCAL_SEO_KEYWORDS, SITE_NAME, SITE_URL } from "@/lib/seo";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import JsonLd from "./JsonLd";
 
 interface OrganizationJsonLdProps {
@@ -19,6 +20,9 @@ const RETURN_POLICY = {
 } as const;
 
 const OrganizationJsonLd = ({ config }: OrganizationJsonLdProps) => {
+  const logoUrl = config.shopLogoUrl
+    ? absoluteUrl(toPublicStorageCdnPath(config.shopLogoUrl) ?? config.shopLogoUrl)
+    : undefined;
   const sameAs = [
     config.shopFacebookEnabled && config.shopFacebookUrl ? config.shopFacebookUrl : null,
     config.shopTiktokEnabled && config.shopTiktokUrl ? config.shopTiktokUrl : null,
@@ -34,7 +38,7 @@ const OrganizationJsonLd = ({ config }: OrganizationJsonLdProps) => {
         "@type": "Organization",
         name: config.shopName || SITE_NAME,
         url: SITE_URL,
-        logo: config.shopLogoUrl || undefined,
+        logo: logoUrl,
         telephone: config.shopPhone || undefined,
         email: config.shopEmail || undefined,
         description:

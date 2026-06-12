@@ -6,6 +6,7 @@ import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import { CheckCircle, Upload, X } from "lucide-react";
 import { createUser, updateUser, uploadUserSignature } from "./actions";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 type RoleOption = {
   id: string;
@@ -42,6 +43,7 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
   const [signatureUrl, setSignatureUrl] = useState(user?.signatureUrl ?? "");
   const [signatureUploading, setSignatureUploading] = useState(false);
   const [signatureError, setSignatureError] = useState("");
+  const signaturePreviewSrc = toPublicStorageCdnPath(signatureUrl) ?? signatureUrl ?? "";
 
   const isEdit = Boolean(user);
 
@@ -185,7 +187,7 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
                 {signatureUrl ? (
                   <>
                     <Image
-                      src={signatureUrl}
+                      src={signaturePreviewSrc}
                       alt="ตัวอย่างลายเซ็น"
                       fill
                       sizes="224px"

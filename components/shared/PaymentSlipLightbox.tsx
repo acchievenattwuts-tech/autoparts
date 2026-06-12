@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, ExternalLink, X } from "lucide-react";
 
@@ -93,12 +92,13 @@ const PaymentSlipLightbox = ({ items, index, onClose, onPrev, onNext }: PaymentS
       >
         <div className="relative flex min-h-[300px] flex-1 items-center justify-center rounded-xl bg-gray-100 dark:bg-slate-950">
           {item.imageUrl ? (
-            <Image
+            // Private signed URL. Keep it out of Next/Vercel image caches.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               src={item.imageUrl}
               alt={`สลิป ${item.senderName ?? ""}`}
               width={800}
               height={1000}
-              sizes="(max-width: 768px) 90vw, 50vw"
               className="max-h-[80vh] w-auto rounded-xl object-contain"
             />
           ) : (

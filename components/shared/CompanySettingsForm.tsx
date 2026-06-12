@@ -6,6 +6,7 @@ import { Save, CheckCircle, Upload, X } from "lucide-react";
 import { updateCompanySettings, uploadLogoImage } from "@/app/admin/(protected)/settings/company/actions";
 import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100";
@@ -100,6 +101,8 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
   const [lineQrUrl, setLineQrUrl] = useState(config.shopLineQrUrl ?? "");
   const [lineQrUploading, setLineQrUploading] = useState(false);
   const [lineQrError, setLineQrError] = useState("");
+  const logoPreviewSrc = toPublicStorageCdnPath(logoUrl) ?? logoUrl ?? "";
+  const lineQrPreviewSrc = toPublicStorageCdnPath(lineQrUrl) ?? lineQrUrl ?? "";
   const [facebookEnabled, setFacebookEnabled] = useState(config.shopFacebookEnabled);
   const [tiktokEnabled, setTiktokEnabled] = useState(config.shopTiktokEnabled);
   const [shopeeEnabled, setShopeeEnabled] = useState(config.shopShopeeEnabled);
@@ -203,7 +206,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
               <div className="relative flex h-24 w-40 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                 {logoUrl ? (
                   <>
-                    <Image src={logoUrl} alt="logo preview" fill sizes="160px" className="object-contain p-3" />
+                    <Image src={logoPreviewSrc} alt="logo preview" fill sizes="160px" className="object-contain p-3" />
                     <button
                       type="button"
                       onClick={() => setLogoUrl("")}
@@ -263,7 +266,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
               <div className="relative flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                 {lineQrUrl ? (
                   <>
-                    <Image src={lineQrUrl} alt="LINE QR Code" fill sizes="96px" className="object-contain p-1" />
+                    <Image src={lineQrPreviewSrc} alt="LINE QR Code" fill sizes="96px" className="object-contain p-1" />
                     <button
                       type="button"
                       onClick={() => setLineQrUrl("")}

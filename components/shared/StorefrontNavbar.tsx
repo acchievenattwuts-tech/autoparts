@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import StorefrontSearchForm from "@/components/shared/StorefrontSearchForm";
 import StorefrontFilterTrigger from "@/components/shared/StorefrontFilterTrigger";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 
 const LINE_ICON = (
@@ -69,6 +70,7 @@ const StorefrontNavbar = async ({
   const restName = nameParts.slice(1).join(" ");
   const displayPhone = shopPhone?.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") ?? null;
   const filterData = await getStorefrontProductFilters();
+  const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl ?? "";
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur-sm">
@@ -80,7 +82,7 @@ const StorefrontNavbar = async ({
                 {shopLogoUrl ? (
                   <div className="relative h-8 w-8">
                     <Image
-                      src={shopLogoUrl}
+                      src={shopLogoSrc}
                       alt={`${shopName} logo`}
                       fill
                       sizes="32px"

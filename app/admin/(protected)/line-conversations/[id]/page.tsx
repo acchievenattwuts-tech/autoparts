@@ -12,6 +12,7 @@ import LineConversationScrollAnchor from "@/components/shared/LineConversationSc
 import { hasPermissionAccess } from "@/lib/access-control";
 import { LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
 import { getLineConversationMessages } from "@/lib/line-admin-service";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { getLinkedCustomerRecentOrders } from "@/lib/line-customer-linkage";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
@@ -78,7 +79,7 @@ function messageImageSrc(message: {
   lineMessageId: string | null;
   messageType: LineMessageType;
 }) {
-  if (message.imageUrl) return message.imageUrl;
+  if (message.imageUrl) return toPublicStorageCdnPath(message.imageUrl) ?? message.imageUrl;
   if (message.messageType === LineMessageType.IMAGE && message.lineMessageId) {
     return `/api/admin/line-messages/${message.id}/image`;
   }

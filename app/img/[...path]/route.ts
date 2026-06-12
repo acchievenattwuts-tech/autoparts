@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import {
-  buildPublicProductImageUrl,
-  isProductImageObjectPath,
+  buildSupabasePublicStorageUrl,
+  resolvePublicStorageCdnTarget,
 } from "@/lib/product-image-url";
 import {
   getProductImageProxyContentType,
@@ -10,19 +10,18 @@ import {
 } from "@/lib/product-image-proxy";
 
 /**
- * Same-origin product-image CDN proxy.
+ * Same-origin public storage CDN proxy.
  *
  * Flow:  client / crawler / next-image optimizer
- *          -> /img/<objectPath>  (cached by the Vercel CDN, see Cache-Control below)
- *          -> Supabase Storage   (only on a CDN cache miss)
+ *          -> /img/<allowlistedPath> (cached by the Vercel CDN)
+ *          -> Supabase Storage       (only on a CDN cache miss)
  *
- * This keeps the public origin for product images on our own domain so that the
- * Supabase Storage object is fetched at most once per cache window, cutting both
- * Egress and Cached Egress on the Supabase side and shifting the delivery load to
- * the Vercel CDN.
+ * This keeps the public origin for frequently-rendered public storage assets on
+ * our own domain so the Supabase Storage object is fetched at most once per cache
+ * window, cutting both Egress and Cached Egress on the Supabase side.
  *
- * Only object paths inside our product-image bucket root are allowed, so this
- * route cannot be abused as an open fetch proxy.
+ * Only known public object path prefixes are allowed, so this route cannot be
+ * abused as an open fetch proxy and private buckets never pass through it.
  */
 
 const ONE_YEAR_SECONDS = 31_536_000;
@@ -41,7 +40,8 @@ export async function GET(
   // original Supabase object path (e.g. "products/<code>/<file>.webp").
   const objectPath = path.join("/");
 
-  if (!objectPath || !isProductImageObjectPath(objectPath)) {
+  const target = resolvePublicStorageCdnTarget(objectPath);
+  if (!target) {
     return new Response("Not Found", { status: 404 });
   }
 
@@ -49,7 +49,7 @@ export async function GET(
   const abortController = new AbortController();
   try {
     upstream = await withProductImageProxyTimeout(
-      fetch(buildPublicProductImageUrl(SUPABASE_URL, objectPath), {
+      fetch(buildSupabasePublicStorageUrl(SUPABASE_URL, target), {
         // We add our own long-lived Cache-Control below; do not let fetch cache
         // an error body.
         cache: "no-store",
@@ -66,7 +66,7 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  const contentType = getProductImageProxyContentType(objectPath, upstream.headers);
+  const contentType = getProductImageProxyContentType(target.objectPath, upstream.headers);
 
   return new Response(upstream.body, {
     status: 200,

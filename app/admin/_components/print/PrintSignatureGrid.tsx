@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { PRINT_BODY_BORDER_CLASS, PRINT_SECTION_BORDER_CLASS, PRINT_SECTION_TOP_BORDER_CLASS } from "./shared";
 
 type PrintSignatureColumn = {
@@ -23,12 +24,15 @@ const PrintSignatureGrid = ({
     className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${reserveVerifySpace ? "print:mr-36" : ""} ${className}`}
     style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
   >
-    {columns.map((column, index) => (
+    {columns.map((column, index) => {
+      const signatureSrc = toPublicStorageCdnPath(column.signatureUrl) ?? column.signatureUrl ?? "";
+
+      return (
       <div key={`${column.label}-${index}`} className={index < columns.length - 1 ? `border-r ${PRINT_BODY_BORDER_CLASS}` : ""}>
         <div className={column.signatureUrl ? "flex h-16 items-end justify-center px-4" : "h-16"}>
           {column.signatureUrl ? (
             <Image
-              src={column.signatureUrl}
+              src={signatureSrc}
               alt={column.signatureAlt ?? column.label}
               width={200}
               height={64}
@@ -42,7 +46,8 @@ const PrintSignatureGrid = ({
         {column.showNameLine ? <div className="px-4 pb-1 text-gray-900">{column.nameText ?? "\u00A0"}</div> : null}
         <div className="px-4 pb-2 text-gray-600">{column.dateText}</div>
       </div>
-    ))}
+      );
+    })}
   </div>
 );
 

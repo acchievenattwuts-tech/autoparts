@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 export const EXTERNAL_A4_PRINT_ROOT_CLASS =
   "mx-auto flex h-[285mm] w-[198mm] max-w-none flex-col overflow-hidden bg-white p-[6mm] text-[10px] leading-tight text-gray-900";
@@ -16,7 +17,7 @@ export default function ExternalPrintShell({
 }) {
   const preloadList = (preloadImageUrls ?? []).filter(
     (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  ).map((url) => toPublicStorageCdnPath(url) ?? url);
   return (
     <>
       {preloadList.map((url) => (

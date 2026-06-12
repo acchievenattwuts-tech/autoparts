@@ -2,6 +2,7 @@ import Image from "next/image";
 import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 interface FooterProps {
   config?: Partial<SiteConfig>;
@@ -26,6 +27,7 @@ const Footer = ({ config }: FooterProps) => {
   const lazadaUrl = config?.shopLazadaUrl ?? "";
   const lazadaEnabled = config?.shopLazadaEnabled ?? false;
   const shopGoogleMapUrl = config?.shopGoogleMapUrl ?? "";
+  const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl ?? "";
 
   return (
     <footer id="contact" className="bg-gray-900 text-white">
@@ -37,7 +39,7 @@ const Footer = ({ config }: FooterProps) => {
                 {shopLogoUrl ? (
                   <div className="relative h-10 w-10">
                     <Image
-                      src={shopLogoUrl}
+                      src={shopLogoSrc}
                       alt={`${shopName} logo`}
                       fill
                       sizes="40px"

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { getLineDailySummaryConfig, pushLineMessages } from "@/lib/line-messaging";
 import { storeLineChatImage } from "@/lib/line-chat-image-storage";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import {
   LineConversationAiStatus,
   LineDeliveryMode,
@@ -25,6 +26,20 @@ const PENDING_SLIP_STATUSES = [
   "MATCHED_PENDING_ADMIN_CONFIRM",
   "NEEDS_MORE_INFO",
 ] as const;
+
+function getAppBaseUrl(): string {
+  return (
+    process.env.APP_BASE_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://www.sriwanparts.com"
+  ).replace(/\/+$/, "");
+}
+
+function absoluteAppUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${getAppBaseUrl()}${url.startsWith("/") ? "" : "/"}${url}`;
+}
 
 export async function listLineConversations(input: {
   status?: LineConversationAiStatus | null;
@@ -251,17 +266,19 @@ export async function sendLineAdminMessage(input: {
 
   if (input.image) {
     const stored = await storeLineChatImage({ buffer: input.image.buffer });
+    const originalContentUrl = absoluteAppUrl(toPublicStorageCdnPath(stored.originalUrl) ?? stored.originalUrl);
+    const previewImageUrl = absoluteAppUrl(toPublicStorageCdnPath(stored.previewUrl) ?? stored.previewUrl);
     lineMessages.push({
       type: "image",
-      originalContentUrl: stored.originalUrl,
-      previewImageUrl: stored.previewUrl,
+      originalContentUrl,
+      previewImageUrl,
     });
     const imageRow = await appendLineMessage({
       conversationId: conversation.id,
       lineUserId: conversation.lineUserId,
       direction: LineMessageDirection.OUTBOUND_ADMIN,
       messageType: LineMessageType.IMAGE,
-      imageUrl: stored.originalUrl,
+      imageUrl: originalContentUrl,
       deliveryMode: LineDeliveryMode.PUSH,
       deliveryStatus: LineDeliveryStatus.PENDING,
       adminUserId: input.adminUserId,

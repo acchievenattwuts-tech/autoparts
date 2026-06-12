@@ -20,6 +20,7 @@ import {
   saveDeliveryProof,
   type DeliveryProofDetail,
 } from "../../sales/actions";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { formatDateThai } from "@/lib/th-date";
 
 export type DeliveryProofSheetSale = {
@@ -124,6 +125,8 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
   const [isLoadingProof, setIsLoadingProof] = useState(false);
   const [isPending, startTransition] = useTransition();
   const isOpen = Boolean(selectedSale);
+  const latestSignatureSrc = toPublicStorageCdnPath(latestProof?.signatureImageUrl) ?? latestProof?.signatureImageUrl ?? "";
+  const latestDeliveryPhotoSrc = toPublicStorageCdnPath(latestProof?.deliveryPhotoUrl) ?? latestProof?.deliveryPhotoUrl ?? "";
 
   useEffect(() => {
     if (!selectedSale) {
@@ -387,7 +390,7 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
                       {latestProof.signatureImageUrl ? (
                         <div className="rounded-2xl border border-gray-200 bg-white p-2">
                           <img
-                            src={latestProof.signatureImageUrl}
+                            src={latestSignatureSrc}
                             alt="ลายเซ็นผู้รับ"
                             loading="lazy"
                             className="h-28 w-full rounded-xl object-contain"
@@ -396,7 +399,7 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
                       ) : null}
                       {latestProof.deliveryPhotoUrl ? (
                         <img
-                          src={latestProof.deliveryPhotoUrl}
+                          src={latestDeliveryPhotoSrc}
                           alt="รูปหลักฐานการส่ง"
                           loading="lazy"
                           className="max-h-56 w-full rounded-2xl object-cover"

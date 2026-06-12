@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 import {
   PRINT_SECTION_BORDER_CLASS,
@@ -14,13 +15,16 @@ const PrintDocumentHeader = ({
   shopConfig: PrintShopConfig;
   title: string;
   pageLabel?: string;
-}) => (
+}) => {
+  const shopLogoSrc = toPublicStorageCdnPath(shopConfig.shopLogoUrl) ?? shopConfig.shopLogoUrl ?? "";
+
+  return (
   <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
     <div className="flex items-start gap-3">
       {shopConfig.shopLogoUrl ? (
         <div className="relative h-14 w-14 shrink-0 overflow-hidden">
           <Image
-            src={shopConfig.shopLogoUrl}
+            src={shopLogoSrc}
             alt="Shop logo"
             fill
             className="object-contain"
@@ -48,6 +52,7 @@ const PrintDocumentHeader = ({
       <p className="mt-1 text-xs text-gray-600">{pageLabel}</p>
     </div>
   </div>
-);
+  );
+};
 
 export default PrintDocumentHeader;
