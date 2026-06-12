@@ -59,7 +59,10 @@ export function buildDefaultMetadataBase(): Metadata {
       description: DEFAULT_DESCRIPTION,
     },
     verification: {
-      google: "qHx1Nuwk_fvdAKZ3ulesjza07_2-lYSgzlKabJLOTyg",
+      google: [
+        "qHx1Nuwk_fvdAKZ3ulesjza07_2-lYSgzlKabJLOTyg",
+        "f0zRvyf1swymzgKQJ1lS9h8BHykmoaO2G8FMNlycIiM",
+      ],
     },
     icons: {
       icon: "/icon",
