@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
@@ -118,9 +119,17 @@ const Footer = ({ config }: FooterProps) => {
       </div>
 
       <div className="border-t border-gray-800">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-5 sm:flex-row sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 px-4 py-5 sm:flex-row sm:px-6 lg:px-8">
           <p className="text-sm text-gray-500">© {new Date().getFullYear()} {shopName} สงวนลิขสิทธิ์</p>
-          <p className="text-xs text-gray-600">{shopSlogan}</p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/return-warranty-policy"
+              className="text-xs text-gray-400 transition-colors hover:text-white"
+            >
+              นโยบายคืนสินค้า/การรับประกัน
+            </Link>
+            <p className="hidden text-xs text-gray-600 sm:block">{shopSlogan}</p>
+          </div>
         </div>
       </div>
     </footer>
