@@ -3,11 +3,25 @@ import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
+type SearchFallbackFn = NonNullable<
+  Parameters<
+    typeof import("@/lib/storefront-product-search").runStorefrontProductSearchWithRequiredTokenFallback
+  >[1]
+>;
+type SearchResult = Awaited<ReturnType<SearchFallbackFn>>;
+
 test("storefront search tries required tokens first and falls back when strict search is empty", async () => {
   const { runStorefrontProductSearchWithRequiredTokenFallback } = await import(
     "@/lib/storefront-product-search"
   );
   const calls: unknown[] = [];
+  const searchFn: SearchFallbackFn = async (input): Promise<SearchResult> => {
+    calls.push(input);
+    if (calls.length === 1) {
+      return { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    }
+    return { ids: ["p1"], total: 1, mode: "v2", matchReasons: { p1: ["name"] } };
+  };
   const result = await runStorefrontProductSearchWithRequiredTokenFallback(
     {
       query: "คอม dragon 709",
@@ -17,12 +31,7 @@ test("storefront search tries required tokens first and falls back when strict s
       order: "createdAtDesc",
       cacheProfile: "storefront",
     },
-    async (input) => {
-      calls.push(input);
-      return calls.length === 1
-        ? { ids: [], total: 0, mode: "v2", matchReasons: {} }
-        : { ids: ["p1"], total: 1, mode: "v2", matchReasons: { p1: ["name"] } };
-    },
+    searchFn,
   );
 
   assert.deepEqual(calls, [
@@ -56,6 +65,10 @@ test("storefront search does not fall back when strict required-token search has
     "@/lib/storefront-product-search"
   );
   const calls: unknown[] = [];
+  const searchFn: SearchFallbackFn = async (input): Promise<SearchResult> => {
+    calls.push(input);
+    return { ids: ["p1"], total: 1, mode: "v2", matchReasons: { p1: ["name"] } };
+  };
   const result = await runStorefrontProductSearchWithRequiredTokenFallback(
     {
       query: "คอม dragon 709",
@@ -65,10 +78,7 @@ test("storefront search does not fall back when strict required-token search has
       order: "createdAtDesc",
       cacheProfile: "storefront",
     },
-    async (input) => {
-      calls.push(input);
-      return { ids: ["p1"], total: 1, mode: "v2", matchReasons: { p1: ["name"] } };
-    },
+    searchFn,
   );
 
   assert.equal(calls.length, 1);

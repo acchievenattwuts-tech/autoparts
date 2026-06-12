@@ -9,7 +9,7 @@ test("lockProductForStockMutation takes a row-level Product lock", async () => {
       calls.push({ sql: strings.join("?"), values });
       return Promise.resolve([]);
     },
-  };
+  } as unknown as Parameters<typeof lockProductForStockMutation>[0];
 
   await lockProductForStockMutation(tx, "product-1");
 
