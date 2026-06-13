@@ -131,6 +131,16 @@ model LineConversation {
   lastProcessedSeq      Int                      @default(0)
   processingOwner       String?
   processingLeaseUntil  DateTime?                @db.Timestamptz(3)
+  // Inquiry frame (conversation slot memory): the customer's CURRENT product
+  // subject carried across turns so the AI continues the same inquiry without
+  // re-asking. Reset on a topic shift (a new part type) or when the session goes
+  // idle (see SESSION_IDLE_MS in lib/line-inquiry-frame.ts). inquiryUpdatedAt
+  // stamps the last time the frame changed, used for staleness/session checks.
+  inquiryPartType       String?
+  inquiryCarBrand       String?
+  inquiryCarModel       String?
+  inquiryYear           Int?
+  inquiryUpdatedAt      DateTime?                @db.Timestamptz(3)
   pausedAt              DateTime?                @db.Timestamptz(3)
   resumedAt             DateTime?                @db.Timestamptz(3)
   closedAt              DateTime?                @db.Timestamptz(3)

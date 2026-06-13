@@ -185,7 +185,7 @@ export async function getRecentLineMessagesForAi(conversationId: string, take = 
     where: { conversationId },
     orderBy: { createdAt: "desc" },
     take: Math.min(Math.max(take, 1), 30),
-    select: { id: true, direction: true, text: true, messageType: true },
+    select: { id: true, direction: true, text: true, messageType: true, createdAt: true },
   });
   return rows.reverse();
 }
@@ -484,6 +484,55 @@ export async function findStalledCoalescedConversationIds(input: {
 /** Full conversation row used to rebuild the owner-loop context during recovery. */
 export async function getLineConversationForRecovery(conversationId: string) {
   return db.lineConversation.findUnique({ where: { id: conversationId } });
+}
+
+/** Reads the persisted inquiry frame (conversation slot memory) + its freshness
+ *  stamp, so the AI can continue the same product subject across turns. */
+export async function getLineInquiryFrame(conversationId: string): Promise<{
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+  updatedAt: Date | null;
+} | null> {
+  const row = await db.lineConversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      inquiryPartType: true,
+      inquiryCarBrand: true,
+      inquiryCarModel: true,
+      inquiryYear: true,
+      inquiryUpdatedAt: true,
+    },
+  });
+  if (!row) return null;
+  return {
+    partType: row.inquiryPartType,
+    carBrand: row.inquiryCarBrand,
+    carModel: row.inquiryCarModel,
+    year: row.inquiryYear,
+    updatedAt: row.inquiryUpdatedAt,
+  };
+}
+
+/** Persists the reconciled inquiry frame and stamps the update time. */
+export async function updateLineInquiryFrame(input: {
+  conversationId: string;
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+}): Promise<void> {
+  await db.lineConversation.update({
+    where: { id: input.conversationId },
+    data: {
+      inquiryPartType: input.partType,
+      inquiryCarBrand: input.carBrand,
+      inquiryCarModel: input.carModel,
+      inquiryYear: input.year,
+      inquiryUpdatedAt: new Date(),
+    },
+  });
 }
 
 /** A coalesced burst only ever spans the live debounce + abort-on-newer window

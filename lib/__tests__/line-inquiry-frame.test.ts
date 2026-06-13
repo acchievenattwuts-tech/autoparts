@@ -1,0 +1,74 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  boundMessagesToSession,
+  isFrameStale,
+  reconcileInquiryFrame,
+  buildFrameQuery,
+  SESSION_IDLE_MS,
+  type InquiryFrame,
+} from "@/lib/line-inquiry-frame";
+
+const frame = (over: Partial<InquiryFrame> = {}): InquiryFrame => ({
+  partType: null,
+  carBrand: null,
+  carModel: null,
+  year: null,
+  ...over,
+});
+
+const at = (msAgo: number) => ({ createdAt: new Date(Date.now() - msAgo) });
+
+test("boundMessagesToSession cuts at a gap longer than the idle window", () => {
+  const msgs = [
+    at(90 * 60_000), // old session
+    at(80 * 60_000),
+    at(5 * 60_000), // new session (gap 75 min > 30)
+    at(2 * 60_000),
+    at(0),
+  ];
+  const kept = boundMessagesToSession(msgs);
+  assert.equal(kept.length, 3, "only the current session's 3 messages remain");
+});
+
+test("boundMessagesToSession keeps everything when there is no long gap", () => {
+  const msgs = [at(10 * 60_000), at(6 * 60_000), at(1 * 60_000), at(0)];
+  assert.equal(boundMessagesToSession(msgs).length, 4);
+});
+
+test("isFrameStale: null or older than idle window is stale", () => {
+  assert.equal(isFrameStale(null), true);
+  assert.equal(isFrameStale(new Date(Date.now() - SESSION_IDLE_MS - 1000)), true);
+  assert.equal(isFrameStale(new Date(Date.now() - 60_000)), false);
+});
+
+test("level 3 merge: drip-fed detail fills the frame", () => {
+  const prev = frame({ partType: "หม้อน้ำ", carModel: "D-Max" });
+  const latest = frame({ year: 2003 });
+  const { frame: merged, topicShift } = reconcileInquiryFrame(prev, latest, { sessionStale: false });
+  assert.equal(topicShift, false);
+  assert.deepEqual(merged, { partType: "หม้อน้ำ", carBrand: null, carModel: "D-Max", year: 2003 });
+});
+
+test("level 2 topic-shift: a new part type replaces the part but keeps the car", () => {
+  const prev = frame({ partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 });
+  const latest = frame({ partType: "คอยล์เย็น" });
+  const { frame: next, topicShift } = reconcileInquiryFrame(prev, latest, { sessionStale: false });
+  assert.equal(topicShift, true, "different part = topic shift");
+  assert.equal(next.partType, "คอยล์เย็น", "part replaced");
+  assert.equal(next.carModel, "D-Max", "vehicle kept within session");
+  assert.equal(next.year, 2003);
+});
+
+test("level 1 stale session: previous frame is ignored", () => {
+  const prev = frame({ partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 });
+  const latest = frame({ partType: "คอยล์เย็น" });
+  const { frame: next } = reconcileInquiryFrame(prev, latest, { sessionStale: true });
+  assert.deepEqual(next, { partType: "คอยล์เย็น", carBrand: null, carModel: null, year: null });
+});
+
+test("buildFrameQuery joins part + car, excludes the year", () => {
+  assert.equal(buildFrameQuery(frame({ partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 })), "หม้อน้ำ D-Max");
+  assert.equal(buildFrameQuery(frame()), null);
+});

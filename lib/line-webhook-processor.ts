@@ -38,9 +38,11 @@ import {
   findStalledCoalescedConversationIds,
   getLineCoalesceState,
   getLineConversationForRecovery,
+  getLineInquiryFrame,
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
   getUnansweredInboundLineMessages,
+  updateLineInquiryFrame,
   hasProcessedLineEvent,
   markLineProcessedSeq,
   markOutboundLineMessageSent,
@@ -69,6 +71,13 @@ import {
   buildLineSearchFollowUp,
   decideLineSearchGate,
 } from "@/lib/line-search-gate";
+import {
+  boundMessagesToSession,
+  buildFrameQuery,
+  isFrameStale,
+  reconcileInquiryFrame,
+  type InquiryFrame,
+} from "@/lib/line-inquiry-frame";
 
 export type LineWebhookProcessorConfig = {
   channelAccessToken: string | null;
@@ -153,6 +162,9 @@ export type LineWebhookProcessorDependencies = {
   getUnansweredInboundLineMessages?: typeof getUnansweredInboundLineMessages;
   findStalledCoalescedConversationIds?: typeof findStalledCoalescedConversationIds;
   getLineConversationForRecovery?: typeof getLineConversationForRecovery;
+  /** Inquiry-frame (conversation slot memory) read/write. */
+  getLineInquiryFrame?: typeof getLineInquiryFrame;
+  updateLineInquiryFrame?: typeof updateLineInquiryFrame;
   /** Injectable debounce sleep (default real setTimeout; tests pass a no-op). */
   sleep?: (ms: number) => Promise<void>;
 };
@@ -193,6 +205,8 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   getUnansweredInboundLineMessages,
   findStalledCoalescedConversationIds,
   getLineConversationForRecovery,
+  getLineInquiryFrame,
+  updateLineInquiryFrame,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -717,10 +731,14 @@ export async function processLineAiReply(
     const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
 
     // Recent turns power both the reply's short-term memory and the search context.
-    const recentMessages = await (dependencies.getRecentLineMessagesForAi ?? getRecentLineMessagesForAi)(
+    // (Level 1) Bound them to the CURRENT session — a long idle gap starts a new
+    // session, so the classifier can't consolidate a subject from a previous,
+    // unrelated conversation.
+    const recentMessagesRaw = await (dependencies.getRecentLineMessagesForAi ?? getRecentLineMessagesForAi)(
       input.conversation.id,
       10,
     ).catch(() => []);
+    const recentMessages = boundMessagesToSession(recentMessagesRaw);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
 
     // ── Routing: AI intent classification (Layer-2) ───────────────────────────
@@ -801,11 +819,67 @@ export async function processLineAiReply(
       ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
       : guardLineSearchIntent({ intent: searchIntent, latestText: input.text, history });
     const guardedSearchIntent = guardedSearch.intent;
-    const consolidatedQuery = isNonProductTurn
+    const classifierQuery = isNonProductTurn
       ? null
       : guardedSearch.forceLiteralQuery
         ? input.text?.trim() || null
         : guardedSearchIntent?.query ?? null;
+
+    // ── Inquiry frame (conversation slot memory: levels 2 + 3) ────────────────
+    // Carry the customer's CURRENT product subject {part, car, year} across turns,
+    // merging drip-fed detail and RESETTING the part on a topic shift. The frame
+    // is the single source of fitment context downstream, so a sparse follow-up
+    // ("ปี 03") continues the real subject instead of the classifier guessing from
+    // raw history. Only for product turns.
+    let inquiryFrame: InquiryFrame | null = null;
+    let frameTopicShift = false;
+    if (!isNonProductTurn) {
+      const loadFrame = dependencies.getLineInquiryFrame ?? getLineInquiryFrame;
+      const saveFrame = dependencies.updateLineInquiryFrame ?? updateLineInquiryFrame;
+      const stored = await loadFrame(input.conversation.id).catch(() => null);
+      const sessionStale = isFrameStale(stored?.updatedAt ?? null);
+      const reconciled = reconcileInquiryFrame(
+        stored
+          ? { partType: stored.partType, carBrand: stored.carBrand, carModel: stored.carModel, year: stored.year }
+          : null,
+        {
+          partType: guardedSearchIntent?.partType ?? null,
+          carBrand: guardedSearchIntent?.carBrand ?? null,
+          carModel: guardedSearchIntent?.carModel ?? null,
+          year: guardedSearchIntent?.year ?? null,
+        },
+        { sessionStale },
+      );
+      inquiryFrame = reconciled.frame;
+      frameTopicShift = reconciled.topicShift;
+      await saveFrame({ conversationId: input.conversation.id, ...inquiryFrame }).catch(() => undefined);
+
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "INQUIRY_FRAME",
+        payload: {
+          lineEventId: input.lineEventId,
+          partType: inquiryFrame.partType,
+          carBrand: inquiryFrame.carBrand,
+          carModel: inquiryFrame.carModel,
+          year: inquiryFrame.year,
+          topicShift: frameTopicShift,
+          sessionStale,
+        },
+      });
+    }
+
+    const frameQuery = inquiryFrame ? buildFrameQuery(inquiryFrame) : null;
+    const frameYear = inquiryFrame?.year ?? null;
+    // Effective search query: on a topic shift rebuild from the new subject (drop
+    // the classifier's history-merged query); otherwise prefer the classifier's
+    // consolidated query, falling back to the frame for context the 10-message
+    // window may have dropped within a long session.
+    const consolidatedQuery = isNonProductTurn
+      ? null
+      : frameTopicShift
+        ? frameQuery ?? input.text?.trim() ?? null
+        : classifierQuery ?? frameQuery;
 
     // Pre-search completeness gate: only when the classifier gave structured
     // fields (text turns). Decides whether we have enough to search, and if so
@@ -827,14 +901,16 @@ export async function processLineAiReply(
           })
         : null;
     const gateDecision =
-      !isNonProductTurn && guardedSearchIntent
+      !isNonProductTurn && inquiryFrame && (inquiryFrame.partType || inquiryFrame.carModel || inquiryFrame.carBrand)
         ? decideLineSearchGate({
-            partType: guardedSearchIntent.partType,
-            carBrand: guardedSearchIntent.carBrand,
-            carModel: guardedSearchIntent.carModel,
-            year: guardedSearchIntent.year,
-            partKind: guardedSearchIntent.partKind,
-            tooBroad: guardedSearchIntent.tooBroad,
+            // Completeness is judged against the carried FRAME, so a follow-up that
+            // only adds the year still counts the part + car from earlier turns.
+            partType: inquiryFrame.partType,
+            carBrand: inquiryFrame.carBrand,
+            carModel: inquiryFrame.carModel,
+            year: frameYear,
+            partKind: guardedSearchIntent?.partKind ?? null,
+            tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
@@ -844,11 +920,11 @@ export async function processLineAiReply(
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
     const fitmentFilters: LineFitmentFilters =
-      !isNonProductTurn && guardedSearchIntent
+      !isNonProductTurn && inquiryFrame
         ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
-            partType: guardedSearchIntent.partType,
-            carBrand: guardedSearchIntent.carBrand,
-            carModel: guardedSearchIntent.carModel,
+            partType: inquiryFrame.partType,
+            carBrand: inquiryFrame.carBrand,
+            carModel: inquiryFrame.carModel,
             queryText: consolidatedQuery ?? input.text,
           }).catch((): LineFitmentFilters => ({}))
         : {};
@@ -878,7 +954,7 @@ export async function processLineAiReply(
             categoryName: fitmentFilters.categoryName ?? null,
             carBrandName: fitmentFilters.carBrandName ?? null,
             carModelName: fitmentFilters.carModelName ?? null,
-            fitmentYear: guardedSearchIntent?.year ?? null,
+            fitmentYear: frameYear,
           },
         });
 
@@ -1227,7 +1303,7 @@ export async function processLineAiReply(
             categoryName: fitmentFilters.categoryName ?? null,
             carBrandName: fitmentFilters.carBrandName ?? null,
             carModelName: fitmentFilters.carModelName ?? null,
-            year: guardedSearchIntent?.year ?? null,
+            year: frameYear,
           },
         });
     // Persona follow-up: after showing the matches, nudge the customer for the

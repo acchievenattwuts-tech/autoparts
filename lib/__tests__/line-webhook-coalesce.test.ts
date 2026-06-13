@@ -196,6 +196,8 @@ function createCoalesceHarness(options?: {
         },
         imageStored: true,
       }) as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["ingestPaymentSlip"]>>>,
+    getLineInquiryFrame: async () => null,
+    updateLineInquiryFrame: async () => undefined,
     getUnansweredInboundLineMessages: async (_id, withinMs = 5 * 60_000) => {
       const cutoff = Date.now() - withinMs;
       return state.inbound.slice(state.answeredCount).filter((m) => m.createdAt.getTime() > cutoff);

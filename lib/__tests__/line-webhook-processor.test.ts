@@ -42,6 +42,12 @@ type TestCalls = {
   createdSlips: Array<{ conversationId: string; lineUserId: string }>;
   reusedSlipContent: boolean;
   notifyHandoffs: Array<{ conversationId: string; text?: string | null }>;
+  savedFrames: Array<{
+    partType: string | null;
+    carBrand: string | null;
+    carModel: string | null;
+    year: number | null;
+  }>;
 };
 
 function textPayload(text: string, lineEventId = "event-1") {
@@ -118,6 +124,12 @@ function createProcessorTestDeps(input?: {
   intentYear?: number | null;
   intentPartKind?: "fitment" | "universal" | null;
   intentTooBroad?: boolean;
+  storedFrame?: {
+    partType?: string | null;
+    carBrand?: string | null;
+    carModel?: string | null;
+    year?: number | null;
+  } | null;
   fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
   nonProductTurn?: boolean;
   intentGroup?:
@@ -154,6 +166,7 @@ function createProcessorTestDeps(input?: {
     createdSlips: [],
     reusedSlipContent: false,
     notifyHandoffs: [],
+    savedFrames: [],
   };
   let messageSeq = 0;
   const duplicateEventIds = new Set(input?.duplicateEventIds ?? []);
@@ -333,6 +346,24 @@ function createProcessorTestDeps(input?: {
             tooBroad: input?.intentTooBroad ?? false,
           }
         : null,
+    getLineInquiryFrame: async () =>
+      input?.storedFrame
+        ? {
+            partType: input.storedFrame.partType ?? null,
+            carBrand: input.storedFrame.carBrand ?? null,
+            carModel: input.storedFrame.carModel ?? null,
+            year: input.storedFrame.year ?? null,
+            updatedAt: new Date(), // fresh → same session
+          }
+        : null,
+    updateLineInquiryFrame: async (frameInput) => {
+      calls.savedFrames.push({
+        partType: frameInput.partType,
+        carBrand: frameInput.carBrand,
+        carModel: frameInput.carModel,
+        year: frameInput.year,
+      });
+    },
     resolveLineFitmentFilters: async (filterInput) => {
       const configured = input?.fitmentFilters ?? {};
       return {
@@ -1226,4 +1257,65 @@ test("real text with digits/letters is NOT treated as noise", async () => {
 
   assert.ok(!calls.auditActions.includes("NOISE_IGNORED"), "'ปี 03' is meaningful");
   assert.equal(calls.searches.length, 1, "still searches a real follow-up");
+});
+
+test("inquiry frame: a sparse follow-up ('ปี 03') continues the stored subject, doesn't ask for the car", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หม้อน้ำ", carModel: "D-Max" },
+    // latest message carries ONLY the year (no part/car of its own)
+    consolidatedQuery: "ปี 03",
+    intentPartType: null,
+    intentCarModel: null,
+    intentYear: 2003,
+    intentPartKind: "fitment",
+  });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("ปี 03"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "searches using the carried frame (part+car+year)");
+  assert.ok(!calls.replies[0]?.text.includes("ยี่ห้อ"), "does NOT ask for the car again");
+  // The frame was merged: part + car kept, year filled.
+  assert.deepEqual(calls.savedFrames.at(-1), {
+    partType: "หม้อน้ำ",
+    carBrand: null,
+    carModel: "D-Max",
+    year: 2003,
+  });
+});
+
+test("inquiry frame: a new part type is a topic shift — query rebuilt from the new subject", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 },
+    consolidatedQuery: "หม้อน้ำ d max ปี 2003", // classifier's stale history-merged query
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: null,
+    intentPartKind: "fitment",
+  });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("คอยล์เย็น"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  const q = calls.searches[0] ?? "";
+  assert.ok(q.includes("คอยล์เย็น"), "query is the new subject");
+  assert.ok(!q.includes("หม้อน้ำ"), "stale old part dropped from the query");
+  // Frame: part replaced, vehicle kept.
+  assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น");
+  assert.equal(calls.savedFrames.at(-1)?.carModel, "D-Max");
 });
