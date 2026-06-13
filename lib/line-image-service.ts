@@ -23,6 +23,13 @@ export type LineImageClassification = {
   carModel?: string | null;
   year?: number | null;
   partKind?: LineImagePartKind | null;
+  /** A part number printed on the item itself (e.g. DENSO 422176-1870) — these
+   *  ARE in the catalog and help the search. */
+  partNumber?: string | null;
+  /** Vehicle chassis / engine / VIN block read off a registration plate
+   *  (TFS86HPM7B, MR1TFS86HAT100061, 4JK1…). NEVER used for product search — the
+   *  catalog is not indexed by VIN, so feeding these zeroes out the results. */
+  chassisNumber?: string | null;
   /** Slip fields read in the SAME vision call (only for payment_slip; else null). */
   ocr?: PaymentSlipOcr | null;
   content?: LineMessageContent;
@@ -43,15 +50,18 @@ const CLASSIFY_PROMPT = [
   '- "part_image": รูปชิ้นส่วน/อะไหล่ เช่น คอมแอร์ แผงแอร์ คอยล์ ตัวอะไหล่ หรือเบอร์บนอะไหล่',
   '- "payment_slip": สลิป/หลักฐานการโอนเงิน/การชำระเงินจากธนาคารหรือแอปธนาคาร',
   '- "unknown_image": รูปอื่นที่ไม่เข้าสองประเภทข้างต้น',
-  "ถ้าเป็น part_image ให้ดึงคำใบ้สำหรับค้นหา (ยี่ห้อ รุ่นรถ เบอร์อะไหล่ ข้อความบนชิ้นส่วน) ใส่ใน searchHints",
+  "ถ้าเป็น part_image ให้ดึงคำใบ้สำหรับค้นหา (ยี่ห้อ รุ่นรถ ชนิดอะไหล่ ข้อความบนชิ้นส่วน) ใส่ใน searchHints",
+  "**ห้ามใส่เลขตัวถัง/เลขเครื่อง/เลขรหัสรุ่นรถ/VIN ลงใน searchHints เด็ดขาด** (เช่น TFS86HPM7B, MR1TFS86HAT100061, 4JK1, GU3115) เพราะใช้ค้นสินค้าไม่ได้ — ให้แยกไปใส่ใน chassisNumber",
   "ถ้าเป็น part_image ให้ระบุข้อมูลแบบมีโครงสร้างด้วย (อ่านจากรูป/ป้ายทะเบียน/ข้อความบนอะไหล่เท่านั้น ไม่เห็นให้ใส่ null):",
   '- partType = ชนิดอะไหล่ (หม้อน้ำ คอยล์เย็น คอมแอร์ ฯลฯ)',
   '- carBrand / carModel = ยี่ห้อ/รุ่นรถ, year = ปี ค.ศ. 4 หลัก',
+  '- partNumber = เบอร์อะไหล่ที่พิมพ์บน "ตัวอะไหล่" เอง (เช่น 422176-1870, DI261470-4760) — ใช้ค้นได้',
+  '- chassisNumber = เลขตัวถัง/เลขเครื่อง/VIN/รหัสรุ่นรถจากป้ายทะเบียน — ใช้ค้นสินค้าไม่ได้ ห้ามปนกับ partNumber',
   '- partKind = "fitment" (อะไหล่ที่ต้องระบุรุ่นรถ) หรือ "universal" (น้ำยา/น็อต/โอริง/ฟองน้ำ ค้นด้วยชื่อเองได้)',
   "ถ้าเป็น payment_slip ห้ามใส่ searchHints ใด ๆ (ต้องเป็น array ว่าง) และให้อ่านข้อมูลในสลิปใส่ใน ocr ด้วย (อ่านเฉพาะที่เห็นจริง ไม่พบให้ใส่ null)",
   "ถ้าไม่ใช่สลิป ให้ ocr เป็น null",
   "ตอบเป็น JSON ล้วนเท่านั้น ห้ามมี markdown:",
-  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"partType":"...|null","carBrand":"...|null","carModel":"...|null","year":ปีหรือ null,"partKind":"fitment|universal|null","confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ","ocr":{"amount":ตัวเลขหรือ null,"transferDatetime":"ISO 8601 หรือ null","bank":"...","senderName":"...","receiverName":"...","referenceNo":"...","rawText":"..."}}',
+  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"partType":"...|null","carBrand":"...|null","carModel":"...|null","year":ปีหรือ null,"partNumber":"...|null","chassisNumber":"...|null","partKind":"fitment|universal|null","confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ","ocr":{"amount":ตัวเลขหรือ null,"transferDatetime":"ISO 8601 หรือ null","bank":"...","senderName":"...","receiverName":"...","referenceNo":"...","rawText":"..."}}',
 ].join("\n");
 
 function intentForKind(kind: LineImageKind): LineIntent {
@@ -70,6 +80,28 @@ function normalizeKind(value: unknown): LineImageKind {
 function normalizeConfidence(value: unknown): LineImageConfidence {
   if (value === "HIGH" || value === "MEDIUM" || value === "LOW") return value;
   return "LOW";
+}
+
+/**
+ * True when a hint looks like a vehicle chassis / engine / VIN code rather than a
+ * searchable term — so it can be kept out of the product-search query. A token is
+ * chassis-like when it appears inside the dedicated `chassisNumber` field, or it's
+ * a long alphanumeric block mixing letters and digits (e.g. TFS86HPM7B,
+ * MR1TFS86HAT100061). Multi-word hints (e.g. "Isuzu D-Max") never match. Printed
+ * part numbers (e.g. 422176-1870, all digits/dashes) are NOT filtered.
+ */
+function isChassisLikeToken(hint: string, chassisNumber: string | null): boolean {
+  const token = hint.trim();
+  if (!token) return true;
+  const normalized = token.toLowerCase().replace(/\s+/g, "");
+  if (chassisNumber) {
+    const chassis = chassisNumber.toLowerCase().replace(/\s+/g, "");
+    if (token.length >= 4 && (chassis.includes(normalized) || normalized.includes(chassis))) {
+      return true;
+    }
+  }
+  // Single long token mixing letters AND digits (no spaces) → VIN/chassis/engine.
+  return /^(?=.*[a-z])(?=.*\d)[a-z0-9-]{7,}$/i.test(token);
 }
 
 function extractJson(text: string): string | null {
@@ -94,17 +126,11 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
       carBrand?: unknown;
       carModel?: unknown;
       year?: unknown;
+      partNumber?: unknown;
+      chassisNumber?: unknown;
       partKind?: unknown;
     };
     const kind = normalizeKind(parsed.kind);
-    const searchHints =
-      kind === "part_image" && Array.isArray(parsed.searchHints)
-        ? parsed.searchHints
-            .filter((hint): hint is string => typeof hint === "string")
-            .map((hint) => hint.trim())
-            .filter(Boolean)
-            .slice(0, 8)
-        : [];
 
     const cleanStr = (value: unknown): string | null => {
       if (typeof value !== "string") return null;
@@ -119,6 +145,37 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
     const partKind: LineImagePartKind | null =
       kind === "part_image" && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
 
+    const partType = kind === "part_image" ? cleanStr(parsed.partType) : null;
+    const carBrand = kind === "part_image" ? cleanStr(parsed.carBrand) : null;
+    const carModel = kind === "part_image" ? cleanStr(parsed.carModel) : null;
+    const year = kind === "part_image" ? cleanYear(parsed.year) : null;
+    const partNumber = kind === "part_image" ? cleanStr(parsed.partNumber) : null;
+    const chassisNumber = kind === "part_image" ? cleanStr(parsed.chassisNumber) : null;
+
+    // Build CLEAN search hints. The catalog is indexed by part type + car
+    // model/brand (+ printed part numbers), never by VIN/chassis/engine codes —
+    // those would become required tokens and zero out every result. So compose
+    // the searchable hints from the structured fields + printed part number +
+    // any raw vision hint that is NOT a chassis-like code.
+    const rawHints =
+      kind === "part_image" && Array.isArray(parsed.searchHints)
+        ? parsed.searchHints
+            .filter((hint): hint is string => typeof hint === "string")
+            .map((hint) => hint.trim())
+            .filter(Boolean)
+        : [];
+    const seen = new Set<string>();
+    const searchHints: string[] = [];
+    for (const hint of [partType, carBrand, carModel, partNumber, ...rawHints]) {
+      if (!hint) continue;
+      if (isChassisLikeToken(hint, chassisNumber)) continue;
+      const key = hint.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      searchHints.push(hint);
+      if (searchHints.length >= 8) break;
+    }
+
     // Slip OCR fields come back in the same response — reuse the slip parser so
     // there is no separate vision call for OCR.
     const ocr =
@@ -132,10 +189,12 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
       searchHints,
       confidence: normalizeConfidence(parsed.confidence),
       reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 200) : "GEMINI_VISION",
-      partType: kind === "part_image" ? cleanStr(parsed.partType) : null,
-      carBrand: kind === "part_image" ? cleanStr(parsed.carBrand) : null,
-      carModel: kind === "part_image" ? cleanStr(parsed.carModel) : null,
-      year: kind === "part_image" ? cleanYear(parsed.year) : null,
+      partType,
+      carBrand,
+      carModel,
+      year,
+      partNumber,
+      chassisNumber,
       partKind,
       ocr,
     };

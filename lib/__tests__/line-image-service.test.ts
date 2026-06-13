@@ -64,3 +64,30 @@ test("tolerates markdown-wrapped json and unexpected kind", async () => {
   assert.equal(result.kind, "unknown_image");
   assert.equal(result.intent, LineIntent.UNKNOWN);
 });
+
+test("registration-plate chassis/engine codes are kept OUT of search hints", async () => {
+  const { parseLineImageClassification } = await import("@/lib/line-image-service");
+  const result = parseLineImageClassification(
+    JSON.stringify({
+      kind: "part_image",
+      // vision may still leak chassis codes into raw hints — they must be filtered
+      searchHints: ["ISUZU", "TFS86HPM7B", "4JK1", "GU3115", "MR1TFS86HAT100061", "D-Max"],
+      partType: "หม้อน้ำ",
+      carBrand: "Isuzu",
+      carModel: "D-Max",
+      year: 2015,
+      partNumber: "422176-1870",
+      chassisNumber: "MR1TFS86HAT100061",
+      partKind: "fitment",
+      confidence: "HIGH",
+      reason: "plate",
+    }),
+  );
+  const hints = result.searchHints.join(" ");
+  assert.ok(hints.includes("หม้อน้ำ") && hints.includes("Isuzu") && hints.includes("D-Max"), "keeps part + car");
+  assert.ok(hints.includes("422176-1870"), "keeps printed part number");
+  assert.ok(!hints.includes("TFS86HPM7B"), "drops engine code");
+  assert.ok(!hints.includes("MR1TFS86HAT100061"), "drops chassis/VIN");
+  assert.equal(result.partNumber, "422176-1870");
+  assert.equal(result.chassisNumber, "MR1TFS86HAT100061");
+});
