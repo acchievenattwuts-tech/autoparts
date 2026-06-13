@@ -15,9 +15,10 @@ import { normalizeSearchText } from "@/lib/search-normalization";
  *     merged across turns. {@link reconcileInquiryFrame}.
  */
 
-/** Idle gap that ends a conversation session (30 min — the GA/analytics norm;
- *  Lex defaults to 5 min, Rasa to 60 min — 30 balances continuity vs staleness). */
-export const SESSION_IDLE_MS = 30 * 60_000;
+/** Idle gap that ends a conversation session (120 min). Parts shoppers often go
+ *  quiet for a while — checking the car, asking a mechanic — then resume the same
+ *  inquiry, so the window is wide to favour continuity over premature reset. */
+export const SESSION_IDLE_MS = 120 * 60_000;
 
 export type InquiryFrame = {
   partType: string | null;

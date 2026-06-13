@@ -22,9 +22,9 @@ const at = (msAgo: number) => ({ createdAt: new Date(Date.now() - msAgo) });
 
 test("boundMessagesToSession cuts at a gap longer than the idle window", () => {
   const msgs = [
-    at(90 * 60_000), // old session
-    at(80 * 60_000),
-    at(5 * 60_000), // new session (gap 75 min > 30)
+    at(300 * 60_000), // old session
+    at(290 * 60_000),
+    at(5 * 60_000), // new session (gap 285 min > 120)
     at(2 * 60_000),
     at(0),
   ];
