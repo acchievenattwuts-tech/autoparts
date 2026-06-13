@@ -1186,3 +1186,44 @@ test("genuine purchase intent still hands off to admin", async () => {
   assert.ok(calls.replies[0]?.text.includes("แอดมิน"), "purchase commitment routes to a human");
   assert.equal(calls.searches.length, 0);
 });
+
+test("noise text ('...') stays silent — never searches or resurrects old history", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // consolidatedQuery is set to simulate the classifier WANTING to pull old context;
+  // the noise gate must short-circuit before the classifier/search ever run.
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ d max ปี 2003",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("..."),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 0, "no reply for noise");
+  assert.equal(calls.searches.length, 0, "no product search");
+  assert.equal(calls.replies.length, 0);
+  assert.ok(calls.auditActions.includes("NOISE_IGNORED"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
+});
+
+test("real text with digits/letters is NOT treated as noise", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ d max",
+    intentPartKind: "universal",
+  });
+
+  await processLineWebhookPayload(
+    textPayload("ปี 03"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.ok(!calls.auditActions.includes("NOISE_IGNORED"), "'ปี 03' is meaningful");
+  assert.equal(calls.searches.length, 1, "still searches a real follow-up");
+});

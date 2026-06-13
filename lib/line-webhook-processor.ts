@@ -230,6 +230,19 @@ function isMenuCommand(text: string | null | undefined): boolean {
   return Boolean(text && MENU_COMMAND_RE.test(text.trim()));
 }
 
+// A "meaningful" character = a Latin letter, a digit, or a Thai consonant/vowel.
+// Thai symbols ๆ (U+0E46) / ฯ (U+0E2F) and tone marks are intentionally excluded.
+const MEANINGFUL_CHAR_RE = /[a-zA-Z0-9ก-ฮะ-ไ]/;
+// True for a no-content message like "...", "??", "ๆๆ", or emoji-only. These must
+// NOT enter the search pipeline: the intent classifier would otherwise resurrect
+// the previous subject from chat history and re-answer a question the customer
+// never re-asked. Handled like a sticker — silent, AI stays active.
+function isNoiseText(text: string | null | undefined): boolean {
+  const trimmed = text?.trim();
+  if (!trimmed) return false; // empty / image turns are handled elsewhere
+  return !MEANINGFUL_CHAR_RE.test(trimmed);
+}
+
 // A sticker is almost always a conversation-closer ("thanks / ok 🙏" after a slip
 // or a wrapped-up chat), not a question. Routing it through the normal pipeline
 // makes it land on UNKNOWN → admin hand-off, which (a) replies with the generic
@@ -680,6 +693,23 @@ export async function processLineAiReply(
   // fresh contact, otherwise stay silent (see handleStickerEvent).
   if (input.messageType === LineMessageType.STICKER) {
     return handleStickerEvent(input, config, dependencies);
+  }
+
+  // No-content noise ("...", "??", emoji-only) — stay silent. Crucially, never let
+  // it reach the classifier, which would otherwise pull the previous subject from
+  // chat history and re-answer a question the customer never re-asked.
+  if (isNoiseText(input.text)) {
+    fireAndForgetAudit(dependencies, {
+      conversationId: input.conversation.id,
+      action: "NOISE_IGNORED",
+      payload: { lineEventId: input.lineEventId, text: input.text ?? null },
+    });
+    await dependencies.updateLineAiJob(input.jobId, {
+      status: LineAiJobStatus.COMPLETED,
+      result: { action: "ignored_noise" },
+      finishedAt: new Date(),
+    });
+    return { replied: false };
   }
 
   try {
