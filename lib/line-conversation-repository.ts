@@ -370,3 +370,125 @@ export async function markOutboundLineMessageSent(input: {
     },
   });
 }
+
+// ── Coalescing engine primitives ────────────────────────────────────────────
+// These power the "debounce + abort-on-newer" turn aggregation (Option A): one
+// background worker owns a conversation's burst at a time (lock), every inbound
+// bumps a monotonic seq so the owner can detect "a newer message arrived during
+// processing", and the owner re-runs until a clean pass (no new seq) before it
+// finally replies with the latest reply token.
+
+/**
+ * Atomically claims the per-conversation processing lock. Succeeds only when the
+ * lock is free or its lease has expired (so a crashed owner's lock self-heals).
+ * Returns true when THIS worker became the owner.
+ */
+export async function acquireLineConversationLock(input: {
+  conversationId: string;
+  owner: string;
+  leaseMs: number;
+}): Promise<boolean> {
+  const now = new Date();
+  const leaseUntil = new Date(now.getTime() + input.leaseMs);
+  const result = await db.lineConversation.updateMany({
+    where: {
+      id: input.conversationId,
+      OR: [{ processingOwner: null }, { processingLeaseUntil: { lt: now } }],
+    },
+    data: { processingOwner: input.owner, processingLeaseUntil: leaseUntil },
+  });
+  return result.count === 1;
+}
+
+/** Extends the lease while the owner is still working (long abort-on-newer loops).
+ *  Returns false if the lock was stolen (lease expired + reclaimed) meanwhile. */
+export async function renewLineConversationLock(input: {
+  conversationId: string;
+  owner: string;
+  leaseMs: number;
+}): Promise<boolean> {
+  const leaseUntil = new Date(Date.now() + input.leaseMs);
+  const result = await db.lineConversation.updateMany({
+    where: { id: input.conversationId, processingOwner: input.owner },
+    data: { processingLeaseUntil: leaseUntil },
+  });
+  return result.count === 1;
+}
+
+/** Releases the lock (no-op if this worker is no longer the owner). */
+export async function releaseLineConversationLock(input: {
+  conversationId: string;
+  owner: string;
+}): Promise<void> {
+  await db.lineConversation.updateMany({
+    where: { id: input.conversationId, processingOwner: input.owner },
+    data: { processingOwner: null, processingLeaseUntil: null },
+  });
+}
+
+/** Bumps the inbound seq for each new customer message and stamps the customer
+ *  activity time. The returned value is the seq assigned to this message. */
+export async function bumpLineInboundSeq(conversationId: string): Promise<number> {
+  const updated = await db.lineConversation.update({
+    where: { id: conversationId },
+    data: { lastInboundSeq: { increment: 1 }, lastCustomerMessageAt: new Date() },
+    select: { lastInboundSeq: true },
+  });
+  return updated.lastInboundSeq;
+}
+
+/** Snapshot of the coalescing counters + AI status used by the owner loop. */
+export async function getLineCoalesceState(conversationId: string): Promise<{
+  lastInboundSeq: number;
+  lastProcessedSeq: number;
+  aiStatus: LineConversationAiStatus;
+} | null> {
+  return db.lineConversation.findUnique({
+    where: { id: conversationId },
+    select: { lastInboundSeq: true, lastProcessedSeq: true, aiStatus: true },
+  });
+}
+
+/** Marks the seq up to which the AI has now replied (so the next burst only
+ *  gathers genuinely newer messages). */
+export async function markLineProcessedSeq(input: {
+  conversationId: string;
+  seq: number;
+}): Promise<void> {
+  await db.lineConversation.update({
+    where: { id: input.conversationId },
+    data: { lastProcessedSeq: input.seq },
+  });
+}
+
+/** All inbound customer messages that arrived after the most recent outbound
+ *  (AI or admin) reply — i.e. the unanswered turn to be coalesced and processed
+ *  together (oldest → newest). */
+export async function getUnansweredInboundLineMessages(conversationId: string) {
+  const lastOutbound = await db.lineMessage.findFirst({
+    where: {
+      conversationId,
+      direction: { in: [LineMessageDirection.OUTBOUND_AI, LineMessageDirection.OUTBOUND_ADMIN] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  return db.lineMessage.findMany({
+    where: {
+      conversationId,
+      direction: LineMessageDirection.INBOUND,
+      ...(lastOutbound ? { createdAt: { gt: lastOutbound.createdAt } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      text: true,
+      messageType: true,
+      replyToken: true,
+      lineEventId: true,
+      lineMessageId: true,
+      intent: true,
+      createdAt: true,
+    },
+  });
+}

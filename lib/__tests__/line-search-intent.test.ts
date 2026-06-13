@@ -6,7 +6,7 @@ process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_te
 test("parses a product classification with consolidated query", async () => {
   const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
   const intent = parseLineSearchIntent(
-    '{"group":"product","query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015}',
+    '{"group":"product","query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015,"partKind":"fitment","tooBroad":false}',
   );
   assert.deepEqual(intent, {
     group: "product",
@@ -16,7 +16,25 @@ test("parses a product classification with consolidated query", async () => {
     carBrand: "Mazda",
     carModel: "Mazda 2",
     year: 2015,
+    partKind: "fitment",
+    tooBroad: false,
   });
+});
+
+test("parses partKind=universal and tooBroad flag", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const intent = parseLineSearchIntent(
+    '{"group":"product","query":"น้ำยาล้างคอยล์","partType":"น้ำยาล้างคอยล์","partKind":"universal","tooBroad":false}',
+  );
+  assert.equal(intent?.partKind, "universal");
+  assert.equal(intent?.tooBroad, false);
+});
+
+test("partKind/tooBroad ignored for non-product groups", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const intent = parseLineSearchIntent('{"group":"shop_info","partKind":"fitment","tooBroad":true}');
+  assert.equal(intent?.partKind, null);
+  assert.equal(intent?.tooBroad, false);
 });
 
 test("non-product group is valid with no query (isProductQuery false)", async () => {

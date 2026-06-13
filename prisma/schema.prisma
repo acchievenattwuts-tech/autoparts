@@ -122,6 +122,15 @@ model LineConversation {
   pausedReason          String?
   lastCustomerMessageAt DateTime?                @db.Timestamptz(3)
   lastAdminMessageAt    DateTime?                @db.Timestamptz(3)
+  // Coalescing engine (debounce + abort-on-newer): lastInboundSeq is bumped on
+  // every inbound customer message; lastProcessedSeq marks the seq up to which the
+  // AI has already replied. The owner fields are a short-lived lock so only one
+  // background worker processes a burst at a time (lease expiry lets a crashed
+  // worker's lock be reclaimed; the cron failsafe picks up any orphaned jobs).
+  lastInboundSeq        Int                      @default(0)
+  lastProcessedSeq      Int                      @default(0)
+  processingOwner       String?
+  processingLeaseUntil  DateTime?                @db.Timestamptz(3)
   pausedAt              DateTime?                @db.Timestamptz(3)
   resumedAt             DateTime?                @db.Timestamptz(3)
   closedAt              DateTime?                @db.Timestamptz(3)

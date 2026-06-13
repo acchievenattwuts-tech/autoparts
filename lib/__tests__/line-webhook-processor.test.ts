@@ -22,7 +22,7 @@ type TestCalls = {
   auditActions: string[];
   statePatchTypes: string[];
   suggestions: Array<{ confidence: LineAiConfidence; deliveryMode?: LineDeliveryMode | null }>;
-  replies: Array<{ replyToken: string; text: string }>;
+  replies: Array<{ replyToken: string; text: string; messageCount: number; texts: string[] }>;
   pushes: Array<{ recipientIds: string[]; text: string }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
   scopedReplyGroups: string[];
@@ -116,6 +116,8 @@ function createProcessorTestDeps(input?: {
   intentCarBrand?: string | null;
   intentCarModel?: string | null;
   intentYear?: number | null;
+  intentPartKind?: "fitment" | "universal" | null;
+  intentTooBroad?: boolean;
   fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
   nonProductTurn?: boolean;
   intentGroup?:
@@ -238,6 +240,8 @@ function createProcessorTestDeps(input?: {
       calls.replies.push({
         replyToken: input.replyToken,
         text: input.messages[0]?.type === "text" ? input.messages[0].text : "",
+        messageCount: input.messages.length,
+        texts: input.messages.map((m) => (m.type === "text" ? m.text : `[${m.type}]`)),
       });
       return {
         sent: true,
@@ -311,6 +315,8 @@ function createProcessorTestDeps(input?: {
             carBrand: null,
             carModel: null,
             year: null,
+            partKind: null,
+            tooBroad: false,
           }
         : input?.consolidatedQuery
         ? {
@@ -321,6 +327,10 @@ function createProcessorTestDeps(input?: {
             carBrand: input?.intentCarBrand ?? null,
             carModel: input?.intentCarModel ?? null,
             year: input?.intentYear ?? null,
+            // Default to universal so existing search-path tests still search
+            // (the gate only blocks incomplete fitment turns).
+            partKind: input?.intentPartKind ?? ("universal" as const),
+            tooBroad: input?.intentTooBroad ?? false,
           }
         : null,
     resolveLineFitmentFilters: async (filterInput) => {
@@ -1079,4 +1089,55 @@ test("processor reuses the same conversation for two distinct messages from one 
     { lineUserId: "line-user-1", customerId: null },
     { lineUserId: "line-user-1", customerId: null },
   ]);
+});
+
+test("gate: fitment part with no car/year blocks search and asks for the vehicle (no freeze)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ",
+    intentPartType: "หม้อน้ำ",
+    intentPartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1, "still replies (asks for detail)");
+  assert.equal(calls.searches.length, 0, "search is gated off until we have a car");
+  assert.ok(calls.replies[0]?.text.includes("ยี่ห้อ"), "asks for the vehicle");
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active, room not frozen");
+});
+
+test("gate: fitment part + car (no year) searches and appends the year follow-up bubble", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ D-Max",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "fitment",
+  });
+  // Search returns ids; provide matching summaries so flex cards (and thus the
+  // follow-up bubble) are produced.
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ D-Max"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "search runs (rule #1)");
+  const reply = calls.replies[0];
+  assert.ok(reply, "a reply was sent");
+  // [text, (flex), follow-up] — flex cards need a storefront base URL (absent in
+  // tests), so here it's [text, follow-up]. The year nudge is always the LAST
+  // bubble, sent after the matches.
+  assert.ok((reply?.messageCount ?? 0) >= 2, "at least the reply + follow-up bubble");
+  assert.ok(reply?.texts.at(-1)?.includes("ปีรถ"), "last bubble nudges for the model year");
 });

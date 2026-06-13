@@ -28,15 +28,22 @@ import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-f
 import { GUARD_GROUPS, groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
+  acquireLineConversationLock,
   appendLineMessage,
+  bumpLineInboundSeq,
   DuplicateLineEventError,
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
+  getLineCoalesceState,
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
+  getUnansweredInboundLineMessages,
   hasProcessedLineEvent,
+  markLineProcessedSeq,
   markOutboundLineMessageSent,
+  releaseLineConversationLock,
+  renewLineConversationLock,
   storeLineAiJob,
   storeLineAiAudit,
   storeLineAiSuggestion,
@@ -55,6 +62,11 @@ import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { guardLineSearchIntent } from "@/lib/line-search-guards";
+import {
+  buildLineSearchAskReply,
+  buildLineSearchFollowUp,
+  decideLineSearchGate,
+} from "@/lib/line-search-gate";
 
 export type LineWebhookProcessorConfig = {
   channelAccessToken: string | null;
@@ -66,6 +78,15 @@ export type LineWebhookProcessorConfig = {
   allowPushFallback?: boolean;
   receivedAt?: Date;
   replyTokenMaxAgeMs?: number;
+  /** When true, inbound messages are aggregated per conversation (debounce +
+   *  abort-on-newer) so a burst of images/texts yields ONE reply. When false /
+   *  omitted, the legacy per-event path runs (one reply per event). */
+  coalesce?: boolean;
+  /** Quiet window (ms) the owner waits for the customer to stop sending before it
+   *  processes the coalesced turn. Default 3000. */
+  coalesceWindowMs?: number;
+  /** Processing-lock lease (ms); auto-reclaimed if the owner crashes. Default 60000. */
+  coalesceLeaseMs?: number;
 };
 
 export type LineWebhookProcessResult = {
@@ -120,6 +141,16 @@ export type LineWebhookProcessorDependencies = {
    *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
    *  scope and steers back to parts). */
   generateScopedConversationalReply?: typeof generateScopedConversationalReply;
+  // ── Coalescing engine deps (only used when config.coalesce === true) ──────
+  acquireLineConversationLock?: typeof acquireLineConversationLock;
+  releaseLineConversationLock?: typeof releaseLineConversationLock;
+  renewLineConversationLock?: typeof renewLineConversationLock;
+  bumpLineInboundSeq?: typeof bumpLineInboundSeq;
+  getLineCoalesceState?: typeof getLineCoalesceState;
+  markLineProcessedSeq?: typeof markLineProcessedSeq;
+  getUnansweredInboundLineMessages?: typeof getUnansweredInboundLineMessages;
+  /** Injectable debounce sleep (default real setTimeout; tests pass a no-op). */
+  sleep?: (ms: number) => Promise<void>;
 };
 
 const defaultDependencies: LineWebhookProcessorDependencies = {
@@ -149,6 +180,13 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   extractLineSearchIntent,
   resolveLineFitmentFilters,
   generateScopedConversationalReply,
+  acquireLineConversationLock,
+  releaseLineConversationLock,
+  renewLineConversationLock,
+  bumpLineInboundSeq,
+  getLineCoalesceState,
+  markLineProcessedSeq,
+  getUnansweredInboundLineMessages,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -583,7 +621,9 @@ function replyTokenRemainingMs(config: LineWebhookProcessorConfig): number {
 export type ProcessLineAiReplyInput = {
   jobId: string;
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
-  inboundMessage: Awaited<ReturnType<typeof appendLineMessage>>;
+  // Only `.id` is consumed downstream (suggestion log + history exclusion), so a
+  // lightweight shape lets the coalesced path pass a merged/synthetic turn.
+  inboundMessage: { id: string };
   lineUserId: string;
   replyToken: string | null;
   canReply: boolean;
@@ -592,7 +632,16 @@ export type ProcessLineAiReplyInput = {
   text: string | null;
   imageClassification: LineImageClassification | null;
   lineEventId: string | null;
+  /** Abort-on-newer hook (coalescing): called right before the reply is sent. If
+   *  it resolves true, the send is skipped (a newer customer message arrived
+   *  during processing) and the owner loop re-runs with the merged turn. The
+   *  suggestion is still stored as a DRAFT. Default (legacy path): never aborts. */
+  shouldAbortBeforeSend?: () => Promise<boolean>;
 };
+
+/** Distinct return signal so the owner loop can tell "aborted, re-run" apart
+ *  from a normal completed turn. */
+const COALESCE_ABORTED = "COALESCE_ABORTED" as const;
 
 export async function processLineAiReply(
   input: ProcessLineAiReplyInput,
@@ -708,6 +757,39 @@ export async function processLineAiReply(
         ? input.text?.trim() || null
         : guardedSearchIntent?.query ?? null;
 
+    // Pre-search completeness gate: only when the classifier gave structured
+    // fields (text turns). Decides whether we have enough to search, and if so
+    // whether to nudge the customer for one more detail AFTER showing matches.
+    // When there are no structured fields (Gemini off / image-only / first turn)
+    // we degrade to the legacy "search then ask if empty" behaviour.
+    // Image-only turns have no text classifier — gate from the structured OCR
+    // fields instead, but only when vision was confident enough to label the
+    // part kind (otherwise degrade to legacy search-on-hints, never blocking).
+    const imageGateDecision =
+      input.imageClassification?.kind === "part_image" && input.imageClassification.partKind
+        ? decideLineSearchGate({
+            partType: input.imageClassification.partType ?? null,
+            carBrand: input.imageClassification.carBrand ?? null,
+            carModel: input.imageClassification.carModel ?? null,
+            year: input.imageClassification.year ?? null,
+            partKind: input.imageClassification.partKind,
+            tooBroad: false,
+          })
+        : null;
+    const gateDecision =
+      !isNonProductTurn && guardedSearchIntent
+        ? decideLineSearchGate({
+            partType: guardedSearchIntent.partType,
+            carBrand: guardedSearchIntent.carBrand,
+            carModel: guardedSearchIntent.carModel,
+            year: guardedSearchIntent.year,
+            partKind: guardedSearchIntent.partKind,
+            tooBroad: guardedSearchIntent.tooBroad,
+          })
+        : imageGateDecision;
+    const gateBlocksSearch = gateDecision?.action === "ask";
+    const searchFollowUp = gateDecision?.action === "search" ? gateDecision.followUp : null;
+
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
@@ -730,10 +812,13 @@ export async function processLineAiReply(
         ? []
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
-    const productSearch = isNonProductTurn
-      ? ({ searched: false, reason: "NON_PRODUCT_TURN", query: null, result: null } as Awaited<
-          ReturnType<typeof searchLineProductInquiry>
-        >)
+    const productSearch = isNonProductTurn || gateBlocksSearch
+      ? ({
+          searched: false,
+          reason: gateBlocksSearch ? `GATE_ASK:${gateDecision?.reason ?? ""}` : "NON_PRODUCT_TURN",
+          query: null,
+          result: null,
+        } as Awaited<ReturnType<typeof searchLineProductInquiry>>)
       : await dependencies.searchLineProductInquiry({
           route,
           text: consolidatedQuery ?? input.text,
@@ -881,7 +966,17 @@ export async function processLineAiReply(
           auditPayload?: Record<string, string | number | null>;
         }
       | null =
-      faqAnswer.answered
+      // Pre-search gate asked for a missing detail (part/car/year/too-broad).
+      // Never a hand-off — the AI stays active and waits for the answer.
+      liveMode && gateBlocksSearch && gateDecision?.action === "ask"
+        ? {
+            message: buildLineSearchAskReply(gateDecision.ask),
+            reason: `GATE_ASK_${gateDecision.ask}`,
+            handoff: false,
+            audit: "AI_SEARCH_GATE_ASK",
+            auditPayload: { lineEventId: input.lineEventId, ask: gateDecision.ask, reason: gateDecision.reason },
+          }
+        : faqAnswer.answered
         ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
         : liveMode && shouldEscalateNoResults
           ? {
@@ -1073,10 +1168,40 @@ export async function processLineAiReply(
           total: productSearch.searched ? productSearch.result.total : 0,
           placeholderImageUrl,
         });
+    // Persona follow-up: after showing the matches, nudge the customer for the
+    // one missing detail (year for rule #1, part type for rule #2) so the next
+    // turn can pin the exact fit. Sent as its own bubble AFTER the flex cards.
+    // Only when we actually showed products (not a forced hand-off / ask).
+    const followUpBubble =
+      !forcedResponse && searchFollowUp && products.length > 0
+        ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+        : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
       ...(productFlex ? [productFlex] : []),
+      ...(followUpBubble ? [followUpBubble] : []),
     ];
+
+    // Abort-on-newer (coalescing): a customer message arrived while we were
+    // computing this reply. Discard the send and let the owner loop re-run with
+    // the merged turn, so the customer only ever sees ONE reply built from the
+    // latest data. Only relevant when an actual send was about to happen.
+    if (sendDecision.action === "send" && input.shouldAbortBeforeSend) {
+      const abort = await input.shouldAbortBeforeSend().catch(() => false);
+      if (abort) {
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action: "AI_COALESCE_ABORTED",
+          payload: { lineEventId: input.lineEventId, reason: sendDecision.reason },
+        });
+        await dependencies.updateLineAiJob(input.jobId, {
+          status: LineAiJobStatus.COMPLETED,
+          result: { action: "coalesce_aborted", replied: false },
+          finishedAt: new Date(),
+        });
+        return { replied: false, aborted: COALESCE_ABORTED };
+      }
+    }
 
     let replied = false;
     if (
@@ -1248,6 +1373,165 @@ export async function processLineAiReply(
   }
 }
 
+type NormalizedLineEvent = ReturnType<typeof normalizeLineWebhookEvents>[number];
+
+/**
+ * Persists one inbound event (route + image classify + slip ingest + message row
+ * + PENDING job) WITHOUT generating a reply. Shared by the legacy per-event path
+ * and the coalesced path so both stay byte-for-byte consistent on ingest.
+ */
+async function ingestLineEvent(
+  event: NormalizedLineEvent,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  imageSearchEnabled: boolean,
+): Promise<{
+  conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
+  inboundMessage: Awaited<ReturnType<typeof appendLineMessage>>;
+  route: ReturnType<typeof routeLineIntent>;
+  imageClassification: LineImageClassification | null;
+  aiJob: Awaited<ReturnType<typeof storeLineAiJob>>;
+}> {
+  // Callers guard `!event.lineUserId` before invoking; re-narrow for type safety.
+  const lineUserId = event.lineUserId;
+  if (!lineUserId) {
+    throw new Error("ingestLineEvent called without lineUserId");
+  }
+  const customerId = await dependencies.findActiveCustomerIdByLineUserId(lineUserId);
+  const lineProfile = config.lineProfilesByUserId?.[lineUserId] ?? null;
+  const conversation = await dependencies.getOrCreateLineConversation({
+    lineUserId,
+    customerId,
+    displayName: lineProfile?.displayName ?? null,
+    pictureUrl: lineProfile?.pictureUrl ?? null,
+  });
+
+  let route = routeLineIntent({ messageType: event.messageType, text: event.text });
+
+  let imageClassification: LineImageClassification | null = null;
+  if (event.messageType === LineMessageType.IMAGE) {
+    const classify = dependencies.classifyLineImage ?? classifyLineImage;
+    imageClassification = await classify({
+      channelAccessToken: config.channelAccessToken,
+      lineMessageId: event.lineMessageId,
+    });
+    route = applyImageClassificationToRoute(route, imageClassification, imageSearchEnabled);
+
+    fireAndForgetAudit(dependencies, {
+      conversationId: conversation.id,
+      action: "IMAGE_CLASSIFIED",
+      payload: {
+        lineEventId: event.lineEventId,
+        kind: imageClassification.kind,
+        intent: route.intent,
+        confidence: imageClassification.confidence,
+        searchHintCount: imageClassification.searchHints.length,
+        reason: imageClassification.reason,
+      },
+    });
+
+    if (imageClassification.kind === "payment_slip") {
+      const ingestSlip = dependencies.ingestPaymentSlip ?? ingestPaymentSlip;
+      const slip = await ingestSlip({
+        channelAccessToken: config.channelAccessToken,
+        conversationId: conversation.id,
+        lineUserId,
+        lineMessageId: event.lineMessageId,
+        content: imageClassification.content ?? null,
+        ocr: imageClassification.ocr ?? null,
+      });
+
+      fireAndForgetAudit(dependencies, {
+        conversationId: conversation.id,
+        action: "PAYMENT_SLIP_OCR",
+        payload: {
+          lineEventId: event.lineEventId,
+          paymentSlipId: slip.slipId,
+          verificationStatus: slip.verificationStatus,
+          imageStored: slip.imageStored,
+          hasAmount: slip.ocr.amount !== null,
+          hasBank: slip.ocr.bank !== null,
+          hasReference: slip.ocr.referenceNo !== null,
+          hasTransferDatetime: slip.ocr.transferDatetimeIso !== null,
+        },
+      });
+    }
+  }
+
+  const inboundMessage = await dependencies.appendLineMessage({
+    conversationId: conversation.id,
+    lineUserId,
+    lineMessageId: event.lineMessageId,
+    lineEventId: event.lineEventId,
+    replyToken: event.replyToken,
+    direction: LineMessageDirection.INBOUND,
+    messageType: event.messageType,
+    intent: route.intent,
+    text: event.text,
+    rawEvent: event.rawEvent,
+  });
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: conversation.id,
+    action: "INBOUND_EVENT_ACCEPTED",
+    payload: {
+      lineEventId: event.lineEventId,
+      lineMessageId: event.lineMessageId,
+      messageType: event.messageType,
+      hasReplyToken: Boolean(event.replyToken),
+    },
+  });
+
+  await dependencies.updateLineConversationState(
+    conversation.id,
+    buildLineConversationStatePatch({ type: "customer_message", at: inboundMessage.createdAt }),
+  );
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: conversation.id,
+    action: "INTENT_ROUTED",
+    payload: {
+      lineEventId: event.lineEventId,
+      intent: route.intent,
+      reason: route.reason,
+      allowsSearch: route.allowsSearch,
+      requiresAdmin: route.requiresAdmin,
+    },
+  });
+
+  const aiJob = await dependencies.storeLineAiJob({
+    conversationId: conversation.id,
+    lineMessageId: inboundMessage.id,
+    jobType:
+      event.messageType === LineMessageType.IMAGE
+        ? imageClassification?.kind === "payment_slip"
+          ? LineAiJobType.PAYMENT_SLIP_OCR
+          : LineAiJobType.IMAGE_ANALYSIS
+        : LineAiJobType.TEXT_REPLY,
+    status: LineAiJobStatus.PENDING,
+    payload: {
+      lineEventId: event.lineEventId,
+      lineUserId,
+      replyToken: event.replyToken,
+      canReply: event.canReply,
+      messageType: event.messageType,
+      text: event.text,
+      route,
+      imageClassification: imageClassification
+        ? {
+            kind: imageClassification.kind,
+            intent: imageClassification.intent,
+            searchHints: imageClassification.searchHints,
+            confidence: imageClassification.confidence,
+            reason: imageClassification.reason,
+          }
+        : null,
+    },
+  });
+
+  return { conversation, inboundMessage, route, imageClassification, aiJob };
+}
+
 export async function processLineWebhookPayload(
   payload: { events?: unknown[] },
   config: LineWebhookProcessorConfig,
@@ -1264,6 +1548,11 @@ export async function processLineWebhookPayload(
     repliedCount: 0,
   };
 
+  if (config.coalesce) {
+    await processCoalescedEvents(events, config, dependencies, imageSearchEnabled, result);
+    return result;
+  }
+
   for (const event of events) {
     if (!event.lineUserId) {
       result.skippedCount += 1;
@@ -1276,161 +1565,36 @@ export async function processLineWebhookPayload(
     }
 
     try {
-    const customerId = await dependencies.findActiveCustomerIdByLineUserId(event.lineUserId);
-    const lineProfile = config.lineProfilesByUserId?.[event.lineUserId] ?? null;
-    const conversation = await dependencies.getOrCreateLineConversation({
-      lineUserId: event.lineUserId,
-      customerId,
-      displayName: lineProfile?.displayName ?? null,
-      pictureUrl: lineProfile?.pictureUrl ?? null,
-    });
+      const { conversation, inboundMessage, route, imageClassification, aiJob } = await ingestLineEvent(
+        event,
+        config,
+        dependencies,
+        imageSearchEnabled,
+      );
 
-    let route = routeLineIntent({
-      messageType: event.messageType,
-      text: event.text,
-    });
-
-    let imageClassification: LineImageClassification | null = null;
-    if (event.messageType === LineMessageType.IMAGE) {
-      const classify = dependencies.classifyLineImage ?? classifyLineImage;
-      imageClassification = await classify({
-        channelAccessToken: config.channelAccessToken,
-        lineMessageId: event.lineMessageId,
-      });
-      route = applyImageClassificationToRoute(route, imageClassification, imageSearchEnabled);
-
-      fireAndForgetAudit(dependencies, {
-        conversationId: conversation.id,
-        action: "IMAGE_CLASSIFIED",
-        payload: {
-          lineEventId: event.lineEventId,
-          kind: imageClassification.kind,
-          intent: route.intent,
-          confidence: imageClassification.confidence,
-          searchHintCount: imageClassification.searchHints.length,
-          reason: imageClassification.reason,
-        },
-      });
-
-      if (imageClassification.kind === "payment_slip") {
-        const ingestSlip = dependencies.ingestPaymentSlip ?? ingestPaymentSlip;
-
-        const slip = await ingestSlip({
-          channelAccessToken: config.channelAccessToken,
-          conversationId: conversation.id,
+      const replyResult = await processLineAiReply(
+        {
+          jobId: aiJob.id,
+          conversation,
+          inboundMessage,
           lineUserId: event.lineUserId,
-          lineMessageId: event.lineMessageId,
-          content: imageClassification.content ?? null,
-          ocr: imageClassification.ocr ?? null,
-        });
+          replyToken: event.replyToken,
+          canReply: event.canReply,
+          messageType: event.messageType,
+          route,
+          text: event.text,
+          imageClassification,
+          lineEventId: event.lineEventId,
+        },
+        config,
+        dependencies,
+      );
 
-        fireAndForgetAudit(dependencies, {
-          conversationId: conversation.id,
-          action: "PAYMENT_SLIP_OCR",
-          payload: {
-            lineEventId: event.lineEventId,
-            paymentSlipId: slip.slipId,
-            verificationStatus: slip.verificationStatus,
-            imageStored: slip.imageStored,
-            hasAmount: slip.ocr.amount !== null,
-            hasBank: slip.ocr.bank !== null,
-            hasReference: slip.ocr.referenceNo !== null,
-            hasTransferDatetime: slip.ocr.transferDatetimeIso !== null,
-          },
-        });
+      if (replyResult.replied) {
+        result.repliedCount += 1;
       }
-    }
 
-    const inboundMessage = await dependencies.appendLineMessage({
-      conversationId: conversation.id,
-      lineUserId: event.lineUserId,
-      lineMessageId: event.lineMessageId,
-      lineEventId: event.lineEventId,
-      replyToken: event.replyToken,
-      direction: LineMessageDirection.INBOUND,
-      messageType: event.messageType,
-      intent: route.intent,
-      text: event.text,
-      rawEvent: event.rawEvent,
-    });
-
-    fireAndForgetAudit(dependencies, {
-      conversationId: conversation.id,
-      action: "INBOUND_EVENT_ACCEPTED",
-      payload: {
-        lineEventId: event.lineEventId,
-        lineMessageId: event.lineMessageId,
-        messageType: event.messageType,
-        hasReplyToken: Boolean(event.replyToken),
-      },
-    });
-
-    await dependencies.updateLineConversationState(
-      conversation.id,
-      buildLineConversationStatePatch({ type: "customer_message", at: inboundMessage.createdAt }),
-    );
-
-    fireAndForgetAudit(dependencies, {
-      conversationId: conversation.id,
-      action: "INTENT_ROUTED",
-      payload: {
-        lineEventId: event.lineEventId,
-        intent: route.intent,
-        reason: route.reason,
-        allowsSearch: route.allowsSearch,
-        requiresAdmin: route.requiresAdmin,
-      },
-    });
-
-    const aiJob = await dependencies.storeLineAiJob({
-      conversationId: conversation.id,
-      lineMessageId: inboundMessage.id,
-      jobType:
-        event.messageType === LineMessageType.IMAGE
-          ? imageClassification?.kind === "payment_slip"
-            ? LineAiJobType.PAYMENT_SLIP_OCR
-            : LineAiJobType.IMAGE_ANALYSIS
-          : LineAiJobType.TEXT_REPLY,
-      status: LineAiJobStatus.PENDING,
-      payload: {
-        lineEventId: event.lineEventId,
-        lineUserId: event.lineUserId,
-        replyToken: event.replyToken,
-        canReply: event.canReply,
-        messageType: event.messageType,
-        text: event.text,
-        route,
-        imageClassification: imageClassification
-          ? {
-              kind: imageClassification.kind,
-              intent: imageClassification.intent,
-              searchHints: imageClassification.searchHints,
-              confidence: imageClassification.confidence,
-              reason: imageClassification.reason,
-            }
-          : null,
-      },
-    });
-
-    const replyResult = await processLineAiReply({
-      jobId: aiJob.id,
-      conversation,
-      inboundMessage,
-      lineUserId: event.lineUserId,
-      replyToken: event.replyToken,
-      canReply: event.canReply,
-      messageType: event.messageType,
-      route,
-      text: event.text,
-      imageClassification,
-      lineEventId: event.lineEventId,
-    }, config, dependencies);
-
-    if (replyResult.replied) {
-      result.repliedCount += 1;
-    }
-
-    result.processedCount += 1;
+      result.processedCount += 1;
     } catch (error) {
       // Race fallback: a concurrent processor inserted the inbound row first.
       // Count as duplicate, never re-process — the other worker owns the reply.
@@ -1449,4 +1613,342 @@ export async function processLineWebhookPayload(
   }
 
   return result;
+}
+
+// ── Coalescing engine ───────────────────────────────────────────────────────
+
+const DEFAULT_COALESCE_WINDOW_MS = 3_000;
+const DEFAULT_COALESCE_LEASE_MS = 60_000;
+
+function realSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type UnansweredLineMessage = Awaited<ReturnType<typeof getUnansweredInboundLineMessages>>[number];
+
+/**
+ * Coalesced inbound handling (Option A). Phase 1 ingests every event WITHOUT
+ * replying (persist + classify + bump seq). Phase 2 elects ONE owner per
+ * conversation (a short-lived lock) that runs a debounce + abort-on-newer loop:
+ * it waits for the customer to go quiet, merges all unanswered messages into a
+ * single turn, and only sends once a processing pass completes with no newer
+ * message — so a burst of images/texts yields exactly ONE reply on the latest
+ * reply token. Stickers keep their legacy greet-once / silent handling.
+ */
+async function processCoalescedEvents(
+  events: NormalizedLineEvent[],
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  imageSearchEnabled: boolean,
+  result: LineWebhookProcessResult,
+): Promise<void> {
+  const bumpSeq = dependencies.bumpLineInboundSeq ?? bumpLineInboundSeq;
+  // conversationId → { conversation, lineUserId }; classifications cached by
+  // lineMessageId so the owner doesn't re-call vision for same-payload images.
+  const touched = new Map<string, { conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>; lineUserId: string }>();
+  const classByMessageId = new Map<string, LineImageClassification>();
+
+  for (const event of events) {
+    if (!event.lineUserId) {
+      result.skippedCount += 1;
+      continue;
+    }
+    if (await dependencies.hasProcessedLineEvent(event.lineEventId)) {
+      result.duplicateCount += 1;
+      continue;
+    }
+
+    try {
+      // Stickers never coalesce — keep the legacy greet-once / silent path so a
+      // closing 🙏 sticker doesn't get folded into a product turn.
+      if (event.messageType === LineMessageType.STICKER) {
+        const { conversation, inboundMessage, route, imageClassification, aiJob } = await ingestLineEvent(
+          event,
+          config,
+          dependencies,
+          imageSearchEnabled,
+        );
+        const replyResult = await processLineAiReply(
+          {
+            jobId: aiJob.id,
+            conversation,
+            inboundMessage,
+            lineUserId: event.lineUserId,
+            replyToken: event.replyToken,
+            canReply: event.canReply,
+            messageType: event.messageType,
+            route,
+            text: event.text,
+            imageClassification,
+            lineEventId: event.lineEventId,
+          },
+          config,
+          dependencies,
+        );
+        if (replyResult.replied) result.repliedCount += 1;
+        result.processedCount += 1;
+        continue;
+      }
+
+      const { conversation, inboundMessage, imageClassification } = await ingestLineEvent(
+        event,
+        config,
+        dependencies,
+        imageSearchEnabled,
+      );
+      if (imageClassification && event.lineMessageId) {
+        classByMessageId.set(event.lineMessageId, imageClassification);
+      }
+      await bumpSeq(conversation.id);
+      touched.set(conversation.id, { conversation, lineUserId: event.lineUserId });
+      result.processedCount += 1;
+      // inboundMessage intentionally not used further here — the owner re-reads
+      // the unanswered set from the DB so cross-payload bursts are included.
+      void inboundMessage;
+    } catch (error) {
+      if (error instanceof DuplicateLineEventError) {
+        result.duplicateCount += 1;
+        continue;
+      }
+      console.error(
+        "[line-webhook-processor] coalesced ingest failed; continuing with batch",
+        { lineEventId: event.lineEventId, error: error instanceof Error ? error.message : String(error) },
+      );
+      result.skippedCount += 1;
+    }
+  }
+
+  // Phase 2 — elect an owner per touched conversation and run its turn.
+  const acquire = dependencies.acquireLineConversationLock ?? acquireLineConversationLock;
+  const release = dependencies.releaseLineConversationLock ?? releaseLineConversationLock;
+  const leaseMs = config.coalesceLeaseMs ?? DEFAULT_COALESCE_LEASE_MS;
+
+  for (const [conversationId, info] of touched) {
+    const owner = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const acquired = await acquire({ conversationId, owner, leaseMs }).catch(() => false);
+    if (!acquired) {
+      // Another worker owns this conversation's burst — our messages are already
+      // persisted + seq-bumped, so that owner will pick them up. Nothing to do.
+      continue;
+    }
+    try {
+      const replied = await runConversationOwnerLoop({
+        conversationId,
+        owner,
+        info,
+        config,
+        dependencies,
+        imageSearchEnabled,
+        classByMessageId,
+      });
+      if (replied) result.repliedCount += 1;
+    } catch (error) {
+      console.error(
+        "[line-webhook-processor] owner loop failed",
+        { conversationId, error: error instanceof Error ? error.message : String(error) },
+      );
+    } finally {
+      await release({ conversationId, owner }).catch(() => undefined);
+    }
+  }
+}
+
+/**
+ * Owner loop: debounce → merge unanswered → process → abort-on-newer. Loops until
+ * a processing pass completes with no newer customer message (clean pass), then
+ * the reply has already been sent inside {@link processLineAiReply}. No cap — a
+ * customer who never stops typing simply keeps extending the turn (by design).
+ */
+async function runConversationOwnerLoop(args: {
+  conversationId: string;
+  owner: string;
+  info: { conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>; lineUserId: string };
+  config: LineWebhookProcessorConfig;
+  dependencies: LineWebhookProcessorDependencies;
+  imageSearchEnabled: boolean;
+  classByMessageId: Map<string, LineImageClassification>;
+}): Promise<boolean> {
+  const { conversationId, owner, info, config, dependencies, imageSearchEnabled, classByMessageId } = args;
+  const getState = dependencies.getLineCoalesceState ?? getLineCoalesceState;
+  const getUnanswered = dependencies.getUnansweredInboundLineMessages ?? getUnansweredInboundLineMessages;
+  const markProcessed = dependencies.markLineProcessedSeq ?? markLineProcessedSeq;
+  const renew = dependencies.renewLineConversationLock ?? renewLineConversationLock;
+  const sleep = dependencies.sleep ?? realSleep;
+  const windowMs = config.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS;
+  const leaseMs = config.coalesceLeaseMs ?? DEFAULT_COALESCE_LEASE_MS;
+
+  // Bounded only by the lock lease being renewed each pass; the loop itself is
+  // unbounded per the product spec ("wait until the customer is truly done").
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const before = await getState(conversationId);
+    if (!before) return false;
+
+    // Debounce: wait for the customer to stop sending. If a new message lands
+    // during the wait, the seq changes and we re-arm the window.
+    await sleep(windowMs);
+    const after = await getState(conversationId);
+    if (!after) return false;
+    if (after.lastInboundSeq !== before.lastInboundSeq) continue;
+
+    const messages = await getUnanswered(conversationId);
+    if (messages.length === 0) return false; // already answered by a prior owner
+
+    await renew({ conversationId, owner, leaseMs }).catch(() => undefined);
+
+    const processSnapshot = after.lastInboundSeq;
+    const turn = await buildMergedTurnInput({
+      conversationId,
+      conversation: { ...info.conversation, aiStatus: after.aiStatus },
+      lineUserId: info.lineUserId,
+      messages,
+      config,
+      dependencies,
+      imageSearchEnabled,
+      classByMessageId,
+    });
+
+    const aiJob = await dependencies.storeLineAiJob({
+      conversationId,
+      lineMessageId: turn.inboundMessage.id,
+      jobType:
+        turn.messageType === LineMessageType.IMAGE
+          ? LineAiJobType.IMAGE_ANALYSIS
+          : LineAiJobType.TEXT_REPLY,
+      status: LineAiJobStatus.PENDING,
+      payload: {
+        coalesced: true,
+        coalescedCount: messages.length,
+        processSnapshot,
+        messageType: turn.messageType,
+        text: turn.text,
+        route: turn.route,
+      },
+    });
+
+    const shouldAbortBeforeSend = async () => {
+      const current = await getState(conversationId).catch(() => null);
+      return Boolean(current && current.lastInboundSeq !== processSnapshot);
+    };
+
+    const replyResult = await processLineAiReply(
+      {
+        jobId: aiJob.id,
+        conversation: turn.conversation,
+        inboundMessage: turn.inboundMessage,
+        lineUserId: info.lineUserId,
+        replyToken: turn.replyToken,
+        canReply: true,
+        messageType: turn.messageType,
+        route: turn.route,
+        text: turn.text,
+        imageClassification: turn.imageClassification,
+        lineEventId: turn.lineEventId,
+        shouldAbortBeforeSend,
+      },
+      config,
+      dependencies,
+    );
+
+    if ("aborted" in replyResult && replyResult.aborted) {
+      // A newer message arrived during processing — merge it and re-run.
+      continue;
+    }
+
+    await markProcessed({ conversationId, seq: processSnapshot }).catch(() => undefined);
+    return replyResult.replied;
+  }
+}
+
+/**
+ * Merges all unanswered inbound messages of a burst into a single turn: combined
+ * text, a unified image classification (union of part-image search hints), and
+ * the latest reply token. Image messages whose classification wasn't cached this
+ * payload (cross-payload bursts) are re-classified on demand.
+ */
+async function buildMergedTurnInput(args: {
+  conversationId: string;
+  conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
+  lineUserId: string;
+  messages: UnansweredLineMessage[];
+  config: LineWebhookProcessorConfig;
+  dependencies: LineWebhookProcessorDependencies;
+  imageSearchEnabled: boolean;
+  classByMessageId: Map<string, LineImageClassification>;
+}): Promise<{
+  conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
+  inboundMessage: { id: string };
+  messageType: LineMessageType;
+  route: ReturnType<typeof routeLineIntent>;
+  text: string | null;
+  imageClassification: LineImageClassification | null;
+  replyToken: string | null;
+  lineEventId: string | null;
+}> {
+  const { conversation, messages, config, dependencies, imageSearchEnabled, classByMessageId } = args;
+  const classify = dependencies.classifyLineImage ?? classifyLineImage;
+
+  const latest = messages[messages.length - 1];
+  const mergedText =
+    messages
+      .map((message) => message.text?.trim() ?? "")
+      .filter(Boolean)
+      .join("\n")
+      .trim() || null;
+
+  const imageMessages = messages.filter((message) => message.messageType === LineMessageType.IMAGE);
+  let imageClassification: LineImageClassification | null = null;
+  if (imageMessages.length > 0) {
+    const classifications: LineImageClassification[] = [];
+    for (const message of imageMessages) {
+      const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
+      const resolved =
+        cached ??
+        (await classify({
+          channelAccessToken: config.channelAccessToken,
+          lineMessageId: message.lineMessageId,
+        }).catch(() => null));
+      if (resolved) classifications.push(resolved);
+    }
+
+    // Kind priority: a real part image wins (so the turn searches); else a slip;
+    // else unknown. Search hints are the union from every part image.
+    const part = classifications.find((c) => c.kind === "part_image");
+    const slip = classifications.find((c) => c.kind === "payment_slip");
+    const chosen = part ?? slip ?? classifications[0] ?? null;
+    if (chosen) {
+      const hintSet = new Set<string>();
+      for (const c of classifications) {
+        if (c.kind === "part_image") for (const hint of c.searchHints) hintSet.add(hint);
+      }
+      imageClassification = { ...chosen, searchHints: Array.from(hintSet) };
+    }
+  }
+
+  const hasText = Boolean(mergedText);
+  const messageType = hasText
+    ? LineMessageType.TEXT
+    : imageMessages.length > 0
+      ? LineMessageType.IMAGE
+      : latest.messageType;
+
+  // Text present → drive routing from the merged text (image hints still feed the
+  // search via imageClassification.searchHints). Image-only → route from the
+  // unified classification. This also dissolves the original bug: a stray
+  // unknown_image can no longer hijack a turn that has real text or a part image.
+  let route = routeLineIntent({ messageType, text: mergedText });
+  if (!hasText && imageClassification) {
+    route = applyImageClassificationToRoute(route, imageClassification, imageSearchEnabled);
+  }
+
+  return {
+    conversation,
+    inboundMessage: { id: latest.id },
+    messageType,
+    route,
+    text: mergedText,
+    imageClassification,
+    replyToken: latest.replyToken ?? null,
+    lineEventId: latest.lineEventId ?? null,
+  };
 }

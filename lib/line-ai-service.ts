@@ -158,7 +158,9 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   '  "partType": "ชนิดอะไหล่ เช่น หม้อน้ำ คอยล์เย็น คอมแอร์ แผงแอร์ กรองแอร์ (ถ้าไม่ทราบใส่ null)",',
   '  "carBrand": "ยี่ห้อรถ เช่น Mazda Toyota Isuzu (ถ้าไม่ทราบใส่ null)",',
   '  "carModel": "รุ่นรถ เช่น Mazda 2, D-Max, Vios (ถ้าไม่ทราบใส่ null)",',
-  '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null',
+  '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null,',
+  '  "partKind": "fitment หรือ universal — fitment = อะไหล่ที่ต้องระบุรุ่นรถถึงจะหาตรงได้ (หม้อน้ำ คอยล์เย็น คอมแอร์ แผงร้อน ตู้แอร์ กรองแอร์ ฯลฯ); universal = สินค้าที่ค้นด้วยชื่อ/สเปกได้เองไม่ต้องผูกรุ่นรถ (น้ำยาล้างคอยล์ ฟองน้ำ น็อต โอริง หัวคอปเปอร์ เทปพันสายไฟ ฯลฯ) ถ้าไม่แน่ใจใส่ null",',
+  '  "tooBroad": true/false — true เมื่อข้อความกว้าง/สั้นเกินจนค้นแล้วได้ผลกว้างมาก เช่น "น็อต" "สายไฟ" "อะไหล่" คำเดียวโดยไม่มีตัวขยาย',
   "}",
   "",
   "กลุ่ม (เลือก 1):",
@@ -182,6 +184,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "- query ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่นใส่ null) — และรวมข้อมูลที่ทยอยพิมพ์หลายข้อความเข้าด้วยกัน",
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
   "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
+  "- partKind/tooBroad ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่น partKind=null, tooBroad=false)",
 ].join("\n");
 
 const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
@@ -192,6 +195,8 @@ const MAX_SEARCH_YEAR = 2100;
  *  `group` drives routing (product / shop_info / payment / ... / other). `query`
  *  and the fitment hints are only meaningful for `group === "product"`.
  *  `isProductQuery` is kept as a convenience mirror of `group === "product"`. */
+export type LinePartKind = "fitment" | "universal";
+
 export type LineSearchIntent = {
   group: LineMessageGroup;
   query: string;
@@ -200,6 +205,11 @@ export type LineSearchIntent = {
   carBrand: string | null;
   carModel: string | null;
   year: number | null;
+  /** Whether the part needs a vehicle to find (fitment) or is searchable on its
+   *  own name/spec (universal). Null when unknown / non-product. */
+  partKind: LinePartKind | null;
+  /** The query is too generic to search usefully (e.g. "น็อต" alone) → ask first. */
+  tooBroad: boolean;
 };
 
 const cleanIntentString = (value: unknown): string | null => {
@@ -251,6 +261,10 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   const query = cleanIntentString(obj.query);
   const isProductQuery = group === "product";
 
+  const partKindRaw = typeof obj.partKind === "string" ? obj.partKind.trim().toLowerCase() : "";
+  const partKind: LinePartKind | null =
+    isProductQuery && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
+
   return {
     group,
     query: query ? query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() : "",
@@ -259,6 +273,8 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
     carBrand: cleanIntentString(obj.carBrand),
     carModel: cleanIntentString(obj.carModel),
     year: cleanIntentYear(obj.year),
+    partKind,
+    tooBroad: isProductQuery && obj.tooBroad === true,
   };
 };
 

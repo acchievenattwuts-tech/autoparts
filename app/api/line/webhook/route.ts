@@ -1,4 +1,8 @@
 export const dynamic = "force-dynamic";
+// Coalescing runs in after(): debounce (3s) + AI pipeline (~10s) + abort-on-newer
+// re-runs for slow typists can exceed the default budget. 60s matches the
+// processing-lock lease so the owner can finish and reply before being killed.
+export const maxDuration = 60;
 
 import { after } from "next/server";
 
@@ -123,6 +127,10 @@ async function processWebhookInBackground(
       allowPushFallback: true,
       receivedAt,
       replyTokenMaxAgeMs: 45_000,
+      // Coalesce a burst of images/texts into ONE reply (debounce + abort-on-newer).
+      coalesce: true,
+      coalesceWindowMs: 3_000,
+      coalesceLeaseMs: 60_000,
     });
   } catch (error) {
     console.error("[line-webhook] AI agent background processing failed", error);

@@ -7,6 +7,8 @@ import { parsePaymentSlipOcr, type PaymentSlipOcr } from "@/lib/line-payment-sli
 export type LineImageKind = "part_image" | "payment_slip" | "unknown_image";
 export type LineImageConfidence = "LOW" | "MEDIUM" | "HIGH";
 
+export type LineImagePartKind = "fitment" | "universal";
+
 export type LineImageClassification = {
   kind: LineImageKind;
   intent: LineIntent;
@@ -14,6 +16,13 @@ export type LineImageClassification = {
   searchHints: string[];
   confidence: LineImageConfidence;
   reason: string;
+  /** Structured fitment fields read from the SAME vision call (part images only),
+   *  so an image-only turn can be put through the same completeness gate as text. */
+  partType?: string | null;
+  carBrand?: string | null;
+  carModel?: string | null;
+  year?: number | null;
+  partKind?: LineImagePartKind | null;
   /** Slip fields read in the SAME vision call (only for payment_slip; else null). */
   ocr?: PaymentSlipOcr | null;
   content?: LineMessageContent;
@@ -35,10 +44,14 @@ const CLASSIFY_PROMPT = [
   '- "payment_slip": สลิป/หลักฐานการโอนเงิน/การชำระเงินจากธนาคารหรือแอปธนาคาร',
   '- "unknown_image": รูปอื่นที่ไม่เข้าสองประเภทข้างต้น',
   "ถ้าเป็น part_image ให้ดึงคำใบ้สำหรับค้นหา (ยี่ห้อ รุ่นรถ เบอร์อะไหล่ ข้อความบนชิ้นส่วน) ใส่ใน searchHints",
+  "ถ้าเป็น part_image ให้ระบุข้อมูลแบบมีโครงสร้างด้วย (อ่านจากรูป/ป้ายทะเบียน/ข้อความบนอะไหล่เท่านั้น ไม่เห็นให้ใส่ null):",
+  '- partType = ชนิดอะไหล่ (หม้อน้ำ คอยล์เย็น คอมแอร์ ฯลฯ)',
+  '- carBrand / carModel = ยี่ห้อ/รุ่นรถ, year = ปี ค.ศ. 4 หลัก',
+  '- partKind = "fitment" (อะไหล่ที่ต้องระบุรุ่นรถ) หรือ "universal" (น้ำยา/น็อต/โอริง/ฟองน้ำ ค้นด้วยชื่อเองได้)',
   "ถ้าเป็น payment_slip ห้ามใส่ searchHints ใด ๆ (ต้องเป็น array ว่าง) และให้อ่านข้อมูลในสลิปใส่ใน ocr ด้วย (อ่านเฉพาะที่เห็นจริง ไม่พบให้ใส่ null)",
   "ถ้าไม่ใช่สลิป ให้ ocr เป็น null",
   "ตอบเป็น JSON ล้วนเท่านั้น ห้ามมี markdown:",
-  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ","ocr":{"amount":ตัวเลขหรือ null,"transferDatetime":"ISO 8601 หรือ null","bank":"...","senderName":"...","receiverName":"...","referenceNo":"...","rawText":"..."}}',
+  '{"kind":"part_image|payment_slip|unknown_image","searchHints":["..."],"partType":"...|null","carBrand":"...|null","carModel":"...|null","year":ปีหรือ null,"partKind":"fitment|universal|null","confidence":"LOW|MEDIUM|HIGH","reason":"สั้นๆ","ocr":{"amount":ตัวเลขหรือ null,"transferDatetime":"ISO 8601 หรือ null","bank":"...","senderName":"...","receiverName":"...","referenceNo":"...","rawText":"..."}}',
 ].join("\n");
 
 function intentForKind(kind: LineImageKind): LineIntent {
@@ -77,6 +90,11 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
       confidence?: unknown;
       reason?: unknown;
       ocr?: unknown;
+      partType?: unknown;
+      carBrand?: unknown;
+      carModel?: unknown;
+      year?: unknown;
+      partKind?: unknown;
     };
     const kind = normalizeKind(parsed.kind);
     const searchHints =
@@ -87,6 +105,19 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
             .filter(Boolean)
             .slice(0, 8)
         : [];
+
+    const cleanStr = (value: unknown): string | null => {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim();
+      return !trimmed || trimmed.toLowerCase() === "null" ? null : trimmed;
+    };
+    const cleanYear = (value: unknown): number | null => {
+      const n = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
+      return Number.isInteger(n) && n >= 1950 && n <= 2100 ? n : null;
+    };
+    const partKindRaw = typeof parsed.partKind === "string" ? parsed.partKind.trim().toLowerCase() : "";
+    const partKind: LineImagePartKind | null =
+      kind === "part_image" && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
 
     // Slip OCR fields come back in the same response — reuse the slip parser so
     // there is no separate vision call for OCR.
@@ -101,6 +132,11 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
       searchHints,
       confidence: normalizeConfidence(parsed.confidence),
       reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 200) : "GEMINI_VISION",
+      partType: kind === "part_image" ? cleanStr(parsed.partType) : null,
+      carBrand: kind === "part_image" ? cleanStr(parsed.carBrand) : null,
+      carModel: kind === "part_image" ? cleanStr(parsed.carModel) : null,
+      year: kind === "part_image" ? cleanYear(parsed.year) : null,
+      partKind,
       ocr,
     };
   } catch {
