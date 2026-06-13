@@ -486,10 +486,23 @@ export async function getLineConversationForRecovery(conversationId: string) {
   return db.lineConversation.findUnique({ where: { id: conversationId } });
 }
 
-/** All inbound customer messages that arrived after the most recent outbound
- *  (AI or admin) reply — i.e. the unanswered turn to be coalesced and processed
- *  together (oldest → newest). */
-export async function getUnansweredInboundLineMessages(conversationId: string) {
+/** A coalesced burst only ever spans the live debounce + abort-on-newer window
+ *  (≤ ~90s) plus the recovery delay, so we never gather messages older than this.
+ *  This is the safety net for stale "unanswered" rows: when an admin replies
+ *  MANUALLY via the LINE OA console, that reply never reaches our webhook and is
+ *  not stored as an outbound row, so an old customer message would otherwise look
+ *  "unanswered" for hours and get merged into an unrelated later burst (e.g. a
+ *  payment slip). Bounding by time keeps a burst = the recent burst only. */
+const UNANSWERED_LINE_BURST_WINDOW_MS = 5 * 60_000;
+
+/** Inbound customer messages of the CURRENT burst: those that arrived after the
+ *  most recent outbound reply AND within the recent burst window (oldest →
+ *  newest). Time-bounded so hours-old, already-handled messages never get pulled
+ *  into a new, unrelated turn. */
+export async function getUnansweredInboundLineMessages(
+  conversationId: string,
+  withinMs: number = UNANSWERED_LINE_BURST_WINDOW_MS,
+) {
   const lastOutbound = await db.lineMessage.findFirst({
     where: {
       conversationId,
@@ -498,11 +511,16 @@ export async function getUnansweredInboundLineMessages(conversationId: string) {
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   });
+  const windowStart = new Date(Date.now() - withinMs);
+  // Lower bound = the later of (last outbound, window start) — so neither a stale
+  // outbound marker nor an unbounded backlog can widen the burst.
+  const lowerBound =
+    lastOutbound && lastOutbound.createdAt > windowStart ? lastOutbound.createdAt : windowStart;
   return db.lineMessage.findMany({
     where: {
       conversationId,
       direction: LineMessageDirection.INBOUND,
-      ...(lastOutbound ? { createdAt: { gt: lastOutbound.createdAt } } : {}),
+      createdAt: { gt: lowerBound },
     },
     orderBy: { createdAt: "asc" },
     select: {

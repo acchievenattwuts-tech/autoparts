@@ -1892,7 +1892,13 @@ async function runConversationOwnerLoop(args: {
     if (after.lastInboundSeq !== before.lastInboundSeq) continue;
 
     const messages = await getUnanswered(conversationId);
-    if (messages.length === 0) return false; // already answered by a prior owner
+    if (messages.length === 0) {
+      // Nothing in the burst window to answer (already replied, or the only
+      // unanswered rows are stale and aged out). Advance the processed marker so
+      // the recovery failsafe doesn't keep re-selecting this conversation.
+      await markProcessed({ conversationId, seq: after.lastInboundSeq }).catch(() => undefined);
+      return false;
+    }
 
     await renew({ conversationId, owner, leaseMs }).catch(() => undefined);
 

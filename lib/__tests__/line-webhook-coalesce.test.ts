@@ -181,7 +181,25 @@ function createCoalesceHarness(options?: {
     markLineProcessedSeq: async ({ seq }) => {
       state.processedSeq = seq;
     },
-    getUnansweredInboundLineMessages: async () => state.inbound.slice(state.answeredCount),
+    ingestPaymentSlip: async () =>
+      ({
+        slipId: "slip-1",
+        verificationStatus: "PENDING_REVIEW",
+        ocr: {
+          amount: 1090,
+          transferDatetimeIso: null,
+          bank: null,
+          senderName: null,
+          receiverName: null,
+          referenceNo: null,
+          rawText: null,
+        },
+        imageStored: true,
+      }) as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["ingestPaymentSlip"]>>>,
+    getUnansweredInboundLineMessages: async (_id, withinMs = 5 * 60_000) => {
+      const cutoff = Date.now() - withinMs;
+      return state.inbound.slice(state.answeredCount).filter((m) => m.createdAt.getTime() > cutoff);
+    },
     findStalledCoalescedConversationIds: async () =>
       state.seq > state.processedSeq && state.inbound.slice(state.answeredCount).length > 0 && !state.lockOwner
         ? ["conv-1"]
@@ -373,4 +391,26 @@ test("recovery: an already-answered conversation produces no duplicate reply", a
 
   assert.equal(res.scanned, 0, "nothing to recover");
   assert.equal(calls.replies.length, 0, "no duplicate reply");
+});
+
+test("coalescing: a stale unanswered message is NOT merged into a new slip burst", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "payment_slip" });
+  // An old product question that the admin answered MANUALLY via LINE OA (so it
+  // was never stored as an outbound) — it must not be pulled into today's slip.
+  state.inbound.push({
+    id: "old",
+    text: "น้ำยาล้างคอยเย็น",
+    messageType: LineMessageType.TEXT,
+    replyToken: null,
+    lineEventId: "old-e",
+    lineMessageId: "old-lm",
+    intent: null,
+    createdAt: new Date(Date.now() - 7 * 60 * 60 * 1000), // 7h ago
+  });
+
+  await processLineWebhookPayload({ events: [imageEvent("e-slip")] }, baseConfig, dependencies);
+
+  assert.equal(calls.searches.length, 0, "stale text aged out → no bogus product search");
+  void state;
 });
