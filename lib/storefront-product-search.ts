@@ -11,6 +11,7 @@ import {
   suggestDidYouMean,
 } from "@/lib/product-search";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import { segmentThaiQueryTokens } from "@/lib/thai-segment";
 
 export const STOREFRONT_PRODUCTS_PER_PAGE = 24;
 
@@ -178,7 +179,22 @@ export async function runStorefrontProductSearchWithRequiredTokenFallback(
     usedFallback: boolean;
   };
 }> {
-  const requiredTokens = extractProductSearchRequiredTokens(input.query);
+  // Recall anchors = digit/code fragments (existing) PLUS Thai words from
+  // dictionary segmentation (Phase A-light). Both flow through the same
+  // LIKE-contains AND clause; the strict→fallback below guarantees no regression
+  // if the tighter AND yields nothing.
+  //
+  // Thai words are only added when segmentation yields ≥2 of them — i.e. a glued
+  // multi-word compound ("น้ำยาล้างคอยเย็น"), the exact case AND-precision should
+  // engage. A single dictionary word gains nothing from this and is skipped so
+  // synonym/fuzzy recall for plain one-word Thai queries is left untouched.
+  const segmentedThaiTokens = segmentThaiQueryTokens(input.query);
+  const requiredTokens = Array.from(
+    new Set([
+      ...extractProductSearchRequiredTokens(input.query),
+      ...(segmentedThaiTokens.length >= 2 ? segmentedThaiTokens : []),
+    ]),
+  );
   if (requiredTokens.length === 0) {
     return { searchResult: await searchProductIdsFn(input) };
   }

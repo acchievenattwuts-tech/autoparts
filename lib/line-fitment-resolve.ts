@@ -14,6 +14,13 @@ export type LineFitmentFilterInput = {
   partType?: string | null;
   carBrand?: string | null;
   carModel?: string | null;
+  /**
+   * The full customer query / consolidated text. Used to detect accessory /
+   * chemical intent even when the AI shortened `partType` to a bare part keyword
+   * (e.g. text "น้ำยาล้างคอยเย็น" but partType "คอยเย็น"). Brand/model are still
+   * resolved normally — only the part-category hard filter is skipped.
+   */
+  queryText?: string | null;
 };
 
 export type LineFitmentFilters = {
@@ -67,12 +74,67 @@ const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
 ];
 
 /**
+ * Accessory / chemical / tool intents that live in the generic "อะไหล่อื่นๆ"
+ * junk-drawer category (no dedicated part category). Their NAMES embed a part
+ * keyword as a substring by nature — a cleaner is "ล้าง + [the part it cleans]",
+ * a valve cap is "ฝาปิด + วาล์ว" — so the substring matcher below would wrongly
+ * force them into the part's category (e.g. "น้ำยาล้างคอยเย็น" → Evaporator),
+ * a HARD filter that then excludes the actual product. When the query/part-type
+ * matches one of these, we skip the category hint entirely and let the free-text
+ * search find the item (brand/model filters are still applied).
+ *
+ * Keep entries SPECIFIC enough not to collide with a legit part category
+ * (e.g. "ฝาปิดกล่องกรอง" not bare "ฝา"; "วาล์วลูกศร" not bare "วาล์ว").
+ */
+const ACCESSORY_CHEMICAL_SKIP_KEYWORDS = [
+  // Cleaners / flush chemicals (coil cleaner, condenser cleaner, system flush)
+  "น้ำยาล้าง",
+  "น้ำยาไล่",
+  "ล้างคอย",
+  "ล้างแผง",
+  "ล้างระบบแอร์",
+  "coil cleaner",
+  "condenser cleaner",
+  // Seals / tapes / fasteners / o-rings
+  "ฟองน้ำ",
+  "เทป",
+  "น็อต",
+  "น๊อต",
+  "โอริง",
+  "o-ring",
+  "oring",
+  // Box covers / valve caps (NOT the filter / valve itself)
+  "ฝาปิดกล่องกรอง",
+  "ฝาปิดวาล์ว",
+  // Tools & charging fittings / schrader valve cores
+  "เครื่องมือ",
+  "ตัวถอด",
+  "วาล์วลูกศร",
+  "ไส้ศร",
+  "หัวคอปเปอร์",
+  "หัวเติม",
+];
+
+/**
+ * True when the text indicates an accessory / chemical / tool (junk-drawer)
+ * product whose name embeds a part keyword — so the part-category hard filter
+ * must be skipped. Pure + exported for unit testing.
+ */
+export const isAccessoryOrChemicalIntent = (text: string | null | undefined): boolean => {
+  const t = text?.trim().toLowerCase();
+  if (!t) return false;
+  return ACCESSORY_CHEMICAL_SKIP_KEYWORDS.some((keyword) => t.includes(keyword.toLowerCase()));
+};
+
+/**
  * Returns the distinctive category-name substring for a colloquial part-type, or
  * null when none matches. Pure + exported for unit testing.
  */
 export const matchPartTypeToCategoryHint = (partType: string | null | undefined): string | null => {
   const p = partType?.trim().toLowerCase();
   if (!p) return null;
+  // Accessory / chemical intents must never resolve to a part category.
+  if (isAccessoryOrChemicalIntent(p)) return null;
   for (const alias of PART_TYPE_CATEGORY_ALIASES) {
     if (alias.keywords.some((keyword) => p.includes(keyword.toLowerCase()))) {
       return alias.categoryMatch;
@@ -92,12 +154,21 @@ export async function resolveLineFitmentFilters(
   const carBrand = trimOrNull(input.carBrand);
   const carModel = trimOrNull(input.carModel);
   const partType = trimOrNull(input.partType);
+  const queryText = trimOrNull(input.queryText);
 
   const filters: LineFitmentFilters = {};
 
+  // Skip the part-category hard filter for accessory/chemical intents. Checked
+  // against BOTH partType AND the full query text, so it triggers even when the
+  // AI shortened partType to a bare part keyword ("คอยเย็น") while the customer
+  // text ("น้ำยาล้างคอยเย็น") clearly indicates a cleaner. Brand/model below are
+  // unaffected.
+  const skipCategory = isAccessoryOrChemicalIntent([partType, queryText].filter(Boolean).join(" "));
+
   // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
   // fall back to a direct equals/contains on the spoken part-type.
-  const categoryHint = matchPartTypeToCategoryHint(partType);
+  const categoryHint = skipCategory ? null : matchPartTypeToCategoryHint(partType);
+  const allowPartTypeCategoryLookup = !skipCategory && Boolean(partType);
 
   try {
     const [brandRow, categoryRow] = await Promise.all([
@@ -112,7 +183,7 @@ export async function resolveLineFitmentFilters(
             where: { isActive: true, name: { contains: categoryHint, mode: "insensitive" } },
             select: { name: true },
           })
-        : partType
+        : allowPartTypeCategoryLookup && partType
         ? db.category.findFirst({
             where: {
               isActive: true,

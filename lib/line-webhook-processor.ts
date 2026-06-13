@@ -717,6 +717,7 @@ export async function processLineAiReply(
             partType: guardedSearchIntent.partType,
             carBrand: guardedSearchIntent.carBrand,
             carModel: guardedSearchIntent.carModel,
+            queryText: consolidatedQuery ?? input.text,
           }).catch((): LineFitmentFilters => ({}))
         : {};
 

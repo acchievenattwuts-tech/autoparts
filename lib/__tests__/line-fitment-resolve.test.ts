@@ -32,3 +32,26 @@ test("returns null for unknown / empty part-types", async () => {
   assert.equal(matchPartTypeToCategoryHint(""), null);
   assert.equal(matchPartTypeToCategoryHint(null), null);
 });
+
+test("skips the part-category hint for accessory / chemical intents", async () => {
+  const { matchPartTypeToCategoryHint, isAccessoryOrChemicalIntent } = await import(
+    "@/lib/line-fitment-resolve"
+  );
+  // The bug case: cleaner name embeds "คอยเย็น" but must NOT resolve to Evaporator.
+  assert.equal(matchPartTypeToCategoryHint("น้ำยาล้างคอยเย็น"), null);
+  assert.equal(matchPartTypeToCategoryHint("น้ำยาล้างแผงร้อน"), null); // not Condenser
+  assert.equal(matchPartTypeToCategoryHint("ฟองน้ำเส้นตู้แอร์"), null); // not Evaporator
+  assert.equal(matchPartTypeToCategoryHint("ฝาปิดกล่องกรองแอร์"), null); // not Cabin filter
+  assert.equal(matchPartTypeToCategoryHint("ฝาปิดวาล์วเติมน้ำยาแอร์"), null); // not Expansion Valve
+  assert.equal(matchPartTypeToCategoryHint("น็อตขันวาล์วแอร์"), null); // not Expansion Valve
+  assert.equal(matchPartTypeToCategoryHint("วาล์วลูกศรแอร์"), null); // not Expansion Valve
+
+  // Legit part queries are unaffected.
+  assert.equal(matchPartTypeToCategoryHint("คอยเย็น"), "(Evaporator)");
+  assert.equal(matchPartTypeToCategoryHint("วาล์วแอร์"), "(Expansion Valve)");
+  assert.equal(matchPartTypeToCategoryHint("ฝาปิดหม้อน้ำ"), "Radiator Cap"); // radiator cap stays
+  assert.equal(matchPartTypeToCategoryHint("คอนโทรลวาล์วคอมแอร์"), "Compressor Control Valve");
+
+  assert.equal(isAccessoryOrChemicalIntent("น้ำยาล้างคอยเย็น"), true);
+  assert.equal(isAccessoryOrChemicalIntent("คอยเย็น"), false);
+});

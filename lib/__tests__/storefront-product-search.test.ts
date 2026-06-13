@@ -87,3 +87,33 @@ test("storefront search does not fall back when strict required-token search has
     usedFallback: false,
   });
 });
+
+test("A-light: glued Thai compound is segmented into required tokens (with fallback)", async () => {
+  const { runStorefrontProductSearchWithRequiredTokenFallback } = await import(
+    "@/lib/storefront-product-search"
+  );
+  const calls: Array<{ requiredTokens?: string[] }> = [];
+  const searchFn: SearchFallbackFn = async (input): Promise<SearchResult> => {
+    calls.push(input as { requiredTokens?: string[] });
+    // strict (1st) returns the cleaner; no fallback needed.
+    return { ids: ["p0482"], total: 1, mode: "v2", matchReasons: { p0482: ["name"] } };
+  };
+  const result = await runStorefrontProductSearchWithRequiredTokenFallback(
+    {
+      query: "น้ำยาล้างคอยเย็น",
+      isActive: true,
+      skip: 0,
+      take: 24,
+      order: "createdAtDesc",
+      cacheProfile: "storefront",
+    },
+    searchFn,
+  );
+
+  assert.equal(calls.length, 1, "strict search returned results, so no fallback");
+  const used = calls[0].requiredTokens ?? [];
+  assert.ok(used.length >= 2, `expected segmented Thai required tokens, got ${JSON.stringify(used)}`);
+  assert.ok(used.includes("ล้าง"), `expected "ล้าง" anchor in ${JSON.stringify(used)}`);
+  assert.equal(result.searchResult.total, 1);
+  assert.equal(result.requiredTokenFallback?.usedFallback, false);
+});
