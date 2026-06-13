@@ -461,6 +461,31 @@ export async function markLineProcessedSeq(input: {
   });
 }
 
+/** Coalescing crash failsafe: conversations that have customer messages newer
+ *  than the last AI reply (lastInboundSeq > lastProcessedSeq), are not currently
+ *  owned by a live worker (lock free or lease expired), and have been quiet long
+ *  enough that a live owner would already have finished. The cron re-runs the
+ *  owner loop for these so a crashed webhook never leaves a customer unanswered. */
+export async function findStalledCoalescedConversationIds(input: {
+  quietBefore: Date;
+  take: number;
+}): Promise<string[]> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "LineConversation"
+    WHERE "lastInboundSeq" > "lastProcessedSeq"
+      AND ("processingOwner" IS NULL OR "processingLeaseUntil" < NOW())
+      AND "lastCustomerMessageAt" IS NOT NULL
+      AND "lastCustomerMessageAt" < ${input.quietBefore}
+    ORDER BY "lastCustomerMessageAt" ASC
+    LIMIT ${input.take}`;
+  return rows.map((row) => row.id);
+}
+
+/** Full conversation row used to rebuild the owner-loop context during recovery. */
+export async function getLineConversationForRecovery(conversationId: string) {
+  return db.lineConversation.findUnique({ where: { id: conversationId } });
+}
+
 /** All inbound customer messages that arrived after the most recent outbound
  *  (AI or admin) reply — i.e. the unanswered turn to be coalesced and processed
  *  together (oldest → newest). */

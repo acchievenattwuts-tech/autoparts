@@ -25,7 +25,7 @@ import {
   type LineReplyHistoryItem,
 } from "@/lib/line-ai-service";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
-import { GUARD_GROUPS, groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
+import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   acquireLineConversationLock,
@@ -35,7 +35,9 @@ import {
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
+  findStalledCoalescedConversationIds,
   getLineCoalesceState,
+  getLineConversationForRecovery,
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
   getUnansweredInboundLineMessages,
@@ -149,6 +151,8 @@ export type LineWebhookProcessorDependencies = {
   getLineCoalesceState?: typeof getLineCoalesceState;
   markLineProcessedSeq?: typeof markLineProcessedSeq;
   getUnansweredInboundLineMessages?: typeof getUnansweredInboundLineMessages;
+  findStalledCoalescedConversationIds?: typeof findStalledCoalescedConversationIds;
+  getLineConversationForRecovery?: typeof getLineConversationForRecovery;
   /** Injectable debounce sleep (default real setTimeout; tests pass a no-op). */
   sleep?: (ms: number) => Promise<void>;
 };
@@ -187,6 +191,8 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   getLineCoalesceState,
   markLineProcessedSeq,
   getUnansweredInboundLineMessages,
+  findStalledCoalescedConversationIds,
+  getLineConversationForRecovery,
 };
 
 const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
@@ -197,6 +203,10 @@ const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
+// Sent as a bubble AFTER the matched products on a price inquiry — the customer
+// sees the options, and the exact price/promo is confirmed by a human.
+const PRICE_INQUIRY_DEFER_NOTE =
+  "ส่วนเรื่องราคา/โปรโมชั่น เดี๋ยวจูนให้แอดมินมาช่วยสรุปให้นะคะ 🙏";
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
@@ -694,8 +704,18 @@ export async function processLineAiReply(
     // applies to text messages.
     const isTextTurn = input.messageType === LineMessageType.TEXT;
     const layer1Group = intentToGroup(input.route.intent);
-    const regexGuardHit = GUARD_GROUPS.has(layer1Group);
-    const shouldClassify = isTextTurn && !regexGuardHit;
+    // Price/purchase keyword hits are NO LONGER a hard skip — a message like
+    // "หม้อน้ำ d-max ราคาเท่าไหร่" must be classified so it can route to product
+    // (search + show), not a blind admin hand-off. Only payment/claim stay
+    // authoritative (those are genuinely admin-only).
+    const hardGuard = layer1Group === "payment" || layer1Group === "claim_or_return";
+    // True when the regex flagged a price/buy intent — used to (a) skip the
+    // purchase hand-off when it's really a price *inquiry* we can answer with
+    // products, and (b) append a "price → admin" note after the matches.
+    const regexPriceIntent =
+      input.route.intent === LineIntent.PURCHASE_INTENT ||
+      input.route.intent === LineIntent.PRICE_NEGOTIATION;
+    const shouldClassify = isTextTurn && !hardGuard;
     const searchIntent = shouldClassify
       ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
           intent: input.route.intent,
@@ -719,7 +739,7 @@ export async function processLineAiReply(
       payload: {
         lineEventId: input.lineEventId,
         group,
-        source: regexGuardHit
+        source: hardGuard
           ? "regex_guard"
           : !isTextTurn
             ? "image_route"
@@ -928,6 +948,10 @@ export async function processLineAiReply(
       !isPurchaseIntent &&
       liveMode &&
       products.length > 0 &&
+      // A price *inquiry* re-routed to product (e.g. "หม้อน้ำ d-max ราคาเท่าไหร่")
+      // is NOT a purchase commitment — show the matches, don't hand off. Genuine
+      // "เอาตัวนี้/สั่งเลย" classifies as group=purchase and never reaches here.
+      !(regexPriceIntent && group === "product") &&
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY)
     ) {
@@ -1172,9 +1196,16 @@ export async function processLineAiReply(
     // one missing detail (year for rule #1, part type for rule #2) so the next
     // turn can pin the exact fit. Sent as its own bubble AFTER the flex cards.
     // Only when we actually showed products (not a forced hand-off / ask).
+    // Price inquiries that we answered with products get a "price → admin" note
+    // (the shop sets prices, not the AI); it takes precedence over the year/part
+    // nudge so we never stack two follow-up bubbles.
     const followUpBubble =
-      !forcedResponse && searchFollowUp && products.length > 0
-        ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+      !forcedResponse && products.length > 0
+        ? regexPriceIntent
+          ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
+          : searchFollowUp
+            ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+            : null
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
@@ -1690,12 +1721,24 @@ async function processCoalescedEvents(
         continue;
       }
 
-      const { conversation, inboundMessage, imageClassification } = await ingestLineEvent(
+      const { conversation, inboundMessage, imageClassification, aiJob } = await ingestLineEvent(
         event,
         config,
         dependencies,
         imageSearchEnabled,
       );
+      // The per-event PENDING job created during ingest is NOT the unit of work in
+      // coalesced mode — the owner processes one merged job for the whole turn.
+      // Close it immediately so the cron failsafe (which reprocesses stale PENDING
+      // jobs one-by-one, legacy-style) can never resurrect it into a duplicate
+      // reply. Crash recovery is handled by the conversation-level seq failsafe.
+      await dependencies
+        .updateLineAiJob(aiJob.id, {
+          status: LineAiJobStatus.COMPLETED,
+          result: { action: "coalesced_ingest" },
+          finishedAt: new Date(),
+        })
+        .catch(() => undefined);
       if (imageClassification && event.lineMessageId) {
         classByMessageId.set(event.lineMessageId, imageClassification);
       }
@@ -1751,6 +1794,63 @@ async function processCoalescedEvents(
       await release({ conversationId, owner }).catch(() => undefined);
     }
   }
+}
+
+/**
+ * Coalescing crash failsafe (run from the cron). The webhook normally owns and
+ * replies to a burst inside after(); if that invocation dies (timeout/crash)
+ * after persisting messages but before replying, the conversation is left with
+ * unanswered customer messages and no live owner. This finds those (seq newer
+ * than processed + lock free + quiet long enough that a live owner would have
+ * finished) and re-runs the owner loop. The lock + quiet window keep it from
+ * racing a still-running live owner, so it never produces a duplicate reply.
+ */
+export async function recoverStalledCoalescedConversations(
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies = defaultDependencies,
+  options?: { quietForMs?: number; take?: number },
+): Promise<{ scanned: number; replied: number }> {
+  const imageSearchEnabled = config.imageSearchEnabled ?? LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled;
+  const findStalled = dependencies.findStalledCoalescedConversationIds ?? findStalledCoalescedConversationIds;
+  const getConv = dependencies.getLineConversationForRecovery ?? getLineConversationForRecovery;
+  const acquire = dependencies.acquireLineConversationLock ?? acquireLineConversationLock;
+  const release = dependencies.releaseLineConversationLock ?? releaseLineConversationLock;
+  const leaseMs = config.coalesceLeaseMs ?? DEFAULT_COALESCE_LEASE_MS;
+  const quietForMs = options?.quietForMs ?? 90_000;
+
+  const ids = await findStalled({
+    quietBefore: new Date(Date.now() - quietForMs),
+    take: options?.take ?? 10,
+  }).catch(() => [] as string[]);
+
+  let replied = 0;
+  for (const conversationId of ids) {
+    const conversation = await getConv(conversationId).catch(() => null);
+    if (!conversation) continue;
+    const owner = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const acquired = await acquire({ conversationId, owner, leaseMs }).catch(() => false);
+    if (!acquired) continue; // a live owner still holds it — leave it alone
+    try {
+      const didReply = await runConversationOwnerLoop({
+        conversationId,
+        owner,
+        info: { conversation, lineUserId: conversation.lineUserId },
+        config,
+        dependencies,
+        imageSearchEnabled,
+        classByMessageId: new Map(),
+      });
+      if (didReply) replied += 1;
+    } catch (error) {
+      console.error("[line-webhook-processor] coalesce recovery failed", {
+        conversationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      await release({ conversationId, owner }).catch(() => undefined);
+    }
+  }
+  return { scanned: ids.length, replied };
 }
 
 /**

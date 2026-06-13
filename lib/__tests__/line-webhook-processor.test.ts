@@ -1141,3 +1141,48 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
   assert.ok((reply?.messageCount ?? 0) >= 2, "at least the reply + follow-up bubble");
   assert.ok(reply?.texts.at(-1)?.includes("ปีรถ"), "last bubble nudges for the model year");
 });
+
+test("price inquiry with a searchable part → searches, shows products, no admin handoff, price-defer note", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ d-max",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "universal", // searchable directly; focus is the price path
+  });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ d-max ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "price question still searches the catalog");
+  // No PURCHASE_HANDOFF — the customer sees products, not 'admin will summarise price'.
+  assert.ok(!calls.replies[0]?.text.includes("เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่ง"));
+  // Last bubble is the price-defer note.
+  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ราคา/โปรโมชั่น"), "price deferred to admin as a note");
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
+});
+
+test("genuine purchase intent still hands off to admin", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    nonProductTurn: true,
+    intentGroup: "purchase",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("เอาตัวนี้ครับ สั่งเลย"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"), "purchase commitment routes to a human");
+  assert.equal(calls.searches.length, 0);
+});

@@ -18,6 +18,7 @@ import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-pr
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import {
   processLineAiReply,
+  recoverStalledCoalescedConversations,
   type LineWebhookProcessorConfig,
   type LineWebhookProcessorDependencies,
 } from "@/lib/line-webhook-processor";
@@ -164,6 +165,27 @@ export async function processPendingLineAiJobs(input?: {
       summary.failed += 1;
     }
   }
+
+  // Coalescing crash failsafe: re-run the owner loop for any conversation left
+  // with unanswered customer messages and no live owner (e.g. the webhook's
+  // after() invocation died mid-burst). The lock + quiet window prevent racing a
+  // still-running live owner, so this never duplicates a reply.
+  const recovery = await recoverStalledCoalescedConversations(
+    {
+      channelAccessToken: input?.channelAccessToken ?? input?.config?.channelAccessToken ?? null,
+      autoReplyEnabled: input?.config?.autoReplyEnabled ?? aiSettings.autoReplyEnabled,
+      dryRun: input?.config?.dryRun ?? aiSettings.dryRun,
+      imageSearchEnabled: input?.config?.imageSearchEnabled ?? aiSettings.imageSearchEnabled,
+      allowPushFallback: input?.config?.allowPushFallback ?? true,
+      replyTokenMaxAgeMs: input?.config?.replyTokenMaxAgeMs ?? 45_000,
+      coalesce: true,
+    },
+    input?.dependencies ?? workerDependencies,
+  ).catch((error) => {
+    console.error("[line-ai-job-worker] coalesce recovery failed", error);
+    return { scanned: 0, replied: 0 };
+  });
+  summary.replied += recovery.replied;
 
   return summary;
 }

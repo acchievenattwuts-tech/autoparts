@@ -182,6 +182,19 @@ function createCoalesceHarness(options?: {
       state.processedSeq = seq;
     },
     getUnansweredInboundLineMessages: async () => state.inbound.slice(state.answeredCount),
+    findStalledCoalescedConversationIds: async () =>
+      state.seq > state.processedSeq && state.inbound.slice(state.answeredCount).length > 0 && !state.lockOwner
+        ? ["conv-1"]
+        : [],
+    getLineConversationForRecovery: async () =>
+      ({
+        id: "conv-1",
+        lineUserId: "u1",
+        customerId: null,
+        aiStatus: state.aiStatus,
+        // shape matches getOrCreate's conversation row (only id/lineUserId/aiStatus used)
+        lastCustomerMessageAt: null,
+      }) as Awaited<ReturnType<LineWebhookProcessorDependencies["getOrCreateLineConversation"]>>,
     sleep: async () => undefined, // no real debounce wait in tests
   };
 
@@ -314,4 +327,50 @@ test("coalescing: image-only part (fitment) with car → searches and replies", 
   assert.ok(calls.searches.length >= 1, "search runs once we have part + car");
   assert.equal(calls.replies.length, 1);
   assert.equal(result.repliedCount, 1);
+});
+
+test("recovery: a crashed burst (unanswered + free lock) gets exactly one reply", async () => {
+  const { recoverStalledCoalescedConversations } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "part_image" });
+  // Simulate a webhook that persisted the message + bumped seq but died before replying.
+  state.inbound.push({
+    id: "m1",
+    text: "หม้อน้ำ d max",
+    messageType: LineMessageType.TEXT,
+    replyToken: "rt1",
+    lineEventId: "e1",
+    lineMessageId: "lm1",
+    intent: null,
+    createdAt: new Date(),
+  });
+  state.seq = 1; // newer than processedSeq (0) → stalled
+
+  const res = await recoverStalledCoalescedConversations(baseConfig, dependencies, { quietForMs: 0, take: 5 });
+
+  assert.equal(res.replied, 1, "recovery sent the missing reply");
+  assert.equal(calls.replies.length, 1);
+});
+
+test("recovery: an already-answered conversation produces no duplicate reply", async () => {
+  const { recoverStalledCoalescedConversations } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "part_image" });
+  // Message exists but was already answered (seq == processedSeq) → not stalled.
+  state.inbound.push({
+    id: "m1",
+    text: "หม้อน้ำ d max",
+    messageType: LineMessageType.TEXT,
+    replyToken: "rt1",
+    lineEventId: "e1",
+    lineMessageId: "lm1",
+    intent: null,
+    createdAt: new Date(),
+  });
+  state.seq = 1;
+  state.processedSeq = 1;
+  state.answeredCount = 1;
+
+  const res = await recoverStalledCoalescedConversations(baseConfig, dependencies, { quietForMs: 0, take: 5 });
+
+  assert.equal(res.scanned, 0, "nothing to recover");
+  assert.equal(calls.replies.length, 0, "no duplicate reply");
 });
