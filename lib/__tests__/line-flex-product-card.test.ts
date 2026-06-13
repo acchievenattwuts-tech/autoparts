@@ -62,3 +62,22 @@ test("price shows 'สอบถามราคา' when salePrice is zero", () =
   assert.ok(msg);
   assert.match(JSON.stringify(msg), /สอบถามราคา/);
 });
+
+test("view-all URL carries the LINE search fitment filters (so web count matches)", () => {
+  const msg = buildProductFlexMessage({
+    products: [product(), product({ id: "p2", name: "สายน้ำยา 2" })],
+    searchQuery: "น้ำยา",
+    total: 27,
+    filters: { categoryName: "สายน้ำยา (A/C Hose)", carModelName: "Tiida", carBrandName: null, year: null },
+  });
+  assert.ok(msg);
+  const uri = JSON.stringify(msg).match(/https:\/\/[^"]*\/products\?[^"]*/)?.[0];
+  assert.ok(uri, "view-all URL present");
+  const params = new URL(uri).searchParams;
+  assert.equal(params.get("q"), "น้ำยา");
+  assert.equal(params.get("category"), "สายน้ำยา (A/C Hose)", "category filter carried");
+  assert.equal(params.get("model"), "Tiida", "model filter carried");
+  // null filters are omitted
+  assert.equal(params.get("brand"), null);
+  assert.equal(params.get("year"), null);
+});

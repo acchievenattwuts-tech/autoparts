@@ -1221,6 +1221,14 @@ export async function processLineAiReply(
           searchQuery: productSearch.searched ? productSearch.query : null,
           total: productSearch.searched ? productSearch.result.total : 0,
           placeholderImageUrl,
+          // Mirror the fitment filters the LINE search applied so the "view all on
+          // web" link lands on the SAME filtered set (matching counts).
+          filters: {
+            categoryName: fitmentFilters.categoryName ?? null,
+            carBrandName: fitmentFilters.carBrandName ?? null,
+            carModelName: fitmentFilters.carModelName ?? null,
+            year: guardedSearchIntent?.year ?? null,
+          },
         });
     // Persona follow-up: after showing the matches, nudge the customer for the
     // one missing detail (year for rule #1, part type for rule #2) so the next

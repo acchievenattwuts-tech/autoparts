@@ -64,8 +64,25 @@ function productUrl(baseUrl: string, product: LineMatchedProductSummary): string
   return `${baseUrl}/product/${slug}`;
 }
 
-function searchUrl(baseUrl: string, query: string): string {
-  return `${baseUrl}/products?q=${encodeURIComponent(query)}`;
+/** Fitment filters the LINE search applied — carried into the "view all on web"
+ *  URL so the storefront count matches what was shown in chat (the storefront
+ *  /products page maps these by name: category→categoryName, brand→carBrandName,
+ *  model→carModelNames, year→fitmentYear). */
+export type LineFlexSearchFilters = {
+  categoryName?: string | null;
+  carBrandName?: string | null;
+  carModelName?: string | null;
+  year?: number | null;
+};
+
+function searchUrl(baseUrl: string, query: string, filters?: LineFlexSearchFilters): string {
+  const params = new URLSearchParams();
+  params.set("q", query);
+  if (filters?.categoryName) params.set("category", filters.categoryName);
+  if (filters?.carBrandName) params.set("brand", filters.carBrandName);
+  if (filters?.carModelName) params.set("model", filters.carModelName);
+  if (filters?.year) params.set("year", String(filters.year));
+  return `${baseUrl}/products?${params.toString()}`;
 }
 
 function priceText(salePrice: number): string {
@@ -144,7 +161,12 @@ function buildProductBubble(
   };
 }
 
-function buildViewAllBubble(baseUrl: string, query: string, total: number): Record<string, unknown> {
+function buildViewAllBubble(
+  baseUrl: string,
+  query: string,
+  total: number,
+  filters?: LineFlexSearchFilters,
+): Record<string, unknown> {
   return {
     type: "bubble",
     body: {
@@ -165,7 +187,7 @@ function buildViewAllBubble(baseUrl: string, query: string, total: number): Reco
           type: "button",
           style: "secondary",
           height: "sm",
-          action: { type: "uri", label: "ดูทั้งหมดบนเว็บ", uri: searchUrl(baseUrl, query) },
+          action: { type: "uri", label: "ดูทั้งหมดบนเว็บ", uri: searchUrl(baseUrl, query, filters) },
         },
       ],
     },
@@ -178,6 +200,8 @@ export function buildProductFlexMessage(input: {
   total: number;
   /** Resolved shop-logo/placeholder; falls back to the env value when omitted. */
   placeholderImageUrl?: string | null;
+  /** Fitment filters from the LINE search, mirrored into the "view all" URL. */
+  filters?: LineFlexSearchFilters;
 }): LineFlexMessage | null {
   const baseUrl = getStorefrontBaseUrl();
   if (!baseUrl || input.products.length === 0) return null;
@@ -195,7 +219,7 @@ export function buildProductFlexMessage(input: {
 
   const bubbles = shown.map((product) => buildProductBubble(product, baseUrl, placeholderImageUrl));
   if (input.searchQuery && input.total > shown.length) {
-    bubbles.push(buildViewAllBubble(baseUrl, input.searchQuery, input.total));
+    bubbles.push(buildViewAllBubble(baseUrl, input.searchQuery, input.total, input.filters));
   }
 
   return {
