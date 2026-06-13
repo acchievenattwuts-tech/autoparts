@@ -243,13 +243,13 @@ function normalizedCarModelKey(carBrandName, carModelName) {
 }
 
 async function getProductionSnapshot(db) {
-  const [products, categories, partsBrands, carBrands, carModels] = await Promise.all([
-    db.product.findMany({ select: { code: true, slug: true } }),
-    db.category.findMany({ select: { id: true, name: true, isActive: true } }),
-    db.partsBrand.findMany({ select: { id: true, name: true, isActive: true } }),
-    db.carBrand.findMany({ select: { id: true, name: true, isActive: true } }),
-    db.carModel.findMany({ select: { id: true, name: true, isActive: true, carBrand: { select: { name: true } } } }),
-  ]);
+  const products = await db.product.findMany({ select: { code: true, slug: true } });
+  const categories = await db.category.findMany({ select: { id: true, name: true, isActive: true } });
+  const partsBrands = await db.partsBrand.findMany({ select: { id: true, name: true, isActive: true } });
+  const carBrands = await db.carBrand.findMany({ select: { id: true, name: true, isActive: true } });
+  const carModels = await db.carModel.findMany({
+    select: { id: true, name: true, isActive: true, carBrand: { select: { name: true } } },
+  });
   return { products, categories, partsBrands, carBrands, carModels };
 }
 
@@ -422,11 +422,11 @@ async function executeImport(db, data, confirmedLatestCode) {
 
     await ensureConfirmedMasters(tx, data.missing);
 
-    const [categories, partsBrands, carModels] = await Promise.all([
-      tx.category.findMany({ select: { id: true, name: true } }),
-      tx.partsBrand.findMany({ select: { id: true, name: true } }),
-      tx.carModel.findMany({ select: { id: true, name: true, carBrand: { select: { name: true } } } }),
-    ]);
+    const categories = await tx.category.findMany({ select: { id: true, name: true } });
+    const partsBrands = await tx.partsBrand.findMany({ select: { id: true, name: true } });
+    const carModels = await tx.carModel.findMany({
+      select: { id: true, name: true, carBrand: { select: { name: true } } },
+    });
     const categoryIds = new Map(categories.map((row) => [row.name, row.id]));
     const brandIds = new Map(partsBrands.map((row) => [row.name, row.id]));
     const carModelIds = new Map(carModels.map((row) => [`${row.carBrand.name}||${row.name}`, row.id]));

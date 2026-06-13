@@ -21,11 +21,9 @@ async function main() {
   });
 
   try {
-    const [userCount, productCount, siteContentCount] = await Promise.all([
-      db.user.count(),
-      db.product.count(),
-      db.siteContent.count(),
-    ]);
+    const userCount = await db.user.count();
+    const productCount = await db.product.count();
+    const siteContentCount = await db.siteContent.count();
 
     console.log(
       JSON.stringify(
