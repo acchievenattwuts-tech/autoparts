@@ -36,6 +36,22 @@ function sqlNumericLiteral(value: number): string {
   return String(value);
 }
 
+// Column scales for StockCard balance fields (see prisma/schema.prisma):
+//   qtyBalance   Decimal(12,4)
+//   priceBalance Decimal(10,4)
+//   priceOut     Decimal(10,4)
+const STOCK_QTY_SCALE = 4;
+const STOCK_PRICE_SCALE = 4;
+
+// Predict the value Postgres will persist into a numeric(_, scale) column.
+// Postgres rounds numeric half away from zero, which matches decimal.js
+// ROUND_HALF_UP. Used by recalculateStockCard() to detect rows whose stored
+// balance already equals the freshly computed value, so a redundant UPDATE can
+// be skipped WITHOUT changing the stored result (diff-write).
+function roundToColumnScale(value: number, scale: number): Prisma.Decimal {
+  return new Prisma.Decimal(value).toDecimalPlaces(scale, Prisma.Decimal.ROUND_HALF_UP);
+}
+
 export interface StockCardInput {
   productId: string;
   docNo: string;
@@ -147,12 +163,25 @@ export async function recalculateStockCard(
       }
     }
 
-    pendingUpdates.push({
-      id: row.id,
-      priceOut,
-      qtyBalance: newBaQty,
-      priceBalance: newBaPrice > 0 ? newBaPrice : 0,
-    });
+    const nextQtyBalance   = newBaQty;
+    const nextPriceBalance = newBaPrice > 0 ? newBaPrice : 0;
+
+    // Diff-write: only rewrite rows whose stored balance actually changes.
+    // The replay math above is untouched, so for a skipped row the value already
+    // persisted equals what a full rewrite would store — the final state is
+    // identical to a full recalculation, but we avoid UPDATE-ing every row.
+    const rowChanged =
+      !roundToColumnScale(nextQtyBalance, STOCK_QTY_SCALE).equals(row.qtyBalance) ||
+      !roundToColumnScale(nextPriceBalance, STOCK_PRICE_SCALE).equals(row.priceBalance) ||
+      !roundToColumnScale(priceOut, STOCK_PRICE_SCALE).equals(row.priceOut);
+    if (rowChanged) {
+      pendingUpdates.push({
+        id: row.id,
+        priceOut,
+        qtyBalance: nextQtyBalance,
+        priceBalance: nextPriceBalance,
+      });
+    }
 
     baQty   = newBaQty;
     baPrice = newBaPrice;
