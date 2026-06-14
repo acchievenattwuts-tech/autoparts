@@ -127,19 +127,6 @@ type PurchaseProductSnapshot = {
   inventoryTracking: string;
 };
 
-type PurchaseStockCardDraft = {
-  productId: string;
-  docNo: string;
-  docDate: Date;
-  source: "PURCHASE";
-  qtyIn: number;
-  qtyOut: number;
-  priceIn: number;
-  landedCost?: number;
-  detail?: string;
-  referenceId?: string;
-};
-
 type PurchaseLandedStockCardSnapshot = {
   id: string;
   productId: string;
@@ -151,6 +138,17 @@ const getPurchaseUnitKey = (productId: string, unitName: string): string => `${p
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+// SQL literal helpers for batched `UPDATE ... FROM (VALUES ...)` statements.
+// Only ever fed server-derived values (ids, computed numbers, controlled
+// strings), never raw client input beyond escaped text — keeps batched writes
+// injection-safe while collapsing N per-row round-trips into one.
+function sqlText(value: string | null): string {
+  return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
+}
+function sqlNum(value: number): string {
+  return Number.isFinite(value) ? String(value) : "0";
 }
 
 // Build a stable signature for a purchase line in BASE-UNIT terms.
@@ -306,37 +304,6 @@ async function resolvePurchasePaymentMethod(
   }
 
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
-}
-
-async function createPurchaseStockCardDraft(
-  tx: PurchaseTxClient,
-  input: PurchaseStockCardDraft,
-  nextSorderByProductId: Map<string, number>,
-): Promise<string> {
-  const nextSorder = nextSorderByProductId.get(input.productId) ?? 1;
-  nextSorderByProductId.set(input.productId, nextSorder + 1);
-
-  const row = await tx.stockCard.create({
-    data: {
-      productId: input.productId,
-      docNo: input.docNo,
-      docDate: input.docDate,
-      source: input.source,
-      sorder: nextSorder,
-      qtyIn: new Prisma.Decimal(input.qtyIn),
-      qtyOut: new Prisma.Decimal(input.qtyOut),
-      qtyBalance: new Prisma.Decimal(0),
-      landedCost: new Prisma.Decimal(input.landedCost ?? 0),
-      priceIn: new Prisma.Decimal(input.priceIn),
-      priceOut: new Prisma.Decimal(0),
-      priceBalance: new Prisma.Decimal(0),
-      detail: input.detail,
-      referenceId: input.referenceId,
-    },
-    select: { id: true },
-  });
-
-  return row.id;
 }
 
 async function refreshLatestPurchaseStockCardBalance(
@@ -1094,8 +1061,36 @@ export async function updatePurchase(
           where: { purchaseId: id },
           select: { id: true, productId: true },
         });
-        for (const item of oldItems) {
-          await reversePurchaseLotBalance(tx, item.id, item.productId);
+        // Reverse lot balances for every removed line in batch: one lookup of
+        // all their lot rows, aggregate the decrement per (product, lot), then a
+        // single clamped UPDATE. GREATEST(balance - Σqty, 0) equals the per-row
+        // decrement-then-clamp sequence because qty decrements are monotonic.
+        if (oldItems.length > 0) {
+          const productByItemId = new Map(oldItems.map((i) => [i.id, i.productId]));
+          const oldLots = await tx.purchaseItemLot.findMany({
+            where: { purchaseItemId: { in: oldItems.map((i) => i.id) } },
+            select: { purchaseItemId: true, lotNo: true, qty: true },
+          });
+          const decByProductLot = new Map<string, { productId: string; lotNo: string; dec: Prisma.Decimal }>();
+          for (const lot of oldLots) {
+            const productId = productByItemId.get(lot.purchaseItemId);
+            if (!productId) continue;
+            const key = `${productId}\u0000${lot.lotNo}`;
+            const existingDec = decByProductLot.get(key);
+            if (existingDec) existingDec.dec = existingDec.dec.add(lot.qty);
+            else decByProductLot.set(key, { productId, lotNo: lot.lotNo, dec: new Prisma.Decimal(lot.qty) });
+          }
+          if (decByProductLot.size > 0) {
+            const values = [...decByProductLot.values()]
+              .map((d) => `(${sqlText(d.productId)}, ${sqlText(d.lotNo)}, ${d.dec.toString()}::numeric)`)
+              .join(",");
+            await tx.$executeRawUnsafe(`
+              UPDATE "LotBalance" AS lb
+              SET "qtyOnHand" = GREATEST(lb."qtyOnHand" - d."dec", 0)
+              FROM (VALUES ${values}) AS d("productId","lotNo","dec")
+              WHERE lb."productId" = d."productId" AND lb."lotNo" = d."lotNo"
+            `);
+          }
         }
         await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
         await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
@@ -1135,7 +1130,21 @@ export async function updatePurchase(
       //     existing line + StockCard landed cost in place instead of
       //     rebuilding item/lot rows for the whole document.
       if (useDifferential && matchedByNewIdx.size > 0) {
-          const changedStockCardIds: string[] = [];
+          // Collect the header-derived field values for every matched line, then
+          // write them in ONE bulk UPDATE instead of one round-trip per line.
+          // Values are identical to the per-row update that ran before.
+          type MatchedSync = {
+            id: string;
+            lineNo: number;
+            subtotalAmount: number;
+            showQty: number;
+            showUnitName: string;
+            showPricePerUnit: number;
+            unitScale: number;
+            landedCostPerSelectedUnit: number;
+            allocatedLandedForLine: number;
+          };
+          const syncRows: MatchedSync[] = [];
           for (const [newIdx, existingItemId] of matchedByNewIdx) {
             const item = validItems[newIdx];
             const displayScale =
@@ -1143,55 +1152,79 @@ export async function updatePurchase(
             const itemTotal = item.qty * item.costPrice;
             const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
             const allocatedLandedForLine = landedAllocations.get(newIdx) ?? 0;
-            const landedCostPerSelectedUnit =
-              item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
-            await tx.purchaseItem.update({
-              where: { id: existingItemId },
-              data: {
-                supplierId: supplierId || null,
-                lineNo: newIdx + 1,
-                subtotalAmount: itemSubtotal,
-                showQty: item.qty,
-                showUnitName: item.unitName,
-                showPricePerUnit: item.costPrice,
-                unitScale: displayScale,
-                ...(canUpdateLandedAllocationInPlace
-                  ? { landedCost: landedCostPerSelectedUnit }
-                  : {}),
-              },
+            syncRows.push({
+              id: existingItemId,
+              lineNo: newIdx + 1,
+              subtotalAmount: itemSubtotal,
+              showQty: item.qty,
+              showUnitName: item.unitName,
+              showPricePerUnit: item.costPrice,
+              unitScale: displayScale,
+              landedCostPerSelectedUnit: item.qty > 0 ? allocatedLandedForLine / item.qty : 0,
+              allocatedLandedForLine,
             });
-
-            if (canUpdateLandedAllocationInPlace) {
-              const updatedStockCards = await tx.stockCard.findMany({
-                where: { docNo: existing.purchaseNo, referenceId: existingItemId },
-                select: { id: true },
-              });
-              const updatedStockCardIds = updatedStockCards.map((row) => row.id);
-              if (updatedStockCardIds.length > 0) {
-                changedStockCardIds.push(...updatedStockCardIds);
-                await tx.stockCard.updateMany({
-                  where: { id: { in: updatedStockCardIds } },
-                  data: { landedCost: allocatedLandedForLine },
-                });
-              }
-            }
           }
 
-          if (canUpdateLandedAllocationInPlace && changedStockCardIds.length > 0) {
-            const changedRows = await tx.stockCard.findMany({
-              where: { id: { in: changedStockCardIds } },
-              select: {
-                id: true,
-                productId: true,
-                docDate: true,
-                sorder: true,
-              },
-            });
+          // supplierId is the same for every line; landedCost is only synced when
+          // the allocation can be updated in place (otherwise left untouched).
+          const supplierValue = supplierId || null;
+          const values = syncRows
+            .map((r) => `(
+              ${sqlText(r.id)},
+              ${r.lineNo}::int,
+              ${sqlNum(r.subtotalAmount)}::numeric,
+              ${sqlNum(r.showQty)}::numeric,
+              ${sqlText(r.showUnitName)},
+              ${sqlNum(r.showPricePerUnit)}::numeric,
+              ${sqlNum(r.unitScale)}::numeric,
+              ${canUpdateLandedAllocationInPlace ? `${sqlNum(r.landedCostPerSelectedUnit)}::numeric` : "NULL::numeric"}
+            )`)
+            .join(",");
+          await tx.$executeRawUnsafe(`
+            UPDATE "PurchaseItem" AS pi SET
+              "supplierId" = ${sqlText(supplierValue)},
+              "lineNo" = d."lineNo",
+              "subtotalAmount" = d."subtotalAmount",
+              "showQty" = d."showQty",
+              "showUnitName" = d."showUnitName",
+              "showPricePerUnit" = d."showPricePerUnit",
+              "unitScale" = d."unitScale",
+              "landedCost" = COALESCE(d."landedCost", pi."landedCost")
+            FROM (VALUES ${values}) AS d(
+              "id","lineNo","subtotalAmount","showQty","showUnitName",
+              "showPricePerUnit","unitScale","landedCost"
+            )
+            WHERE pi."id" = d."id"
+          `);
 
-            for (const row of changedRows) {
-              const refreshed = await refreshLatestPurchaseStockCardBalance(tx, row);
-              if (!refreshed) {
-                productIdsNeedingRecalc.add(row.productId);
+          if (canUpdateLandedAllocationInPlace) {
+            // Refresh StockCard landed cost in place: one bulk UPDATE for the
+            // landed cost of every affected row, then replay the latest balance.
+            const allocByRef = new Map(syncRows.map((r) => [r.id, r.allocatedLandedForLine]));
+            const changedRows = await tx.stockCard.findMany({
+              where: { docNo: existing.purchaseNo, referenceId: { in: syncRows.map((r) => r.id) } },
+              select: { id: true, productId: true, docDate: true, sorder: true, referenceId: true },
+            });
+            if (changedRows.length > 0) {
+              const scValues = changedRows
+                .map((row) => `(${sqlText(row.id)}, ${sqlNum(allocByRef.get(row.referenceId ?? "") ?? 0)}::numeric)`)
+                .join(",");
+              await tx.$executeRawUnsafe(`
+                UPDATE "StockCard" AS sc SET "landedCost" = d."landedCost"
+                FROM (VALUES ${scValues}) AS d("id","landedCost")
+                WHERE sc."id" = d."id"
+              `);
+
+              for (const row of changedRows) {
+                const refreshed = await refreshLatestPurchaseStockCardBalance(tx, {
+                  id: row.id,
+                  productId: row.productId,
+                  docDate: row.docDate,
+                  sorder: row.sorder,
+                });
+                if (!refreshed) {
+                  productIdsNeedingRecalc.add(row.productId);
+                }
               }
             }
           }
@@ -1232,68 +1265,156 @@ export async function updatePurchase(
         ]),
       );
 
+      // Resolve every line's derived values up-front (validating product/unit),
+      // then write items + stock cards in batched statements rather than one
+      // round-trip per line. Computed values are identical to the per-row path.
+      const docDateForStock = parseDateOnlyToDate(purchaseDate);
+      type PreparedLine = {
+        itemIndex: number;
+        item: typeof validItems[number];
+        productId: string;
+        lineNo: number;
+        scale: number;
+        qtyInBase: number;
+        costPerBase: number;
+        allocatedLandedForLine: number;
+        landedCostPerSelectedUnit: number;
+        isTracked: boolean;
+        itemTotal: number;
+        itemSubtotal: number;
+        sorder: number | null; // assigned only for tracked lines
+      };
+      const prepared: PreparedLine[] = [];
       for (const { item, itemIndex } of itemsToCreate) {
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
         if (!product) throw new Error("ไม่พบสินค้า");
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale       = unit.scale;
-        const qtyInBase   = item.qty * scale;
+        const scale = unit.scale;
+        const qtyInBase = item.qty * scale;
         const costPerBase = item.costPrice / scale;
         const allocatedLandedForLine = landedAllocations.get(itemIndex) ?? 0;
-        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
-        const isTracked   = isInventoryTracked(product.inventoryTracking);
-        const itemTotal   = item.qty * item.costPrice;
-        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+        const isTracked = isInventoryTracked(product.inventoryTracking);
+        const itemTotal = item.qty * item.costPrice;
 
-        const purchaseItem = await tx.purchaseItem.create({
-          data: {
-            purchaseId:    id,
-            lineNo:        itemIndex + 1,
-            productId:     item.productId,
-            supplierId:    supplierId || null,
-            quantity:      Math.round(qtyInBase),
-            costPrice:     costPerBase,
-            totalAmount:   itemTotal,
-            subtotalAmount: itemSubtotal,
-            landedCost:    landedCostPerSelectedUnit,
-            showQty:       item.qty,
-            showUnitName:  item.unitName,
-            showPricePerUnit: item.costPrice,
-            unitScale:     scale,
-          },
-        });
-
-        const stockCardId = isTracked ? await createPurchaseStockCardDraft(tx, {
-          productId:   item.productId,
-          docNo:       existing.purchaseNo,
-          docDate:     parseDateOnlyToDate(purchaseDate),
-          source:      "PURCHASE",
-          qtyIn:       qtyInBase,
-          qtyOut:      0,
-          priceIn:     costPerBase,
-          landedCost:  allocatedLandedForLine,
-          detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
-          referenceId: purchaseItem.id,
-        }, nextSorderByProductId) : null;
-        if (stockCardId) {
-          productIdsNeedingRecalc.add(item.productId);
+        // sorder is assigned only for tracked lines, in iteration order, exactly
+        // as the per-row stock-card draft did, so values stay identical.
+        let sorder: number | null = null;
+        if (isTracked) {
+          sorder = nextSorderByProductId.get(item.productId) ?? 1;
+          nextSorderByProductId.set(item.productId, sorder + 1);
         }
-        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
+
+        prepared.push({
+          itemIndex,
+          item,
+          productId: item.productId,
+          lineNo: itemIndex + 1,
+          scale,
+          qtyInBase,
+          costPerBase,
+          allocatedLandedForLine,
+          landedCostPerSelectedUnit: item.qty > 0 ? allocatedLandedForLine / item.qty : 0,
+          isTracked,
+          itemTotal,
+          itemSubtotal: calcItemSubtotal(itemTotal, vatType, vatRate),
+          sorder,
+        });
+      }
+
+      if (prepared.length > 0) {
+        // 3a. Create all PurchaseItem rows in one statement, then read their ids
+        //     back (createMany does not return ids). lineNo is unique per
+        //     document, so it keys the new rows reliably.
+        await tx.purchaseItem.createMany({
+          data: prepared.map((p) => ({
+            purchaseId:       id,
+            lineNo:           p.lineNo,
+            productId:        p.productId,
+            supplierId:       supplierId || null,
+            quantity:         Math.round(p.qtyInBase),
+            costPrice:        p.costPerBase,
+            totalAmount:      p.itemTotal,
+            subtotalAmount:   p.itemSubtotal,
+            landedCost:       p.landedCostPerSelectedUnit,
+            showQty:          p.item.qty,
+            showUnitName:     p.item.unitName,
+            showPricePerUnit: p.item.costPrice,
+            unitScale:        p.scale,
+          })),
+        });
+        const createdItems = await tx.purchaseItem.findMany({
+          where: { purchaseId: id, id: { notIn: [...matchedExistingIds] } },
+          select: { id: true, lineNo: true },
+        });
+        const itemIdByLineNo = new Map(createdItems.map((r) => [r.lineNo, r.id]));
+
+        // 3b. Create all StockCard draft rows (tracked lines) in one statement.
+        const trackedLines = prepared.filter((p) => p.isTracked && p.sorder !== null);
+        if (trackedLines.length > 0) {
+          await tx.stockCard.createMany({
+            data: trackedLines.map((p) => ({
+              productId:   p.productId,
+              docNo:       existing.purchaseNo,
+              docDate:     docDateForStock,
+              source:      "PURCHASE" as const,
+              sorder:      p.sorder as number,
+              qtyIn:       new Prisma.Decimal(p.qtyInBase),
+              qtyOut:      new Prisma.Decimal(0),
+              qtyBalance:  new Prisma.Decimal(0),
+              landedCost:  new Prisma.Decimal(p.allocatedLandedForLine),
+              priceIn:     new Prisma.Decimal(p.costPerBase),
+              priceOut:    new Prisma.Decimal(0),
+              priceBalance: new Prisma.Decimal(0),
+              detail:      `ซื้อเข้า ${p.item.qty} ${p.item.unitName}`,
+              referenceId: itemIdByLineNo.get(p.lineNo) ?? null,
+            })),
+          });
+          trackedLines.forEach((p) => productIdsNeedingRecalc.add(p.productId));
+        }
+
+        // 3c. Lot rows: only for lot-controlled tracked lines (rare). Map back
+        //     the freshly-created StockCard ids by referenceId.
+        const lotLines = prepared.filter((p) => {
+          const product = productMap.get(p.productId);
+          return p.isTracked && p.item.lotItems.length > 0 && product?.isLotControl;
+        });
+        if (lotLines.length > 0) {
+          const lotItemIds = lotLines
+            .map((p) => itemIdByLineNo.get(p.lineNo))
+            .filter((v): v is string => Boolean(v));
+          const lotStockCards = await tx.stockCard.findMany({
+            where: { docNo: existing.purchaseNo, referenceId: { in: lotItemIds } },
+            select: { id: true, referenceId: true },
+          });
+          const stockCardIdByItemId = new Map(
+            lotStockCards.map((row) => [row.referenceId ?? "", row.id]),
+          );
+          for (const p of lotLines) {
+            const product = productMap.get(p.productId);
+            const lotErr = validateLotRows(
+              p.item.lotItems as LotSubRow[],
+              p.item.qty,
+              product?.requireExpiryDate ?? false,
+            );
             if (lotErr) throw new Error(lotErr);
 
-            const lotsInBase = item.lotItems.map((lot) => ({
+            const purchaseItemId = itemIdByLineNo.get(p.lineNo);
+            const stockCardId = purchaseItemId ? stockCardIdByItemId.get(purchaseItemId) : undefined;
+            if (!purchaseItemId || !stockCardId) throw new Error("ไม่พบรายการสินค้าที่เพิ่งสร้าง");
+
+            const lotsInBase = p.item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
-              qtyInBase:    lot.qty * scale,
-              unitCostBase: lot.unitCost / scale,
+              qtyInBase:    lot.qty * p.scale,
+              unitCostBase: lot.unitCost / p.scale,
               mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
               expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
             }));
 
-            await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
+            await writePurchaseLots(tx, purchaseItemId, p.productId, lotsInBase);
             await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
+          }
         }
       }
 
