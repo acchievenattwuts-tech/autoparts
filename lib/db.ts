@@ -97,8 +97,31 @@ globalForPrisma.prisma = db;
 // For stock/bf (maxDuration=180s), multiple sequential transactions can each use up to 110s.
 const TX_TIMEOUT = 110_000; // 110s — safely under Supabase 120s statement_timeout
 
+// Per-transaction guardrails (Supabase ships with both disabled: 0).
+//  - lock_timeout: a statement waiting longer than this on a row lock fails
+//    fast instead of hanging until the whole-transaction timeout. Turns
+//    concurrent-save contention (e.g. a double-submitted edit form competing
+//    for the same `Product` FOR UPDATE lock) into a quick, logged error rather
+//    than a 180s stall that Vercel may kill before any log is flushed.
+//  - idle_in_transaction_session_timeout: if a serverless function instance is
+//    frozen/recycled mid-transaction, Postgres aborts the orphaned session and
+//    releases its locks, so later writes on the same rows stop blocking forever.
+const TX_LOCK_TIMEOUT_MS = 8_000;
+const TX_IDLE_IN_TX_TIMEOUT_MS = 30_000;
+
 type TxFn<T> = Parameters<typeof db.$transaction>[0] & ((tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<T>);
 
 export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T> {
-  return db.$transaction(fn, { timeout: options?.timeout ?? TX_TIMEOUT }) as Promise<T>;
+  return db.$transaction(
+    async (tx) => {
+      // SET LOCAL is scoped to this transaction; on the Supabase transaction
+      // pooler the backend stays pinned for the transaction, so it applies.
+      await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = ${TX_LOCK_TIMEOUT_MS}`);
+      await tx.$executeRawUnsafe(
+        `SET LOCAL idle_in_transaction_session_timeout = ${TX_IDLE_IN_TX_TIMEOUT_MS}`,
+      );
+      return fn(tx);
+    },
+    { timeout: options?.timeout ?? TX_TIMEOUT },
+  ) as Promise<T>;
 }

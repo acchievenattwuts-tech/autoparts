@@ -712,7 +712,7 @@ export async function createPurchase(
             }]
           : [],
       );
-    }, { timeout: 180_000 });
+    });
 
     const afterSnapshot = createdPurchaseId
       ? await getPurchaseAuditSnapshot(createdPurchaseId)
@@ -1321,7 +1321,7 @@ export async function updatePurchase(
             }]
           : [],
       );
-    }, { timeout: 180_000 });
+    });
 
     const afterSnapshot = await getPurchaseAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
@@ -1344,6 +1344,9 @@ export async function updatePurchase(
     return { success: true };
   } catch (err) {
     console.error("[updatePurchase]", err);
+    if (err instanceof Error && /lock timeout|deadlock/i.test(err.message)) {
+      return { error: "มีการบันทึกใบนี้ซ้อนกันอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง" };
+    }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
