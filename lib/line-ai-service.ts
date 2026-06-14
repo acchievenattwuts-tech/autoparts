@@ -21,6 +21,7 @@ export type LineReplyHistoryItem = {
 export type LineProductSummary = {
   name: string;
   code: string | null;
+  salePrice: number;
 };
 
 // Interactive chat calls fail over fast (don't burn the full 30s on a hung key)
@@ -347,10 +348,11 @@ function buildLineReplyPrompt(input: {
   if (input.products && input.products.length > 0) {
     lines.push("รายการสินค้าที่พบในระบบ (เบื้องต้น ใกล้เคียงกับที่ลูกค้าถาม):");
     for (const product of input.products) {
-      lines.push(`- ${product.name}${product.code ? ` (รหัส ${product.code})` : ""}`);
+      const codePart = product.code ? ` (รหัส ${product.code})` : "";
+      lines.push(`- ${product.name}${codePart} [ราคา ${formatProductPrice(product.salePrice)}]`);
     }
     lines.push(
-      "ให้นำเสนอรายการเหล่านี้กับลูกค้าได้เลยเพื่อช่วยตัดสินใจเบื้องต้น โดยใช้ชื่อสินค้าตามนี้ ห้ามแต่งชื่อ/รหัสเพิ่มเอง",
+      "ให้นำเสนอรายการเหล่านี้กับลูกค้าได้เลยเพื่อช่วยตัดสินใจเบื้องต้น โดยใช้ชื่อสินค้า/รหัส/ราคาตามนี้เป๊ะ ห้ามแต่งชื่อ/รหัส/ราคาเพิ่มเอง",
     );
     lines.push(
       "สำคัญ: เรียงรายการในคำตอบ 'ตามลำดับที่ให้มาเป๊ะ' ห้ามสลับ/จัดลำดับใหม่ เพราะต้องตรงกับการ์ดสินค้าที่ส่งคู่กัน",
@@ -360,15 +362,17 @@ function buildLineReplyPrompt(input: {
         "รูปแบบการแสดงรายการสินค้า (ต้องทำตามนี้เป๊ะ เพื่อให้แต่ละรายการแยกชัดอ่านง่าย):",
         "- ขึ้นรายการแรกด้วยการเว้นบรรทัดว่าง 1 บรรทัดจากข้อความเปิด",
         "- แต่ละสินค้าขึ้นต้นด้วยเลขลำดับอิโมจิ 1️⃣ 2️⃣ 3️⃣ ... ตามด้วยชื่อสินค้าเต็ม",
-        "- บรรทัดถัดมาของสินค้านั้นใส่รหัสในรูปแบบ '🏷️ รหัส <รหัส>' (ถ้าสินค้าไม่มีรหัสให้ข้ามบรรทัดนี้)",
+        "- บรรทัดถัดมาของสินค้านั้นใส่รหัสและราคาไว้บรรทัดเดียวกันในรูปแบบ '🏷️ <รหัส>  |  💵 <ราคา>'",
+        "- ราคาให้ใช้ตามที่ให้มาเป๊ะ: ถ้ามีราคาให้แสดง '฿<จำนวน>' ถ้าไม่มีราคา/เป็น 0 ให้แสดง 'สอบถามราคา'",
+        "- ถ้าสินค้าไม่มีรหัส ให้แสดงเฉพาะราคาในรูปแบบ '💵 <ราคา>' (ไม่ต้องมี 🏷️ และเครื่องหมาย |)",
         "- คั่นระหว่างสินค้าแต่ละรายการด้วยเส้น '━━━━━━━━━━━━━━' บรรทัดเดียว",
         "- หลังรายการสุดท้ายเว้นบรรทัดว่าง 1 บรรทัดก่อนข้อความปิดท้าย",
         "ตัวอย่างรูปแบบ:",
         "1️⃣ ชื่อสินค้า A",
-        "🏷️ รหัส P0001",
+        "🏷️ P0001  |  💵 ฿350",
         "━━━━━━━━━━━━━━",
         "2️⃣ ชื่อสินค้า B",
-        "🏷️ รหัส P0002",
+        "🏷️ P0002  |  💵 สอบถามราคา",
       ].join("\n"),
     );
     lines.push(
@@ -396,20 +400,29 @@ function buildLineReplyPrompt(input: {
 const PRODUCT_LIST_DIVIDER = "━━━━━━━━━━━━━━";
 const PRODUCT_LIST_NUMBER_EMOJI = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
 
+/** Customer-facing sale-price label, mirrored from the flex product card so the
+ *  list text and the cards never disagree: "฿1,200" when priced, "สอบถามราคา"
+ *  when the price is missing/zero. */
+function formatProductPrice(salePrice: number): string {
+  return salePrice > 0 ? `฿${salePrice.toLocaleString("th-TH")}` : "สอบถามราคา";
+}
+
 /**
  * Formats matched products as a clear, separated list block (style A): each item
- * is numbered, the product code is on its own highlighted line, and items are
- * split by a divider so they read as distinct entries. Shared by every
- * customer-facing list reply so the deterministic templates and the live AI path
- * stay visually identical. Returns "" when there are no products.
+ * is numbered, with the product code and sale price on one shared "meta" line
+ * (🏷️ <code> | 💵 <price>), and items are split by a divider so they read as
+ * distinct entries. When a product has no code, only the price is shown. Shared
+ * by every customer-facing list reply so the deterministic templates and the
+ * live AI path stay visually identical. Returns "" when there are no products.
  */
 export function formatProductListBlock(products: LineProductSummary[]): string {
   return products
     .slice(0, 5)
     .map((product, index) => {
       const number = PRODUCT_LIST_NUMBER_EMOJI[index] ?? `${index + 1}.`;
-      const codeLine = product.code ? `\n🏷️ รหัส ${product.code}` : "";
-      return `${number} ${product.name}${codeLine}`;
+      const priceLabel = `💵 ${formatProductPrice(product.salePrice)}`;
+      const metaLine = product.code ? `🏷️ ${product.code}  |  ${priceLabel}` : priceLabel;
+      return `${number} ${product.name}\n${metaLine}`;
     })
     .join(`\n${PRODUCT_LIST_DIVIDER}\n`);
 }
