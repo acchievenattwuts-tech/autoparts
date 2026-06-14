@@ -92,17 +92,15 @@ type PurchaseLastTxClient = {
       }>
     >;
   };
-  product: {
-    update: (args: {
-      where: { id: string };
-      data: {
-        purchaseLastPrice?: Prisma.Decimal | null;
-        purchaseLastDate?: Date | null;
-        purchaseUnitName?: string;
-      };
-    }) => Promise<unknown>;
-  };
+  $executeRawUnsafe: (query: string) => Promise<number>;
 };
+
+function sqlTextLit(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+function sqlNumLit(value: number): string {
+  return Number.isFinite(value) ? String(value) : "0";
+}
 
 export async function refreshProductPurchaseLastFields(
   tx: PurchaseLastTxClient,
@@ -150,20 +148,26 @@ export async function refreshProductPurchaseLastFields(
   );
   const snapshotByProduct = new Map(snapshots.map((snapshot) => [snapshot.productId, snapshot]));
 
-  for (const productId of productIds) {
-    const snapshot = snapshotByProduct.get(productId);
-    await tx.product.update({
-      where: { id: productId },
-      data: snapshot
-        ? {
-            purchaseLastPrice: new Prisma.Decimal(snapshot.purchaseLastPrice),
-            purchaseLastDate: snapshot.purchaseLastDate,
-            purchaseUnitName: snapshot.purchaseUnitName,
-          }
-        : {
-            purchaseLastPrice: null,
-            purchaseLastDate: null,
-          },
-    });
-  }
+  // Apply every product in ONE bulk UPDATE instead of one round-trip per id.
+  // Values match the per-row update exactly: products with a snapshot get
+  // price/date/unit set; products without get price/date nulled and unit left
+  // unchanged (COALESCE keeps the existing value when NULL is supplied).
+  const values = productIds
+    .map((productId) => {
+      const snapshot = snapshotByProduct.get(productId);
+      const price = snapshot ? `${sqlNumLit(snapshot.purchaseLastPrice)}::numeric` : "NULL::numeric";
+      const date = snapshot ? `${sqlTextLit(snapshot.purchaseLastDate.toISOString())}::timestamptz` : "NULL::timestamptz";
+      const unit = snapshot ? `${sqlTextLit(snapshot.purchaseUnitName)}::text` : "NULL::text";
+      return `(${sqlTextLit(productId)}, ${price}, ${date}, ${unit})`;
+    })
+    .join(",");
+  await tx.$executeRawUnsafe(`
+    UPDATE "Product" AS p
+    SET
+      "purchaseLastPrice" = d."purchaseLastPrice",
+      "purchaseLastDate" = d."purchaseLastDate",
+      "purchaseUnitName" = COALESCE(d."purchaseUnitName", p."purchaseUnitName")
+    FROM (VALUES ${values}) AS d("id","purchaseLastPrice","purchaseLastDate","purchaseUnitName")
+    WHERE p."id" = d."id"
+  `);
 }

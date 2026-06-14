@@ -10,7 +10,7 @@ import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generatePurchaseNo } from "@/lib/doc-number";
 import {
   AuditAction,
@@ -762,9 +762,7 @@ export async function cancelPurchase(
         await reversePurchaseLotBalance(tx, item.id, item.productId);
       }
       await tx.stockCard.deleteMany({ where: { docNo: purchase.purchaseNo } });
-      for (const productId of affectedProductIds) {
-        await recalculateStockCard(tx, productId);
-      }
+      await recalculateStockCardMany(tx, affectedProductIds);
       await tx.purchase.update({
         where: { id: purchaseId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: new Prisma.Decimal(0) },
@@ -1418,9 +1416,7 @@ export async function updatePurchase(
         }
       }
 
-      for (const productId of productIdsNeedingRecalc) {
-        await recalculateStockCard(tx, productId);
-      }
+      await recalculateStockCardMany(tx, productIdsNeedingRecalc);
 
       await refreshProductPurchaseLastFields(
         tx,

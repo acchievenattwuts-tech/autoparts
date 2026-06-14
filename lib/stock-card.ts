@@ -76,44 +76,54 @@ export interface StockCardInput {
   usesReferenceCost?: boolean;
 }
 
+// Sources where stock comes IN but carries no independent cost — the entry
+// is meant to be MAVG-neutral (priceIn was set to avgCost at write time).
+// After any recalculation the stored snapshot may no longer match the running
+// avgCost, so we override pIn with baPrice so the average stays stable.
+//   RETURN_IN      — customer return (CN): stock back at current avgCost
+//   CLAIM_RETURN_IN — defective item returned by customer
+//   CLAIM_RECV_IN  — item received back from supplier after warranty claim
+const NEUTRAL_IN_SOURCES: string[] = [
+  "RETURN_IN",
+  "CLAIM_RETURN_IN",
+  "CLAIM_RECV_IN",
+];
+
+type StockReplayRow = {
+  id: string;
+  source: string;
+  qtyIn: Prisma.Decimal;
+  qtyOut: Prisma.Decimal;
+  priceIn: Prisma.Decimal;
+  landedCost: Prisma.Decimal;
+  usesReferenceCost: boolean;
+  qtyBalance: Prisma.Decimal;
+  priceBalance: Prisma.Decimal;
+  priceOut: Prisma.Decimal;
+};
+
+type StockBalanceUpdate = {
+  id: string;
+  priceOut: number;
+  qtyBalance: number;
+  priceBalance: number;
+};
+
 /**
- * Re-calculate all StockCard rows for a product from scratch using MAVG formula.
- * Call this after deleting StockCard rows (i.e., document cancellation).
- * Must be called inside a dbTx().
+ * Pure MAVG replay for one product's StockCard rows (already ordered by
+ * docDate, sorder). Returns the diff-write update set (only rows whose stored
+ * balance actually changes) plus the product's final stock/avgCost. Shared by
+ * both the single- and multi-product recalculators so the math stays identical.
  */
-export async function recalculateStockCard(
-  tx: TxClient,
-  productId: string
-): Promise<void> {
-  await lockProductForStockMutation(tx, productId);
-
-  const rows = await tx.stockCard.findMany({
-    where: { productId },
-    orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
-  });
-
-  let baQty   = 0;
+function replayStockCardMavg(rows: StockReplayRow[]): {
+  updates: StockBalanceUpdate[];
+  finalQty: number;
+  finalPrice: number;
+} {
+  let baQty = 0;
   let baPrice = 0;
   let baTotal = 0;
-  const pendingUpdates: {
-    id: string;
-    priceOut: number;
-    qtyBalance: number;
-    priceBalance: number;
-  }[] = [];
-
-  // Sources where stock comes IN but carries no independent cost — the entry
-  // is meant to be MAVG-neutral (priceIn was set to avgCost at write time).
-  // After any recalculation the stored snapshot may no longer match the running
-  // avgCost, so we override pIn with baPrice so the average stays stable.
-  //   RETURN_IN      — customer return (CN): stock back at current avgCost
-  //   CLAIM_RETURN_IN — defective item returned by customer
-  //   CLAIM_RECV_IN  — item received back from supplier after warranty claim
-  const NEUTRAL_IN_SOURCES: string[] = [
-    "RETURN_IN",
-    "CLAIM_RETURN_IN",
-    "CLAIM_RECV_IN",
-  ];
+  const updates: StockBalanceUpdate[] = [];
 
   for (const row of rows) {
     const qIn  = Number(row.qtyIn);
@@ -175,12 +185,7 @@ export async function recalculateStockCard(
       !roundToColumnScale(nextPriceBalance, STOCK_PRICE_SCALE).equals(row.priceBalance) ||
       !roundToColumnScale(priceOut, STOCK_PRICE_SCALE).equals(row.priceOut);
     if (rowChanged) {
-      pendingUpdates.push({
-        id: row.id,
-        priceOut,
-        qtyBalance: nextQtyBalance,
-        priceBalance: nextPriceBalance,
-      });
+      updates.push({ id: row.id, priceOut, qtyBalance: nextQtyBalance, priceBalance: nextPriceBalance });
     }
 
     baQty   = newBaQty;
@@ -188,9 +193,17 @@ export async function recalculateStockCard(
     baTotal = newBaTotal;
   }
 
+  return { updates, finalQty: Math.round(baQty), finalPrice: baPrice > 0 ? baPrice : 0 };
+}
+
+/** Flush diff-write balance updates in chunked `UPDATE ... FROM (VALUES ...)`. */
+async function flushStockBalanceUpdates(
+  tx: Pick<TxClient, "$executeRawUnsafe">,
+  updates: StockBalanceUpdate[],
+): Promise<void> {
   const updateChunkSize = 500;
-  for (let i = 0; i < pendingUpdates.length; i += updateChunkSize) {
-    const chunk = pendingUpdates.slice(i, i + updateChunkSize);
+  for (let i = 0; i < updates.length; i += updateChunkSize) {
+    const chunk = updates.slice(i, i + updateChunkSize);
     if (chunk.length === 0) continue;
 
     const values = chunk
@@ -214,15 +227,96 @@ export async function recalculateStockCard(
       WHERE sc."id" = data."id"
     `);
   }
+}
+
+/**
+ * Re-calculate all StockCard rows for a product from scratch using MAVG formula.
+ * Call this after deleting StockCard rows (i.e., document cancellation).
+ * Must be called inside a dbTx().
+ */
+export async function recalculateStockCard(
+  tx: TxClient,
+  productId: string
+): Promise<void> {
+  await lockProductForStockMutation(tx, productId);
+
+  const rows = await tx.stockCard.findMany({
+    where: { productId },
+    orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+  });
+
+  const { updates, finalQty, finalPrice } = replayStockCardMavg(rows);
+  await flushStockBalanceUpdates(tx, updates);
 
   // Update Product with final balance
   await tx.product.update({
     where: { id: productId },
     data: {
-      stock:   Math.round(baQty),
-      avgCost: new Prisma.Decimal(baPrice > 0 ? baPrice : 0),
+      stock:   finalQty,
+      avgCost: new Prisma.Decimal(finalPrice),
     },
   });
+}
+
+/**
+ * Batched equivalent of calling recalculateStockCard() once per product, but
+ * with a constant number of round-trips instead of ~4 per product: one lock,
+ * one read, one (chunked) StockCard balance write, one Product write. Each
+ * product is replayed independently with the SAME MAVG engine, so the result is
+ * identical to looping recalculateStockCard() over the same ids.
+ * Must be called inside a dbTx().
+ */
+export async function recalculateStockCardMany(
+  tx: TxClient,
+  productIdsInput: Iterable<string>,
+): Promise<void> {
+  const productIds = [...new Set([...productIdsInput].filter(Boolean))];
+  if (productIds.length === 0) return;
+
+  // Lock every affected Product row in one statement, in a deterministic order
+  // to avoid deadlocks with other transactions taking the same locks.
+  const idList = productIds.map((id) => sqlStringLiteral(id)).join(",");
+  await tx.$queryRawUnsafe(
+    `SELECT id FROM "Product" WHERE id IN (${idList}) ORDER BY id FOR UPDATE`,
+  );
+
+  const rows = await tx.stockCard.findMany({
+    where: { productId: { in: productIds } },
+    orderBy: [{ productId: "asc" }, { docDate: "asc" }, { sorder: "asc" }],
+  });
+
+  const byProduct = new Map<string, StockReplayRow[]>();
+  for (const row of rows) {
+    const group = byProduct.get(row.productId);
+    if (group) group.push(row);
+    else byProduct.set(row.productId, [row]);
+  }
+
+  const allUpdates: StockBalanceUpdate[] = [];
+  const productFinals: { id: string; stock: number; avgCost: number }[] = [];
+  for (const productId of productIds) {
+    const { updates, finalQty, finalPrice } = replayStockCardMavg(byProduct.get(productId) ?? []);
+    allUpdates.push(...updates);
+    productFinals.push({ id: productId, stock: finalQty, avgCost: finalPrice });
+  }
+
+  await flushStockBalanceUpdates(tx, allUpdates);
+
+  // Update every Product's final balance in chunked bulk statements.
+  const productChunkSize = 500;
+  for (let i = 0; i < productFinals.length; i += productChunkSize) {
+    const chunk = productFinals.slice(i, i + productChunkSize);
+    if (chunk.length === 0) continue;
+    const values = chunk
+      .map((p) => `(${sqlStringLiteral(p.id)}, ${Math.round(p.stock)}::int, ${sqlNumericLiteral(p.avgCost)}::numeric)`)
+      .join(",");
+    await tx.$executeRawUnsafe(`
+      UPDATE "Product" AS p
+      SET "stock" = data."stock", "avgCost" = data."avgCost"
+      FROM (VALUES ${values}) AS data("id", "stock", "avgCost")
+      WHERE p."id" = data."id"
+    `);
+  }
 }
 
 /**
