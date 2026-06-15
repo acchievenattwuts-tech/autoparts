@@ -524,7 +524,37 @@ model Category {
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
   isActive  Boolean   @default(true)
   slug      String?   @unique
+  aliases   CategoryAlias[]
   products  Product[]
+}
+
+enum CategoryAliasKind {
+  MATCH
+  SKIP_CATEGORY
+}
+
+enum CategoryAliasMatchMode {
+  EXACT
+  CONTAINS
+  TOKEN
+}
+
+model CategoryAlias {
+  id         String                 @id @default(cuid())
+  categoryId String?
+  alias      String
+  kind       CategoryAliasKind      @default(MATCH)
+  matchMode  CategoryAliasMatchMode @default(CONTAINS)
+  priority   Int                    @default(0)
+  isActive   Boolean                @default(true)
+  notes      String?
+  createdAt  DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime               @updatedAt @db.Timestamptz(3)
+  category   Category?              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([alias, kind])
+  @@index([categoryId])
+  @@index([kind, isActive, priority])
 }
 
 model Supplier {

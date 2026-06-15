@@ -6,6 +6,7 @@ import {
   getAllPermissionKeys,
   hasPermissionAccess,
 } from "@/lib/access-control";
+import { getCategoryAliasCoverageGaps } from "@/lib/category-alias-audit";
 import { resolveCategoryVisual } from "@/lib/category-visual-config";
 import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { requirePermission } from "@/lib/require-auth";
@@ -29,6 +30,18 @@ const CategoriesPage = async () => {
         slug: true,
         isActive: true,
         createdAt: true,
+        aliases: {
+          orderBy: [{ isActive: "desc" }, { priority: "desc" }, { alias: "asc" }],
+          select: {
+            id: true,
+            alias: true,
+            kind: true,
+            matchMode: true,
+            priority: true,
+            isActive: true,
+            notes: true,
+          },
+        },
       },
     }),
     getCategoryVisualSettings(),
@@ -38,6 +51,7 @@ const CategoriesPage = async () => {
     ...category,
     visual: resolveCategoryVisual(category, visualSettings[category.id]),
   }));
+  const aliasCoverageGaps = getCategoryAliasCoverageGaps(categories);
 
   return (
     <div className="space-y-4">
@@ -47,6 +61,7 @@ const CategoriesPage = async () => {
       />
       <CategoryForm
         categories={categoriesWithVisual}
+        aliasCoverageGaps={aliasCoverageGaps}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
         canUpdate={hasPermissionAccess(role, permissions, "master.update")}
         canCancel={hasPermissionAccess(role, permissions, "master.cancel")}

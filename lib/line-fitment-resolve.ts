@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { getCachedCategoryAliasRows } from "@/lib/category-alias-cache";
+import { matchCategoryAliasRows } from "@/lib/category-alias-resolver";
 
 /**
  * Resolves the AI-extracted fitment hints (free-text brand/model/part type) to the
@@ -33,6 +35,31 @@ const trimOrNull = (value?: string | null): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
+
+async function matchDbCategoryAlias(texts: Array<string | null | undefined>) {
+  try {
+    const rows = await getCachedCategoryAliasRows(() =>
+      db.categoryAlias.findMany({
+        where: {
+          isActive: true,
+          OR: [{ kind: "SKIP_CATEGORY" }, { kind: "MATCH", category: { isActive: true } }],
+        },
+        select: {
+          alias: true,
+          kind: true,
+          matchMode: true,
+          priority: true,
+          isActive: true,
+          category: { select: { id: true, name: true, isActive: true } },
+        },
+      }),
+    );
+    return matchCategoryAliasRows(texts, rows);
+  } catch {
+    // Keep the legacy resolver working while the CategoryAlias table rolls out.
+    return null;
+  }
+}
 
 /**
  * Maps colloquial part-type words (what customers / the AI actually say) to a
@@ -70,6 +97,7 @@ const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
   { keywords: ["ฝาหม้อน้ำ", "ฝาปิดหม้อน้ำ", "radiator cap"], categoryMatch: "Radiator Cap" },
   { keywords: ["น้ำยาหล่อเย็น", "คูลแลนท์", "coolant"], categoryMatch: "Radiator Coolant" },
   { keywords: ["สายน้ำยา", "ท่อน้ำยา", "a/c hose"], categoryMatch: "A/C Hose" },
+  { keywords: ["ท่อยางหม้อน้ำ", "ท่อน้ำหม้อน้ำ", "radiator hose"], categoryMatch: "Radiator Hose" },
   { keywords: ["หม้อน้ำ", "radiator"], categoryMatch: "(Radiator)" },
 ];
 
@@ -157,18 +185,22 @@ export async function resolveLineFitmentFilters(
   const queryText = trimOrNull(input.queryText);
 
   const filters: LineFitmentFilters = {};
+  const aliasMatch = await matchDbCategoryAlias([partType, queryText]);
 
   // Skip the part-category hard filter for accessory/chemical intents. Checked
   // against BOTH partType AND the full query text, so it triggers even when the
   // AI shortened partType to a bare part keyword ("คอยเย็น") while the customer
   // text ("น้ำยาล้างคอยเย็น") clearly indicates a cleaner. Brand/model below are
   // unaffected.
-  const skipCategory = isAccessoryOrChemicalIntent([partType, queryText].filter(Boolean).join(" "));
+  const skipCategory =
+    aliasMatch?.kind === "SKIP_CATEGORY" ||
+    isAccessoryOrChemicalIntent([partType, queryText].filter(Boolean).join(" "));
 
   // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
   // fall back to a direct equals/contains on the spoken part-type.
-  const categoryHint = skipCategory ? null : matchPartTypeToCategoryHint(partType);
-  const allowPartTypeCategoryLookup = !skipCategory && Boolean(partType);
+  const categoryFromAlias = aliasMatch?.kind === "MATCH" ? aliasMatch.categoryName : null;
+  const categoryHint = skipCategory || categoryFromAlias ? null : matchPartTypeToCategoryHint(partType);
+  const allowPartTypeCategoryLookup = !skipCategory && !categoryFromAlias && Boolean(partType);
 
   try {
     const [brandRow, categoryRow] = await Promise.all([
@@ -197,7 +229,8 @@ export async function resolveLineFitmentFilters(
         : Promise.resolve(null),
     ]);
 
-    if (categoryRow) filters.categoryName = categoryRow.name;
+    if (categoryFromAlias) filters.categoryName = categoryFromAlias;
+    else if (categoryRow) filters.categoryName = categoryRow.name;
     if (brandRow) filters.carBrandName = brandRow.name;
 
     // Car model only when we have a resolved brand to scope it (model names like
