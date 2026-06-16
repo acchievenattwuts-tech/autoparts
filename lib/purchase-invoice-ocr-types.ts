@@ -25,6 +25,21 @@ export const purchaseOcrResultSchema = z.object({
 export type PurchaseOcrLine = z.infer<typeof purchaseOcrLineSchema>;
 export type PurchaseOcrResult = z.infer<typeof purchaseOcrResultSchema>;
 
+/**
+ * Upload limits shared by the client uploader and the server action. Files go
+ * through Supabase Storage (not the 3mb Server Action body), so the real ceiling
+ * is the Gemini inline-request budget (~20MB total). Images are downscaled
+ * server-side before being sent to Gemini; PDFs are sent as-is.
+ */
+/** Private temp bucket name — shared by the storage module and the client uploader. */
+export const PURCHASE_OCR_BUCKET = "purchase-ocr-temp";
+export const PURCHASE_OCR_MAX_FILES = 10;
+export const PURCHASE_OCR_MAX_FILE_BYTES = 15 * 1024 * 1024;
+export const PURCHASE_OCR_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+
+export const isAcceptedPurchaseOcrMime = (mime: string): boolean =>
+  mime.startsWith("image/") || mime === "application/pdf";
+
 export const EMPTY_PURCHASE_OCR_RESULT: PurchaseOcrResult = {
   supplierName: null,
   referenceNo: null,

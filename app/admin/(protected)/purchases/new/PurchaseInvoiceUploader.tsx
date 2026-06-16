@@ -3,60 +3,38 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FileText, ScanLine, Sparkles, Upload, X } from "lucide-react";
 
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
-import type {
-  PurchaseOcrExtraction,
-  PurchaseOcrMatchConfidence,
+import {
+  isAcceptedPurchaseOcrMime,
+  PURCHASE_OCR_BUCKET,
+  PURCHASE_OCR_MAX_FILES,
+  PURCHASE_OCR_MAX_FILE_BYTES,
+  PURCHASE_OCR_MAX_TOTAL_BYTES,
+  type PurchaseOcrExtraction,
+  type PurchaseOcrMatchConfidence,
 } from "@/lib/purchase-invoice-ocr-types";
-import { extractPurchaseInvoiceFromImages } from "../ocr-actions";
+import {
+  extractPurchaseInvoiceFromStorage,
+  requestPurchaseOcrUpload,
+} from "../ocr-actions";
 import type { PurchaseProductOption } from "../purchase-form-data";
 
-const MAX_IMAGES = 10;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_FILE_TYPES = "image/*,application/pdf";
 const isPdf = (file: File) => file.type === "application/pdf";
-const isAcceptedFile = (file: File) => file.type.startsWith("image/") || isPdf(file);
-// Downscale target before upload. Server Actions cap the request body at 3mb
-// (next.config.ts), so compress each photo client-side to stay well under it —
-// 1280px / JPEG q0.7 keeps an invoice readable for OCR at ~150-250KB per page.
-const COMPRESS_MAX_DIMENSION = 1280;
-const COMPRESS_JPEG_QUALITY = 0.7;
-// Leave headroom below the 3mb server limit for multipart overhead.
-const TOTAL_UPLOAD_BUDGET_BYTES = Math.round(2.6 * 1024 * 1024);
 
-/**
- * Downscales an image with a canvas and re-encodes it as JPEG so multi-megabyte
- * phone photos fit under the Server Action body limit. Falls back to the original
- * file if decoding fails or the result isn't smaller. Client-only (uses the DOM).
- */
-async function compressImage(file: File): Promise<File> {
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, COMPRESS_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      bitmap.close();
-      return file;
-    }
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close();
-
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((result) => resolve(result), "image/jpeg", COMPRESS_JPEG_QUALITY),
-    );
-    if (!blob || blob.size >= file.size) return file;
-
-    const baseName = file.name.replace(/\.[^.]+$/, "");
-    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
-  } catch {
-    return file;
+// Browser Supabase client (anon key) — used only to upload to short-lived signed
+// URLs. The signed token authorizes each upload, so no session/RLS is needed.
+let browserClient: SupabaseClient | null = null;
+function getBrowserSupabase(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return null;
+  if (!browserClient) {
+    browserClient = createClient(url, anonKey, { auth: { persistSession: false } });
   }
+  return browserClient;
 }
 
 export interface AppliedOcrItem {
@@ -98,6 +76,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
   const [selectedByLine, setSelectedByLine] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [busyLabel, setBusyLabel] = useState("");
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -131,16 +110,20 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
     setInfo("");
     const incoming = Array.from(fileList);
 
-    const invalid = incoming.find((file) => !isAcceptedFile(file) || file.size > MAX_IMAGE_BYTES);
+    const invalid = incoming.find(
+      (file) => !isAcceptedPurchaseOcrMime(file.type) || file.size > PURCHASE_OCR_MAX_FILE_BYTES,
+    );
     if (invalid) {
-      setError("รองรับเฉพาะไฟล์รูปภาพหรือ PDF ขนาดไม่เกิน 8MB ต่อไฟล์");
+      setError("รองรับเฉพาะไฟล์รูปภาพหรือ PDF ขนาดไม่เกิน 15MB ต่อไฟล์");
       return;
     }
 
     setFiles((prev) => {
-      const next = [...prev, ...incoming].slice(0, MAX_IMAGES);
-      if (prev.length + incoming.length > MAX_IMAGES) {
-        setError(`แนบรูปได้ไม่เกิน ${MAX_IMAGES} รูปต่อครั้ง`);
+      const next = [...prev, ...incoming].slice(0, PURCHASE_OCR_MAX_FILES);
+      if (prev.length + incoming.length > PURCHASE_OCR_MAX_FILES) {
+        setError(`แนบไฟล์ได้ไม่เกิน ${PURCHASE_OCR_MAX_FILES} ไฟล์ต่อครั้ง`);
+      } else if (next.reduce((sum, file) => sum + file.size, 0) > PURCHASE_OCR_MAX_TOTAL_BYTES) {
+        setError("ขนาดไฟล์รวมต้องไม่เกิน 20MB");
       }
       return next;
     });
@@ -155,42 +138,65 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
 
   const handleScan = () => {
     if (files.length === 0) {
-      setError("กรุณาแนบรูปใบส่งของอย่างน้อย 1 รูป");
+      setError("กรุณาแนบไฟล์อย่างน้อย 1 ไฟล์");
       return;
     }
     setError("");
     setInfo("");
 
     startTransition(async () => {
-      // Images are downscaled; PDFs can't be canvas-compressed, so they pass
-      // through and rely on the total-size guard below.
-      const prepared = await Promise.all(
-        files.map((file) => (isPdf(file) ? Promise.resolve(file) : compressImage(file))),
-      );
-      const totalBytes = prepared.reduce((sum, file) => sum + file.size, 0);
-      if (totalBytes > TOTAL_UPLOAD_BUDGET_BYTES) {
-        setError(
-          "ไฟล์รวมกันใหญ่เกินไป กรุณาลดจำนวนไฟล์ ถ่ายรูปใหม่ให้เล็กลง หรือใช้ PDF ที่ขนาดเล็กกว่า",
+      try {
+        // 1. Ask the server for one signed upload URL per file.
+        setBusyLabel("กำลังเตรียมอัปโหลด...");
+        const ticketResult = await requestPurchaseOcrUpload(
+          files.map((file) => ({ mimeType: file.type, size: file.size })),
         );
-        return;
-      }
+        if ("error" in ticketResult) {
+          setError(ticketResult.error);
+          return;
+        }
 
-      const formData = new FormData();
-      for (const file of prepared) formData.append("images", file);
+        const supabase = getBrowserSupabase();
+        if (!supabase) {
+          setError("ระบบจัดเก็บไฟล์ยังไม่พร้อมใช้งาน");
+          return;
+        }
 
-      const result = await extractPurchaseInvoiceFromImages(formData);
-      if ("error" in result) {
-        setError(result.error);
-        return;
+        // 2. Upload each file directly to storage (bypasses the Server Action body).
+        setBusyLabel("กำลังอัปโหลดไฟล์...");
+        const stored: { path: string; mimeType: string }[] = [];
+        for (let i = 0; i < files.length; i += 1) {
+          const ticket = ticketResult.tickets[i];
+          const file = files[i];
+          const { error: uploadError } = await supabase.storage
+            .from(PURCHASE_OCR_BUCKET)
+            .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type });
+          if (uploadError) {
+            setError("อัปโหลดไฟล์ไม่สำเร็จ กรุณาลองใหม่");
+            return;
+          }
+          stored.push({ path: ticket.path, mimeType: file.type });
+        }
+
+        // 3. Run OCR + product matching on the server, then it deletes the temp files.
+        setBusyLabel("กำลังอ่านด้วย AI...");
+        const result = await extractPurchaseInvoiceFromStorage(stored);
+        if ("error" in result) {
+          setError(result.error);
+          return;
+        }
+
+        const pool = result.data.lines.flatMap((line) => line.candidates);
+        setCandidatePool(pool);
+        setExtraction(result.data);
+        const defaults: Record<number, string> = {};
+        result.data.lines.forEach((line, index) => {
+          if (line.candidates[0]) defaults[index] = line.candidates[0].id;
+        });
+        setSelectedByLine(defaults);
+      } finally {
+        setBusyLabel("");
       }
-      const pool = result.data.lines.flatMap((line) => line.candidates);
-      setCandidatePool(pool);
-      setExtraction(result.data);
-      const defaults: Record<number, string> = {};
-      result.data.lines.forEach((line, index) => {
-        if (line.candidates[0]) defaults[index] = line.candidates[0].id;
-      });
-      setSelectedByLine(defaults);
     });
   };
 
@@ -243,7 +249,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
           }`}
         >
           <Upload size={15} />
-          แนบรูป/PDF (สูงสุด {MAX_IMAGES} ไฟล์)
+          แนบรูป/PDF (สูงสุด {PURCHASE_OCR_MAX_FILES} ไฟล์)
           <input
             ref={inputRef}
             type="file"
@@ -267,7 +273,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              กำลังอ่าน...
+              {busyLabel || "กำลังประมวลผล..."}
             </>
           ) : (
             <>

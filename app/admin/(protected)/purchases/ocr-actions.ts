@@ -1,25 +1,50 @@
 "use server";
 
+import sharp from "sharp";
+
 import { db } from "@/lib/db";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { searchProductIds } from "@/lib/product-search";
 import { requirePermission } from "@/lib/require-auth";
 import { runPurchaseInvoiceOcr } from "@/lib/purchase-invoice-ocr";
 import {
+  isAcceptedPurchaseOcrMime,
+  PURCHASE_OCR_MAX_FILES,
+  PURCHASE_OCR_MAX_FILE_BYTES,
+  PURCHASE_OCR_MAX_TOTAL_BYTES,
   type PurchaseOcrExtraction,
   type PurchaseOcrLine,
   type PurchaseOcrMatchConfidence,
   type PurchaseOcrMatchedLine,
 } from "@/lib/purchase-invoice-ocr-types";
+import {
+  createPurchaseOcrUploadTickets,
+  deletePurchaseOcrFiles,
+  fetchPurchaseOcrFile,
+  type PurchaseOcrUploadTicket,
+} from "@/lib/purchase-invoice-storage";
 import type { PurchaseProductOption } from "./purchase-form-data";
 
-const MAX_IMAGES = 10;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB per image
 const CANDIDATES_PER_LINE = 3;
+const IMAGE_MAX_DIMENSION = 2048;
+const IMAGE_JPEG_QUALITY = 85;
+// base64 inflates raw bytes by ~33%; keep the summed send bytes under this so the
+// Gemini inline request stays within its ~20MB total budget.
+const GEMINI_SEND_BUDGET_BYTES = 14 * 1024 * 1024;
 
-const GENERIC_ERROR = "เกิดข้อผิดพลาดในการอ่านรูป กรุณาลองใหม่";
+const GENERIC_ERROR = "เกิดข้อผิดพลาดในการอ่านไฟล์ กรุณาลองใหม่";
 
 type ExtractResult = { error: string } | { data: PurchaseOcrExtraction };
+
+export interface RequestedOcrFile {
+  mimeType: string;
+  size: number;
+}
+
+export interface StoredOcrFile {
+  path: string;
+  mimeType: string;
+}
 
 /**
  * Loads catalog products for the matched ids and maps them to the exact shape the
@@ -131,50 +156,141 @@ async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine>
 }
 
 /**
- * Server Action: reads supplier-invoice images, OCRs them with Gemini, and matches
- * each line to catalog products. Read-only (no DB mutation, no audit) — it only
- * pre-fills the purchase form draft. The actual write still runs through
- * `createPurchase`, which keeps StockCard/MAVG/audit behaviour unchanged.
+ * Prepares one fetched file for Gemini. Images are downscaled + re-encoded with
+ * sharp for clean, consistent OCR input; PDFs pass through untouched. Falls back
+ * to the original bytes when sharp can't decode the image (e.g. HEIC).
  */
-export async function extractPurchaseInvoiceFromImages(
-  formData: FormData,
-): Promise<ExtractResult> {
-  const session = await requirePermission("purchases.create").catch(() => null);
-  if (!session) {
-    return { error: "ไม่มีสิทธิ์ใช้งาน" };
+async function prepareForGemini(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  if (mimeType === "application/pdf") {
+    return { buffer, mimeType };
   }
+  try {
+    const out = await sharp(buffer)
+      .rotate() // honor EXIF orientation
+      .resize({
+        width: IMAGE_MAX_DIMENSION,
+        height: IMAGE_MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: IMAGE_JPEG_QUALITY })
+      .toBuffer();
+    return { buffer: out, mimeType: "image/jpeg" };
+  } catch {
+    return { buffer, mimeType };
+  }
+}
+
+/**
+ * Server Action #1: validates the chosen files and returns one signed upload URL
+ * per file so the browser can upload directly to private storage — keeping the
+ * bytes out of the Server Action body. Read-only (no business mutation).
+ */
+export async function requestPurchaseOcrUpload(
+  files: RequestedOcrFile[],
+): Promise<{ error: string } | { tickets: PurchaseOcrUploadTicket[] }> {
+  const session = await requirePermission("purchases.create").catch(() => null);
+  if (!session) return { error: "ไม่มีสิทธิ์ใช้งาน" };
 
   try {
-    const files = formData
-      .getAll("images")
-      .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-
-    if (files.length === 0) {
-      return { error: "กรุณาแนบรูปใบส่งของอย่างน้อย 1 รูป" };
+    if (!Array.isArray(files) || files.length === 0) {
+      return { error: "กรุณาแนบไฟล์อย่างน้อย 1 ไฟล์" };
     }
-    if (files.length > MAX_IMAGES) {
-      return { error: `แนบรูปได้ไม่เกิน ${MAX_IMAGES} รูปต่อครั้ง` };
+    if (files.length > PURCHASE_OCR_MAX_FILES) {
+      return { error: `แนบไฟล์ได้ไม่เกิน ${PURCHASE_OCR_MAX_FILES} ไฟล์ต่อครั้ง` };
     }
 
-    const images = [];
+    let total = 0;
     for (const file of files) {
-      const isAccepted = file.type.startsWith("image/") || file.type === "application/pdf";
-      if (!isAccepted) {
+      if (!isAcceptedPurchaseOcrMime(file.mimeType)) {
         return { error: "รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น" };
       }
-      if (file.size > MAX_IMAGE_BYTES) {
-        return { error: "ขนาดไฟล์ต้องไม่เกิน 8MB ต่อไฟล์" };
+      if (file.size <= 0 || file.size > PURCHASE_OCR_MAX_FILE_BYTES) {
+        return { error: "ขนาดไฟล์ต้องไม่เกิน 15MB ต่อไฟล์" };
       }
-      const buffer = Buffer.from(await file.arrayBuffer());
-      images.push({ mimeType: file.type, dataBase64: buffer.toString("base64") });
+      total += file.size;
+    }
+    if (total > PURCHASE_OCR_MAX_TOTAL_BYTES) {
+      return { error: "ขนาดไฟล์รวมต้องไม่เกิน 20MB" };
+    }
+
+    const tickets = await createPurchaseOcrUploadTickets(files.map((file) => file.mimeType));
+    if (!tickets) return { error: "ระบบจัดเก็บไฟล์ยังไม่พร้อมใช้งาน" };
+    return { tickets };
+  } catch {
+    return { error: GENERIC_ERROR };
+  }
+}
+
+/**
+ * Server Action #2: fetches the uploaded files from storage, OCRs them with Gemini,
+ * and matches each line to catalog products. Read-only assist — the actual save
+ * still runs through `createPurchase`, so StockCard/MAVG/audit stay unchanged. Temp
+ * files are deleted immediately in `finally`; the daily cron sweeps any orphans.
+ */
+export async function extractPurchaseInvoiceFromStorage(
+  storedFiles: StoredOcrFile[],
+): Promise<ExtractResult> {
+  const session = await requirePermission("purchases.create").catch(() => null);
+  if (!session) return { error: "ไม่มีสิทธิ์ใช้งาน" };
+
+  const paths = Array.isArray(storedFiles) ? storedFiles.map((file) => file.path) : [];
+
+  try {
+    if (!storedFiles || storedFiles.length === 0) {
+      return { error: "ไม่พบไฟล์ที่อัปโหลด" };
+    }
+    if (storedFiles.length > PURCHASE_OCR_MAX_FILES) {
+      return { error: `แนบไฟล์ได้ไม่เกิน ${PURCHASE_OCR_MAX_FILES} ไฟล์ต่อครั้ง` };
+    }
+
+    const images: { mimeType: string; dataBase64: string }[] = [];
+    let sendBytes = 0;
+    for (const file of storedFiles) {
+      const fetched = await fetchPurchaseOcrFile(file.path);
+      if (!fetched) continue;
+      if (fetched.bytes > PURCHASE_OCR_MAX_FILE_BYTES) {
+        return { error: "ขนาดไฟล์ต้องไม่เกิน 15MB ต่อไฟล์" };
+      }
+
+      const mime =
+        fetched.contentType !== "application/octet-stream" ? fetched.contentType : file.mimeType;
+      if (!isAcceptedPurchaseOcrMime(mime)) {
+        return { error: "รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น" };
+      }
+
+      const prepared = await prepareForGemini(fetched.buffer, mime);
+      sendBytes += prepared.buffer.byteLength;
+      if (sendBytes > GEMINI_SEND_BUDGET_BYTES) {
+        return {
+          error: "ไฟล์รวมกันใหญ่เกินไปสำหรับการอ่าน กรุณาลดจำนวนไฟล์หรือใช้ PDF ที่เล็กกว่า",
+        };
+      }
+      images.push({ mimeType: prepared.mimeType, dataBase64: prepared.buffer.toString("base64") });
+    }
+
+    if (images.length === 0) {
+      return { error: "อ่านไฟล์ที่อัปโหลดไม่ได้ กรุณาลองใหม่" };
     }
 
     const ocr = await runPurchaseInvoiceOcr(images);
     if (ocr.lines.length === 0) {
-      return { error: "อ่านรายการสินค้าจากรูปไม่ได้ กรุณากรอกเอง" };
+      return { error: "อ่านรายการสินค้าจากไฟล์ไม่ได้ กรุณากรอกเอง" };
     }
 
     const lines = await Promise.all(ocr.lines.map(matchLine));
+
+    // Read-only assist — structured log only (no AuditLog row; the business audit
+    // is written by createPurchase when the admin saves).
+    console.info("[purchase-ocr] scan", {
+      actorId: session.user?.id ?? null,
+      files: storedFiles.length,
+      lines: lines.length,
+      supplier: ocr.supplierName,
+    });
 
     return {
       data: {
@@ -186,5 +302,8 @@ export async function extractPurchaseInvoiceFromImages(
     };
   } catch {
     return { error: GENERIC_ERROR };
+  } finally {
+    // Delete temp immediately (happy + error paths). Cron sweeps anything missed.
+    await deletePurchaseOcrFiles(paths);
   }
 }

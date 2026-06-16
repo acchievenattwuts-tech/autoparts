@@ -1,6 +1,6 @@
 # Purchase Invoice OCR — สเปกและแผนงาน (AI ช่วยกรอกใบซื้อจากรูป)
 
-> สถานะ: **Phase 1–2 เสร็จ (server + UI) / Phase 3 เหลือทดสอบใบจริง**
+> สถานะ: **Phase 1–2 + Storage pipeline เสร็จ / Phase 3 เหลือทดสอบใบจริง**
 > อัปเดตล่าสุด: 2026-06-16
 > เจ้าของฟีเจอร์: ข้อ 3 จากการประเมิน AI agent (Purchase Invoice OCR)
 
@@ -175,6 +175,27 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - ยังไม่พบ dependency ใหม่ — ใช้ของเดิมทั้งหมด (`generateGeminiContent`, `searchProductIds`, `zod`)
 - ตัวเลือกอนาคต (เสนอเฉย ๆ): ปุ่มสแกนในหน้า edit, รองรับ PDF, เก็บรูปใบส่งของแนบกับเอกสารใบซื้อ
 
+## Storage pipeline (รูป + PDF ผ่าน Supabase Storage) — 2026-06-16
+
+เปลี่ยนจาก "ส่งไฟล์ inline ผ่าน server action" เป็น "อัปขึ้น storage ตรงจาก browser" เพื่อรองรับ
+ไฟล์ใหญ่ (เลี่ยง limit 3mb ของ server action + เพดาน Vercel 4.5MB) และให้ OCR คุณภาพดีขึ้น
+(server ย่อรูปด้วย `sharp` 2048px แทน canvas บีบแรงฝั่ง client)
+
+**Flow:** เลือกไฟล์ → `requestPurchaseOcrUpload` (validate + ออก signed upload URL ต่อไฟล์)
+→ browser `uploadToSignedUrl` ขึ้น bucket private ตรง → `extractPurchaseInvoiceFromStorage`
+(server fetch → `sharp` ย่อรูป/PDF ส่งตรง → Gemini → match → **ลบ temp ใน finally**)
+
+**การตัดสินใจ (ยืนยันกับผู้ใช้):**
+- **Audit:** ไม่แก้ schema — `console.info` structured log อย่างเดียว (OCR read-only ไม่เขียนข้อมูลธุรกิจ; audit จริงเกิดตอน `createPurchase`)
+- **Cron cleanup:** รายวัน `0 3 * * *` ลบไฟล์กำพร้า > 24 ชม. (route `/api/purchases/cron/cleanup-ocr-temp`, Bearer `CRON_SECRET`)
+- **เพดานไฟล์:** 15MB/ไฟล์, รวม ≤ 20MB, ≤ 10 ไฟล์ (+ guard ฝั่ง server ให้ payload ที่ส่ง Gemini ≤ ~14MB กัน base64 ทะลุ inline ~20MB)
+- **bucket:** `purchase-ocr-temp` private สร้างอัตโนมัติ idempotent (pattern เดียวกับ `payment-slips`)
+- **ไม่เพิ่ม dependency:** ใช้ `@supabase/supabase-js` + `sharp` ที่มีอยู่; ไม่แตะ `next.config.ts`/`generateGeminiContent`
+
+**ไฟล์ที่เพิ่ม/แก้รอบนี้:**
+- ใหม่: `lib/purchase-invoice-storage.ts`, `app/api/purchases/cron/cleanup-ocr-temp/route.ts`
+- แก้: `ocr-actions.ts` (2 actions: request upload / extract from storage + sharp), `PurchaseInvoiceUploader.tsx` (signed-upload flow, เลิก canvas compress), `purchase-invoice-ocr-types.ts` (limits + bucket name), `vercel.json` (cron)
+
 ## งานที่เสร็จแล้ว (log)
 
 - 2026-06-16 — วางแผนและยืนยันสเปกครบ
@@ -187,3 +208,5 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - 2026-06-16 — เพิ่มรองรับ PDF: client `accept="image/*,application/pdf"` + การ์ดพรีวิว PDF,
   PDF ส่ง inline ตรงให้ Gemini (canvas บีบอัดไม่ได้ จึงพึ่ง guard ขนาดรวมเดิม), server
   validate `application/pdf` เพิ่ม — ไม่เพิ่ม dependency, ไม่แตะ `generateGeminiContent`/config
+- 2026-06-16 — ย้ายไป Storage pipeline (รูป+PDF ผ่าน Supabase Storage, signed upload, sharp,
+  ลบ temp ทันที + cron กวาดรายวัน): รองรับไฟล์ใหญ่ถึง ~20MB และ OCR คมขึ้น — `tsc`/eslint/build/test ผ่านครบ
