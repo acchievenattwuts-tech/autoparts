@@ -181,3 +181,6 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - 2026-06-16 — Phase 1 เสร็จ: types/Zod/parser + OCR runner + server action + product matching; unit test 7 เคสผ่าน
 - 2026-06-16 — Phase 2 เสร็จ: `PurchaseInvoiceUploader` + เชื่อม `PurchaseForm` (new เท่านั้น); `tsc --noEmit`, eslint, `npm run build` ผ่านทั้งหมด
 - 2026-06-16 — อัปเดต `PLAN.md` index; เหลือ Phase 3 ทดสอบใบจริง (manual)
+- 2026-06-16 — แก้ 413 (Payload Too Large): server action body limit ตั้งไว้ 3mb โดยตั้งใจ
+  จึงเพิ่มการบีบอัดรูปฝั่ง client ด้วย canvas (1280px / JPEG q0.7, ไม่เพิ่ม dependency)
+  + guard ขนาดรวม ≤ 2.6MB ก่อนส่ง แทนการขยาย limit global — ไม่แตะ `next.config.ts`

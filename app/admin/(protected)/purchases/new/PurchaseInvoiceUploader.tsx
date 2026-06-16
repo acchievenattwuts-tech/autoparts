@@ -13,6 +13,48 @@ import type { PurchaseProductOption } from "../purchase-form-data";
 
 const MAX_IMAGES = 10;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// Downscale target before upload. Server Actions cap the request body at 3mb
+// (next.config.ts), so compress each photo client-side to stay well under it —
+// 1280px / JPEG q0.7 keeps an invoice readable for OCR at ~150-250KB per page.
+const COMPRESS_MAX_DIMENSION = 1280;
+const COMPRESS_JPEG_QUALITY = 0.7;
+// Leave headroom below the 3mb server limit for multipart overhead.
+const TOTAL_UPLOAD_BUDGET_BYTES = Math.round(2.6 * 1024 * 1024);
+
+/**
+ * Downscales an image with a canvas and re-encodes it as JPEG so multi-megabyte
+ * phone photos fit under the Server Action body limit. Falls back to the original
+ * file if decoding fails or the result isn't smaller. Client-only (uses the DOM).
+ */
+async function compressImage(file: File): Promise<File> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, COMPRESS_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((result) => resolve(result), "image/jpeg", COMPRESS_JPEG_QUALITY),
+    );
+    if (!blob || blob.size >= file.size) return file;
+
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
 
 export interface AppliedOcrItem {
   productId: string;
@@ -118,10 +160,17 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
     setError("");
     setInfo("");
 
-    const formData = new FormData();
-    for (const file of files) formData.append("images", file);
-
     startTransition(async () => {
+      const compressed = await Promise.all(files.map(compressImage));
+      const totalBytes = compressed.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > TOTAL_UPLOAD_BUDGET_BYTES) {
+        setError("รูปรวมกันใหญ่เกินไป กรุณาลดจำนวนรูปหรือถ่ายใหม่ให้ชัดแต่ไฟล์เล็กลง");
+        return;
+      }
+
+      const formData = new FormData();
+      for (const file of compressed) formData.append("images", file);
+
       const result = await extractPurchaseInvoiceFromImages(formData);
       if ("error" in result) {
         setError(result.error);
