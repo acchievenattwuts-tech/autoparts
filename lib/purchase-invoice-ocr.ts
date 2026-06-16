@@ -44,6 +44,8 @@ export interface PurchaseOcrRun {
   status: PurchaseOcrRunStatus;
   /** Raw Gemini text (server-side diagnosis only). Empty on no_keys/ai_error. */
   rawText: string;
+  /** Short reason on ai_error (e.g. the Gemini HTTP message), for diagnosis. */
+  detail?: string;
 }
 
 /**
@@ -81,10 +83,13 @@ export async function runPurchaseInvoiceOcr(
     return { result, status: "ok", rawText: text };
   } catch (error) {
     // error.message carries the real cause, e.g. ALL_GEMINI_KEYS_FAILED:GEMINI_HTTP_400:...
-    console.error(
-      "[purchase-ocr] gemini failed",
-      error instanceof Error ? error.message : String(error),
-    );
-    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "ai_error", rawText: "" };
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[purchase-ocr] gemini failed", message);
+    return {
+      result: EMPTY_PURCHASE_OCR_RESULT,
+      status: "ai_error",
+      rawText: "",
+      detail: message.slice(0, 160),
+    };
   }
 }

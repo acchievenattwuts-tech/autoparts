@@ -281,7 +281,7 @@ export async function extractPurchaseInvoiceFromStorage(
       return { error: "ระบบ AI ยังไม่พร้อมใช้งาน กรุณากรอกเอง" };
     }
     if (ocr.status === "ai_error") {
-      return { error: "อ่านไฟล์ด้วย AI ไม่สำเร็จ กรุณาลองใหม่ (รหัส: AI)" };
+      return { error: `อ่านไฟล์ด้วย AI ไม่สำเร็จ (รหัส: AI) [${ocr.detail ?? ""}]` };
     }
     if (ocr.result.lines.length === 0) {
       // Temporary diagnostic: surface what Gemini actually returned so we can tell
@@ -312,8 +312,10 @@ export async function extractPurchaseInvoiceFromStorage(
         lines,
       },
     };
-  } catch {
-    return { error: GENERIC_ERROR };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("[purchase-ocr] extract failed", detail);
+    return { error: `${GENERIC_ERROR} (รหัส: EX) [${detail.slice(0, 160)}]` };
   } finally {
     // Delete temp immediately (happy + error paths). Cron sweeps anything missed.
     await deletePurchaseOcrFiles(paths);
