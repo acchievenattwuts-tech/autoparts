@@ -8,6 +8,7 @@ import { PurchaseType } from "@/lib/generated/prisma";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PurchaseInvoiceUploader, { type AppliedOcrItem } from "./PurchaseInvoiceUploader";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { getThailandDateKey } from "@/lib/th-date";
 import {
@@ -17,22 +18,10 @@ import {
   sanitizePurchaseItemsForSubmit,
   type PurchaseDraftPayload,
   type PurchaseFormLineItem,
+  type PurchaseProductOption,
 } from "../purchase-form-data";
 
-interface ProductOption {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  purchaseUnitName: string;
-  costPrice: number;
-  categoryName: string;
-  brandName?: string | null;
-  aliases?: string[];
-  units: { name: string; scale: number; isBase: boolean }[];
-  isLotControl: boolean;
-  requireExpiryDate: boolean;
-}
+type ProductOption = PurchaseProductOption;
 
 interface SupplierOption { id: string; name: string; creditTerm?: number | null; isActive?: boolean }
 
@@ -252,6 +241,33 @@ const PurchaseForm = ({
             },
       ),
     );
+  };
+
+  // Merge AI-extracted invoice lines into the item list. Mirrors applySelectedProduct
+  // (unit/cost/lot seeding) but never fills lot number / mfg / exp — the admin must
+  // enter those. qty/cost fall back to product default when OCR left them blank.
+  const mergeOcrItems = (ocrItems: AppliedOcrItem[], chosenProducts: ProductOption[]) => {
+    chosenProducts.forEach(rememberProduct);
+    const productById = new Map(chosenProducts.map((product) => [product.id, product]));
+    const newLines: LineItem[] = ocrItems.map((ocr) => {
+      const product = productById.get(ocr.productId) ?? productMap.get(ocr.productId);
+      const qty = ocr.qty > 0 ? ocr.qty : 1;
+      const costPrice = ocr.unitCost > 0 ? ocr.unitCost : product?.costPrice ?? 0;
+      return {
+        productId: ocr.productId,
+        unitName: product?.purchaseUnitName ?? "",
+        qty,
+        costPrice,
+        landedCost: 0,
+        lotItems: product?.isLotControl
+          ? [{ lotNo: "", qty, unitCost: costPrice, mfgDate: "", expDate: "" }]
+          : [],
+      };
+    });
+    setItems((prev) => {
+      const onlyEmptyRow = prev.length === 1 && !prev[0].productId;
+      return onlyEmptyRow ? newLines : [...prev, ...newLines];
+    });
   };
 
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
@@ -552,6 +568,15 @@ const PurchaseForm = ({
           </div>
         </div>
       </div>
+
+      {/* AI invoice scan — new purchases only (edit form stays fully manual) */}
+      {!isEdit && (
+        <PurchaseInvoiceUploader
+          existingProducts={productOptions}
+          onApply={mergeOcrItems}
+          disabled={isPending}
+        />
+      )}
 
       {/* Line items */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">

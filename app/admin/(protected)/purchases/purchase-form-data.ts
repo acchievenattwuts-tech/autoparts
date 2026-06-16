@@ -1,3 +1,23 @@
+/**
+ * Catalog product option shared by the purchase form, the OCR uploader, and the
+ * OCR server action. Centralised here (a non-"use client" module) so the server
+ * action can return candidates in exactly the shape the form consumes.
+ */
+export interface PurchaseProductOption {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  purchaseUnitName: string;
+  costPrice: number;
+  categoryName: string;
+  brandName?: string | null;
+  aliases?: string[];
+  units: { name: string; scale: number; isBase: boolean }[];
+  isLotControl: boolean;
+  requireExpiryDate: boolean;
+}
+
 export interface PurchaseFormLotItem {
   lotNo: string;
   qty: number;

@@ -17,6 +17,7 @@
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
 - Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
 - **Warranty Manual Mode + Cancel Flow (2026-05-28)** — เพิ่ม 2-mode บน `/admin/warranties/new` (WITH_SALE / NO_SALE) + ฟังก์ชันยกเลิกประกันที่สร้างเอง (เฉพาะ `createdVia = MANUAL`, hard delete, block ถ้ามี active claim) รายละเอียดอยู่ใน [docs/roadmap/active.md](/D:/autoparts/docs/roadmap/active.md)
+- **Purchase Invoice OCR (2026-06-16)** — ตัวช่วย AI (Gemini) อ่านรูปใบส่งของซัพพลายเออร์แล้วเติม draft รายการสินค้าในหน้า `/admin/purchases/new` เท่านั้น (จับคู่สินค้าด้วย semantic search — part no. ก่อน แล้ว fallback ข้อความ) เป็น read-only ไม่แตะ `createPurchase`/StockCard/MAVG; สเปก+checklist อยู่ใน [docs/purchase-invoice-ocr-plan.md](/D:/autoparts/docs/purchase-invoice-ocr-plan.md). เหลือทดสอบกับใบจริงเพื่อวัด match rate
 - รักษาเอกสารให้ AI อ่านง่าย: ใช้ไฟล์นี้เป็น index และย้ายรายละเอียดลงเอกสารเฉพาะเรื่อง
 
 ## Current Priorities
