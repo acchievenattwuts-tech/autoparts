@@ -26,6 +26,10 @@ import {
 import type { PurchaseProductOption } from "./purchase-form-data";
 
 const CANDIDATES_PER_LINE = 3;
+// Match lines in small batches, not all at once: the DB pool is intentionally tiny
+// (max:1 per serverless instance), so fanning out one query per line exhausts it on
+// large invoices ("timeout exceeded when trying to connect").
+const MATCH_CONCURRENCY = 3;
 const IMAGE_MAX_DIMENSION = 2048;
 const IMAGE_JPEG_QUALITY = 85;
 // base64 inflates raw bytes by ~33%; keep the summed send bytes under this so the
@@ -153,6 +157,18 @@ async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine>
     candidates,
     confidence: candidates.length > 0 ? confidence : "none",
   };
+}
+
+/** Matches OCR lines in bounded batches to avoid exhausting the tiny DB pool. */
+async function matchLinesBounded(
+  ocrLines: PurchaseOcrLine[],
+): Promise<PurchaseOcrMatchedLine[]> {
+  const matched: PurchaseOcrMatchedLine[] = [];
+  for (let i = 0; i < ocrLines.length; i += MATCH_CONCURRENCY) {
+    const batch = ocrLines.slice(i, i + MATCH_CONCURRENCY);
+    matched.push(...(await Promise.all(batch.map(matchLine))));
+  }
+  return matched;
 }
 
 /**
@@ -293,7 +309,7 @@ export async function extractPurchaseInvoiceFromStorage(
       };
     }
 
-    const lines = await Promise.all(ocr.result.lines.map(matchLine));
+    const lines = await matchLinesBounded(ocr.result.lines);
 
     // Read-only assist — structured log only (no AuditLog row; the business audit
     // is written by createPurchase when the admin saves).
