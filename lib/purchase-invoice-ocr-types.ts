@@ -102,47 +102,80 @@ function cleanInvoiceDate(value: unknown): string | null {
   return `${String(normalizedYear).padStart(4, "0")}-${month}-${day}`;
 }
 
-function extractJson(text: string): string | null {
-  const trimmed = text.trim();
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  return start >= 0 && end > start ? trimmed.slice(start, end + 1) : null;
+function stripCodeFences(text: string): string {
+  return text.replace(/```(?:json)?/gi, "").trim();
+}
+
+/**
+ * Extracts the first JSON value (object OR array) from the model text. Gemini
+ * returns a single `{...}` for one document but a `[{...},{...}]` array when given
+ * several files — so we must handle both. Picks whichever bracket opens first.
+ */
+function extractJsonBlock(text: string): string | null {
+  const trimmed = stripCodeFences(text);
+  const objStart = trimmed.indexOf("{");
+  const arrStart = trimmed.indexOf("[");
+  if (objStart === -1 && arrStart === -1) return null;
+
+  const useArray = arrStart !== -1 && (objStart === -1 || arrStart < objStart);
+  const closeChar = useArray ? "]" : "}";
+  const start = useArray ? arrStart : objStart;
+  const end = trimmed.lastIndexOf(closeChar);
+  return end > start ? trimmed.slice(start, end + 1) : null;
+}
+
+function normalizeOcrLine(line: unknown): PurchaseOcrLine | null {
+  if (typeof line !== "object" || line === null) return null;
+  const record = line as Record<string, unknown>;
+  const rawText = cleanString(record.rawText, 300);
+  if (!rawText) return null;
+  return {
+    rawText,
+    partCode: cleanString(record.partCode, 100),
+    qty: cleanNumber(record.qty),
+    unitCost: cleanNumber(record.unitCost),
+  };
 }
 
 /**
  * Parses the Gemini OCR JSON response into a normalized, Zod-validated result.
- * Always returns a value (empty on any parse/validation failure) — never throws.
- * Pure (no server deps) so it is unit-testable without Gemini keys.
+ * Accepts either a single document object or an array of documents (one per file),
+ * merging all line items. Always returns a value (empty on any parse/validation
+ * failure) — never throws. Pure (no server deps) so it is unit-testable.
  */
 export function parsePurchaseInvoiceOcr(raw: string): PurchaseOcrResult {
-  const jsonText = extractJson(raw);
+  const jsonText = extractJsonBlock(raw);
   if (!jsonText) return EMPTY_PURCHASE_OCR_RESULT;
 
   try {
-    const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    const rawLines = Array.isArray(parsed.lines) ? parsed.lines : [];
+    const parsed: unknown = JSON.parse(jsonText);
+    const docs: Record<string, unknown>[] = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+      (doc): doc is Record<string, unknown> => typeof doc === "object" && doc !== null,
+    );
+    if (docs.length === 0) return EMPTY_PURCHASE_OCR_RESULT;
 
-    const normalized: PurchaseOcrResult = {
-      supplierName: cleanString(parsed.supplierName, 200),
-      referenceNo: cleanString(parsed.referenceNo, 100),
-      invoiceDate: cleanInvoiceDate(parsed.invoiceDate),
-      lines: rawLines
-        .map((line): PurchaseOcrLine | null => {
-          if (typeof line !== "object" || line === null) return null;
-          const record = line as Record<string, unknown>;
-          const rawText = cleanString(record.rawText, 300);
-          if (!rawText) return null;
-          return {
-            rawText,
-            partCode: cleanString(record.partCode, 100),
-            qty: cleanNumber(record.qty),
-            unitCost: cleanNumber(record.unitCost),
-          };
-        })
-        .filter((line): line is PurchaseOcrLine => line !== null),
-    };
+    let supplierName: string | null = null;
+    let referenceNo: string | null = null;
+    let invoiceDate: string | null = null;
+    const lines: PurchaseOcrLine[] = [];
 
-    const result = purchaseOcrResultSchema.safeParse(normalized);
+    for (const doc of docs) {
+      supplierName ??= cleanString(doc.supplierName, 200);
+      referenceNo ??= cleanString(doc.referenceNo, 100);
+      invoiceDate ??= cleanInvoiceDate(doc.invoiceDate);
+      const rawLines = Array.isArray(doc.lines) ? doc.lines : [];
+      for (const line of rawLines) {
+        const normalized = normalizeOcrLine(line);
+        if (normalized) lines.push(normalized);
+      }
+    }
+
+    const result = purchaseOcrResultSchema.safeParse({
+      supplierName,
+      referenceNo,
+      invoiceDate,
+      lines,
+    });
     return result.success ? result.data : EMPTY_PURCHASE_OCR_RESULT;
   } catch {
     return EMPTY_PURCHASE_OCR_RESULT;

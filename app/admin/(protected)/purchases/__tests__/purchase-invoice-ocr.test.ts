@@ -91,6 +91,35 @@ test("parsePurchaseInvoiceOcr extracts JSON wrapped in markdown fences", () => {
   assert.equal(result.lines.length, 1);
 });
 
+test("parsePurchaseInvoiceOcr merges lines from an array of documents (one per file)", () => {
+  const raw = JSON.stringify([
+    {
+      supplierName: "ร้าน ศรีวรรณอะไหล่แอร์",
+      referenceNo: "IV0013372",
+      invoiceDate: "2026-06-06",
+      lines: [{ rawText: "หม้อน้ำ TOYOTA VIOS'02", partCode: "RATOC-422175-80004W", qty: 2, unitCost: 1500 }],
+    },
+    {
+      supplierName: "AMZTON",
+      referenceNo: "PO-0030",
+      invoiceDate: "2026-06-09",
+      lines: [
+        { rawText: "คอมแอร์ SUZUKI CARRY 10S11", partCode: "STA-6154", qty: 1, unitCost: 3100 },
+        { rawText: "คอมแอร์ FORD RANGER 2018", partCode: "STA-7423", qty: 1, unitCost: 4350 },
+      ],
+    },
+  ]);
+
+  const result = parsePurchaseInvoiceOcr(raw);
+
+  // Header taken from the first document; all lines merged across documents.
+  assert.equal(result.supplierName, "ร้าน ศรีวรรณอะไหล่แอร์");
+  assert.equal(result.referenceNo, "IV0013372");
+  assert.equal(result.lines.length, 3);
+  assert.equal(result.lines[0].partCode, "RATOC-422175-80004W");
+  assert.equal(result.lines[2].partCode, "STA-7423");
+});
+
 test("parsePurchaseInvoiceOcr returns empty on non-JSON / garbage", () => {
   assert.deepEqual(parsePurchaseInvoiceOcr("not json at all"), EMPTY_PURCHASE_OCR_RESULT);
   assert.deepEqual(parsePurchaseInvoiceOcr(""), EMPTY_PURCHASE_OCR_RESULT);
