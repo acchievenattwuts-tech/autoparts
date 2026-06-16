@@ -10,7 +10,7 @@
 
 import { NextResponse } from "next/server";
 import type { ProductSearchCacheProfile } from "@/lib/product-search-cache";
-import { searchProductIds } from "@/lib/product-search";
+import { runStorefrontProductSearchWithRequiredTokenFallback } from "@/lib/storefront-product-search";
 import { db } from "@/lib/db";
 import { getProductPath } from "@/lib/product-slug";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -83,7 +83,14 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     // save the per-keystroke Gemini call; humans keep the full hybrid search.
     const isBot = isLikelyBotUserAgent(request.headers.get("user-agent"));
 
-    const result = await searchProductIds({
+    // Use the SAME required-token fallback wrapper as the full results pages
+    // (storefront /products/search + admin /admin/products) so the dropdown's
+    // count and items match exactly what the user lands on after clicking
+    // through. Calling searchProductIds() directly here would skip the
+    // required-token anchoring and return a much broader fuzzy set (e.g. a
+    // part-number query showing 102 loose matches that collapse to 2 on the
+    // results page).
+    const { searchResult: result } = await runStorefrontProductSearchWithRequiredTokenFallback({
       query,
       isActive: true,
       take: TAKE,
