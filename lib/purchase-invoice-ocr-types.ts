@@ -71,6 +71,21 @@ export interface PurchaseOcrExtraction {
   lines: PurchaseOcrMatchedLine[];
 }
 
+/** One line's match query sent to the chunked matcher (client → server). */
+export interface PurchaseOcrMatchQuery {
+  rawText: string;
+  partCode: string | null;
+}
+
+/** Match result for one line (server → client), aligned by index with the query. */
+export interface PurchaseOcrLineMatch {
+  candidates: PurchaseProductOption[];
+  confidence: PurchaseOcrMatchConfidence;
+}
+
+/** Max lines per chunked match request — keeps each request well within the timeout. */
+export const PURCHASE_OCR_MATCH_CHUNK_SIZE = 20;
+
 function cleanString(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();

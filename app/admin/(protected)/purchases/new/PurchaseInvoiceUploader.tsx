@@ -9,6 +9,7 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import {
   isAcceptedPurchaseOcrMime,
   PURCHASE_OCR_BUCKET,
+  PURCHASE_OCR_MATCH_CHUNK_SIZE,
   PURCHASE_OCR_MAX_FILES,
   PURCHASE_OCR_MAX_FILE_BYTES,
   PURCHASE_OCR_MAX_TOTAL_BYTES,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/purchase-invoice-ocr-types";
 import {
   extractPurchaseInvoiceFromStorage,
+  matchPurchaseOcrLines,
   requestPurchaseOcrUpload,
 } from "../ocr-actions";
 import type { PurchaseProductOption } from "../purchase-form-data";
@@ -77,6 +79,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busyLabel, setBusyLabel] = useState("");
+  const [matchProgress, setMatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -102,6 +105,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
     setExtraction(null);
     setSelectedByLine({});
     setCandidatePool([]);
+    setMatchProgress(null);
   };
 
   const handleFilesChosen = (fileList: FileList | null) => {
@@ -178,7 +182,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
           stored.push({ path: ticket.path, mimeType: file.type });
         }
 
-        // 3. Run OCR + product matching on the server, then it deletes the temp files.
+        // 3. OCR on the server (returns ALL lines, unmatched); it deletes the temp files.
         setBusyLabel("กำลังอ่านด้วย AI...");
         const result = await extractPurchaseInvoiceFromStorage(stored);
         if ("error" in result) {
@@ -186,18 +190,57 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
           return;
         }
 
-        const pool = result.data.lines.flatMap((line) => line.candidates);
-        setCandidatePool(pool);
+        // Show every extracted line immediately, then match in chunks so any line
+        // count completes — each chunk is a small, bounded request.
+        setCandidatePool([]);
+        setSelectedByLine({});
         setExtraction(result.data);
-        const defaults: Record<number, string> = {};
-        result.data.lines.forEach((line, index) => {
-          if (line.candidates[0]) defaults[index] = line.candidates[0].id;
-        });
-        setSelectedByLine(defaults);
+        await matchAllLines(result.data.lines);
       } finally {
         setBusyLabel("");
+        setMatchProgress(null);
       }
     });
+  };
+
+  // Matches every line in bounded chunks, filling candidates into the table as each
+  // chunk returns. Every line goes through the matcher; a failed chunk just leaves
+  // those lines unmatched (admin searches them manually).
+  const matchAllLines = async (allLines: PurchaseOcrExtraction["lines"]) => {
+    const total = allLines.length;
+    for (let i = 0; i < total; i += PURCHASE_OCR_MATCH_CHUNK_SIZE) {
+      setMatchProgress({ done: i, total });
+      setBusyLabel(`กำลังจับคู่สินค้า ${i}/${total}...`);
+
+      const chunk = allLines.slice(i, i + PURCHASE_OCR_MATCH_CHUNK_SIZE);
+      const matchRes = await matchPurchaseOcrLines(
+        chunk.map((line) => ({ rawText: line.rawText, partCode: line.partCode })),
+      );
+      if ("error" in matchRes) continue; // leave this chunk unmatched, keep going
+
+      const { matches } = matchRes;
+      setExtraction((prev) => {
+        if (!prev) return prev;
+        const lines = prev.lines.map((line, idx) => {
+          if (idx < i || idx >= i + matches.length) return line;
+          const match = matches[idx - i];
+          return { ...line, candidates: match.candidates, confidence: match.confidence };
+        });
+        return { ...prev, lines };
+      });
+      setCandidatePool((prev) => [...prev, ...matches.flatMap((match) => match.candidates)]);
+      setSelectedByLine((prev) => {
+        const next = { ...prev };
+        matches.forEach((match, j) => {
+          const idx = i + j;
+          if (match.candidates[0] && next[idx] === undefined) {
+            next[idx] = match.candidates[0].id;
+          }
+        });
+        return next;
+      });
+    }
+    setMatchProgress({ done: total, total });
   };
 
   const handleApply = () => {
@@ -348,6 +391,16 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
             AI อ่านได้ {extraction.lines.length} รายการ — โปรดจับคู่สินค้าให้ถูกต้อง
             ระบบจะไม่กรอกเลข Lot/วันผลิต/วันหมดอายุให้ ต้องกรอกเองในฟอร์ม
           </div>
+
+          {matchProgress && matchProgress.done < matchProgress.total && (
+            <div className="mb-3 flex items-center gap-2 text-xs text-[#1e3a5f] dark:text-sky-300">
+              <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              กำลังจับคู่สินค้า {matchProgress.done}/{matchProgress.total} รายการ...
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

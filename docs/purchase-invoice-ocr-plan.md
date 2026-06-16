@@ -217,5 +217,8 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
   4. **504 (200s)** → ใบ 205 รายการ: OCR หมุน key timeout สะสม ~191s → จำกัด `maxKeyAttempts: 2` + `timeoutMs 45s`
      + ใส่ match time-budget 25s / per-line timeout 8s (เกินงบ → บรรทัดที่เหลือเป็น "ไม่พบ" ให้ค้นเอง)
   5. ถอด debug code ชั่วคราวออก เหลือ log ฝั่ง server — **ใช้งานได้ครบทั้งรูปและ PDF**
-- 2026-06-16 — Known edge: PDF/ไฟล์ที่มีรายการเยอะมาก (เช่น 200+ price list) อาจจับคู่ได้ไม่ครบในงบ 25s
-  (บรรทัดท้ายเป็น "ไม่พบ"). Improvement ที่เสนอไว้ (ยังไม่ทำ): **batch embedding** รวม matching เป็น call เดียวให้เร็วขึ้น
+- 2026-06-16 — **Chunked matching** (รองรับทุกรายการ ไม่ว่ากี่บรรทัด): OCR action คืน "ทุกบรรทัด"
+  ทันทีแบบยังไม่จับคู่ → client เรียก `matchPurchaseOcrLines` ทีละชุด (`PURCHASE_OCR_MATCH_CHUNK_SIZE=20`)
+  เติม candidate เข้าตารางทีละชุด + โชว์ progress "จับคู่ X/N". ทุกบรรทัดเข้า loop จับคู่จริง (embed ทุกบรรทัด
+  รวม part code ตามที่ผู้ใช้เลือก) ไม่มี time-budget cutoff ที่เด้งออกแบบเดิม — scale ได้ไม่จำกัด เพราะแต่ละ
+  request เล็ก/bounded (concurrency 3 + per-line timeout 8s) ไม่เสี่ยง 504. แทนที่แนวคิด batch embedding เดิม

@@ -14,8 +14,10 @@ import {
   PURCHASE_OCR_MAX_TOTAL_BYTES,
   type PurchaseOcrExtraction,
   type PurchaseOcrLine,
+  type PurchaseOcrLineMatch,
   type PurchaseOcrMatchConfidence,
   type PurchaseOcrMatchedLine,
+  type PurchaseOcrMatchQuery,
 } from "@/lib/purchase-invoice-ocr-types";
 import {
   createPurchaseOcrUploadTickets,
@@ -27,14 +29,12 @@ import type { PurchaseProductOption } from "./purchase-form-data";
 
 const CANDIDATES_PER_LINE = 3;
 // Match lines in small batches, not all at once: the DB pool is intentionally tiny
-// (max:1 per serverless instance), so fanning out one query per line exhausts it on
-// large invoices ("timeout exceeded when trying to connect").
+// (max:1 per serverless instance), so fanning out one query per line exhausts it.
 const MATCH_CONCURRENCY = 3;
-// Each line may trigger a semantic-search embedding (a Gemini network call). Bound
-// per-line and overall time so a many-row PDF can't blow the function timeout (504).
-// Lines left over after the budget simply have no candidates — the admin searches them.
+// Per-line cap so one slow embedding can't stall a chunk.
 const MATCH_PER_LINE_TIMEOUT_MS = 8_000;
-const MATCH_TOTAL_BUDGET_MS = 25_000;
+// Hard server cap on chunk size (client sends PURCHASE_OCR_MATCH_CHUNK_SIZE).
+const MATCH_CHUNK_MAX = 40;
 const IMAGE_MAX_DIMENSION = 2048;
 const IMAGE_JPEG_QUALITY = 85;
 // base64 inflates raw bytes by ~33%; keep the summed send bytes under this so the
@@ -113,19 +113,21 @@ async function loadProductOptions(ids: string[]): Promise<PurchaseProductOption[
     .filter((option): option is PurchaseProductOption => Boolean(option));
 }
 
+const NO_MATCH: PurchaseOcrLineMatch = { candidates: [], confidence: "none" };
+
 /**
- * Matches one OCR line to catalog products. A real part number is tried first
- * (most precise); only when that yields nothing do we fall back to a semantic
- * search over the line text. Never auto-picks — returns ranked candidates.
+ * Matches one line to catalog products. A real part number is tried first (most
+ * precise); only when that yields nothing do we fall back to a semantic search over
+ * the line text. Never auto-picks — returns ranked candidates + a confidence label.
  */
-async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine> {
+async function matchOne(rawText: string, partCode: string | null): Promise<PurchaseOcrLineMatch> {
   let ids: string[] = [];
   let confidence: PurchaseOcrMatchConfidence = "none";
 
-  const partCode = line.partCode?.trim();
-  if (partCode) {
+  const code = partCode?.trim();
+  if (code) {
     const byCode = await searchProductIds({
-      query: partCode,
+      query: code,
       isActive: true,
       take: CANDIDATES_PER_LINE,
       cacheProfile: "admin",
@@ -137,7 +139,7 @@ async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine>
   }
 
   if (ids.length === 0) {
-    const text = line.rawText.trim();
+    const text = rawText.trim();
     if (text) {
       const byText = await searchProductIds({
         query: text,
@@ -153,27 +155,7 @@ async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine>
   }
 
   const candidates = await loadProductOptions(ids);
-
-  return {
-    rawText: line.rawText,
-    partCode: line.partCode,
-    qty: line.qty ?? 0,
-    unitCost: line.unitCost ?? 0,
-    candidates,
-    confidence: candidates.length > 0 ? confidence : "none",
-  };
-}
-
-/** A line returned without catalog candidates (admin matches it manually). */
-function unmatchedLine(line: PurchaseOcrLine): PurchaseOcrMatchedLine {
-  return {
-    rawText: line.rawText,
-    partCode: line.partCode,
-    qty: line.qty ?? 0,
-    unitCost: line.unitCost ?? 0,
-    candidates: [],
-    confidence: "none",
-  };
+  return { candidates, confidence: candidates.length > 0 ? confidence : "none" };
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -183,32 +165,17 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
   ]);
 }
 
-/**
- * Matches OCR lines in bounded batches (DB pool safety) within an overall time
- * budget (function-timeout safety). Each line also has its own timeout so one slow
- * embedding can't stall the batch. Lines past the budget come back unmatched.
- */
-async function matchLinesBounded(
-  ocrLines: PurchaseOcrLine[],
-): Promise<PurchaseOcrMatchedLine[]> {
-  const start = Date.now();
-  const matched: PurchaseOcrMatchedLine[] = [];
-
-  for (let i = 0; i < ocrLines.length; i += MATCH_CONCURRENCY) {
-    const batch = ocrLines.slice(i, i + MATCH_CONCURRENCY);
-    if (Date.now() - start > MATCH_TOTAL_BUDGET_MS) {
-      matched.push(...batch.map(unmatchedLine));
-      continue;
-    }
-    matched.push(
-      ...(await Promise.all(
-        batch.map((line) =>
-          withTimeout(matchLine(line), MATCH_PER_LINE_TIMEOUT_MS, unmatchedLine(line)),
-        ),
-      )),
-    );
-  }
-  return matched;
+/** A blank matched line (no candidates) — the OCR step returns these; the client
+ *  fills candidates in afterward via the chunked matcher. */
+function blankMatchedLine(line: PurchaseOcrLine): PurchaseOcrMatchedLine {
+  return {
+    rawText: line.rawText,
+    partCode: line.partCode,
+    qty: line.qty ?? 0,
+    unitCost: line.unitCost ?? 0,
+    candidates: [],
+    confidence: "none",
+  };
 }
 
 /**
@@ -345,7 +312,10 @@ export async function extractPurchaseInvoiceFromStorage(
       return { error: "อ่านไฟล์ได้แต่ไม่พบรายการสินค้า กรุณากรอกเอง" };
     }
 
-    const lines = await matchLinesBounded(ocr.result.lines);
+    // Return every extracted line immediately, unmatched. The client then matches
+    // them in chunks (see matchPurchaseOcrLines) so any line count completes without
+    // risking the function timeout — and every line goes through the matcher.
+    const lines = ocr.result.lines.map(blankMatchedLine);
 
     // Read-only assist — structured log only (no AuditLog row; the business audit
     // is written by createPurchase when the admin saves).
@@ -373,5 +343,46 @@ export async function extractPurchaseInvoiceFromStorage(
   } finally {
     // Delete temp immediately (happy + error paths). Cron sweeps anything missed.
     await deletePurchaseOcrFiles(paths);
+  }
+}
+
+/**
+ * Server Action #3: matches one chunk of OCR lines to catalog products. The client
+ * calls this repeatedly (one chunk at a time) so any number of lines can be matched
+ * without a single request risking the function timeout. Bounded concurrency + a
+ * per-line timeout keep each chunk safe for the tiny DB pool. Read-only.
+ */
+export async function matchPurchaseOcrLines(
+  queries: PurchaseOcrMatchQuery[],
+): Promise<{ error: string } | { matches: PurchaseOcrLineMatch[] }> {
+  const session = await requirePermission("purchases.create").catch(() => null);
+  if (!session) return { error: "ไม่มีสิทธิ์ใช้งาน" };
+
+  try {
+    if (!Array.isArray(queries) || queries.length === 0) {
+      return { matches: [] };
+    }
+    if (queries.length > MATCH_CHUNK_MAX) {
+      return { error: `จับคู่ได้ครั้งละไม่เกิน ${MATCH_CHUNK_MAX} รายการ` };
+    }
+
+    const matches: PurchaseOcrLineMatch[] = [];
+    for (let i = 0; i < queries.length; i += MATCH_CONCURRENCY) {
+      const batch = queries.slice(i, i + MATCH_CONCURRENCY);
+      matches.push(
+        ...(await Promise.all(
+          batch.map((query) =>
+            withTimeout(matchOne(query.rawText, query.partCode), MATCH_PER_LINE_TIMEOUT_MS, NO_MATCH),
+          ),
+        )),
+      );
+    }
+    return { matches };
+  } catch (error) {
+    console.error(
+      "[purchase-ocr] match failed",
+      error instanceof Error ? error.message : String(error),
+    );
+    return { error: "จับคู่สินค้าไม่สำเร็จ กรุณาลองใหม่" };
   }
 }
