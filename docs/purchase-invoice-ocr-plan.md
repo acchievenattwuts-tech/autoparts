@@ -196,6 +196,23 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - ใหม่: `lib/purchase-invoice-storage.ts`, `app/api/purchases/cron/cleanup-ocr-temp/route.ts`
 - แก้: `ocr-actions.ts` (2 actions: request upload / extract from storage + sharp), `PurchaseInvoiceUploader.tsx` (signed-upload flow, เลิก canvas compress), `purchase-invoice-ocr-types.ts` (limits + bucket name), `vercel.json` (cron)
 
+## Code-match accuracy fix (Plan A) — 2026-06-16
+
+ปัญหา: หลายบรรทัดขึ้น "ไม่พบ" ทั้งที่ part no. มีในระบบ — เพราะ `matchOne` เดิมยัด **สตริงเต็มจาก OCR**
+(รวม prefix ยี่ห้อ เช่น `MFTOC-`) เข้า `searchProductIds` (fuzzy/semantic) → prefix เจือจาง + เลขแกนที่ใช้ร่วมกัน
+หลายตัวทำให้ไม่มีตัวไหนผ่าน threshold. verify พบว่าเลขซัพพลายเออร์เก็บอยู่ใน **`ProductAlias` + ชื่อ** เพียบ
+(ไม่ใช่ field `code` ซึ่งเป็น `Pxxxx`).
+
+แก้เฉพาะ `matchOne` ใน [ocr-actions.ts](app/admin/(protected)/purchases/ocr-actions.ts) (ไม่แตะ search หน้าร้าน/LINE):
+1. normalize: ตัด prefix ยี่ห้อ `^[A-Z]{2,7}-` → แกนรหัส
+2. **exact match** บน `Product.code` + `ProductAlias.alias` (ทั้งสตริงเต็มและแกน) → "ตรงรหัส" จริง
+3. ถ้าไม่เจอ → **contains** แกนรหัสใน code/name/alias
+4. ถ้ายังไม่เจอ → semantic/lexical จากคำบรรยาย → "ใกล้เคียง"
+badge "ตรงรหัส" ตอนนี้หมายถึง code/alias match จริง (ไม่ใช่แค่ fuzzy เจอ)
+
+ผล verify ใบจริง: 5/6 รหัสที่เคย "ไม่พบ" กลับมาแมตช์ได้ (exact/contains). เคสที่เหลือ (`422175-63404W`)
+เป็น **data ถูกตัด** ในชื่อ (ระบบเก็บแค่ `422175-6340`) — logic ช่วยไม่ได้ ต้องแก้ข้อมูล (Plan B, ยังไม่ทำ).
+
 ## งานที่เสร็จแล้ว (log)
 
 - 2026-06-16 — วางแผนและยืนยันสเปกครบ

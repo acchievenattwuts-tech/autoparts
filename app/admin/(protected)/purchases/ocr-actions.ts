@@ -15,7 +15,6 @@ import {
   type PurchaseOcrExtraction,
   type PurchaseOcrLine,
   type PurchaseOcrLineMatch,
-  type PurchaseOcrMatchConfidence,
   type PurchaseOcrMatchedLine,
   type PurchaseOcrMatchQuery,
 } from "@/lib/purchase-invoice-ocr-types";
@@ -115,47 +114,93 @@ async function loadProductOptions(ids: string[]): Promise<PurchaseProductOption[
 
 const NO_MATCH: PurchaseOcrLineMatch = { candidates: [], confidence: "none" };
 
+// Supplier brand/category prefix on OCR part codes (e.g. "RATOC-", "MFTOC-",
+// "EVHIC-") that doesn't exist in our catalog. Stripped to get the core part number.
+const SUPPLIER_CODE_PREFIX = /^[A-Z]{2,7}-/;
+// Don't run a substring code search on very short cores (would over-match).
+const MIN_CORE_CODE_LENGTH = 5;
+
+function normalizeOcrCode(partCode: string): { full: string; core: string } {
+  const full = partCode.trim().toUpperCase().replace(/\s+/g, "");
+  const core = full.replace(SUPPLIER_CODE_PREFIX, "");
+  return { full, core };
+}
+
+/** Exact match on product code OR alias (case-insensitive) for any of the variants. */
+async function findProductIdsByExactCode(codeVariants: string[]): Promise<string[]> {
+  const variants = Array.from(new Set(codeVariants.filter(Boolean)));
+  if (variants.length === 0) return [];
+  const products = await db.product.findMany({
+    where: {
+      isActive: true,
+      OR: variants.flatMap((value) => [
+        { code: { equals: value, mode: "insensitive" as const } },
+        { aliases: { some: { alias: { equals: value, mode: "insensitive" as const } } } },
+      ]),
+    },
+    select: { id: true },
+    take: CANDIDATES_PER_LINE,
+  });
+  return products.map((product) => product.id);
+}
+
+/** Substring match of the (specific) core code inside code / name / alias. */
+async function findProductIdsByCodeContains(core: string): Promise<string[]> {
+  if (core.length < MIN_CORE_CODE_LENGTH) return [];
+  const products = await db.product.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { code: { contains: core, mode: "insensitive" } },
+        { name: { contains: core, mode: "insensitive" } },
+        { aliases: { some: { alias: { contains: core, mode: "insensitive" } } } },
+      ],
+    },
+    select: { id: true },
+    orderBy: { code: "asc" },
+    take: CANDIDATES_PER_LINE,
+  });
+  return products.map((product) => product.id);
+}
+
 /**
- * Matches one line to catalog products. A real part number is tried first (most
- * precise); only when that yields nothing do we fall back to a semantic search over
- * the line text. Never auto-picks — returns ranked candidates + a confidence label.
+ * Matches one line to catalog products. Part numbers are matched precisely first —
+ * exact code/alias (after stripping the supplier prefix), then a substring match of
+ * the core number in code/name/alias — and only then a semantic search over the line
+ * text. Never auto-picks. "code" = a real code/alias match; "near" = semantic only.
  */
 async function matchOne(rawText: string, partCode: string | null): Promise<PurchaseOcrLineMatch> {
-  let ids: string[] = [];
-  let confidence: PurchaseOcrMatchConfidence = "none";
-
   const code = partCode?.trim();
   if (code) {
-    const byCode = await searchProductIds({
-      query: code,
+    const { full, core } = normalizeOcrCode(code);
+    // 1. Exact code/alias match (full supplier string OR prefix-stripped core).
+    let ids = await findProductIdsByExactCode([full, core]);
+    // 2. Substring match of the specific core number in code/name/alias.
+    if (ids.length === 0) {
+      ids = await findProductIdsByCodeContains(core);
+    }
+    if (ids.length > 0) {
+      const candidates = await loadProductOptions(ids);
+      if (candidates.length > 0) return { candidates, confidence: "code" };
+    }
+  }
+
+  // 3. Fall back to semantic/lexical search over the line description.
+  const text = rawText.trim();
+  if (text) {
+    const byText = await searchProductIds({
+      query: text,
       isActive: true,
       take: CANDIDATES_PER_LINE,
       cacheProfile: "admin",
     });
-    if (byCode.ids.length > 0) {
-      ids = byCode.ids;
-      confidence = "code";
+    if (byText.ids.length > 0) {
+      const candidates = await loadProductOptions(byText.ids);
+      if (candidates.length > 0) return { candidates, confidence: "near" };
     }
   }
 
-  if (ids.length === 0) {
-    const text = rawText.trim();
-    if (text) {
-      const byText = await searchProductIds({
-        query: text,
-        isActive: true,
-        take: CANDIDATES_PER_LINE,
-        cacheProfile: "admin",
-      });
-      if (byText.ids.length > 0) {
-        ids = byText.ids;
-        confidence = "near";
-      }
-    }
-  }
-
-  const candidates = await loadProductOptions(ids);
-  return { candidates, confidence: candidates.length > 0 ? confidence : "none" };
+  return NO_MATCH;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
