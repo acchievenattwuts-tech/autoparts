@@ -277,11 +277,17 @@ export async function extractPurchaseInvoiceFromStorage(
     }
 
     const ocr = await runPurchaseInvoiceOcr(images);
-    if (ocr.lines.length === 0) {
-      return { error: "อ่านรายการสินค้าจากไฟล์ไม่ได้ กรุณากรอกเอง" };
+    if (ocr.status === "no_keys") {
+      return { error: "ระบบ AI ยังไม่พร้อมใช้งาน กรุณากรอกเอง" };
+    }
+    if (ocr.status === "ai_error") {
+      return { error: "อ่านไฟล์ด้วย AI ไม่สำเร็จ กรุณาลองใหม่ (รหัส: AI)" };
+    }
+    if (ocr.result.lines.length === 0) {
+      return { error: "อ่านไฟล์ได้แต่ไม่พบรายการสินค้า กรุณากรอกเอง (รหัส: 0LINE)" };
     }
 
-    const lines = await Promise.all(ocr.lines.map(matchLine));
+    const lines = await Promise.all(ocr.result.lines.map(matchLine));
 
     // Read-only assist — structured log only (no AuditLog row; the business audit
     // is written by createPurchase when the admin saves).
@@ -289,14 +295,14 @@ export async function extractPurchaseInvoiceFromStorage(
       actorId: session.user?.id ?? null,
       files: storedFiles.length,
       lines: lines.length,
-      supplier: ocr.supplierName,
+      supplier: ocr.result.supplierName,
     });
 
     return {
       data: {
-        supplierName: ocr.supplierName,
-        referenceNo: ocr.referenceNo,
-        invoiceDate: ocr.invoiceDate,
+        supplierName: ocr.result.supplierName,
+        referenceNo: ocr.result.referenceNo,
+        invoiceDate: ocr.result.invoiceDate,
         lines,
       },
     };

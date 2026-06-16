@@ -32,21 +32,29 @@ export interface PurchaseOcrImageInput {
   dataBase64: string;
 }
 
-// One supplier invoice can hold many line items across pages — give Gemini enough
-// output budget so the JSON array isn't truncated.
-const MAX_OCR_OUTPUT_TOKENS = 4000;
+// Multiple multi-line invoices in one request can produce a long JSON array — give
+// Gemini a generous output budget so it isn't truncated (truncation → parse → 0 lines).
+const MAX_OCR_OUTPUT_TOKENS = 8000;
+
+/** Why an OCR run produced no usable lines — lets the caller report a precise reason. */
+export type PurchaseOcrRunStatus = "ok" | "no_keys" | "ai_error";
+
+export interface PurchaseOcrRun {
+  result: PurchaseOcrResult;
+  status: PurchaseOcrRunStatus;
+}
 
 /**
- * Runs OCR on one or more already-decoded invoice images and returns the parsed,
- * normalized result. Returns an empty result (never throws) when no images are
- * provided, Gemini keys are missing, or parsing fails — so the caller degrades to
- * a fully manual purchase form.
+ * Runs OCR on one or more already-decoded invoice files. Never throws — returns a
+ * status so the caller can distinguish "AI unavailable / errored" from "read fine
+ * but found no line items". The underlying Gemini error (e.g. HTTP 4xx body) is
+ * logged server-side for diagnosis.
  */
 export async function runPurchaseInvoiceOcr(
   images: PurchaseOcrImageInput[],
-): Promise<PurchaseOcrResult> {
+): Promise<PurchaseOcrRun> {
   if (images.length === 0 || !hasGeminiKeysConfigured()) {
-    return EMPTY_PURCHASE_OCR_RESULT;
+    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "no_keys" };
   }
 
   try {
@@ -62,8 +70,19 @@ export async function runPurchaseInvoiceOcr(
       // Extraction task — disable thinking so reasoning tokens don't truncate the JSON.
       thinkingLevel: "NONE",
     });
-    return parsePurchaseInvoiceOcr(text);
-  } catch {
-    return EMPTY_PURCHASE_OCR_RESULT;
+    const result = parsePurchaseInvoiceOcr(text);
+    console.info("[purchase-ocr] gemini ok", {
+      files: images.length,
+      rawLength: text.length,
+      lines: result.lines.length,
+    });
+    return { result, status: "ok" };
+  } catch (error) {
+    // error.message carries the real cause, e.g. ALL_GEMINI_KEYS_FAILED:GEMINI_HTTP_400:...
+    console.error(
+      "[purchase-ocr] gemini failed",
+      error instanceof Error ? error.message : String(error),
+    );
+    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "ai_error" };
   }
 }
