@@ -25,7 +25,7 @@
 |---|---|
 | โมเดล OCR | Gemini (`GOOGLE_AI_MODEL` = gemini-3.1-flash-lite) เหมือน OCR สลิป, `thinkingLevel:"NONE"`, json, temperature 0 |
 | Env flag | ไม่มี — เปิดตลอด (gate ด้วย `hasGeminiKeysConfigured()` เท่านั้น) |
-| จำนวนรูป | รองรับหลายรูปต่อครั้ง |
+| จำนวนรูป | รองรับหลายไฟล์ต่อครั้ง — รูปภาพ และ PDF (Gemini อ่าน PDF inline ได้โดยตรง) |
 | การจับคู่สินค้า | **semantic search embeddings**: หา part no. จริงมา map ก่อน ถ้าไม่ได้จริง ๆ ค่อย semantic จากข้อความ (rawText) |
 | ขอบเขตฟอร์ม | new form เท่านั้น — edit form ผู้ใช้แก้เอง ไม่อ่าน OCR |
 | การบันทึก | ผ่าน `createPurchase` เดิม 100% (ไม่แตะ business logic) |
@@ -184,3 +184,6 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - 2026-06-16 — แก้ 413 (Payload Too Large): server action body limit ตั้งไว้ 3mb โดยตั้งใจ
   จึงเพิ่มการบีบอัดรูปฝั่ง client ด้วย canvas (1280px / JPEG q0.7, ไม่เพิ่ม dependency)
   + guard ขนาดรวม ≤ 2.6MB ก่อนส่ง แทนการขยาย limit global — ไม่แตะ `next.config.ts`
+- 2026-06-16 — เพิ่มรองรับ PDF: client `accept="image/*,application/pdf"` + การ์ดพรีวิว PDF,
+  PDF ส่ง inline ตรงให้ Gemini (canvas บีบอัดไม่ได้ จึงพึ่ง guard ขนาดรวมเดิม), server
+  validate `application/pdf` เพิ่ม — ไม่เพิ่ม dependency, ไม่แตะ `generateGeminiContent`/config

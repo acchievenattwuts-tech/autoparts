@@ -158,11 +158,12 @@ export async function extractPurchaseInvoiceFromImages(
 
     const images = [];
     for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        return { error: "รองรับเฉพาะไฟล์รูปภาพเท่านั้น" };
+      const isAccepted = file.type.startsWith("image/") || file.type === "application/pdf";
+      if (!isAccepted) {
+        return { error: "รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น" };
       }
       if (file.size > MAX_IMAGE_BYTES) {
-        return { error: "ขนาดรูปต้องไม่เกิน 8MB ต่อรูป" };
+        return { error: "ขนาดไฟล์ต้องไม่เกิน 8MB ต่อไฟล์" };
       }
       const buffer = Buffer.from(await file.arrayBuffer());
       images.push({ mimeType: file.type, dataBase64: buffer.toString("base64") });

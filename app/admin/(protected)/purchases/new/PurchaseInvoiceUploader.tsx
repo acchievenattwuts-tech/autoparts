@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ScanLine, Sparkles, Upload, X } from "lucide-react";
+import { FileText, ScanLine, Sparkles, Upload, X } from "lucide-react";
 
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import type {
@@ -13,6 +13,9 @@ import type { PurchaseProductOption } from "../purchase-form-data";
 
 const MAX_IMAGES = 10;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ACCEPTED_FILE_TYPES = "image/*,application/pdf";
+const isPdf = (file: File) => file.type === "application/pdf";
+const isAcceptedFile = (file: File) => file.type.startsWith("image/") || isPdf(file);
 // Downscale target before upload. Server Actions cap the request body at 3mb
 // (next.config.ts), so compress each photo client-side to stay well under it —
 // 1280px / JPEG q0.7 keeps an invoice readable for OCR at ~150-250KB per page.
@@ -128,11 +131,9 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
     setInfo("");
     const incoming = Array.from(fileList);
 
-    const invalid = incoming.find(
-      (file) => !file.type.startsWith("image/") || file.size > MAX_IMAGE_BYTES,
-    );
+    const invalid = incoming.find((file) => !isAcceptedFile(file) || file.size > MAX_IMAGE_BYTES);
     if (invalid) {
-      setError("รองรับเฉพาะไฟล์รูปภาพ ขนาดไม่เกิน 8MB ต่อรูป");
+      setError("รองรับเฉพาะไฟล์รูปภาพหรือ PDF ขนาดไม่เกิน 8MB ต่อไฟล์");
       return;
     }
 
@@ -161,15 +162,21 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
     setInfo("");
 
     startTransition(async () => {
-      const compressed = await Promise.all(files.map(compressImage));
-      const totalBytes = compressed.reduce((sum, file) => sum + file.size, 0);
+      // Images are downscaled; PDFs can't be canvas-compressed, so they pass
+      // through and rely on the total-size guard below.
+      const prepared = await Promise.all(
+        files.map((file) => (isPdf(file) ? Promise.resolve(file) : compressImage(file))),
+      );
+      const totalBytes = prepared.reduce((sum, file) => sum + file.size, 0);
       if (totalBytes > TOTAL_UPLOAD_BUDGET_BYTES) {
-        setError("รูปรวมกันใหญ่เกินไป กรุณาลดจำนวนรูปหรือถ่ายใหม่ให้ชัดแต่ไฟล์เล็กลง");
+        setError(
+          "ไฟล์รวมกันใหญ่เกินไป กรุณาลดจำนวนไฟล์ ถ่ายรูปใหม่ให้เล็กลง หรือใช้ PDF ที่ขนาดเล็กกว่า",
+        );
         return;
       }
 
       const formData = new FormData();
-      for (const file of compressed) formData.append("images", file);
+      for (const file of prepared) formData.append("images", file);
 
       const result = await extractPurchaseInvoiceFromImages(formData);
       if ("error" in result) {
@@ -236,11 +243,11 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
           }`}
         >
           <Upload size={15} />
-          แนบรูป (สูงสุด {MAX_IMAGES} รูป)
+          แนบรูป/PDF (สูงสุด {MAX_IMAGES} ไฟล์)
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept={ACCEPTED_FILE_TYPES}
             multiple
             disabled={disabled}
             className="hidden"
@@ -271,21 +278,36 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
       </div>
 
       {/* Previews */}
-      {previews.length > 0 && (
+      {files.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-3">
-          {previews.map((url, index) => (
+          {files.map((file, index) => (
             <div
-              key={url}
+              key={previews[index]}
               className="relative h-24 w-24 overflow-hidden rounded-lg border border-gray-200 dark:border-white/10"
             >
-              {/* OCR preview only — bare img is intentional (transient object URL, not SEO content) */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`หน้า ${index + 1}`} className="h-full w-full object-cover" />
+              {isPdf(file) ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gray-50 px-1 text-center dark:bg-slate-800">
+                  <FileText size={26} className="text-red-500" />
+                  <span className="w-full truncate text-[10px] text-gray-500 dark:text-slate-400">
+                    {file.name}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {/* OCR preview only — bare img is intentional (transient object URL, not SEO content) */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previews[index]}
+                    alt={`หน้า ${index + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => removeFile(index)}
                 className="absolute top-0.5 right-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
-                aria-label="ลบรูป"
+                aria-label="ลบไฟล์"
               >
                 <X size={12} />
               </button>
