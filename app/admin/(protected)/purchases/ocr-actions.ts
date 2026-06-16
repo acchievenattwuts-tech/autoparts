@@ -337,16 +337,12 @@ export async function extractPurchaseInvoiceFromStorage(
       return { error: "ระบบ AI ยังไม่พร้อมใช้งาน กรุณากรอกเอง" };
     }
     if (ocr.status === "ai_error") {
-      return { error: `อ่านไฟล์ด้วย AI ไม่สำเร็จ (รหัส: AI) [${ocr.detail ?? ""}]` };
+      // Server log keeps the real cause (see runPurchaseInvoiceOcr); message stays generic.
+      return { error: "อ่านไฟล์ด้วย AI ไม่สำเร็จ กรุณาลองใหม่ หรือลดจำนวน/ขนาดไฟล์" };
     }
     if (ocr.result.lines.length === 0) {
-      // Temporary diagnostic: surface what Gemini actually returned so we can tell
-      // "model returned empty JSON" from "parser dropped the lines".
-      const preview = ocr.rawText.replace(/\s+/g, " ").trim().slice(0, 220);
-      console.error("[purchase-ocr] zero lines", { rawLength: ocr.rawText.length, preview });
-      return {
-        error: `อ่านไฟล์ได้แต่ไม่พบรายการสินค้า (รหัส: 0LINE) [debug ${ocr.rawText.length}: ${preview || "ว่าง"}]`,
-      };
+      console.error("[purchase-ocr] zero lines", { rawLength: ocr.rawText.length });
+      return { error: "อ่านไฟล์ได้แต่ไม่พบรายการสินค้า กรุณากรอกเอง" };
     }
 
     const lines = await matchLinesBounded(ocr.result.lines);
@@ -369,9 +365,11 @@ export async function extractPurchaseInvoiceFromStorage(
       },
     };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error("[purchase-ocr] extract failed", detail);
-    return { error: `${GENERIC_ERROR} (รหัส: EX) [${detail.slice(0, 160)}]` };
+    console.error(
+      "[purchase-ocr] extract failed",
+      error instanceof Error ? error.message : String(error),
+    );
+    return { error: GENERIC_ERROR };
   } finally {
     // Delete temp immediately (happy + error paths). Cron sweeps anything missed.
     await deletePurchaseOcrFiles(paths);

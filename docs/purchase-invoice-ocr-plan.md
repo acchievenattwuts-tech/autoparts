@@ -155,8 +155,8 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
 - [x] new form เท่านั้น (gate ด้วย `!isEdit` — edit page ไม่มี uploader)
 
 ### Phase 3 — ทดสอบกับข้อมูลจริง
-- [ ] ทดสอบใบจริง 5–10 ใบ วัด match rate **(งาน manual ของผู้ใช้ — ต้องมีรูปใบจริง)**
-- [ ] ปรับ prompt / ลำดับ matching ตามผล
+- [x] ทดสอบใบจริง (รูป + PDF หลายไฟล์) — ใช้งานได้ครบหลังแก้ชุด robustness ด้านล่าง
+- [x] ปรับ prompt / ลำดับ matching ตามผล (parser รองรับ array, bound concurrency/time)
 - [x] อัปเดต `PLAN.md` ให้ตรงสถานะจริง
 
 ---
@@ -210,3 +210,12 @@ Prompt (อิงรูปแบบ payment-slip ที่พิสูจน์�
   validate `application/pdf` เพิ่ม — ไม่เพิ่ม dependency, ไม่แตะ `generateGeminiContent`/config
 - 2026-06-16 — ย้ายไป Storage pipeline (รูป+PDF ผ่าน Supabase Storage, signed upload, sharp,
   ลบ temp ทันที + cron กวาดรายวัน): รองรับไฟล์ใหญ่ถึง ~20MB และ OCR คมขึ้น — `tsc`/eslint/build/test ผ่านครบ
+- 2026-06-16 — ทดสอบใบจริง พบและแก้บั๊ก/ขีดจำกัดตามลำดับ (ยืนยันด้วย log จริงทุกขั้น):
+  1. **413** ตอนยังส่ง inline → ย้ายไป storage pipeline (ข้างบน)
+  2. **parser 0LINE** → Gemini คืน JSON **array** (1 object/ไฟล์) แต่ parser รับแค่ object เดียว → แก้ให้ merge ทั้ง array
+  3. **EX timeout (pool หมด)** → matching ยิง DB ขนานทุกบรรทัด → จำกัด concurrency batch ละ 3
+  4. **504 (200s)** → ใบ 205 รายการ: OCR หมุน key timeout สะสม ~191s → จำกัด `maxKeyAttempts: 2` + `timeoutMs 45s`
+     + ใส่ match time-budget 25s / per-line timeout 8s (เกินงบ → บรรทัดที่เหลือเป็น "ไม่พบ" ให้ค้นเอง)
+  5. ถอด debug code ชั่วคราวออก เหลือ log ฝั่ง server — **ใช้งานได้ครบทั้งรูปและ PDF**
+- 2026-06-16 — Known edge: PDF/ไฟล์ที่มีรายการเยอะมาก (เช่น 200+ price list) อาจจับคู่ได้ไม่ครบในงบ 25s
+  (บรรทัดท้ายเป็น "ไม่พบ"). Improvement ที่เสนอไว้ (ยังไม่ทำ): **batch embedding** รวม matching เป็น call เดียวให้เร็วขึ้น
