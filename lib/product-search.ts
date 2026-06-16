@@ -96,6 +96,13 @@ type ProductSearchInput = {
   take?: number;
   order?: ProductSearchOrder;
   cacheProfile?: ProductSearchCacheProfile;
+  /**
+   * Skip the semantic (embedding) recall for this call and use lexical search only.
+   * Used by the autocomplete endpoint for likely-bot traffic to save the per-query
+   * Gemini embedding (latency + quota). Defaults to false — semantic stays on
+   * everywhere else. Purely subtractive: lexical results are unchanged.
+   */
+  disableSemantic?: boolean;
 };
 
 const normalizeStringArray = (values?: string[] | null): string[] =>
@@ -1035,7 +1042,8 @@ async function searchProductIdsV2(
   // as extra candidates + a rank boost in the ranked query below. Skipped for
   // year-only queries, and any failure (keys exhausted, extension missing, flag
   // off) degrades to pure lexical search — so this is purely additive.
-  const queryEmbedding = isYearOnlyQuery ? null : await embedQuery(normalizedQuery);
+  const queryEmbedding =
+    isYearOnlyQuery || input.disableSemantic ? null : await embedQuery(normalizedQuery);
   let vectorMatches: Array<{ product_id: string; sim: number }> = [];
   if (queryEmbedding) {
     try {
@@ -1304,6 +1312,8 @@ export async function searchProductIds(
     take: input.take ?? 30,
     order: input.order ?? "createdAtDesc",
     cacheProfile,
+    // Keep bot (lexical-only) and human (hybrid) results in separate cache entries.
+    disableSemantic: input.disableSemantic ?? false,
   });
 
   return unstable_cache(

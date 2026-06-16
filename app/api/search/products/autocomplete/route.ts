@@ -79,12 +79,17 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       );
     }
 
+    // Likely-bot as-you-type traffic skips the semantic embedding (lexical only) to
+    // save the per-keystroke Gemini call; humans keep the full hybrid search.
+    const isBot = isLikelyBotUserAgent(request.headers.get("user-agent"));
+
     const result = await searchProductIds({
       query,
       isActive: true,
       take: TAKE,
       order: "createdAtDesc",
       cacheProfile,
+      disableSemantic: isBot,
     });
 
     // Feed as-you-type misses into the Product Search Quality report. Fire-and-
@@ -96,7 +101,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       resultCount: result.total,
       source: cacheProfile === "admin" ? "admin" : "storefront",
       path: "/api/search/products/autocomplete",
-      isBot: isLikelyBotUserAgent(request.headers.get("user-agent")),
+      isBot,
     });
 
     if (result.ids.length === 0) {
