@@ -284,7 +284,13 @@ export async function extractPurchaseInvoiceFromStorage(
       return { error: "อ่านไฟล์ด้วย AI ไม่สำเร็จ กรุณาลองใหม่ (รหัส: AI)" };
     }
     if (ocr.result.lines.length === 0) {
-      return { error: "อ่านไฟล์ได้แต่ไม่พบรายการสินค้า กรุณากรอกเอง (รหัส: 0LINE)" };
+      // Temporary diagnostic: surface what Gemini actually returned so we can tell
+      // "model returned empty JSON" from "parser dropped the lines".
+      const preview = ocr.rawText.replace(/\s+/g, " ").trim().slice(0, 220);
+      console.error("[purchase-ocr] zero lines", { rawLength: ocr.rawText.length, preview });
+      return {
+        error: `อ่านไฟล์ได้แต่ไม่พบรายการสินค้า (รหัส: 0LINE) [debug ${ocr.rawText.length}: ${preview || "ว่าง"}]`,
+      };
     }
 
     const lines = await Promise.all(ocr.result.lines.map(matchLine));

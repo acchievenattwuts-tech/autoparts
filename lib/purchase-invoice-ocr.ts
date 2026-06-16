@@ -42,6 +42,8 @@ export type PurchaseOcrRunStatus = "ok" | "no_keys" | "ai_error";
 export interface PurchaseOcrRun {
   result: PurchaseOcrResult;
   status: PurchaseOcrRunStatus;
+  /** Raw Gemini text (server-side diagnosis only). Empty on no_keys/ai_error. */
+  rawText: string;
 }
 
 /**
@@ -54,7 +56,7 @@ export async function runPurchaseInvoiceOcr(
   images: PurchaseOcrImageInput[],
 ): Promise<PurchaseOcrRun> {
   if (images.length === 0 || !hasGeminiKeysConfigured()) {
-    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "no_keys" };
+    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "no_keys", rawText: "" };
   }
 
   try {
@@ -76,13 +78,13 @@ export async function runPurchaseInvoiceOcr(
       rawLength: text.length,
       lines: result.lines.length,
     });
-    return { result, status: "ok" };
+    return { result, status: "ok", rawText: text };
   } catch (error) {
     // error.message carries the real cause, e.g. ALL_GEMINI_KEYS_FAILED:GEMINI_HTTP_400:...
     console.error(
       "[purchase-ocr] gemini failed",
       error instanceof Error ? error.message : String(error),
     );
-    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "ai_error" };
+    return { result: EMPTY_PURCHASE_OCR_RESULT, status: "ai_error", rawText: "" };
   }
 }
