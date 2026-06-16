@@ -9,6 +9,16 @@ import {
   LineMessageType,
 } from "@/lib/generated/prisma";
 import type { LineWebhookProcessorDependencies, LineWebhookProcessorConfig } from "@/lib/line-webhook-processor";
+import type { LineImageClassification } from "@/lib/line-image-service";
+import type { LineSearchIntent } from "@/lib/line-ai-service";
+
+type StoredInquiryFrame = {
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+  updatedAt: Date;
+};
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
@@ -29,8 +39,14 @@ function createCoalesceHarness(options?: {
   imageHints?: string[];
   imagePartKind?: "fitment" | "universal" | null;
   imagePartType?: string | null;
+  imageCarBrand?: string | null;
   imageCarModel?: string | null;
   imageYear?: number | null;
+  /** Per-image classification overrides keyed by lineMessageId (`m-<eventId>`),
+   *  so a burst can spread brand/part type across different photos. */
+  imageClassByMessageId?: Record<string, Partial<LineImageClassification>>;
+  /** Stand-in for the text intent classifier (extractLineSearchIntent). */
+  textIntent?: LineSearchIntent | null;
   lockAcquirable?: boolean;
   /** Bumps the inbound seq once during the FIRST pipeline pass to force one abort. */
   bumpDuringFirstPass?: boolean;
@@ -43,6 +59,7 @@ function createCoalesceHarness(options?: {
     inbound: [] as InboundRow[],
     answeredCount: 0,
     msgCounter: 0,
+    frame: null as StoredInquiryFrame | null,
   };
   const calls = {
     replies: [] as string[],
@@ -125,8 +142,11 @@ function createCoalesceHarness(options?: {
       calls.pushes.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
       return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
     },
-    classifyLineImage: async () => {
-      const kind = options?.imageKind ?? "part_image";
+    classifyLineImage: async (input) => {
+      const override = input.lineMessageId
+        ? options?.imageClassByMessageId?.[input.lineMessageId]
+        : undefined;
+      const kind = override?.kind ?? options?.imageKind ?? "part_image";
       return {
         kind,
         intent:
@@ -135,14 +155,15 @@ function createCoalesceHarness(options?: {
             : kind === "part_image"
               ? LineIntent.PART_IMAGE_INQUIRY
               : LineIntent.UNKNOWN,
-        searchHints: options?.imageHints ?? (kind === "part_image" ? ["หม้อน้ำ"] : []),
+        searchHints:
+          override?.searchHints ?? options?.imageHints ?? (kind === "part_image" ? ["หม้อน้ำ"] : []),
         confidence: "HIGH" as const,
         reason: "TEST",
-        partType: options?.imagePartType ?? null,
-        carModel: options?.imageCarModel ?? null,
-        carBrand: null,
-        year: options?.imageYear ?? null,
-        partKind: options?.imagePartKind ?? null,
+        partType: override?.partType ?? options?.imagePartType ?? null,
+        carModel: override?.carModel ?? options?.imageCarModel ?? null,
+        carBrand: override?.carBrand ?? options?.imageCarBrand ?? null,
+        year: override?.year ?? options?.imageYear ?? null,
+        partKind: override?.partKind ?? options?.imagePartKind ?? null,
       };
     },
     notifyLineOaNeedsAdmin: async () => 1,
@@ -150,7 +171,7 @@ function createCoalesceHarness(options?: {
     countConsecutiveFailedLineSearches: async () => 0,
     classifyPurchaseIntent: async () => false,
     answerFromLineFaq: async () => ({ answered: false, reply: "" }),
-    extractLineSearchIntent: async () => null,
+    extractLineSearchIntent: async () => options?.textIntent ?? null,
     resolveLineFitmentFilters: async () => ({}),
     generateLineSuggestion: async () => ({
       suggestedReply: "เบื้องต้นพบรายการที่ใกล้เคียงค่ะ",
@@ -196,8 +217,16 @@ function createCoalesceHarness(options?: {
         },
         imageStored: true,
       }) as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["ingestPaymentSlip"]>>>,
-    getLineInquiryFrame: async () => null,
-    updateLineInquiryFrame: async () => undefined,
+    getLineInquiryFrame: async () => state.frame,
+    updateLineInquiryFrame: async (input) => {
+      state.frame = {
+        partType: input.partType,
+        carBrand: input.carBrand,
+        carModel: input.carModel,
+        year: input.year,
+        updatedAt: new Date(),
+      };
+    },
     getUnansweredInboundLineMessages: async (_id, withinMs = 5 * 60_000) => {
       const cutoff = Date.now() - withinMs;
       return state.inbound.slice(state.answeredCount).filter((m) => m.createdAt.getTime() > cutoff);
@@ -240,6 +269,30 @@ function imageEvent(id: string) {
     replyToken: `reply-${id}`,
     source: { type: "user", userId: "u1" },
     message: { id: `m-${id}`, type: "image" },
+  };
+}
+
+function textEvent(id: string, text: string) {
+  return {
+    type: "message",
+    webhookEventId: id,
+    replyToken: `reply-${id}`,
+    source: { type: "user", userId: "u1" },
+    message: { id: `m-${id}`, type: "text", text },
+  };
+}
+
+function productIntent(fields: Partial<LineSearchIntent>): LineSearchIntent {
+  return {
+    group: "product",
+    query: fields.query ?? "",
+    isProductQuery: true,
+    partType: fields.partType ?? null,
+    carBrand: fields.carBrand ?? null,
+    carModel: fields.carModel ?? null,
+    year: fields.year ?? null,
+    partKind: fields.partKind ?? null,
+    tooBroad: fields.tooBroad ?? false,
   };
 }
 
@@ -347,6 +400,58 @@ test("coalescing: image-only part (fitment) with car → searches and replies", 
   assert.ok(calls.searches.length >= 1, "search runs once we have part + car");
   assert.equal(calls.replies.length, 1);
   assert.equal(result.repliedCount, 1);
+});
+
+test("coalescing: a burst splits car (on the plate) + part (on the part photo) → merged → searches", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // Bug A: the registration-plate photo carries the brand, the radiator photo
+  // carries the part type. Picking fields from a single image throws half the OCR
+  // away and re-asks for detail the customer already sent. After the merge the
+  // turn has part + car and must SEARCH, not ask "ชนิดอะไหล่".
+  const { calls, dependencies } = createCoalesceHarness({
+    imageClassByMessageId: {
+      "m-e1": { kind: "part_image", carBrand: "ISUZU", partKind: "fitment", partType: null, searchHints: ["ISUZU"] },
+      "m-e2": { kind: "part_image", partType: "หม้อน้ำ", partKind: "fitment", carBrand: null, searchHints: ["หม้อน้ำ"] },
+    },
+  });
+
+  const result = await processLineWebhookPayload(
+    { events: [imageEvent("e1"), imageEvent("e2")] },
+    baseConfig,
+    dependencies,
+  );
+
+  assert.ok(calls.searches.length >= 1, "merged classification has part + car → search runs");
+  assert.equal(calls.replies.length, 1);
+  assert.ok(!calls.replies[0]?.includes("ชนิดอะไหล่"), "must not re-ask for the part type the photo showed");
+  assert.equal(result.repliedCount, 1);
+});
+
+test("coalescing: a car read off an image carries to the next text turn (no re-ask)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // Bug B: the image gives the car (brand), the customer then types only the part
+  // type. The brand read from the image must persist in the inquiry frame so the
+  // text turn is complete and searches — instead of re-asking "ยี่ห้อ/รุ่นรถ".
+  const { calls, state, dependencies } = createCoalesceHarness({
+    imageCarBrand: "ISUZU",
+    imagePartKind: "fitment",
+    imagePartType: null,
+    textIntent: productIntent({ query: "หม้อน้ำ", partType: "หม้อน้ำ", partKind: "fitment" }),
+  });
+
+  // Turn 1: image only → asks for the part type, but the brand is now in the frame.
+  await processLineWebhookPayload({ events: [imageEvent("e1")] }, baseConfig, dependencies);
+  assert.equal(state.frame?.carBrand, "ISUZU", "brand read from the image persisted to the frame");
+
+  const repliesAfterImage = calls.replies.length;
+
+  // Turn 2: customer types only "หม้อน้ำ" → frame now has part + car → searches.
+  await processLineWebhookPayload({ events: [textEvent("e2", "หม้อน้ำ")] }, baseConfig, dependencies);
+
+  assert.ok(calls.searches.length >= 1, "text turn searches using the carried-over brand");
+  const lastReply = calls.replies[calls.replies.length - 1];
+  assert.ok(calls.replies.length > repliesAfterImage, "the text turn produced a reply");
+  assert.ok(!lastReply?.includes("ยี่ห้อ/รุ่นรถ"), "must not re-ask for the brand already read from the image");
 });
 
 test("recovery: a crashed burst (unanswered + free lock) gets exactly one reply", async () => {

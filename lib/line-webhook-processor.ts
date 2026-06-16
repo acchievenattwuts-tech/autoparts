@@ -838,15 +838,22 @@ export async function processLineAiReply(
       const saveFrame = dependencies.updateLineInquiryFrame ?? updateLineInquiryFrame;
       const stored = await loadFrame(input.conversation.id).catch(() => null);
       const sessionStale = isFrameStale(stored?.updatedAt ?? null);
+      // Fields read off a part image (registration plate → brand, part photo →
+      // part type) feed the frame too, so an image turn carries its fitment
+      // context into the next text turn and we never re-ask for detail the photo
+      // already contained. The chassis/VIN is deliberately NOT carried — it is
+      // not a searchable fitment slot.
+      const imageFields =
+        input.imageClassification?.kind === "part_image" ? input.imageClassification : null;
       const reconciled = reconcileInquiryFrame(
         stored
           ? { partType: stored.partType, carBrand: stored.carBrand, carModel: stored.carModel, year: stored.year }
           : null,
         {
-          partType: guardedSearchIntent?.partType ?? null,
-          carBrand: guardedSearchIntent?.carBrand ?? null,
-          carModel: guardedSearchIntent?.carModel ?? null,
-          year: guardedSearchIntent?.year ?? null,
+          partType: guardedSearchIntent?.partType ?? imageFields?.partType ?? null,
+          carBrand: guardedSearchIntent?.carBrand ?? imageFields?.carBrand ?? null,
+          carModel: guardedSearchIntent?.carModel ?? imageFields?.carModel ?? null,
+          year: guardedSearchIntent?.year ?? imageFields?.year ?? null,
         },
         { sessionStale },
       );
@@ -2133,15 +2140,41 @@ async function buildMergedTurnInput(args: {
 
     // Kind priority: a real part image wins (so the turn searches); else a slip;
     // else unknown. Search hints are the union from every part image.
-    const part = classifications.find((c) => c.kind === "part_image");
+    const partImages = classifications.filter((c) => c.kind === "part_image");
     const slip = classifications.find((c) => c.kind === "payment_slip");
-    const chosen = part ?? slip ?? classifications[0] ?? null;
+    const chosen = partImages[0] ?? slip ?? classifications[0] ?? null;
     if (chosen) {
       const hintSet = new Set<string>();
       for (const c of classifications) {
         if (c.kind === "part_image") for (const hint of c.searchHints) hintSet.add(hint);
       }
-      imageClassification = { ...chosen, searchHints: Array.from(hintSet) };
+      // Merge the STRUCTURED fields across every part image (first non-null
+      // wins). A burst often splits the answer across photos — the car brand is
+      // on the registration plate while the part type is on the actual part
+      // photo — so picking fields from a single "chosen" image throws away half
+      // the OCR and makes the gate re-ask for detail the customer already sent.
+      const firstPartField = <K>(pick: (c: LineImageClassification) => K | null | undefined): K | null => {
+        for (const c of partImages) {
+          const value = pick(c);
+          if (value != null) return value;
+        }
+        return null;
+      };
+      imageClassification = {
+        ...chosen,
+        searchHints: Array.from(hintSet),
+        ...(partImages.length > 0
+          ? {
+              partType: firstPartField((c) => c.partType),
+              carBrand: firstPartField((c) => c.carBrand),
+              carModel: firstPartField((c) => c.carModel),
+              year: firstPartField((c) => c.year),
+              partNumber: firstPartField((c) => c.partNumber),
+              chassisNumber: firstPartField((c) => c.chassisNumber),
+              partKind: firstPartField((c) => c.partKind),
+            }
+          : {}),
+      };
     }
   }
 
