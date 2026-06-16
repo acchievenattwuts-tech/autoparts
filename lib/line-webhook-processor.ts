@@ -2126,17 +2126,24 @@ async function buildMergedTurnInput(args: {
   const imageMessages = messages.filter((message) => message.messageType === LineMessageType.IMAGE);
   let imageClassification: LineImageClassification | null = null;
   if (imageMessages.length > 0) {
-    const classifications: LineImageClassification[] = [];
-    for (const message of imageMessages) {
-      const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
-      const resolved =
-        cached ??
-        (await classify({
+    // Classify every uncached image CONCURRENTLY (vision is reply-token-bound and
+    // each call is independent) — a sequential loop adds up across a multi-image
+    // burst and blows the 60s webhook budget. Order is preserved so the
+    // structured-field merge below stays deterministic (e.g. brand off the plate,
+    // part type off the part photo). Per-image failures degrade to null.
+    const resolvedList = await Promise.all(
+      imageMessages.map((message) => {
+        const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
+        if (cached) return Promise.resolve(cached);
+        return classify({
           channelAccessToken: config.channelAccessToken,
           lineMessageId: message.lineMessageId,
-        }).catch(() => null));
-      if (resolved) classifications.push(resolved);
-    }
+        }).catch(() => null);
+      }),
+    );
+    const classifications: LineImageClassification[] = resolvedList.filter(
+      (c): c is LineImageClassification => c !== null,
+    );
 
     // Kind priority: a real part image wins (so the turn searches); else a slip;
     // else unknown. Search hints are the union from every part image.

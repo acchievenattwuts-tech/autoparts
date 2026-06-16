@@ -4,6 +4,13 @@ import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
 import { parsePaymentSlipOcr, type PaymentSlipOcr } from "@/lib/line-payment-slip-service";
 
+// Vision classify is an interactive (reply-token-bound) call: cap the per-key
+// HTTP wait and the number of keys tried so one slow/hung key can't stack into
+// the 60s webhook budget — especially when several images are classified at
+// once. Vision typically returns in a few seconds; 20s is generous headroom.
+const VISION_CALL_TIMEOUT_MS = 20_000;
+const VISION_MAX_KEY_ATTEMPTS = 3;
+
 export type LineImageKind = "part_image" | "payment_slip" | "unknown_image";
 export type LineImageConfidence = "LOW" | "MEDIUM" | "HIGH";
 
@@ -236,6 +243,9 @@ export async function classifyLineImage(input: {
       temperature: 0,
       // Extraction task — disable thinking so the JSON isn't truncated.
       thinkingLevel: "NONE",
+      // Bound the wait + key failover so a hung key can't blow the webhook budget.
+      timeoutMs: VISION_CALL_TIMEOUT_MS,
+      maxKeyAttempts: VISION_MAX_KEY_ATTEMPTS,
     });
 
     return {
