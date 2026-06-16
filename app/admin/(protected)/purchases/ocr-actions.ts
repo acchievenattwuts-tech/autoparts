@@ -30,6 +30,11 @@ const CANDIDATES_PER_LINE = 3;
 // (max:1 per serverless instance), so fanning out one query per line exhausts it on
 // large invoices ("timeout exceeded when trying to connect").
 const MATCH_CONCURRENCY = 3;
+// Each line may trigger a semantic-search embedding (a Gemini network call). Bound
+// per-line and overall time so a many-row PDF can't blow the function timeout (504).
+// Lines left over after the budget simply have no candidates — the admin searches them.
+const MATCH_PER_LINE_TIMEOUT_MS = 8_000;
+const MATCH_TOTAL_BUDGET_MS = 25_000;
 const IMAGE_MAX_DIMENSION = 2048;
 const IMAGE_JPEG_QUALITY = 85;
 // base64 inflates raw bytes by ~33%; keep the summed send bytes under this so the
@@ -159,14 +164,49 @@ async function matchLine(line: PurchaseOcrLine): Promise<PurchaseOcrMatchedLine>
   };
 }
 
-/** Matches OCR lines in bounded batches to avoid exhausting the tiny DB pool. */
+/** A line returned without catalog candidates (admin matches it manually). */
+function unmatchedLine(line: PurchaseOcrLine): PurchaseOcrMatchedLine {
+  return {
+    rawText: line.rawText,
+    partCode: line.partCode,
+    qty: line.qty ?? 0,
+    unitCost: line.unitCost ?? 0,
+    candidates: [],
+    confidence: "none",
+  };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+/**
+ * Matches OCR lines in bounded batches (DB pool safety) within an overall time
+ * budget (function-timeout safety). Each line also has its own timeout so one slow
+ * embedding can't stall the batch. Lines past the budget come back unmatched.
+ */
 async function matchLinesBounded(
   ocrLines: PurchaseOcrLine[],
 ): Promise<PurchaseOcrMatchedLine[]> {
+  const start = Date.now();
   const matched: PurchaseOcrMatchedLine[] = [];
+
   for (let i = 0; i < ocrLines.length; i += MATCH_CONCURRENCY) {
     const batch = ocrLines.slice(i, i + MATCH_CONCURRENCY);
-    matched.push(...(await Promise.all(batch.map(matchLine))));
+    if (Date.now() - start > MATCH_TOTAL_BUDGET_MS) {
+      matched.push(...batch.map(unmatchedLine));
+      continue;
+    }
+    matched.push(
+      ...(await Promise.all(
+        batch.map((line) =>
+          withTimeout(matchLine(line), MATCH_PER_LINE_TIMEOUT_MS, unmatchedLine(line)),
+        ),
+      )),
+    );
   }
   return matched;
 }
