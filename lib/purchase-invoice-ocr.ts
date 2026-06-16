@@ -35,6 +35,10 @@ export interface PurchaseOcrImageInput {
 // Multiple multi-line invoices in one request can produce a long JSON array — give
 // Gemini a generous output budget so it isn't truncated (truncation → parse → 0 lines).
 const MAX_OCR_OUTPUT_TOKENS = 8000;
+// A heavy invoice can legitimately take ~30-45s to extract; give one key that long,
+// but only try 2 keys so a slow/timing-out streak can't stack past the function limit.
+const OCR_CALL_TIMEOUT_MS = 45_000;
+const OCR_MAX_KEY_ATTEMPTS = 2;
 
 /** Why an OCR run produced no usable lines — lets the caller report a precise reason. */
 export type PurchaseOcrRunStatus = "ok" | "no_keys" | "ai_error";
@@ -73,6 +77,11 @@ export async function runPurchaseInvoiceOcr(
       temperature: 0,
       // Extraction task — disable thinking so reasoning tokens don't truncate the JSON.
       thinkingLevel: "NONE",
+      // Cap key rotation + per-call time: a very heavy document (e.g. a 200-row
+      // price list) used to time out on key after key (30s each), stacking past the
+      // function limit (504). Try at most 2 keys with a generous single-call timeout.
+      timeoutMs: OCR_CALL_TIMEOUT_MS,
+      maxKeyAttempts: OCR_MAX_KEY_ATTEMPTS,
     });
     const result = parsePurchaseInvoiceOcr(text);
     console.info("[purchase-ocr] gemini ok", {
