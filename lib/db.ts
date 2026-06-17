@@ -5,10 +5,15 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Vercel Pro: higher concurrency per function instance — increased from 10.
-// Supabase Transaction Pooler (port 6543) supports up to 60 client connections on free tier.
-// With up to ~4 concurrent function instances on Pro, 15 per instance is safe.
-const DEFAULT_DB_POOL_MAX = 15;
+// Supabase pooler (Supavisor) caps total client connections at 200. With the
+// transaction pooler (port 6543, pgbouncer) each query checks out a server
+// connection only for its transaction, so a small per-instance pool is enough —
+// 15 let ~13 warm instances exhaust the 200 limit and 500 the whole site under a
+// bot crawl of the /product detail pages (cache misses fan out across instances).
+// 5 raises that ceiling to ~40 instances
+// while still giving each instance headroom for concurrent saves/recalcs (a
+// purchase save/edit holds exactly one connection for its whole transaction).
+const DEFAULT_DB_POOL_MAX = 5;
 const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
 const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 20_000; // slightly higher for Pro long-running ops
 
