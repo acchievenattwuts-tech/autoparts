@@ -362,17 +362,17 @@ function buildLineReplyPrompt(input: {
         "รูปแบบการแสดงรายการสินค้า (ต้องทำตามนี้เป๊ะ เพื่อให้แต่ละรายการแยกชัดอ่านง่าย):",
         "- ขึ้นรายการแรกด้วยการเว้นบรรทัดว่าง 1 บรรทัดจากข้อความเปิด",
         "- แต่ละสินค้าขึ้นต้นด้วยเลขลำดับอิโมจิ 1️⃣ 2️⃣ 3️⃣ ... ตามด้วยชื่อสินค้าเต็ม",
-        "- บรรทัดถัดมาของสินค้านั้นใส่รหัสและราคาไว้บรรทัดเดียวกันในรูปแบบ '🏷️ <รหัส>  |  💵 <ราคา>'",
+        "- บรรทัดถัดมาของสินค้านั้นใส่รหัสและราคาไว้บรรทัดเดียวกันในรูปแบบ '🏷️ <รหัส>  |  💰 <ราคา>'",
         "- ราคาให้ใช้ตามที่ให้มาเป๊ะ: ถ้ามีราคาให้แสดง '฿<จำนวน>' ถ้าไม่มีราคา/เป็น 0 ให้แสดง 'สอบถามราคา'",
-        "- ถ้าสินค้าไม่มีรหัส ให้แสดงเฉพาะราคาในรูปแบบ '💵 <ราคา>' (ไม่ต้องมี 🏷️ และเครื่องหมาย |)",
+        "- ถ้าสินค้าไม่มีรหัส ให้แสดงเฉพาะราคาในรูปแบบ '💰 <ราคา>' (ไม่ต้องมี 🏷️ และเครื่องหมาย |)",
         "- คั่นระหว่างสินค้าแต่ละรายการด้วยเส้น '━━━━━━━━━━━━━━' บรรทัดเดียว",
         "- หลังรายการสุดท้ายเว้นบรรทัดว่าง 1 บรรทัดก่อนข้อความปิดท้าย",
         "ตัวอย่างรูปแบบ:",
         "1️⃣ ชื่อสินค้า A",
-        "🏷️ P0001  |  💵 ฿350",
+        "🏷️ P0001  |  💰 ฿350",
         "━━━━━━━━━━━━━━",
         "2️⃣ ชื่อสินค้า B",
-        "🏷️ P0002  |  💵 สอบถามราคา",
+        "🏷️ P0002  |  💰 สอบถามราคา",
       ].join("\n"),
     );
     lines.push(
@@ -410,7 +410,7 @@ function formatProductPrice(salePrice: number): string {
 /**
  * Formats matched products as a clear, separated list block (style A): each item
  * is numbered, with the product code and sale price on one shared "meta" line
- * (🏷️ <code> | 💵 <price>), and items are split by a divider so they read as
+ * (🏷️ <code> | 💰 <price>), and items are split by a divider so they read as
  * distinct entries. When a product has no code, only the price is shown. Shared
  * by every customer-facing list reply so the deterministic templates and the
  * live AI path stay visually identical. Returns "" when there are no products.
@@ -420,7 +420,7 @@ export function formatProductListBlock(products: LineProductSummary[]): string {
     .slice(0, 5)
     .map((product, index) => {
       const number = PRODUCT_LIST_NUMBER_EMOJI[index] ?? `${index + 1}.`;
-      const priceLabel = `💵 ${formatProductPrice(product.salePrice)}`;
+      const priceLabel = `💰 ${formatProductPrice(product.salePrice)}`;
       const metaLine = product.code ? `🏷️ ${product.code}  |  ${priceLabel}` : priceLabel;
       return `${number} ${product.name}\n${metaLine}`;
     })
