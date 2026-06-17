@@ -21,6 +21,7 @@ type FilterDraft = {
   trackingFilter: string;
 };
 type PendingAction = "search" | "filter" | "clear";
+type PendingFeedback = { action: PendingAction; href: string };
 
 type Props = {
   search?: string;
@@ -86,7 +87,7 @@ export default function MobileProductSearchForm({
 }: Props) {
   const router = useRouter();
   const [isRoutePending, startRouteTransition] = useTransition();
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [draft, setDraft] = useState<FilterDraft>({
     categoryId: categoryId ?? "",
@@ -116,19 +117,16 @@ export default function MobileProductSearchForm({
     statusFilter,
     trackingFilter,
   ].filter(Boolean).length;
+  const pendingAction = pendingFeedback?.href === currentSearchHref ? null : (pendingFeedback?.action ?? null);
   const isSubmitting = isRoutePending || pendingAction !== null;
-
-  useEffect(() => {
-    setPendingAction(null);
-  }, [currentSearchHref]);
 
   const navigateWithFeedback = (href: string, action: PendingAction) => {
     if (href === currentSearchHref) {
-      setPendingAction(null);
+      setPendingFeedback(null);
       return;
     }
 
-    setPendingAction(action);
+    setPendingFeedback({ action, href });
     startRouteTransition(() => {
       router.push(href);
     });

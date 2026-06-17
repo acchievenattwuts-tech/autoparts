@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { SlidersHorizontal, ChevronDown } from "lucide-react";
 
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
@@ -29,7 +29,23 @@ type Props = {
   carBrands: CarBrandOption[];
 };
 
-export default function ProductFilterForm({
+export default function ProductFilterForm(props: Props) {
+  const syncKey = [
+    props.categoryId ?? "",
+    props.brandId ?? "",
+    props.carBrandId ?? "",
+    props.carModelId ?? "",
+    props.priceMin ?? "",
+    props.priceMax ?? "",
+    props.stockStatus ?? "",
+    props.statusFilter ?? "",
+    props.trackingFilter ?? "",
+  ].join("\u0000");
+
+  return <ProductFilterFormContent key={syncKey} {...props} />;
+}
+
+function ProductFilterFormContent({
   search,
   categoryId,
   brandId,
@@ -54,28 +70,15 @@ export default function ProductFilterForm({
   const [statusFilterValue, setStatusFilterValue] = useState(statusFilter ?? "");
   const [trackingFilterValue, setTrackingFilterValue] = useState(trackingFilter ?? "");
 
-  useEffect(() => {
-    setCategoryValue(categoryId ?? "");
-    setBrandValue(brandId ?? "");
-    setCarBrandValue(carBrandId ?? "");
-    setSelectedCarBrandId(carBrandId ?? "");
-    setPriceMinValue(priceMin ?? "");
-    setPriceMaxValue(priceMax ?? "");
-    setStockStatusValue(stockStatus ?? "");
-    setStatusFilterValue(statusFilter ?? "");
-    setTrackingFilterValue(trackingFilter ?? "");
-    setShowMore(Boolean(carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter));
-  }, [categoryId, brandId, carBrandId, carModelId, priceMin, priceMax, stockStatus, statusFilter, trackingFilter]);
+  const hasAdvancedFilter = Boolean(
+    carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter,
+  );
+  const [showMore, setShowMore] = useState(hasAdvancedFilter);
 
   const models = useMemo(
     () => carBrands.find((b) => b.id === selectedCarBrandId)?.models ?? [],
     [carBrands, selectedCarBrandId],
   );
-
-  const hasAdvancedFilter = Boolean(
-    carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter,
-  );
-  const [showMore, setShowMore] = useState(hasAdvancedFilter);
 
   const hasFilters = Boolean(
     search || categoryId || brandId || carBrandId || carModelId ||

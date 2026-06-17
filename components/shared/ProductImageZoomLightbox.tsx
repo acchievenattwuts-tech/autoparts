@@ -74,6 +74,11 @@ const ProductImageZoomLightbox = ({
     pinchStart.current = null;
   }, []);
 
+  const handleClose = useCallback(() => {
+    resetView();
+    onClose();
+  }, [onClose, resetView]);
+
   const goTo = useCallback(
     (index: number) => {
       const nextIndex = clamp(index, 0, images.length - 1);
@@ -104,10 +109,10 @@ const ProductImageZoomLightbox = ({
   }, [open]);
 
   // Make the phone "back" button close the lightbox instead of leaving the page.
-  const onCloseRef = useRef(onClose);
+  const onCloseRef = useRef(handleClose);
   useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+    onCloseRef.current = handleClose;
+  }, [handleClose]);
   useEffect(() => {
     if (!open) return;
     window.history.pushState({ productImageLightbox: true }, "");
@@ -125,7 +130,7 @@ const ProductImageZoomLightbox = ({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") handleClose();
       if (e.key === "ArrowRight" && !isLast) goTo(activeIndex + 1);
       if (e.key === "ArrowLeft" && !isFirst) goTo(activeIndex - 1);
       if (e.key === "+" || e.key === "=") adjustZoom(ZOOM_STEP);
@@ -134,7 +139,7 @@ const ProductImageZoomLightbox = ({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [activeIndex, adjustZoom, goTo, isFirst, isLast, onClose, open, resetView]);
+  }, [activeIndex, adjustZoom, goTo, handleClose, isFirst, isLast, open, resetView]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,10 +149,6 @@ const ProductImageZoomLightbox = ({
       inline: "center",
     });
   }, [activeIndex, open]);
-
-  useEffect(() => {
-    if (!open) resetView();
-  }, [open, resetView]);
 
   // Wheel zoom needs a non-passive native listener: React registers onWheel as
   // passive, so calling preventDefault there is blocked and spams the console.
@@ -295,7 +296,7 @@ const ProductImageZoomLightbox = ({
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 p-0 backdrop-blur-sm sm:p-4"
-      onClick={onClose}
+      onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-label="Product image zoom"
@@ -342,7 +343,7 @@ const ProductImageZoomLightbox = ({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white hover:text-slate-900"
               aria-label="Close"
             >
