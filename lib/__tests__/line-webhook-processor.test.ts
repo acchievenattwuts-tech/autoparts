@@ -24,6 +24,7 @@ type TestCalls = {
   suggestions: Array<{ confidence: LineAiConfidence; deliveryMode?: LineDeliveryMode | null }>;
   replies: Array<{ replyToken: string; text: string; messageCount: number; texts: string[] }>;
   pushes: Array<{ recipientIds: string[]; text: string }>;
+  loadingAnimations: Array<{ chatId: string; loadingSeconds?: number }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
   scopedReplyGroups: string[];
   searches: string[];
@@ -156,6 +157,7 @@ function createProcessorTestDeps(input?: {
     suggestions: [],
     replies: [],
     pushes: [],
+    loadingAnimations: [],
     markedSent: [],
     scopedReplyGroups: [],
     searches: [],
@@ -270,6 +272,10 @@ function createProcessorTestDeps(input?: {
         sentCount: input.recipientIds.length,
         recipientIds: input.recipientIds,
       };
+    },
+    startLineLoadingAnimation: async (input) => {
+      calls.loadingAnimations.push({ chatId: input.chatId, loadingSeconds: input.loadingSeconds });
+      return input.chatId.startsWith("U");
     },
     classifyLineImage: async () => {
       const kind = input?.imageKind ?? "part_image";

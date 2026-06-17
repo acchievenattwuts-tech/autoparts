@@ -8,7 +8,13 @@ export { verifyLineWebhookSignature };
 const LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push";
 const LINE_REPLY_API_URL = "https://api.line.me/v2/bot/message/reply";
 const LINE_PROFILE_API_URL = "https://api.line.me/v2/bot/profile";
+const LINE_LOADING_API_URL = "https://api.line.me/v2/bot/chat/loading/start";
 const LINE_CONTENT_API_BASE = "https://api-data.line.me/v2/bot/message";
+
+// LINE accepts 5–60 in multiples of 5; the typing dots auto-clear when the bot
+// sends its real reply, or after this many seconds — whichever comes first.
+const LINE_LOADING_MIN_SECONDS = 5;
+const LINE_LOADING_MAX_SECONDS = 60;
 const MAX_LINE_CONTENT_BYTES = 6 * 1024 * 1024; // 6MB cap before base64 inlining to Gemini.
 const LINE_PUSH_MAX_ATTEMPTS = 3;
 const LINE_PUSH_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
@@ -277,6 +283,54 @@ async function pushLineMessageWithRetry(params: {
       await sleep(delayMs);
     }
   }
+}
+
+/**
+ * Shows LINE's native "typing" loading animation (the bouncing dots) in a 1:1
+ * chat while the bot prepares its reply. The animation clears automatically when
+ * the bot next sends a message, or after `loadingSeconds` elapses (capped at 60s
+ * by LINE). Only works for individual users (chatId must be a `U…` userId) — not
+ * group/room chats. This is a best-effort UX nicety: callers should swallow any
+ * failure so it never blocks the actual reply flow.
+ */
+export async function startLineLoadingAnimation(params: {
+  channelAccessToken: string;
+  /** The target user's LINE userId (must start with "U"; groups/rooms unsupported). */
+  chatId: string;
+  loadingSeconds?: number;
+}): Promise<boolean> {
+  const { channelAccessToken, chatId } = params;
+
+  // LINE's loading animation is only valid for 1:1 user chats.
+  if (!chatId.startsWith("U")) {
+    return false;
+  }
+
+  const requested = params.loadingSeconds ?? LINE_LOADING_MAX_SECONDS;
+  // Clamp to LINE's 5–60 range and round to the nearest multiple of 5.
+  const clamped = Math.min(
+    LINE_LOADING_MAX_SECONDS,
+    Math.max(LINE_LOADING_MIN_SECONDS, Math.round(requested / 5) * 5),
+  );
+
+  const response = await fetch(LINE_LOADING_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${channelAccessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      chatId,
+      loadingSeconds: clamped,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 300);
+    throw new Error(`LINE loading animation failed (${response.status}): ${body}`);
+  }
+
+  return true;
 }
 
 export async function resolveConfiguredLineRecipients(

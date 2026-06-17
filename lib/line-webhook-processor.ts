@@ -56,7 +56,7 @@ import {
 } from "@/lib/line-conversation-repository";
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
 import { routeLineIntent } from "@/lib/line-intent-router";
-import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
+import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
 import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
@@ -122,6 +122,9 @@ export type LineWebhookProcessorDependencies = {
   getLineProductSummaries: typeof getLineProductSummaries;
   replyLineMessage: typeof replyLineMessage;
   pushLineMessages: typeof pushLineMessages;
+  /** Optional override; shows the LINE typing dots while the bot prepares a reply
+   *  (best-effort; only fired when the bot will actually auto-reply). */
+  startLineLoadingAnimation?: typeof startLineLoadingAnimation;
   /** Optional override; defaults to the Gemini-backed generator with rule-based fallback. */
   generateLineSuggestion?: typeof generateLineSuggestion;
   /** Optional override; defaults to the Gemini-vision classifier with safe fallback. */
@@ -184,6 +187,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   getLineProductSummaries,
   replyLineMessage,
   pushLineMessages,
+  startLineLoadingAnimation,
   generateLineSuggestion,
   classifyLineImage,
   ingestPaymentSlip,
@@ -643,6 +647,51 @@ function canUseReplyToken(config: LineWebhookProcessorConfig, canReply: boolean)
   return Date.now() - receivedAt.getTime() <= maxAgeMs;
 }
 
+/** True once an admin has taken over the chat (paused / waiting-admin / closed) —
+ *  the bot must stay silent, so it also skips the typing dots. */
+function isConversationAdminOwned(aiStatus: LineConversationAiStatus) {
+  return (
+    aiStatus === LineConversationAiStatus.PAUSED_BY_ADMIN ||
+    aiStatus === LineConversationAiStatus.WAITING_ADMIN ||
+    aiStatus === LineConversationAiStatus.CLOSED
+  );
+}
+
+/**
+ * Fires LINE's typing dots for a 1:1 chat, best-effort. Gated on live mode (AI on
+ * + not dry-run) and the chat not being admin-owned, so it never shows while the
+ * bot stays silent. Fire-and-forget: a failure (or a non-`U` group chatId,
+ * filtered inside the helper) must never delay or break the reply. The dots clear
+ * on their own when the bot sends its real message.
+ */
+function maybeStartLoadingDots(
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  params: { lineUserId: string | null; aiStatus: LineConversationAiStatus },
+) {
+  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+  const liveMode = autoReplyEnabled && !dryRun;
+
+  if (
+    !liveMode ||
+    !config.channelAccessToken ||
+    !params.lineUserId ||
+    isConversationAdminOwned(params.aiStatus)
+  ) {
+    return;
+  }
+
+  const startLoading = dependencies.startLineLoadingAnimation ?? startLineLoadingAnimation;
+  void startLoading({
+    channelAccessToken: config.channelAccessToken,
+    chatId: params.lineUserId,
+    loadingSeconds: 60,
+  }).catch(() => {
+    // Swallow: loading dots are a nicety, never a reason to fail a reply.
+  });
+}
+
 // Minimum reply-token budget required to attempt an AI generation for a scoped
 // conversational reply. Below this we use the deterministic template so the
 // reply still goes out on the free reply token instead of timing out.
@@ -1042,6 +1091,12 @@ export async function processLineAiReply(
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY ||
         route.intent === LineIntent.GREETING);
+
+    // Admin has taken over (paused / waiting-admin / closed) → the bot stays
+    // silent, so skip auto-send below. (Typing dots are fired at ingest time, in
+    // ingestLineEvent, which runs for every webhook-driven turn.)
+    const conversationBlocked = isConversationAdminOwned(input.conversation.aiStatus);
+
     const earlyGeneratePromise = wantEarlyGenerate
       ? generateSuggestion({
           intent: route.intent,
@@ -1228,10 +1283,7 @@ export async function processLineAiReply(
 
     // Never auto-send (even a template/FAQ answer) once an admin has taken over the
     // conversation (paused / waiting-admin / closed) — the human is handling it.
-    const conversationBlocked =
-      input.conversation.aiStatus === LineConversationAiStatus.PAUSED_BY_ADMIN ||
-      input.conversation.aiStatus === LineConversationAiStatus.WAITING_ADMIN ||
-      input.conversation.aiStatus === LineConversationAiStatus.CLOSED;
+    // (conversationBlocked is hoisted above, near the loading-animation gate.)
 
     // Force-deliver the forced-response message (a handoff's ADMIN_REQUIRED
     // confidence would otherwise resolve to a silent handoff). Falls back to a
@@ -1560,6 +1612,21 @@ async function ingestLineEvent(
 
   let route = routeLineIntent({ messageType: event.messageType, text: event.text });
 
+  // Instant typing dots — fire here, the moment the message is ingested and
+  // BEFORE the (slow) image vision call below, so the customer sees "กำลังพิมพ์"
+  // right away even for photos. The conversation row above already gives us its
+  // admin-owned status, so the gate stays intact. Skip stickers (greet-once /
+  // silent) and silent text (menu command / noise like "...") that the bot never
+  // answers — otherwise the dots would linger 60s with no reply. In live mode
+  // every other message (text, part photo, payment slip) gets at least an ack
+  // reply, which clears the dots. Best-effort & non-blocking (see helper).
+  const isSilentText =
+    event.messageType === LineMessageType.TEXT &&
+    (isMenuCommand(event.text) || isNoiseText(event.text));
+  if (event.messageType !== LineMessageType.STICKER && !isSilentText) {
+    maybeStartLoadingDots(config, dependencies, { lineUserId, aiStatus: conversation.aiStatus });
+  }
+
   let imageClassification: LineImageClassification | null = null;
   if (event.messageType === LineMessageType.IMAGE) {
     const classify = dependencies.classifyLineImage ?? classifyLineImage;
@@ -1864,6 +1931,8 @@ async function processCoalescedEvents(
         classByMessageId.set(event.lineMessageId, imageClassification);
       }
       await bumpSeq(conversation.id);
+      // Typing dots are fired inside ingestLineEvent (before the image vision
+      // call), so they're already showing by the time we get here.
       touched.set(conversation.id, { conversation, lineUserId: event.lineUserId });
       result.processedCount += 1;
       // inboundMessage intentionally not used further here — the owner re-reads

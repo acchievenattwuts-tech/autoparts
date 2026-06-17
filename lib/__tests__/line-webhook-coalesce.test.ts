@@ -142,6 +142,7 @@ function createCoalesceHarness(options?: {
       calls.pushes.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
       return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
     },
+    startLineLoadingAnimation: async (input) => input.chatId.startsWith("U"),
     classifyLineImage: async (input) => {
       const override = input.lineMessageId
         ? options?.imageClassByMessageId?.[input.lineMessageId]
