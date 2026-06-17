@@ -115,6 +115,7 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
     take: MAX_EXPORT_ROWS,
     order: "codeDesc",
     cacheProfile: "admin",
+    disableSemantic: true,
   });
 
   const rawProducts = sortProductsByIds(

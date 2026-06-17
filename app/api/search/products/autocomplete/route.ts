@@ -13,7 +13,6 @@ import type { ProductSearchCacheProfile } from "@/lib/product-search-cache";
 import { runStorefrontProductSearchWithRequiredTokenFallback } from "@/lib/storefront-product-search";
 import { db } from "@/lib/db";
 import { getProductPath } from "@/lib/product-slug";
-import { checkRateLimit } from "@/lib/rate-limit";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
 
@@ -22,9 +21,52 @@ export const runtime = "nodejs";
 
 const MIN_QUERY_LENGTH = 2;
 const MAX_QUERY_LENGTH = 80;
+const SEMANTIC_MIN_QUERY_LENGTH = 4;
 const TAKE = 8;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 60;
+const RATE_LIMIT_MAX_REQUESTS = 45;
+const RATE_LIMIT_SWEEP_INTERVAL_MS = 5 * 60_000;
+
+type LocalRateBucket = {
+  count: number;
+  resetAt: number;
+};
+
+const globalForAutocompleteRateLimit = globalThis as unknown as {
+  autocompleteRateLimitBuckets?: Map<string, LocalRateBucket>;
+  autocompleteRateLimitLastSweepAt?: number;
+};
+
+const rateLimitBuckets =
+  globalForAutocompleteRateLimit.autocompleteRateLimitBuckets ?? new Map<string, LocalRateBucket>();
+globalForAutocompleteRateLimit.autocompleteRateLimitBuckets = rateLimitBuckets;
+
+const checkLocalRateLimit = ({
+  key,
+  limit,
+  windowMs,
+}: {
+  key: string;
+  limit: number;
+  windowMs: number;
+}): { ok: boolean; resetAt: number } => {
+  const now = Date.now();
+  if ((globalForAutocompleteRateLimit.autocompleteRateLimitLastSweepAt ?? 0) + RATE_LIMIT_SWEEP_INTERVAL_MS < now) {
+    for (const [bucketKey, bucket] of rateLimitBuckets) {
+      if (bucket.resetAt <= now) rateLimitBuckets.delete(bucketKey);
+    }
+    globalForAutocompleteRateLimit.autocompleteRateLimitLastSweepAt = now;
+  }
+
+  const existing = rateLimitBuckets.get(key);
+  if (!existing || existing.resetAt <= now) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return { ok: true, resetAt: now + windowMs };
+  }
+
+  existing.count += 1;
+  return { ok: existing.count <= limit, resetAt: existing.resetAt };
+};
 
 type AutocompleteItem = {
   id: string;
@@ -67,7 +109,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       return NextResponse.json({ items: [] });
     }
 
-    const rate = await checkRateLimit({
+    const rate = checkLocalRateLimit({
       key: `autocomplete:${clientIp(request)}`,
       limit: RATE_LIMIT_MAX_REQUESTS,
       windowMs: RATE_LIMIT_WINDOW_MS,
@@ -79,9 +121,8 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       );
     }
 
-    // Likely-bot as-you-type traffic skips the semantic embedding (lexical only) to
-    // save the per-keystroke Gemini call; humans keep the full hybrid search.
     const isBot = isLikelyBotUserAgent(request.headers.get("user-agent"));
+    const shouldUseSemantic = !isBot && query.length >= SEMANTIC_MIN_QUERY_LENGTH;
 
     // Use the SAME required-token fallback wrapper as the full results pages
     // (storefront /products/search + admin /admin/products) so the dropdown's
@@ -96,7 +137,8 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       take: TAKE,
       order: "createdAtDesc",
       cacheProfile,
-      disableSemantic: isBot,
+      disableSemantic: !shouldUseSemantic,
+      disableBroadFallback: true,
     });
 
     // Feed as-you-type misses into the Product Search Quality report. Fire-and-

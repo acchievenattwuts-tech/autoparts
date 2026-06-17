@@ -103,6 +103,12 @@ type ProductSearchInput = {
    * everywhere else. Purely subtractive: lexical results are unchanged.
    */
   disableSemantic?: boolean;
+  /**
+   * Skip the broad OR recall retry when the precise AND query returns no rows.
+   * Used by high-frequency/lightweight callers that should not spend extra DB
+   * work on every keystroke; full search keeps the retry by default.
+   */
+  disableBroadFallback?: boolean;
 };
 
 const normalizeStringArray = (values?: string[] | null): string[] =>
@@ -633,16 +639,14 @@ async function searchProductIdsFallback(
   const take = input.take ?? 30;
   const order = input.order ?? "createdAtDesc";
 
-  const [rows, total] = await Promise.all([
-    db.product.findMany({
-      where,
-      select: { id: true },
-      orderBy: getFallbackOrderBy(order),
-      skip,
-      take,
-    }),
-    db.product.count({ where }),
-  ]);
+  const rows = await db.product.findMany({
+    where,
+    select: { id: true },
+    orderBy: getFallbackOrderBy(order),
+    skip,
+    take,
+  });
+  const total = await db.product.count({ where });
 
   return {
     ids: rows.map((row) => row.id),
@@ -1192,7 +1196,7 @@ async function searchProductIdsV2(
   // too strict for this catalog's wording), fall back to the broad OR query so we
   // never regress to "no results" where the old OR behaviour would have matched.
   let rows = await runRankedQuery(tsQuery);
-  if (rows.length === 0 && hasMultipleConcepts) {
+  if (rows.length === 0 && hasMultipleConcepts && !input.disableBroadFallback) {
     rows = await runRankedQuery(buildTsQuery(fallbackExpression));
   }
 
@@ -1314,6 +1318,7 @@ export async function searchProductIds(
     cacheProfile,
     // Keep bot (lexical-only) and human (hybrid) results in separate cache entries.
     disableSemantic: input.disableSemantic ?? false,
+    disableBroadFallback: input.disableBroadFallback ?? false,
   });
 
   return unstable_cache(

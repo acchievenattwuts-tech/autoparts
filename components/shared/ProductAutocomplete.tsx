@@ -61,7 +61,7 @@ interface Props {
   adminReturnTo?: string;
 }
 
-const DEBOUNCE_MS = 200;
+const DEBOUNCE_MS = 300;
 const MIN_QUERY_LEN = 2;
 
 const inputBase =

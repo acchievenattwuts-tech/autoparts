@@ -15,7 +15,7 @@ const globalForPrisma = globalThis as unknown as {
 // purchase save/edit holds exactly one connection for its whole transaction).
 const DEFAULT_DB_POOL_MAX = 5;
 const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
-const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 20_000; // slightly higher for Pro long-running ops
+const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 45_000; // let short Supabase pool bursts drain before failing
 
 let hasWarnedAboutSupabaseSessionPooler = false;
 

@@ -131,6 +131,13 @@ function createCoalesceHarness(options?: {
         query: input.text ?? "",
         result: { ids: ["product-1"], total: 1, mode: "v2" },
         needsMoreInfo: false,
+        appliedFilters: {
+          categoryName: null,
+          carBrandName: null,
+          carModelName: null,
+          fitmentYear: null,
+        },
+        droppedImageCodes: [],
       };
     },
     getLineProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100 }],
