@@ -123,6 +123,109 @@ test("retries with a did-you-mean suggestion when the first search is empty", as
   assert.deepEqual(queries, ["คอมแarr", "คอมแอร์"]);
 });
 
+test("did-you-mean retry keeps category/brand/model, drops only the year", async () => {
+  const calls: Array<{ query: string; categoryName: unknown; fitmentYear: unknown }> = [];
+  const result = await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอยร้อนวีออส03",
+      fitmentHints: {
+        categoryName: "คอยล์ร้อน (Condenser)",
+        carBrandName: "Toyota",
+        carModelName: "Vios",
+        fitmentYear: 2003,
+      },
+    },
+    async (input) => {
+      calls.push({
+        query: input.query ?? "",
+        categoryName: input.categoryName,
+        fitmentYear: input.fitmentYear,
+      });
+      // First search (year 2003 hard filter) is empty; suggestion-based retry hits.
+      return input.fitmentYear === null
+        ? { ids: ["p66"], total: 1, mode: "v2", matchReasons: {} }
+        : { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["แผงแอร์ Toyota Vios 2013"],
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(result.query, "แผงแอร์ Toyota Vios 2013");
+  // Initial search carried the year; retry kept category but dropped the year.
+  assert.equal(calls[0].fitmentYear, 2003);
+  assert.equal(calls[1].fitmentYear, null);
+  assert.equal(calls[1].categoryName, "คอยล์ร้อน (Condenser)");
+  // The link must mirror the filters actually applied (no contradictory year).
+  if (result.searched) {
+    assert.deepEqual(result.appliedFilters, {
+      categoryName: "คอยล์ร้อน (Condenser)",
+      carBrandName: "Toyota",
+      carModelName: "Vios",
+      fitmentYear: null,
+    });
+  }
+});
+
+test("unresolved OCR code from an image is dropped from the query, not forced as a filter", async () => {
+  const searchInputs: Array<{ query: string }> = [];
+  const result = await searchLineProductInquiry(
+    {
+      route: {
+        intent: LineIntent.PART_IMAGE_INQUIRY,
+        allowsSearch: true,
+        requiresAdmin: false,
+        requiresImageAnalysis: false,
+        requiresMoreInfo: false,
+        reason: "IMAGE_CLASSIFIED_PART:search=on",
+      },
+      text: "แผงแอร์ Toyota Vios",
+      extractedImageHints: ["แผงแอร์", "Vios", "2903E"],
+    },
+    async (input) => {
+      searchInputs.push({ query: input.query ?? "" });
+      return { ids: ["p66"], total: 1, mode: "v2", matchReasons: {} };
+    },
+    undefined,
+    // OCR code "2903E" resolves to nothing in the catalog.
+    async () => [],
+  );
+
+  assert.equal(result.searched, true);
+  // The garbage code must NOT appear in the executed query.
+  assert.ok(!searchInputs[0].query.includes("2903E"));
+  assert.equal(searchInputs[0].query, "แผงแอร์ Toyota Vios");
+  if (result.searched) assert.deepEqual(result.droppedImageCodes, ["2903E"]);
+});
+
+test("a resolvable OCR code from an image is kept in the query", async () => {
+  const searchInputs: Array<{ query: string }> = [];
+  const result = await searchLineProductInquiry(
+    {
+      route: {
+        intent: LineIntent.PART_IMAGE_INQUIRY,
+        allowsSearch: true,
+        requiresAdmin: false,
+        requiresImageAnalysis: false,
+        requiresMoreInfo: false,
+        reason: "IMAGE_CLASSIFIED_PART:search=on",
+      },
+      text: "แผงแอร์ Vios",
+      extractedImageHints: ["แผงแอร์", "Vios", "STB-2116S"],
+    },
+    async (input) => {
+      searchInputs.push({ query: input.query ?? "" });
+      return { ids: ["p66"], total: 1, mode: "v2", matchReasons: {} };
+    },
+    undefined,
+    async (codes) => codes, // every code resolves
+  );
+
+  assert.equal(result.searched, true);
+  assert.ok(searchInputs[0].query.includes("STB-2116S"));
+  if (result.searched) assert.deepEqual(result.droppedImageCodes, []);
+});
+
 test("part image inquiry searches using extracted vision hints when allowed", async () => {
   const calls: unknown[] = [];
 

@@ -481,17 +481,52 @@ export function buildConservativeLineSuggestion(input: {
  * subject + the SAME matched products/cards — only the prose is templated; the
  * product results shown are identical to the live path.
  */
+/** Fitment slots already known for the current inquiry (from the carried frame). */
+export type LineKnownFitment = {
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+};
+
+/**
+ * Builds a "please tell me X" question that asks ONLY for the slots still missing
+ * from the known fitment — never re-asking detail the customer already gave (or
+ * that an image already revealed). Returns null when nothing is missing, so the
+ * caller can stay silent instead of asking a redundant question.
+ */
+export function buildMissingFitmentQuestion(known?: LineKnownFitment | null): string | null {
+  const needPart = !known?.partType;
+  const needCar = !known?.carBrand && !known?.carModel;
+  const needYear = known?.year === null || known?.year === undefined;
+
+  const wants: string[] = [];
+  if (needPart) wants.push("ชนิดอะไหล่ (เช่น หม้อน้ำ คอยล์เย็น คอมแอร์)");
+  if (needCar) wants.push("ยี่ห้อ/รุ่นรถ");
+  if (needYear) wants.push("ปีรถ");
+
+  if (wants.length === 0) return null;
+  return `รบกวนแจ้ง ${wants.join(" และ ")} เพิ่มเติมนะคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ 🙏`;
+}
+
 export function buildJuneDeadlineReply(input: {
   query?: string | null;
   products?: LineProductSummary[];
+  known?: LineKnownFitment | null;
 }): string {
   const subject = input.query?.trim();
   const products = input.products ?? [];
 
   if (products.length === 0) {
-    return subject
-      ? `สำหรับ "${subject}" ตอนนี้จูนขอเวลาตรวจสอบเพิ่มอีกนิดนะคะ 🙏 รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิม/เบอร์บนตัวอะไหล่เพิ่มเติม จะได้ช่วยเทียบให้แม่นยำขึ้นค่ะ`
-      : "รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมเพิ่มเติมนะคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ 🙏";
+    // Ask only for what's genuinely missing. When the subject is already complete
+    // (part + car + year known) we must NOT re-ask known detail — stay soft/silent.
+    const question = buildMissingFitmentQuestion(input.known);
+    if (!question) {
+      return subject
+        ? `สำหรับ "${subject}" จูนขอเช็กข้อมูลเพิ่มอีกนิดแล้วแจ้งกลับนะคะ 🙏`
+        : "จูนขอเช็กข้อมูลเพิ่มอีกนิดแล้วแจ้งกลับนะคะ 🙏";
+    }
+    return subject ? `สำหรับ "${subject}" ${question}` : question;
   }
 
   const productLines = formatProductListBlock(products);

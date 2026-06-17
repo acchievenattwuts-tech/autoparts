@@ -249,6 +249,13 @@ function createProcessorTestDeps(input?: {
           mode: "v2",
         },
         needsMoreInfo: false,
+        appliedFilters: {
+          categoryName: input.fitmentHints?.categoryName ?? null,
+          carBrandName: input.fitmentHints?.carBrandName ?? null,
+          carModelName: input.fitmentHints?.carModelName ?? null,
+          fitmentYear: input.fitmentHints?.fitmentYear ?? null,
+        },
+        droppedImageCodes: [],
       };
     },
     replyLineMessage: async (input) => {
@@ -924,6 +931,8 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
     query: "asdf qwer",
     result: { ids: [], total: 0, mode: "v2", matchReasons: {} },
     needsMoreInfo: true,
+    appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
+    droppedImageCodes: [],
   });
 
   const result = await processLineWebhookPayload(
@@ -947,6 +956,8 @@ test("escalates to admin (waiting + notify + send-off message) after repeated em
     query: "vios 1234",
     result: { ids: [], total: 0, mode: "v2" },
     needsMoreInfo: true,
+    appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
+    droppedImageCodes: [],
   });
 
   const result = await processLineWebhookPayload(

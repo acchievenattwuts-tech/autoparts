@@ -1,6 +1,7 @@
 import { LineIntent } from "@/lib/generated/prisma";
 import type { LineIntentRouteResult } from "@/lib/line-intent-router";
 import { extractLineRequiredSearchTokens } from "@/lib/line-search-guards";
+import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 type ProductSearchInput = {
   query?: string | null;
@@ -51,6 +52,20 @@ export type LineProductSearchBridgeResult =
       query: string;
       result: ProductSearchOutput;
       needsMoreInfo: boolean;
+      /** The fitment filters actually applied to the successful search. Mirrored
+       *  into the "view all on web" link so the storefront lands on the SAME set
+       *  the customer saw — after a did-you-mean retry the year is dropped, so the
+       *  link must reflect that (not the original frame's year). */
+      appliedFilters: {
+        categoryName: string | null;
+        carBrandName: string | null;
+        carModelName: string | null;
+        fitmentYear: number | null;
+      };
+      /** Code-like tokens read from an image (OCR) that did NOT resolve to any
+       *  product, so they were dropped from the query instead of zeroing the
+       *  search. Non-empty → the OCR was unsure; surfaced for audit. */
+      droppedImageCodes: string[];
     };
 
 export type LineMatchedProductSummary = {
@@ -129,10 +144,48 @@ function buildSearchQuery(input: LineProductSearchBridgeInput): string | null {
 
 type SuggestFn = (query: string) => Promise<string[]>;
 
+/** Resolves which code-like tokens actually exist in the catalog (product code /
+ *  OEM / alias / name). Used to validate OCR-read part numbers from images before
+ *  they shape the search. Injectable for tests. */
+export type ResolveCatalogCodesFn = (codes: string[]) => Promise<string[]>;
+
+const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
+  if (codes.length === 0) return [];
+  const { db } = await import("@/lib/db");
+  const { Prisma } = await import("@/lib/generated/prisma");
+  const rows = await db.$queryRaw<Array<{ code: string }>>(Prisma.sql`
+    SELECT c.code
+    FROM (
+      ${Prisma.join(
+        codes.map((code) => Prisma.sql`SELECT ${code}::text AS code`),
+        " UNION ALL ",
+      )}
+    ) AS c
+    WHERE EXISTS (
+      SELECT 1 FROM product_search_documents psd
+      WHERE psd.is_active = true
+        AND (
+          f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower('%' || c.code || '%'))
+          OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower('%' || c.code || '%'))
+          OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower('%' || c.code || '%'))
+          OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower('%' || c.code || '%'))
+        )
+    )
+  `);
+  return rows.map((row) => row.code);
+};
+
+/** A token is "code-like" when it carries a digit and ≥3 chars (e.g. STB-2116S,
+ *  2903E) — the same heuristic the search uses to treat a token as a part-code
+ *  anchor. Plain words (แผงแอร์, vios) are never code-like. */
+const isCodeLikeToken = (token: string): boolean =>
+  extractProductSearchRequiredTokens(token).length > 0;
+
 export async function searchLineProductInquiry(
   input: LineProductSearchBridgeInput,
   searchFn?: ProductSearchFn,
   suggestFn?: SuggestFn,
+  resolveCatalogCodesFn: ResolveCatalogCodesFn = defaultResolveCatalogCodes,
 ): Promise<LineProductSearchBridgeResult> {
   const searchableIntent =
     input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
@@ -147,7 +200,22 @@ export async function searchLineProductInquiry(
     };
   }
 
-  const query = buildSearchQuery(input);
+  // OCR safety: code-like hints read from an image (e.g. the number printed on a
+  // part) are error-prone. Validate them against the catalog and DROP any that
+  // resolve to nothing — an OCR misread must never zero out the search (a single
+  // unmatched code token turns the precise AND query into 0 results, or blows the
+  // OR fallback up to the whole catalog). Word hints (part type, brand, model)
+  // always pass through. Customer-typed text is trusted and never validated here.
+  const rawImageHints = (input.extractedImageHints ?? []).filter(Boolean);
+  const imageCodeHints = rawImageHints.filter(isCodeLikeToken);
+  const resolvedImageCodes =
+    imageCodeHints.length > 0
+      ? new Set(await resolveCatalogCodesFn(imageCodeHints).catch(() => []))
+      : new Set<string>();
+  const droppedImageCodes = imageCodeHints.filter((code) => !resolvedImageCodes.has(code));
+  const safeImageHints = rawImageHints.filter((hint) => !droppedImageCodes.includes(hint));
+
+  const query = buildSearchQuery({ ...input, extractedImageHints: safeImageHints });
   if (!query) {
     return {
       searched: false,
@@ -156,7 +224,14 @@ export async function searchLineProductInquiry(
       result: null,
     };
   }
-  const requiredTokens = extractLineRequiredSearchTokens(query);
+
+  // Required tokens (hard recall anchors) come only from CUSTOMER-typed sources —
+  // never from image OCR hints. A code the customer typed is intentional; a code
+  // an image reader guessed is not, so it must stay a soft signal at most.
+  const customerSeed = [input.extractedPartNumber, input.text, ...(input.contextHints ?? [])]
+    .filter(Boolean)
+    .join(" ");
+  const requiredTokens = extractLineRequiredSearchTokens(customerSeed);
 
   const resolvedSearchFn =
     searchFn ??
@@ -165,13 +240,17 @@ export async function searchLineProductInquiry(
       return searchProductIds(searchInput);
     });
 
-  const result = await resolvedSearchFn({
-    query,
-    isActive: true,
+  const baseFilters = {
     categoryName: input.fitmentHints?.categoryName ?? null,
     carBrandName: input.fitmentHints?.carBrandName ?? null,
     carModelName: input.fitmentHints?.carModelName ?? null,
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
+  };
+
+  const result = await resolvedSearchFn({
+    query,
+    isActive: true,
+    ...baseFilters,
     ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
     skip: 0,
     take: input.take ?? 5,
@@ -192,9 +271,15 @@ export async function searchLineProductInquiry(
       const normalizedSuggestion = normalizeSearchSeed(suggestion);
       if (!normalizedSuggestion || normalizedSuggestion.toLowerCase() === query.toLowerCase()) continue;
 
+      // Keep the detected category/brand/model so the recovery stays on-topic
+      // (don't widen into unrelated categories). Drop the YEAR only: the year
+      // hard-filter is what zeroed the first search, and the suggestion may imply
+      // a different model year than the customer's shorthand.
+      const retryFilters = { ...baseFilters, fitmentYear: null };
       const retry = await resolvedSearchFn({
         query: normalizedSuggestion,
         isActive: true,
+        ...retryFilters,
         ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
         skip: 0,
         take: input.take ?? 5,
@@ -208,6 +293,8 @@ export async function searchLineProductInquiry(
           query: normalizedSuggestion,
           result: retry,
           needsMoreInfo: false,
+          appliedFilters: retryFilters,
+          droppedImageCodes,
         };
       }
     }
@@ -219,5 +306,7 @@ export async function searchLineProductInquiry(
     query,
     result,
     needsMoreInfo: result.total === 0 || result.ids.length === 0,
+    appliedFilters: baseFilters,
+    droppedImageCodes,
   };
 }

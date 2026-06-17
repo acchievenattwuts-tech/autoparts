@@ -1051,6 +1051,7 @@ export async function processLineAiReply(
             total: productSearch.result.total,
             returnedCount: productSearch.result.ids.length,
             needsMoreInfo: productSearch.needsMoreInfo,
+            droppedImageCodes: productSearch.droppedImageCodes,
           }
         : {
             lineEventId: input.lineEventId,
@@ -1252,7 +1253,21 @@ export async function processLineAiReply(
         suggestion = raced;
       } else {
         suggestion = {
-          suggestedReply: buildJuneDeadlineReply({ query: consolidatedQuery ?? input.text, products }),
+          suggestedReply: buildJuneDeadlineReply({
+            query: consolidatedQuery ?? input.text,
+            products,
+            // Frame-aware: ask only for slots still missing, never re-ask the
+            // part/car/year we already know (e.g. when an image's OCR code was
+            // unclear but the part + car + year are already established).
+            known: inquiryFrame
+              ? {
+                  partType: inquiryFrame.partType,
+                  carBrand: inquiryFrame.carBrand,
+                  carModel: inquiryFrame.carModel,
+                  year: frameYear,
+                }
+              : null,
+          }),
           confidence: products.length > 0 ? LineAiConfidence.POSSIBLE_MATCH : LineAiConfidence.NEED_MORE_INFO,
           reasoningSummary: raced === DEADLINE ? "DEADLINE_FALLBACK" : "GENERATE_FAILED_FALLBACK",
           matchedProducts: productSearch.searched ? productSearch.result : null,
@@ -1356,14 +1371,19 @@ export async function processLineAiReply(
           searchQuery: productSearch.searched ? productSearch.query : null,
           total: productSearch.searched ? productSearch.result.total : 0,
           placeholderImageUrl,
-          // Mirror the fitment filters the LINE search applied so the "view all on
-          // web" link lands on the SAME filtered set (matching counts).
-          filters: {
-            categoryName: fitmentFilters.categoryName ?? null,
-            carBrandName: fitmentFilters.carBrandName ?? null,
-            carModelName: fitmentFilters.carModelName ?? null,
-            year: frameYear,
-          },
+          // Mirror the fitment filters the LINE search ACTUALLY applied so the
+          // "view all on web" link lands on the SAME set the customer saw. After a
+          // did-you-mean retry the year is dropped, so we must use the search's
+          // appliedFilters — not the original frame's year (which would re-add a
+          // contradictory hard year-filter and zero out the web results).
+          filters: productSearch.searched
+            ? {
+                categoryName: productSearch.appliedFilters.categoryName,
+                carBrandName: productSearch.appliedFilters.carBrandName,
+                carModelName: productSearch.appliedFilters.carModelName,
+                year: productSearch.appliedFilters.fitmentYear,
+              }
+            : undefined,
         });
     // Persona follow-up: after showing the matches, nudge the customer for the
     // one missing detail (year for rule #1, part type for rule #2) so the next
