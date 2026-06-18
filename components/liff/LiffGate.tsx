@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { LoaderCircle } from "lucide-react";
 
+import BrandLoader from "@/components/shared/BrandLoader";
 import { useLiff } from "./LiffProvider";
 
 export default function LiffGate({ children, lineUrl = "" }: { children: React.ReactNode; lineUrl?: string }) {
@@ -12,7 +12,7 @@ export default function LiffGate({ children, lineUrl = "" }: { children: React.R
     return (
       <div className="flex min-h-[55vh] items-center justify-center px-6 text-center">
         <div>
-          <LoaderCircle className="mx-auto mb-3 h-7 w-7 animate-spin text-blue-700 dark:text-sky-400" />
+          <BrandLoader variant="inline" size="lg" className="mb-3" />
           <p className="text-sm font-medium text-slate-700 dark:text-slate-300">กำลังเปิดบริการลูกค้า LINE</p>
         </div>
       </div>
