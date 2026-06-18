@@ -664,17 +664,10 @@ function isConversationAdminOwned(aiStatus: LineConversationAiStatus) {
  * filtered inside the helper) must never delay or break the reply. The dots clear
  * on their own when the bot sends its real message.
  */
-const LOADING_DOTS_SECONDS = 60;
-
 function maybeStartLoadingDots(
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  params: {
-    lineUserId: string | null;
-    aiStatus: LineConversationAiStatus;
-    conversationId: string;
-    lineEventId: string | null;
-  },
+  params: { lineUserId: string | null; aiStatus: LineConversationAiStatus },
 ) {
   const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
   const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -686,63 +679,17 @@ function maybeStartLoadingDots(
     !params.lineUserId ||
     isConversationAdminOwned(params.aiStatus)
   ) {
-    // Diagnostic: record why the dots were NOT fired, so a "stale time" report can
-    // be traced to a skipped fire (vs LINE not refreshing its own timestamp).
-    fireAndForgetAudit(dependencies, {
-      conversationId: params.conversationId,
-      action: "LINE_LOADING_SKIPPED",
-      payload: {
-        lineEventId: params.lineEventId,
-        reason: !liveMode
-          ? "NOT_LIVE"
-          : !config.channelAccessToken
-            ? "NO_TOKEN"
-            : !params.lineUserId
-              ? "NO_USER_ID"
-              : "ADMIN_OWNED",
-      },
-    });
     return;
   }
 
   const startLoading = dependencies.startLineLoadingAnimation ?? startLineLoadingAnimation;
-  const channelAccessToken = config.channelAccessToken;
-  const chatId = params.lineUserId;
-  const firedAt = new Date().toISOString();
-  void (async () => {
-    try {
-      const ok = await startLoading({
-        channelAccessToken,
-        chatId,
-        loadingSeconds: LOADING_DOTS_SECONDS,
-      });
-      // Diagnostic: confirms a fresh fire reached LINE, with the timestamp we sent.
-      // ok === false means LINE rejected the chatId (non-1:1) — no dots shown.
-      fireAndForgetAudit(dependencies, {
-        conversationId: params.conversationId,
-        action: "LINE_LOADING_FIRED",
-        payload: {
-          lineEventId: params.lineEventId,
-          firedAt,
-          loadingSeconds: LOADING_DOTS_SECONDS,
-          ok,
-        },
-      });
-    } catch (error) {
-      // Swallow: loading dots are a nicety, never a reason to fail a reply.
-      fireAndForgetAudit(dependencies, {
-        conversationId: params.conversationId,
-        action: "LINE_LOADING_FIRED",
-        payload: {
-          lineEventId: params.lineEventId,
-          firedAt,
-          loadingSeconds: LOADING_DOTS_SECONDS,
-          ok: false,
-          error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
-        },
-      });
-    }
-  })();
+  void startLoading({
+    channelAccessToken: config.channelAccessToken,
+    chatId: params.lineUserId,
+    loadingSeconds: 60,
+  }).catch(() => {
+    // Swallow: loading dots are a nicety, never a reason to fail a reply.
+  });
 }
 
 // Minimum reply-token budget required to attempt an AI generation for a scoped
@@ -1697,12 +1644,7 @@ async function ingestLineEvent(
     event.messageType === LineMessageType.TEXT &&
     (isMenuCommand(event.text) || isNoiseText(event.text));
   if (event.messageType !== LineMessageType.STICKER && !isSilentText) {
-    maybeStartLoadingDots(config, dependencies, {
-      lineUserId,
-      aiStatus: conversation.aiStatus,
-      conversationId: conversation.id,
-      lineEventId: event.lineEventId,
-    });
+    maybeStartLoadingDots(config, dependencies, { lineUserId, aiStatus: conversation.aiStatus });
   }
 
   let imageClassification: LineImageClassification | null = null;
