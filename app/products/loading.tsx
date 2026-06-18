@@ -1,5 +1,8 @@
+import BrandLoader from "@/components/shared/BrandLoader";
+
 const Loading = () => (
   <div className="min-h-screen bg-gray-50 pt-16">
+    <BrandLoader variant="overlay" size="lg" label="กำลังโหลด..." />
     <div className="bg-[#1e3a5f] py-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="h-8 w-48 bg-white/20 rounded-lg mb-5 animate-pulse" />

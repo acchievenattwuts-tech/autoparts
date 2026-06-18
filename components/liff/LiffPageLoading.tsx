@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import BrandLoader from "@/components/shared/BrandLoader";
 
 export default function LiffPageLoading({
   title = "กำลังโหลดข้อมูล",
@@ -13,7 +13,9 @@ export default function LiffPageLoading({
         <div className="h-3 w-24 rounded-full bg-blue-100 dark:bg-slate-700" />
         <div className="mt-3 h-8 w-48 rounded-full bg-blue-100/80 dark:bg-slate-700/80" />
         <div className="mt-5 rounded-2xl border border-blue-100 bg-white/85 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/85">
-          <LoaderCircle className="mb-3 h-6 w-6 animate-spin text-blue-700 dark:text-sky-400" />
+          <div className="mb-3 w-fit">
+            <BrandLoader variant="inline" size="md" />
+          </div>
           <p className="font-kanit text-lg font-bold dark:text-slate-100">{title}</p>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
         </div>
