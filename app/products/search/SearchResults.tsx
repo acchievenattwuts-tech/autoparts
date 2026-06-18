@@ -408,13 +408,6 @@ const SearchResults = ({
           )}
         </div>
 
-        {requiredTokenFallback?.usedFallback ? (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
-            ไม่พบสินค้าที่ตรงกับรหัส{" "}
-            <span className="font-semibold">{requiredTokenFallback.requiredTokens.join(", ")}</span>{" "}
-            จึงแสดงผลลัพธ์ใกล้เคียงแทน
-          </div>
-        ) : null}
 
         <div className="relative min-h-[400px]">
           {/* Loading pill — absolute so it doesn't reserve vertical space when hidden.
