@@ -27,13 +27,9 @@ export async function lockProductForStockMutation(
   await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${productId} FOR UPDATE`;
 }
 
-function sqlStringLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function sqlNumericLiteral(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  return String(value);
+function safeSqlNumber(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return value;
 }
 
 // Column scales for StockCard balance fields (see prisma/schema.prisma):
@@ -198,7 +194,7 @@ function replayStockCardMavg(rows: StockReplayRow[]): {
 
 /** Flush diff-write balance updates in chunked `UPDATE ... FROM (VALUES ...)`. */
 async function flushStockBalanceUpdates(
-  tx: Pick<TxClient, "$executeRawUnsafe">,
+  tx: Pick<TxClient, "$executeRaw">,
   updates: StockBalanceUpdate[],
 ): Promise<void> {
   const updateChunkSize = 500;
@@ -206,16 +202,16 @@ async function flushStockBalanceUpdates(
     const chunk = updates.slice(i, i + updateChunkSize);
     if (chunk.length === 0) continue;
 
-    const values = chunk
-      .map((update) => `(
-        ${sqlStringLiteral(update.id)},
-        ${sqlNumericLiteral(update.priceOut)}::numeric,
-        ${sqlNumericLiteral(update.qtyBalance)}::numeric,
-        ${sqlNumericLiteral(update.priceBalance)}::numeric
-      )`)
-      .join(",");
+    const values = Prisma.join(
+      chunk.map((update) => Prisma.sql`(
+        ${update.id},
+        ${safeSqlNumber(update.priceOut)}::numeric,
+        ${safeSqlNumber(update.qtyBalance)}::numeric,
+        ${safeSqlNumber(update.priceBalance)}::numeric
+      )`),
+    );
 
-    await tx.$executeRawUnsafe(`
+    await tx.$executeRaw`
       UPDATE "StockCard" AS sc
       SET
         "priceOut" = data."priceOut",
@@ -225,7 +221,7 @@ async function flushStockBalanceUpdates(
         VALUES ${values}
       ) AS data("id", "priceOut", "qtyBalance", "priceBalance")
       WHERE sc."id" = data."id"
-    `);
+    `;
   }
 }
 
@@ -275,10 +271,12 @@ export async function recalculateStockCardMany(
 
   // Lock every affected Product row in one statement, in a deterministic order
   // to avoid deadlocks with other transactions taking the same locks.
-  const idList = productIds.map((id) => sqlStringLiteral(id)).join(",");
-  await tx.$queryRawUnsafe(
-    `SELECT id FROM "Product" WHERE id IN (${idList}) ORDER BY id FOR UPDATE`,
-  );
+  await tx.$queryRaw`
+    SELECT id FROM "Product"
+    WHERE id IN (${Prisma.join(productIds)})
+    ORDER BY id
+    FOR UPDATE
+  `;
 
   const rows = await tx.stockCard.findMany({
     where: { productId: { in: productIds } },
@@ -307,15 +305,19 @@ export async function recalculateStockCardMany(
   for (let i = 0; i < productFinals.length; i += productChunkSize) {
     const chunk = productFinals.slice(i, i + productChunkSize);
     if (chunk.length === 0) continue;
-    const values = chunk
-      .map((p) => `(${sqlStringLiteral(p.id)}, ${Math.round(p.stock)}::int, ${sqlNumericLiteral(p.avgCost)}::numeric)`)
-      .join(",");
-    await tx.$executeRawUnsafe(`
+    const values = Prisma.join(
+      chunk.map((p) => Prisma.sql`(
+        ${p.id},
+        ${Math.round(p.stock)}::int,
+        ${safeSqlNumber(p.avgCost)}::numeric
+      )`),
+    );
+    await tx.$executeRaw`
       UPDATE "Product" AS p
       SET "stock" = data."stock", "avgCost" = data."avgCost"
       FROM (VALUES ${values}) AS data("id", "stock", "avgCost")
       WHERE p."id" = data."id"
-    `);
+    `;
   }
 }
 

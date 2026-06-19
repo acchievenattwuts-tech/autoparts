@@ -140,15 +140,9 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-// SQL literal helpers for batched `UPDATE ... FROM (VALUES ...)` statements.
-// Only ever fed server-derived values (ids, computed numbers, controlled
-// strings), never raw client input beyond escaped text — keeps batched writes
-// injection-safe while collapsing N per-row round-trips into one.
-function sqlText(value: string | null): string {
-  return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
-}
-function sqlNum(value: number): string {
-  return Number.isFinite(value) ? String(value) : "0";
+// Keep non-finite computed numbers out of batched parameterized SQL writes.
+function safeSqlNumber(value: number): number {
+  return Number.isFinite(value) ? value : 0;
 }
 
 // Build a stable signature for a purchase line in BASE-UNIT terms.
@@ -1079,15 +1073,19 @@ export async function updatePurchase(
             else decByProductLot.set(key, { productId, lotNo: lot.lotNo, dec: new Prisma.Decimal(lot.qty) });
           }
           if (decByProductLot.size > 0) {
-            const values = [...decByProductLot.values()]
-              .map((d) => `(${sqlText(d.productId)}, ${sqlText(d.lotNo)}, ${d.dec.toString()}::numeric)`)
-              .join(",");
-            await tx.$executeRawUnsafe(`
+            const values = Prisma.join(
+              [...decByProductLot.values()].map((d) => Prisma.sql`(
+                ${d.productId},
+                ${d.lotNo},
+                ${d.dec.toString()}::numeric
+              )`),
+            );
+            await tx.$executeRaw`
               UPDATE "LotBalance" AS lb
               SET "qtyOnHand" = GREATEST(lb."qtyOnHand" - d."dec", 0)
               FROM (VALUES ${values}) AS d("productId","lotNo","dec")
               WHERE lb."productId" = d."productId" AND lb."lotNo" = d."lotNo"
-            `);
+            `;
           }
         }
         await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
@@ -1166,21 +1164,26 @@ export async function updatePurchase(
           // supplierId is the same for every line; landedCost is only synced when
           // the allocation can be updated in place (otherwise left untouched).
           const supplierValue = supplierId || null;
-          const values = syncRows
-            .map((r) => `(
-              ${sqlText(r.id)},
-              ${r.lineNo}::int,
-              ${sqlNum(r.subtotalAmount)}::numeric,
-              ${sqlNum(r.showQty)}::numeric,
-              ${sqlText(r.showUnitName)},
-              ${sqlNum(r.showPricePerUnit)}::numeric,
-              ${sqlNum(r.unitScale)}::numeric,
-              ${canUpdateLandedAllocationInPlace ? `${sqlNum(r.landedCostPerSelectedUnit)}::numeric` : "NULL::numeric"}
-            )`)
-            .join(",");
-          await tx.$executeRawUnsafe(`
+          const values = Prisma.join(
+            syncRows.map((r) => {
+              const landedCost = canUpdateLandedAllocationInPlace
+                ? Prisma.sql`${safeSqlNumber(r.landedCostPerSelectedUnit)}::numeric`
+                : Prisma.sql`NULL::numeric`;
+              return Prisma.sql`(
+                ${r.id},
+                ${r.lineNo}::int,
+                ${safeSqlNumber(r.subtotalAmount)}::numeric,
+                ${safeSqlNumber(r.showQty)}::numeric,
+                ${r.showUnitName},
+                ${safeSqlNumber(r.showPricePerUnit)}::numeric,
+                ${safeSqlNumber(r.unitScale)}::numeric,
+                ${landedCost}
+              )`;
+            }),
+          );
+          await tx.$executeRaw`
             UPDATE "PurchaseItem" AS pi SET
-              "supplierId" = ${sqlText(supplierValue)},
+              "supplierId" = ${supplierValue},
               "lineNo" = d."lineNo",
               "subtotalAmount" = d."subtotalAmount",
               "showQty" = d."showQty",
@@ -1193,7 +1196,7 @@ export async function updatePurchase(
               "showPricePerUnit","unitScale","landedCost"
             )
             WHERE pi."id" = d."id"
-          `);
+          `;
 
           if (canUpdateLandedAllocationInPlace) {
             // Refresh StockCard landed cost in place: one bulk UPDATE for the
@@ -1204,14 +1207,17 @@ export async function updatePurchase(
               select: { id: true, productId: true, docDate: true, sorder: true, referenceId: true },
             });
             if (changedRows.length > 0) {
-              const scValues = changedRows
-                .map((row) => `(${sqlText(row.id)}, ${sqlNum(allocByRef.get(row.referenceId ?? "") ?? 0)}::numeric)`)
-                .join(",");
-              await tx.$executeRawUnsafe(`
+              const scValues = Prisma.join(
+                changedRows.map((row) => Prisma.sql`(
+                  ${row.id},
+                  ${safeSqlNumber(allocByRef.get(row.referenceId ?? "") ?? 0)}::numeric
+                )`),
+              );
+              await tx.$executeRaw`
                 UPDATE "StockCard" AS sc SET "landedCost" = d."landedCost"
                 FROM (VALUES ${scValues}) AS d("id","landedCost")
                 WHERE sc."id" = d."id"
-              `);
+              `;
 
               for (const row of changedRows) {
                 const refreshed = await refreshLatestPurchaseStockCardBalance(tx, {

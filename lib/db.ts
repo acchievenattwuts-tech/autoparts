@@ -121,10 +121,12 @@ export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T>
     async (tx) => {
       // SET LOCAL is scoped to this transaction; on the Supabase transaction
       // pooler the backend stays pinned for the transaction, so it applies.
-      await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = ${TX_LOCK_TIMEOUT_MS}`);
-      await tx.$executeRawUnsafe(
-        `SET LOCAL idle_in_transaction_session_timeout = ${TX_IDLE_IN_TX_TIMEOUT_MS}`,
-      );
+      await tx.$executeRaw`
+        SELECT set_config('lock_timeout', ${String(TX_LOCK_TIMEOUT_MS)}, true)
+      `;
+      await tx.$executeRaw`
+        SELECT set_config('idle_in_transaction_session_timeout', ${String(TX_IDLE_IN_TX_TIMEOUT_MS)}, true)
+      `;
       return fn(tx);
     },
     { timeout: options?.timeout ?? TX_TIMEOUT },

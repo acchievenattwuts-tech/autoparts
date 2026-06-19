@@ -92,14 +92,11 @@ type PurchaseLastTxClient = {
       }>
     >;
   };
-  $executeRawUnsafe: (query: string) => Promise<number>;
+  $executeRaw: (query: Prisma.Sql) => Promise<number>;
 };
 
-function sqlTextLit(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-function sqlNumLit(value: number): string {
-  return Number.isFinite(value) ? String(value) : "0";
+function safeSqlNumber(value: number): number {
+  return Number.isFinite(value) ? value : 0;
 }
 
 export async function refreshProductPurchaseLastFields(
@@ -152,16 +149,22 @@ export async function refreshProductPurchaseLastFields(
   // Values match the per-row update exactly: products with a snapshot get
   // price/date/unit set; products without get price/date nulled and unit left
   // unchanged (COALESCE keeps the existing value when NULL is supplied).
-  const values = productIds
-    .map((productId) => {
+  const values = Prisma.join(
+    productIds.map((productId) => {
       const snapshot = snapshotByProduct.get(productId);
-      const price = snapshot ? `${sqlNumLit(snapshot.purchaseLastPrice)}::numeric` : "NULL::numeric";
-      const date = snapshot ? `${sqlTextLit(snapshot.purchaseLastDate.toISOString())}::timestamptz` : "NULL::timestamptz";
-      const unit = snapshot ? `${sqlTextLit(snapshot.purchaseUnitName)}::text` : "NULL::text";
-      return `(${sqlTextLit(productId)}, ${price}, ${date}, ${unit})`;
-    })
-    .join(",");
-  await tx.$executeRawUnsafe(`
+      const price = snapshot
+        ? Prisma.sql`${safeSqlNumber(snapshot.purchaseLastPrice)}::numeric`
+        : Prisma.sql`NULL::numeric`;
+      const date = snapshot
+        ? Prisma.sql`${snapshot.purchaseLastDate.toISOString()}::timestamptz`
+        : Prisma.sql`NULL::timestamptz`;
+      const unit = snapshot
+        ? Prisma.sql`${snapshot.purchaseUnitName}::text`
+        : Prisma.sql`NULL::text`;
+      return Prisma.sql`(${productId}, ${price}, ${date}, ${unit})`;
+    }),
+  );
+  await tx.$executeRaw(Prisma.sql`
     UPDATE "Product" AS p
     SET
       "purchaseLastPrice" = d."purchaseLastPrice",
