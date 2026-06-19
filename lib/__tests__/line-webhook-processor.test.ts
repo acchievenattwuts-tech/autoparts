@@ -444,7 +444,7 @@ test("processor creates conversation message and sends webhook reply via replyMe
   assert.deepEqual(calls.notifyHandoffs, []);
 });
 
-test("processor starts LINE loading animation for text messages for 20 seconds", async () => {
+test("processor starts LINE loading animation for text messages for 60 seconds", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
 
@@ -454,10 +454,10 @@ test("processor starts LINE loading animation for text messages for 20 seconds",
     dependencies,
   );
 
-  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 20 }]);
+  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 60 }]);
 });
 
-test("processor starts LINE loading animation for image messages for 35 seconds", async () => {
+test("processor starts LINE loading animation for image messages for 60 seconds", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
 
@@ -467,7 +467,7 @@ test("processor starts LINE loading animation for image messages for 35 seconds"
     dependencies,
   );
 
-  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 35 }]);
+  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 60 }]);
 });
 
 test("processor notifies admins when AI cannot auto-reply (conversation paused)", async () => {
