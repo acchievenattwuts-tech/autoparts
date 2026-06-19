@@ -444,6 +444,32 @@ test("processor creates conversation message and sends webhook reply via replyMe
   assert.deepEqual(calls.notifyHandoffs, []);
 });
 
+test("processor starts LINE loading animation for text messages for 20 seconds", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  await processLineWebhookPayload(
+    textPayload("vios 1234"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 20 }]);
+});
+
+test("processor starts LINE loading animation for image messages for 35 seconds", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  await processLineWebhookPayload(
+    imagePayload(),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.loadingAnimations, [{ chatId: "line-user-1", loadingSeconds: 35 }]);
+});
+
 test("processor notifies admins when AI cannot auto-reply (conversation paused)", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({

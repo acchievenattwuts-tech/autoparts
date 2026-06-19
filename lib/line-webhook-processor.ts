@@ -664,10 +664,21 @@ function isConversationAdminOwned(aiStatus: LineConversationAiStatus) {
  * filtered inside the helper) must never delay or break the reply. The dots clear
  * on their own when the bot sends its real message.
  */
+const TEXT_LOADING_DOTS_SECONDS = 20;
+const IMAGE_LOADING_DOTS_SECONDS = 35;
+
+function getLoadingDotsSeconds(messageType: LineMessageType): number {
+  return messageType === LineMessageType.IMAGE ? IMAGE_LOADING_DOTS_SECONDS : TEXT_LOADING_DOTS_SECONDS;
+}
+
 function maybeStartLoadingDots(
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  params: { lineUserId: string | null; aiStatus: LineConversationAiStatus },
+  params: {
+    lineUserId: string | null;
+    aiStatus: LineConversationAiStatus;
+    messageType: LineMessageType;
+  },
 ) {
   const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
   const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -686,7 +697,7 @@ function maybeStartLoadingDots(
   void startLoading({
     channelAccessToken: config.channelAccessToken,
     chatId: params.lineUserId,
-    loadingSeconds: 60,
+    loadingSeconds: getLoadingDotsSeconds(params.messageType),
   }).catch(() => {
     // Swallow: loading dots are a nicety, never a reason to fail a reply.
   });
@@ -1644,7 +1655,11 @@ async function ingestLineEvent(
     event.messageType === LineMessageType.TEXT &&
     (isMenuCommand(event.text) || isNoiseText(event.text));
   if (event.messageType !== LineMessageType.STICKER && !isSilentText) {
-    maybeStartLoadingDots(config, dependencies, { lineUserId, aiStatus: conversation.aiStatus });
+    maybeStartLoadingDots(config, dependencies, {
+      lineUserId,
+      aiStatus: conversation.aiStatus,
+      messageType: event.messageType,
+    });
   }
 
   let imageClassification: LineImageClassification | null = null;
