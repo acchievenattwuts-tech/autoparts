@@ -74,12 +74,23 @@ async function ensureKeyRows(keyRefs: string[]): Promise<void> {
 }
 
 /**
+ * Length of one sticky window. Within a single window every request (across all
+ * serverless instances) picks the same key, so Gemini implicit prompt caching
+ * (≈90% off the repeated system-instruction tokens) keeps hitting. The window is
+ * sized to the implicit-cache TTL — sticking longer buys no extra cache benefit,
+ * it only starves the other keys.
+ */
+const STICKY_WINDOW_MS = 4 * 60_000;
+
+/**
  * Returns the currently usable keys, excluding DISABLED keys and those still in a
  * cooldown window. Ordering is controlled by GOOGLE_AI_KEY_STRATEGY:
- *  - "sticky" (default): most-recently-used key first, so consecutive requests
- *    reuse the same warm key and benefit from Gemini implicit prompt caching
- *    (≈90% off the repeated system-instruction tokens). Cooling keys are still
- *    excluded, so it falls back to the next key under bursts/rate-limits.
+ *  - "sticky" (default): time-bucketed rotation. The usable keys are sorted into a
+ *    stable order, then the start offset is advanced by a {@link STICKY_WINDOW_MS}
+ *    time bucket. Within one window every request shares the same lead key (cache
+ *    hits); across windows the lead key round-robins, so load — and warm-up —
+ *    spreads evenly over all keys instead of pinning a single one forever.
+ *    The remaining keys follow as fallback order for that window.
  *  - "spread": least-recently-used first (round-robin) — spreads load evenly,
  *    but defeats prompt caching. Use if a single key keeps hitting RPM limits.
  */
@@ -98,6 +109,7 @@ export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
 
   await ensureKeyRows(keyRefs);
 
+  const sticky = isStickyKeyStrategy();
   const now = new Date();
   const rows = await db.aiApiKeyState.findMany({
     where: {
@@ -106,18 +118,30 @@ export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
       status: { not: AiApiKeyStatus.DISABLED },
       OR: [{ status: AiApiKeyStatus.AVAILABLE }, { cooldownUntil: { lte: now } }],
     },
-    orderBy: isStickyKeyStrategy()
-      ? [{ lastUsedAt: { sort: "desc", nulls: "last" } }]
+    // Sticky: stable order by keyRef so every instance maps the time bucket to the
+    // same lead key. Spread: least-recently-used first for plain round-robin.
+    orderBy: sticky
+      ? [{ keyRef: "asc" }]
       : [{ lastUsedAt: { sort: "asc", nulls: "first" } }],
     select: { keyRef: true },
   });
 
-  return rows
+  const handles = rows
     .map((row) => {
       const secret = secretByRef.get(row.keyRef);
       return secret ? { keyRef: row.keyRef, secret } : null;
     })
     .filter((handle): handle is GeminiKeyHandle => handle !== null);
+
+  if (!sticky || handles.length <= 1) {
+    return handles;
+  }
+
+  // Time-bucketed sticky rotation: advance the start offset once per window so the
+  // lead key changes every STICKY_WINDOW_MS while staying constant within a window.
+  const bucket = Math.floor(now.getTime() / STICKY_WINDOW_MS);
+  const start = bucket % handles.length;
+  return [...handles.slice(start), ...handles.slice(0, start)];
 }
 
 export async function markGeminiKeySuccess(keyRef: string): Promise<void> {
