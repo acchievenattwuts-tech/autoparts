@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, dbSearchRaw } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
@@ -240,7 +240,7 @@ const getVehicleEvidenceTermsForTwoDigitYear = async (
   );
   if (evidenceCandidates.length === 0) return [];
 
-  const rows = await db.$queryRaw<Array<{ term: string }>>(Prisma.sql`
+  const rows = await dbSearchRaw<Array<{ term: string }>>(Prisma.sql`
     SELECT term
     FROM (
       ${Prisma.join(
@@ -985,7 +985,7 @@ async function searchProductIdsV2(
       ${requiredTokensClause}
   `;
 
-  const exactCodeRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
+  const exactCodeRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
     SELECT psd.product_id, COUNT(*) OVER() AS total_count
     FROM product_search_documents psd
     ${exactScope}
@@ -1020,7 +1020,7 @@ async function searchProductIdsV2(
     };
   }
 
-  const exactNameRows = await db.$queryRaw<ExactSearchRow[]>(Prisma.sql`
+  const exactNameRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
     SELECT psd.product_id, COUNT(*) OVER() AS total_count
     FROM product_search_documents psd
     ${exactScope}
@@ -1052,7 +1052,7 @@ async function searchProductIdsV2(
   if (queryEmbedding) {
     try {
       const qvec = toPgVectorLiteral(queryEmbedding);
-      vectorMatches = await db.$queryRaw<Array<{ product_id: string; sim: number }>>(Prisma.sql`
+      vectorMatches = await dbSearchRaw<Array<{ product_id: string; sim: number }>>(Prisma.sql`
         SELECT psd.product_id, (1 - (psd.embedding <=> ${qvec}::vector))::float8 AS sim
         FROM product_search_documents psd
         ${exactScope}
@@ -1107,7 +1107,7 @@ async function searchProductIdsV2(
       ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists} ${vectorCandidate})`
       : Prisma.sql`AND (${textMatchOr} ${vectorCandidate})`;
 
-    return db.$queryRaw<RankedSearchRow[]>(Prisma.sql`
+    return dbSearchRaw<RankedSearchRow[]>(Prisma.sql`
     WITH ${vectorCte} ranked AS (
       SELECT
         psd.product_id,
@@ -1229,7 +1229,7 @@ export async function suggestDidYouMean(
     // GIN trigram indexes (Phase Q6) drive an index scan instead of a full-table
     // similarity() pass. `%` uses pg_trgm.similarity_threshold (default 0.3);
     // similarity() is then computed only on the small matched set for ranking.
-    const rows = await db.$queryRaw<DidYouMeanRow[]>(Prisma.sql`
+    const rows = await dbSearchRaw<DidYouMeanRow[]>(Prisma.sql`
       WITH candidates AS (
         SELECT name AS suggestion FROM "Product"
           WHERE "isActive" = true

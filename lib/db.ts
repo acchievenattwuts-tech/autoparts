@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "./generated/prisma";
+import { PrismaClient, Prisma } from "./generated/prisma";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -15,7 +15,12 @@ const globalForPrisma = globalThis as unknown as {
 // purchase save/edit holds exactly one connection for its whole transaction).
 const DEFAULT_DB_POOL_MAX = 5;
 const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
-const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 45_000; // let short Supabase pool bursts drain before failing
+// 15s: long enough to ride out a short Supabase pool burst, short enough that a
+// request fails fast (and degrades to the Prisma fallback) instead of pinning a
+// Vercel function for 45s while the pool is starved. Paired with the per-search
+// statement_timeout (dbSearchRaw) that frees busy connections within 8s so
+// waiters rarely reach this ceiling at all.
+const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 15_000;
 
 let hasWarnedAboutSupabaseSessionPooler = false;
 
@@ -130,5 +135,40 @@ export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T>
       return fn(tx);
     },
     { timeout: options?.timeout ?? TX_TIMEOUT },
+  ) as Promise<T>;
+}
+
+// ─── Search query guardrail ────────────────────────────────────────────────
+// Product search runs several heavy raw queries (trigram similarity + EXISTS
+// subqueries over product_search_documents). Under a search/bot burst a single
+// slow query can pin one of the small per-instance pool's connections for the
+// full Supabase statement_timeout (120s), starving every other request until
+// they hit the connection-acquire timeout — a cascade outage.
+//
+// SEARCH_STATEMENT_TIMEOUT_MS caps each search query at 8s server-side: Postgres
+// cancels it and releases the connection, and the caller degrades to the Prisma
+// contains fallback. The cap must be enforced inside a transaction because on
+// the Supabase transaction pooler (pgbouncer) a bare `SET LOCAL` in a separate
+// statement would land on a different backend and silently do nothing.
+const SEARCH_STATEMENT_TIMEOUT_MS = 8_000;
+// Prisma's interactive-transaction timeout defaults to 5s — below our 8s
+// statement cap, so it would abort the query first. Give the transaction a
+// little headroom past the statement timeout so Postgres is the one that fires.
+const SEARCH_TX_TIMEOUT_MS = SEARCH_STATEMENT_TIMEOUT_MS + 2_000;
+
+/**
+ * Run a single raw search query under an 8s statement_timeout so a slow query
+ * can never hold its pool connection long enough to starve other requests.
+ * Holds exactly one connection for the duration of the query and no longer.
+ */
+export async function dbSearchRaw<T>(query: Prisma.Sql): Promise<T> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true)
+      `;
+      return tx.$queryRaw<T>(query);
+    },
+    { timeout: SEARCH_TX_TIMEOUT_MS },
   ) as Promise<T>;
 }
