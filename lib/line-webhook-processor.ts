@@ -217,6 +217,9 @@ const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
 // Safety margin before the reply-token window closes: send the (deterministic)
 // reply this many ms early so it still goes out on the FREE reply token.
 const REPLY_DEADLINE_MARGIN_MS = 5_000;
+// When this little budget remains before starting product search, reply from the
+// information already extracted instead of risking the 60s serverless ceiling.
+const PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS = 6_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
@@ -706,6 +709,13 @@ function replyTokenRemainingMs(config: LineWebhookProcessorConfig): number {
   return maxAgeMs - (Date.now() - config.receivedAt.getTime()) - REPLY_DEADLINE_MARGIN_MS;
 }
 
+function shouldUseReplyTokenDeadlineFallback(config: LineWebhookProcessorConfig, canReply: boolean): boolean {
+  return (
+    canUseReplyToken(config, canReply) &&
+    replyTokenRemainingMs(config) <= PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS
+  );
+}
+
 export type ProcessLineAiReplyInput = {
   jobId: string;
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
@@ -973,12 +983,32 @@ export async function processLineAiReply(
         : imageGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
     const searchFollowUp = gateDecision?.action === "search" ? gateDecision.followUp : null;
+    const deadlineFallbackBeforeSearch =
+      autoReplyEnabled &&
+      !dryRun &&
+      !isNonProductTurn &&
+      !gateBlocksSearch &&
+      !isConversationAdminOwned(input.conversation.aiStatus) &&
+      shouldUseReplyTokenDeadlineFallback(config, input.canReply);
+    const deadlineFallbackQuery =
+      consolidatedQuery ??
+      input.text?.trim() ??
+      input.imageClassification?.searchHints?.join(" ").trim() ??
+      null;
+    const knownForDeadlineFallback = inquiryFrame
+      ? {
+          partType: inquiryFrame.partType,
+          carBrand: inquiryFrame.carBrand,
+          carModel: inquiryFrame.carModel,
+          year: frameYear,
+        }
+      : null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
     const fitmentFilters: LineFitmentFilters =
-      !isNonProductTurn && inquiryFrame
+      !isNonProductTurn && inquiryFrame && !deadlineFallbackBeforeSearch
         ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
             partType: inquiryFrame.partType,
             carBrand: inquiryFrame.carBrand,
@@ -996,10 +1026,14 @@ export async function processLineAiReply(
         ? []
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
-    const productSearch = isNonProductTurn || gateBlocksSearch
+    const productSearch = isNonProductTurn || gateBlocksSearch || deadlineFallbackBeforeSearch
       ? ({
           searched: false,
-          reason: gateBlocksSearch ? `GATE_ASK:${gateDecision?.reason ?? ""}` : "NON_PRODUCT_TURN",
+          reason: deadlineFallbackBeforeSearch
+            ? "DEADLINE_FALLBACK_BEFORE_SEARCH"
+            : gateBlocksSearch
+              ? `GATE_ASK:${gateDecision?.reason ?? ""}`
+              : "NON_PRODUCT_TURN",
           query: null,
           result: null,
         } as Awaited<ReturnType<typeof searchLineProductInquiry>>)
@@ -1161,9 +1195,26 @@ export async function processLineAiReply(
           auditPayload?: Record<string, string | number | null>;
         }
       | null =
-      // Pre-search gate asked for a missing detail (part/car/year/too-broad).
+      // Reply-token deadline is near before product search starts.
       // Never a hand-off — the AI stays active and waits for the answer.
-      liveMode && gateBlocksSearch && gateDecision?.action === "ask"
+      liveMode && deadlineFallbackBeforeSearch
+        ? {
+            message: buildJuneDeadlineReply({
+              query: deadlineFallbackQuery,
+              products: [],
+              known: knownForDeadlineFallback,
+            }),
+            reason: "DEADLINE_BEFORE_SEARCH",
+            handoff: false,
+            audit: "AI_DEADLINE_FALLBACK",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              reason: "BEFORE_SEARCH",
+              remainingMs: replyTokenRemainingMs(config),
+              productCount: 0,
+            },
+          }
+        : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
             message: buildLineSearchAskReply(gateDecision.ask),
             reason: `GATE_ASK_${gateDecision.ask}`,
