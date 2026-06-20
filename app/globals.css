@@ -828,6 +828,20 @@ body[data-liff-theme="dark"] .liff-theme-root .liff-app-frame {
   will-change: transform, opacity;
 }
 
+.liff-bottom-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 30;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  contain: layout paint style;
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
 @keyframes liffPageSlideIn {
   from {
     opacity: 0.75;
