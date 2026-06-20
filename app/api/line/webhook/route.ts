@@ -126,7 +126,11 @@ async function processWebhookInBackground(
       lineProfilesByUserId,
       allowPushFallback: true,
       receivedAt,
-      replyTokenMaxAgeMs: 45_000,
+      // LINE reply tokens are valid ~60s. Aim to land the reply inside that free
+      // window even when image OCR ate part of the budget — 55s keeps a 5s margin
+      // under the 60s serverless ceiling. If it still misses, delivery PUSHes the
+      // result afterward (allowPushFallback) so the customer never loses the answer.
+      replyTokenMaxAgeMs: 55_000,
       // Coalesce a burst of images/texts into ONE reply (debounce + abort-on-newer).
       coalesce: true,
       coalesceWindowMs: 3_000,

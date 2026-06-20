@@ -113,6 +113,7 @@ function createProcessorTestDeps(input?: {
   conversationStatus?: LineConversationAiStatus;
   linkedCustomerId?: string | null;
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
+  imageConfidence?: "LOW" | "MEDIUM" | "HIGH";
   imageHints?: string[];
   imagePartType?: string | null;
   imageCarBrand?: string | null;
@@ -301,7 +302,7 @@ function createProcessorTestDeps(input?: {
         kind,
         intent,
         searchHints: input?.imageHints ?? [],
-        confidence: "LOW" as const,
+        confidence: input?.imageConfidence ?? ("HIGH" as const),
         reason: "TEST_STUB",
         partType: input?.imagePartType ?? null,
         carBrand: input?.imageCarBrand ?? null,
@@ -973,7 +974,7 @@ test("deadline fallback before search replies from complete text logic instead o
   assert.ok(calls.auditActions.includes("AI_DEADLINE_FALLBACK"));
 });
 
-test("deadline fallback before search also covers completed image OCR logic", async () => {
+test("part-image turn near the reply-token deadline still searches (no pre-search bail)", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     imageKind: "part_image",
@@ -983,6 +984,12 @@ test("deadline fallback before search also covers completed image OCR logic", as
     imageYear: 2015,
     imagePartKind: "fitment",
   });
+  // Deterministic fast generation so the assertion doesn't race the real fallback.
+  dependencies.generateLineSuggestion = async () => ({
+    suggestedReply: "เจอรายการที่ใกล้เคียงค่ะ",
+    confidence: LineAiConfidence.POSSIBLE_MATCH,
+    reasoningSummary: "TEST",
+  });
 
   const result = await processLineWebhookPayload(
     imagePayload("event-img-deadline"),
@@ -991,6 +998,9 @@ test("deadline fallback before search also covers completed image OCR logic", as
       autoReplyEnabled: true,
       dryRun: false,
       imageSearchEnabled: true,
+      // 29s elapsed: the OLD logic bailed before searching (remaining ≤ 15s). The
+      // OCR was already paid for, so the image turn must now run the search and
+      // deliver on the still-valid reply token.
       receivedAt: new Date(Date.now() - 29_000),
       replyTokenMaxAgeMs: 45_000,
     },
@@ -999,10 +1009,38 @@ test("deadline fallback before search also covers completed image OCR logic", as
 
   assert.equal(result.repliedCount, 1);
   assert.ok(calls.auditActions.includes("IMAGE_CLASSIFIED"));
-  assert.deepEqual(calls.searches, []);
+  assert.equal(calls.searches.length, 1);
   assert.equal(calls.replies.length, 1);
   assert.equal(calls.replies[0]?.replyToken, "reply-event-img-deadline");
-  assert.ok(calls.auditActions.includes("AI_DEADLINE_FALLBACK"));
+});
+
+test("lone low-confidence part image asks for details instead of guessing a search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "LOW",
+    imageHints: ["คอมแอร์"],
+    imagePartType: "คอมแอร์",
+    imagePartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-lowconf"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  // Never guesses — no search runs, and the AI stays active (no admin handoff).
+  assert.deepEqual(calls.searches, []);
+  assert.equal(calls.replies.length, 1);
+  assert.ok(calls.auditActions.includes("AI_IMAGE_LOW_CONFIDENCE_ASK"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
 });
 
 test("search falls back to latest text when AI consolidation declines", async () => {

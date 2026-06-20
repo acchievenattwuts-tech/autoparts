@@ -904,8 +904,14 @@ export async function processLineAiReply(
       // context into the next text turn and we never re-ask for detail the photo
       // already contained. The chassis/VIN is deliberately NOT carried — it is
       // not a searchable fitment slot.
+      // Low-confidence OCR must not poison the frame — "ห้ามเดา". Only let the
+      // vision fields seed the running subject when the classifier was at least
+      // MEDIUM-confident; a blurry/uncertain photo is handled by asking instead.
       const imageFields =
-        input.imageClassification?.kind === "part_image" ? input.imageClassification : null;
+        input.imageClassification?.kind === "part_image" &&
+        input.imageClassification.confidence !== "LOW"
+          ? input.imageClassification
+          : null;
       const imageSearchHints = input.imageClassification?.searchHints ?? [];
       const imageRequiredTokens = extractLineRequiredSearchTokens(imageSearchHints.join(" "));
       const latestHasVehicleEvidence = Boolean(
@@ -1023,11 +1029,24 @@ export async function processLineAiReply(
         : rawGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
     const searchFollowUp = gateDecision?.action === "search" ? gateDecision.followUp : null;
+    // A part-image turn already spent vision OCR time we paid for; bailing to a
+    // "tell me more" reply BEFORE searching throws that away. Run the search
+    // regardless — the delivery step sends on the reply token if it's still open,
+    // otherwise PUSHes the result afterward.
+    const isImageOcrTurn = input.imageClassification?.kind === "part_image";
+    // "ห้ามเดา": a lone image whose OCR came back low-confidence is too uncertain
+    // to search blindly — ask the customer to confirm instead of guessing. (An
+    // image sent WITH text is driven by the text, so this only fires image-only.)
+    const imageOnlyLowConfidence =
+      !isTextTurn &&
+      input.imageClassification?.kind === "part_image" &&
+      input.imageClassification.confidence === "LOW";
     const deadlineFallbackBeforeSearch =
       autoReplyEnabled &&
       !dryRun &&
       !isNonProductTurn &&
       !gateBlocksSearch &&
+      !isImageOcrTurn &&
       !isConversationAdminOwned(input.conversation.aiStatus) &&
       shouldUseReplyTokenDeadlineFallback(config, input.canReply);
     const deadlineFallbackQuery =
@@ -1066,10 +1085,13 @@ export async function processLineAiReply(
         ? []
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
-    const productSearch = isNonProductTurn || gateBlocksSearch || deadlineFallbackBeforeSearch
+    const productSearch =
+      isNonProductTurn || gateBlocksSearch || deadlineFallbackBeforeSearch || imageOnlyLowConfidence
       ? ({
           searched: false,
-          reason: deadlineFallbackBeforeSearch
+          reason: imageOnlyLowConfidence
+            ? "IMAGE_LOW_CONFIDENCE"
+            : deadlineFallbackBeforeSearch
             ? "DEADLINE_FALLBACK_BEFORE_SEARCH"
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
@@ -1235,9 +1257,19 @@ export async function processLineAiReply(
           auditPayload?: Record<string, string | number | null>;
         }
       | null =
+      // Lone image with low-confidence OCR — ask for confirmation instead of
+      // guessing ("ห้ามเดา"). Never a hand-off; the AI stays active.
+      liveMode && imageOnlyLowConfidence
+        ? {
+            message: buildJuneAskDetailsReply(),
+            reason: "IMAGE_LOW_CONFIDENCE_ASK",
+            handoff: false,
+            audit: "AI_IMAGE_LOW_CONFIDENCE_ASK",
+            auditPayload: { lineEventId: input.lineEventId, confidence: "LOW" },
+          }
       // Reply-token deadline is near before product search starts.
       // Never a hand-off — the AI stays active and waits for the answer.
-      liveMode && deadlineFallbackBeforeSearch
+      : liveMode && deadlineFallbackBeforeSearch
         ? {
             message: buildJuneDeadlineReply({
               query: deadlineFallbackQuery,

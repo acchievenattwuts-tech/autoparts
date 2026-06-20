@@ -115,6 +115,11 @@
     - **(2)** รัน `classifyPurchaseIntent` + `generateLineSuggestion` แบบขนาน (เริ่ม generate ล่วงหน้าใน product path) → ตัด 1 call ออกจาก critical path; ผลลัพธ์เหมือนเดิม
     - **(3)** Deadline guard: race reply gen กับเวลาที่เหลือใน token window (margin 5s); ถ้าไม่ทัน → `buildJuneDeadlineReply()` ตอบสไตล์จูน + แสดงสินค้า/การ์ดชุดเดิมครบ (ต่างแค่ถ้อยคำ) ส่งทัน reply token เสมอ + audit `AI_DEADLINE_FALLBACK`
     - unit tests: deadline fallback 1; รวม LINE suite 43+ ผ่าน
+    - **(4)** 2026-06-20 — แก้เคส log จริง (ส่งรูปคอมแอร์ + พิมพ์ "24v"): vision OCR ใช้ ~31 วิ เผางบ reply-token จน `shouldUseReplyTokenDeadlineFallback` เด้ง → ข้าม search ทั้งที่ frame รวม `partType=คอมแอร์`+`24v` ได้แล้ว เลยตอบถามรถ/ปีแทน (audit `DEADLINE_FALLBACK_BEFORE_SEARCH`). แก้:
+      - turn ที่มีรูป OCR (`isImageOcrTurn`) **ไม่ตัดจบก่อน search** อีกต่อไป — ค้นเสมอ แล้วส่งทาง reply token ถ้าทัน ไม่ทันจริง → PUSH ตามหลัง (กลไกเดิม `allowPushFallback`)
+      - ขยาย reply-token window `replyTokenMaxAgeMs` 45s → **55s** (margin 5s ใต้เพดาน serverless 60s) ให้รูปที่ vision ช้ายังตอบทัน free token
+      - "ห้ามเดา": รูปล้วนที่ OCR `confidence=LOW` → ข้าม search + ถามยืนยันสไตล์จูน (`buildJuneAskDetailsReply`, audit `AI_IMAGE_LOW_CONFIDENCE_ASK`); รูป LOW ไม่ feed fields เข้า inquiry frame (กัน frame เพี้ยน)
+      - unit tests: ปรับ deadline-image test เป็น "ค้นต่อ ไม่ bail" + เพิ่ม low-confidence ask 1; processor suite 51 ผ่าน, coalesce 12 ผ่าน
 
   - [x] (20) AI Intent Classifier (hybrid routing — แทน regex จับกลุ่มคำที่เปราะ):
     - `lib/line-intent-groups.ts` (ใหม่): 12 กลุ่ม (`product`/`shop_info`/`general_faq`/`payment`/`shipping_address`/`order_status`/`price_negotiation`/`claim_or_return`/`purchase`/`greeting`/`social`/`other`) + `groupToRoute`/`intentToGroup`/`GUARD_GROUPS` (single source of truth)
