@@ -177,6 +177,7 @@ function createCoalesceHarness(options?: {
     notifyLineOaNeedsAdmin: async () => 1,
     getRecentLineMessagesForAi: async () => [],
     countConsecutiveFailedLineSearches: async () => 0,
+    countPendingPaymentSlipsForConversation: async () => 0,
     classifyPurchaseIntent: async () => false,
     answerFromLineFaq: async () => ({ answered: false, reply: "" }),
     extractLineSearchIntent: async () => options?.textIntent ?? null,
@@ -482,6 +483,36 @@ test("recovery: a crashed burst (unanswered + free lock) gets exactly one reply"
 
   assert.equal(res.replied, 1, "recovery sent the missing reply");
   assert.equal(calls.replies.length, 1);
+});
+
+test("recovery: uses the latest message time when deciding reply-token expiry", async () => {
+  const { recoverStalledCoalescedConversations } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "part_image" });
+  state.inbound.push({
+    id: "m1",
+    text: "24v",
+    messageType: LineMessageType.TEXT,
+    replyToken: "rt-old",
+    lineEventId: "e-old",
+    lineMessageId: "lm-old",
+    intent: null,
+    createdAt: new Date(Date.now() - 90_000),
+  });
+  state.seq = 1;
+
+  const recoveryConfig: LineWebhookProcessorConfig = {
+    ...baseConfig,
+    receivedAt: undefined,
+    allowPushFallback: true,
+  };
+  const res = await recoverStalledCoalescedConversations(recoveryConfig, dependencies, {
+    quietForMs: 0,
+    take: 5,
+  });
+
+  assert.equal(res.replied, 1);
+  assert.equal(calls.replies.length, 0, "old reply token is not used during recovery");
+  assert.equal(calls.pushes.length, 1, "recovery falls back to push when the real message time is too old");
 });
 
 test("recovery: an already-answered conversation produces no duplicate reply", async () => {

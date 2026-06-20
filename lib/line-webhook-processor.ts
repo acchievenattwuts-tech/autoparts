@@ -65,7 +65,7 @@ import { answerFromLineFaq } from "@/lib/line-faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
-import { guardLineSearchIntent } from "@/lib/line-search-guards";
+import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/line-search-guards";
 import {
   buildLineSearchAskReply,
   buildLineSearchFollowUp,
@@ -219,7 +219,7 @@ const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
 const REPLY_DEADLINE_MARGIN_MS = 5_000;
 // When this little budget remains before starting product search, reply from the
 // information already extracted instead of risking the 60s serverless ceiling.
-const PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS = 6_000;
+const PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS = 15_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
@@ -906,6 +906,21 @@ export async function processLineAiReply(
       // not a searchable fitment slot.
       const imageFields =
         input.imageClassification?.kind === "part_image" ? input.imageClassification : null;
+      const imageSearchHints = input.imageClassification?.searchHints ?? [];
+      const imageRequiredTokens = extractLineRequiredSearchTokens(imageSearchHints.join(" "));
+      const latestHasVehicleEvidence = Boolean(
+        guardedSearchIntent?.carBrand ||
+          guardedSearchIntent?.carModel ||
+          guardedSearchIntent?.year ||
+          imageFields?.carBrand ||
+          imageFields?.carModel ||
+          imageFields?.year,
+      );
+      const latestHasProductSpecificity = Boolean(
+        imageFields ||
+          guardedSearch.requiredTokens.length > 0 ||
+          imageRequiredTokens.length > 0,
+      );
       const reconciled = reconcileInquiryFrame(
         stored
           ? { partType: stored.partType, carBrand: stored.carBrand, carModel: stored.carModel, year: stored.year }
@@ -920,6 +935,20 @@ export async function processLineAiReply(
       );
       inquiryFrame = reconciled.frame;
       frameTopicShift = reconciled.topicShift;
+      const droppedVehicleCarryover = Boolean(
+        inquiryFrame &&
+          !latestHasVehicleEvidence &&
+          latestHasProductSpecificity &&
+          (inquiryFrame.carBrand || inquiryFrame.carModel || inquiryFrame.year),
+      );
+      if (droppedVehicleCarryover && inquiryFrame) {
+        inquiryFrame = {
+          ...inquiryFrame,
+          carBrand: null,
+          carModel: null,
+          year: null,
+        };
+      }
       await saveFrame({ conversationId: input.conversation.id, ...inquiryFrame }).catch(() => undefined);
 
       fireAndForgetAudit(dependencies, {
@@ -933,6 +962,8 @@ export async function processLineAiReply(
           year: inquiryFrame.year,
           topicShift: frameTopicShift,
           sessionStale,
+          droppedVehicleCarryover,
+          latestHasProductSpecificity,
         },
       });
     }
@@ -968,7 +999,7 @@ export async function processLineAiReply(
             tooBroad: false,
           })
         : null;
-    const gateDecision =
+    const rawGateDecision =
       !isNonProductTurn && inquiryFrame && (inquiryFrame.partType || inquiryFrame.carModel || inquiryFrame.carBrand)
         ? decideLineSearchGate({
             // Completeness is judged against the carried FRAME, so a follow-up that
@@ -981,6 +1012,15 @@ export async function processLineAiReply(
             tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
+    const gateDecision =
+      rawGateDecision?.action === "ask" &&
+      rawGateDecision.ask === "need_car" &&
+      Boolean(
+        guardedSearch.requiredTokens.length ||
+          extractLineRequiredSearchTokens((input.imageClassification?.searchHints ?? []).join(" ")).length,
+      )
+        ? { action: "search" as const, followUp: null, reason: "specific_latest_turn_without_car" }
+        : rawGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
     const searchFollowUp = gateDecision?.action === "search" ? gateDecision.followUp : null;
     const deadlineFallbackBeforeSearch =
@@ -2215,7 +2255,10 @@ async function runConversationOwnerLoop(args: {
         lineEventId: turn.lineEventId,
         shouldAbortBeforeSend,
       },
-      config,
+      {
+        ...config,
+        receivedAt: config.receivedAt ?? turn.receivedAt ?? undefined,
+      },
       dependencies,
     );
 
@@ -2253,6 +2296,7 @@ async function buildMergedTurnInput(args: {
   imageClassification: LineImageClassification | null;
   replyToken: string | null;
   lineEventId: string | null;
+  receivedAt: Date | null;
 }> {
   const { conversation, messages, config, dependencies, imageSearchEnabled, classByMessageId } = args;
   const classify = dependencies.classifyLineImage ?? classifyLineImage;
@@ -2352,5 +2396,6 @@ async function buildMergedTurnInput(args: {
     imageClassification,
     replyToken: latest.replyToken ?? null,
     lineEventId: latest.lineEventId ?? null,
+    receivedAt: latest.createdAt ?? null,
   };
 }

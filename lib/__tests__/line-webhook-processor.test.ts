@@ -959,7 +959,7 @@ test("deadline fallback before search replies from complete text logic instead o
       channelAccessToken: "token",
       autoReplyEnabled: true,
       dryRun: false,
-      receivedAt: new Date(Date.now() - 41_000),
+      receivedAt: new Date(Date.now() - 29_000),
       replyTokenMaxAgeMs: 45_000,
     },
     dependencies,
@@ -991,7 +991,7 @@ test("deadline fallback before search also covers completed image OCR logic", as
       autoReplyEnabled: true,
       dryRun: false,
       imageSearchEnabled: true,
-      receivedAt: new Date(Date.now() - 41_000),
+      receivedAt: new Date(Date.now() - 29_000),
       replyTokenMaxAgeMs: 45_000,
     },
     dependencies,
@@ -1434,4 +1434,109 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
   // Frame: part replaced, vehicle kept.
   assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น");
   assert.equal(calls.savedFrames.at(-1)?.carModel, "D-Max");
+});
+
+test("inquiry frame: spec-only latest text drops stale vehicle hard filters", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "compressor", carBrand: "Honda", carModel: "Civic", year: 2010 },
+    consolidatedQuery: "24v",
+    intentPartType: null,
+    intentCarBrand: null,
+    intentCarModel: null,
+    intentYear: null,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "Compressor", carBrandName: "Honda", carModelName: "Civic" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("24v"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "spec token searches instead of asking for car");
+  assert.deepEqual(calls.savedFrames.at(-1), {
+    partType: "compressor",
+    carBrand: null,
+    carModel: null,
+    year: null,
+  });
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "Compressor",
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+  });
+});
+
+test("inquiry frame: part-image OCR hints drop stale vehicle hard filters", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "compressor", carBrand: "Honda", carModel: "Civic" },
+    imageKind: "part_image",
+    imageHints: ["Valeo Z0016525A", "compressor 24v"],
+    imagePartType: "compressor",
+    imagePartKind: "fitment",
+    fitmentFilters: { categoryName: "Compressor", carBrandName: "Honda", carModelName: "Civic" },
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-frame-reset"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "image hints search instead of being blocked by need_car");
+  assert.deepEqual(calls.savedFrames.at(-1), {
+    partType: "compressor",
+    carBrand: null,
+    carModel: null,
+    year: null,
+  });
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "Compressor",
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+  });
+});
+
+test("inquiry frame: generic part image drops stale vehicle but still asks for car", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "radiator", carBrand: "Honda", carModel: "Civic" },
+    imageKind: "part_image",
+    imageHints: ["radiator"],
+    imagePartType: "radiator",
+    imagePartKind: "fitment",
+    fitmentFilters: { categoryName: "Radiator", carBrandName: "Honda", carModelName: "Civic" },
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-generic-frame-reset"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.searches, [], "generic image does not search without a current car");
+  assert.deepEqual(calls.savedFrames.at(-1), {
+    partType: "radiator",
+    carBrand: null,
+    carModel: null,
+    year: null,
+  });
+  assert.match(calls.replies[0]?.text ?? "", /รถ|รุ่น|ยี่ห้อ|car/i);
 });

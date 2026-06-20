@@ -83,6 +83,18 @@ export async function processPendingLineAiJobs(input?: {
   const take = Math.min(Math.max(input?.take ?? 10, 1), 25);
   const aiSettings = await getLineAiSettings();
   const stalePendingBefore = new Date(Date.now() - 60_000);
+  const staleProcessingBefore = new Date(Date.now() - 2 * 60_000);
+
+  const staleProcessing = await db.$queryRaw<Array<{ id: string }>>`
+    UPDATE "LineAiJob"
+    SET
+      status = 'FAILED'::"LineAiJobStatus",
+      error = 'STALE_PROCESSING_TIMEOUT',
+      "finishedAt" = NOW()
+    WHERE status = 'PROCESSING'::"LineAiJobStatus"
+      AND "finishedAt" IS NULL
+      AND COALESCE("startedAt", "createdAt") < ${staleProcessingBefore}
+    RETURNING id`;
 
   // Atomic claim: lock and flip PENDING → PROCESSING in one statement so two
   // overlapping cron runs (or a cron racing the inline webhook handler) can
@@ -116,6 +128,7 @@ export async function processPendingLineAiJobs(input?: {
     picked: jobs.length,
     completed: 0,
     failed: 0,
+    staleProcessingFailed: staleProcessing.length,
     skipped: 0,
     replied: 0,
   };
