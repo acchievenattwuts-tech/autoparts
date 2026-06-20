@@ -842,6 +842,40 @@ body[data-liff-theme="dark"] .liff-theme-root .liff-app-frame {
   transition-timing-function: ease;
 }
 
+/* Mobile app-shell: lock the LIFF document so it never scrolls. The scroll lives
+   in .liff-scroll-region instead. A non-scrolling document means the mobile
+   in-app browser (LINE / Chrome / Safari) never shows/hides its toolbar during
+   navigation, so env(safe-area-inset-bottom) stays constant and the fixed bottom
+   nav no longer dips-and-bounces on page transitions.
+   Gated to non-print so receipts/invoices still flow and paginate normally. */
+.liff-theme-root:not([data-liff-print="true"]) {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.liff-theme-root:not([data-liff-print="true"]) .liff-app-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.liff-theme-root:not([data-liff-print="true"]) .liff-app-frame {
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.liff-theme-root:not([data-liff-print="true"]) .liff-scroll-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 @keyframes liffPageSlideIn {
   from {
     opacity: 0.75;

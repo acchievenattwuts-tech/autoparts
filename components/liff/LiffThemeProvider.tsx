@@ -57,6 +57,14 @@ export default function LiffThemeProvider({ children }: { children: ReactNode })
     document.documentElement.style.backgroundColor = isPrintMode ? "#ffffff" : "";
     document.body.style.backgroundColor = isPrintMode ? "#ffffff" : theme === "dark" ? "#06162d" : "#eef7ff";
 
+    // App-shell: stop the document from scrolling so the mobile browser toolbar
+    // never toggles (which made the fixed bottom nav jump). The scroll happens in
+    // .liff-scroll-region instead. Never lock in print mode — receipts must flow.
+    if (!isPrintMode) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+    }
+
     return () => {
       document.documentElement.removeAttribute("data-liff-theme");
       document.body.removeAttribute("data-liff-theme");
@@ -66,6 +74,8 @@ export default function LiffThemeProvider({ children }: { children: ReactNode })
       document.documentElement.classList.remove("dark");
       document.body.classList.remove("dark");
       document.body.style.backgroundColor = "";
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
     };
   }, [isPrintMode, theme]);
 
