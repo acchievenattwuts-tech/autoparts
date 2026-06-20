@@ -1,6 +1,5 @@
 import { CalendarCheck } from "lucide-react";
 
-import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import { getLiffCustomer } from "@/lib/liff-data";
 import { formatDateThai } from "@/lib/th-date";
@@ -72,7 +71,6 @@ export default async function LiffProfilePage() {
           </div>
         </div>
       </section>
-      <LiffBottomNav active="/liff/profile" />
     </main>
   );
 }

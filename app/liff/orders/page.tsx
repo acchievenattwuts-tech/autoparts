@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { BadgeDollarSign, ChevronRight, ReceiptText, Store, Truck } from "lucide-react";
 
-import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LinkPhoneForm from "@/components/liff/LinkPhoneForm";
 import { db } from "@/lib/db";
 import { getLiffCustomer } from "@/lib/liff-data";
@@ -181,7 +180,6 @@ export default async function LiffOrdersPage() {
           )}
         </div>
       </section>
-      <LiffBottomNav active="/liff/orders" />
     </main>
   );
 }

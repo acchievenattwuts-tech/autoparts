@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, ShieldAlert } from "lucide-react";
 
-import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import LiffStatusTabs from "@/components/liff/LiffStatusTabs";
 import { db } from "@/lib/db";
@@ -166,7 +165,6 @@ export default async function LiffClaimsPage({
           ))
         )}
       </section>
-      <LiffBottomNav active="/liff/claims" />
     </main>
   );
 }

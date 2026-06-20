@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BadgeDollarSign, ReceiptText, ShieldAlert, ShieldCheck, UserRound } from "lucide-react";
 
-const navItems = [
+export const LIFF_BOTTOM_NAV_ITEMS = [
   { href: "/liff/orders", label: "บิล", icon: ReceiptText },
   { href: "/liff/outstanding", label: "ชำระ", icon: BadgeDollarSign },
   { href: "/liff/warranties", label: "ประกัน", icon: ShieldCheck },
@@ -13,7 +13,7 @@ export default function LiffBottomNav({ active }: { active: string }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-blue-100 bg-white/90 pb-[env(safe-area-inset-bottom)] shadow-[0_-14px_34px_rgba(37,99,235,0.10)] backdrop-blur-xl dark:border-slate-700 dark:bg-slate-950/95 dark:shadow-[0_-14px_34px_rgba(0,0,0,0.30)]">
       <div className="mx-auto grid max-w-md grid-cols-5 px-2 py-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {LIFF_BOTTOM_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const isActive = active === href;
           return (
             <Link

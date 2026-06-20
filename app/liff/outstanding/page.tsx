@@ -2,7 +2,6 @@ import Link from "next/link";
 import { AlertCircle, CheckCircle2, ChevronRight, Landmark, Store, Truck } from "lucide-react";
 
 import CopyPaymentValueButton from "@/components/liff/CopyPaymentValueButton";
-import LiffBottomNav from "@/components/liff/LiffBottomNav";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import { db } from "@/lib/db";
 import { addDays, formatLiffMoney, isBeforeToday } from "@/lib/liff-format";
@@ -182,7 +181,6 @@ export default async function LiffOutstandingPage() {
           )}
         </div>
       </section>
-      <LiffBottomNav active="/liff/outstanding" />
     </main>
   );
 }
