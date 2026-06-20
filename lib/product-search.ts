@@ -159,6 +159,9 @@ type RankedSearchRow = {
 type ExactSearchRow = {
   product_id: string;
   total_count: bigint | number | string;
+  match_code?: boolean | null;
+  match_oem?: boolean | null;
+  match_name?: boolean | null;
 };
 
 const normalizeSearchQuery = (query?: string | null): string | undefined => {
@@ -985,57 +988,77 @@ async function searchProductIdsV2(
       ${requiredTokensClause}
   `;
 
-  const exactCodeRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
-    SELECT psd.product_id, COUNT(*) OVER() AS total_count
-    FROM product_search_documents psd
-    ${exactScope}
-      AND (
-        f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
-        OR (
+  const exactRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
+    WITH exact_matches AS (
+      SELECT
+        psd.product_id,
+        psd.product_created_at,
+        (
+          f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+        ) AS match_code,
+        (
           f_unaccent(psd.oem_text) ILIKE f_unaccent(${`%${normalizedQuery}%`})
           AND EXISTS (
             SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
             WHERE f_unaccent(lower(tok.tok)) = f_unaccent(lower(${normalizedQuery}))
           )
+        ) AS match_oem,
+        (
+          f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
+        ) AS match_name
+      FROM product_search_documents psd
+      ${exactScope}
+        AND (
+          f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
+          OR (
+            f_unaccent(psd.oem_text) ILIKE f_unaccent(${`%${normalizedQuery}%`})
+            AND EXISTS (
+              SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
+              WHERE f_unaccent(lower(tok.tok)) = f_unaccent(lower(${normalizedQuery}))
+            )
+          )
+          OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
         )
-      )
-    ORDER BY psd.product_created_at DESC, psd.product_id DESC
+    ),
+    selected AS (
+      SELECT
+        exact_matches.*,
+        bool_or(COALESCE(match_code, false) OR COALESCE(match_oem, false)) OVER() AS has_code_or_oem
+      FROM exact_matches
+    )
+    SELECT
+      selected.product_id,
+      selected.match_code,
+      selected.match_oem,
+      selected.match_name,
+      COUNT(*) OVER() AS total_count
+    FROM selected
+    WHERE (
+      COALESCE(selected.has_code_or_oem, false)
+      AND (COALESCE(selected.match_code, false) OR COALESCE(selected.match_oem, false))
+    ) OR (
+      NOT COALESCE(selected.has_code_or_oem, false)
+      AND COALESCE(selected.match_name, false)
+    )
+    ORDER BY selected.product_created_at DESC, selected.product_id DESC
     OFFSET ${skip}
     LIMIT ${take}
   `);
 
-  if (exactCodeRows.length > 0) {
+  if (exactRows.length > 0) {
     const reasons: Record<string, ProductMatchReason[]> = {};
-    // Heuristic: exact-code branch hits when query matches product_code OR OEM token.
-    // Without per-row probe we attribute "code" and let the UI dedupe; "oem" added when query looks like a part number.
-    const looksLikeOem = /[-0-9]/.test(normalizedQuery);
-    for (const row of exactCodeRows) {
-      reasons[row.product_id] = looksLikeOem ? ["code", "oem"] : ["code"];
+    const hasCodeOrOem = exactRows.some((row) => row.match_code || row.match_oem);
+    for (const row of exactRows) {
+      if (hasCodeOrOem) {
+        // Preserve the former exact-code/OEM branch attribution.
+        reasons[row.product_id] = /[-0-9]/.test(normalizedQuery) ? ["code", "oem"] : ["code"];
+      } else {
+        reasons[row.product_id] = ["name"];
+      }
     }
     return {
-      ids: exactCodeRows.map((row) => row.product_id),
-      total: coerceCount(exactCodeRows[0].total_count),
-      mode: "v2",
-      matchReasons: reasons,
-    };
-  }
-
-  const exactNameRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
-    SELECT psd.product_id, COUNT(*) OVER() AS total_count
-    FROM product_search_documents psd
-    ${exactScope}
-      AND f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
-    ORDER BY psd.product_created_at DESC, psd.product_id DESC
-    OFFSET ${skip}
-    LIMIT ${take}
-  `);
-
-  if (exactNameRows.length > 0) {
-    const reasons: Record<string, ProductMatchReason[]> = {};
-    for (const row of exactNameRows) reasons[row.product_id] = ["name"];
-    return {
-      ids: exactNameRows.map((row) => row.product_id),
-      total: coerceCount(exactNameRows[0].total_count),
+      ids: exactRows.map((row) => row.product_id),
+      total: coerceCount(exactRows[0].total_count),
       mode: "v2",
       matchReasons: reasons,
     };

@@ -151,6 +151,7 @@ export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T>
 // the Supabase transaction pooler (pgbouncer) a bare `SET LOCAL` in a separate
 // statement would land on a different backend and silently do nothing.
 const SEARCH_STATEMENT_TIMEOUT_MS = 8_000;
+const SEARCH_TX_MAX_WAIT_MS = 10_000;
 // Prisma's interactive-transaction timeout defaults to 5s — below our 8s
 // statement cap, so it would abort the query first. Give the transaction a
 // little headroom past the statement timeout so Postgres is the one that fires.
@@ -169,6 +170,6 @@ export async function dbSearchRaw<T>(query: Prisma.Sql): Promise<T> {
       `;
       return tx.$queryRaw<T>(query);
     },
-    { timeout: SEARCH_TX_TIMEOUT_MS },
+    { maxWait: SEARCH_TX_MAX_WAIT_MS, timeout: SEARCH_TX_TIMEOUT_MS },
   ) as Promise<T>;
 }
