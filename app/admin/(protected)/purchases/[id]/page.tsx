@@ -176,6 +176,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                     <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-slate-400">{item.product.code}</td>
                     <td className="px-3 py-2 text-gray-800 dark:text-slate-200">
                       {item.product.name}
+                      {item.moreDetail ? <span className="text-gray-500 dark:text-slate-400"> {item.moreDetail}</span> : null}
                       {item.product.isLotControl && (
                         <span className="ml-2 inline-flex rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-300">
                           Lot

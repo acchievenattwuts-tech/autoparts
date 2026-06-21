@@ -881,6 +881,7 @@ model PurchaseItem {
   showUnitName     String?
   showPricePerUnit Decimal?          @db.Decimal(10, 2)
   unitScale        Decimal?          @db.Decimal(12, 4)
+  moreDetail       String?           @db.Text
   product          Product           @relation(fields: [productId], references: [id])
   purchase         Purchase          @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   supplier         Supplier?         @relation(fields: [supplierId], references: [id])
@@ -1037,6 +1038,7 @@ model SaleItem {
   warrantyDays     Int           @default(0)
   supplierId       String?
   supplierName     String?
+  moreDetail       String?       @db.Text
   product          Product       @relation(fields: [productId], references: [id])
   sale             Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
   lotItems         SaleItemLot[]
@@ -1408,6 +1410,7 @@ model CreditNoteItem {
   showUnitName     String?
   showPricePerUnit Decimal?            @db.Decimal(10, 2)
   unitScale        Decimal?            @db.Decimal(12, 4)
+  moreDetail       String?             @db.Text
   creditNote       CreditNote          @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
   product          Product?            @relation(fields: [productId], references: [id])
   lotItems         CreditNoteItemLot[]
@@ -1468,6 +1471,7 @@ model PurchaseReturnItem {
   showUnitName     String?
   showPricePerUnit Decimal?                @db.Decimal(10, 2)
   unitScale        Decimal?                @db.Decimal(12, 4)
+  moreDetail       String?                 @db.Text
   product          Product                 @relation(fields: [productId], references: [id])
   purchaseReturn   PurchaseReturn          @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
   lotItems         PurchaseReturnItemLot[]

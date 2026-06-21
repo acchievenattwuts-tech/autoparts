@@ -44,6 +44,7 @@ type SalePrintItem = {
   showUnitName?: string | null;
   showPricePerUnit?: NumericLike | null;
   unitScale?: NumericLike | null;
+  moreDetail?: string | null;
   lotItems: SalePrintLotItem[];
   product: SalePrintProduct;
 };
@@ -225,7 +226,10 @@ const SharedSalesDeliveryPrintDocument = ({
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{idx + 1}</td>
                 <td className={`whitespace-nowrap ${PRINT_TABLE_CELL_CLASS} font-mono text-gray-700`}>{item.product.code}</td>
                 <td className={PRINT_TABLE_CELL_CLASS}>
-                  <div className="font-medium text-gray-900">{item.product.name}</div>
+                  <div className="font-medium text-gray-900">
+                    {item.product.name}
+                    {item.moreDetail ? <span className="font-normal text-gray-700"> {item.moreDetail}</span> : null}
+                  </div>
                   {item.lotItems.length > 0 ? (
                     <div className="mt-0.5 text-[11px] text-gray-600">
                       Lot: {item.lotItems.map((lot) => `${lot.lotNo} × ${(Number(lot.qty) / displayScale).toLocaleString("th-TH")}`).join(", ")}

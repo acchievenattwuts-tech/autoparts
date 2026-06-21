@@ -167,6 +167,7 @@ const cnItemSchema = z.object({
   unitName:  z.string().min(1).max(20),
   qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   salePrice: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+  moreDetail: z.string().max(500).optional(),
   lotItems:  z.array(lotSubRowSchema).default([]),
 });
 
@@ -324,6 +325,7 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
           unitPrice: true,
           amount: true,
           subtotalAmount: true,
+          moreDetail: true,
           product: {
             select: {
               code: true,
@@ -368,6 +370,7 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
       unitPrice: item.unitPrice,
       amount: item.amount,
       subtotalAmount: item.subtotalAmount,
+      moreDetail: item.moreDetail,
     })),
   };
 }
@@ -489,6 +492,7 @@ export async function createCreditNote(
             showUnitName:  item.unitName,
             showPricePerUnit: item.salePrice,
             unitScale:     scale,
+            moreDetail:    item.moreDetail || null,
           },
         });
 
@@ -970,6 +974,7 @@ export async function updateCreditNote(
               showUnitName: item.unitName,
               showPricePerUnit: item.salePrice,
               unitScale: displayScale,
+              moreDetail: item.moreDetail || null,
               ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
             },
           });
@@ -1017,6 +1022,7 @@ export async function updateCreditNote(
             showUnitName:   item.unitName,
             showPricePerUnit: item.salePrice,
             unitScale:      scale,
+            moreDetail:     item.moreDetail || null,
           },
         });
 

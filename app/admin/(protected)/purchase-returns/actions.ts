@@ -84,6 +84,7 @@ type LineData = {
   isTracked: boolean;
   totalAmount: number;
   subtotalAmount: number;
+  moreDetail: string | null;
   lotItems: z.infer<typeof lotSubRowSchema>[];
 };
 
@@ -263,6 +264,7 @@ const returnItemSchema = z.object({
   unitName: z.string().min(1).max(20),
   qty: z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   costPrice: z.coerce.number().min(0).optional(),
+  moreDetail: z.string().max(500).optional(),
   lotItems: z.array(lotSubRowSchema).default([]),
 });
 
@@ -353,6 +355,7 @@ async function buildLineData(
       isTracked,
       totalAmount,
       subtotalAmount,
+      moreDetail: item.moreDetail || null,
       lotItems: item.lotItems,
     });
   }
@@ -444,6 +447,7 @@ async function writePurchaseReturnLines(
         showUnitName: line.unitName,
         showPricePerUnit: line.showPricePerUnit,
         unitScale: line.unitScale,
+        moreDetail: line.moreDetail,
       },
     });
 
@@ -566,6 +570,7 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
           amount: true,
           subtotalAmount: true,
           detail: true,
+          moreDetail: true,
           product: {
             select: {
               code: true,
@@ -611,6 +616,7 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
       amount: item.amount,
       subtotalAmount: item.subtotalAmount,
       detail: item.detail,
+      moreDetail: item.moreDetail,
     })),
   };
 }
@@ -1148,6 +1154,7 @@ export async function updatePurchaseReturn(
               showUnitName: line.unitName,
               showPricePerUnit: line.showPricePerUnit,
               unitScale: line.unitScale,
+              moreDetail: line.moreDetail,
               ...(taxBasisChanged ? { subtotalAmount: line.subtotalAmount } : {}),
             },
           });

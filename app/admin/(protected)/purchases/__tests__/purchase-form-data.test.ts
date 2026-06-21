@@ -16,6 +16,7 @@ test("sanitizePurchaseItemsForSubmit clamps negative landed cost from existing p
       qty: 2,
       costPrice: 390,
       landedCost: -156,
+      moreDetail: "",
       lotItems: [],
     },
   ];

@@ -162,7 +162,10 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
                 <tr key={item.id} className="border-t border-gray-50 dark:border-white/5">
                   <td className="px-3 py-2 font-mono text-xs text-gray-500 dark:text-slate-400">{item.product.code}</td>
                   <td className="px-3 py-2 text-gray-800 dark:text-slate-200">
-                    <div>{item.product.name}</div>
+                    <div>
+                      {item.product.name}
+                      {item.moreDetail ? <span className="text-gray-500 dark:text-slate-400"> {item.moreDetail}</span> : null}
+                    </div>
                     {item.lotItems.length > 0 && (
                       <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                         Lot: {item.lotItems.map((lot) => `${lot.lotNo} (${(Number(lot.qty) / displayScale).toLocaleString("th-TH")} ${displayUnitName})`).join(", ")}

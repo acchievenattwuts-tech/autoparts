@@ -51,6 +51,7 @@ interface LineItem {
   unitName: string;
   qty: number;
   costPrice?: number;
+  moreDetail?: string;
   lotItems: LotSubRow[];
 }
 
@@ -90,7 +91,7 @@ const RETURN_TYPE_LABELS: Record<string, string> = {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, lotItems: [] });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, moreDetail: "", lotItems: [] });
 
 const PurchaseReturnForm = ({
   products,
@@ -675,6 +676,16 @@ const PurchaseReturnForm = ({
                           onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
                           selectedProduct={productMap.get(item.productId) ?? null}
                         />
+                        {item.productId && (
+                          <input
+                            type="text"
+                            value={item.moreDetail ?? ""}
+                            maxLength={500}
+                            onChange={(e) => updateItem(i, "moreDetail", e.target.value)}
+                            className={`${inputCls} mt-1`}
+                            placeholder="รายละเอียดเพิ่มเติม (เช่น สี/รุ่น/หมายเหตุ)"
+                          />
+                        )}
                       </td>
                       <td className="py-2 px-2">
                         <select

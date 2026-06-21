@@ -128,6 +128,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       warrantyDays: item.warrantyDays ?? 0,
       supplierId:   item.supplierId ?? "",
       supplierName: item.supplierName ?? "",
+      moreDetail:   item.moreDetail ?? "",
       lotItems:     item.lotItems.map((lot) => ({
         lotNo:    lot.lotNo,
         qty:      Number(lot.qty) / displayScale,

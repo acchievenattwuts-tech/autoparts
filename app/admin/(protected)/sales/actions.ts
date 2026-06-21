@@ -189,6 +189,7 @@ const saleItemSchema = z.object({
   warrantyDays: z.coerce.number().int().min(0).default(0),
   supplierId:   z.string().max(50).optional(),
   supplierName: z.string().max(200).optional(),
+  moreDetail:   z.string().max(500).optional(),
   lotItems:     z.array(lotSubRowSchema).default([]),
 });
 
@@ -266,6 +267,7 @@ async function getSaleAuditSnapshot(saleId: string) {
           warrantyDays: true,
           supplierId: true,
           supplierName: true,
+          moreDetail: true,
         },
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       },
@@ -313,6 +315,7 @@ async function getSaleAuditSnapshot(saleId: string) {
       warrantyDays: item.warrantyDays,
       supplierId: item.supplierId,
       supplierName: item.supplierName,
+      moreDetail: item.moreDetail,
     })),
   };
 }
@@ -524,6 +527,7 @@ export async function createSale(
             warrantyDays:  item.warrantyDays,
             supplierId:    item.supplierId || null,
             supplierName:  item.supplierName || null,
+            moreDetail:    item.moreDetail || null,
           },
         });
 
@@ -1100,6 +1104,7 @@ export async function updateSale(
               showUnitName: item.unitName,
               showPricePerUnit: item.salePrice,
               unitScale: displayScale,
+              moreDetail: item.moreDetail || null,
               ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
             },
           });
@@ -1147,6 +1152,7 @@ export async function updateSale(
             warrantyDays: item.warrantyDays,
             supplierId: item.supplierId || null,
             supplierName: item.supplierName || null,
+            moreDetail: item.moreDetail || null,
           },
         });
 

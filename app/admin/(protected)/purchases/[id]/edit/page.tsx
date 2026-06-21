@@ -82,6 +82,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
       qty: displayQty,
       costPrice: displayCostPrice,
       landedCost: Number(item.landedCost) * displayQty,
+      moreDetail: item.moreDetail ?? "",
       lotItems: item.lotItems.map((lot) => ({
         lotNo: lot.lotNo,
         qty: Number(lot.qty) / displayScale,

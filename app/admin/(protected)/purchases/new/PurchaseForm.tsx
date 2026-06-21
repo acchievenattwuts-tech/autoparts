@@ -103,7 +103,7 @@ const PurchaseForm = ({
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
   const [shippingFee, setShippingFee] = useState(initialData?.shippingFee ?? 0);
   const [items, setItems]     = useState<LineItem[]>(
-    initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]
+    initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, moreDetail: "", lotItems: [] }]
   );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
@@ -193,7 +193,7 @@ const PurchaseForm = ({
   }, [cashBankAccountId, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
 
   const addItem = () =>
-    setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, lotItems: [] }]);
+    setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, moreDetail: "", lotItems: [] }]);
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
@@ -259,6 +259,7 @@ const PurchaseForm = ({
         qty,
         costPrice,
         landedCost: 0,
+        moreDetail: "",
         lotItems: product?.isLotControl
           ? [{ lotNo: "", qty, unitCost: costPrice, mfgDate: "", expDate: "" }]
           : [],
@@ -623,6 +624,16 @@ const PurchaseForm = ({
                           <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400/30">
                             Lot Control
                           </span>
+                        )}
+                        {item.productId && (
+                          <input
+                            type="text"
+                            value={item.moreDetail ?? ""}
+                            maxLength={500}
+                            onChange={(e) => updateItem(i, "moreDetail", e.target.value)}
+                            className={`${inputCls} mt-1`}
+                            placeholder="รายละเอียดเพิ่มเติม (เช่น สี/รุ่น/หมายเหตุ)"
+                          />
                         )}
                       </td>
                       <td className="py-2 px-2">

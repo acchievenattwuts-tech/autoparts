@@ -8,6 +8,7 @@ export interface SaleFormLineItem {
   warrantyDays: number;
   supplierId: string;
   supplierName: string;
+  moreDetail: string;
   lotItems: LotSubRow[];
 }
 

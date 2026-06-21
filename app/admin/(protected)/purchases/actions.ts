@@ -100,6 +100,7 @@ const purchaseItemSchema = z.object({
   qty:         z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   costPrice:   z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),   // per selected unit
   landedCost:  z.coerce.number().min(0).default(0),             // per selected unit
+  moreDetail:  z.string().max(500).optional(),
   lotItems:    z.array(lotSubRowSchema).default([]),
 });
 
@@ -437,6 +438,7 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
           landedCost: true,
           totalAmount: true,
           subtotalAmount: true,
+          moreDetail: true,
           product: {
             select: {
               code: true,
@@ -486,6 +488,7 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
       landedCost: item.landedCost,
       totalAmount: item.totalAmount,
       subtotalAmount: item.subtotalAmount,
+      moreDetail: item.moreDetail,
     })),
   };
 }
@@ -616,6 +619,7 @@ export async function createPurchase(
             showUnitName:  item.unitName,
             showPricePerUnit: item.costPrice,
             unitScale:     scale,
+            moreDetail:    item.moreDetail || null,
           },
         });
 
@@ -1139,6 +1143,7 @@ export async function updatePurchase(
             unitScale: number;
             landedCostPerSelectedUnit: number;
             allocatedLandedForLine: number;
+            moreDetail: string | null;
           };
           const syncRows: MatchedSync[] = [];
           for (const [newIdx, existingItemId] of matchedByNewIdx) {
@@ -1158,6 +1163,7 @@ export async function updatePurchase(
               unitScale: displayScale,
               landedCostPerSelectedUnit: item.qty > 0 ? allocatedLandedForLine / item.qty : 0,
               allocatedLandedForLine,
+              moreDetail: item.moreDetail || null,
             });
           }
 
@@ -1177,7 +1183,8 @@ export async function updatePurchase(
                 ${r.showUnitName},
                 ${safeSqlNumber(r.showPricePerUnit)}::numeric,
                 ${safeSqlNumber(r.unitScale)}::numeric,
-                ${landedCost}
+                ${landedCost},
+                ${r.moreDetail}::text
               )`;
             }),
           );
@@ -1190,10 +1197,11 @@ export async function updatePurchase(
               "showUnitName" = d."showUnitName",
               "showPricePerUnit" = d."showPricePerUnit",
               "unitScale" = d."unitScale",
-              "landedCost" = COALESCE(d."landedCost", pi."landedCost")
+              "landedCost" = COALESCE(d."landedCost", pi."landedCost"),
+              "moreDetail" = d."moreDetail"
             FROM (VALUES ${values}) AS d(
               "id","lineNo","subtotalAmount","showQty","showUnitName",
-              "showPricePerUnit","unitScale","landedCost"
+              "showPricePerUnit","unitScale","landedCost","moreDetail"
             )
             WHERE pi."id" = d."id"
           `;
@@ -1346,6 +1354,7 @@ export async function updatePurchase(
             showUnitName:     p.item.unitName,
             showPricePerUnit: p.item.costPrice,
             unitScale:        p.scale,
+            moreDetail:       p.item.moreDetail || null,
           })),
         });
         const createdItems = await tx.purchaseItem.findMany({

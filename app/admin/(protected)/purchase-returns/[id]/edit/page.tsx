@@ -100,6 +100,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
       unitName:  displayUnitName,
       qty:       displayQty,
       costPrice: displayCostPrice,
+      moreDetail: item.moreDetail ?? "",
       lotItems: item.lotItems.map((lot) => ({
         lotNo: lot.lotNo,
         qty: Number(lot.qty) / displayScale,

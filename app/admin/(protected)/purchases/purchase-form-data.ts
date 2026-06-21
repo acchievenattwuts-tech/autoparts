@@ -32,6 +32,7 @@ export interface PurchaseFormLineItem {
   qty: number;
   costPrice: number;
   landedCost: number;
+  moreDetail: string;
   lotItems: PurchaseFormLotItem[];
 }
 
