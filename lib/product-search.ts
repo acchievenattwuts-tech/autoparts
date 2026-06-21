@@ -1,4 +1,4 @@
-import { db, dbSearchRaw } from "@/lib/db";
+import { db, dbSearchRaw, dbSearchTx } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
@@ -1087,37 +1087,52 @@ async function searchProductIdsV2(
   // as extra candidates + a rank boost in the ranked query below. Skipped for
   // year-only queries, and any failure (keys exhausted, extension missing, flag
   // off) degrades to pure lexical search — so this is purely additive.
+  //
+  // The embedding is fetched here (a Gemini network call) BEFORE any DB
+  // transaction is opened, so no pooled connection is ever held while waiting on
+  // the external API. The actual vector query runs inside the bundled
+  // transaction below (see dbSearchTx) so it shares one connection with the
+  // ranked query.
   const queryEmbedding =
     isYearOnlyQuery || input.disableSemantic ? null : await embedQuery(normalizedQuery);
-  let vectorMatches: Array<{ product_id: string; sim: number }> = [];
-  if (queryEmbedding) {
-    try {
-      const qvec = toPgVectorLiteral(queryEmbedding);
-      vectorMatches = await dbSearchRaw<Array<{ product_id: string; sim: number }>>(Prisma.sql`
-        SELECT psd.product_id, (1 - (psd.embedding <=> ${qvec}::vector))::float8 AS sim
-        FROM product_search_documents psd
-        ${exactScope}
-          AND psd.embedding IS NOT NULL
-        ORDER BY psd.embedding <=> ${qvec}::vector
-        LIMIT ${SEARCH_V2_VECTOR_RECALL_LIMIT}
-      `);
-    } catch (error) {
-      console.error("Semantic recall failed; falling back to lexical-only search.", error);
-      vectorMatches = [];
-    }
-  }
 
-  const hasVector = vectorMatches.length > 0;
-  const vectorCte = hasVector
-    ? Prisma.sql`vec(product_id, sim) AS (VALUES ${Prisma.join(
-        vectorMatches.map((m) => Prisma.sql`(${m.product_id}::text, ${m.sim}::float8)`),
-      )}),`
-    : Prisma.empty;
-  const vectorJoin = hasVector ? Prisma.sql`LEFT JOIN vec v ON v.product_id = psd.product_id` : Prisma.empty;
-  const vectorCandidate = hasVector ? Prisma.sql`OR v.product_id IS NOT NULL` : Prisma.empty;
-  const vectorScore = hasVector
-    ? Prisma.sql`+ COALESCE(v.sim, 0) * ${SEARCH_V2_VECTOR_WEIGHT}`
-    : Prisma.empty;
+  const vectorRecallSql = (qvec: string): PrismaTypes.Sql => Prisma.sql`
+    SELECT psd.product_id, (1 - (psd.embedding <=> ${qvec}::vector))::float8 AS sim
+    FROM product_search_documents psd
+    ${exactScope}
+      AND psd.embedding IS NOT NULL
+    ORDER BY psd.embedding <=> ${qvec}::vector
+    LIMIT ${SEARCH_V2_VECTOR_RECALL_LIMIT}
+  `;
+
+  type VectorMatch = { product_id: string; sim: number };
+  type VectorFragments = {
+    vectorCte: PrismaTypes.Sql;
+    vectorJoin: PrismaTypes.Sql;
+    vectorCandidate: PrismaTypes.Sql;
+    vectorScore: PrismaTypes.Sql;
+  };
+  // Vector-derived SQL fragments depend on the recalled matches, so they are
+  // rebuilt from whatever the (possibly-failed) vector query returned. With zero
+  // matches every fragment is empty and the ranked query is byte-identical to the
+  // lexical-only form.
+  const buildVectorFragments = (vectorMatches: VectorMatch[]): VectorFragments => {
+    const hasVector = vectorMatches.length > 0;
+    return {
+      vectorCte: hasVector
+        ? Prisma.sql`vec(product_id, sim) AS (VALUES ${Prisma.join(
+            vectorMatches.map((m) => Prisma.sql`(${m.product_id}::text, ${m.sim}::float8)`),
+          )}),`
+        : Prisma.empty,
+      vectorJoin: hasVector
+        ? Prisma.sql`LEFT JOIN vec v ON v.product_id = psd.product_id`
+        : Prisma.empty,
+      vectorCandidate: hasVector ? Prisma.sql`OR v.product_id IS NOT NULL` : Prisma.empty,
+      vectorScore: hasVector
+        ? Prisma.sql`+ COALESCE(v.sim, 0) * ${SEARCH_V2_VECTOR_WEIGHT}`
+        : Prisma.empty,
+    };
+  };
 
   // Candidate-selection OR clause (shared by year-only and non-year queries).
   // A product enters the ranked set if it matches the query by code/name/oem/
@@ -1140,16 +1155,20 @@ async function searchProductIdsV2(
     OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
   `;
 
-  const runRankedQuery = (ts: PrismaTypes.Sql) => {
+  const runRankedQuery = (
+    ts: PrismaTypes.Sql,
+    frags: VectorFragments,
+    run: <R>(query: PrismaTypes.Sql) => Promise<R>,
+  ) => {
     const textMatchOr = buildTextMatchOr(ts);
     // Year-only queries union the text clause with a fitment-year cover so they
     // match BOTH part-number fragments and products fitting that year.
     const candidateClause = isYearOnlyQuery
-      ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists} ${vectorCandidate})`
-      : Prisma.sql`AND (${textMatchOr} ${vectorCandidate})`;
+      ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists} ${frags.vectorCandidate})`
+      : Prisma.sql`AND (${textMatchOr} ${frags.vectorCandidate})`;
 
-    return dbSearchRaw<RankedSearchRow[]>(Prisma.sql`
-    WITH ${vectorCte} ranked AS (
+    return run<RankedSearchRow[]>(Prisma.sql`
+    WITH ${frags.vectorCte} ranked AS (
       SELECT
         psd.product_id,
         psd.product_created_at,
@@ -1209,10 +1228,10 @@ async function searchProductIdsV2(
 
           -- Semantic similarity boost (Phase 1 hybrid). Empty when vector recall
           -- is unavailable/disabled, so the score is identical to lexical-only.
-          ${vectorScore}
+          ${frags.vectorScore}
         ) AS score
       FROM product_search_documents psd
-      ${vectorJoin}
+      ${frags.vectorJoin}
       ${exactScope}
         ${candidateClause}
     )
@@ -1236,9 +1255,53 @@ async function searchProductIdsV2(
   // Precise AND query first. If a multi-concept query comes back empty (AND was
   // too strict for this catalog's wording), fall back to the broad OR query so we
   // never regress to "no results" where the old OR behaviour would have matched.
-  let rows = await runRankedQuery(tsQuery);
+  //
+  // Bundle the semantic recall + primary ranked query into ONE transaction so the
+  // whole post-embedding DB work checks out a single pooled connection instead of
+  // one per query — cutting the connection churn that was exhausting the small
+  // pool and surfacing as P2028. The vector recall is wrapped in a SAVEPOINT: if
+  // it times out (8s statement cap) or fails, we roll back just that savepoint and
+  // continue with lexical-only ranking in the SAME transaction, preserving the
+  // previous "semantic failure degrades to lexical" behaviour instead of poisoning
+  // the whole transaction.
+  const { vectorMatches, primaryRows } = await dbSearchTx(async (tx) => {
+    const run = <R>(query: PrismaTypes.Sql): Promise<R> => tx.$queryRaw<R>(query);
+
+    let vectorMatches: VectorMatch[] = [];
+    if (queryEmbedding) {
+      try {
+        await tx.$executeRawUnsafe("SAVEPOINT vec_recall");
+        const qvec = toPgVectorLiteral(queryEmbedding);
+        vectorMatches = await run<VectorMatch[]>(vectorRecallSql(qvec));
+        await tx.$executeRawUnsafe("RELEASE SAVEPOINT vec_recall");
+      } catch (error) {
+        console.error("Semantic recall failed; falling back to lexical-only search.", error);
+        try {
+          // Recover the transaction so the lexical ranked query below can run.
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT vec_recall");
+        } catch {
+          // Savepoint may not exist if the SAVEPOINT statement itself failed; if
+          // the transaction is unrecoverable the ranked query will throw and the
+          // caller degrades to the Prisma fallback — never worse than before.
+        }
+        vectorMatches = [];
+      }
+    }
+
+    const frags = buildVectorFragments(vectorMatches);
+    const primaryRows = await runRankedQuery(tsQuery, frags, run);
+    return { vectorMatches, primaryRows };
+  });
+
+  let rows = primaryRows;
   if (rows.length === 0 && hasMultipleConcepts && !input.disableBroadFallback) {
-    rows = await runRankedQuery(buildTsQuery(fallbackExpression));
+    // Rare path (precise AND matched nothing): reuse the already-recalled vector
+    // matches and run the broad OR query in its own short transaction.
+    rows = await runRankedQuery(
+      buildTsQuery(fallbackExpression),
+      buildVectorFragments(vectorMatches),
+      dbSearchRaw,
+    );
   }
 
   return {

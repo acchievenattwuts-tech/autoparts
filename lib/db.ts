@@ -156,6 +156,10 @@ const SEARCH_TX_MAX_WAIT_MS = 10_000;
 // statement cap, so it would abort the query first. Give the transaction a
 // little headroom past the statement timeout so Postgres is the one that fires.
 const SEARCH_TX_TIMEOUT_MS = SEARCH_STATEMENT_TIMEOUT_MS + 2_000;
+// Bundled search transaction (dbSearchTx): semantic recall + primary ranked
+// query share one connection. Two heavy statements can each run up to the 8s
+// statement_timeout, so the transaction envelope must cover both plus a buffer.
+const SEARCH_BUNDLE_TX_TIMEOUT_MS = SEARCH_STATEMENT_TIMEOUT_MS * 2 + 2_000;
 
 /**
  * Run a single raw search query under an 8s statement_timeout so a slow query
@@ -171,5 +175,33 @@ export async function dbSearchRaw<T>(query: Prisma.Sql): Promise<T> {
       return tx.$queryRaw<T>(query);
     },
     { maxWait: SEARCH_TX_MAX_WAIT_MS, timeout: SEARCH_TX_TIMEOUT_MS },
+  ) as Promise<T>;
+}
+
+/**
+ * Run several raw search queries inside a SINGLE transaction (one connection
+ * checkout, one statement_timeout setup) instead of one transaction per query.
+ * Used by the product-search engine to bundle the semantic-recall query and the
+ * primary ranked query so a single search holds exactly one pooled connection
+ * across its DB work — sharply cutting the connection churn that exhausts the
+ * small per-instance pool under a burst (the P2028 "unable to start a
+ * transaction" cascade).
+ *
+ * The callback receives the transaction client and MUST NOT perform any non-DB
+ * I/O (e.g. an embedding API call) inside it — doing so would pin the connection
+ * while waiting on the network. The 8s statement_timeout still caps every
+ * individual query, and the wider bundle timeout caps the whole transaction.
+ */
+export async function dbSearchTx<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true)
+      `;
+      return fn(tx);
+    },
+    { maxWait: SEARCH_TX_MAX_WAIT_MS, timeout: SEARCH_BUNDLE_TX_TIMEOUT_MS },
   ) as Promise<T>;
 }
