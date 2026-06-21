@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
+import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductCard from "@/components/shared/ProductCard";
@@ -24,6 +25,7 @@ import {
   getActiveStorefrontCategoryBySlug,
   getStorefrontCategoryPageData,
 } from "@/lib/storefront-category";
+import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 
 interface Props {
   params: Promise<{ categorySlug: string }>;
@@ -55,9 +57,22 @@ const getCategorySupportArticles = (categoryName: string) => {
     .map(({ article }) => article);
 };
 
-export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { categorySlug } = await params;
-  const category = await getActiveStorefrontCategoryBySlug(categorySlug);
+  const category = await getActiveStorefrontCategoryBySlug(categorySlug).catch((error) => {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+    return null;
+  });
+
+  if (!category) {
+    return {
+      title: "หน้าหมวดสินค้ากำลังหนาแน่นชั่วคราว",
+      robots: { index: false, follow: true },
+    };
+  }
+
   const canonicalPath = getCategoryPath(category);
   const title = `${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์`;
   const description = getCategorySeoDescription(category);
@@ -87,10 +102,19 @@ const CategoryPage = async ({ params, searchParams }: Props) => {
   const [{ categorySlug }, { page: pageParam }] = await Promise.all([params, searchParams]);
   const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
 
-  const [config, categoryData] = await Promise.all([
-    getSiteConfig(),
-    getStorefrontCategoryPageData(categorySlug, page),
-  ]);
+  let config: Awaited<ReturnType<typeof getSiteConfig>> | null = null;
+  let categoryData: Awaited<ReturnType<typeof getStorefrontCategoryPageData>>;
+
+  try {
+    config = await getSiteConfig();
+    categoryData = await getStorefrontCategoryPageData(categorySlug, page);
+  } catch (error) {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+
+    return <StorefrontTemporaryUnavailable config={config} title="หน้าหมวดสินค้ากำลังหนาแน่นชั่วคราว" />;
+  }
 
   const { category, products, total, pageSize } = categoryData;
   const totalPages = Math.ceil(total / pageSize);

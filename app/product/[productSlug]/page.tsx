@@ -1,5 +1,6 @@
 export const revalidate = 300;
 
+import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
@@ -15,6 +16,7 @@ import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductImageGallery from "@/components/shared/ProductImageGallery";
+import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
 import RelatedProductsSection from "./RelatedProductsSection";
 import ProductPageViewReporter from "@/components/analytics/ProductPageViewReporter";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -39,6 +41,7 @@ import {
   partitionProductFitments,
   PRODUCT_FITMENT_SECTION_COPY,
 } from "@/lib/product-fitment";
+import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 
 interface Props {
   params: Promise<{
@@ -46,8 +49,7 @@ interface Props {
   }>;
 }
 
-async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
-  const { productSlug } = await paramsPromise;
+const getResolvedProductBySlug = cache(async (productSlug: string) => {
   const productId = extractProductIdFromSlug(productSlug);
 
   if (!productId) {
@@ -61,6 +63,11 @@ async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
   }
 
   return product;
+});
+
+async function getResolvedProductFromParams(paramsPromise: Props["params"]) {
+  const { productSlug } = await paramsPromise;
+  return getResolvedProductBySlug(productSlug);
 }
 
 export async function generateStaticParams() {
@@ -70,7 +77,21 @@ export async function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const product = await getResolvedProductFromParams(params);
+  let product: Awaited<ReturnType<typeof getResolvedProductFromParams>>;
+
+  try {
+    product = await getResolvedProductFromParams(params);
+  } catch (error) {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+
+    return {
+      title: "หน้าสินค้ากำลังหนาแน่นชั่วคราว",
+      robots: { index: false, follow: true },
+    };
+  }
+
   const description = buildStorefrontProductDescription(product);
 
   const canonicalPath = getProductPath({
@@ -100,7 +121,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 const ProductDetailPage = async ({ params }: Props) => {
   const { productSlug } = await params;
-  const [config, product] = await Promise.all([getSiteConfig(), getResolvedProductFromParams(params)]);
+  let config: Awaited<ReturnType<typeof getSiteConfig>> | null = null;
+  let product: Awaited<ReturnType<typeof getResolvedProductFromParams>>;
+
+  try {
+    config = await getSiteConfig();
+    product = await getResolvedProductBySlug(productSlug);
+  } catch (error) {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+
+    return <StorefrontTemporaryUnavailable config={config} />;
+  }
 
   const canonicalPath = getProductPath({
     category: product.category,
@@ -117,10 +150,20 @@ const ProductDetailPage = async ({ params }: Props) => {
   }
 
   const INITIAL_TAKE = 8;
-  const relatedProductsRaw = await getRelatedStorefrontProductsByCategory({
-    categoryId: product.categoryId,
-    currentProductId: product.id,
-  });
+  let relatedProductsRaw: Awaited<ReturnType<typeof getRelatedStorefrontProductsByCategory>>;
+
+  try {
+    relatedProductsRaw = await getRelatedStorefrontProductsByCategory({
+      categoryId: product.categoryId,
+      currentProductId: product.id,
+    });
+  } catch (error) {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+
+    relatedProductsRaw = [];
+  }
   const initialHasMore = relatedProductsRaw.length > INITIAL_TAKE;
   const relatedProducts = relatedProductsRaw.slice(0, INITIAL_TAKE).map((p) => ({
     ...p,

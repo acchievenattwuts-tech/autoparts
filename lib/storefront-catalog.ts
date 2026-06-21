@@ -5,31 +5,29 @@ const PRODUCTS_PER_PAGE = 24;
 
 export const getStorefrontProductFilters = unstable_cache(
   async () => {
-    const [categories, carBrands, partsBrands] = await Promise.all([
-      db.category.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      db.carBrand.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          name: true,
-          carModels: {
-            where: { isActive: true },
-            select: { id: true, name: true },
-            orderBy: { name: "asc" },
-          },
+    const categories = await db.category.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const carBrands = await db.carBrand.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        carModels: {
+          where: { isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
         },
-        orderBy: { name: "asc" },
-      }),
-      db.partsBrand.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-    ]);
+      },
+      orderBy: { name: "asc" },
+    });
+    const partsBrands = await db.partsBrand.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
 
     return { categories, carBrands, partsBrands };
   },
@@ -39,43 +37,41 @@ export const getStorefrontProductFilters = unstable_cache(
 
 export const getStorefrontProductsLandingPageData = unstable_cache(
   async () => {
-    const [products, totalProducts] = await Promise.all([
-      db.product.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          code: true,
-          imageUrl: true,
-          salePrice: true,
-          saleUnitName: true,
-          stock: true,
-          category: { select: { id: true, name: true, slug: true } },
-          brand: { select: { name: true } },
-          carModels: {
-            where: {
-              fitmentType: "DIRECT",
-              carModel: { isActive: true, carBrand: { isActive: true } },
-            },
-            select: {
-              yearStart: true,
-              yearEnd: true,
-              carModel: {
-                select: {
-                  name: true,
-                  carBrand: { select: { name: true } },
-                },
+    const products = await db.product.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        code: true,
+        imageUrl: true,
+        salePrice: true,
+        saleUnitName: true,
+        stock: true,
+        category: { select: { id: true, name: true, slug: true } },
+        brand: { select: { name: true } },
+        carModels: {
+          where: {
+            fitmentType: "DIRECT",
+            carModel: { isActive: true, carBrand: { isActive: true } },
+          },
+          select: {
+            yearStart: true,
+            yearEnd: true,
+            carModel: {
+              select: {
+                name: true,
+                carBrand: { select: { name: true } },
               },
             },
-            take: 6,
           },
+          take: 6,
         },
-        orderBy: { createdAt: "desc" },
-        take: PRODUCTS_PER_PAGE,
-      }),
-      db.product.count({ where: { isActive: true } }),
-    ]);
+      },
+      orderBy: { createdAt: "desc" },
+      take: PRODUCTS_PER_PAGE,
+    });
+    const totalProducts = await db.product.count({ where: { isActive: true } });
 
     return { products, totalProducts };
   },

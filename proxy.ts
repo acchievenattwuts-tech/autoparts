@@ -44,6 +44,7 @@ const BLOCKED_BOT_PATTERNS = [
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_IMAGE_PER_MIN = 300;
+const RATE_LIMIT_MAX_STOREFRONT_CATALOG_PER_MIN = 60;
 const MAX_TRACKED_IPS = 2000;
 
 type RateEntry = { count: number; resetAt: number };
@@ -57,10 +58,10 @@ function getClientIp(req: NextRequest): string {
   return req.headers.get("x-real-ip") ?? "unknown";
 }
 
-function isRateLimited(ip: string, max: number, now: number): boolean {
-  const entry = ipHits.get(ip);
+function isRateLimited(key: string, max: number, now: number): boolean {
+  const entry = ipHits.get(key);
   if (!entry || entry.resetAt < now) {
-    ipHits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    ipHits.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
     return false;
   }
   entry.count += 1;
@@ -77,10 +78,33 @@ function sweepStaleEntries(now: number) {
 export const proxy = auth(async (req) => {
   const { pathname } = req.nextUrl;
   const userAgent = req.headers.get("user-agent") ?? "";
+  const method = req.method.toUpperCase();
 
   // Admin paths — leave entirely to auth session logic (no bot check needed)
   if (pathname.startsWith("/admin")) {
     return NextResponse.next();
+  }
+
+  if (userAgent && BLOCKED_BOT_PATTERNS.some((pattern) => pattern.test(userAgent))) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname.startsWith("/product/") || pathname === "/products" || pathname.startsWith("/products/"))
+  ) {
+    const now = Date.now();
+    const ip = getClientIp(req);
+    if (isRateLimited(`storefront-catalog:${ip}`, RATE_LIMIT_MAX_STOREFRONT_CATALOG_PER_MIN, now)) {
+      return new NextResponse("Too Many Requests", {
+        status: 429,
+        headers: {
+          "Retry-After": "60",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
+    sweepStaleEntries(now);
   }
 
   if (pathname.startsWith("/product/")) {
@@ -128,16 +152,11 @@ export const proxy = auth(async (req) => {
     }
   }
 
-  // Block aggressive bots on public paths
-  if (userAgent && BLOCKED_BOT_PATTERNS.some((pattern) => pattern.test(userAgent))) {
-    return new NextResponse("Forbidden", { status: 403 });
-  }
-
   // Rate limit /_next/image (source of Supabase Cached Egress)
   if (pathname.startsWith("/_next/image")) {
     const now = Date.now();
     const ip = getClientIp(req);
-    if (isRateLimited(ip, RATE_LIMIT_MAX_IMAGE_PER_MIN, now)) {
+    if (isRateLimited(`next-image:${ip}`, RATE_LIMIT_MAX_IMAGE_PER_MIN, now)) {
       return new NextResponse("Too Many Requests", {
         status: 429,
         headers: { "Retry-After": "60" },

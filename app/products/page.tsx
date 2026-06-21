@@ -5,6 +5,7 @@ import { getSiteConfig } from "@/lib/site-config";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
+import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import ProductsHero from "./ProductsHero";
@@ -24,6 +25,7 @@ import {
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
 import { headers } from "next/headers";
+import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 
 type QueryValue = string | string[] | undefined;
 
@@ -198,10 +200,19 @@ const ProductsPage = async ({ searchParams }: Props) => {
       priceMax !== null,
   );
 
-  const [config, filterData] = await Promise.all([
-    getSiteConfig(),
-    getStorefrontProductFilters(),
-  ]);
+  let config: Awaited<ReturnType<typeof getSiteConfig>> | null = null;
+  let filterData: Awaited<ReturnType<typeof getStorefrontProductFilters>>;
+
+  try {
+    config = await getSiteConfig();
+    filterData = await getStorefrontProductFilters();
+  } catch (error) {
+    if (!isDatabaseConnectionExhaustionError(error)) {
+      throw error;
+    }
+
+    return <StorefrontTemporaryUnavailable config={config} title="หน้าสินค้ากำลังหนาแน่นชั่วคราว" />;
+  }
 
   let initialProducts: SearchProductItem[];
   let initialTotal: number;
@@ -213,7 +224,19 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   if (!hasFilter) {
     // Landing mode: use ISR-cached landing data
-    const { products, totalProducts } = await getStorefrontProductsLandingPageData();
+    let landingData: Awaited<ReturnType<typeof getStorefrontProductsLandingPageData>>;
+
+    try {
+      landingData = await getStorefrontProductsLandingPageData();
+    } catch (error) {
+      if (!isDatabaseConnectionExhaustionError(error)) {
+        throw error;
+      }
+
+      return <StorefrontTemporaryUnavailable config={config} title="หน้าสินค้ากำลังหนาแน่นชั่วคราว" />;
+    }
+
+    const { products, totalProducts } = landingData;
     initialProducts = products.map((p) => ({ ...p, salePrice: p.salePrice.toString() }));
     initialTotal = totalProducts;
     initialMeta = {
@@ -245,21 +268,31 @@ const ProductsPage = async ({ searchParams }: Props) => {
       order: "createdAtDesc",
     } as const;
 
-    const searchPageData = await getStorefrontProductSearchPageData({
-      q,
-      category,
-      brand,
-      models,
-      year: explicitYear,
-      page: currentPage,
-      categories,
-      partsBrands,
-      carBrands,
-      yearMin,
-      yearMax,
-      priceMin,
-      priceMax,
-    });
+    let searchPageData: Awaited<ReturnType<typeof getStorefrontProductSearchPageData>>;
+
+    try {
+      searchPageData = await getStorefrontProductSearchPageData({
+        q,
+        category,
+        brand,
+        models,
+        year: explicitYear,
+        page: currentPage,
+        categories,
+        partsBrands,
+        carBrands,
+        yearMin,
+        yearMax,
+        priceMin,
+        priceMax,
+      });
+    } catch (error) {
+      if (!isDatabaseConnectionExhaustionError(error)) {
+        throw error;
+      }
+
+      return <StorefrontTemporaryUnavailable config={config} title="หน้าค้นหาสินค้ากำลังหนาแน่นชั่วคราว" />;
+    }
 
     await logProductSearchTelemetry({
       input: telemetryInput,
@@ -267,6 +300,10 @@ const ProductsPage = async ({ searchParams }: Props) => {
       source: "storefront",
       path: "/products",
       isBot: isLikelyBotUserAgent((await headers()).get("user-agent")),
+    }).catch((error) => {
+      if (!isDatabaseConnectionExhaustionError(error)) {
+        throw error;
+      }
     });
 
     initialProducts = searchPageData.products;
