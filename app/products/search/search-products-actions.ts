@@ -65,6 +65,7 @@ export async function searchProductsAction(
   const searchInput = {
     query: q,
     isActive: true,
+    isStorefrontVisible: true,
     categoryName: category,
     carBrandName: brand,
     carModelNames: models,
@@ -79,6 +80,7 @@ export async function searchProductsAction(
     skip,
     take: STOREFRONT_PRODUCTS_PER_PAGE,
     order: "createdAtDesc",
+    cacheProfile: "storefront",
   } as const;
 
   try {

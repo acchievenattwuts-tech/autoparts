@@ -175,6 +175,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         reportUnitName: true,
         warrantyDays: true,
         isActive: true,
+        isStorefrontVisible: true,
         inventoryTracking: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
@@ -364,6 +365,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ยี่ห้อรถ</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">หมวดหมู่</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">การคำนวณ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">หน้าบ้าน</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ตำแหน่ง Shelf</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ราคาขาย</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">Stock</th>
@@ -375,7 +377,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             <tbody>
               {products.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-gray-400 dark:text-slate-500">
+                  <td colSpan={13} className="py-12 text-center text-gray-400 dark:text-slate-500">
                     <p>{search ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้า"}</p>
                     {didYouMean.length > 0 && (
                       <div className="mt-3">
@@ -454,6 +456,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                             คำนวณสต็อก
                           </span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <AdminStatusBadge tone={product.isStorefrontVisible ? "success" : "neutral"}>
+                          {product.isStorefrontVisible ? "แสดง" : "ซ่อน"}
+                        </AdminStatusBadge>
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                         {product.shelfLocation ?? <span className="text-gray-300 dark:text-slate-500">-</span>}

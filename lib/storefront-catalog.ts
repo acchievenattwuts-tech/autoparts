@@ -71,7 +71,9 @@ export const getStorefrontProductsLandingPageData = unstable_cache(
       orderBy: { createdAt: "desc" },
       take: PRODUCTS_PER_PAGE,
     });
-    const totalProducts = await db.product.count({ where: { isActive: true } });
+    const totalProducts = await db.product.count({
+      where: { isActive: true, isStorefrontVisible: true },
+    });
 
     return { products, totalProducts };
   },

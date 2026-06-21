@@ -226,6 +226,7 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
       await runStorefrontProductSearchWithRequiredTokenFallback({
       query: input.q,
       isActive: true,
+      isStorefrontVisible: true,
       categoryName: input.category,
       carBrandName: input.brand,
       carModelNames: input.models,
@@ -245,6 +246,8 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
 
     const products = await db.product.findMany({
       where: {
+        isActive: true,
+        isStorefrontVisible: true,
         id: {
           in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"],
         },

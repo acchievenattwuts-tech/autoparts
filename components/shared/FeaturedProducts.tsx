@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 export const fetchHomeFeaturedProducts = unstable_cache(
   async () =>
     db.product.findMany({
-      where: { isActive: true, stock: { gt: 0 } },
+      where: { isActive: true, isStorefrontVisible: true, stock: { gt: 0 } },
       select: {
         id: true,
         slug: true,

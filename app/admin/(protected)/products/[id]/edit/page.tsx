@@ -82,6 +82,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
     description:      product.description,
     costPrice:        Number(product.costPrice),
     inventoryTracking: product.inventoryTracking,
+    isStorefrontVisible: product.isStorefrontVisible,
     salePrice:        Number(product.salePrice),
     minStock:         product.minStock,
     warrantyDays:     product.warrantyDays,
@@ -141,11 +142,16 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
         title={product.name}
         description={`รหัส: ${product.code}`}
         meta={
-          product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
-            <AdminStatusBadge tone="warning">ไม่คำนวณสต็อก</AdminStatusBadge>
-          ) : (
-            <AdminStatusBadge tone="info">คำนวณสต็อก</AdminStatusBadge>
-          )
+          <div className="flex flex-wrap gap-2">
+            {product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
+              <AdminStatusBadge tone="warning">ไม่คำนวณสต็อก</AdminStatusBadge>
+            ) : (
+              <AdminStatusBadge tone="info">คำนวณสต็อก</AdminStatusBadge>
+            )}
+            <AdminStatusBadge tone={product.isStorefrontVisible ? "success" : "neutral"}>
+              {product.isStorefrontVisible ? "แสดงหน้าบ้าน" : "ซ่อนหน้าบ้าน"}
+            </AdminStatusBadge>
+          </div>
         }
       />
 

@@ -600,6 +600,7 @@ model Product {
   minStock            Int                    @default(1)
   imageUrl            String?
   isActive            Boolean                @default(true)
+  isStorefrontVisible Boolean                @default(true)
   createdAt           DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
   purchaseUnitName    String                 @default("ชิ้น")

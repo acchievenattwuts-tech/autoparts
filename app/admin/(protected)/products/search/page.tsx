@@ -161,6 +161,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         saleUnitName: true,
         warrantyDays: true,
         isActive: true,
+        isStorefrontVisible: true,
         inventoryTracking: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
@@ -311,6 +312,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                         {product.inventoryTracking === INVENTORY_TRACKING_NON_TRACKED ? (
                           <TinyBadge tone="amber">ไม่คำนวณสต็อก</TinyBadge>
                         ) : null}
+                        <TinyBadge tone={product.isStorefrontVisible ? "green" : "slate"}>
+                          {product.isStorefrontVisible ? "แสดงหน้าบ้าน" : "ซ่อนหน้าบ้าน"}
+                        </TinyBadge>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gray-50 p-2 dark:bg-white/5">
@@ -416,15 +420,24 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
   );
 };
 
-function TinyBadge({ children, tone = "gray" }: { children: React.ReactNode; tone?: "gray" | "amber" }) {
+function TinyBadge({
+  children,
+  tone = "gray",
+}: {
+  children: React.ReactNode;
+  tone?: "gray" | "amber" | "green" | "slate";
+}) {
+  const toneClass =
+    tone === "amber"
+      ? "rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-200"
+      : tone === "green"
+        ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+        : tone === "slate"
+          ? "rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-700/60 dark:text-slate-200"
+          : "rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-white/10 dark:text-slate-300";
+
   return (
-    <span
-      className={
-        tone === "amber"
-          ? "rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/15 dark:text-amber-200"
-          : "rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-white/10 dark:text-slate-300"
-      }
-    >
+    <span className={toneClass}>
       {children}
     </span>
   );

@@ -17,7 +17,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     activeProducts,
   ] =
     await Promise.all([
-      db.product.aggregate({ _max: { updatedAt: true } }),
+      db.product.aggregate({
+        where: { isActive: true, isStorefrontVisible: true },
+        _max: { updatedAt: true },
+      }),
       db.category.aggregate({ _max: { createdAt: true } }),
       db.partsBrand.aggregate({ _max: { createdAt: true } }),
       db.carModel.aggregate({ _max: { createdAt: true } }),
@@ -33,7 +36,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         orderBy: { name: "asc" },
       }),
       db.product.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isStorefrontVisible: true },
         select: {
           id: true,
           slug: true,

@@ -68,7 +68,7 @@ const PAGE_SIZE = 20;
 const fetchCategoryProductPage = unstable_cache(
   async (categoryId: string, page: number) => {
     const skip = (page - 1) * PAGE_SIZE;
-    const where = { isActive: true, categoryId } as const;
+    const where = { isActive: true, isStorefrontVisible: true, categoryId } as const;
     const products = await db.product.findMany({
       where,
       select: {

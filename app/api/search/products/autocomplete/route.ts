@@ -134,6 +134,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     const { searchResult: result } = await runStorefrontProductSearchWithRequiredTokenFallback({
       query,
       isActive: true,
+      ...(cacheProfile === "storefront" ? { isStorefrontVisible: true } : {}),
       take: TAKE,
       order: "createdAtDesc",
       cacheProfile,
@@ -146,7 +147,11 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     // non-noise queries and dedupes per hour, so prefix typing that returns many
     // results is naturally filtered out.
     void logProductSearchTelemetry({
-      input: { query, isActive: true },
+      input: {
+        query,
+        isActive: true,
+        ...(cacheProfile === "storefront" ? { isStorefrontVisible: true } : {}),
+      },
       resultCount: result.total,
       source: cacheProfile === "admin" ? "admin" : "storefront",
       path: "/api/search/products/autocomplete",

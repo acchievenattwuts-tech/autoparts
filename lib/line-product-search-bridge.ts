@@ -6,6 +6,7 @@ import { extractProductSearchRequiredTokens } from "@/lib/product-search-require
 type ProductSearchInput = {
   query?: string | null;
   isActive?: boolean;
+  isStorefrontVisible?: boolean;
   categoryName?: string | null;
   carBrandName?: string | null;
   carModelName?: string | null;
@@ -86,7 +87,11 @@ export async function getLineProductSummaries(ids: string[]): Promise<LineMatche
   if (ids.length === 0) return [];
   const { db } = await import("@/lib/db");
   const rows = await db.product.findMany({
-    where: { id: { in: ids } },
+    where: {
+      id: { in: ids },
+      isActive: true,
+      isStorefrontVisible: true,
+    },
     select: { id: true, name: true, code: true, imageUrl: true, salePrice: true },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -163,7 +168,9 @@ const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
     ) AS c
     WHERE EXISTS (
       SELECT 1 FROM product_search_documents psd
+      INNER JOIN "Product" p ON p.id = psd.product_id
       WHERE psd.is_active = true
+        AND p."isStorefrontVisible" = true
         AND (
           f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower('%' || c.code || '%'))
           OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower('%' || c.code || '%'))
@@ -250,11 +257,12 @@ export async function searchLineProductInquiry(
   const result = await resolvedSearchFn({
     query,
     isActive: true,
+    isStorefrontVisible: true,
     ...baseFilters,
     ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
     skip: 0,
     take: input.take ?? 5,
-    cacheProfile: "admin",
+    cacheProfile: "storefront",
   });
 
   // No hits → try a "did you mean" spelling/synonym correction and re-search once.
@@ -279,11 +287,12 @@ export async function searchLineProductInquiry(
       const retry = await resolvedSearchFn({
         query: normalizedSuggestion,
         isActive: true,
+        isStorefrontVisible: true,
         ...retryFilters,
         ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
         skip: 0,
         take: input.take ?? 5,
-        cacheProfile: "admin",
+        cacheProfile: "storefront",
       });
 
       if (retry.total > 0) {

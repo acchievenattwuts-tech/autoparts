@@ -35,13 +35,14 @@ test("searchable product inquiry calls existing search contract", async () => {
     {
       query: "คอมแอร์ vios 2012",
       isActive: true,
+      isStorefrontVisible: true,
       categoryName: null,
       carBrandName: null,
       carModelName: null,
       fitmentYear: null,
       skip: 0,
       take: 3,
-      cacheProfile: "admin",
+      cacheProfile: "storefront",
     },
   ]);
 });
@@ -307,6 +308,7 @@ test("numeric model or part tokens are sent as required tokens for LINE search",
     {
       query: "คอม dragon 709",
       isActive: true,
+      isStorefrontVisible: true,
       categoryName: null,
       carBrandName: null,
       carModelName: null,
@@ -314,7 +316,7 @@ test("numeric model or part tokens are sent as required tokens for LINE search",
       requiredTokens: ["709"],
       skip: 0,
       take: 5,
-      cacheProfile: "admin",
+      cacheProfile: "storefront",
     },
   ]);
 });

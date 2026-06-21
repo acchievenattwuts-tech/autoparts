@@ -70,6 +70,7 @@ type ProductSearchOrder = "createdAtDesc" | "codeDesc";
 type ProductSearchInput = {
   query?: string | null;
   isActive?: boolean;
+  isStorefrontVisible?: boolean;
   categoryName?: string | null;
   categoryId?: string | null;
   brandId?: string | null;
@@ -371,6 +372,7 @@ const buildProductFilterWhere = (
     ProductSearchInput,
     | "query"
     | "isActive"
+    | "isStorefrontVisible"
     | "categoryName"
     | "categoryId"
     | "brandId"
@@ -392,6 +394,7 @@ const buildProductFilterWhere = (
   const {
     query,
     isActive,
+    isStorefrontVisible,
     categoryName,
     categoryId,
     brandId,
@@ -413,6 +416,9 @@ const buildProductFilterWhere = (
 
   if (typeof isActive === "boolean") {
     where.isActive = isActive;
+  }
+  if (typeof isStorefrontVisible === "boolean") {
+    where.isStorefrontVisible = isStorefrontVisible;
   }
 
   if (categoryName) {
@@ -788,6 +794,17 @@ async function searchProductIdsV2(
     typeof input.isActive === "boolean"
       ? Prisma.sql`AND psd.is_active = ${input.isActive}`
       : Prisma.empty;
+  const storefrontVisibleClause =
+    typeof input.isStorefrontVisible === "boolean"
+      ? Prisma.sql`
+          AND EXISTS (
+            SELECT 1
+            FROM "Product" p
+            WHERE p.id = psd.product_id
+              AND p."isStorefrontVisible" = ${input.isStorefrontVisible}
+          )
+        `
+      : Prisma.empty;
 
   const categoryClause = input.categoryName
     ? Prisma.sql`AND psd.category_name = ${input.categoryName}`
@@ -970,6 +987,7 @@ async function searchProductIdsV2(
   const exactScope = Prisma.sql`
     WHERE TRUE
       ${isActiveClause}
+      ${storefrontVisibleClause}
       ${categoryClause}
       ${categoryNamesClause}
       ${categoryIdClause}
@@ -1317,6 +1335,7 @@ export async function searchProductIds(
   const cacheKey = JSON.stringify({
     query: normalizeSearchQuery(input.query) ?? "",
     isActive: input.isActive ?? null,
+    isStorefrontVisible: input.isStorefrontVisible ?? null,
     categoryName: input.categoryName ?? "",
     categoryId: input.categoryId ?? "",
     brandId: input.brandId ?? "",

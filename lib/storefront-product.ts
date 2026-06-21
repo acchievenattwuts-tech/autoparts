@@ -8,6 +8,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
         where: {
           id: productId,
           isActive: true,
+          isStorefrontVisible: true,
         },
         select: {
           id: true,
@@ -70,6 +71,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
       db.product.findMany({
         where: {
           isActive: true,
+          isStorefrontVisible: true,
           categoryId,
           id: { not: currentProductId },
         },
@@ -146,7 +148,12 @@ export const getRelatedStorefrontProductsPaginated = async ({
   take: number;
 }) => {
   return db.product.findMany({
-    where: { isActive: true, categoryId, id: { not: currentProductId } },
+    where: {
+      isActive: true,
+      isStorefrontVisible: true,
+      categoryId,
+      id: { not: currentProductId },
+    },
     select: RELATED_SELECT,
     orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
     skip,

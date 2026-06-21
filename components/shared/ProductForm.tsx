@@ -88,6 +88,7 @@ export interface ProductFormData {
   description:     string | null;
   costPrice:       number;
   inventoryTracking: InventoryTrackingValue;
+  isStorefrontVisible: boolean;
   salePrice:       number;
   minStock:        number;
   warrantyDays:    number;
@@ -237,6 +238,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   const [inventoryTracking, setInventoryTracking]     = useState<InventoryTrackingValue>(
     product?.inventoryTracking ?? INVENTORY_TRACKING_TRACKED,
   );
+  const [isStorefrontVisible, setIsStorefrontVisible] = useState(product?.isStorefrontVisible ?? true);
 
   // Lot Control
   const isNonStock = inventoryTracking === INVENTORY_TRACKING_NON_TRACKED;
@@ -504,6 +506,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
     formData.set("brandId", brandId);
     formData.set("preferredSupplierId", preferredSupplierId);
     formData.set("inventoryTracking", inventoryTracking);
+    formData.set("isStorefrontVisible", String(isStorefrontVisible));
     formData.set("imageUrl", imageUrl);
     formData.set("imageUploadCode", imageUploadCode);
     formData.set("productImages", JSON.stringify(productImages.map((image, index) => ({ ...image, sortOrder: index }))));
@@ -1356,6 +1359,21 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
               defaultValue={product?.warrantyDays ?? 0}
               min={0} step={1} className={inputCls}
               placeholder="0 = ไม่มีประกัน" />
+          </div>
+          <div>
+            <label className={labelCls}>สถานะหน้าบ้าน</label>
+            <select
+              name="isStorefrontVisible"
+              value={isStorefrontVisible ? "true" : "false"}
+              onChange={(e) => setIsStorefrontVisible(e.target.value === "true")}
+              className={inputCls}
+            >
+              <option value="true">แสดง</option>
+              <option value="false">ซ่อน</option>
+            </select>
+            <p className={helpCls}>
+              มีผลเฉพาะการแสดงสินค้าหน้าบ้าน ไม่กระทบสถานะใช้งานในหลังบ้าน
+            </p>
           </div>
         </div>
         <p className="mt-3 text-xs text-gray-400 dark:text-slate-500">

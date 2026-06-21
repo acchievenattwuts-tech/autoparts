@@ -25,7 +25,11 @@ export const fetchHomeCategories = unstable_cache(
         id: true,
         name: true,
         slug: true,
-        _count: { select: { products: { where: { isActive: true } } } },
+        _count: {
+          select: {
+            products: { where: { isActive: true, isStorefrontVisible: true } },
+          },
+        },
       },
     }),
   ["storefront-home-categories"],

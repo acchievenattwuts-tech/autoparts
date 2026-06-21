@@ -252,6 +252,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
     const telemetryInput = {
       query: q,
       isActive: true,
+      isStorefrontVisible: true,
       categoryName: category,
       carBrandName: brand,
       carModelNames: models,
@@ -266,6 +267,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       skip,
       take: STOREFRONT_PRODUCTS_PER_PAGE,
       order: "createdAtDesc",
+      cacheProfile: "storefront",
     } as const;
 
     let searchPageData: Awaited<ReturnType<typeof getStorefrontProductSearchPageData>>;

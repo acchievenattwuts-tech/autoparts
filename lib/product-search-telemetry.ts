@@ -4,6 +4,7 @@ import { normalizeSearchText } from "@/lib/search-normalization";
 type ProductSearchTelemetryInput = {
   query?: string | null;
   isActive?: boolean;
+  isStorefrontVisible?: boolean;
   categoryName?: string | null;
   categoryId?: string | null;
   brandId?: string | null;
@@ -88,6 +89,7 @@ export const buildProductSearchLogInput = ({
   const filters = Object.fromEntries(
     Object.entries({
       isActive: cleanBoolean(input.isActive),
+      isStorefrontVisible: cleanBoolean(input.isStorefrontVisible),
       categoryName: cleanText(input.categoryName),
       categoryId: cleanText(input.categoryId),
       brandId: cleanText(input.brandId),
