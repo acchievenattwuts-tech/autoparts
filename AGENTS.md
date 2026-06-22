@@ -32,6 +32,24 @@ When adding or changing any admin `ค้นหา`, `แสดงรายง�
 
 All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless a narrower PostgreSQL type is deliberately approved for that exact field. Do not add bare `DateTime` or PostgreSQL `timestamp without time zone`; date/time storage must preserve the instant semantics used by `lib/th-date.ts`.
 
+# Bug Investigation Approval Rule
+
+When the user asks to investigate, inspect, review, diagnose, analyze, check, or verify a bug or problem, including Thai requests such as `ตรวจสอบ`, `เช็ค`, `ดูสาเหตุ`, `หาสาเหตุ`, or similar wording, you must treat the turn as investigation-only unless the user explicitly asks you to edit code in that same message.
+
+When available, use the `bug-investigation` skill for these requests.
+
+For investigation-only bug/problem requests, do not modify application code, configuration, schema, migrations, dependencies, or generated artifacts. You may read files, inspect logs, run non-destructive commands, and reproduce behavior when appropriate.
+
+Your investigation response must cover:
+1. Likely root cause or confirmed cause.
+2. Proposed fix options.
+3. Pros of each option.
+4. Cons or risks of each option.
+5. Expected behavior changes after the fix.
+6. Verification or testing needed.
+
+After presenting the investigation, wait for explicit user confirmation before making any code changes. If the safest next step is a code change, state that clearly but do not implement it until confirmed.
+
 # Documentation Entry Rule
 
 When you need project context, read documents in this order unless the task clearly requires something else:

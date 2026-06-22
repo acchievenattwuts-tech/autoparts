@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bug Investigation"
+  short_description: "Analyze bugs without changing code"
+  default_prompt: "Use $bug-investigation to inspect this bug, explain cause, fix options, tradeoffs, behavior changes, and verification before any code changes."
