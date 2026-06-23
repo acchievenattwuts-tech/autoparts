@@ -10,6 +10,7 @@
 - [lot-control.md](/D:/autoparts/docs/specs/lot-control.md)
 - [knowledge-hub-cms.md](/D:/autoparts/docs/specs/knowledge-hub-cms.md)
 - [profit-explanation-agent-plan.md](/D:/autoparts/docs/specs/profit-explanation-agent-plan.md)
+- [product-research-agent-prompt.md](/D:/autoparts/docs/specs/product-research-agent-prompt.md)
 - [product-search-log-analysis.md](/D:/autoparts/docs/specs/product-search-log-analysis.md)
 - [product-search-overhaul.md](/D:/autoparts/docs/specs/product-search-overhaul.md)
 - [product-search-quality-improvements.md](/D:/autoparts/docs/specs/product-search-quality-improvements.md)

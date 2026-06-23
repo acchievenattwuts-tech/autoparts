@@ -50,6 +50,8 @@ export type GeminiGenerateInput = {
   temperature?: number;
   /** When true, asks Gemini to return application/json. */
   json?: boolean;
+  /** When true, enables Gemini Google Search grounding for research-style calls. */
+  googleSearch?: boolean;
   /**
    * Per-call reasoning depth override (HIGH | LOW | NONE). Defaults to the global
    * `GOOGLE_AI_THINKING_LEVEL` env / HIGH. Use "NONE" for short or extraction-style
@@ -135,6 +137,10 @@ async function callGeminiOnce(secret: string, input: GeminiGenerateInput): Promi
       ...(input.json ? { responseMimeType: "application/json" } : {}),
     },
   };
+
+  if (input.googleSearch) {
+    body.tools = [{ googleSearch: {} }];
+  }
 
   if (input.systemInstruction) {
     body.systemInstruction = { parts: [{ text: input.systemInstruction }] };

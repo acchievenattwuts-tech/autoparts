@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // Vercel Pro ceiling: AI Research rotates up to 10 keys (rate-limited keys fail instantly, so all 10 fit in time)
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";

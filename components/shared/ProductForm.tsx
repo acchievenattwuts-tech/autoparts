@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Plus, X, Upload, Loader2, Trash2, ZoomIn } from "lucide-react";
-import { createProduct, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
+import { Plus, X, Upload, Loader2, Trash2, ZoomIn, Sparkles } from "lucide-react";
+import { createProduct, researchProductWithAi, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
@@ -19,6 +19,7 @@ import {
   PRODUCT_FITMENT_SECTION_COPY,
   type ProductFitmentTypeValue,
 } from "@/lib/product-fitment";
+import type { ProductAiAliasKind, ProductAiFitmentDraft, ProductAiResearchDraft } from "@/lib/product-ai-research";
 
 // ─── Alias kind catalog ───────────────────────────────────────────────────────
 
@@ -142,6 +143,9 @@ const sectionHeadingCls =
 const helpCls =
   "mt-1 text-xs text-gray-500 dark:text-slate-400";
 
+// Minimum gap between two AI Research triggers from the same session (anti-spam).
+const AI_RESEARCH_COOLDOWN_MS = 8_000;
+
 const checkboxCls =
   "w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] " +
   "dark:border-slate-500 dark:bg-slate-800 dark:focus:ring-sky-500";
@@ -152,6 +156,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const productNameRef = useRef<HTMLInputElement>(null);
 
   // Auto-resize textarea
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
@@ -250,6 +255,15 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   const [saleUnitName, setSaleUnitName]         = useState(product?.saleUnitName ?? baseUnit.name);
   const [purchaseUnitName, setPurchaseUnitName] = useState(product?.purchaseUnitName ?? baseUnit.name);
   const [reportUnitName, setReportUnitName]     = useState(product?.reportUnitName ?? baseUnit.name);
+  const [isAiResearching, setIsAiResearching] = useState(false);
+  const [aiResearchError, setAiResearchError] = useState("");
+  const [aiDraft, setAiDraft] = useState<ProductAiResearchDraft | null>(null);
+  const [aiVerifiedFitmentText, setAiVerifiedFitmentText] = useState("");
+  const [aiPossibleFitmentText, setAiPossibleFitmentText] = useState("");
+  const [aiApplyNotices, setAiApplyNotices] = useState<string[]>([]);
+  // Anti-spam: each AI Research call hits a paid Gemini + Google Search request, so
+  // throttle re-triggers to at most once per AI_RESEARCH_COOLDOWN_MS per session.
+  const lastAiResearchAtRef = useRef(0);
 
   // ── Counts per kind for chip badges ───────────────────────────────────────
   const kindCounts = useMemo(() => {
@@ -324,6 +338,153 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   };
 
   const parseOptStr = (raw: string): string | null => (raw.trim() === "" ? null : raw);
+
+  const getCarModelLabel = (carModelId: string) =>
+    carModelOptions.find((option) => option.id === carModelId)?.label ?? "";
+
+  const formatFitmentInputText = (rows: FitmentRow[]) => rows
+    .filter((row) => row.carModelId)
+    .map((row) => {
+      const years = row.yearStart || row.yearEnd ? `${row.yearStart ?? ""}-${row.yearEnd ?? ""}` : "";
+      return [getCarModelLabel(row.carModelId), years, row.engineSize ?? "", row.engineCode ?? "", row.submodel ?? "", row.note ?? ""]
+        .filter(Boolean)
+        .join(" | ");
+    })
+    .join("\n");
+
+  const formatAiFitmentLine = (fitment: ProductAiFitmentDraft) => {
+    const years = fitment.yearStart || fitment.yearEnd ? `${fitment.yearStart ?? ""}-${fitment.yearEnd ?? ""}` : "";
+    return [[fitment.make, fitment.model].filter(Boolean).join(" / "), years, fitment.engineSize, fitment.engineCode, fitment.submodel, fitment.note]
+      .filter(Boolean)
+      .join(" | ");
+  };
+
+  const findCarModelIdFromText = (makeModelText: string) => {
+    const normalized = makeModelText.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!normalized) return "";
+    const exact = carModelOptions.find((option) => option.label.toLowerCase() === normalized);
+    if (exact) return exact.id;
+    const parts = normalized.split("/").map((part) => part.trim()).filter(Boolean);
+    return carModelOptions.find((option) => {
+      const label = option.label.toLowerCase();
+      return parts.length > 0 ? parts.every((part) => label.includes(part)) : label.includes(normalized);
+    })?.id ?? "";
+  };
+
+  const parseAiFitmentText = (text: string): FitmentRow[] => text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [makeModel = "", years = "", engineSize = "", engineCode = "", submodel = "", note = ""] = line
+        .split("|")
+        .map((part) => part.trim());
+      const [yearStartRaw = "", yearEndRaw = ""] = years.split("-").map((part) => part.trim());
+      return {
+        carModelId: findCarModelIdFromText(makeModel),
+        yearStart: parseYear(yearStartRaw),
+        yearEnd: parseYear(yearEndRaw),
+        engineSize: parseOptStr(engineSize),
+        engineCode: parseOptStr(engineCode),
+        submodel: parseOptStr(submodel),
+        note: parseOptStr(note),
+      };
+    })
+    .filter((row) => row.carModelId);
+
+  const updateAiDraftAlias = (kind: ProductAiAliasKind, csv: string) => {
+    setAiDraft((current) => current
+      ? { ...current, aliases: { ...current.aliases, [kind]: { ...current.aliases[kind], csv } } }
+      : current);
+  };
+
+  const updateAiDraftText = <K extends "productName" | "category" | "partsBrand">(field: K, value: string) => {
+    setAiDraft((current) => current
+      ? { ...current, [field]: { ...current[field], value } }
+      : current);
+  };
+
+  const handleAiResearch = async () => {
+    if (isAiResearching) return;
+    const elapsed = Date.now() - lastAiResearchAtRef.current;
+    if (elapsed < AI_RESEARCH_COOLDOWN_MS) {
+      const waitSec = Math.ceil((AI_RESEARCH_COOLDOWN_MS - elapsed) / 1000);
+      setAiResearchError(`กรุณารออีก ${waitSec} วินาทีก่อนค้นหาด้วย AI อีกครั้ง`);
+      return;
+    }
+    lastAiResearchAtRef.current = Date.now();
+    setAiResearchError("");
+    setIsAiResearching(true);
+    try {
+      const result = await researchProductWithAi({
+        productName: productNameRef.current?.value ?? product?.name ?? "",
+        partsBrandName: partsBrands.find((brand) => brand.id === brandId)?.name ?? "",
+        categoryName: categories.find((category) => category.id === categoryId)?.name ?? "",
+        fitmentText: formatFitmentInputText(fitments),
+      }, product ? "update" : "create");
+
+      if (result.error || !result.draft) {
+        setAiResearchError(result.error ?? "AI Research ไม่ได้ส่งข้อมูลกลับมา");
+        return;
+      }
+
+      setAiDraft(result.draft);
+      setAiVerifiedFitmentText(result.draft.verifiedFitments.map(formatAiFitmentLine).join("\n"));
+      setAiPossibleFitmentText(result.draft.possibleInterchange.map(formatAiFitmentLine).join("\n"));
+    } catch {
+      // The server action wraps its own failures, but the RSC transport itself can
+      // still reject (network drop / function timeout) — surface a clear message
+      // instead of leaving an unhandled rejection with no feedback.
+      setAiResearchError("เชื่อมต่อ AI Research ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setIsAiResearching(false);
+    }
+  };
+
+  const applyAiDraft = () => {
+    if (!aiDraft) return;
+    if (productNameRef.current && aiDraft.productName.value.trim()) {
+      productNameRef.current.value = aiDraft.productName.value.trim();
+    }
+    if (descriptionRef.current && aiDraft.descriptionCopyBox.trim()) {
+      descriptionRef.current.value = aiDraft.descriptionCopyBox.trim();
+      autoResize(descriptionRef.current);
+    }
+    const notices: string[] = [];
+    const categoryValue = aiDraft.category.value.trim();
+    const matchedCategory = categories.find((category) => category.name.trim() === categoryValue);
+    if (matchedCategory) setCategoryId(matchedCategory.id);
+    else if (categoryValue) notices.push(`ไม่พบหมวดหมู่ “${categoryValue}” ในระบบ กรุณาเลือกหมวดหมู่เอง`);
+    const brandValue = aiDraft.partsBrand.value.trim();
+    const matchedBrand = partsBrands.find((brand) => brand.name.trim().toLowerCase() === brandValue.toLowerCase());
+    if (matchedBrand) setBrandId(matchedBrand.id);
+    else if (brandValue) notices.push(`ไม่พบแบรนด์อะไหล่ “${brandValue}” ในระบบ กรุณาเลือก/เพิ่มแบรนด์เอง`);
+    setAliases((prev) => {
+      const existing = new Set(prev.map((item) => `${item.kind}::${item.alias}`));
+      const next = [...prev];
+      for (const kind of ALIAS_KINDS) {
+        const values = aiDraft.aliases[kind].csv.split(/[,\n\t]+/).map((value) => value.trim()).filter(Boolean);
+        for (const value of values) {
+          const key = `${kind}::${value}`;
+          if (existing.has(key)) continue;
+          existing.add(key);
+          next.push({ alias: value, kind });
+        }
+      }
+      return next;
+    });
+    const countFitmentLines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean).length;
+    const directRows = parseAiFitmentText(aiVerifiedFitmentText);
+    const compatibleRows = parseAiFitmentText(aiPossibleFitmentText);
+    const droppedVerified = countFitmentLines(aiVerifiedFitmentText) - directRows.length;
+    const droppedPossible = countFitmentLines(aiPossibleFitmentText) - compatibleRows.length;
+    if (droppedVerified > 0) notices.push(`รุ่นรถ VERIFIED ${droppedVerified} รายการจับคู่กับรุ่นรถในระบบไม่ได้ จึงไม่ถูกเพิ่ม กรุณาเพิ่มเอง`);
+    if (droppedPossible > 0) notices.push(`รุ่นรถ POSSIBLE ${droppedPossible} รายการจับคู่กับรุ่นรถในระบบไม่ได้ จึงไม่ถูกเพิ่ม กรุณาเพิ่มเอง`);
+    if (directRows.length > 0) setFitments((prev) => [...prev, ...directRows]);
+    if (compatibleRows.length > 0) setCompatibleFitments((prev) => [...prev, ...compatibleRows]);
+    setAiApplyNotices(notices);
+    setAiDraft(null);
+  };
 
   // ── Image upload ───────────────────────────────────────────────────────────
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -826,6 +987,21 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
       {/* ── 1. ข้อมูลพื้นฐาน ─────────────────────────────────────────────────── */}
       <div className={sectionCls}>
         <h2 className={sectionHeadingCls}>ข้อมูลพื้นฐาน</h2>
+        {aiApplyNotices.length > 0 && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">ข้อมูลบางส่วนจาก AI ยังต้องกรอกเอง</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {aiApplyNotices.map((notice, index) => <li key={`ai-notice-${index}`}>{notice}</li>)}
+                </ul>
+              </div>
+              <button type="button" onClick={() => setAiApplyNotices([])} className="rounded-lg p-1 text-amber-500 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-500/20" aria-label="ปิดข้อความ">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
           {product && (
             <div>
@@ -836,9 +1012,21 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
             </div>
           )}
           <div>
-            <label className={labelCls}>ชื่อสินค้า <span className="text-red-500">*</span></label>
-            <input type="text" name="name" defaultValue={product?.name ?? ""} required
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">ชื่อสินค้า <span className="text-red-500">*</span></label>
+              <button
+                type="button"
+                onClick={handleAiResearch}
+                disabled={isAiResearching}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/20"
+              >
+                {isAiResearching ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                AI Research
+              </button>
+            </div>
+            <input ref={productNameRef} type="text" name="name" defaultValue={product?.name ?? ""} required
               placeholder="เช่น คอมเพรสเซอร์แอร์ Toyota" className={inputCls} />
+            {aiResearchError && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{aiResearchError}</p>}
           </div>
           <div>
             <label className={labelCls}>หมวดหมู่ <span className="text-red-500">*</span></label>
@@ -1568,6 +1756,131 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
           ) : product ? "บันทึกการแก้ไข" : "เพิ่มสินค้า"}
         </button>
       </div>
+
+      {aiDraft && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-950">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 p-4 dark:border-white/10">
+              <div>
+                <h3 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">ตรวจร่างข้อมูลจาก AI Research</h3>
+                <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">แก้ไขข้อมูลใน modal นี้ได้ก่อนกดตกลง ระบบจะนำไปกรอกในฟอร์ม แต่ยังไม่บันทึกสินค้า</p>
+              </div>
+              <button type="button" onClick={() => setAiDraft(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-800 dark:hover:text-slate-200" aria-label="ปิด AI Research">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto p-4">
+              {(aiDraft.warnings.length > 0 || aiDraft.questionsForAdmin.length > 0) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  {aiDraft.warnings.length > 0 && (
+                    <div>
+                      <p className="font-semibold">คำเตือน/ข้อจำกัด</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-5">
+                        {aiDraft.warnings.map((warning, index) => <li key={`warning-${index}`}>{warning}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {aiDraft.questionsForAdmin.length > 0 && (
+                    <div className="mt-3">
+                      <p className="font-semibold">ข้อมูลที่ควรถาม/ตรวจเพิ่ม</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-5">
+                        {aiDraft.questionsForAdmin.map((question, index) => <li key={`question-${index}`}>{question}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className={labelCls}>ชื่อสินค้า</label>
+                  <input value={aiDraft.productName.value} onChange={(e) => updateAiDraftText("productName", e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>หมวดหมู่</label>
+                  <input value={aiDraft.category.value} onChange={(e) => updateAiDraftText("category", e.target.value)} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>แบรนด์อะไหล่</label>
+                  <input value={aiDraft.partsBrand.value} onChange={(e) => updateAiDraftText("partsBrand", e.target.value)} className={inputCls} />
+                </div>
+              </div>
+
+              <div>
+                <label className={labelCls}>คำอธิบายสินค้า</label>
+                <textarea
+                  value={aiDraft.descriptionCopyBox}
+                  onChange={(e) => setAiDraft((current) => current ? { ...current, descriptionCopyBox: e.target.value } : current)}
+                  rows={8}
+                  className={`${inputCls} resize-y`}
+                />
+              </div>
+
+              <div>
+                <h4 className="mb-3 font-kanit text-base font-semibold text-[#1e3a5f] dark:text-sky-200">รหัสค้นหา / OEM / Part No. / คำพ้อง</h4>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {ALIAS_KINDS.map((kind) => (
+                    <div key={kind}>
+                      <label className={labelCls}>{ALIAS_KIND_META[kind].label}{aiDraft.aliases[kind].required && <span className="text-red-500"> *</span>}</label>
+                      <textarea
+                        value={aiDraft.aliases[kind].csv}
+                        onChange={(e) => updateAiDraftAlias(kind, e.target.value)}
+                        rows={2}
+                        className={`${inputCls} resize-y`}
+                        placeholder="คั่นแต่ละคำด้วยลูกน้ำ"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className={labelCls}>VERIFIED — ใช้ร่วมกันได้</label>
+                  <textarea
+                    value={aiVerifiedFitmentText}
+                    onChange={(e) => setAiVerifiedFitmentText(e.target.value)}
+                    rows={5}
+                    className={`${inputCls} resize-y`}
+                    placeholder="ยี่ห้อ / รุ่น | ปีเริ่ม-ปีจบ | CC | รหัสเครื่อง | โฉม | โน้ต"
+                  />
+                  <p className={helpCls}>จะเพิ่มเฉพาะรุ่นรถที่ match กับ master data ในระบบได้เท่านั้น</p>
+                </div>
+                <div>
+                  <label className={labelCls}>POSSIBLE_MATCH — ต้องเทียบอะไหล่เดิมก่อน</label>
+                  <textarea
+                    value={aiPossibleFitmentText}
+                    onChange={(e) => setAiPossibleFitmentText(e.target.value)}
+                    rows={5}
+                    className={`${inputCls} resize-y`}
+                    placeholder="ยี่ห้อ / รุ่น | ปีเริ่ม-ปีจบ | CC | รหัสเครื่อง | โฉม | โน้ต"
+                  />
+                  <p className={helpCls}>ข้อมูลส่วนนี้จะไปอยู่ใน section “อาจใช้ร่วมกันได้บางรุ่น”</p>
+                </div>
+              </div>
+
+              {aiDraft.sources.length > 0 && (
+                <div>
+                  <h4 className="mb-2 font-kanit text-base font-semibold text-[#1e3a5f] dark:text-sky-200">แหล่งอ้างอิงที่ AI ใช้</h4>
+                  <ul className="space-y-1 text-xs text-gray-600 dark:text-slate-300">
+                    {aiDraft.sources.map((source, index) => (
+                      <li key={`${source.url}-${index}`} className="break-all">• {source.title || source.sourceType}: {source.url}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-gray-100 p-4 sm:flex-row sm:justify-end dark:border-white/10">
+              <button type="button" onClick={() => setAiDraft(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-slate-800">ยกเลิก</button>
+              <button type="button" onClick={applyAiDraft} className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-500">
+                <Sparkles size={15} /> ตกลงและกรอกลงฟอร์ม
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 };

@@ -31,13 +31,14 @@ import {
   deleteProductImageObjects,
   getProductImageStorageConfig,
   getProductImageObjectPathFromPublicUrl,
-  getPublicProductImageUrl,
   isAllowedProductImageUrl,
   isProductImageObjectPath,
   isProductImageObjectPathForCode,
 } from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 import { reembedProductSearchDocument } from "@/lib/product-embedding-sync";
+import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
+import { runProductAiResearch, type ProductAiResearchDraft, type ProductAiResearchInput } from "@/lib/product-ai-research";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -616,6 +617,25 @@ async function assertCanSetInventoryTracking(
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
+export const researchProductWithAi = async (
+  input: ProductAiResearchInput,
+  mode: "create" | "update" = "create",
+): Promise<{ error?: string; draft?: ProductAiResearchDraft }> => {
+  try {
+    await requirePermission(mode === "update" ? "products.update" : "products.create");
+  } catch {
+    return { error: "ไม่มีสิทธิ์ใช้งาน AI Research" };
+  }
+
+  if (!input.productName.trim() && !input.fitmentText?.trim()) {
+    return { error: "กรุณากรอกชื่อสินค้าหรือรุ่นรถก่อนใช้ AI Research" };
+  }
+
+  const result = await runProductAiResearch(input);
+  if (!result.success) return { error: result.error };
+  return { draft: result.draft };
+};
+
 const buildProductFitmentCreateManyData = (
   productId: string,
   fitments: ProductInput["fitments"],
@@ -1055,13 +1075,7 @@ export const uploadProductImage = async (
     return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp" };
   }
 
-  const config = getProductImageStorageConfig();
-  if (!config) {
-    return { error: "ไม่พบการตั้งค่า Supabase" };
-  }
-
   try {
-    const supabase = createProductImageStorageClient(config);
     const requestedCode = normalizeRequestedProductCode(getStringFormValue(formData, "productCode"));
     const buffer = new Uint8Array(await file.arrayBuffer());
 
@@ -1074,13 +1088,14 @@ export const uploadProductImage = async (
     const uploadCode = requestedCode ?? await generateProductCode();
     const filePath = buildProductImageObjectPath(uploadCode, ext);
 
-    const { error: uploadError } = await supabase.storage
-      .from("products")
-      .upload(filePath, buffer, { contentType: detectedType, upsert: false });
+    // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
+    const url = await uploadProductsBucketObject({
+      objectPath: filePath,
+      body: buffer,
+      contentType: detectedType,
+    });
 
-    if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
-
-    return { url: getPublicProductImageUrl(supabase, filePath), uploadCode };
+    return { url, uploadCode };
   } catch {
     return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
   }
