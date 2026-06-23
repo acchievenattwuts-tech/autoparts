@@ -27,8 +27,19 @@ export type LineProductSummary = {
 // Interactive chat calls fail over fast (don't burn the full 30s on a hung key)
 // and try only a few keys, so one turn can't stack timeouts past the reply-token
 // window. Background jobs (embeddings/backfill) keep the client defaults.
-export const CHAT_CALL_TIMEOUT_MS = 15_000;
-export const CHAT_MAX_KEY_ATTEMPTS = 3;
+//
+// Tightened 2026-06-23 (15s/3 → 8s/2): a product turn fires several SEQUENTIAL
+// chat calls (extract-intent → purchase-intent → faq/suggest). During a Gemini
+// latency spike each was returning at ~14s (just under the old 15s cap), so the
+// turn stacked past the 60s serverless ceiling → reply token expired (slow PUSH)
+// and the coalesce lease lapsed → job killed as STALE_PROCESSING_TIMEOUT (~126s).
+// 8s still clears normal flash-lite latency (~1–4s); only a genuine spike now
+// aborts → deterministic จูน-voiced fallback (same products/cards, templated
+// wording) that still lands inside the free reply-token window. A spike hits all
+// keys at once, so a 3rd key attempt only wasted time — 2 is enough for the
+// 429/rotate case it's actually there for.
+export const CHAT_CALL_TIMEOUT_MS = 8_000;
+export const CHAT_MAX_KEY_ATTEMPTS = 2;
 
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
@@ -540,6 +551,21 @@ export function buildJuneDeadlineReply(input: {
     : "เบื้องต้นจูนเจอรายการที่ใกล้เคียงในร้านดังนี้ค่ะ 😊";
 
   return `${opener}\n\n${productLines}\n\nเป็นการเทียบเบื้องต้นนะคะ รบกวนเช็กกับทางร้านอีกครั้งก่อนสั่งซื้อนะคะ 🙏`;
+}
+
+/**
+ * Reply for when a customer's PART IMAGE was recognized (vision OCR succeeded,
+ * not low-confidence) but the product search found no match in the catalog.
+ * Acknowledges the part we actually saw — so it never reads like the photo was
+ * ignored — and hands off to a human to confirm stock/fitment, instead of the
+ * generic FAQ "send a photo of the part" answer that looks absurd right after the
+ * customer already sent one.
+ */
+export function buildJunePartImageNoMatchReply(known?: LineKnownFitment | null): string {
+  const part = known?.partType?.trim();
+  const car = [known?.carBrand?.trim(), known?.carModel?.trim()].filter(Boolean).join(" ") || null;
+  const subject = part ? (car ? `${part}สำหรับ ${car}` : part) : "อะไหล่ในรูป";
+  return `จูนเห็นรูป${subject}ที่ส่งมาแล้วนะคะ 🙏 แต่ตอนนี้ยังไม่เจอตัวที่ตรงในระบบค่ะ ขอส่งต่อให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้อีกครั้งนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 😊`;
 }
 
 /**

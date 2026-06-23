@@ -1253,6 +1253,49 @@ test("part image does not search when image-search flag is off even with hints",
   assert.deepEqual(calls.searches, []);
 });
 
+test("part image recognized but search empty → acknowledges the part + hands off, not the generic FAQ ask-for-photo", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "HIGH",
+    imagePartType: "สายน้ำยาแอร์",
+    // Car + year present so the completeness gate passes and this turn reaches the
+    // actual product search (which comes back empty), mirroring the production case
+    // where the customer's text supplied the vehicle.
+    imageCarModel: "D-Max",
+    imageYear: 2012,
+    imageHints: ["สายน้ำยาแอร์", "D-Max"],
+    // A FAQ answer is available — the fix must NOT use it for a recognized part
+    // image with zero matches (it would read "send a photo of the part").
+    faqReply: "สอบถามเรื่องจัดส่งได้เลยค่ะ",
+  });
+  dependencies.searchLineProductInquiry = async () => ({
+    searched: true,
+    reason: "SEARCHED_PRODUCT_INQUIRY",
+    query: "สายน้ำยาแอร์",
+    result: { ids: [], total: 0, mode: "v2" },
+    needsMoreInfo: true,
+    appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
+    droppedImageCodes: [],
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-nomatch"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, imageSearchEnabled: true },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  const reply = calls.replies[0]?.text ?? "";
+  assert.match(reply, /เห็นรูป/, "acknowledges the photo it saw");
+  assert.match(reply, /สายน้ำยาแอร์/, "names the recognized part type");
+  assert.match(reply, /แอดมิน/, "hands off to a human");
+  assert.ok(!/ส่งรูปอะไหล่เดิม/.test(reply), "never asks for a photo the customer already sent");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "conversation handed off to admin");
+  assert.ok(calls.auditActions.includes("AI_PART_IMAGE_NO_MATCH"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
 test("processor reuses the same conversation for two distinct messages from one user", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();

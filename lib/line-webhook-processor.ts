@@ -17,6 +17,7 @@ import {
   buildJuneAskDetailsReply,
   buildJuneDeadlineReply,
   buildJuneOutOfScopeReply,
+  buildJunePartImageNoMatchReply,
   buildJuneSmalltalkReply,
   buildJuneSocialReply,
   extractLineSearchIntent,
@@ -1234,11 +1235,23 @@ export async function processLineAiReply(
     //    canned SHOP_INFO answer (e.g. "ร้านคุณอยู่ไหน" phrased so the regex misses).
     // This lets the AI actually ANSWER a general/shop question instead of punting it
     // to an admin.
+    // A part image whose vision OCR succeeded (kind=part_image, not low-confidence)
+    // that comes back with zero matches is a genuine "we don't stock this", NOT a
+    // shipping/how-to-order question — so it must skip the FAQ branch (which would
+    // answer with the generic "send a photo of the part" reply, absurd right after
+    // the customer sent one) and instead acknowledge the part + hand off to a human.
+    const partImageNoMatch =
+      liveMode &&
+      input.imageClassification?.kind === "part_image" &&
+      input.imageClassification.confidence !== "LOW" &&
+      productSearch.searched &&
+      productSearch.result.total === 0;
+
     const faqAnswer =
       liveMode &&
       (tryFaqThenAsk ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
-        (productSearch.searched && productSearch.result.total === 0))
+        (productSearch.searched && productSearch.result.total === 0 && !partImageNoMatch))
         ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
@@ -1293,6 +1306,31 @@ export async function processLineAiReply(
             handoff: false,
             audit: "AI_SEARCH_GATE_ASK",
             auditPayload: { lineEventId: input.lineEventId, ask: gateDecision.ask, reason: gateDecision.reason },
+          }
+        : liveMode && partImageNoMatch
+        ? {
+            message: buildJunePartImageNoMatchReply(
+              inquiryFrame
+                ? {
+                    partType: inquiryFrame.partType,
+                    carBrand: inquiryFrame.carBrand,
+                    carModel: inquiryFrame.carModel,
+                    year: frameYear,
+                  }
+                : {
+                    partType: input.imageClassification?.partType ?? null,
+                    carBrand: input.imageClassification?.carBrand ?? null,
+                    carModel: input.imageClassification?.carModel ?? null,
+                    year: input.imageClassification?.year ?? null,
+                  },
+            ),
+            reason: "PART_IMAGE_NO_MATCH",
+            handoff: true,
+            audit: "AI_PART_IMAGE_NO_MATCH",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              partType: inquiryFrame?.partType ?? input.imageClassification?.partType ?? null,
+            },
           }
         : faqAnswer.answered
         ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
