@@ -146,6 +146,12 @@ const helpCls =
 // Minimum gap between two AI Research triggers from the same session (anti-spam).
 const AI_RESEARCH_COOLDOWN_MS = 8_000;
 
+// Feature flag — AI Research is disabled until the Gemini billing account is set up
+// (Google Search grounding returns HTTP 429 on free-tier keys). Flip to `true` to
+// re-enable the button once a paid-tier key is available. The server action is also
+// gated, so leaving this on without billing simply shows the quota error.
+const AI_RESEARCH_ENABLED = false;
+
 const checkboxCls =
   "w-4 h-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f] " +
   "dark:border-slate-500 dark:bg-slate-800 dark:focus:ring-sky-500";
@@ -1014,15 +1020,17 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">ชื่อสินค้า <span className="text-red-500">*</span></label>
-              <button
-                type="button"
-                onClick={handleAiResearch}
-                disabled={isAiResearching}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/20"
-              >
-                {isAiResearching ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                AI Research
-              </button>
+              {AI_RESEARCH_ENABLED && (
+                <button
+                  type="button"
+                  onClick={handleAiResearch}
+                  disabled={isAiResearching}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/20"
+                >
+                  {isAiResearching ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  AI Research
+                </button>
+              )}
             </div>
             <input ref={productNameRef} type="text" name="name" defaultValue={product?.name ?? ""} required
               placeholder="เช่น คอมเพรสเซอร์แอร์ Toyota" className={inputCls} />

@@ -617,10 +617,18 @@ async function assertCanSetInventoryTracking(
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
+// Feature flag — keep in sync with AI_RESEARCH_ENABLED in ProductForm.tsx. AI
+// Research stays off until the Gemini billing account is set up (Google Search
+// grounding returns HTTP 429 on free-tier keys).
+const AI_RESEARCH_ENABLED = false;
+
 export const researchProductWithAi = async (
   input: ProductAiResearchInput,
   mode: "create" | "update" = "create",
 ): Promise<{ error?: string; draft?: ProductAiResearchDraft }> => {
+  if (!AI_RESEARCH_ENABLED) {
+    return { error: "AI Research ปิดใช้งานชั่วคราว" };
+  }
   try {
     await requirePermission(mode === "update" ? "products.update" : "products.create");
   } catch {
