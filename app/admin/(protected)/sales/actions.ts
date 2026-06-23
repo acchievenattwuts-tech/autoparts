@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@supabase/supabase-js";
+import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
@@ -1285,7 +1285,6 @@ export async function updateSale(
 
 // updateShippingStatus
 
-const DELIVERY_PROOF_BUCKET = "products";
 const DELIVERY_PROOF_EXTENSIONS = {
   "image/jpeg": "jpg",
   "image/png":  "png",
@@ -1359,30 +1358,22 @@ const uploadDeliveryProofImage = async ({
     };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return { error: "ไม่พบการตั้งค่า Supabase Storage" };
-  }
-
   const ext = DELIVERY_PROOF_EXTENSIONS[contentType];
   const safeSaleId = saleId.replace(/[^a-zA-Z0-9_-]/g, "");
   const filePath = `delivery-proofs/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
   const buffer = new Uint8Array(await file.arrayBuffer());
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const { error: uploadError } = await supabase.storage
-    .from(DELIVERY_PROOF_BUCKET)
-    .upload(filePath, buffer, { contentType, upsert: false });
 
-  if (uploadError) {
+  try {
+    // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
+    const url = await uploadProductsBucketObject({
+      objectPath: filePath,
+      body: buffer,
+      contentType,
+    });
+    return { url };
+  } catch {
     return { error: "อัปโหลดรูปหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
   }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(DELIVERY_PROOF_BUCKET).getPublicUrl(filePath);
-
-  return { url: publicUrl };
 };
 
 export async function getLatestDeliveryProof(

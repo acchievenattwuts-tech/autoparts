@@ -11,7 +11,7 @@ import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
-import { createClient } from "@supabase/supabase-js";
+import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -41,26 +41,18 @@ export async function uploadLogoImage(
     return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp, gif" };
   }
 
-  const supabaseUrl      = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return { error: "ไม่พบการตั้งค่า Supabase" };
-  }
-
   try {
-    const supabase    = createClient(supabaseUrl, supabaseServiceKey);
     const safeFileName = `logo-${Date.now()}-${crypto.randomUUID()}.${ext}`;
     const filePath    = `settings/${safeFileName}`;
     const buffer      = new Uint8Array(await file.arrayBuffer());
 
-    const { error: uploadError } = await supabase.storage
-      .from("products")
-      .upload(filePath, buffer, { contentType: file.type, upsert: false });
-
-    if (uploadError) return { error: "อัปโหลดไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
-
-    const { data: { publicUrl } } = supabase.storage.from("products").getPublicUrl(filePath);
-    return { url: publicUrl };
+    // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
+    const url = await uploadProductsBucketObject({
+      objectPath: filePath,
+      body: buffer,
+      contentType: file.type,
+    });
+    return { url };
   } catch {
     return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
   }

@@ -29,8 +29,8 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.line-scdn.net",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
-      // Allow images from self, Supabase storage, analytics pixels, data URIs, and OpenStreetMap tiles
-      "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
+      // Allow images from self, Vercel Blob CDN, Supabase storage, analytics pixels, data URIs, and OpenStreetMap tiles
+      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
       "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net https://nominatim.openstreetmap.org",
@@ -105,6 +105,17 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 2678400,
+    // Allow next/image to optimize public Vercel Blob assets directly (the Blob
+    // public CDN survives deployments, unlike the per-deploy /img route cache).
+    // Supabase is intentionally NOT listed here — Supabase-backed images are still
+    // served render-time through the same-origin /img proxy.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.public.blob.vercel-storage.com",
+        pathname: "/**",
+      },
+    ],
   },
 };
 

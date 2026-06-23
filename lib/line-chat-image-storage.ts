@@ -1,5 +1,7 @@
 import sharp from "sharp";
+import { put } from "@vercel/blob";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isBlobBackend } from "@/lib/storage-backend";
 
 /**
  * Public storage for outbound admin chat images sent through LINE OA.
@@ -71,12 +73,12 @@ function publicUrl(client: SupabaseClient, path: string): string {
  * upload failure so the caller can surface a friendly error and abort the send.
  */
 export async function storeLineChatImage(input: { buffer: Buffer; date?: Date }): Promise<LineChatImageUploadResult> {
-  const client = getServiceClient();
-  if (!client) {
+  // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_LINE_CHAT flag.
+  const useBlob = isBlobBackend("line-chat");
+  const client = useBlob ? null : getServiceClient();
+  if (!useBlob && !client) {
     throw new Error("LINE_CHAT_IMAGE_STORAGE_NOT_CONFIGURED");
   }
-
-  await ensureBucket(client);
 
   const [original, preview] = await Promise.all([
     sharp(input.buffer)
@@ -92,6 +94,23 @@ export async function storeLineChatImage(input: { buffer: Buffer; date?: Date })
   ]);
 
   const { originalPath, previewPath } = buildObjectPaths(input.date ?? new Date());
+
+  if (useBlob) {
+    const [originalUpload, previewUpload] = await Promise.all([
+      put(originalPath, original, { access: "public", contentType: "image/jpeg", addRandomSuffix: false }),
+      put(previewPath, preview, { access: "public", contentType: "image/jpeg", addRandomSuffix: false }),
+    ]);
+    return {
+      originalUrl: originalUpload.url,
+      previewUrl: previewUpload.url,
+      originalPath,
+    };
+  }
+
+  if (!client) {
+    throw new Error("LINE_CHAT_IMAGE_STORAGE_NOT_CONFIGURED");
+  }
+  await ensureBucket(client);
 
   const [originalUpload, previewUpload] = await Promise.all([
     client.storage.from(BUCKET).upload(originalPath, original, { contentType: "image/jpeg", upsert: false }),

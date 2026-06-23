@@ -1,10 +1,12 @@
 import { db } from "@/lib/db";
 import { Prisma, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import {
+  buildPaymentSlipImageRoute,
   createPaymentSlipSignedUrlsBatch,
   GALLERY_SIGNED_URL_REFRESH_BUFFER_MS,
   GALLERY_SIGNED_URL_TTL_SECONDS,
 } from "@/lib/line-payment-slip-storage";
+import { isBlobBackend } from "@/lib/storage-backend";
 import { isDateOnlyString, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 /**
@@ -111,6 +113,16 @@ type GalleryRow = {
  * then persisting the refreshed URLs so later renders are zero-call.
  */
 async function resolveGalleryImageUrls(rows: GalleryRow[]): Promise<Map<string, string | null>> {
+  // Blob backend: slips are served by the session-checked stream route, so there
+  // are no signed URLs to mint or cache — map each row to its route URL directly.
+  if (isBlobBackend("payment-slips")) {
+    const resolved = new Map<string, string | null>();
+    for (const row of rows) {
+      resolved.set(row.id, row.imageUrl ? buildPaymentSlipImageRoute(row.id) : null);
+    }
+    return resolved;
+  }
+
   const now = Date.now();
   const refreshThreshold = new Date(now + GALLERY_SIGNED_URL_REFRESH_BUFFER_MS);
 

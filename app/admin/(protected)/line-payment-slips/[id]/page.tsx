@@ -12,7 +12,7 @@ import {
   paymentSlipStatusLabel,
 } from "@/lib/line-payment-slip-display";
 import { getPaymentSlipById } from "@/lib/line-payment-slip-repository";
-import { createPaymentSlipSignedUrl } from "@/lib/line-payment-slip-storage";
+import { getPaymentSlipDisplayUrl } from "@/lib/line-payment-slip-storage";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateTimeThai } from "@/lib/th-date";
 
@@ -33,7 +33,7 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
     "line_payment_slips.manage",
   );
 
-  const slipImageUrl = slip.imageUrl ? await createPaymentSlipSignedUrl(slip.imageUrl) : null;
+  const slipImageUrl = slip.imageUrl ? await getPaymentSlipDisplayUrl(slip.id, slip.imageUrl) : null;
 
   const fields: Array<{ label: string; value: string }> = [
     { label: "จำนวนเงิน", value: `${formatPaymentSlipBaht(slip.detectedAmount)} ฿` },

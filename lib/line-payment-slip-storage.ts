@@ -1,7 +1,9 @@
 import sharp from "sharp";
+import { del, get, put } from "@vercel/blob";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import type { LineMessageContent } from "@/lib/line-messaging";
+import { isBlobBackend } from "@/lib/storage-backend";
 
 /**
  * Private storage for payment-slip images. Slips are PII (bank/account/name), so
@@ -71,14 +73,26 @@ export async function storePaymentSlipImage(input: {
   date: Date;
   content: LineMessageContent;
 }): Promise<string | null> {
-  const client = getServiceClient();
-  if (!client) return null;
-
   try {
-    await ensureBucket(client);
     const webp = await compressSlipImage(input.content);
     const path = buildPaymentSlipObjectPath(input.slipId, input.date);
 
+    // Backend (Supabase vs Vercel Blob) is selected by IMAGE_STORAGE_PAYMENT_SLIPS.
+    // Slips are PII, so the Blob object is PRIVATE (served only via the
+    // session-checked /api/admin/line-payment-slips/[id]/image route).
+    if (isBlobBackend("payment-slips")) {
+      await put(path, webp, {
+        access: "private",
+        contentType: "image/webp",
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return path;
+    }
+
+    const client = getServiceClient();
+    if (!client) return null;
+    await ensureBucket(client);
     const { error } = await client.storage
       .from(BUCKET)
       .upload(path, webp, { contentType: "image/webp", upsert: true });
@@ -96,6 +110,15 @@ export async function storePaymentSlipImage(input: {
 
 /** Deletes a stored slip image (used when an admin rejects a slip). Best-effort. */
 export async function deletePaymentSlipImage(path: string): Promise<void> {
+  // Try Blob when that backend is active; also try Supabase so slips that pre-date
+  // the migration (mixed state) are still cleaned up. Both are best-effort.
+  if (isBlobBackend("payment-slips")) {
+    try {
+      await del(path);
+    } catch (error) {
+      console.error("[payment-slip-storage] blob delete failed", error);
+    }
+  }
   const client = getServiceClient();
   if (!client) return;
   try {
@@ -103,6 +126,50 @@ export async function deletePaymentSlipImage(path: string): Promise<void> {
   } catch (error) {
     console.error("[payment-slip-storage] delete failed", error);
   }
+}
+
+/** Same-origin admin route that streams a slip image (session-checked). */
+export function buildPaymentSlipImageRoute(slipId: string): string {
+  return `/api/admin/line-payment-slips/${slipId}/image`;
+}
+
+/**
+ * Resolves the viewable image URL for a slip. With the Blob backend this is the
+ * session-checked stream route (no expiry); with Supabase it is a short-lived
+ * signed URL as before.
+ */
+export async function getPaymentSlipDisplayUrl(slipId: string, path: string): Promise<string | null> {
+  if (isBlobBackend("payment-slips")) {
+    return buildPaymentSlipImageRoute(slipId);
+  }
+  return createPaymentSlipSignedUrl(path);
+}
+
+/**
+ * Reads a slip image for the stream route. Tries Blob first (private get) and
+ * falls back to Supabase so slips not yet backfilled keep working after the flag
+ * flip. Returns null when the object is missing in both backends.
+ */
+export async function readPaymentSlipImage(
+  path: string,
+): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string } | null> {
+  if (isBlobBackend("payment-slips")) {
+    try {
+      const result = await get(path, { access: "private" });
+      if (result && result.statusCode === 200) {
+        return { stream: result.stream, contentType: result.headers.get("content-type") ?? "image/webp" };
+      }
+    } catch (error) {
+      console.error("[payment-slip-storage] blob read failed", error);
+    }
+    // Fall through to Supabase for not-yet-migrated slips.
+  }
+
+  const client = getServiceClient();
+  if (!client) return null;
+  const { data, error } = await client.storage.from(BUCKET).download(path);
+  if (error || !data) return null;
+  return { stream: data.stream(), contentType: data.type || "image/webp" };
 }
 
 /** Creates a short-lived signed URL so an authenticated admin can view the slip. */

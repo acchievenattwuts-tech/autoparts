@@ -68,3 +68,6 @@ env
 # Codex / Superpowers generated artifacts (not part of app)
 /.superpowers/
 /docs/superpowers/
+
+# Image-storage migration rollback maps (contain URLs, run-local only)
+backfill-blob-rollback-*.json

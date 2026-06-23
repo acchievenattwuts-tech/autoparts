@@ -1,7 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { createClient } from "@supabase/supabase-js";
+import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
@@ -389,31 +389,19 @@ export async function uploadUserSignature(
     return { error: "นามสกุลไฟล์ลายเซ็นไม่ถูกต้อง ใช้ได้: jpg, png, webp" };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return { error: "ไม่พบการตั้งค่า Supabase" };
-  }
-
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const safeFileName = `user-signature-${Date.now()}-${crypto.randomUUID()}.${extension}`;
     const filePath = `users/signatures/${safeFileName}`;
     const buffer = new Uint8Array(await file.arrayBuffer());
 
-    const { error: uploadError } = await supabase.storage
-      .from("products")
-      .upload(filePath, buffer, { contentType: file.type, upsert: false });
+    // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
+    const url = await uploadProductsBucketObject({
+      objectPath: filePath,
+      body: buffer,
+      contentType: file.type,
+    });
 
-    if (uploadError) {
-      return { error: "อัปโหลดลายเซ็นไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
-    }
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("products").getPublicUrl(filePath);
-
-    return { url: publicUrl };
+    return { url };
   } catch {
     return { error: "เกิดข้อผิดพลาดขณะอัปโหลดลายเซ็น" };
   }
