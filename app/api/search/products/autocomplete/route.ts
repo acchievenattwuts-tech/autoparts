@@ -9,6 +9,7 @@
  */
 
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/lib/generated/prisma";
 import type { ProductSearchCacheProfile } from "@/lib/product-search-cache";
 import { runStorefrontProductSearchWithRequiredTokenFallback } from "@/lib/storefront-product-search";
 import { db } from "@/lib/db";
@@ -98,6 +99,40 @@ const clientIp = (request: Request): string => {
   return fwd.split(",")[0].trim() || "unknown";
 };
 
+// Shared select + mapper so the V2 path and the bot-only lightweight path return
+// the exact same item shape.
+const AUTOCOMPLETE_SELECT = {
+  id: true,
+  slug: true,
+  code: true,
+  name: true,
+  imageUrl: true,
+  salePrice: true,
+  saleUnitName: true,
+  reportUnitName: true,
+  stock: true,
+  category: { select: { name: true, slug: true } },
+  brand: { select: { name: true } },
+} satisfies Prisma.ProductSelect;
+
+const toAutocompleteItem = (
+  p: Prisma.ProductGetPayload<{ select: typeof AUTOCOMPLETE_SELECT }>,
+): AutocompleteItem => ({
+  id: p.id,
+  code: p.code,
+  name: p.name,
+  imageUrl: p.imageUrl,
+  salePrice: Number(p.salePrice),
+  stock: Number(p.stock),
+  inStock: p.stock > 0,
+  saleUnitName: p.saleUnitName,
+  reportUnitName: p.reportUnitName,
+  brand: p.brand?.name ?? null,
+  category: p.category.name,
+  href: getProductPath({ category: p.category, product: p }),
+  adminHref: `/admin/products/${p.id}/preview`,
+});
+
 export const GET = async (request: Request): Promise<NextResponse> => {
   try {
     const url = new URL(request.url);
@@ -122,6 +157,35 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     }
 
     const isBot = isLikelyBotUserAgent(request.headers.get("user-agent"));
+
+    // Bot / crawler traffic gets a lightweight LIKE-contains lookup that holds a
+    // single pooled connection only for the query itself — NOT the V2 engine,
+    // whose trigram/EXISTS work runs inside a transaction (dbSearchTx). Under a
+    // crawl those transactions queue on the small per-instance pool and surface as
+    // P2028 ("unable to start a transaction") for real users + stall the LINE
+    // webhook. Crawlers don't index this autocomplete endpoint, so contains-match
+    // results are fine; real browsers (which always send a non-bot UA) keep V2.
+    if (isBot) {
+      const botProducts = await db.product.findMany({
+        where: {
+          isActive: true,
+          ...(cacheProfile === "storefront" ? { isStorefrontVisible: true } : {}),
+          OR: [
+            { name: { contains: query, mode: "insensitive" } },
+            { code: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        select: AUTOCOMPLETE_SELECT,
+        orderBy: { createdAt: "desc" },
+        take: TAKE,
+      });
+      const items = botProducts.map(toAutocompleteItem);
+      return NextResponse.json(
+        { items, totalCount: items.length },
+        { headers: { "Cache-Control": "public, max-age=30, s-maxage=60" } },
+      );
+    }
+
     const shouldUseSemantic = !isBot && query.length >= SEMANTIC_MIN_QUERY_LENGTH;
 
     // Use the SAME required-token fallback wrapper as the full results pages
@@ -167,40 +231,14 @@ export const GET = async (request: Request): Promise<NextResponse> => {
 
     const products = await db.product.findMany({
       where: { id: { in: result.ids } },
-      select: {
-        id: true,
-        slug: true,
-        code: true,
-        name: true,
-        imageUrl: true,
-        salePrice: true,
-        saleUnitName: true,
-        reportUnitName: true,
-        stock: true,
-        category: { select: { name: true, slug: true } },
-        brand: { select: { name: true } },
-      },
+      select: AUTOCOMPLETE_SELECT,
     });
 
     // Preserve search ranking order
     const order = new Map(result.ids.map((id, idx) => [id, idx]));
     products.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
-    const items: AutocompleteItem[] = products.map((p) => ({
-      id: p.id,
-      code: p.code,
-      name: p.name,
-      imageUrl: p.imageUrl,
-      salePrice: Number(p.salePrice),
-      stock: Number(p.stock),
-      inStock: p.stock > 0,
-      saleUnitName: p.saleUnitName,
-      reportUnitName: p.reportUnitName,
-      brand: p.brand?.name ?? null,
-      category: p.category.name,
-      href: getProductPath({ category: p.category, product: p }),
-      adminHref: `/admin/products/${p.id}/preview`,
-    }));
+    const items: AutocompleteItem[] = products.map(toAutocompleteItem);
 
     return NextResponse.json(
       { items, totalCount: result.total },
