@@ -79,3 +79,26 @@ test("returns null only when the reply isn't parseable JSON", async () => {
   assert.equal(parseLineSearchIntent("not json at all"), null);
   assert.equal(parseLineSearchIntent(""), null);
 });
+
+test("parses subjects[] when ≥2 distinct part types are listed (B2c)", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const intent = parseLineSearchIntent(
+    '{"group":"product","query":"คอมแอร์ คอยเย็น d-max","partType":"คอมแอร์","carModel":"D-Max","subjects":[{"partType":"คอมแอร์","carModel":"D-Max","query":"คอมแอร์ D-Max","partKind":"fitment"},{"partType":"คอยเย็น","carModel":"D-Max","query":"คอยเย็น D-Max","partKind":"fitment"}]}',
+  );
+  assert.equal(intent?.subjects?.length, 2);
+  assert.equal(intent?.subjects?.[0].partType, "คอมแอร์");
+  assert.equal(intent?.subjects?.[1].partType, "คอยเย็น");
+  // Top-level fields still mirror the primary subject (back-compat).
+  assert.equal(intent?.partType, "คอมแอร์");
+});
+
+test("ignores subjects[] with fewer than 2 real entries (single subject)", async () => {
+  const { parseLineSearchIntent } = await import("@/lib/line-ai-service");
+  const single = parseLineSearchIntent('{"group":"product","query":"คอยเย็น d-max","partType":"คอยเย็น","subjects":[]}');
+  assert.equal(single?.subjects, undefined);
+  // entries without a partType are noise and don't count toward the ≥2 threshold
+  const noisy = parseLineSearchIntent(
+    '{"group":"product","query":"คอยเย็น","partType":"คอยเย็น","subjects":[{"partType":"คอยเย็น","query":"คอยเย็น"},{"partType":null,"query":"อันนี้"}]}',
+  );
+  assert.equal(noisy?.subjects, undefined);
+});

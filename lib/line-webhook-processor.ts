@@ -43,6 +43,7 @@ import {
   getOrCreateLineConversation,
   getRecentLineMessagesForAi,
   getUnansweredInboundLineMessages,
+  getStoredImageClassificationsByMessageRowIds,
   updateLineInquiryFrame,
   hasProcessedLineEvent,
   markLineProcessedSeq,
@@ -164,6 +165,9 @@ export type LineWebhookProcessorDependencies = {
   getLineCoalesceState?: typeof getLineCoalesceState;
   markLineProcessedSeq?: typeof markLineProcessedSeq;
   getUnansweredInboundLineMessages?: typeof getUnansweredInboundLineMessages;
+  /** Reuses ingest-time vision classifications on owner re-runs / cron recovery
+   *  so an image is never re-OCR'd (B2a). Keyed by inbound LineMessage row id. */
+  getStoredImageClassificationsByMessageRowIds?: typeof getStoredImageClassificationsByMessageRowIds;
   findStalledCoalescedConversationIds?: typeof findStalledCoalescedConversationIds;
   getLineConversationForRecovery?: typeof getLineConversationForRecovery;
   /** Inquiry-frame (conversation slot memory) read/write. */
@@ -208,6 +212,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   getLineCoalesceState,
   markLineProcessedSeq,
   getUnansweredInboundLineMessages,
+  getStoredImageClassificationsByMessageRowIds,
   findStalledCoalescedConversationIds,
   getLineConversationForRecovery,
   getLineInquiryFrame,
@@ -634,11 +639,97 @@ function applyImageClassificationToRoute(
   };
 }
 
+/** Fields of a vision classification that are worth persisting for reuse (B2a):
+ *  everything the downstream pipeline reads EXCEPT the raw image bytes
+ *  (`content`) and the slip `ocr` block (slips are ingested at ingest time and
+ *  never re-OCR'd on reply). Keeping it lean keeps the job payload small. */
+type ReusableImageClassification = Omit<LineImageClassification, "content" | "ocr">;
+
+function serializeClassificationForReuse(c: LineImageClassification): ReusableImageClassification {
+  return {
+    kind: c.kind,
+    intent: c.intent,
+    searchHints: c.searchHints,
+    confidence: c.confidence,
+    reason: c.reason,
+    partType: c.partType ?? null,
+    carBrand: c.carBrand ?? null,
+    carModel: c.carModel ?? null,
+    year: c.year ?? null,
+    partNumber: c.partNumber ?? null,
+    chassisNumber: c.chassisNumber ?? null,
+    partKind: c.partKind ?? null,
+  };
+}
+
+/** Rebuilds a usable classification from a persisted payload (B2a). Returns null
+ *  when the stored shape is missing/invalid so the caller falls back to a fresh
+ *  vision call rather than feeding the pipeline a malformed object. */
+function deserializeStoredClassification(raw: unknown): LineImageClassification | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.kind !== "part_image" && o.kind !== "payment_slip" && o.kind !== "unknown_image") return null;
+  return {
+    kind: o.kind,
+    intent: (o.intent as LineImageClassification["intent"]) ?? LineIntent.UNKNOWN,
+    searchHints: Array.isArray(o.searchHints) ? (o.searchHints.filter((h) => typeof h === "string") as string[]) : [],
+    confidence: o.confidence === "HIGH" || o.confidence === "MEDIUM" || o.confidence === "LOW" ? o.confidence : "LOW",
+    reason: typeof o.reason === "string" ? o.reason : "REUSED_STORED_CLASSIFICATION",
+    partType: typeof o.partType === "string" ? o.partType : null,
+    carBrand: typeof o.carBrand === "string" ? o.carBrand : null,
+    carModel: typeof o.carModel === "string" ? o.carModel : null,
+    year: typeof o.year === "number" ? o.year : null,
+    partNumber: typeof o.partNumber === "string" ? o.partNumber : null,
+    chassisNumber: typeof o.chassisNumber === "string" ? o.chassisNumber : null,
+    partKind: o.partKind === "fitment" || o.partKind === "universal" ? o.partKind : null,
+    ocr: null,
+  };
+}
+
 function textMessage(text: string): LinePushMessage {
   return {
     type: "text",
     text,
   };
+}
+
+// ── B2c multi-subject ────────────────────────────────────────────────────────
+// Max distinct part categories answered inline in one turn. Each costs its own
+// search, so we cap the fan-out and invite the customer to ask the rest.
+const MULTI_SUBJECT_MAX = 3;
+// LINE caps reply AND push at 5 message objects per call.
+const LINE_MESSAGES_PER_SEND = 5;
+const MULTI_SUBJECT_OVERFLOW_NOTE =
+  "จูนขอช่วยทีละ 3 รายการก่อนนะคะ เดี๋ยวตอบให้ครบ 🙏 ส่วนรายการที่เหลือ รบกวนพิมพ์เข้ามาอีกครั้งได้เลยค่ะ เดี๋ยวจูนหาให้ต่อค่ะ 😊";
+// C1: an explicit "replace" cue means the latest part supersedes the earlier one
+// (answer only the latest), instead of adding it as a second subject.
+const MULTI_SUBJECT_REPLACE_CUE_RE = /แทน|เปลี่ยนเป็น|เปลี่ยนเป็_|ไม่เอา.*แล้ว|ไม่เอาแล้ว|เอาเป็น/;
+
+function buildSubjectNoMatchLine(partType: string | null, car: string | null): string {
+  const subject = partType ? (car ? `${partType} ${car}` : partType) : "อะไหล่ที่แจ้ง";
+  return `${subject} — ยังไม่เจอในระบบค่ะ เดี๋ยวจูนแจ้งแอดมินช่วยเช็กให้นะคะ 🙏`;
+}
+
+/** Packs whole subject blocks into LINE sends without splitting a block across
+ *  calls: the first batch goes on the reply token (≤5 messages), the rest via
+ *  push (each ≤5). A block = [text] or [text, flexCard]. */
+function packBlocksForDelivery(
+  blocks: LinePushMessage[][],
+  cap: number = LINE_MESSAGES_PER_SEND,
+): { reply: LinePushMessage[]; pushes: LinePushMessage[][] } {
+  const batches: LinePushMessage[][] = [[]];
+  for (const block of blocks) {
+    if (block.length === 0) continue;
+    let last = batches[batches.length - 1];
+    if (last.length + block.length > cap && last.length > 0) {
+      batches.push([]);
+      last = batches[batches.length - 1];
+    }
+    for (const message of block) last.push(message);
+  }
+  const reply = batches[0] ?? [];
+  const pushes = batches.slice(1).filter((batch) => batch.length > 0);
+  return { reply, pushes };
 }
 
 function canUseReplyToken(config: LineWebhookProcessorConfig, canReply: boolean) {
@@ -741,6 +832,217 @@ export type ProcessLineAiReplyInput = {
 /** Distinct return signal so the owner loop can tell "aborted, re-run" apart
  *  from a normal completed turn. */
 const COALESCE_ABORTED = "COALESCE_ABORTED" as const;
+
+/**
+ * B2c — multi-subject answer. Fires when the classifier found ≥2 DISTINCT part
+ * categories in one turn (e.g. "คอมแอร์กับคอยเย็น D-Max"). Each category gets its
+ * own search + deterministic block; blocks are packed onto the reply token (≤5
+ * messages) with the overflow on push. Capped at 3 categories. A category with no
+ * match shows a no-match line + notifies an admin WITHOUT freezing the room (other
+ * categories still got real answers). Returns null when, after resolving, fewer
+ * than 2 distinct categories remain — the caller then runs the normal single path.
+ */
+async function respondMultiSubject(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  subjects: import("@/lib/line-ai-service").LineSubject[],
+): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED } | null> {
+  if (!config.channelAccessToken) return null;
+
+  // C1: an explicit "replace" cue ("เอา X แทน") means only the latest part stands.
+  const replaceCue = MULTI_SUBJECT_REPLACE_CUE_RE.test(input.text ?? "");
+  const candidateSubjects = replaceCue ? [subjects[subjects.length - 1]] : subjects;
+
+  const resolveFitment = dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters;
+  const search = dependencies.searchLineProductInquiry;
+  const summarize = dependencies.getLineProductSummaries;
+  const productRoute = groupToRoute("product") ?? input.route;
+
+  // Resolve each subject to a canonical category and keep the FIRST per distinct
+  // category (decision 1 = ก: split on category, not car). Subjects whose category
+  // doesn't resolve still split by their raw part type so we never silently merge
+  // two clearly different parts.
+  type ResolvedSubject = {
+    subject: import("@/lib/line-ai-service").LineSubject;
+    key: string;
+    fitment: LineFitmentFilters;
+  };
+  const byKey = new Map<string, ResolvedSubject>();
+  for (const subject of candidateSubjects) {
+    const fitment = await resolveFitment({
+      partType: subject.partType,
+      carBrand: subject.carBrand,
+      carModel: subject.carModel,
+      queryText: subject.query || subject.partType,
+    }).catch((): LineFitmentFilters => ({}));
+    const key = (fitment.categoryName ?? subject.partType ?? "").trim().toLowerCase();
+    if (!key || byKey.has(key)) continue;
+    byKey.set(key, { subject, key, fitment });
+  }
+
+  const distinct = Array.from(byKey.values());
+  if (distinct.length < 2) return null; // not actually multi — let the single path run
+
+  const kept = distinct.slice(0, MULTI_SUBJECT_MAX);
+  const overflow = distinct.length > MULTI_SUBJECT_MAX;
+
+  const placeholderImageUrl = await resolveFlexPlaceholderImageUrl().catch(() => null);
+  const blocks: LinePushMessage[][] = [];
+  let anyNotFound = false;
+
+  for (const { subject, fitment } of kept) {
+    const label =
+      subject.query ||
+      [subject.partType, subject.carModel ?? subject.carBrand].filter(Boolean).join(" ") ||
+      (subject.partType ?? "");
+    const productSearch = await search({
+      route: productRoute,
+      text: subject.query || subject.partType,
+      extractedImageHints: null,
+      contextHints: [],
+      fitmentHints: {
+        categoryName: fitment.categoryName ?? null,
+        carBrandName: fitment.carBrandName ?? null,
+        carModelName: fitment.carModelName ?? null,
+        fitmentYear: subject.year ?? null,
+      },
+    }).catch(() => null);
+
+    const ids = productSearch?.searched ? productSearch.result.ids : [];
+    const products = ids.length > 0 ? await summarize(ids).catch(() => []) : [];
+
+    if (products.length === 0) {
+      anyNotFound = true;
+      const car = [subject.carBrand, subject.carModel].filter(Boolean).join(" ") || null;
+      blocks.push([textMessage(buildSubjectNoMatchLine(subject.partType, car))]);
+      continue;
+    }
+
+    const text = buildJuneDeadlineReply({
+      query: label,
+      products,
+      known: {
+        partType: subject.partType,
+        carBrand: subject.carBrand,
+        carModel: subject.carModel,
+        year: subject.year,
+      },
+    });
+    const flex =
+      productSearch && productSearch.searched
+        ? buildProductFlexMessage({
+            products,
+            searchQuery: productSearch.query,
+            total: productSearch.result.total,
+            placeholderImageUrl,
+            filters: {
+              categoryName: productSearch.appliedFilters.categoryName,
+              carBrandName: productSearch.appliedFilters.carBrandName,
+              carModelName: productSearch.appliedFilters.carModelName,
+              year: productSearch.appliedFilters.fitmentYear,
+            },
+          })
+        : null;
+    blocks.push(flex ? [textMessage(text), flex] : [textMessage(text)]);
+  }
+
+  if (overflow) blocks.push([textMessage(MULTI_SUBJECT_OVERFLOW_NOTE)]);
+
+  // Abort-on-newer (coalescing): a newer message arrived → re-run with the merged
+  // turn instead of sending a now-stale multi answer.
+  if (input.shouldAbortBeforeSend) {
+    const abort = await input.shouldAbortBeforeSend().catch(() => false);
+    if (abort) {
+      await dependencies.updateLineAiJob(input.jobId, {
+        status: LineAiJobStatus.COMPLETED,
+        result: { action: "coalesce_aborted", replied: false },
+        finishedAt: new Date(),
+      });
+      return { replied: false, aborted: COALESCE_ABORTED };
+    }
+  }
+
+  const { reply, pushes } = packBlocksForDelivery(blocks);
+  const hasReplyToken = canUseReplyToken(config, input.canReply) && Boolean(input.replyToken);
+
+  let replied = false;
+  const sendBatch = async (messages: LinePushMessage[], mode: LineDeliveryMode) => {
+    if (messages.length === 0) return;
+    const outbound = await dependencies.appendLineMessage({
+      conversationId: input.conversation.id,
+      lineUserId: input.lineUserId,
+      direction: LineMessageDirection.OUTBOUND_AI,
+      messageType: input.messageType,
+      intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+      text: messages[0]?.type === "text" ? messages[0].text : "[การ์ดสินค้า]",
+      deliveryMode: mode,
+      deliveryStatus: LineDeliveryStatus.PENDING,
+    });
+    if (mode === LineDeliveryMode.REPLY && input.replyToken) {
+      await dependencies.replyLineMessage({
+        channelAccessToken: config.channelAccessToken!,
+        replyToken: input.replyToken,
+        messages,
+      });
+    } else {
+      await dependencies.pushLineMessages({
+        channelAccessToken: config.channelAccessToken!,
+        recipientIds: [input.lineUserId],
+        messages,
+      });
+    }
+    await dependencies.markOutboundLineMessageSent({ messageId: outbound.id, deliveryMode: mode });
+    replied = true;
+  };
+
+  // First batch on the free reply token when it's still open; otherwise push (when
+  // a push fallback is allowed). Remaining batches always go via push.
+  if (reply.length > 0) {
+    if (hasReplyToken) await sendBatch(reply, LineDeliveryMode.REPLY);
+    else if (config.allowPushFallback) await sendBatch(reply, LineDeliveryMode.PUSH);
+  }
+  for (const batch of pushes) {
+    if (config.allowPushFallback || !hasReplyToken) await sendBatch(batch, LineDeliveryMode.PUSH);
+  }
+
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: "AI_MULTI_SUBJECT",
+    payload: {
+      lineEventId: input.lineEventId,
+      subjects: kept.length,
+      overflow,
+      anyNotFound,
+      replaceCue,
+      replied,
+    },
+  });
+
+  // A missing category → tell an admin (no freeze: other categories were answered
+  // and the AI stays active per decision จ).
+  if (anyNotFound) {
+    const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+    const countPending =
+      dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
+    const pendingSlipCount = await countPending(input.conversation.id).catch(() => 0);
+    await notify({
+      conversationId: input.conversation.id,
+      displayName: input.conversation.displayName,
+      text: input.text,
+      messageType: input.messageType,
+      pendingSlipCount,
+    }).catch(() => undefined);
+  }
+
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.COMPLETED,
+    result: { action: "multi_subject", subjects: kept.length, replied },
+    finishedAt: new Date(),
+  });
+
+  return { replied };
+}
 
 export async function processLineAiReply(
   input: ProcessLineAiReplyInput,
@@ -871,6 +1173,23 @@ export async function processLineAiReply(
     // steering back to parts). Never an admin hand-off.
     if (group === "smalltalk" || group === "out_of_scope") {
       return handleScopedConversationalTurn(group, input, config, dependencies, history);
+    }
+
+    // B2c — multi-subject: the customer asked for ≥2 DISTINCT part types in one
+    // turn ("คอมแอร์กับคอยเย็น D-Max"). Answer each category in its own block
+    // instead of mashing them into one mushy query. respondMultiSubject returns
+    // null if, after resolving, only one distinct category remains (e.g. same part
+    // for two cars) — then we fall through to the normal single-subject path.
+    const multiSubjects = group === "product" ? searchIntent?.subjects ?? null : null;
+    if (
+      autoReplyEnabled &&
+      !dryRun &&
+      multiSubjects &&
+      multiSubjects.length >= 2 &&
+      !isConversationAdminOwned(input.conversation.aiStatus)
+    ) {
+      const multi = await respondMultiSubject(input, config, dependencies, multiSubjects);
+      if (multi) return multi;
     }
 
     // Intent-gated retrieval: only `product` turns search + attach cards. Every
@@ -1919,14 +2238,12 @@ async function ingestLineEvent(
       messageType: event.messageType,
       text: event.text,
       route,
+      // Store the FULL structured classification (minus the raw image bytes /
+      // slip OCR) so a later owner re-run or the cron recovery — which start with
+      // an empty in-memory cache — can reuse it instead of paying for a second
+      // Gemini vision call (B2a). Vision then runs exactly once per image, ever.
       imageClassification: imageClassification
-        ? {
-            kind: imageClassification.kind,
-            intent: imageClassification.intent,
-            searchHints: imageClassification.searchHints,
-            confidence: imageClassification.confidence,
-            reason: imageClassification.reason,
-          }
+        ? serializeClassificationForReuse(imageClassification)
         : null,
     },
   });
@@ -2021,6 +2338,14 @@ export async function processLineWebhookPayload(
 
 const DEFAULT_COALESCE_WINDOW_MS = 3_000;
 const DEFAULT_COALESCE_LEASE_MS = 60_000;
+// B2b: once this much wall-clock has elapsed since the request was received, the
+// owner stops debouncing/re-looping and does ONE forced final pass (force-send,
+// never abort) so a reply lands before the 60s serverless ceiling kills the
+// function mid-flight (which previously stranded the lock → a ~2min cron-recovery
+// re-run). The final pass still runs the full OCR→search→reply pipeline (OCR is
+// reused via B2a), so the reply is always grounded — we only stop WAITING, never
+// answer before the data is ready.
+const OWNER_LOOP_FINAL_PASS_AFTER_MS = 40_000;
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -2250,35 +2575,56 @@ async function runConversationOwnerLoop(args: {
   const windowMs = config.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS;
   const leaseMs = config.coalesceLeaseMs ?? DEFAULT_COALESCE_LEASE_MS;
 
-  // Bounded only by the lock lease being renewed each pass; the loop itself is
-  // unbounded per the product spec ("wait until the customer is truly done").
+  // Budget clock starts when the webhook received the request (the 60s ceiling is
+  // measured from there). Recovery has no receivedAt → measure from loop entry.
+  const budgetStartMs = config.receivedAt?.getTime() ?? Date.now();
+
+  // Bounded by the wall-clock budget (B2b) and the lock lease being renewed each
+  // pass. Within budget the loop debounces + re-arms on every newer message
+  // ("wait until the customer is truly done"); past budget it forces one final
+  // grounded send so the function isn't killed mid-flight.
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const before = await getState(conversationId);
     if (!before) return false;
 
-    // Debounce: wait for the customer to stop sending. If a new message lands
-    // during the wait, the seq changes and we re-arm the window.
-    await sleep(windowMs);
-    const after = await getState(conversationId);
-    if (!after) return false;
-    if (after.lastInboundSeq !== before.lastInboundSeq) continue;
+    // B2b: past the budget, skip the debounce wait and force a final send below.
+    const finalPass = Date.now() - budgetStartMs >= OWNER_LOOP_FINAL_PASS_AFTER_MS;
+
+    let state = before;
+    if (!finalPass) {
+      // Debounce: wait for the customer to stop sending. If a new message lands
+      // during the wait, the seq changes and we re-arm the window.
+      await sleep(windowMs);
+      const after = await getState(conversationId);
+      if (!after) return false;
+      if (after.lastInboundSeq !== before.lastInboundSeq) continue;
+      state = after;
+    }
 
     const messages = await getUnanswered(conversationId);
     if (messages.length === 0) {
       // Nothing in the burst window to answer (already replied, or the only
       // unanswered rows are stale and aged out). Advance the processed marker so
       // the recovery failsafe doesn't keep re-selecting this conversation.
-      await markProcessed({ conversationId, seq: after.lastInboundSeq }).catch(() => undefined);
+      await markProcessed({ conversationId, seq: state.lastInboundSeq }).catch(() => undefined);
       return false;
     }
 
     await renew({ conversationId, owner, leaseMs }).catch(() => undefined);
 
-    const processSnapshot = after.lastInboundSeq;
+    if (finalPass) {
+      fireAndForgetAudit(dependencies, {
+        conversationId,
+        action: "AI_OWNER_BUDGET_FORCED_SEND",
+        payload: { elapsedMs: Date.now() - budgetStartMs, coalescedCount: messages.length },
+      });
+    }
+
+    const processSnapshot = state.lastInboundSeq;
     const turn = await buildMergedTurnInput({
       conversationId,
-      conversation: { ...info.conversation, aiStatus: after.aiStatus },
+      conversation: { ...info.conversation, aiStatus: state.aiStatus },
       lineUserId: info.lineUserId,
       messages,
       config,
@@ -2305,10 +2651,15 @@ async function runConversationOwnerLoop(args: {
       },
     });
 
-    const shouldAbortBeforeSend = async () => {
-      const current = await getState(conversationId).catch(() => null);
-      return Boolean(current && current.lastInboundSeq !== processSnapshot);
-    };
+    // On the forced final pass we never abort — the budget is spent, so this send
+    // must land (the customer would otherwise get nothing before the kill). Within
+    // budget, abort if a newer message arrived so we re-merge and re-run.
+    const shouldAbortBeforeSend = finalPass
+      ? async () => false
+      : async () => {
+          const current = await getState(conversationId).catch(() => null);
+          return Boolean(current && current.lastInboundSeq !== processSnapshot);
+        };
 
     const replyResult = await processLineAiReply(
       {
@@ -2382,6 +2733,15 @@ async function buildMergedTurnInput(args: {
   const imageMessages = messages.filter((message) => message.messageType === LineMessageType.IMAGE);
   let imageClassification: LineImageClassification | null = null;
   if (imageMessages.length > 0) {
+    // B2a: before re-calling vision, pull any ingest-time classification stored on
+    // the message's job payload. On a fresh same-payload run this is redundant
+    // with classByMessageId, but on an owner re-run / cron recovery (empty
+    // in-memory cache) it means we reuse the OCR instead of paying for it twice.
+    const getStored =
+      dependencies.getStoredImageClassificationsByMessageRowIds ?? getStoredImageClassificationsByMessageRowIds;
+    const storedByRowId = await getStored(imageMessages.map((m) => m.id)).catch(
+      () => new Map<string, unknown>(),
+    );
     // Classify every uncached image CONCURRENTLY (vision is reply-token-bound and
     // each call is independent) — a sequential loop adds up across a multi-image
     // burst and blows the 60s webhook budget. Order is preserved so the
@@ -2391,6 +2751,8 @@ async function buildMergedTurnInput(args: {
       imageMessages.map((message) => {
         const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
         if (cached) return Promise.resolve(cached);
+        const stored = deserializeStoredClassification(storedByRowId.get(message.id));
+        if (stored) return Promise.resolve(stored);
         return classify({
           channelAccessToken: config.channelAccessToken,
           lineMessageId: message.lineMessageId,

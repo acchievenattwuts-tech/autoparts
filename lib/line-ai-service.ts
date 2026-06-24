@@ -175,6 +175,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null,',
   '  "partKind": "fitment หรือ universal — fitment = อะไหล่ที่ต้องระบุรุ่นรถถึงจะหาตรงได้ (หม้อน้ำ คอยล์เย็น คอมแอร์ แผงร้อน ตู้แอร์ กรองแอร์ ฯลฯ); universal = สินค้าที่ค้นด้วยชื่อ/สเปกได้เองไม่ต้องผูกรุ่นรถ (น้ำยาล้างคอยล์ ฟองน้ำ น็อต โอริง หัวคอปเปอร์ เทปพันสายไฟ ฯลฯ) ถ้าไม่แน่ใจใส่ null",',
   '  "tooBroad": true/false — true เมื่อข้อความกว้าง/สั้นเกินจนค้นแล้วได้ผลกว้างมาก เช่น "น็อต" "สายไฟ" "อะไหล่" คำเดียวโดยไม่มีตัวขยาย',
+  '  "subjects": [ {"partType":..,"carBrand":..,"carModel":..,"year":..,"partKind":..,"query":..}, ... ] — ใส่เฉพาะเมื่อลูกค้าถามหา "อะไหล่ตั้งแต่ 2 ชนิดที่ต่างกัน" ในคราวเดียว เช่น "คอมแอร์กับคอยเย็น D-Max" ให้แยกเป็น 2 รายการ; ถ้าถามชนิดเดียว (แม้ระบุหลายรุ่นรถ เช่น "คอยเย็น D-Max กับ Vigo") ให้ใส่ [] เท่านั้น',
   "}",
   "",
   "กลุ่ม (เลือก 1):",
@@ -199,6 +200,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
   "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
   "- partKind/tooBroad ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่น partKind=null, tooBroad=false)",
+  "- subjects: แยกเป็นหลายรายการเฉพาะเมื่อ 'ชนิดอะไหล่ต่างกัน' ตั้งแต่ 2 ชนิด; รุ่นรถต่างกันแต่ชนิดเดียว = subjects ว่าง ([])",
 ].join("\n");
 
 const MAX_CONSOLIDATED_QUERY_LENGTH = 120;
@@ -210,6 +212,19 @@ const MAX_SEARCH_YEAR = 2100;
  *  and the fitment hints are only meaningful for `group === "product"`.
  *  `isProductQuery` is kept as a convenience mirror of `group === "product"`. */
 export type LinePartKind = "fitment" | "universal";
+
+/** One distinct product subject the customer asked about (B2c). A single message
+ *  can carry several when the customer lists multiple part TYPES at once
+ *  ("คอมแอร์กับคอยเย็น D-Max"). Different car models for the SAME part type are NOT
+ *  separate subjects (per decision 1 = ก) — those stay in the consolidated query. */
+export type LineSubject = {
+  partType: string | null;
+  carBrand: string | null;
+  carModel: string | null;
+  year: number | null;
+  partKind: LinePartKind | null;
+  query: string;
+};
 
 export type LineSearchIntent = {
   group: LineMessageGroup;
@@ -224,6 +239,11 @@ export type LineSearchIntent = {
   partKind: LinePartKind | null;
   /** The query is too generic to search usefully (e.g. "น็อต" alone) → ask first. */
   tooBroad: boolean;
+  /** B2c: when the customer asks for ≥2 DISTINCT part types in one turn, each is
+   *  listed here so the caller can answer them in separate blocks. The top-level
+   *  fields above always mirror the FIRST subject (back-compat). Absent / length
+   *  ≤1 means a single-subject turn (answer normally). */
+  subjects?: LineSubject[];
 };
 
 const cleanIntentString = (value: unknown): string | null => {
@@ -279,6 +299,30 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   const partKind: LinePartKind | null =
     isProductQuery && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
 
+  // B2c: parse the optional multi-subject list. Only product turns can carry it,
+  // and only entries with a real partType count as a distinct subject (an empty /
+  // partType-less entry is noise). Kept undefined for the common single-subject
+  // case so existing callers are unaffected.
+  let subjects: LineSubject[] | undefined;
+  if (isProductQuery && Array.isArray(obj.subjects)) {
+    const parsed = obj.subjects
+      .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
+      .map((s): LineSubject => {
+        const sKindRaw = typeof s.partKind === "string" ? s.partKind.trim().toLowerCase() : "";
+        const sQuery = cleanIntentString(s.query);
+        return {
+          partType: cleanIntentString(s.partType),
+          carBrand: cleanIntentString(s.carBrand),
+          carModel: cleanIntentString(s.carModel),
+          year: cleanIntentYear(s.year),
+          partKind: sKindRaw === "fitment" || sKindRaw === "universal" ? sKindRaw : null,
+          query: sQuery ? sQuery.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() : "",
+        };
+      })
+      .filter((s) => s.partType !== null);
+    if (parsed.length >= 2) subjects = parsed;
+  }
+
   return {
     group,
     query: query ? query.slice(0, MAX_CONSOLIDATED_QUERY_LENGTH).trim() : "",
@@ -289,6 +333,7 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
     year: cleanIntentYear(obj.year),
     partKind,
     tooBroad: isProductQuery && obj.tooBroad === true,
+    ...(subjects ? { subjects } : {}),
   };
 };
 

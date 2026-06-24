@@ -258,6 +258,34 @@ export async function storeLineAiJob(input: {
   });
 }
 
+/**
+ * Returns the stored vision classification (job payload `imageClassification`)
+ * for each given inbound-message row id (B2a). Lets an owner re-run / the cron
+ * recovery — which start with an empty in-memory cache — reuse the ingest-time
+ * classification instead of paying for a second Gemini vision call. Keyed by the
+ * inbound LineMessage row id; only rows with a stored classification appear.
+ */
+export async function getStoredImageClassificationsByMessageRowIds(
+  messageRowIds: string[],
+): Promise<Map<string, unknown>> {
+  const result = new Map<string, unknown>();
+  if (messageRowIds.length === 0) return result;
+  const rows = await db.lineAiJob.findMany({
+    where: { lineMessageId: { in: messageRowIds } },
+    orderBy: { createdAt: "asc" },
+    select: { lineMessageId: true, payload: true },
+  });
+  for (const row of rows) {
+    if (!row.lineMessageId || !row.payload || typeof row.payload !== "object") continue;
+    const classification = (row.payload as Record<string, unknown>).imageClassification;
+    // Latest-wins: rows are ascending, so a later ingest overwrites an earlier one.
+    if (classification && typeof classification === "object") {
+      result.set(row.lineMessageId, classification);
+    }
+  }
+  return result;
+}
+
 export async function updateLineAiJob(
   jobId: string,
   patch: {

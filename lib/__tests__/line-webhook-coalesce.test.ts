@@ -560,3 +560,191 @@ test("coalescing: a stale unanswered message is NOT merged into a new slip burst
   assert.equal(calls.searches.length, 0, "stale text aged out → no bogus product search");
   void state;
 });
+
+test("B2a: recovery reuses the stored classification and does NOT re-OCR the image", async () => {
+  const { recoverStalledCoalescedConversations } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "part_image" });
+
+  // Count vision calls; recovery must make zero (it reuses the stored result).
+  let classifyCount = 0;
+  const origClassify = dependencies.classifyLineImage!;
+  dependencies.classifyLineImage = async (inp) => {
+    classifyCount += 1;
+    return origClassify(inp);
+  };
+  // Stored classification is available for the unanswered image row (B2a).
+  dependencies.getStoredImageClassificationsByMessageRowIds = async () =>
+    new Map<string, unknown>([
+      [
+        "img-row",
+        {
+          kind: "part_image",
+          intent: LineIntent.PART_IMAGE_INQUIRY,
+          searchHints: ["หม้อน้ำ"],
+          confidence: "HIGH",
+          reason: "stored",
+          partType: "หม้อน้ำ",
+          carBrand: null,
+          carModel: "D-Max",
+          year: null,
+          partKind: "fitment",
+        },
+      ],
+    ]);
+
+  // Simulate a crash AFTER ingest: an unanswered image row exists, seq ahead of
+  // processed, no live lock → the cron recovery will pick it up.
+  state.inbound.push({
+    id: "img-row",
+    text: null,
+    messageType: LineMessageType.IMAGE,
+    replyToken: "reply-x",
+    lineEventId: "e-x",
+    lineMessageId: "m-x",
+    intent: null,
+    createdAt: new Date(),
+  });
+  state.seq = 1;
+  state.processedSeq = 0;
+  state.answeredCount = 0;
+
+  const res = await recoverStalledCoalescedConversations(baseConfig, dependencies);
+
+  assert.equal(res.scanned, 1, "recovery picked up the stalled conversation");
+  assert.equal(classifyCount, 0, "vision was NOT called — stored classification reused");
+  assert.equal(calls.replies.length + calls.pushes.length, 1, "still produced exactly one reply");
+});
+
+test("B2b: past the wall-clock budget the owner force-sends once (no abort loop, no kill)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // bumpDuringFirstPass makes a newer message land mid-pipeline — within budget
+  // that would abort+re-run, but past budget the final pass must force the send.
+  const { calls, dependencies } = createCoalesceHarness({
+    imageKind: "part_image",
+    bumpDuringFirstPass: true,
+  });
+
+  const auditActions: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+
+  // receivedAt 50s ago → already past the 40s budget on the first owner pass.
+  // allowPushFallback so the (expired-token) forced send still delivers.
+  const config: LineWebhookProcessorConfig = {
+    ...baseConfig,
+    receivedAt: new Date(Date.now() - 50_000),
+    allowPushFallback: true,
+  };
+
+  const result = await processLineWebhookPayload({ events: [imageEvent("e1")] }, config, dependencies);
+
+  assert.equal(result.repliedCount, 1, "exactly one reply despite the mid-pipeline bump");
+  assert.equal(calls.replies.length + calls.pushes.length, 1, "single delivery, no duplicate/loop");
+  assert.ok(auditActions.includes("AI_OWNER_BUDGET_FORCED_SEND"), "forced-send audit fired");
+});
+
+function multiIntent(
+  primary: Partial<LineSearchIntent>,
+  subjects: LineSearchIntent["subjects"],
+): LineSearchIntent {
+  return { ...productIntent(primary), subjects };
+}
+
+test("B2c: two distinct part categories → multi-subject answer (2 searches), no freeze", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({});
+  const auditActions: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  dependencies.extractLineSearchIntent = async () =>
+    multiIntent({ partType: "คอมแอร์", carModel: "D-Max" }, [
+      { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
+      { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
+    ]);
+
+  const result = await processLineWebhookPayload(
+    { events: [textEvent("e1", "คอมแอร์กับคอยเย็น D-Max")] },
+    baseConfig,
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 2, "one search per distinct category");
+  assert.ok(auditActions.includes("AI_MULTI_SUBJECT"), "multi-subject path ran");
+  assert.equal(result.repliedCount, 1);
+  assert.ok(!calls.statePatches.includes("waiting_admin"), "room not frozen");
+});
+
+test("B2c: same part type for two cars → NOT split (single path, no multi audit)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({});
+  const auditActions: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  // Classifier (defensively) returned two entries with the SAME part type — after
+  // resolving they collapse to one category, so it must fall back to single path.
+  dependencies.extractLineSearchIntent = async () =>
+    multiIntent({ partType: "คอยเย็น", carModel: "D-Max" }, [
+      { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
+      { partType: "คอยเย็น", carBrand: null, carModel: "Vigo", year: null, partKind: "fitment", query: "คอยเย็น Vigo" },
+    ]);
+
+  await processLineWebhookPayload({ events: [textEvent("e1", "คอยเย็น D-Max กับ Vigo")] }, baseConfig, dependencies);
+
+  assert.ok(!auditActions.includes("AI_MULTI_SUBJECT"), "did not multi-split same category");
+});
+
+test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({});
+  const auditActions: string[] = [];
+  let notifyCount = 0;
+  const allReplyTexts: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  dependencies.notifyLineOaNeedsAdmin = async () => {
+    notifyCount += 1;
+    return 1;
+  };
+  dependencies.replyLineMessage = async (input) => {
+    for (const m of input.messages) if (m.type === "text") allReplyTexts.push(m.text);
+    return { sent: true, replyToken: input.replyToken };
+  };
+  dependencies.pushLineMessages = async (input) => {
+    for (const m of input.messages) if (m.type === "text") allReplyTexts.push(m.text);
+    return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
+  };
+  // คอมแอร์ found, คอยเย็น not found.
+  dependencies.searchLineProductInquiry = async (input) => {
+    calls.searches.push(input.text ?? "");
+    const notFound = (input.text ?? "").includes("คอยเย็น");
+    return {
+      searched: true,
+      reason: "SEARCHED",
+      query: input.text ?? "",
+      result: { ids: notFound ? [] : ["product-1"], total: notFound ? 0 : 1, mode: "v2" },
+      needsMoreInfo: notFound,
+      appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
+      droppedImageCodes: [],
+    };
+  };
+  dependencies.extractLineSearchIntent = async () =>
+    multiIntent({ partType: "คอมแอร์", carModel: "D-Max" }, [
+      { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
+      { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
+    ]);
+
+  await processLineWebhookPayload({ events: [textEvent("e1", "คอมแอร์กับคอยเย็น D-Max")] }, baseConfig, dependencies);
+
+  assert.ok(auditActions.includes("AI_MULTI_SUBJECT"));
+  assert.ok(allReplyTexts.some((t) => t.includes("ยังไม่เจอในระบบ")), "missing category shows a no-match line");
+  assert.equal(notifyCount, 1, "admin notified about the missing category");
+  assert.ok(!calls.statePatches.includes("waiting_admin"), "room NOT frozen (other category answered)");
+});
