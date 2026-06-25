@@ -39,10 +39,11 @@ export function isDateOnlyString(value: string | undefined): value is string {
   return !Number.isNaN(new Date(`${value}T00:00:00${THAILAND_UTC_OFFSET}`).getTime());
 }
 
-export function getThailandDateKey(value: Date = new Date()): string {
-  const year = getThailandDatePart(value, "year");
-  const month = getThailandDatePart(value, "month").padStart(2, "0");
-  const day = getThailandDatePart(value, "day").padStart(2, "0");
+export function getThailandDateKey(value: DateInput = new Date()): string {
+  const date = toDate(value);
+  const year = getThailandDatePart(date, "year");
+  const month = getThailandDatePart(date, "month").padStart(2, "0");
+  const day = getThailandDatePart(date, "day").padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
