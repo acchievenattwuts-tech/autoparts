@@ -23,6 +23,7 @@ import { SHIPPING_METHOD_LABEL, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 
 import RefreshWorkboardButton from "./RefreshWorkboardButton";
+import { buildOutOfStockProductsHref } from "./out-of-stock-products";
 import { getWorkboardData } from "./workboard-data";
 
 function formatCurrency(value: number): string {
@@ -402,11 +403,11 @@ const WorkboardPage = async () => {
 
         <SectionCard
           icon={Boxes}
-          title="สินค้าใกล้หรือต่ำกว่าขั้นต่ำ"
-          href="/admin/reports/stock"
+          title="สินค้าหมดสต็อก"
+          href={buildOutOfStockProductsHref()}
           count={data.lowStock.count}
           tone="red"
-          summary="คำนวณจากสินค้า active ที่ stock ต่ำกว่าหรือเท่ากับ min stock"
+          summary="คำนวณจากสินค้า active ที่ stock = 0 และตั้งค่าเป็นคำนวณสต็อก"
         >
           {data.lowStock.items.length === 0 ? (
             <EmptyState />

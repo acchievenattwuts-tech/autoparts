@@ -6,6 +6,8 @@ import {
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 
+import { buildOutOfStockProductsWhere } from "./out-of-stock-products";
+
 export type PendingDeliveryItem = {
   id: string;
   saleNo: string;
@@ -414,10 +416,7 @@ async function querySupplierClaims() {
 }
 
 async function queryLowStock() {
-  const where = {
-    isActive: true,
-    stock: { lte: db.product.fields.minStock },
-  };
+  const where = buildOutOfStockProductsWhere();
 
   const [count, rows] = await Promise.all([
     db.product.count({ where }),
