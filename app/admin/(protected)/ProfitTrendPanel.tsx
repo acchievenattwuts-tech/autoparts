@@ -25,7 +25,7 @@ type ProfitTrendPanelDatum = {
   marginPct: number;
 };
 
-type ProfitTrendPanelProps = {
+export type ProfitTrendPanelProps = {
   basisLabel: string;
   data: ProfitTrendPanelDatum[];
   hasSelectedRangeActivity: boolean;

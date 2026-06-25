@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanel";
+import ProfitTrendPanel from "@/app/admin/(protected)/ProfitTrendPanelLazy";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
