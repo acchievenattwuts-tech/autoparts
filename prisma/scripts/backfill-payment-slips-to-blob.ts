@@ -54,9 +54,10 @@ async function main() {
       "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for --apply (private bucket download).",
     );
   }
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    throw new Error("BLOB_READ_WRITE_TOKEN is required for --apply.");
+  if (!process.env.BLOB_SLIPS_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_SLIPS_READ_WRITE_TOKEN is required for --apply (separate PRIVATE Blob store).");
   }
+  const slipToken = process.env.BLOB_SLIPS_READ_WRITE_TOKEN;
 
   const client = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   const failures: { id: string; reason: string }[] = [];
@@ -67,7 +68,7 @@ async function main() {
     const path = slip.imageUrl;
     if (!path) continue;
     try {
-      const existing = await get(path, { access: "private" }).catch(() => null);
+      const existing = await get(path, { access: "private", token: slipToken }).catch(() => null);
       if (existing && existing.statusCode === 200) {
         skipped += 1;
         continue;
@@ -85,6 +86,7 @@ async function main() {
         contentType: data.type || "image/webp",
         addRandomSuffix: false,
         allowOverwrite: true,
+        token: slipToken,
       });
       migrated += 1;
       console.log(`  migrated ${migrated}/${slips.length}: ${slip.id}`);

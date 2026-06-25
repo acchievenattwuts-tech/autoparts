@@ -86,6 +86,9 @@ export async function storePaymentSlipImage(input: {
         contentType: "image/webp",
         addRandomSuffix: false,
         allowOverwrite: true,
+        // PII slips live in a separate PRIVATE Blob store (public product images
+        // use the default BLOB_READ_WRITE_TOKEN).
+        token: process.env.BLOB_SLIPS_READ_WRITE_TOKEN,
       });
       return path;
     }
@@ -114,7 +117,7 @@ export async function deletePaymentSlipImage(path: string): Promise<void> {
   // the migration (mixed state) are still cleaned up. Both are best-effort.
   if (isBlobBackend("payment-slips")) {
     try {
-      await del(path);
+      await del(path, { token: process.env.BLOB_SLIPS_READ_WRITE_TOKEN });
     } catch (error) {
       console.error("[payment-slip-storage] blob delete failed", error);
     }
@@ -155,7 +158,10 @@ export async function readPaymentSlipImage(
 ): Promise<{ stream: ReadableStream<Uint8Array>; contentType: string } | null> {
   if (isBlobBackend("payment-slips")) {
     try {
-      const result = await get(path, { access: "private" });
+      const result = await get(path, {
+        access: "private",
+        token: process.env.BLOB_SLIPS_READ_WRITE_TOKEN,
+      });
       if (result && result.statusCode === 200) {
         return { stream: result.stream, contentType: result.headers.get("content-type") ?? "image/webp" };
       }
