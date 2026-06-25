@@ -97,22 +97,40 @@ CREATE INDEX IF NOT EXISTS idx_psd_embedding_hnsw
   ON product_search_documents
   USING hnsw (embedding vector_cosine_ops);
 
--- Phase Q2: accent-insensitive trigram indexes (use f_unaccent IMMUTABLE wrapper)
+-- Phase Q2: accent-insensitive trigram indexes (use f_unaccent IMMUTABLE wrapper).
+-- The expression MUST match the query expression exactly — every search clause
+-- uses f_unaccent(lower(col)), so the index key must be f_unaccent(lower(col))
+-- too. Earlier versions indexed f_unaccent(col) (no lower) which Postgres could
+-- never match against the lower() queries, silently falling back to seq scans.
+-- DROP the old (wrong-expression) index first so existing DBs self-heal — a bare
+-- CREATE IF NOT EXISTS would see the same name and skip, keeping the bad index.
+DROP INDEX IF EXISTS idx_psd_search_text_unaccent_trgm;
 CREATE INDEX IF NOT EXISTS idx_psd_search_text_unaccent_trgm
   ON product_search_documents
-  USING GIN (f_unaccent(search_text) gin_trgm_ops);
+  USING GIN (f_unaccent(lower(search_text)) gin_trgm_ops);
 
+DROP INDEX IF EXISTS idx_psd_name_unaccent_trgm;
 CREATE INDEX IF NOT EXISTS idx_psd_name_unaccent_trgm
   ON product_search_documents
-  USING GIN (f_unaccent(product_name) gin_trgm_ops);
+  USING GIN (f_unaccent(lower(product_name)) gin_trgm_ops);
 
+DROP INDEX IF EXISTS idx_psd_oem_unaccent_trgm;
 CREATE INDEX IF NOT EXISTS idx_psd_oem_unaccent_trgm
   ON product_search_documents
-  USING GIN (f_unaccent(oem_text) gin_trgm_ops);
+  USING GIN (f_unaccent(lower(oem_text)) gin_trgm_ops);
 
+DROP INDEX IF EXISTS idx_psd_keyword_unaccent_trgm;
 CREATE INDEX IF NOT EXISTS idx_psd_keyword_unaccent_trgm
   ON product_search_documents
-  USING GIN (f_unaccent(keyword_text) gin_trgm_ops);
+  USING GIN (f_unaccent(lower(keyword_text)) gin_trgm_ops);
+
+-- Accent-insensitive trigram index on product_code, matching the
+-- f_unaccent(lower(product_code)) expression used by the ranked/candidate
+-- similarity() and LIKE clauses. Without it, fuzzy code matches must be seeded
+-- by other branches and the code-similarity term is evaluated unindexed.
+CREATE INDEX IF NOT EXISTS idx_psd_code_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(lower(product_code)) gin_trgm_ops);
 
 -- Phase Q6: accent-insensitive trigram indexes on the "did you mean" candidate
 -- sources. Lets suggestDidYouMean filter with the % operator (index scan)

@@ -639,6 +639,9 @@ model Product {
 
   @@index([categoryId])
   @@index([brandId])
+  // Storefront category listing + related-products: filter on
+  // (categoryId, isActive, isStorefrontVisible) then order by stock desc.
+  @@index([categoryId, isActive, isStorefrontVisible, stock(sort: Desc)])
 }
 
 model ProductImage {

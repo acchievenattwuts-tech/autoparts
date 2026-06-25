@@ -681,17 +681,20 @@ async function searchProductIdsV2(
   const prefixQuery = `${normalizedQuery}%`;
   const containsQuery = `%${normalizedQuery}%`;
 
-  // Year filter: explicit `fitmentYear` from UI, else auto-detect from query
-  const { year: targetYear, sourceToken: targetYearSourceToken } = await resolveQueryYear(
-    normalizedQuery,
-    input.fitmentYear,
-  );
-
-  // Phase D + AND-scope: expand the query into per-concept synonym groups, then
-  // build a precise AND-across-concepts tsquery ("หม้อน้ำ" & "mazda" & "2") with a
-  // broad OR query kept as the recall fallback. Sanitization into simple lexemes
-  // (Thai/alnum only) means user input can never inject tsquery syntax.
-  const tokenGroups = await expandQueryTokenGroups(normalizedQuery);
+  // Year resolution (which may issue its own vehicle-evidence query) and synonym
+  // token expansion are independent of each other, so run them in parallel to
+  // avoid a serial roundtrip before the main search on cache misses.
+  //  - resolveQueryYear: explicit `fitmentYear` from UI, else auto-detect from query
+  //  - expandQueryTokenGroups: Phase D + AND-scope — expand the query into
+  //    per-concept synonym groups, then build a precise AND-across-concepts
+  //    tsquery ("หม้อน้ำ" & "mazda" & "2") with a broad OR query kept as the recall
+  //    fallback. Sanitization into simple lexemes (Thai/alnum only) means user
+  //    input can never inject tsquery syntax.
+  const [{ year: targetYear, sourceToken: targetYearSourceToken }, tokenGroups] =
+    await Promise.all([
+      resolveQueryYear(normalizedQuery, input.fitmentYear),
+      expandQueryTokenGroups(normalizedQuery),
+    ]);
 
   // Drop the detected model-year token from the FTS clause: the year is enforced
   // separately by yearFilterClause / yearBoost against the fitment range, so
@@ -1159,6 +1162,8 @@ async function searchProductIdsV2(
     ts: PrismaTypes.Sql,
     frags: VectorFragments,
     run: <R>(query: PrismaTypes.Sql) => Promise<R>,
+    rangeSkip: number = skip,
+    rangeTake: number = take,
   ) => {
     const textMatchOr = buildTextMatchOr(ts);
     // Year-only queries union the text clause with a fitment-year cover so they
@@ -1247,8 +1252,8 @@ async function searchProductIdsV2(
     FROM ranked
     WHERE ranked.score > 0
     ORDER BY ranked.score DESC, ranked.product_created_at DESC, ranked.product_id DESC
-    OFFSET ${skip}
-    LIMIT ${take}
+    OFFSET ${rangeSkip}
+    LIMIT ${rangeTake}
   `);
   };
 
@@ -1304,9 +1309,34 @@ async function searchProductIdsV2(
     );
   }
 
+  // `total` comes from COUNT(*) OVER() on the returned rows. A deep OFFSET can
+  // slice away every row even when matches exist (e.g. a stale/out-of-range page
+  // link), which would otherwise report total=0 and collapse pagination. When the
+  // page is empty but skip > 0, re-probe the first row (skip=0, take=1) to recover
+  // the real total. This extra query fires only on the rare out-of-range case.
+  let total = rows.length > 0 ? coerceCount(rows[0].total_count) : 0;
+  if (rows.length === 0 && skip > 0) {
+    const vectorFrags = buildVectorFragments(vectorMatches);
+    const probePrimary = await runRankedQuery(tsQuery, vectorFrags, dbSearchRaw, 0, 1);
+    if (probePrimary.length > 0) {
+      total = coerceCount(probePrimary[0].total_count);
+    } else if (hasMultipleConcepts && !input.disableBroadFallback) {
+      const probeFallback = await runRankedQuery(
+        buildTsQuery(fallbackExpression),
+        vectorFrags,
+        dbSearchRaw,
+        0,
+        1,
+      );
+      if (probeFallback.length > 0) {
+        total = coerceCount(probeFallback[0].total_count);
+      }
+    }
+  }
+
   return {
     ids: rows.map((row) => row.product_id),
-    total: rows.length > 0 ? coerceCount(rows[0].total_count) : 0,
+    total,
     mode: "v2",
     matchReasons: buildMatchReasons(rows),
   };
