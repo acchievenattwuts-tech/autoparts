@@ -94,12 +94,16 @@ const productUnitSchema = z.object({
   isBase: z.boolean(),
 });
 
+// Accept our own image URLs from either backend: Blob (current) or legacy Supabase.
+const isAcceptableProductImageUrl = (url: string): boolean =>
+  isOwnedBlobProductUrl(url) || isAllowedProductImageUrl(url);
+
 const productImageSchema = z.object({
   url: z
     .string()
     .url()
     .max(500)
-    .refine(isAllowedProductImageUrl, "URL รูปภาพไม่ถูกต้อง"),
+    .refine(isAcceptableProductImageUrl, "URL รูปภาพไม่ถูกต้อง"),
   alt: z.string().max(200).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0).max(999).default(0),
   isPrimary: z.boolean().default(false),
@@ -135,7 +139,7 @@ const productSchema = z.object({
     .string()
     .url()
     .max(500)
-    .refine(isAllowedProductImageUrl, "URL รูปภาพไม่ถูกต้อง")
+    .refine(isAcceptableProductImageUrl, "URL รูปภาพไม่ถูกต้อง")
     .optional()
     .or(z.literal("")),
   productImages: z.array(productImageSchema).max(12).default([]),
