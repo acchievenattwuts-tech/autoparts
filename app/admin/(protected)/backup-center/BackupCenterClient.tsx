@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Archive, Database, Download, Play, RefreshCw } from "lucide-react";
+import { Archive, CheckCircle2, Database, Download, FileJson, PackageOpen, RefreshCw, XCircle } from "lucide-react";
 
 type BackupKind = "BLOB" | "POSTGRES";
 type BackupStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
@@ -32,6 +32,12 @@ type BackupCenterClientProps = {
     blobToken: boolean;
     databaseUrl: boolean;
   };
+};
+
+type PgDumpStatus = {
+  available: boolean;
+  version: string | null;
+  error: string | null;
 };
 
 const KIND_LABEL: Record<BackupKind, string> = {
@@ -89,8 +95,10 @@ function ProgressBar({ value }: { value: number }) {
 export default function BackupCenterClient({ envStatus }: BackupCenterClientProps) {
   const [jobs, setJobs] = useState<BackupJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [startingKind, setStartingKind] = useState<BackupKind | null>(null);
+  const [downloadingAction, setDownloadingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pgDumpStatus, setPgDumpStatus] = useState<PgDumpStatus | null>(null);
+  const [checkingPgDump, setCheckingPgDump] = useState(false);
 
   const refreshJobs = useCallback(async () => {
     const response = await fetch("/api/admin/backup-center/jobs", { cache: "no-store" });
@@ -101,15 +109,18 @@ export default function BackupCenterClient({ envStatus }: BackupCenterClientProp
 
   useEffect(() => {
     let active = true;
-    refreshJobs()
-      .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : "LOAD_BACKUP_JOBS_FAILED");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      refreshJobs()
+        .catch((err) => {
+          if (active) setError(err instanceof Error ? err.message : "LOAD_BACKUP_JOBS_FAILED");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [refreshJobs]);
 
@@ -128,34 +139,36 @@ export default function BackupCenterClient({ envStatus }: BackupCenterClientProp
     return () => window.clearInterval(timer);
   }, [hasActiveJob, refreshJobs]);
 
-  const startJob = async (kind: BackupKind) => {
-    setStartingKind(kind);
+  const startDownload = (action: string, href: string) => {
     setError(null);
-    try {
-      const createResponse = await fetch("/api/admin/backup-center/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind }),
-      });
-      if (!createResponse.ok) throw new Error("CREATE_BACKUP_JOB_FAILED");
-      const payload = (await createResponse.json()) as { jobId: string };
-      await refreshJobs();
-
-      void fetch(`/api/admin/backup-center/jobs/${payload.jobId}/run`, {
-        method: "POST",
-      })
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : "RUN_BACKUP_JOB_FAILED");
-        })
-        .finally(() => {
-          void refreshJobs().catch(() => undefined);
-        });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "CREATE_BACKUP_JOB_FAILED");
-    } finally {
-      setStartingKind(null);
-    }
+    setDownloadingAction(action);
+    window.location.href = href;
+    window.setTimeout(() => setDownloadingAction(null), 1500);
   };
+
+  const checkPgDump = useCallback(async () => {
+    setCheckingPgDump(true);
+    try {
+      const response = await fetch("/api/admin/backup-center/pg-dump-status", { cache: "no-store" });
+      if (!response.ok) throw new Error("PG_DUMP_STATUS_FAILED");
+      setPgDumpStatus((await response.json()) as PgDumpStatus);
+    } catch (err) {
+      setPgDumpStatus({
+        available: false,
+        version: null,
+        error: err instanceof Error ? err.message : "PG_DUMP_STATUS_FAILED",
+      });
+    } finally {
+      setCheckingPgDump(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void checkPgDump();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [checkPgDump]);
 
   const activeBlob = jobs.find((job) => job.kind === "BLOB" && (job.status === "PENDING" || job.status === "RUNNING"));
   const activePostgres = jobs.find((job) => job.kind === "POSTGRES" && (job.status === "PENDING" || job.status === "RUNNING"));
@@ -170,30 +183,44 @@ export default function BackupCenterClient({ envStatus }: BackupCenterClientProp
 
       <div className="grid gap-4 xl:grid-cols-2">
         <BackupActionPanel
-          kind="BLOB"
-          title="Vercel Blob Backup"
-          description="คัดลอก blob objects ทั้งหมด ยกเว้นโฟลเดอร์ backups/ และสร้าง manifest"
+          title="Vercel Blob Manifest"
+          description="ดาวน์โหลด manifest รายการ blob objects ทั้งหมด ไม่ copy backup ซ้ำเข้า Vercel Blob"
           icon={<Archive size={22} />}
           envReady={envStatus.blobToken}
           envLabel="BLOB_READ_WRITE_TOKEN"
           activeJob={activeBlob}
-          starting={startingKind === "BLOB"}
-          onStart={() => startJob("BLOB")}
+          actionIcon={<FileJson size={16} />}
+          actionLabel="Download Manifest"
+          downloading={downloadingAction === "blob-manifest"}
+          onStart={() => startDownload("blob-manifest", "/api/admin/backup-center/download/blob-manifest")}
         />
         <BackupActionPanel
-          kind="POSTGRES"
-          title="PostgreSQL Backup"
-          description="สร้าง pg_dump custom-format เป็น artifact ภายใต้ protected admin download"
+          title="Vercel Blob Archive"
+          description="ดาวน์โหลดไฟล์ .tar ที่รวม manifest และ blob objects โดยไม่เก็บ archive ไว้ใน Vercel Blob"
+          icon={<PackageOpen size={22} />}
+          envReady={envStatus.blobToken}
+          envLabel="BLOB_READ_WRITE_TOKEN"
+          activeJob={activeBlob}
+          actionIcon={<Download size={16} />}
+          actionLabel="Download Archive"
+          downloading={downloadingAction === "blob-archive"}
+          onStart={() => startDownload("blob-archive", "/api/admin/backup-center/download/blob-archive")}
+        />
+        <BackupActionPanel
+          title="PostgreSQL Download"
+          description="สร้าง pg_dump custom-format ใน temp runtime แล้วดาวน์โหลดลงเครื่องผู้ใช้ทันที ไม่เก็บใน Vercel Blob"
           icon={<Database size={22} />}
           envReady={envStatus.databaseUrl}
-          envLabel="DATABASE_URL"
+          envLabel="BACKUP_DATABASE_URL / DIRECT_URL / DATABASE_URL"
           activeJob={activePostgres}
-          starting={startingKind === "POSTGRES"}
-          onStart={() => startJob("POSTGRES")}
+          actionIcon={<Download size={16} />}
+          actionLabel="Download PostgreSQL Dump"
+          downloading={downloadingAction === "postgres"}
+          onStart={() => startDownload("postgres", "/api/admin/backup-center/download/postgres")}
         />
       </div>
 
-      <PgDumpHelper />
+      <PgDumpHelper status={pgDumpStatus} checking={checkingPgDump} onCheck={() => void checkPgDump()} />
 
       <section className="rounded-lg border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-950">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-white/10">
@@ -227,15 +254,40 @@ export default function BackupCenterClient({ envStatus }: BackupCenterClientProp
   );
 }
 
-function PgDumpHelper() {
+function PgDumpHelper({
+  status,
+  checking,
+  onCheck,
+}: {
+  status: PgDumpStatus | null;
+  checking: boolean;
+  onCheck: () => void;
+}) {
   return (
     <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
-          <h2 className="text-base font-semibold">PostgreSQL backup ต้องใช้ pg_dump</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">PostgreSQL backup ต้องใช้ pg_dump</h2>
+            {status ? (
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${status.available ? "border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100" : "border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-100"}`}>
+                {status.available ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                {status.available ? "pg_dump พร้อมใช้งาน" : "ไม่พบ pg_dump"}
+              </span>
+            ) : null}
+          </div>
           <p>
             ถ้ากด PostgreSQL Backup แล้ว runtime ไม่มีคำสั่ง <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-950">pg_dump</code> งานจะล้มเหลวด้วย <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-950">PG_DUMP_NOT_AVAILABLE</code>
           </p>
+          {status?.version ? (
+            <p className="rounded-md border border-emerald-200 bg-white/70 px-3 py-2 font-mono text-xs text-emerald-900 dark:border-emerald-400/20 dark:bg-slate-950/40 dark:text-emerald-100">
+              {status.version}
+            </p>
+          ) : status?.error ? (
+            <p className="rounded-md border border-rose-200 bg-white/70 px-3 py-2 font-mono text-xs text-rose-700 dark:border-rose-400/20 dark:bg-slate-950/40 dark:text-rose-200">
+              {status.error}
+            </p>
+          ) : null}
           <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded-md border border-amber-200 bg-white/70 p-3 dark:border-amber-400/20 dark:bg-slate-950/40">
               <p className="font-medium">Windows</p>
@@ -252,6 +304,14 @@ function PgDumpHelper() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 lg:max-w-xs lg:justify-end">
+          <button
+            type="button"
+            onClick={onCheck}
+            disabled={checking}
+            className="rounded-md border border-amber-300 bg-white px-3 py-2 font-medium text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-400/40 dark:bg-slate-950 dark:text-amber-100 dark:hover:bg-amber-400/10"
+          >
+            {checking ? "Checking..." : "Check pg_dump"}
+          </button>
           <a className="rounded-md border border-amber-300 bg-white px-3 py-2 font-medium text-amber-900 transition hover:bg-amber-100 dark:border-amber-400/40 dark:bg-slate-950 dark:text-amber-100 dark:hover:bg-amber-400/10" href="https://www.postgresql.org/download/windows/" target="_blank" rel="noreferrer">
             Windows
           </a>
@@ -271,7 +331,6 @@ function PgDumpHelper() {
 }
 
 function BackupActionPanel({
-  kind,
   title,
   description,
   icon,
@@ -279,19 +338,24 @@ function BackupActionPanel({
   envLabel,
   activeJob,
   starting,
+  actionIcon,
+  actionLabel,
+  downloading,
   onStart,
 }: {
-  kind: BackupKind;
   title: string;
   description: string;
   icon: ReactNode;
   envReady: boolean;
   envLabel: string;
   activeJob?: BackupJob;
-  starting: boolean;
+  starting?: boolean;
+  actionIcon: ReactNode;
+  actionLabel: string;
+  downloading: boolean;
   onStart: () => void;
 }) {
-  const disabled = !envReady || Boolean(activeJob) || starting;
+  const disabled = !envReady || Boolean(activeJob) || Boolean(starting) || downloading;
   const progress = activeJob?.percent ?? 0;
 
   return (
@@ -331,8 +395,8 @@ function BackupActionPanel({
           disabled={disabled}
           className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
         >
-          <Play size={16} />
-          {starting ? "กำลังเริ่ม..." : `เริ่ม ${KIND_LABEL[kind]} Backup`}
+          {actionIcon}
+          {downloading ? "กำลังเตรียมดาวน์โหลด..." : actionLabel}
         </button>
       </div>
     </section>

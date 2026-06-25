@@ -1,7 +1,10 @@
 import { createReadStream } from "node:fs";
 import { mkdir, stat, unlink } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+
+import { Readable } from "node:stream";
 
 import { get, list, put } from "@vercel/blob";
 
@@ -16,9 +19,10 @@ import {
 import { getAuditActorFromSession, safeWriteAuditLog } from "@/lib/audit-log";
 import type { Session } from "next-auth";
 
-const BACKUP_ROOT = path.join(process.cwd(), ".tmp", "backup-center");
+const BACKUP_ROOT = path.join(os.tmpdir(), "backup-center");
 const BACKUP_PREFIX = "backups/";
 const LIST_LIMIT = 1000;
+const TAR_BLOCK_SIZE = 512;
 
 type BackupJobSnapshot = {
   id: string;
@@ -28,12 +32,26 @@ type BackupJobSnapshot = {
 
 type BlobManifestEntry = {
   pathname: string;
-  backupPathname: string;
+  backupPathname?: string;
   size: number;
   uploadedAt: string;
   url: string;
   downloadUrl: string;
   etag: string;
+};
+
+export type DownloadArtifact = {
+  fileName: string;
+  contentType: string;
+  size?: number;
+  stream: Readable;
+  cleanup?: () => Promise<void>;
+};
+
+export type PgDumpStatus = {
+  available: boolean;
+  version: string | null;
+  error: string | null;
 };
 
 function asPercent(processed: number, total: number): number {
@@ -118,8 +136,57 @@ export async function getBackupCenterJobs() {
 export async function getBackupCenterEnvStatus() {
   return {
     blobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
-    databaseUrl: Boolean(process.env.DATABASE_URL),
+    databaseUrl: Boolean(process.env.BACKUP_DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL),
   };
+}
+
+export async function checkPgDumpStatus(): Promise<PgDumpStatus> {
+  return new Promise((resolve) => {
+    const child = spawn("pg_dump", ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const finish = (status: PgDumpStatus) => {
+      if (settled) return;
+      settled = true;
+      resolve(status);
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      finish({
+        available: false,
+        version: null,
+        error: code === "ENOENT" ? "PG_DUMP_NOT_AVAILABLE" : error.message,
+      });
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        finish({
+          available: true,
+          version: stdout.trim() || null,
+          error: null,
+        });
+        return;
+      }
+      finish({
+        available: false,
+        version: null,
+        error: `PG_DUMP_VERSION_FAILED:${code}:${stderr.trim().slice(-300)}`,
+      });
+    });
+  });
 }
 
 async function claimJob(jobId: string): Promise<BackupJobSnapshot | null> {
@@ -198,6 +265,45 @@ async function collectBlobEntries(jobId: string) {
   }
 
   return entries;
+}
+
+async function listBlobBackupEntries() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error("BLOB_READ_WRITE_TOKEN_REQUIRED");
+
+  const entries: Awaited<ReturnType<typeof list>>["blobs"] = [];
+  let cursor: string | undefined;
+  let hasMore = true;
+
+  while (hasMore) {
+    const page = await list({ cursor, limit: LIST_LIMIT, token });
+    entries.push(...page.blobs.filter((blob) => !blob.pathname.startsWith(BACKUP_PREFIX)));
+    cursor = page.cursor;
+    hasMore = page.hasMore;
+  }
+
+  return entries;
+}
+
+function buildBlobManifest(entries: Awaited<ReturnType<typeof listBlobBackupEntries>>) {
+  const totalBytes = entries.reduce((sum, blob) => sum + BigInt(blob.size), BigInt(0));
+  const files: BlobManifestEntry[] = entries.map((blob) => ({
+    pathname: blob.pathname,
+    size: blob.size,
+    uploadedAt: blob.uploadedAt.toISOString(),
+    url: blob.url,
+    downloadUrl: blob.downloadUrl,
+    etag: blob.etag,
+  }));
+
+  return {
+    createdAt: new Date().toISOString(),
+    source: "vercel-blob",
+    mode: "download-manifest",
+    totalItems: entries.length,
+    totalBytes: totalBytes.toString(),
+    files,
+  };
 }
 
 async function runBlobBackup(jobId: string) {
@@ -354,6 +460,140 @@ async function runPostgresBackup(jobId: string) {
     }),
     finishedAt: new Date(),
   });
+}
+
+function safeDownloadTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+export async function createPostgresBackupDownload(): Promise<DownloadArtifact> {
+  const databaseUrl = process.env.BACKUP_DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL_REQUIRED");
+
+  const outDir = path.join(BACKUP_ROOT, "postgres-download");
+  await mkdir(outDir, { recursive: true });
+
+  const fileName = `postgres-${safeDownloadTimestamp()}.dump`;
+  const outFile = path.join(outDir, fileName);
+  await runPgDump(databaseUrl, outFile, async () => undefined);
+
+  const stats = await stat(outFile);
+  if (stats.size <= 0) {
+    await unlink(outFile).catch(() => undefined);
+    throw new Error("PG_DUMP_EMPTY_ARTIFACT");
+  }
+
+  return {
+    fileName,
+    contentType: "application/octet-stream",
+    size: stats.size,
+    stream: createReadStream(outFile),
+    cleanup: async () => {
+      await unlink(outFile).catch(() => undefined);
+    },
+  };
+}
+
+export async function createBlobManifestDownload(): Promise<DownloadArtifact> {
+  const entries = await listBlobBackupEntries();
+  const manifest = buildBlobManifest(entries);
+  const body = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
+
+  return {
+    fileName: `vercel-blob-manifest-${safeDownloadTimestamp()}.json`,
+    contentType: "application/json; charset=utf-8",
+    size: body.byteLength,
+    stream: Readable.from(body),
+  };
+}
+
+function encodeTarString(buffer: Buffer, value: string, offset: number, length: number) {
+  const bytes = Buffer.from(value);
+  bytes.copy(buffer, offset, 0, Math.min(bytes.length, length));
+}
+
+function encodeTarOctal(buffer: Buffer, value: number, offset: number, length: number) {
+  const text = value.toString(8).padStart(length - 1, "0").slice(0, length - 1);
+  buffer.write(text, offset, "ascii");
+  buffer[offset + length - 1] = 0;
+}
+
+function normalizeTarPath(pathname: string): string {
+  return pathname
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((segment) => segment && segment !== "." && segment !== "..")
+    .join("/");
+}
+
+function createTarHeader(input: {
+  name: string;
+  size: number;
+  mtime: Date;
+  typeflag?: string;
+}): Buffer {
+  const header = Buffer.alloc(TAR_BLOCK_SIZE, 0);
+  const safeName = normalizeTarPath(input.name).slice(0, 100) || "blob";
+
+  encodeTarString(header, safeName, 0, 100);
+  encodeTarOctal(header, 0o644, 100, 8);
+  encodeTarOctal(header, 0, 108, 8);
+  encodeTarOctal(header, 0, 116, 8);
+  encodeTarOctal(header, input.size, 124, 12);
+  encodeTarOctal(header, Math.floor(input.mtime.getTime() / 1000), 136, 12);
+  header.fill(0x20, 148, 156);
+  encodeTarString(header, input.typeflag ?? "0", 156, 1);
+  encodeTarString(header, "ustar", 257, 6);
+  encodeTarString(header, "00", 263, 2);
+
+  let checksum = 0;
+  for (const byte of header) checksum += byte;
+  const checksumText = checksum.toString(8).padStart(6, "0");
+  header.write(checksumText, 148, "ascii");
+  header[154] = 0;
+  header[155] = 0x20;
+  return header;
+}
+
+async function* blobTarStream(entries: Awaited<ReturnType<typeof listBlobBackupEntries>>) {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error("BLOB_READ_WRITE_TOKEN_REQUIRED");
+
+  const manifest = Buffer.from(JSON.stringify(buildBlobManifest(entries), null, 2), "utf8");
+  const manifestName = "manifest.json";
+  yield createTarHeader({ name: manifestName, size: manifest.byteLength, mtime: new Date() });
+  yield manifest;
+  const manifestPadding = (TAR_BLOCK_SIZE - (manifest.byteLength % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
+  if (manifestPadding) yield Buffer.alloc(manifestPadding, 0);
+
+  for (const blob of entries) {
+    const source = await get(blob.url, { access: artifactAccessForUrl(blob.url), token });
+    if (!source?.stream) throw new Error(`BLOB_STREAM_UNAVAILABLE:${blob.pathname}`);
+
+    yield createTarHeader({
+      name: `objects/${blob.pathname}`,
+      size: blob.size,
+      mtime: blob.uploadedAt,
+    });
+
+    for await (const chunk of Readable.fromWeb(source.stream as unknown as Parameters<typeof Readable.fromWeb>[0])) {
+      yield chunk as Buffer;
+    }
+
+    const padding = (TAR_BLOCK_SIZE - (blob.size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE;
+    if (padding) yield Buffer.alloc(padding, 0);
+  }
+
+  yield Buffer.alloc(TAR_BLOCK_SIZE * 2, 0);
+}
+
+export async function createBlobArchiveDownload(): Promise<DownloadArtifact> {
+  const entries = await listBlobBackupEntries();
+  return {
+    fileName: `vercel-blob-backup-${safeDownloadTimestamp()}.tar`,
+    contentType: "application/x-tar",
+    stream: Readable.from(blobTarStream(entries)),
+  };
 }
 
 function runPgDump(
