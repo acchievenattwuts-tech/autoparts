@@ -144,6 +144,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "admin.roles.view", group: "ระบบ", label: "ดูบทบาทและสิทธิ์" },
   { key: "admin.roles.manage", group: "ระบบ", label: "จัดการบทบาทและสิทธิ์" },
   { key: "audit_log.view", group: "ระบบ", label: "ดู Audit Log" },
+  { key: "system.backup", group: "ระบบ", label: "สำรองข้อมูลระบบ" },
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_CATALOG)[number]["key"];
@@ -271,6 +272,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/users", permission: "admin.users.view" },
   { prefix: "/admin/roles", permission: "admin.roles.view" },
   { prefix: "/admin/audit-log", permission: "audit_log.view" },
+  { prefix: "/admin/backup-center", permission: "system.backup" },
   { prefix: "/admin/workboard", permission: "workboard.view" },
   { prefix: "/admin/dashboard", permission: "dashboard.view" },
   { prefix: "/admin/products", permission: "products.view" },

@@ -142,6 +142,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ผู้ใช้งาน", href: "/admin/users", icon: Users, permission: "admin.users.view", keywords: "users ผู้ใช้งาน admin" },
       { label: "บทบาทและสิทธิ์", href: "/admin/roles", icon: ShieldCheck, permission: "admin.roles.view", keywords: "roles permissions บทบาท สิทธิ์" },
       { label: "Audit Log", href: "/admin/audit-log", icon: ScrollText, permission: "audit_log.view", keywords: "audit log" },
+      { label: "Backup Center", href: "/admin/backup-center", icon: Archive, permission: "system.backup", keywords: "backup สำรองข้อมูล blob postgres database database backup vercel supabase" },
       { label: "AI Keys (Gemini)", href: "/admin/line-ai-keys", icon: KeyRound, permission: "line_ai_keys.view", keywords: "ai key gemini google line oa api key rotation fallback rate limit quota สถานะ คีย์" },
     ],
   },

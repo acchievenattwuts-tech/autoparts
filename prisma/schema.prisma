@@ -49,6 +49,7 @@ model User {
   deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
   sales                         Sale[]
   notifications                 Notification[]
+  backupJobs                    BackupJob[]
   shopeeShopsAuthorized         ShopeeShop[]
   supplierAdvances              SupplierAdvance[]
   supplierPayments              SupplierPayment[]
@@ -444,6 +445,33 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
+}
+
+model BackupJob {
+  id             String              @id @default(cuid())
+  kind           BackupJobKind
+  status         BackupJobStatus      @default(PENDING)
+  phase          String?
+  message        String?
+  processedItems Int                 @default(0)
+  totalItems     Int                 @default(0)
+  processedBytes BigInt              @default(0)
+  totalBytes     BigInt              @default(0)
+  percent        Int                 @default(0)
+  artifactKind   BackupArtifactKind?
+  artifactPath   String?
+  artifactUrl    String?
+  errorMessage   String?
+  metadata       Json?
+  createdById    String?
+  startedAt      DateTime?           @db.Timestamptz(3)
+  finishedAt     DateTime?           @db.Timestamptz(3)
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  createdBy      User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([kind, status, createdAt])
+  @@index([createdById, createdAt])
 }
 
 model LoginThrottle {
@@ -2066,6 +2094,23 @@ enum AuditAction {
   LINE_LINK_AMBIGUOUS
   CUSTOMER_VIEW_INVOICE_PDF
   CUSTOMER_VIEW_RECEIPT_PDF
+}
+
+enum BackupJobKind {
+  BLOB
+  POSTGRES
+}
+
+enum BackupJobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum BackupArtifactKind {
+  BLOB_PREFIX
+  LOCAL_FILE
 }
 
 enum InventoryTracking {
