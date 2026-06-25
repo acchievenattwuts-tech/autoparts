@@ -12,6 +12,7 @@ import { updateProductSearchCache } from "@/lib/product-search-cache";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
+import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อแบรนด์").max(100),
@@ -75,6 +76,7 @@ export const createPartsBrand = async (formData: FormData): Promise<{ error?: st
     }
 
     revalidatePath("/admin/master/parts-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
     await refreshPartsBrandSearchCaches();
     return {};
   } catch {
@@ -121,6 +123,7 @@ export const updatePartsBrand = async (
     }
 
     revalidatePath("/admin/master/parts-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
     await refreshPartsBrandSearchCaches(id);
     return {};
   } catch {
@@ -159,6 +162,7 @@ export const togglePartsBrand = async (id: string, isActive: boolean): Promise<{
     }
 
     revalidatePath("/admin/master/parts-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
     await refreshPartsBrandSearchCaches(id);
     return {};
   } catch {

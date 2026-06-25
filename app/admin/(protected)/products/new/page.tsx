@@ -2,6 +2,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Vercel Pro ceiling: AI Research rotates up to 10 keys (rate-limited keys fail instantly, so all 10 fit in time)
 
 import { db } from "@/lib/db";
+import {
+  getActiveCarBrandOptionsWithModels,
+  getActiveCategoryOptions,
+  getActivePartsBrandOptions,
+} from "@/lib/admin-master-options";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -12,15 +17,9 @@ const NewProductPage = async () => {
   await requirePermission("products.create");
 
   const [categories, carBrands, partsBrands, suppliers] = await Promise.all([
-    db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
-    db.carBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      include: {
-        carModels: { where: { isActive: true }, orderBy: { name: "asc" } },
-      },
-    }),
-    db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+    getActiveCategoryOptions(),
+    getActiveCarBrandOptionsWithModels(),
+    getActivePartsBrandOptions(),
     db.supplier.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },

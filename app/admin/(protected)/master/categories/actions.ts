@@ -9,6 +9,7 @@ import {
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
 import {
@@ -155,6 +156,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     }
 
     revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     await refreshCategoryStorefrontCaches(category.id);
     return {};
   } catch {
@@ -224,6 +226,7 @@ export const updateCategory = async (
     }
 
     revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     await refreshCategoryStorefrontCaches(id);
     return {};
   } catch {
@@ -271,6 +274,7 @@ export const toggleCategory = async (id: string, isActive: boolean): Promise<{ e
     }
 
     revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     await refreshCategoryStorefrontCaches(id);
     return {};
   } catch {
@@ -339,6 +343,7 @@ export const createCategoryAlias = async (
 
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     return {};
   } catch {
     return { error: "ไม่สามารถเพิ่ม alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
@@ -381,6 +386,7 @@ export const toggleCategoryAlias = async (
 
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     return {};
   } catch {
     return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };

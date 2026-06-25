@@ -9,8 +9,9 @@ import {
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
+import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 import { generateExpenseCodeCode } from "@/lib/entity-code";
 
 const DELIVERY_COMMISSION_SLOT = "delivery-commission";
@@ -97,6 +98,7 @@ export async function createExpenseCode(
       });
     }
     revalidatePath("/admin/master/expense-codes");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.expenseCodes);
     return { success: true, code };
   } catch (err: unknown) {
     console.error("[createExpenseCode]", err);
@@ -156,6 +158,7 @@ export async function updateExpenseCode(
       });
     }
     revalidatePath("/admin/master/expense-codes");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.expenseCodes);
     return { success: true };
   } catch (err) {
     console.error("[updateExpenseCode]", err);
@@ -191,6 +194,7 @@ export async function toggleExpenseCode(
       });
     }
     revalidatePath("/admin/master/expense-codes");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.expenseCodes);
     return { success: true };
   } catch (err) {
     console.error("[toggleExpenseCode]", err);

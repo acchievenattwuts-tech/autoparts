@@ -1,22 +1,18 @@
 export const dynamic = "force-dynamic";
 
-import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { Receipt, ChevronRight } from "lucide-react";
 import NewExpenseForm from "./NewExpenseForm";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { getActiveExpenseCodeOptions } from "@/lib/admin-master-options";
 
 const NewExpensePage = async () => {
   await requirePermission("expenses.create");
 
   const [expenseCodes, config, cashBankAccounts] = await Promise.all([
-    db.expenseCode.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: { id: true, code: true, name: true },
-    }),
+    getActiveExpenseCodeOptions(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);

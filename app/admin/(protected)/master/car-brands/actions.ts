@@ -12,6 +12,7 @@ import { updateProductSearchCache } from "@/lib/product-search-cache";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
+import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อยี่ห้อรถ").max(100),
@@ -90,6 +91,7 @@ export const createCarBrand = async (formData: FormData): Promise<{ error?: stri
     }
 
     revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
     await refreshCarSearchCaches();
     return {};
   } catch {
@@ -128,6 +130,7 @@ export const toggleCarBrand = async (id: string, isActive: boolean): Promise<{ e
     }
 
     revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
     await refreshCarSearchCaches({ carBrandId: id });
     return {};
   } catch {
@@ -166,6 +169,7 @@ export const createCarModel = async (formData: FormData): Promise<{ error?: stri
     }
 
     revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
     await refreshCarSearchCaches({ carBrandId: parsed.data.carBrandId });
     return {};
   } catch {
@@ -209,6 +213,7 @@ export const toggleCarModel = async (id: string, isActive: boolean): Promise<{ e
     }
 
     revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
     await refreshCarSearchCaches({
       carBrandId: existingModel?.carBrandId,
       carModelId: id,

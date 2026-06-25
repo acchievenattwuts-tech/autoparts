@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { getActiveExpenseCodeOptions } from "@/lib/admin-master-options";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import NewExpenseForm from "../../new/NewExpenseForm";
 
@@ -25,11 +26,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
         },
       },
     }),
-    db.expenseCode.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      select: { id: true, code: true, name: true },
-    }),
+    getActiveExpenseCodeOptions(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
