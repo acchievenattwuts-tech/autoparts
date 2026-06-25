@@ -26,18 +26,17 @@ import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
 import {
   buildProductImageObjectPath,
-  copyProductImageUrlToCodeFolder,
-  createProductImageStorageClient,
-  deleteProductImageObjects,
-  getProductImageStorageConfig,
-  getProductImageObjectPathFromPublicUrl,
   isAllowedProductImageUrl,
-  isProductImageObjectPath,
-  isProductImageObjectPathForCode,
 } from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
 import { reembedProductSearchDocument } from "@/lib/product-embedding-sync";
-import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
+import {
+  copyBlobProductImageToCodeFolder,
+  deleteProductsBucketObjects,
+  isBlobProductUrlInCodeFolder,
+  isOwnedBlobProductUrl,
+  uploadProductsBucketObject,
+} from "@/lib/products-bucket-storage";
 import { runProductAiResearch, type ProductAiResearchDraft, type ProductAiResearchInput } from "@/lib/product-ai-research";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -204,21 +203,14 @@ async function normalizeProductImagesForCode(
     return { productImages, orphanedSourceUrls: [] };
   }
 
-  const needsStorageCopy = productImages.some((image) => {
-    const objectPath = getProductImageObjectPathFromPublicUrl(image.url);
-    return objectPath && isProductImageObjectPath(objectPath) && !isProductImageObjectPathForCode(objectPath, productCode);
-  });
+  const needsStorageCopy = productImages.some(
+    (image) => isOwnedBlobProductUrl(image.url) && !isBlobProductUrlInCodeFolder(image.url, productCode),
+  );
 
   if (!needsStorageCopy) {
     return { productImages, orphanedSourceUrls: [] };
   }
 
-  const config = getProductImageStorageConfig();
-  if (!config) {
-    return { productImages, orphanedSourceUrls: [], error: "ไม่พบการตั้งค่า Supabase" };
-  }
-
-  const client = createProductImageStorageClient(config);
   const copiedUrls = new Map<string, string>();
   const nextImages: ProductImageInput[] = [];
   // Source temp-upload URLs that were copied into the code folder and are now
@@ -232,11 +224,7 @@ async function normalizeProductImagesForCode(
       continue;
     }
 
-    const result = await copyProductImageUrlToCodeFolder({
-      client,
-      url: image.url,
-      productCode,
-    });
+    const result = await copyBlobProductImageToCodeFolder({ url: image.url, productCode });
 
     if (!result.success) {
       return { productImages, orphanedSourceUrls: [], error: "ย้ายรูปสินค้าเข้าโฟลเดอร์ตามรหัสสินค้าไม่สำเร็จ" };
@@ -259,7 +247,14 @@ async function normalizeProductImagesForCode(
  * the surrounding mutation.
  */
 async function cleanupProductImageObjects(urls: string[]): Promise<void> {
-  const unique = [...new Set(urls.filter((url) => url && isAllowedProductImageUrl(url)))];
+  // Accept both our Supabase product URLs and our Blob product URLs so a
+  // delete/replace cleans up the right backend (Blob objects were previously
+  // skipped, leaking orphans).
+  const unique = [
+    ...new Set(
+      urls.filter((url) => url && (isAllowedProductImageUrl(url) || isOwnedBlobProductUrl(url))),
+    ),
+  ];
   if (unique.length === 0) return;
 
   try {
@@ -276,11 +271,8 @@ async function cleanupProductImageObjects(urls: string[]): Promise<void> {
     const deletable = unique.filter((url) => !referenced.has(url));
     if (deletable.length === 0) return;
 
-    const config = getProductImageStorageConfig();
-    if (!config) return;
-
-    const client = createProductImageStorageClient(config);
-    await deleteProductImageObjects(client, deletable);
+    // Backend-aware: removes Blob objects from Blob, Supabase objects from Supabase.
+    await deleteProductsBucketObjects(deletable);
   } catch {
     // Best-effort: leaked objects can be reclaimed later; never block the mutation.
   }

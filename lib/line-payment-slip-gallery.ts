@@ -1,12 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
-import {
-  buildPaymentSlipImageRoute,
-  createPaymentSlipSignedUrlsBatch,
-  GALLERY_SIGNED_URL_REFRESH_BUFFER_MS,
-  GALLERY_SIGNED_URL_TTL_SECONDS,
-} from "@/lib/line-payment-slip-storage";
-import { isBlobBackend } from "@/lib/storage-backend";
+import { buildPaymentSlipImageRoute } from "@/lib/line-payment-slip-storage";
 import { isDateOnlyString, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 /**
@@ -96,8 +90,6 @@ function buildGalleryWhere(filters: PaymentSlipGalleryFilters): Prisma.PaymentSl
 type GalleryRow = {
   id: string;
   imageUrl: string | null;
-  imageSignedUrl: string | null;
-  imageSignedUrlExpiresAt: Date | null;
   detectedAmount: Prisma.Decimal | null;
   detectedTransferDatetime: Date | null;
   detectedBank: string | null;
@@ -108,65 +100,13 @@ type GalleryRow = {
 };
 
 /**
- * Resolves each row's viewable image URL, refreshing the cached signed URL in
- * batch (one Supabase call) only for rows whose cache is missing or near expiry,
- * then persisting the refreshed URLs so later renders are zero-call.
+ * Maps each row to its viewable image URL — the session-checked stream route
+ * (`/api/admin/line-payment-slips/[id]/image`). No signed URLs to mint or cache.
  */
-async function resolveGalleryImageUrls(rows: GalleryRow[]): Promise<Map<string, string | null>> {
-  // Blob backend: slips are served by the session-checked stream route, so there
-  // are no signed URLs to mint or cache — map each row to its route URL directly.
-  if (isBlobBackend("payment-slips")) {
-    const resolved = new Map<string, string | null>();
-    for (const row of rows) {
-      resolved.set(row.id, row.imageUrl ? buildPaymentSlipImageRoute(row.id) : null);
-    }
-    return resolved;
-  }
-
-  const now = Date.now();
-  const refreshThreshold = new Date(now + GALLERY_SIGNED_URL_REFRESH_BUFFER_MS);
-
-  const needsRefresh = rows.filter(
-    (row) =>
-      row.imageUrl &&
-      (!row.imageSignedUrl ||
-        !row.imageSignedUrlExpiresAt ||
-        row.imageSignedUrlExpiresAt <= refreshThreshold),
-  );
-
-  let freshByPath = new Map<string, string>();
-  if (needsRefresh.length > 0) {
-    const paths = needsRefresh.map((row) => row.imageUrl as string);
-    freshByPath = await createPaymentSlipSignedUrlsBatch(paths, GALLERY_SIGNED_URL_TTL_SECONDS);
-
-    if (freshByPath.size > 0) {
-      const newExpiresAt = new Date(now + GALLERY_SIGNED_URL_TTL_SECONDS * 1000);
-      await Promise.all(
-        needsRefresh
-          .filter((row) => freshByPath.has(row.imageUrl as string))
-          .map((row) =>
-            db.paymentSlip
-              .update({
-                where: { id: row.id },
-                data: {
-                  imageSignedUrl: freshByPath.get(row.imageUrl as string),
-                  imageSignedUrlExpiresAt: newExpiresAt,
-                },
-                select: { id: true },
-              })
-              .catch(() => null),
-          ),
-      );
-    }
-  }
-
+function resolveGalleryImageUrls(rows: GalleryRow[]): Map<string, string | null> {
   const resolved = new Map<string, string | null>();
   for (const row of rows) {
-    if (!row.imageUrl) {
-      resolved.set(row.id, null);
-      continue;
-    }
-    resolved.set(row.id, freshByPath.get(row.imageUrl) ?? row.imageSignedUrl ?? null);
+    resolved.set(row.id, row.imageUrl ? buildPaymentSlipImageRoute(row.id) : null);
   }
   return resolved;
 }
@@ -201,8 +141,6 @@ export async function fetchPaymentSlipGalleryPage(
     select: {
       id: true,
       imageUrl: true,
-      imageSignedUrl: true,
-      imageSignedUrlExpiresAt: true,
       detectedAmount: true,
       detectedTransferDatetime: true,
       detectedBank: true,
@@ -219,7 +157,7 @@ export async function fetchPaymentSlipGalleryPage(
   const hasMore = rows.length > GALLERY_PAGE_SIZE;
   const pageRows = hasMore ? rows.slice(0, GALLERY_PAGE_SIZE) : rows;
 
-  const resolved = await resolveGalleryImageUrls(pageRows);
+  const resolved = resolveGalleryImageUrls(pageRows);
   const items = pageRows.map((row) => toGalleryItem(row, resolved.get(row.id) ?? null));
 
   return { items, hasMore, nextSkip: safeSkip + pageRows.length };
