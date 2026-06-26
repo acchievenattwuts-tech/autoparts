@@ -25,9 +25,29 @@ test("drops a year the customer never typed in this session", () => {
     latestText: "วาล์ว โตโยต้า 134",
     history: [{ role: "customer", text: "พัดลมโบยาริสปี08" }],
   });
-  assert.equal(intent?.year, null);
+  assert.equal(intent?.year, null); // "ปี08" never grounds the 4-digit 2008
+  assert.equal(intent?.carBrand, "Toyota"); // Thai "โตโยต้า" grounds the English brand
+  assert.equal(intent?.carModel, null); // "Yaris" not in this turn's text
+});
+
+test("Thai brand name grounds the English classifier value", () => {
+  for (const [thai, eng] of [["นิสสัน", "Nissan"], ["อีซูซุ", "Isuzu"], ["ฮอนด้า", "Honda"]] as const) {
+    const { intent } = guardLineSearchIntent({
+      intent: baseIntent({ carBrand: eng, carModel: null, query: `วาล์วแอร์ 134` }),
+      latestText: `วาล์ว ${thai} 134`,
+      history: [],
+    });
+    assert.equal(intent?.carBrand, eng, `${thai} → ${eng}`);
+  }
+});
+
+test("does not ground a brand the customer did not mention", () => {
+  const { intent } = guardLineSearchIntent({
+    intent: baseIntent({ carBrand: "Toyota", carModel: null, query: "วาล์วแอร์ 134" }),
+    latestText: "วาล์ว นิสสัน 134", // customer said Nissan, classifier wrongly said Toyota
+    history: [],
+  });
   assert.equal(intent?.carBrand, null);
-  assert.equal(intent?.carModel, null);
 });
 
 test("keeps a year the customer actually typed", () => {

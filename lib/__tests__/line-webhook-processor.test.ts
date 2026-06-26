@@ -397,6 +397,9 @@ function createProcessorTestDeps(input?: {
         carModelName: filterInput.carModel ? configured.carModelName : undefined,
       };
     },
+    // Hermetic: never touch the DB for brand aliases in unit tests (the guard
+    // falls back to the hardcoded brand map).
+    loadCarBrandVariantLookup: async () => new Map<string, string[]>(),
   };
 
   return { calls, dependencies };

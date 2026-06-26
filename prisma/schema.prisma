@@ -526,11 +526,27 @@ model AppRolePermission {
 }
 
 model CarBrand {
-  id        String     @id @default(cuid())
-  name      String     @unique
-  createdAt DateTime   @default(now()) @db.Timestamptz(3)
-  isActive  Boolean    @default(true)
+  id        String          @id @default(cuid())
+  name      String          @unique
+  createdAt DateTime        @default(now()) @db.Timestamptz(3)
+  isActive  Boolean         @default(true)
   carModels CarModel[]
+  aliases   CarBrandAlias[]
+}
+
+model CarBrandAlias {
+  id         String   @id @default(cuid())
+  carBrandId String
+  alias      String
+  isActive   Boolean  @default(true)
+  notes      String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+  carBrand   CarBrand @relation(fields: [carBrandId], references: [id], onDelete: Cascade)
+
+  @@unique([alias])
+  @@index([carBrandId])
+  @@index([isActive])
 }
 
 model CarModel {

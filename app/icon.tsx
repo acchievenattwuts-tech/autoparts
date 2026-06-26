@@ -12,10 +12,34 @@ export const size = {
 
 export const contentType = "image/png";
 
+// Fetch the logo ourselves and inline it as a data URL instead of letting
+// Satori fetch it. Right after a re-upload the Vercel Blob CDN can briefly serve
+// an empty/partial body, which Satori reports as "Unsupported image type:
+// unknown" and the whole icon render fails. Here we validate the response and
+// fall back to the initials badge on any failure, so the favicon never breaks.
+async function loadLogoDataUrl(logoUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(logoUrl, { cache: "no-store" });
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    // A valid raster logo is never this small; an empty/partial CDN body is.
+    if (buffer.byteLength < 100) return null;
+
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function Icon() {
   const config = await getPublicSiteConfig();
   const rawLogoUrl = config.shopLogoUrl?.trim();
   const logoUrl = rawLogoUrl ? absoluteUrl(toPublicStorageCdnPath(rawLogoUrl) ?? rawLogoUrl) : null;
+  const logoDataUrl = logoUrl ? await loadLogoDataUrl(logoUrl) : null;
   const shopName = config.shopName?.trim() || "ศรีวรรณ อะไหล่แอร์";
   const initials =
     shopName
@@ -38,9 +62,9 @@ export default async function Icon() {
           background: "transparent",
         }}
       >
-        {logoUrl ? (
+        {logoDataUrl ? (
           <img
-            src={logoUrl}
+            src={logoDataUrl}
             alt={shopName}
             width={64}
             height={64}

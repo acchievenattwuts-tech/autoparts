@@ -2,18 +2,26 @@
 
 import { useRef, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
-import { createCarBrand, toggleCarBrand, createCarModel, toggleCarModel } from "./actions";
-import { CarBrand, CarModel } from "@/lib/generated/prisma";
+import {
+  createCarBrand,
+  toggleCarBrand,
+  createCarModel,
+  toggleCarModel,
+  createCarBrandAlias,
+  toggleCarBrandAlias,
+} from "./actions";
+import { CarBrand, CarBrandAlias, CarModel } from "@/lib/generated/prisma";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
-type CarBrandWithModels = CarBrand & { carModels: CarModel[] };
+type CarBrandWithModels = CarBrand & { carModels: CarModel[]; aliases: CarBrandAlias[] };
 
 interface CarBrandsClientProps {
   carBrands: CarBrandWithModels[];
   canCreate: boolean;
   canCancel: boolean;
+  canUpdate: boolean;
 }
 
 const inputClassName =
@@ -61,19 +69,71 @@ const AddModelForm = ({ brandId }: { brandId: string }) => {
   );
 };
 
+const AddAliasForm = ({ brandId }: { brandId: string }) => {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [error, setError] = useState<string>("");
+  const [isPending, startTransition] = useTransition();
+
+  const handleCreate = (formData: FormData) => {
+    setError("");
+    startTransition(async () => {
+      const result = await createCarBrandAlias(brandId, formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        formRef.current?.reset();
+      }
+    });
+  };
+
+  return (
+    <form ref={formRef} action={handleCreate} className="mt-3 flex gap-2">
+      <div className="flex-1">
+        <input
+          type="text"
+          name="alias"
+          placeholder="ชื่อยี่ห้อภาษาไทย/สะกดอื่น เช่น โตโยต้า, มิตซู"
+          required
+          className={inputClassName}
+        />
+        {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
+      </div>
+      <button
+        type="submit"
+        disabled={isPending}
+        className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#1e3a5f] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162c47] disabled:opacity-60"
+      >
+        <Plus size={14} />
+        {isPending ? "กำลังเพิ่ม..." : "เพิ่ม alias"}
+      </button>
+    </form>
+  );
+};
+
 const BrandAccordion = ({
   brand,
   canCreate,
   canCancel,
+  canUpdate,
 }: {
   brand: CarBrandWithModels;
   canCreate: boolean;
   canCancel: boolean;
+  canUpdate: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
   const [togglingBrand, setTogglingBrand] = useState(false);
+  const [togglingAliasId, setTogglingAliasId] = useState<string | null>(null);
+
+  const handleToggleAlias = (aliasId: string, currentActive: boolean) => {
+    setTogglingAliasId(aliasId);
+    startTransition(async () => {
+      await toggleCarBrandAlias(aliasId, !currentActive);
+      setTogglingAliasId(null);
+    });
+  };
 
   const handleToggleBrand = () => {
     const action = brand.isActive ? "ยกเลิก" : "เปิดใช้งาน";
@@ -157,13 +217,53 @@ const BrandAccordion = ({
             </div>
           )}
           {canCreate && <AddModelForm brandId={brand.id} />}
+
+          <div className="mt-5 border-t border-gray-100 pt-4 dark:border-white/10">
+            <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+              ชื่อเรียกอื่น (alias) — ไทย/อังกฤษ ใช้จับคู่ยี่ห้อจากข้อความลูกค้าใน LINE
+            </p>
+            {brand.aliases.length === 0 ? (
+              <p className="mb-2 text-sm text-gray-500 dark:text-slate-400">ยังไม่มี alias (ใช้ชื่อยี่ห้อภาษาอังกฤษเป็นค่าตั้งต้น)</p>
+            ) : (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {brand.aliases.map((alias) => (
+                  <div
+                    key={alias.id}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 ${
+                      alias.isActive ? "bg-gray-100 dark:bg-white/10" : getAdminMasterRowClass(alias.isActive)
+                    }`}
+                  >
+                    <span className="text-sm text-gray-700 dark:text-slate-200">{alias.alias}</span>
+                    {!alias.isActive && (
+                      <AdminStatusBadge tone={getAdminActiveBadgeTone(alias.isActive)}>ปิด</AdminStatusBadge>
+                    )}
+                    {canUpdate && (
+                      <button
+                        onClick={() => handleToggleAlias(alias.id, alias.isActive)}
+                        disabled={togglingAliasId === alias.id || isPending}
+                        className={`rounded px-1.5 py-0.5 text-xs transition-colors disabled:opacity-50 ${
+                          alias.isActive
+                            ? "text-red-400 hover:text-red-600"
+                            : "text-green-500 hover:text-green-700"
+                        }`}
+                        title={alias.isActive ? "ปิดการใช้งาน" : "เปิดใช้งาน"}
+                      >
+                        {togglingAliasId === alias.id ? "..." : alias.isActive ? "ปิด" : "เปิด"}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {canUpdate && <AddAliasForm brandId={brand.id} />}
+          </div>
         </div>
       )}
     </div>
   );
 };
 
-const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientProps) => {
+const CarBrandsClient = ({ carBrands, canCreate, canCancel, canUpdate }: CarBrandsClientProps) => {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -220,6 +320,7 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel }: CarBrandsClientPro
                 brand={brand}
                 canCreate={canCreate}
                 canCancel={canCancel}
+                canUpdate={canUpdate}
               />
             ))}
           </div>

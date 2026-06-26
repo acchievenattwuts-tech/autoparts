@@ -27,6 +27,7 @@ import {
 } from "@/lib/line-ai-service";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
 import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
+import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
@@ -154,6 +155,9 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; resolves AI fitment hints to canonical master-data names
    *  for use as precise hard filters in product search. */
   resolveLineFitmentFilters?: typeof resolveLineFitmentFilters;
+  /** Optional override; loads the DB-backed Thai↔English brand spelling lookup
+   *  (cached) so the search guard can ground a Thai-typed brand. */
+  loadCarBrandVariantLookup?: typeof loadCarBrandVariantLookup;
   /** Optional override; AI-generates a scoped จูน-voiced reply for the
    *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
    *  scope and steers back to parts). */
@@ -205,6 +209,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   answerFromLineFaq,
   extractLineSearchIntent,
   resolveLineFitmentFilters,
+  loadCarBrandVariantLookup,
   generateScopedConversationalReply,
   acquireLineConversationLock,
   releaseLineConversationLock,
@@ -1205,9 +1210,14 @@ export async function processLineAiReply(
     // other group answers from a template/FAQ or hands off — so stale product
     // context can never leak into answers to "ร้านอยู่ที่ไหน" etc.
     const isNonProductTurn = group !== "product";
+    // DB-backed Thai↔English brand spellings (cached, best-effort) so the guard can
+    // ground a brand the customer typed in Thai ("โตโยต้า" → "Toyota").
+    const brandLookup = isNonProductTurn
+      ? null
+      : await (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null);
     const guardedSearch = isNonProductTurn
       ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardLineSearchIntent({ intent: searchIntent, latestText: processText, history });
+      : guardLineSearchIntent({ intent: searchIntent, latestText: processText, history, brandLookup });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null
@@ -1256,6 +1266,16 @@ export async function processLineAiReply(
           guardedSearch.requiredTokens.length > 0 ||
           imageRequiredTokens.length > 0,
       );
+      // Finer than `latestHasVehicleEvidence`: did THIS turn pin a specific car
+      // (model/year), or only name a bare brand? A brand-only mention with a new
+      // part is a brand-scoped fresh query, not a continuation of the prior car's
+      // exact model/year.
+      const latestHasModelOrYearEvidence = Boolean(
+        guardedSearchIntent?.carModel ||
+          guardedSearchIntent?.year ||
+          imageFields?.carModel ||
+          imageFields?.year,
+      );
       const reconciled = reconcileInquiryFrame(
         stored
           ? { partType: stored.partType, carBrand: stored.carBrand, carModel: stored.carModel, year: stored.year }
@@ -1280,6 +1300,28 @@ export async function processLineAiReply(
         inquiryFrame = {
           ...inquiryFrame,
           carBrand: null,
+          carModel: null,
+          year: null,
+        };
+      }
+      // Brand-only fresh query: this turn names a new part AND a car brand, but NO
+      // model/year. A model/year carried over from a previous part inquiry (e.g.
+      // earlier "...ยาริสปี08") would otherwise hard-filter the search to the wrong
+      // car and hide valid brand-wide matches — "วาล์วโตโยต้า134" must search all
+      // Toyota valves, not stay pinned to Yaris 2008. Keep the brand, drop the
+      // stale model/year. (Only reachable once the part anchor tokenizes, i.e.
+      // latestHasProductSpecificity is true.)
+      const droppedStaleModelYear = Boolean(
+        inquiryFrame &&
+          !droppedVehicleCarryover &&
+          latestHasProductSpecificity &&
+          latestHasVehicleEvidence &&
+          !latestHasModelOrYearEvidence &&
+          (inquiryFrame.carModel || inquiryFrame.year),
+      );
+      if (droppedStaleModelYear && inquiryFrame) {
+        inquiryFrame = {
+          ...inquiryFrame,
           carModel: null,
           year: null,
         };

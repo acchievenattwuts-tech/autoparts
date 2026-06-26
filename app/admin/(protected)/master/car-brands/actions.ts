@@ -13,9 +13,15 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
+import { invalidateCarBrandAliasCache } from "@/lib/car-brand-alias-cache";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อยี่ห้อรถ").max(100),
+});
+
+const brandAliasSchema = z.object({
+  alias: z.string().trim().min(1, "กรุณากรอก alias").max(120),
+  notes: z.string().trim().max(500).optional(),
 });
 
 const modelSchema = z.object({
@@ -45,6 +51,13 @@ async function getCarBrandAuditSnapshot(id: string) {
       name: true,
       isActive: true,
     },
+  });
+}
+
+async function getCarBrandAliasAuditSnapshot(id: string) {
+  return db.carBrandAlias.findUnique({
+    where: { id },
+    select: { id: true, carBrandId: true, alias: true, isActive: true, notes: true },
   });
 }
 
@@ -221,5 +234,106 @@ export const toggleCarModel = async (id: string, isActive: boolean): Promise<{ e
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };
+  }
+};
+
+export const createCarBrandAlias = async (
+  carBrandId: string,
+  formData: FormData,
+): Promise<{ error?: string }> => {
+  const session = await requirePermission("master.update").catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!carBrandId || carBrandId.length > 50 || !/^[a-z0-9]+$/.test(carBrandId)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
+  const parsed = brandAliasSchema.safeParse({
+    alias: formData.get("alias"),
+    notes: formData.get("notes"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const requestContext = await getRequestContext();
+  const alias = parsed.data.alias.toLowerCase();
+  const normalizedNotes = parsed.data.notes?.trim() || null;
+
+  try {
+    const brand = await db.carBrand.findUnique({
+      where: { id: carBrandId },
+      select: { id: true, name: true },
+    });
+    if (!brand) return { error: "ไม่พบยี่ห้อรถนี้" };
+
+    const created = await db.carBrandAlias.create({
+      data: { carBrandId, alias, notes: normalizedNotes },
+    });
+
+    const afterSnapshot = await getCarBrandAliasAuditSnapshot(created.id);
+    if (afterSnapshot) {
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.CREATE,
+        entityType: "CarBrandAlias",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.alias,
+        after: afterSnapshot,
+      });
+    }
+
+    invalidateCarBrandAliasCache();
+    revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
+    await refreshCarSearchCaches({ carBrandId });
+    return {};
+  } catch {
+    return { error: "ไม่สามารถเพิ่ม alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
+  }
+};
+
+export const toggleCarBrandAlias = async (
+  id: string,
+  isActive: boolean,
+): Promise<{ error?: string }> => {
+  const session = await requirePermission("master.update").catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
+  const requestContext = await getRequestContext();
+  try {
+    const beforeSnapshot = await getCarBrandAliasAuditSnapshot(id);
+    if (!beforeSnapshot) return { error: "ไม่พบ alias นี้" };
+
+    await db.carBrandAlias.update({ where: { id }, data: { isActive } });
+    const afterSnapshot = await getCarBrandAliasAuditSnapshot(id);
+    if (afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CarBrandAlias",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.alias,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
+    invalidateCarBrandAliasCache();
+    revalidatePath("/admin/master/car-brands");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
+    await refreshCarSearchCaches({ carBrandId: beforeSnapshot.carBrandId });
+    return {};
+  } catch {
+    return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };
   }
 };

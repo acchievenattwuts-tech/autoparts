@@ -24,6 +24,9 @@ const CarBrandsPage = async () => {
       carModels: {
         orderBy: { name: "asc" },
       },
+      aliases: {
+        orderBy: { alias: "asc" },
+      },
     },
   });
 
@@ -37,6 +40,7 @@ const CarBrandsPage = async () => {
         carBrands={carBrands}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
         canCancel={hasPermissionAccess(role, permissions, "master.cancel")}
+        canUpdate={hasPermissionAccess(role, permissions, "master.update")}
       />
     </div>
   );
