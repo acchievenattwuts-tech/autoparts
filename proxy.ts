@@ -174,6 +174,6 @@ export const config = {
     "/admin/:path*",
     // Public paths — bot protection + image rate limiting
     // Exempt: API routes that must never be throttled
-    "/((?!admin|api/auth|api/admin|api/line|api/internal|api/liff|api/content|api/revalidate|img/|_next/static|_next/data|favicon.ico|manifest.json|sitemap.xml|robots.txt).*)",
+    "/((?!admin|api/auth|api/admin|api/line|api/internal|api/liff|api/content|api/revalidate|_next/static|_next/data|favicon.ico|manifest.json|sitemap.xml|robots.txt).*)",
   ],
 };

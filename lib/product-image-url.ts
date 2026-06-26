@@ -12,9 +12,10 @@ export const PRODUCT_IMAGE_ROOT = "products";
 export const LINE_CHAT_IMAGE_BUCKET = "line-chat";
 
 /**
- * Same-origin prefix served by `app/img/[...path]/route.ts`. Requests to this
- * prefix are cached by the Vercel CDN, so the underlying Supabase object is only
- * fetched once per cache window instead of on every client/bot/optimizer request.
+ * Legacy same-origin image-proxy prefix. No longer used now that images are
+ * served directly from Vercel Blob; retained only for backward-compatible exports.
+ *
+ * @deprecated The `/img` proxy route was removed.
  */
 export const PRODUCT_IMAGE_CDN_PREFIX = "/img";
 
@@ -99,10 +100,6 @@ function isAllowedProductsBucketPublicPath(objectPath: string): boolean {
   return PRODUCT_BUCKET_PUBLIC_ROOTS.some((root) => objectPath.startsWith(root));
 }
 
-function encodeCdnObjectPath(objectPath: string): string {
-  return objectPath.split("/").map(encodeURIComponent).join("/");
-}
-
 export function resolvePublicStorageCdnTarget(routePath: string): PublicStorageCdnTarget | null {
   if (!routePath || hasUnsafePathSegment(routePath)) return null;
 
@@ -124,66 +121,21 @@ export function isProductImageObjectPathForCode(objectPath: string, productCode:
 }
 
 /**
- * Converts a stored Supabase public product-image URL into the same-origin
- * `/img/<objectPath>` CDN path so the browser, crawlers, and the Next.js image
- * optimizer all hit the Vercel CDN instead of Supabase Storage directly.
+ * Identity pass-through. Images are now served directly from their stored
+ * (Vercel Blob) URL, so no rewrite is needed. Kept so the many render call sites
+ * stay unchanged; returns the URL as-is (null for empty input).
  *
- * Idempotent and non-destructive:
- * - already-`/img/...` values are returned unchanged
- * - `null` / `undefined` returns `null`
- * - any URL that is not one of *our* product-image objects (external URLs, other
- *   buckets such as line-chat-images / payment slips) is returned unchanged
+ * @deprecated Render the stored URL directly; this no longer transforms anything.
  */
 export function toProductImageCdnPath(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith(`${PRODUCT_IMAGE_CDN_PREFIX}/`)) return url;
-
-  const objectPath = getProductImageObjectPathFromPublicUrl(url);
-  if (!objectPath || !isProductImageObjectPath(objectPath)) {
-    return url;
-  }
-
-  const encoded = objectPath.split("/").map(encodeURIComponent).join("/");
-  return `${PRODUCT_IMAGE_CDN_PREFIX}/${encoded}`;
+  return url ?? null;
 }
 
 /**
- * Converts allowlisted public Supabase Storage URLs into same-origin CDN paths.
- * Private buckets and unrecognized public paths are returned unchanged.
+ * Identity pass-through. See {@link toProductImageCdnPath}.
+ *
+ * @deprecated Render the stored URL directly; this no longer transforms anything.
  */
 export function toPublicStorageCdnPath(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith(`${PRODUCT_IMAGE_CDN_PREFIX}/`)) return url;
-
-  for (const bucket of [PRODUCT_IMAGE_BUCKET, LINE_CHAT_IMAGE_BUCKET] as const) {
-    const marker = `/storage/v1/object/public/${bucket}/`;
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-    } catch {
-      return url;
-    }
-
-    const markerIndex = parsed.pathname.indexOf(marker);
-    if (markerIndex === -1) continue;
-
-    const encodedPath = parsed.pathname.slice(markerIndex + marker.length);
-    if (!encodedPath) return url;
-
-    let objectPath: string;
-    try {
-      objectPath = decodeURIComponent(encodedPath);
-    } catch {
-      objectPath = encodedPath;
-    }
-
-    const routePath =
-      bucket === LINE_CHAT_IMAGE_BUCKET ? `${LINE_CHAT_IMAGE_BUCKET}/${objectPath}` : objectPath;
-    const target = resolvePublicStorageCdnTarget(routePath);
-    if (!target) return url;
-
-    return `${PRODUCT_IMAGE_CDN_PREFIX}/${encodeCdnObjectPath(routePath)}`;
-  }
-
-  return url;
+  return url ?? null;
 }

@@ -29,8 +29,8 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.line-scdn.net",
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
-      // Allow images from self, Vercel Blob CDN, Supabase storage, analytics pixels, data URIs, and OpenStreetMap tiles
-      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.supabase.co https://*.supabase.in https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
+      // Allow images from self, Vercel Blob CDN, analytics pixels, data URIs, and OpenStreetMap tiles
+      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
       "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net https://nominatim.openstreetmap.org",
