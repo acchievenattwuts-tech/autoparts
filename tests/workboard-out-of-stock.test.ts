@@ -6,11 +6,11 @@ import {
   buildOutOfStockProductsWhere,
 } from "../app/admin/(protected)/workboard/out-of-stock-products";
 
-test("workboard out-of-stock product query matches active tracked zero-stock products", () => {
+test("workboard out-of-stock product query matches active tracked non-positive stock products", () => {
   assert.deepEqual(buildOutOfStockProductsWhere(), {
     isActive: true,
     inventoryTracking: "TRACKED",
-    stock: 0,
+    stock: { lte: 0 },
   });
 });
 

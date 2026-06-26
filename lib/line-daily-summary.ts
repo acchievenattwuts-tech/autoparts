@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
+import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
 import { queryDailyPaymentRows } from "@/lib/report-queries";
 import { getShopeeReportingSummary } from "@/lib/shopee/services/reporting";
@@ -1327,10 +1328,7 @@ export async function buildLineDailySummary(
     }).catch(() => 0),
     ),
     runSummaryStep("counts.outOfStockCount", () => db.product.count({
-      where: {
-        isActive: true,
-        stock: { lte: 0 },
-      },
+      where: buildOutOfStockProductsWhere(),
     })),
     runSummaryStep("counts.openClaimCount", () => db.warrantyClaim.count({
       where: {
