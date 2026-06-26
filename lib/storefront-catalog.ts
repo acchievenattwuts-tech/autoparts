@@ -38,7 +38,7 @@ export const getStorefrontProductFilters = unstable_cache(
 export const getStorefrontProductsLandingPageData = unstable_cache(
   async () => {
     const products = await db.product.findMany({
-      where: { isActive: true },
+      where: { isActive: true, isStorefrontVisible: true },
       select: {
         id: true,
         slug: true,
