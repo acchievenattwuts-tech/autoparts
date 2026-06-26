@@ -26,6 +26,7 @@ import {
   type LineReplyHistoryItem,
 } from "@/lib/line-ai-service";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
+import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
 import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
@@ -1131,10 +1132,15 @@ export async function processLineAiReply(
       input.route.intent === LineIntent.PURCHASE_INTENT ||
       input.route.intent === LineIntent.PRICE_NEGOTIATION;
     const shouldClassify = isTextTurn && !hardGuard;
+    // Space-split glued Thai+digit queries ("วาล์วโตโยต้า134" → "วาล์วโตโยต้า 134")
+    // before the AI/search pipeline reads them, so model-code/year anchors tokenize
+    // and the search guards engage. The raw input.text stays untouched for
+    // storage/echo/audit.
+    const processText = normalizeInboundLineQuery(input.text);
     const searchIntent = shouldClassify
       ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
           intent: input.route.intent,
-          latestText: input.text,
+          latestText: processText,
           history,
         }).catch(() => null)
       : null;
@@ -1201,7 +1207,7 @@ export async function processLineAiReply(
     const isNonProductTurn = group !== "product";
     const guardedSearch = isNonProductTurn
       ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardLineSearchIntent({ intent: searchIntent, latestText: input.text, history });
+      : guardLineSearchIntent({ intent: searchIntent, latestText: processText, history });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null
@@ -1395,8 +1401,8 @@ export async function processLineAiReply(
             partType: inquiryFrame.partType,
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
-            queryText: consolidatedQuery ?? input.text,
-            rawText: input.text,
+            queryText: consolidatedQuery ?? processText,
+            rawText: processText,
           }).catch((): LineFitmentFilters => ({}))
         : {};
 

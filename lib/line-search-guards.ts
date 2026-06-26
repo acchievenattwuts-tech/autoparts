@@ -83,6 +83,12 @@ export function guardLineSearchIntent(input: {
   const carBrandGrounded =
     lineValueHasCustomerEvidence(intent.carBrand, latestText, history) ||
     (carModelGrounded && Boolean(intent.carBrand) && Boolean(intent.carModel));
+  // The model year is a hard fitment filter, so a year the customer never typed
+  // (history-merged by the classifier from an EARLIER part inquiry) must be
+  // dropped just like an ungrounded brand/model — otherwise a stale "ปี08" pins a
+  // fresh query to the wrong year and hides valid matches.
+  const carYearGrounded =
+    intent.year !== null && lineValueHasCustomerEvidence(String(intent.year), latestText, history);
   const queryHasRequiredTokens = lineQueryContainsRequiredTokens(intent.query, requiredTokens);
   const forceLiteralQuery = !queryHasRequiredTokens || !carBrandGrounded || !carModelGrounded;
 
@@ -91,6 +97,7 @@ export function guardLineSearchIntent(input: {
       ...intent,
       carBrand: carBrandGrounded ? intent.carBrand : null,
       carModel: carModelGrounded ? intent.carModel : null,
+      year: carYearGrounded ? intent.year : null,
     },
     forceLiteralQuery,
     requiredTokens,
