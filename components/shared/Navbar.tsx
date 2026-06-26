@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X, Phone, Search } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-white">
@@ -140,7 +141,7 @@ const Navbar = ({
               href={lineUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#05a847]"
+              className={STOREFRONT_LINE_COMPACT_BUTTON_CLASS}
             >
               {LINE_ICON}
               LINE
@@ -176,7 +177,7 @@ const Navbar = ({
             href={lineUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-semibold text-white transition-colors"
+            className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} mt-3 py-3`}
           >
             {LINE_ICON}
             สั่งซื้อผ่าน LINE OA

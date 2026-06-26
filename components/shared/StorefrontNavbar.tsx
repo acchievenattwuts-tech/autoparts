@@ -4,6 +4,7 @@ import StorefrontSearchForm from "@/components/shared/StorefrontSearchForm";
 import StorefrontFilterTrigger from "@/components/shared/StorefrontFilterTrigger";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
+import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-white" aria-hidden="true">
@@ -30,13 +31,6 @@ const PHONE_ICON = (
       strokeLinejoin="round"
       d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72 12.9 12.9 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.22a2 2 0 0 1 2.11-.45 12.9 12.9 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
     />
-  </svg>
-);
-
-const SEARCH_ICON = (
-  <svg viewBox="0 0 24 24" className="h-[14px] w-[14px]" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="11" cy="11" r="7" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="m20 20-3.5-3.5" />
   </svg>
 );
 
@@ -129,7 +123,7 @@ const StorefrontNavbar = async ({
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#05a847]"
+                className={STOREFRONT_LINE_COMPACT_BUTTON_CLASS}
               >
                 {LINE_ICON}
                 LINE
@@ -166,7 +160,7 @@ const StorefrontNavbar = async ({
                   href={lineUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-3 flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-4 py-3 text-sm font-semibold text-white transition-colors"
+                  className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} mt-3 py-3`}
                 >
                   {LINE_ICON}
                   สั่งซื้อผ่าน LINE OA

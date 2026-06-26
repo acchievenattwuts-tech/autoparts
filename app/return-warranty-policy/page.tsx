@@ -21,6 +21,7 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 const SHOP_PHONE = "065-751-7873";
 const SHOP_LINE_ID = "@sriwanparts";
@@ -339,7 +340,7 @@ const ReturnWarrantyPolicyPage = async () => {
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
+                    className={STOREFRONT_LINE_PRIMARY_BUTTON_CLASS}
                   >
                     คุยผ่าน LINE OA
                   </a>

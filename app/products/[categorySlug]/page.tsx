@@ -18,6 +18,7 @@ import CharRise from "@/components/shared/CharRise";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { getCategorySeoDescription } from "@/lib/category-seo-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 import { knowledgeArticles } from "@/lib/knowledge-content";
@@ -191,7 +192,7 @@ const CategoryPage = async ({ params, searchParams }: Props) => {
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                    className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} px-4`}
                   >
                     สอบถามร้านทาง LINE
                   </a>

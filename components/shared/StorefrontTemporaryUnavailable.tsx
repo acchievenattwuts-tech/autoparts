@@ -4,6 +4,7 @@ import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 interface StorefrontTemporaryUnavailableProps {
   config?: SiteConfig | null;
@@ -46,7 +47,7 @@ export default function StorefrontTemporaryUnavailable({
                 href={resolvedConfig.shopLineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#05a847]"
+                className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} text-sm`}
               >
                 <MessageCircle className="h-4 w-4" />
                 ทัก LINE ร้าน

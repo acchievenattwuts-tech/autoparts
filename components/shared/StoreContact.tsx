@@ -1,5 +1,6 @@
 import { Clock, ExternalLink, Mail, MapPin, Phone } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 interface StoreContactProps {
   config: SiteConfig;
@@ -113,7 +114,7 @@ const StoreContact = ({ config }: StoreContactProps) => {
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-[#06C755] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#05a847]"
+                    className={STOREFRONT_LINE_COMPACT_BUTTON_CLASS}
                   >
                     ติดต่อผ่าน LINE
                   </a>

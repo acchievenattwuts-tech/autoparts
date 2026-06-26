@@ -22,6 +22,7 @@ import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getPublicStorefrontAboutStats } from "@/lib/storefront-about";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
@@ -209,7 +210,7 @@ const AboutPage = async () => {
                     href={config.shopLineUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
+                    className={STOREFRONT_LINE_PRIMARY_BUTTON_CLASS}
                   >
                     คุยผ่าน LINE OA
                   </a>

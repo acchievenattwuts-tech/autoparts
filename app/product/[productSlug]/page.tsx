@@ -24,6 +24,7 @@ import ProductJsonLd from "@/components/seo/ProductJsonLd";
 import { absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { knowledgeArticles } from "@/lib/knowledge-content";
 import {
   extractProductIdFromSlug,
@@ -467,7 +468,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                         href={config.shopLineUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="sf-shine inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#06C755] px-5 py-3 font-bold text-white transition hover:bg-[#05a847]"
+                        className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} flex-1 font-bold`}
                       >
                         <MessageCircle className="h-4 w-4" />
                         สอบถามผ่าน LINE OA

@@ -4,6 +4,7 @@ import { Phone, MapPin, Clock, ExternalLink } from "lucide-react";
 import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { STOREFRONT_LINE_ICON_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 interface FooterProps {
   config?: Partial<SiteConfig>;
@@ -62,7 +63,7 @@ const Footer = ({ config }: FooterProps) => {
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#06C755] transition-opacity hover:opacity-80"
+                className={`${STOREFRONT_LINE_ICON_BUTTON_CLASS} h-9 w-9`}
                 aria-label="LINE OA"
               >
                 <svg viewBox="0 0 24 24" className="h-5 w-5 fill-white">

@@ -10,6 +10,7 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -174,7 +175,7 @@ const FaqPage = async () => {
                 href={config.shopLineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center rounded-full bg-[#06C755] px-5 py-3 font-semibold text-white transition hover:bg-[#05a847]"
+                className={STOREFRONT_LINE_PRIMARY_BUTTON_CLASS}
               >
                 สอบถามผ่าน LINE OA
               </a>

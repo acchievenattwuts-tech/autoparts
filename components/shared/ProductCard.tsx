@@ -8,6 +8,7 @@ import { MessageCircle } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
 import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
+import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 type ProductForCard = {
   id: string;
@@ -155,7 +156,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="sf-shine flex items-center justify-center gap-1.5 rounded-full bg-[#06C755] px-3 py-2.5 text-[11px] font-semibold text-white shadow-sm transition-all hover:scale-[1.02] hover:bg-[#05a847] hover:shadow-md sm:px-4 sm:text-xs"
+                className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} gap-1.5 px-3 py-2.5 text-[11px] sm:px-4 sm:text-xs`}
               >
                 <MessageCircle size={11} />
                 สอบถาม

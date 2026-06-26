@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, MessageCircleMore, Phone, ShieldCheck, Truck } from "lucide-react";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
+import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 interface HeroShowcaseProps {
   lineUrl?: string;
@@ -83,7 +84,7 @@ const HeroShowcase = ({
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="sf-shine inline-flex items-center justify-center gap-2 rounded-full bg-[#4d6fba] px-6 py-3.5 font-semibold text-white shadow-lg shadow-[#4d6fba]/25 transition hover:-translate-y-0.5 hover:bg-[#3f5fa5]"
+                className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} px-6 py-3.5`}
               >
                 ปรึกษาทาง LINE
                 <MessageCircleMore className="h-4 w-4" />
