@@ -23,6 +23,14 @@ export type LineFitmentFilterInput = {
    * resolved normally — only the part-category hard filter is skipped.
    */
   queryText?: string | null;
+  /**
+   * The RAW, unedited customer text. The AI's `partType`/`queryText` may drop a
+   * colloquial signal ("พัดลมโบ" → "พัดลม") or inject a word the customer never
+   * typed ("พัดลมหม้อน้ำ"), which mis-routes the category. Matching the alias
+   * table against the raw text too keeps a precise customer keyword (e.g.
+   * "พัดลมโบ" → Blower Motor) effective regardless of how the AI rewrote it.
+   */
+  rawText?: string | null;
 };
 
 export type LineFitmentFilters = {
@@ -183,9 +191,12 @@ export async function resolveLineFitmentFilters(
   const carModel = trimOrNull(input.carModel);
   const partType = trimOrNull(input.partType);
   const queryText = trimOrNull(input.queryText);
+  const rawText = trimOrNull(input.rawText);
 
   const filters: LineFitmentFilters = {};
-  const aliasMatch = await matchDbCategoryAlias([partType, queryText]);
+  // Include the raw customer text so a precise spoken keyword still resolves even
+  // when the AI's partType/consolidated query dropped or rewrote it.
+  const aliasMatch = await matchDbCategoryAlias([partType, queryText, rawText]);
 
   // Skip the part-category hard filter for accessory/chemical intents. Checked
   // against BOTH partType AND the full query text, so it triggers even when the
@@ -194,7 +205,7 @@ export async function resolveLineFitmentFilters(
   // unaffected.
   const skipCategory =
     aliasMatch?.kind === "SKIP_CATEGORY" ||
-    isAccessoryOrChemicalIntent([partType, queryText].filter(Boolean).join(" "));
+    isAccessoryOrChemicalIntent([partType, queryText, rawText].filter(Boolean).join(" "));
 
   // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
   // fall back to a direct equals/contains on the spoken part-type.

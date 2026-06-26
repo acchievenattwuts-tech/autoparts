@@ -875,6 +875,9 @@ async function respondMultiSubject(
       carBrand: subject.carBrand,
       carModel: subject.carModel,
       queryText: subject.query || subject.partType,
+      // NOTE: do NOT pass the whole-turn raw text here — in the multi-subject path
+      // it contains every subject's keyword, which would let one subject match
+      // another's (higher-priority) category alias and break subject isolation.
     }).catch((): LineFitmentFilters => ({}));
     const key = (fitment.categoryName ?? subject.partType ?? "").trim().toLowerCase();
     if (!key || byKey.has(key)) continue;
@@ -1393,6 +1396,7 @@ export async function processLineAiReply(
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
             queryText: consolidatedQuery ?? input.text,
+            rawText: input.text,
           }).catch((): LineFitmentFilters => ({}))
         : {};
 
