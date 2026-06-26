@@ -73,6 +73,7 @@ async function loadProductOptions(ids: string[]): Promise<PurchaseProductOption[
       inventoryTracking: true,
       isLotControl: true,
       requireExpiryDate: true,
+      isActive: true,
       category: { select: { name: true } },
       brand: { select: { name: true } },
       aliases: { select: { alias: true } },
@@ -103,6 +104,7 @@ async function loadProductOptions(ids: string[]): Promise<PurchaseProductOption[
         })),
         isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
         requireExpiryDate: product.requireExpiryDate,
+        isActive: product.isActive,
       },
     ]),
   );

@@ -21,7 +21,10 @@ import {
   matchPurchaseOcrLines,
   requestPurchaseOcrUpload,
 } from "../ocr-actions";
-import type { PurchaseProductOption } from "../purchase-form-data";
+import {
+  choosePurchaseOcrAutoSelectedProductId,
+  type PurchaseProductOption,
+} from "../purchase-form-data";
 
 const ACCEPTED_FILE_TYPES = "image/*,application/pdf";
 const isPdf = (file: File) => file.type === "application/pdf";
@@ -233,8 +236,9 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
         const next = { ...prev };
         matches.forEach((match, j) => {
           const idx = i + j;
-          if (match.candidates[0] && next[idx] === undefined) {
-            next[idx] = match.candidates[0].id;
+          const productId = choosePurchaseOcrAutoSelectedProductId(match.candidates);
+          if (productId && next[idx] === undefined) {
+            next[idx] = productId;
           }
         });
         return next;

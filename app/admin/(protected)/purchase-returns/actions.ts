@@ -48,6 +48,7 @@ const purchaseReturnProductOptionSelect = {
   costPrice: true,
   inventoryTracking: true,
   isLotControl: true,
+  isActive: true,
   category: { select: { name: true } },
   brand: { select: { name: true } },
   aliases: { select: { alias: true } },
@@ -66,6 +67,7 @@ type PurchaseReturnProductOption = {
   costPrice: number;
   inventoryTracking: string;
   isLotControl: boolean;
+  isActive: boolean;
   categoryName: string;
   brandName: string | null;
   aliases: string[];
@@ -169,6 +171,7 @@ function serializePurchaseReturnProductOption(product: {
   costPrice: unknown;
   inventoryTracking: string;
   isLotControl: boolean;
+  isActive: boolean;
   category: { name: string };
   brand: { name: string } | null;
   aliases: { alias: string }[];
@@ -183,6 +186,7 @@ function serializePurchaseReturnProductOption(product: {
     costPrice: Number(product.costPrice),
     inventoryTracking: product.inventoryTracking,
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    isActive: product.isActive,
     categoryName: product.category.name,
     brandName: product.brand?.name ?? null,
     aliases: product.aliases.map((alias) => alias.alias),
@@ -209,7 +213,6 @@ export async function searchPurchaseReturnProducts(query: string) {
 
   const searchResult = await searchProductIds({
     query: normalizedQuery,
-    isActive: true,
     take: 20,
     cacheProfile: "admin",
   });
@@ -1279,6 +1282,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
               costPrice: true,
               inventoryTracking: true,
               isLotControl: true,
+              isActive: true,
               purchaseUnitName: true,
               category: { select: { name: true } },
               brand: { select: { name: true } },

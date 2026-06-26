@@ -8,7 +8,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
-import { activeOrReferencedWhere, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewSalePage = async () => {
@@ -16,10 +16,10 @@ const NewSalePage = async () => {
 
   const [rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
     db.product.findMany({
-      where: activeOrReferencedWhere(),
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true, salePrice: true, saleUnitName: true,
+        isActive: true,
         warrantyDays: true, preferredSupplierId: true, inventoryTracking: true, isLotControl: true,
         lotIssueMethod: true, allowExpiredIssue: true,
         category: { select: { name: true } }, brand: { select: { name: true } },
@@ -43,6 +43,7 @@ const NewSalePage = async () => {
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     lotIssueMethod: product.lotIssueMethod as string,
     allowExpiredIssue: product.allowExpiredIssue,
+    isActive: product.isActive,
   }));
 
   return (

@@ -9,7 +9,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
-import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -48,11 +48,8 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
   if (!ret) notFound();
   if (ret.status === "CANCELLED") redirect(`/admin/purchase-returns/${id}`);
 
-  const currentProductIds = [...new Set(ret.items.map((item) => item.productId))];
-
   const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
-          where: activeOrReferencedWhere(currentProductIds),
           orderBy: { code: "asc" },
           select: {
             id: true, code: true, name: true, description: true, avgCost: true, costPrice: true, isActive: true,

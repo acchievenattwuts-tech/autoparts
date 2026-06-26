@@ -1,0 +1,61 @@
+import {
+  getAdminActiveBadgeTone,
+  getAdminMasterRowClass,
+} from "@/lib/admin-status-presentation";
+import { cn } from "@/lib/utils";
+
+type ProductSearchBadgeTone = "success" | "danger";
+
+export type ProductSearchOptionLike = {
+  code: string;
+  name: string;
+  description?: string | null;
+  categoryName: string;
+  brandName?: string | null;
+  aliases?: string[];
+  isActive?: boolean;
+};
+
+export function filterProductSearchOptions<T extends ProductSearchOptionLike>(
+  products: T[],
+  query: string,
+  maxResults: number,
+): T[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  return products
+    .filter((product) => {
+      return (
+        product.code.toLowerCase().includes(normalizedQuery) ||
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        (product.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        (product.brandName?.toLowerCase().includes(normalizedQuery) ?? false) ||
+        product.categoryName.toLowerCase().includes(normalizedQuery) ||
+        (product.aliases?.some((alias) => alias.toLowerCase().includes(normalizedQuery)) ?? false)
+      );
+    })
+    .slice(0, maxResults);
+}
+
+export function getProductSearchOptionState(
+  product: ProductSearchOptionLike,
+  selected: boolean,
+): {
+  disabled: boolean;
+  badgeLabel: string;
+  badgeTone: ProductSearchBadgeTone;
+  rowClassName: string;
+} {
+  const isActive = product.isActive !== false;
+  return {
+    disabled: !isActive,
+    badgeLabel: isActive ? "ใช้งาน" : "ปิดใช้งาน",
+    badgeTone: getAdminActiveBadgeTone(isActive),
+    rowClassName: cn(
+      getAdminMasterRowClass(isActive),
+      selected ? "ring-1 ring-inset ring-sky-300/70 dark:ring-sky-400/40" : null,
+      !isActive ? "cursor-not-allowed opacity-85" : null,
+    ),
+  };
+}

@@ -59,6 +59,7 @@ const saleProductOptionSelect = {
   isLotControl:        true,
   lotIssueMethod:      true,
   allowExpiredIssue:   true,
+  isActive:            true,
   category:            { select: { name: true } },
   brand:               { select: { name: true } },
   aliases:             { select: { alias: true } },
@@ -80,7 +81,6 @@ export async function searchSaleProducts(query: string) {
 
   const searchResult = await searchProductIds({
     query: normalizedQuery,
-    isActive: true,
     take: 20,
     cacheProfile: "admin",
   });
@@ -108,6 +108,7 @@ export async function searchSaleProducts(query: string) {
     isLotControl:          isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     lotIssueMethod:        product.lotIssueMethod as string,
     allowExpiredIssue:     product.allowExpiredIssue,
+    isActive:              product.isActive,
   }));
 }
 

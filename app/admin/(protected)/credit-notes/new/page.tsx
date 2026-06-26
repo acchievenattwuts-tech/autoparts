@@ -16,11 +16,11 @@ const NewCreditNotePage = async () => {
 
   const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true },
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true,
         salePrice: true, saleUnitName: true, inventoryTracking: true, isLotControl: true,
+        isActive: true,
         category: { select: { name: true } },
         brand:    { select: { name: true } },
         aliases:  { select: { alias: true } },
@@ -39,6 +39,7 @@ const NewCreditNotePage = async () => {
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
     units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
+    isActive: p.isActive,
   }));
 
   return (

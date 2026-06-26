@@ -16,6 +16,13 @@ export interface PurchaseProductOption {
   units: { name: string; scale: number; isBase: boolean }[];
   isLotControl: boolean;
   requireExpiryDate: boolean;
+  isActive?: boolean;
+}
+
+export function choosePurchaseOcrAutoSelectedProductId(
+  candidates: Pick<PurchaseProductOption, "id" | "isActive">[],
+): string | null {
+  return candidates.find((candidate) => candidate.isActive !== false)?.id ?? null;
 }
 
 export interface PurchaseFormLotItem {

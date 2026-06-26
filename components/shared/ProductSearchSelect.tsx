@@ -5,6 +5,11 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import {
+  filterProductSearchOptions,
+  getProductSearchOptionState,
+} from "@/lib/product-search-select-presentation";
 
 export interface SearchableProduct {
   id: string;
@@ -60,20 +65,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   const trimmedQuery = query.trim();
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
   const localResults = isQueryReady
-    ? products
-        .filter((product) => product.isActive !== false)
-        .filter((product) => {
-          const normalizedQuery = trimmedQuery.toLowerCase();
-          return (
-            product.code.toLowerCase().includes(normalizedQuery) ||
-            product.name.toLowerCase().includes(normalizedQuery) ||
-            (product.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
-            (product.brandName?.toLowerCase().includes(normalizedQuery) ?? false) ||
-            product.categoryName.toLowerCase().includes(normalizedQuery) ||
-            (product.aliases?.some((alias) => alias.toLowerCase().includes(normalizedQuery)) ?? false)
-          );
-        })
-        .slice(0, MAX_RESULTS)
+    ? filterProductSearchOptions(products, trimmedQuery, MAX_RESULTS)
     : [];
   const filtered = searchProducts
     ? isLoading && localResults.length > 0
@@ -144,6 +136,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   };
 
   const handleSelect = (product: T) => {
+    if (product.isActive === false) return;
     onChange(product.id);
     onProductSelect?.(product);
     setQuery("");
@@ -224,28 +217,41 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         ) : filtered.length === 0 ? (
           <p className={dropdownMessageClassName}>ไม่พบสินค้า</p>
         ) : (
-          filtered.map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => handleSelect(product)}
-              className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
-                product.id === value ? selectedOptionClassName : defaultOptionClassName
-              }`}
-            >
-              <span className={`font-mono text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
-                [{product.code}]
-              </span>{" "}
-              <span className="font-medium">{product.name}</span>
-              {(product.categoryName || product.brandName) && (
-                <span className={`mt-0.5 ml-0.5 block text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
-                  {product.categoryName}
-                  {product.brandName ? ` · ${product.brandName}` : ""}
+          filtered.map((product) => {
+            const selectedOption = product.id === value;
+            const optionState = getProductSearchOptionState(product, selectedOption);
+            return (
+              <button
+                key={product.id}
+                type="button"
+                disabled={optionState.disabled}
+                aria-disabled={optionState.disabled}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => handleSelect(product)}
+                className={`w-full px-3 py-2.5 text-left text-sm transition-colors disabled:pointer-events-auto ${
+                  selectedOption ? selectedOptionClassName : defaultOptionClassName
+                } ${optionState.rowClassName}`}
+              >
+                <span className="flex min-w-0 items-start justify-between gap-2">
+                  <span className="min-w-0">
+                    <span className={`font-mono text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                      [{product.code}]
+                    </span>{" "}
+                    <span className="font-medium">{product.name}</span>
+                  </span>
+                  <AdminStatusBadge tone={optionState.badgeTone} className="shrink-0 px-2 py-0 text-[11px] leading-4">
+                    {optionState.badgeLabel}
+                  </AdminStatusBadge>
                 </span>
-              )}
-            </button>
-          ))
+                {(product.categoryName || product.brandName) && (
+                  <span className={`mt-0.5 ml-0.5 block text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                    {product.categoryName}
+                    {product.brandName ? ` · ${product.brandName}` : ""}
+                  </span>
+                )}
+              </button>
+            );
+          })
         )}
       </div>
     </div>

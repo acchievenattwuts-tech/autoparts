@@ -10,7 +10,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import PurchaseForm from "../../new/PurchaseForm";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
-import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionSuppliers } from "@/lib/transaction-options";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchases.update");
@@ -42,9 +42,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   if (purchase.status === "CANCELLED") redirect(`/admin/purchases/${id}`);
 
   const suppliers = await getTransactionSuppliers([purchase.supplierId]);
-  const purchaseProductIds = [...new Set(purchase.items.map((item) => item.productId))];
   const rawProducts = await db.product.findMany({
-        where: activeOrReferencedWhere(purchaseProductIds),
         orderBy: { code: "asc" },
         select: {
           id: true, code: true, name: true, description: true, isActive: true,

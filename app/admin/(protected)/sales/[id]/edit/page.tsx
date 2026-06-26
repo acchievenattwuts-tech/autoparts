@@ -10,7 +10,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
-import { activeOrReferencedWhere, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -46,7 +46,6 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
   const [rawProducts, customers, suppliers] = await Promise.all([
     db.product.findMany({
-          where: activeOrReferencedWhere(saleProductIds),
           orderBy: { code: "asc" },
           select: {
             id: true, code: true, name: true, description: true, isActive: true,

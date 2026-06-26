@@ -38,6 +38,7 @@ const creditNoteProductOptionSelect = {
   saleUnitName: true,
   inventoryTracking: true,
   isLotControl: true,
+  isActive: true,
   category: { select: { name: true } },
   brand: { select: { name: true } },
   aliases: { select: { alias: true } },
@@ -56,6 +57,7 @@ type CreditNoteProductOption = {
   saleUnitName: string;
   inventoryTracking: string;
   isLotControl: boolean;
+  isActive: boolean;
   categoryName: string;
   brandName: string | null;
   aliases: string[];
@@ -71,6 +73,7 @@ function serializeCreditNoteProductOption(product: {
   saleUnitName: string | null;
   inventoryTracking: string;
   isLotControl: boolean;
+  isActive: boolean;
   category: { name: string };
   brand: { name: string } | null;
   aliases: { alias: string }[];
@@ -85,6 +88,7 @@ function serializeCreditNoteProductOption(product: {
     saleUnitName: product.saleUnitName ?? "",
     inventoryTracking: product.inventoryTracking,
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    isActive: product.isActive,
     categoryName: product.category.name,
     brandName: product.brand?.name ?? null,
     aliases: product.aliases.map((alias) => alias.alias),
@@ -111,7 +115,6 @@ export async function searchCreditNoteProducts(query: string) {
 
   const searchResult = await searchProductIds({
     query: normalizedQuery,
-    isActive: true,
     take: 20,
     cacheProfile: "admin",
   });
@@ -1167,6 +1170,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
               saleUnitName: true,
               inventoryTracking: true,
               isLotControl: true,
+              isActive: true,
               category: { select: { name: true } },
               brand: { select: { name: true } },
               aliases: { select: { alias: true } },

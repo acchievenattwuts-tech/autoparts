@@ -10,7 +10,7 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
 import { getThailandDateKey } from "@/lib/th-date";
-import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchaseReturnPage = async ({
@@ -65,7 +65,6 @@ const NewPurchaseReturnPage = async ({
 
   const [productRows, supplierOptions] = await Promise.all([
     db.product.findMany({
-      where: activeOrReferencedWhere([linkedClaim?.warranty.productId]),
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true, avgCost: true, costPrice: true, isActive: true,

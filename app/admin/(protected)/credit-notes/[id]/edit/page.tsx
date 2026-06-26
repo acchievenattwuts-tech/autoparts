@@ -10,7 +10,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
-import { activeOrReferencedWhere, getTransactionCustomers } from "@/lib/transaction-options";
+import { getTransactionCustomers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -38,13 +38,8 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
 
-  const currentProductIds = [
-    ...new Set(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
-  ];
-
   const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
-          where: activeOrReferencedWhere(currentProductIds),
           orderBy: { code: "asc" },
           select: {
             id: true, code: true, name: true, description: true, isActive: true,

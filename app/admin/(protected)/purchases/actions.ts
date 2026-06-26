@@ -39,6 +39,7 @@ const purchaseProductOptionSelect = {
   inventoryTracking: true,
   isLotControl: true,
   requireExpiryDate: true,
+  isActive: true,
   category: { select: { name: true } },
   brand:    { select: { name: true } },
   aliases:  { select: { alias: true } },
@@ -59,7 +60,6 @@ export async function searchPurchaseProducts(query: string) {
 
   const searchResult = await searchProductIds({
     query: normalizedQuery,
-    isActive: true,
     take: 20,
     cacheProfile: "admin",
   });
@@ -83,6 +83,7 @@ export async function searchPurchaseProducts(query: string) {
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     requireExpiryDate: product.requireExpiryDate,
+    isActive: product.isActive,
   }));
 }
 

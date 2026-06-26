@@ -21,6 +21,7 @@ interface ProductOption {
   stock: number;
   costPrice: number;
   salePrice: number;
+  isActive?: boolean;
   isLotControl: boolean;
   requireExpiryDate: boolean;
   lotIssueMethod: string;

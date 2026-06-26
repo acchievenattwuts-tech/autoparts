@@ -34,7 +34,7 @@ const AdjustmentsPage = async ({
 
   const [products, adjustments] = await Promise.all([
     db.product.findMany({
-      where: { isActive: true, inventoryTracking: INVENTORY_TRACKING_TRACKED },
+      where: { inventoryTracking: INVENTORY_TRACKING_TRACKED },
       orderBy: { code: "asc" },
       select: {
         id:          true,
@@ -44,6 +44,7 @@ const AdjustmentsPage = async ({
         stock:       true,
         costPrice:   true,
         salePrice:   true,
+        isActive:    true,
         isLotControl:      true,
         requireExpiryDate: true,
         lotIssueMethod:    true,
@@ -90,6 +91,7 @@ const AdjustmentsPage = async ({
     stock:       p.stock,
     costPrice:   Number(p.costPrice),
     salePrice:   Number(p.salePrice),
+    isActive:    p.isActive,
     isLotControl:      p.isLotControl,
     requireExpiryDate: p.requireExpiryDate,
     lotIssueMethod:    p.lotIssueMethod,

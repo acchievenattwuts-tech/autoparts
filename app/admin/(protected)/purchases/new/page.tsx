@@ -8,7 +8,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseForm from "./PurchaseForm";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
-import { activeOrReferencedWhere, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchasePage = async () => {
@@ -16,11 +16,10 @@ const NewPurchasePage = async () => {
 
   const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
-      where: activeOrReferencedWhere(),
       orderBy: { code: "asc" },
       select: {
         id: true, code: true, name: true, description: true, purchaseUnitName: true, costPrice: true,
-        inventoryTracking: true, isLotControl: true, requireExpiryDate: true,
+        inventoryTracking: true, isLotControl: true, requireExpiryDate: true, isActive: true,
         category: { select: { name: true } }, brand: { select: { name: true } },
         aliases: { select: { alias: true } },
         units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
@@ -38,6 +37,7 @@ const NewPurchasePage = async () => {
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     requireExpiryDate: product.requireExpiryDate,
+    isActive: product.isActive,
   }));
 
   return (
