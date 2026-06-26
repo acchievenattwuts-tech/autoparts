@@ -15,7 +15,14 @@ import {
 } from "@/lib/category-visual-config";
 import type { Category } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
-import { createCategory, createCategoryAlias, toggleCategory, toggleCategoryAlias, updateCategory } from "./actions";
+import {
+  createCategory,
+  createCategoryAlias,
+  toggleCategory,
+  toggleCategoryAlias,
+  updateCategory,
+  updateCategoryAlias,
+} from "./actions";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
@@ -153,6 +160,7 @@ const AliasManager = ({
   canUpdate: boolean;
 }) => {
   const [error, setError] = useState<string>("");
+  const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleCreateAlias = (formData: FormData) => {
@@ -160,6 +168,18 @@ const AliasManager = ({
     startTransition(async () => {
       const result = await createCategoryAlias(category.id, formData);
       if (result.error) setError(result.error);
+    });
+  };
+
+  const handleUpdateAlias = (aliasId: string, formData: FormData) => {
+    setError("");
+    startTransition(async () => {
+      const result = await updateCategoryAlias(aliasId, formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setEditingAliasId(null);
+      }
     });
   };
 
@@ -181,7 +201,9 @@ const AliasManager = ({
             <span
               key={alias.id}
               className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${
-                alias.isActive
+                editingAliasId === alias.id
+                  ? "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200"
+                  : alias.isActive
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200"
                   : "border-gray-200 bg-white text-gray-400 dark:border-white/10 dark:bg-slate-950 dark:text-slate-500"
               }`}
@@ -192,21 +214,95 @@ const AliasManager = ({
               <span>{MATCH_MODE_LABELS[alias.matchMode]}</span>
               <span>p{alias.priority}</span>
               {canUpdate && (
-                <button
-                  type="button"
-                  onClick={() => handleToggleAlias(alias.id, !alias.isActive)}
-                  disabled={isPending}
-                  className="rounded-full px-1.5 py-0.5 text-[11px] font-medium text-[#1e3a5f] hover:bg-white disabled:opacity-60 dark:text-sky-200 dark:hover:bg-white/10"
-                >
-                  {alias.isActive ? "ปิด" : "เปิด"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingAliasId((current) => (current === alias.id ? null : alias.id))
+                    }
+                    disabled={isPending}
+                    className="rounded-full px-1.5 py-0.5 text-[11px] font-medium text-[#1e3a5f] hover:bg-white disabled:opacity-60 dark:text-sky-200 dark:hover:bg-white/10"
+                  >
+                    {editingAliasId === alias.id ? "ปิดแก้ไข" : "แก้ไข"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAlias(alias.id, !alias.isActive)}
+                    disabled={isPending}
+                    className="rounded-full px-1.5 py-0.5 text-[11px] font-medium text-[#1e3a5f] hover:bg-white disabled:opacity-60 dark:text-sky-200 dark:hover:bg-white/10"
+                  >
+                    {alias.isActive ? "ปิด" : "เปิด"}
+                  </button>
+                </>
               )}
             </span>
           ))
         )}
       </div>
 
-      {canUpdate && (
+      {canUpdate &&
+        editingAliasId &&
+        (() => {
+          const editing = category.aliases.find((alias) => alias.id === editingAliasId);
+          if (!editing) return null;
+          return (
+            <form
+              key={editing.id}
+              action={(formData) => handleUpdateAlias(editing.id, formData)}
+              className="grid gap-2 rounded-lg border border-sky-200 bg-sky-50/60 p-2 md:grid-cols-[minmax(160px,1fr)_140px_130px_90px_minmax(160px,1fr)_auto_auto] dark:border-sky-400/20 dark:bg-sky-400/5"
+            >
+              <input
+                type="text"
+                name="alias"
+                defaultValue={editing.alias}
+                placeholder="alias เช่น radiator hose"
+                required
+                className={inputClassName}
+              />
+              <select name="kind" defaultValue={editing.kind} className={selectClassName}>
+                <option value="MATCH">จับคู่หมวด</option>
+                <option value="SKIP_CATEGORY">ข้ามหมวด</option>
+              </select>
+              <select name="matchMode" defaultValue={editing.matchMode} className={selectClassName}>
+                <option value="CONTAINS">มีคำนี้</option>
+                <option value="EXACT">ตรงทั้งคำ</option>
+                <option value="TOKEN">ตรง token</option>
+              </select>
+              <input
+                type="number"
+                name="priority"
+                defaultValue={editing.priority}
+                min={0}
+                max={1000}
+                className={inputClassName}
+              />
+              <input
+                type="text"
+                name="notes"
+                defaultValue={editing.notes ?? ""}
+                placeholder="หมายเหตุ"
+                className={inputClassName}
+              />
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-lg bg-[#1e3a5f] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
+              >
+                บันทึก
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingAliasId(null)}
+                disabled={isPending}
+                className="rounded-lg bg-gray-200 px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+              >
+                ยกเลิก
+              </button>
+            </form>
+          );
+        })()}
+
+      {canUpdate && !editingAliasId && (
         <form action={handleCreateAlias} className="grid gap-2 md:grid-cols-[minmax(160px,1fr)_140px_130px_90px_minmax(160px,1fr)_auto]">
           <input
             type="text"

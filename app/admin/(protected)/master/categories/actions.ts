@@ -69,8 +69,6 @@ const refreshCategorySearchCaches = async ({
   });
 };
 
-void refreshCategorySearchCaches;
-
 async function getCategoryAuditSnapshot(id: string) {
   return db.category.findUnique({
     where: { id },
@@ -344,9 +342,72 @@ export const createCategoryAlias = async (
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
+    await refreshCategorySearchCaches({ categoryId });
     return {};
   } catch {
     return { error: "ไม่สามารถเพิ่ม alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
+  }
+};
+
+export const updateCategoryAlias = async (
+  id: string,
+  formData: FormData,
+): Promise<{ error?: string }> => {
+  const session = await requirePermission("master.update").catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
+  const parsed = categoryAliasSchema.safeParse({
+    alias: formData.get("alias"),
+    kind: formData.get("kind"),
+    matchMode: formData.get("matchMode"),
+    priority: formData.get("priority"),
+    notes: formData.get("notes"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const requestContext = await getRequestContext();
+  const { alias, kind, matchMode, priority, notes } = parsed.data;
+  const normalizedNotes = notes?.trim() || null;
+
+  try {
+    const beforeSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (!beforeSnapshot) return { error: "ไม่พบ alias นี้" };
+
+    await db.categoryAlias.update({
+      where: { id },
+      data: { alias, kind, matchMode, priority, notes: normalizedNotes },
+    });
+
+    const afterSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CategoryAlias",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.alias,
+        before: diff.before,
+        after: diff.after,
+      });
+    }
+
+    invalidateCategoryAliasCache();
+    revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
+    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
+    return {};
+  } catch {
+    return { error: "ไม่สามารถแก้ไข alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
   }
 };
 
@@ -387,6 +448,7 @@ export const toggleCategoryAlias = async (
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
+    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
     return {};
   } catch {
     return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };
