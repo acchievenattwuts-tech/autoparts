@@ -46,6 +46,9 @@ export function getProductSearchOptionState(
   badgeLabel: string;
   badgeTone: ProductSearchBadgeTone;
   rowClassName: string;
+  primaryTextClassName: string;
+  secondaryTextClassName: string;
+  codeTextClassName: string;
 } {
   const isActive = product.isActive !== false;
   return {
@@ -57,5 +60,8 @@ export function getProductSearchOptionState(
       selected ? "ring-1 ring-inset ring-sky-300/70 dark:ring-sky-400/40" : null,
       !isActive ? "cursor-not-allowed opacity-85" : null,
     ),
+    primaryTextClassName: isActive ? "" : "text-rose-900 dark:text-rose-50",
+    secondaryTextClassName: isActive ? "" : "text-rose-700 dark:text-rose-100/90",
+    codeTextClassName: isActive ? "" : "text-rose-700 dark:text-rose-200",
   };
 }

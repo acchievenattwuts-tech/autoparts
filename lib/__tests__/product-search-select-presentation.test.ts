@@ -50,4 +50,7 @@ test("product dropdown marks inactive options as disabled with inactive row styl
   assert.equal(inactiveState.badgeTone, "danger");
   assert.match(inactiveState.rowClassName, /rose/);
   assert.match(inactiveState.rowClassName, /cursor-not-allowed/);
+  assert.match(inactiveState.primaryTextClassName, /dark:text-rose-50/);
+  assert.match(inactiveState.secondaryTextClassName, /dark:text-rose-100/);
+  assert.match(inactiveState.codeTextClassName, /dark:text-rose-200/);
 });

@@ -233,8 +233,12 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
                 } ${optionState.rowClassName}`}
               >
                 <span className="flex min-w-0 items-start justify-between gap-2">
-                  <span className="min-w-0">
-                    <span className={`font-mono text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                  <span className={`min-w-0 ${optionState.primaryTextClassName}`}>
+                    <span
+                      className={`font-mono text-xs ${
+                        optionState.codeTextClassName || (isDark ? "text-slate-400" : "text-gray-400")
+                      }`}
+                    >
                       [{product.code}]
                     </span>{" "}
                     <span className="font-medium">{product.name}</span>
@@ -244,7 +248,11 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
                   </AdminStatusBadge>
                 </span>
                 {(product.categoryName || product.brandName) && (
-                  <span className={`mt-0.5 ml-0.5 block text-xs ${isDark ? "text-slate-400" : "text-gray-400"}`}>
+                  <span
+                    className={`mt-0.5 ml-0.5 block text-xs ${
+                      optionState.secondaryTextClassName || (isDark ? "text-slate-400" : "text-gray-400")
+                    }`}
+                  >
                     {product.categoryName}
                     {product.brandName ? ` · ${product.brandName}` : ""}
                   </span>
