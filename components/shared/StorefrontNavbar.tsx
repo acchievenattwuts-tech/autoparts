@@ -78,14 +78,14 @@ const StorefrontNavbar = async ({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between gap-4">
             <Link href="/" className="flex shrink-0 items-center gap-3">
-              <div className="inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e3a5f]/10 bg-white shadow-sm">
+              <div className="inline-flex h-11 w-11 items-center justify-center overflow-hidden">
                 {shopLogoUrl ? (
-                  <div className="relative h-8 w-8">
+                  <div className="relative h-10 w-10">
                     <Image
                       src={shopLogoSrc}
                       alt={`${shopName} logo`}
                       fill
-                      sizes="32px"
+                      sizes="40px"
                       className="object-contain"
                     />
                   </div>

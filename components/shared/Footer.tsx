@@ -36,14 +36,14 @@ const Footer = ({ config }: FooterProps) => {
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:items-start lg:justify-between">
           <div>
             <div className="mb-5 flex items-center gap-3">
-              <div className="inline-flex h-14 w-14 items-center justify-center overflow-hidden rounded-[18px] border border-white/10 bg-white shadow-sm">
+              <div className="inline-flex h-14 w-14 items-center justify-center overflow-hidden">
                 {shopLogoUrl ? (
-                  <div className="relative h-10 w-10">
+                  <div className="relative h-[52px] w-[52px]">
                     <Image
                       src={shopLogoSrc}
                       alt={`${shopName} logo`}
                       fill
-                      sizes="40px"
+                      sizes="52px"
                       className="object-contain"
                     />
                   </div>
