@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 
 const PRODUCTS_PER_PAGE = 24;
+const STOREFRONT_LANDING_REVALIDATE_SECONDS = 1800;
 
 export const getStorefrontProductFilters = unstable_cache(
   async () => {
@@ -35,9 +36,9 @@ export const getStorefrontProductFilters = unstable_cache(
   { tags: ["storefront-product-filters"], revalidate: 300 },
 );
 
-export const getStorefrontProductsLandingPageData = unstable_cache(
+const getStorefrontProductsLandingPageProducts = unstable_cache(
   async () => {
-    const products = await db.product.findMany({
+    return db.product.findMany({
       where: { isActive: true, isStorefrontVisible: true },
       select: {
         id: true,
@@ -71,12 +72,22 @@ export const getStorefrontProductsLandingPageData = unstable_cache(
       orderBy: { createdAt: "desc" },
       take: PRODUCTS_PER_PAGE,
     });
-    const totalProducts = await db.product.count({
-      where: { isActive: true, isStorefrontVisible: true },
-    });
-
-    return { products, totalProducts };
   },
-  ["storefront-products-landing"],
-  { tags: ["storefront:products"], revalidate: 300 },
+  ["storefront-products-landing-products"],
+  { tags: ["storefront:products"], revalidate: STOREFRONT_LANDING_REVALIDATE_SECONDS },
 );
+
+const getStorefrontProductsLandingTotal = unstable_cache(
+  async () =>
+    db.product.count({
+      where: { isActive: true, isStorefrontVisible: true },
+    }),
+  ["storefront-products-landing-total"],
+  { tags: ["storefront:products"], revalidate: STOREFRONT_LANDING_REVALIDATE_SECONDS },
+);
+
+export const getStorefrontProductsLandingPageData = async () => {
+  const products = await getStorefrontProductsLandingPageProducts();
+  const totalProducts = await getStorefrontProductsLandingTotal();
+  return { products, totalProducts };
+};

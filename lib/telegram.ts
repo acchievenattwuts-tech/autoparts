@@ -156,9 +156,9 @@ export async function sendTelegramMessage(params: {
 function lineMirrorBody(messageType: LineMessageType, text: string | null): string {
   switch (messageType) {
     case LineMessageType.IMAGE:
-      return "[รูปภาพ]";
+      return "🖼️ [ส่งรูปภาพ]";
     case LineMessageType.STICKER:
-      return "[สติกเกอร์]";
+      return "😊 [ส่งสติกเกอร์]";
     default:
       return text?.trim() || "[ข้อความ]";
   }
