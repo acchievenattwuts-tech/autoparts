@@ -201,7 +201,7 @@ export function triggerSearchKeywordRefresh(): void {
   });
 }
 
-const MAX_SUGGESTIONS = 10;
+const MAX_SUGGESTIONS = 16;
 
 /**
  * Prefix lookup for the autocomplete dropdown. Single indexed query (btree on
