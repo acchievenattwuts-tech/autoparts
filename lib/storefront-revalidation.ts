@@ -1,4 +1,5 @@
 import { revalidatePath, revalidateTag, updateTag } from "next/cache";
+import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
 
 const STOREFRONT_TAGS = [
   "storefront:categories",
@@ -40,6 +41,9 @@ export const refreshCategoryStorefrontCaches = async (categoryId?: string) => {
 export const revalidateStorefrontCaches = async (categoryId?: string) => {
   revalidateStorefrontTags();
   revalidateStorefrontPaths();
+  // Keep the keyword-first autocomplete index fresh after catalog mutations
+  // (best-effort; the daily cron guarantees eventual consistency).
+  triggerSearchKeywordRefresh();
 
   if (!categoryId) {
     return;

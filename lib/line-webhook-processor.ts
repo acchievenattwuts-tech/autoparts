@@ -24,7 +24,9 @@ import {
   generateLineSuggestion,
   generateScopedConversationalReply,
   type LineReplyHistoryItem,
+  type LineSearchIntent,
 } from "@/lib/line-ai-service";
+import { resolveKnownQueryIntent } from "@/lib/known-query-intent";
 import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
 import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
@@ -1148,14 +1150,42 @@ export async function processLineAiReply(
     // and the search guards engage. The raw input.text stays untouched for
     // storage/echo/audit.
     const processText = normalizeInboundLineQuery(input.text);
-    const searchIntent = shouldClassify
-      ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
-          intent: input.route.intent,
-          latestText: processText,
-          history,
-        }).catch(() => null)
+
+    // Hybrid A (rule-first): when the message is a fully-known, self-contained
+    // product query (part + vehicle, or a code) we derive the intent from the
+    // SearchKeyword dictionary and SKIP the Gemini classifier. Gated on
+    // `contextFree` so a query that might depend on conversational context (e.g. a
+    // bare part or bare vehicle that an earlier turn would complete) still goes
+    // through the LLM, preserving LINE's context-merge behaviour.
+    const knownIntent = shouldClassify
+      ? await resolveKnownQueryIntent(processText).catch(() => null)
       : null;
-    const classifyFailed = shouldClassify && searchIntent === null;
+    const ruleSearchIntent: LineSearchIntent | null =
+      knownIntent && knownIntent.contextFree
+        ? {
+            group: "product",
+            query: knownIntent.query,
+            isProductQuery: true,
+            partType: knownIntent.categoryName,
+            carBrand: knownIntent.carBrandName,
+            carModel: knownIntent.carModelName,
+            year: knownIntent.fitmentYear,
+            partKind: null,
+            tooBroad: false,
+          }
+        : null;
+
+    const searchIntent = ruleSearchIntent
+      ? ruleSearchIntent
+      : shouldClassify
+        ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
+            intent: input.route.intent,
+            latestText: processText,
+            history,
+          }).catch(() => null)
+        : null;
+    const usedRuleIntent = ruleSearchIntent !== null;
+    const classifyFailed = shouldClassify && !usedRuleIntent && searchIntent === null;
     const group: LineMessageGroup = shouldClassify ? searchIntent?.group ?? layer1Group : layer1Group;
 
     // Effective route from the group (reuses the existing forced-response / hand-off
@@ -1175,9 +1205,11 @@ export async function processLineAiReply(
           ? "regex_guard"
           : !isTextTurn
             ? "image_route"
-            : classifyFailed
-              ? "regex_fallback"
-              : "ai",
+            : usedRuleIntent
+              ? "rule_dictionary"
+              : classifyFailed
+                ? "regex_fallback"
+                : "ai",
         routedIntent: route.intent,
       },
     });

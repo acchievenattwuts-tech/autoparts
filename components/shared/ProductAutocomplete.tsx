@@ -39,6 +39,12 @@ interface AutocompleteItem {
   adminHref: string;
 }
 
+interface KeywordSuggestion {
+  term: string;
+  kind: string;
+  sublabel: string | null;
+}
+
 interface Props {
   initialValue?: string;
   placeholder?: string;
@@ -88,7 +94,11 @@ const ProductAutocomplete = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState(initialValue);
   const [items, setItems] = useState<AutocompleteItem[]>([]);
+  const [keywordItems, setKeywordItems] = useState<KeywordSuggestion[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  // Storefront (enhanced) uses the keyword-first index: the dropdown shows search
+  // terms, not product cards, and the heavy product search only fires on submit.
+  const keywordMode = Boolean(enhanced);
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [hasInlineFocus, setHasInlineFocus] = useState(false);
@@ -112,6 +122,7 @@ const ProductAutocomplete = ({
   useEffect(() => {
     if (value.trim().length < MIN_QUERY_LEN) {
       setItems([]);
+      setKeywordItems([]);
       setOpen(false);
       return;
     }
@@ -120,20 +131,33 @@ const ProductAutocomplete = ({
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/search/products/autocomplete?q=${encodeURIComponent(value.trim())}&mode=${mode}`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
-        setItems(data.items ?? []);
-        setTotalCount(data.totalCount ?? null);
+        if (keywordMode) {
+          // Keyword-first dropdown: one indexed prefix lookup, no product scan.
+          const res = await fetch(
+            `/api/search/keywords?q=${encodeURIComponent(value.trim())}`,
+            { signal: controller.signal },
+          );
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const data = (await res.json()) as { items: KeywordSuggestion[] };
+          setKeywordItems(data.items ?? []);
+          setTotalCount(null);
+        } else {
+          const res = await fetch(
+            `/api/search/products/autocomplete?q=${encodeURIComponent(value.trim())}&mode=${mode}`,
+            { signal: controller.signal },
+          );
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
+          setItems(data.items ?? []);
+          setTotalCount(data.totalCount ?? null);
+        }
         const shouldAutoOpen = modalOpen || hasInlineFocus;
         setOpen(shouldAutoOpen);
         setActiveIndex(-1);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setItems([]);
+        setKeywordItems([]);
       } finally {
         setLoading(false);
       }
@@ -143,7 +167,7 @@ const ProductAutocomplete = ({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [value, modalOpen, hasInlineFocus, mode]);
+  }, [value, modalOpen, hasInlineFocus, mode, keywordMode]);
 
   // Close on outside click (skip when modal is open — modal has its own handlers)
   useEffect(() => {
@@ -212,31 +236,42 @@ const ProductAutocomplete = ({
     }
   }, [isNavigating, pendingItemId]);
 
-  const submitQuery = () => {
+  const submitQuery = (overrideQuery?: string) => {
     setOpen(false);
     setModalOpen(false);
     if (onSubmit) {
-      onSubmit(value.trim());
+      onSubmit((overrideQuery ?? value).trim());
       return;
     }
     (modalInputRef.current?.form ?? inputRef.current?.form)?.requestSubmit();
   };
 
+  // Picking a keyword fills the input and runs the real search immediately.
+  const selectKeyword = (term: string) => {
+    setValue(term);
+    submitQuery(term);
+  };
+
+  const navLength = keywordMode ? keywordItems.length : items.length;
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (items.length > 0) {
+      if (navLength > 0) {
         setOpen(true);
-        setActiveIndex((idx) => (idx + 1) % items.length);
+        setActiveIndex((idx) => (idx + 1) % navLength);
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (items.length > 0) {
+      if (navLength > 0) {
         setOpen(true);
-        setActiveIndex((idx) => (idx <= 0 ? items.length - 1 : idx - 1));
+        setActiveIndex((idx) => (idx <= 0 ? navLength - 1 : idx - 1));
       }
     } else if (e.key === "Enter") {
-      if (open && activeIndex >= 0 && items[activeIndex]) {
+      if (keywordMode && open && activeIndex >= 0 && keywordItems[activeIndex]) {
+        e.preventDefault();
+        selectKeyword(keywordItems[activeIndex].term);
+      } else if (!keywordMode && open && activeIndex >= 0 && items[activeIndex]) {
         e.preventDefault();
         navigateTo(items[activeIndex]);
       } else if (onSubmit) {
@@ -247,6 +282,40 @@ const ProductAutocomplete = ({
       setOpen(false);
       setActiveIndex(-1);
     }
+  };
+
+  // --- Keyword suggestion list (storefront, Shopee-style) ---
+  const renderKeywordResults = () => {
+    if (keywordItems.length === 0) return null;
+    return (
+      <ul id={`${id}-listbox`} role="listbox" className="py-1">
+        {keywordItems.map((kw, idx) => (
+          <li key={`${kw.term}-${kw.kind}`} role="option" aria-selected={idx === activeIndex}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => selectKeyword(kw.term)}
+              onMouseEnter={() => setActiveIndex(idx)}
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                idx === activeIndex
+                  ? "bg-orange-50 dark:bg-orange-500/10"
+                  : "hover:bg-gray-50 dark:hover:bg-white/5"
+              }`}
+            >
+              <Search size={16} className="flex-shrink-0 text-gray-400 dark:text-slate-500" />
+              <span className="min-w-0 flex-1 truncate text-[15px] text-gray-800 dark:text-slate-100">
+                {kw.term}
+              </span>
+              {kw.sublabel && (
+                <span className="flex-shrink-0 text-xs text-gray-400 dark:text-slate-500">
+                  {kw.sublabel}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
   };
 
   const handleInlineFocusCapture = () => {
@@ -373,7 +442,7 @@ const ProductAutocomplete = ({
             type="button"
             // Same Safari blur-before-click guard as suggestion buttons above.
             onMouseDown={(e) => e.preventDefault()}
-            onClick={submitQuery}
+            onClick={() => submitQuery()}
             className="flex w-full items-center justify-center gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3 text-sm font-medium text-[#1e3a5f] transition-colors hover:bg-gray-100 dark:border-white/10 dark:bg-slate-800/50 dark:text-sky-300 dark:hover:bg-slate-800"
           >
             ดูผลการค้นหาทั้งหมด {totalCount ?? items.length} รายการ
@@ -535,12 +604,12 @@ const ProductAutocomplete = ({
                     พิมพ์อย่างน้อย {MIN_QUERY_LEN} ตัวอักษรเพื่อค้นหา
                   </div>
                 )}
-                {!loading && value.trim().length >= MIN_QUERY_LEN && items.length === 0 && (
+                {!loading && value.trim().length >= MIN_QUERY_LEN && keywordItems.length === 0 && (
                   <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">
-                    ไม่พบสินค้าที่ตรงกับ &ldquo;{value.trim()}&rdquo;
+                    ไม่พบคำค้นหาที่ตรงกับ &ldquo;{value.trim()}&rdquo;
                   </div>
                 )}
-                {!loading && items.length > 0 && renderGroupedResults()}
+                {!loading && keywordItems.length > 0 && renderKeywordResults()}
               </div>
             </div>,
             document.body,
@@ -599,7 +668,7 @@ const ProductAutocomplete = ({
             {showSubmitButton && (
               <button
                 type="button"
-                onClick={submitQuery}
+                onClick={() => submitQuery()}
                 className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[#f97316] text-white transition-colors hover:bg-[#ea6c0a] active:scale-95"
                 aria-label="ค้นหา"
               >
@@ -614,20 +683,20 @@ const ProductAutocomplete = ({
 
           {open && (
             <div className="absolute left-0 right-0 z-50 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900">
-              {loading && items.length === 0 && (
+              {loading && keywordItems.length === 0 && (
                 <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-500 dark:text-slate-400">
                   <Loader2 size={16} className="animate-spin" />
                   กำลังค้นหา...
                 </div>
               )}
-              {!loading && value.trim().length >= MIN_QUERY_LEN && items.length === 0 && (
+              {!loading && value.trim().length >= MIN_QUERY_LEN && keywordItems.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-500">
-                  ไม่พบสินค้าที่ตรงกับ &ldquo;{value.trim()}&rdquo;
+                  ไม่พบคำค้นหาที่ตรงกับ &ldquo;{value.trim()}&rdquo;
                 </div>
               )}
-              {items.length > 0 && (
+              {keywordItems.length > 0 && (
                 <div className="max-h-[70vh] overflow-y-auto">
-                  {renderGroupedResults()}
+                  {renderKeywordResults()}
                 </div>
               )}
             </div>
@@ -694,7 +763,7 @@ const ProductAutocomplete = ({
         {showSubmitButton && (
           <button
             type="button"
-            onClick={submitQuery}
+            onClick={() => submitQuery()}
             className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[#f97316] text-white transition-colors hover:bg-[#ea6c0a] active:scale-95"
             aria-label="ค้นหา"
           >

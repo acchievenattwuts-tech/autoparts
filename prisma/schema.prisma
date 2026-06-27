@@ -744,6 +744,31 @@ model SearchSynonym {
   @@index([isActive])
 }
 
+/// Pre-computed keyword suggestion index that powers the Shopee-style
+/// "keyword-first" autocomplete. Filled by prisma/scripts/refresh-search-keywords.ts
+/// from master data + product keyword_text + synonyms + hot search logs, so the
+/// as-you-type dropdown does a single indexed prefix lookup (btree on `normalized`)
+/// and NEVER touches the heavy V2 product search on every keystroke.
+model SearchKeyword {
+  id           String   @id @default(cuid())
+  /// Human-facing term shown in the dropdown (original casing / Thai).
+  term         String   @db.VarChar(120)
+  /// Lowercased + accent-folded form used for the prefix lookup.
+  normalized   String   @db.VarChar(120)
+  /// What this keyword resolves to, so submit can apply it as a hard filter.
+  kind         String   @db.VarChar(20)
+  /// Optional grouping hint shown as a sublabel (e.g. category / brand name).
+  sublabel     String?  @db.VarChar(120)
+  /// Higher = surfaced first. Derived from sales / search hit counts.
+  popularity   Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@unique([normalized, kind])
+  @@index([normalized])
+  @@index([popularity(sort: Desc)])
+}
+
 model ProductSearchLog {
   id          String   @id @default(cuid())
   query       String   @db.VarChar(200)

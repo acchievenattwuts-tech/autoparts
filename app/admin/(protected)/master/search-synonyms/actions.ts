@@ -11,6 +11,7 @@ import {
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
+import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
 import { requirePermission } from "@/lib/require-auth";
 import { MAX_SYNONYMS_PER_TERM, SEARCH_SYNONYM_CACHE_TAG } from "@/lib/search-synonyms";
 
@@ -38,6 +39,7 @@ const refreshSearchCaches = () => {
   updateTag(SEARCH_SYNONYM_CACHE_TAG);
   updateProductSearchCache();
   revalidatePath(ADMIN_PATH);
+  triggerSearchKeywordRefresh();
 };
 
 const parsePayload = (formData: FormData):

@@ -12,6 +12,7 @@ import {
 } from "@/lib/product-search";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import { segmentThaiQueryTokens } from "@/lib/thai-segment";
+import { resolveStorefrontSearchIntent } from "@/lib/storefront-search-intent";
 
 export const STOREFRONT_PRODUCTS_PER_PAGE = 24;
 
@@ -285,8 +286,62 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
   },
 );
 
+/**
+ * Applies the shared LINE-grade precision pipeline to a free-text query: detects
+ * the category / car brand / model / year the customer actually meant and pins
+ * them as hard filters, so results stay on-topic instead of broad. Only runs when
+ * there IS a query and the user has NOT already chosen explicit fitment filters
+ * (an explicit selection always wins). Returns the enriched input plus whether the
+ * year filter came from the intent (so it can be dropped on a zero-result retry).
+ */
+async function enrichInputWithSearchIntent(
+  input: StorefrontProductSearchInput,
+): Promise<{ input: StorefrontProductSearchInput; intentYearApplied: boolean }> {
+  const query = input.q?.trim();
+  if (!query) return { input, intentYearApplied: false };
+
+  // Respect an explicit user selection — never override chosen filters.
+  const hasExplicitFitment =
+    Boolean(input.category) ||
+    Boolean(input.brand) ||
+    (input.models?.length ?? 0) > 0 ||
+    (input.categories?.length ?? 0) > 0 ||
+    (input.carBrands?.length ?? 0) > 0 ||
+    typeof input.year === "number" ||
+    typeof input.yearMin === "number" ||
+    typeof input.yearMax === "number";
+  if (hasExplicitFitment) return { input, intentYearApplied: false };
+
+  const resolved = await resolveStorefrontSearchIntent(query).catch(() => null);
+  if (!resolved) return { input, intentYearApplied: false };
+
+  const enriched: StorefrontProductSearchInput = {
+    ...input,
+    q: resolved.query || query,
+    category: resolved.categoryName ?? input.category,
+    brand: resolved.carBrandName ?? input.brand,
+    models: resolved.carModelName ? [resolved.carModelName] : input.models,
+    year: resolved.fitmentYear ?? input.year ?? null,
+  };
+  return { input: enriched, intentYearApplied: resolved.fitmentYear !== null };
+}
+
 export async function getStorefrontProductSearchPageData(
   input: StorefrontProductSearchInput,
 ): Promise<SearchProductsResult> {
-  return getCachedStorefrontProductSearchPageData(normalizeSearchInput(input));
+  const { input: enriched, intentYearApplied } = await enrichInputWithSearchIntent(input);
+
+  const result = await getCachedStorefrontProductSearchPageData(normalizeSearchInput(enriched));
+
+  // LINE-style recovery: an intent-detected year is a hard filter that can zero an
+  // otherwise valid search (the customer's shorthand year may not match the stored
+  // fitment range). When that happens, retry once without the year before giving up.
+  if (result.total === 0 && intentYearApplied) {
+    const retry = await getCachedStorefrontProductSearchPageData(
+      normalizeSearchInput({ ...enriched, year: null }),
+    );
+    if (retry.total > 0) return retry;
+  }
+
+  return result;
 }

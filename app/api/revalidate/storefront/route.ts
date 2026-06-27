@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  // revalidateStorefrontCaches already triggers the keyword-index refresh.
   await revalidateStorefrontCaches(body.categoryId);
   revalidateProductSearchCache();
 

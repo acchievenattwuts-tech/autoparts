@@ -9,6 +9,7 @@ import {
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
+import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
@@ -24,6 +25,7 @@ const refreshPartsBrandSearchCaches = async (brandId?: string) => {
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
   updateProductSearchCache();
+  triggerSearchKeywordRefresh();
 
   if (!brandId) {
     return;

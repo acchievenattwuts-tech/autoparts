@@ -13,6 +13,10 @@
       "schedule": "0 18 * * *"
     },
     {
+      "path": "/api/search/cron/refresh-keywords",
+      "schedule": "30 18 * * *"
+    },
+    {
       "path": "/api/line/ai-jobs/process",
       "schedule": "* * * * *"
     },

@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
+import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
 import {
   categoryVisualInputSchema,
   saveCategoryVisualSetting,
@@ -45,6 +46,7 @@ const refreshCategorySearchCaches = async ({
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateProductSearchCache();
+  triggerSearchKeywordRefresh();
 
   revalidatePath("/");
   revalidatePath("/products");
