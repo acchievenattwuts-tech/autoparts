@@ -230,9 +230,8 @@ const MAX_FAILED_SEARCHES_BEFORE_HANDOFF = 2;
 // Safety margin before the reply-token window closes: send the (deterministic)
 // reply this many ms early so it still goes out on the FREE reply token.
 const REPLY_DEADLINE_MARGIN_MS = 5_000;
-// When this little budget remains before starting product search, reply from the
-// information already extracted instead of risking the 60s serverless ceiling.
-const PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS = 15_000;
+const WEBHOOK_MAX_DURATION_MS = 60_000;
+const POST_SEARCH_DELIVERY_FALLBACK_MIN_BUDGET_MS = 12_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const DIRECT_NO_MATCH_HANDOFF_MESSAGE =
@@ -812,11 +811,13 @@ function replyTokenRemainingMs(config: LineWebhookProcessorConfig): number {
   return maxAgeMs - (Date.now() - config.receivedAt.getTime()) - REPLY_DEADLINE_MARGIN_MS;
 }
 
-function shouldUseReplyTokenDeadlineFallback(config: LineWebhookProcessorConfig, canReply: boolean): boolean {
-  return (
-    canUseReplyToken(config, canReply) &&
-    replyTokenRemainingMs(config) <= PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS
-  );
+function webhookRemainingMs(config: LineWebhookProcessorConfig): number {
+  if (!config.receivedAt) return Number.POSITIVE_INFINITY;
+  return WEBHOOK_MAX_DURATION_MS - (Date.now() - config.receivedAt.getTime());
+}
+
+function shouldUsePostSearchDeliveryFallback(config: LineWebhookProcessorConfig): boolean {
+  return webhookRemainingMs(config) <= POST_SEARCH_DELIVERY_FALLBACK_MIN_BUDGET_MS;
 }
 
 export type ProcessLineAiReplyInput = {
@@ -1409,7 +1410,6 @@ export async function processLineAiReply(
     // "tell me more" reply BEFORE searching throws that away. Run the search
     // regardless — the delivery step sends on the reply token if it's still open,
     // otherwise PUSHes the result afterward.
-    const isImageOcrTurn = input.imageClassification?.kind === "part_image";
     // "ห้ามเดา": a lone image whose OCR came back low-confidence is too uncertain
     // to search blindly — ask the customer to confirm instead of guessing. (An
     // image sent WITH text is driven by the text, so this only fires image-only.)
@@ -1417,33 +1417,12 @@ export async function processLineAiReply(
       !isTextTurn &&
       input.imageClassification?.kind === "part_image" &&
       input.imageClassification.confidence === "LOW";
-    const deadlineFallbackBeforeSearch =
-      autoReplyEnabled &&
-      !dryRun &&
-      !isNonProductTurn &&
-      !gateBlocksSearch &&
-      !isImageOcrTurn &&
-      !isConversationAdminOwned(input.conversation.aiStatus) &&
-      shouldUseReplyTokenDeadlineFallback(config, input.canReply);
-    const deadlineFallbackQuery =
-      consolidatedQuery ??
-      input.text?.trim() ??
-      input.imageClassification?.searchHints?.join(" ").trim() ??
-      null;
-    const knownForDeadlineFallback = inquiryFrame
-      ? {
-          partType: inquiryFrame.partType,
-          carBrand: inquiryFrame.carBrand,
-          carModel: inquiryFrame.carModel,
-          year: frameYear,
-        }
-      : null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
     const fitmentFilters: LineFitmentFilters =
-      !isNonProductTurn && inquiryFrame && !deadlineFallbackBeforeSearch
+      !isNonProductTurn && inquiryFrame
         ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
             partType: inquiryFrame.partType,
             carBrand: inquiryFrame.carBrand,
@@ -1463,13 +1442,11 @@ export async function processLineAiReply(
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
     const productSearch =
-      isNonProductTurn || gateBlocksSearch || deadlineFallbackBeforeSearch || imageOnlyLowConfidence
+      isNonProductTurn || gateBlocksSearch || imageOnlyLowConfidence
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
             ? "IMAGE_LOW_CONFIDENCE"
-            : deadlineFallbackBeforeSearch
-            ? "DEADLINE_FALLBACK_BEFORE_SEARCH"
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
               : "NON_PRODUCT_TURN",
@@ -1560,6 +1537,12 @@ export async function processLineAiReply(
       productSearch.searched && productSearch.result.ids.length > 0
         ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
         : [];
+    const postSearchDeliveryFallback =
+      liveMode &&
+      productSearch.searched &&
+      products.length > 0 &&
+      !isConversationAdminOwned(input.conversation.aiStatus) &&
+      shouldUsePostSearchDeliveryFallback(config);
 
     // (#2) Kick the reply generation off NOW, in parallel with the purchase-intent
     // classification below — neither depends on the other, so this removes one
@@ -1570,6 +1553,7 @@ export async function processLineAiReply(
     const wantEarlyGenerate =
       liveMode &&
       !directNoMatchHandoff &&
+      !postSearchDeliveryFallback &&
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY ||
         route.intent === LineIntent.GREETING);
@@ -1597,6 +1581,7 @@ export async function processLineAiReply(
     if (
       !isPurchaseIntent &&
       liveMode &&
+      !postSearchDeliveryFallback &&
       products.length > 0 &&
       // A price *inquiry* re-routed to product (e.g. "หม้อน้ำ d-max ราคาเท่าไหร่")
       // is NOT a purchase commitment — show the matches, don't hand off. Genuine
@@ -1662,26 +1647,8 @@ export async function processLineAiReply(
             audit: "AI_IMAGE_LOW_CONFIDENCE_ASK",
             auditPayload: { lineEventId: input.lineEventId, confidence: "LOW" },
           }
-      // Reply-token deadline is near before product search starts.
       // Never a hand-off — the AI stays active and waits for the answer.
-      : liveMode && deadlineFallbackBeforeSearch
-        ? {
-            message: buildJuneDeadlineReply({
-              query: deadlineFallbackQuery,
-              products: [],
-              known: knownForDeadlineFallback,
-            }),
-            reason: "DEADLINE_BEFORE_SEARCH",
-            handoff: false,
-            audit: "AI_DEADLINE_FALLBACK",
-            auditPayload: {
-              lineEventId: input.lineEventId,
-              reason: "BEFORE_SEARCH",
-              remainingMs: replyTokenRemainingMs(config),
-              productCount: 0,
-            },
-          }
-        : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
+      : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
             message: buildLineSearchAskReply(gateDecision.ask),
             reason: `GATE_ASK_${gateDecision.ask}`,
@@ -1765,6 +1732,7 @@ export async function processLineAiReply(
       reasoningSummary: string;
       matchedProducts?: unknown;
     };
+    let postSearchDeliveryFallbackAuditPayload: Record<string, string | number | null> | null = null;
 
     if (forcedResponse) {
       suggestion = {
@@ -1772,6 +1740,30 @@ export async function processLineAiReply(
         confidence: forcedResponse.handoff ? LineAiConfidence.ADMIN_REQUIRED : LineAiConfidence.POSSIBLE_MATCH,
         reasoningSummary: forcedResponse.reason,
         matchedProducts: null,
+      };
+    } else if (postSearchDeliveryFallback) {
+      suggestion = {
+        suggestedReply: buildJuneDeadlineReply({
+          query: consolidatedQuery ?? input.text,
+          products,
+          known: inquiryFrame
+            ? {
+                partType: inquiryFrame.partType,
+                carBrand: inquiryFrame.carBrand,
+                carModel: inquiryFrame.carModel,
+                year: frameYear,
+              }
+            : null,
+        }),
+        confidence: LineAiConfidence.POSSIBLE_MATCH,
+        reasoningSummary: "POST_SEARCH_DELIVERY_FALLBACK",
+        matchedProducts: productSearch.searched ? productSearch.result : null,
+      };
+      postSearchDeliveryFallbackAuditPayload = {
+        lineEventId: input.lineEventId,
+        reason: "AFTER_SEARCH_SERVERLESS_BUDGET",
+        remainingMs: webhookRemainingMs(config),
+        productCount: products.length,
       };
     } else {
       // (#3) Deadline guard: the reply must land inside the FREE reply-token
@@ -2065,6 +2057,16 @@ export async function processLineAiReply(
         conversationId: input.conversation.id,
         action: forcedResponse.audit,
         payload: forcedResponse.auditPayload ?? {},
+      });
+    }
+    if (
+      postSearchDeliveryFallbackAuditPayload &&
+      typeof dependencies.storeLineAiAudit === "function"
+    ) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "AI_DEADLINE_FALLBACK",
+        payload: postSearchDeliveryFallbackAuditPayload,
       });
     }
 
@@ -2437,7 +2439,7 @@ const DEFAULT_COALESCE_LEASE_MS = 60_000;
 // re-run). The final pass still runs the full OCR→search→reply pipeline (OCR is
 // reused via B2a), so the reply is always grounded — we only stop WAITING, never
 // answer before the data is ready.
-const OWNER_LOOP_FINAL_PASS_AFTER_MS = 40_000;
+const OWNER_LOOP_FINAL_PASS_AFTER_MS = 28_000;
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -2675,7 +2677,6 @@ async function runConversationOwnerLoop(args: {
   // pass. Within budget the loop debounces + re-arms on every newer message
   // ("wait until the customer is truly done"); past budget it forces one final
   // grounded send so the function isn't killed mid-flight.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const before = await getState(conversationId);
     if (!before) return false;

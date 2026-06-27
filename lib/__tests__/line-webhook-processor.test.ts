@@ -951,7 +951,7 @@ test("deadline fallback still replies on the free token when generate is too slo
   assert.ok(calls.auditActions.includes("AI_DEADLINE_FALLBACK"));
 });
 
-test("deadline fallback before search replies from complete text logic instead of starting search", async () => {
+test("deadline fallback after search keeps complete text search results", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     consolidatedQuery: "หม้อน้ำ D-Max 2015",
@@ -960,6 +960,7 @@ test("deadline fallback before search replies from complete text logic instead o
     intentYear: 2015,
     intentPartKind: "fitment",
   });
+  dependencies.generateLineSuggestion = () => new Promise<never>(() => {});
 
   const result = await processLineWebhookPayload(
     textPayload("หม้อน้ำ D-Max 2015"),
@@ -967,14 +968,14 @@ test("deadline fallback before search replies from complete text logic instead o
       channelAccessToken: "token",
       autoReplyEnabled: true,
       dryRun: false,
-      receivedAt: new Date(Date.now() - 29_000),
+      receivedAt: new Date(Date.now() - 41_000),
       replyTokenMaxAgeMs: 45_000,
     },
     dependencies,
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.deepEqual(calls.searches, []);
+  assert.equal(calls.searches.length, 1);
   assert.equal(calls.replies.length, 1);
   assert.equal(calls.replies[0]?.replyToken, "reply-token-1");
   assert.match(calls.replies[0]?.text ?? "", /หม้อน้ำ D-Max 2015/);

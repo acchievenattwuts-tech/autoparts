@@ -645,6 +645,58 @@ test("B2b: past the wall-clock budget the owner force-sends once (no abort loop,
   assert.ok(auditActions.includes("AI_OWNER_BUDGET_FORCED_SEND"), "forced-send audit fired");
 });
 
+test("post-search budget fallback sends searched products and flex without starting Gemini prose", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const previousNextAuthUrl = process.env.NEXTAUTH_URL;
+  process.env.NEXTAUTH_URL = "https://shop.example.com";
+  const { calls, dependencies } = createCoalesceHarness({});
+  const auditPayloads: unknown[] = [];
+  const pushedMessages: unknown[][] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    if (input.action === "AI_DEADLINE_FALLBACK") auditPayloads.push(input.payload);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  dependencies.pushLineMessages = async (input) => {
+    pushedMessages.push(input.messages);
+    calls.pushes.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
+    return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
+  };
+  dependencies.generateLineSuggestion = async () => {
+    throw new Error("Gemini prose should not start after post-search budget fallback");
+  };
+
+  const result = await processLineWebhookPayload(
+    { events: [textEvent("e1", "หม้อน้ำ D-Max")] },
+    {
+      ...baseConfig,
+      receivedAt: new Date(Date.now() - 52_000),
+      allowPushFallback: true,
+    },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "real product search still ran");
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.pushes.length, 1, "expired reply token falls back to push");
+  assert.match(calls.pushes[0], /P1/);
+  assert.match(calls.pushes[0], /100/);
+  assert.equal((pushedMessages[0]?.[1] as { type?: unknown } | undefined)?.type, "flex");
+  assert.ok(
+    auditPayloads.some(
+      (payload) =>
+        typeof payload === "object" &&
+        payload !== null &&
+        (payload as { reason?: unknown }).reason === "AFTER_SEARCH_SERVERLESS_BUDGET",
+    ),
+    "deadline fallback audit records post-search serverless budget reason",
+  );
+  if (previousNextAuthUrl === undefined) {
+    delete process.env.NEXTAUTH_URL;
+  } else {
+    process.env.NEXTAUTH_URL = previousNextAuthUrl;
+  }
+});
+
 function multiIntent(
   primary: Partial<LineSearchIntent>,
   subjects: LineSearchIntent["subjects"],
