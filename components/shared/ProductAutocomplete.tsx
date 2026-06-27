@@ -20,7 +20,7 @@ import { useEffect, useId, useMemo, useRef, useState, useTransition } from "reac
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Search, Loader2, ArrowLeft, ArrowRight, X } from "lucide-react";
+import { Search, Loader2, ArrowLeft, ArrowRight, X, Store } from "lucide-react";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 
 interface AutocompleteItem {
@@ -68,6 +68,9 @@ interface Props {
 }
 
 const DEBOUNCE_MS = 300;
+// Keyword lookup is a single indexed query (~40ms) so it can debounce much shorter
+// than the product-card path for a snappier as-you-type feel.
+const KEYWORD_DEBOUNCE_MS = 120;
 const MIN_QUERY_LEN = 2;
 
 const inputBase =
@@ -92,6 +95,9 @@ const ProductAutocomplete = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const modalInputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Client-side cache of keyword results per query — makes backspacing / retyping a
+  // previous prefix instant (no refetch, no flicker).
+  const keywordCacheRef = useRef<Map<string, KeywordSuggestion[]>>(new Map());
   const [value, setValue] = useState(initialValue);
   const [items, setItems] = useState<AutocompleteItem[]>([]);
   const [keywordItems, setKeywordItems] = useState<KeywordSuggestion[]>([]);
@@ -120,44 +126,78 @@ const ProductAutocomplete = ({
 
   // Debounced fetch
   useEffect(() => {
-    if (value.trim().length < MIN_QUERY_LEN) {
+    const q = value.trim();
+    if (q.length < MIN_QUERY_LEN) {
       setItems([]);
       setKeywordItems([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
 
+    const shouldAutoOpen = modalOpen || hasInlineFocus;
+
+    if (keywordMode) {
+      // Open as soon as there is a query — the "search for this text" row is always
+      // shown, independent of whether any suggestions come back.
+      setOpen(shouldAutoOpen);
+
+      // Instant path: serve from the client cache so typing/backspacing through
+      // already-seen prefixes never refetches or flickers.
+      const cached = keywordCacheRef.current.get(q);
+      if (cached) {
+        setKeywordItems(cached);
+        setActiveIndex(-1);
+        setLoading(false);
+        return;
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(async () => {
+        // Keep the previous suggestions visible while loading (no empty flash).
+        setLoading(true);
+        try {
+          const res = await fetch(`/api/search/keywords?q=${encodeURIComponent(q)}`, {
+            signal: controller.signal,
+          });
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          const data = (await res.json()) as { items: KeywordSuggestion[] };
+          const next = data.items ?? [];
+          keywordCacheRef.current.set(q, next);
+          setKeywordItems(next);
+          setActiveIndex(-1);
+        } catch (err) {
+          if ((err as Error).name === "AbortError") return;
+          // Keep previous suggestions on a transient error.
+        } finally {
+          setLoading(false);
+        }
+      }, KEYWORD_DEBOUNCE_MS);
+
+      return () => {
+        controller.abort();
+        clearTimeout(timer);
+      };
+    }
+
+    // Product (admin) mode — unchanged product-card lookup.
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        if (keywordMode) {
-          // Keyword-first dropdown: one indexed prefix lookup, no product scan.
-          const res = await fetch(
-            `/api/search/keywords?q=${encodeURIComponent(value.trim())}`,
-            { signal: controller.signal },
-          );
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          const data = (await res.json()) as { items: KeywordSuggestion[] };
-          setKeywordItems(data.items ?? []);
-          setTotalCount(null);
-        } else {
-          const res = await fetch(
-            `/api/search/products/autocomplete?q=${encodeURIComponent(value.trim())}&mode=${mode}`,
-            { signal: controller.signal },
-          );
-          if (!res.ok) throw new Error(`status ${res.status}`);
-          const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
-          setItems(data.items ?? []);
-          setTotalCount(data.totalCount ?? null);
-        }
-        const shouldAutoOpen = modalOpen || hasInlineFocus;
+        const res = await fetch(
+          `/api/search/products/autocomplete?q=${encodeURIComponent(q)}&mode=${mode}`,
+          { signal: controller.signal },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
+        setItems(data.items ?? []);
+        setTotalCount(data.totalCount ?? null);
         setOpen(shouldAutoOpen);
         setActiveIndex(-1);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setItems([]);
-        setKeywordItems([]);
       } finally {
         setLoading(false);
       }
@@ -285,9 +325,26 @@ const ProductAutocomplete = ({
   };
 
   // --- Keyword suggestion list (storefront, Shopee-style) ---
+  // Always leads with a "search for the typed text" row (click / tap = run the
+  // real search), then the keyword suggestions. So even when nothing matches, the
+  // customer still has a clear way to search — and we never show a "not found" msg.
   const renderKeywordResults = () => {
-    if (keywordItems.length === 0) return null;
+    const q = value.trim();
+    if (q.length < MIN_QUERY_LEN) return null;
     return (
+      <>
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => submitQuery(q)}
+          className="flex w-full items-center gap-3 border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
+        >
+          <Store size={18} className="flex-shrink-0 text-[#f97316]" />
+          <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-gray-800 dark:text-slate-100">
+            ค้นหา &ldquo;{q}&rdquo;
+          </span>
+        </button>
+        {keywordItems.length > 0 && (
       <ul id={`${id}-listbox`} role="listbox" className="py-1">
         {keywordItems.map((kw, idx) => (
           <li key={`${kw.term}-${kw.kind}`} role="option" aria-selected={idx === activeIndex}>
@@ -315,6 +372,8 @@ const ProductAutocomplete = ({
           </li>
         ))}
       </ul>
+        )}
+      </>
     );
   };
 
@@ -593,23 +652,14 @@ const ProductAutocomplete = ({
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto">
-                {loading && (
-                  <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500 dark:text-slate-400">
-                    <Loader2 size={16} className="animate-spin" />
-                    กำลังค้นหา...
-                  </div>
-                )}
-                {!loading && value.trim().length < MIN_QUERY_LEN && (
+                {value.trim().length < MIN_QUERY_LEN ? (
                   <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">
                     พิมพ์อย่างน้อย {MIN_QUERY_LEN} ตัวอักษรเพื่อค้นหา
                   </div>
+                ) : (
+                  // Always shows the "search for this text" row + any suggestions.
+                  renderKeywordResults()
                 )}
-                {!loading && value.trim().length >= MIN_QUERY_LEN && keywordItems.length === 0 && (
-                  <div className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">
-                    ไม่พบคำค้นหาที่ตรงกับ &ldquo;{value.trim()}&rdquo;
-                  </div>
-                )}
-                {!loading && keywordItems.length > 0 && renderKeywordResults()}
               </div>
             </div>,
             document.body,
@@ -681,30 +731,15 @@ const ProductAutocomplete = ({
             )}
           </div>
 
-          {open && (
+          {open && value.trim().length >= MIN_QUERY_LEN && (
             <div className="absolute left-0 right-0 z-50 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900">
-              {loading && keywordItems.length === 0 && (
-                <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-500 dark:text-slate-400">
-                  <Loader2 size={16} className="animate-spin" />
-                  กำลังค้นหา...
-                </div>
-              )}
-              {!loading && value.trim().length >= MIN_QUERY_LEN && keywordItems.length === 0 && (
-                <div className="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-500">
-                  ไม่พบคำค้นหาที่ตรงกับ &ldquo;{value.trim()}&rdquo;
-                </div>
-              )}
-              {keywordItems.length > 0 && (
-                <div className="max-h-[70vh] overflow-y-auto">
-                  {renderKeywordResults()}
-                </div>
-              )}
+              <div className="max-h-[70vh] overflow-y-auto">{renderKeywordResults()}</div>
             </div>
           )}
         </div>
 
-        {/* Backdrop */}
-        {mounted && open &&
+        {/* Backdrop — shown whenever the dropdown is open (search row is present) */}
+        {mounted && open && value.trim().length >= MIN_QUERY_LEN &&
           createPortal(
             <div
               className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px] transition-opacity duration-200 animate-in fade-in"
