@@ -354,7 +354,7 @@ const ProductAutocomplete = ({
               onClick={() => selectKeyword(kw.term)}
               // Hover highlight is pure CSS (:hover) so it tracks the mouse with no
               // lag; activeIndex stays for keyboard navigation only.
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/5 ${
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-orange-50 dark:hover:bg-orange-500/10 ${
                 idx === activeIndex ? "bg-orange-50 dark:bg-orange-500/10" : ""
               }`}
             >
