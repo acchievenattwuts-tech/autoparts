@@ -121,6 +121,8 @@ function createProcessorTestDeps(input?: {
   imageYear?: number | null;
   imagePartKind?: "fitment" | "universal" | null;
   failedSearchCount?: number;
+  searchTotal?: number;
+  searchIds?: string[];
   purchaseIntent?: boolean;
   faqReply?: string;
   lastCustomerMessageAt?: Date | null;
@@ -178,6 +180,8 @@ function createProcessorTestDeps(input?: {
   };
   let messageSeq = 0;
   const duplicateEventIds = new Set(input?.duplicateEventIds ?? []);
+  const configuredSearchIds = input?.searchIds ?? ["product-1"];
+  const configuredSearchTotal = input?.searchTotal ?? configuredSearchIds.length;
 
   const dependencies: LineWebhookProcessorDependencies = {
     hasProcessedLineEvent: async (lineEventId) =>
@@ -250,11 +254,11 @@ function createProcessorTestDeps(input?: {
         reason: "SEARCHED_PRODUCT_INQUIRY",
         query: input.text ?? "",
         result: {
-          ids: ["product-1"],
-          total: 1,
+          ids: configuredSearchIds,
+          total: configuredSearchTotal,
           mode: "v2",
         },
-        needsMoreInfo: false,
+        needsMoreInfo: configuredSearchTotal === 0 || configuredSearchIds.length === 0,
         appliedFilters: {
           categoryName: input.fitmentHints?.categoryName ?? null,
           carBrandName: input.fitmentHints?.carBrandName ?? null,
@@ -1371,6 +1375,42 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
   // bubble, sent after the matches.
   assert.ok((reply?.messageCount ?? 0) >= 2, "at least the reply + follow-up bubble");
   assert.ok(reply?.texts.at(-1)?.includes("ปีรถ"), "last bubble nudges for the model year");
+});
+
+test("direct no-match with part + car replies once and hands off to admin", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "แผงแอร์ Toyota Tiger",
+    intentPartType: "แผงแอร์",
+    intentCarBrand: "Toyota",
+    intentCarModel: "Tiger",
+    intentPartKind: "fitment",
+    fitmentFilters: {
+      categoryName: "คอยล์ร้อน (Condenser)",
+      carBrandName: "Toyota",
+      carModelName: "Tiger",
+    },
+    searchTotal: 0,
+    searchIds: [],
+    failedSearchCount: 0,
+    faqReply: "FAQ should not answer this no-match product search",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("แผงแอร์ tigerp"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.replies.length, 1);
+  assert.ok(calls.replies[0]?.text.includes("ยังไม่พบรายการที่ตรงกับข้อมูลนี้ในระบบโดยตรง"));
+  assert.ok(calls.replies[0]?.text.includes("ส่งต่อให้แอดมิน"));
+  assert.ok(!calls.replies[0]?.text.includes("FAQ should not answer"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
+  assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
 });
 
 test("price inquiry with a searchable part → searches, shows products, no admin handoff, price-defer note", async () => {

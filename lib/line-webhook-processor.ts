@@ -68,6 +68,7 @@ import { extractFitmentTerms } from "@/lib/line-fitment-extract";
 import { answerFromLineFaq } from "@/lib/line-faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
+import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/line-search-guards";
 import {
@@ -234,6 +235,10 @@ const REPLY_DEADLINE_MARGIN_MS = 5_000;
 const PRE_SEARCH_DEADLINE_FALLBACK_MIN_BUDGET_MS = 15_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
+const DIRECT_NO_MATCH_HANDOFF_MESSAGE =
+  "ขออภัยค่ะ ตอนนี้จูนยังไม่พบรายการที่ตรงกับข้อมูลนี้ในระบบโดยตรงนะคะ 🙏\n" +
+  "จูนขอส่งต่อให้แอดมินช่วยตรวจสอบสต็อกให้อีกครั้งค่ะ\n\n" +
+  "ถ้าลูกค้ามีปีรถ รูปอะไหล่เดิม หรือรหัสบนตัวอะไหล่ ส่งเพิ่มมาได้เลยนะคะ จะช่วยให้แอดมินเทียบให้แม่นขึ้นค่ะ 😊🚗";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
 // Sent as a bubble AFTER the matched products on a price inquiry — the customer
@@ -1542,6 +1547,11 @@ export async function processLineAiReply(
           ).catch(() => 0)
         : 0;
     const shouldEscalateNoResults = failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF;
+    const directNoMatchHandoff =
+      liveMode &&
+      productSearch.searched &&
+      productSearch.result.total === 0 &&
+      Boolean(inquiryFrame?.partType && (inquiryFrame.carBrand || inquiryFrame.carModel));
 
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
@@ -1559,6 +1569,7 @@ export async function processLineAiReply(
     const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
     const wantEarlyGenerate =
       liveMode &&
+      !directNoMatchHandoff &&
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY ||
         route.intent === LineIntent.GREETING);
@@ -1622,7 +1633,7 @@ export async function processLineAiReply(
       liveMode &&
       (tryFaqThenAsk ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
-        (productSearch.searched && productSearch.result.total === 0 && !partImageNoMatch))
+        (productSearch.searched && productSearch.result.total === 0 && !partImageNoMatch && !directNoMatchHandoff))
         ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
@@ -1701,6 +1712,20 @@ export async function processLineAiReply(
             auditPayload: {
               lineEventId: input.lineEventId,
               partType: inquiryFrame?.partType ?? input.imageClassification?.partType ?? null,
+            },
+          }
+        : liveMode && directNoMatchHandoff
+        ? {
+            message: DIRECT_NO_MATCH_HANDOFF_MESSAGE,
+            reason: "DIRECT_NO_MATCH_HANDOFF",
+            handoff: true,
+            audit: "AI_DIRECT_NO_MATCH_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              partType: inquiryFrame?.partType ?? null,
+              carBrand: inquiryFrame?.carBrand ?? null,
+              carModel: inquiryFrame?.carModel ?? null,
+              failedSearchCount,
             },
           }
         : faqAnswer.answered
@@ -2242,6 +2267,21 @@ async function ingestLineEvent(
     intent: route.intent,
     text: event.text,
     rawEvent: event.rawEvent,
+  });
+
+  // Mirror EVERY inbound customer message to Telegram (raw chat relay, not a
+  // bell notification — see mirrorLineMessageToTelegram). Fire-and-forget so a
+  // Telegram hiccup never delays or breaks the webhook reply pipeline.
+  void mirrorLineMessageToTelegram({
+    displayName: conversation.displayName,
+    messageType: event.messageType,
+    text: event.text,
+    at: inboundMessage.createdAt,
+  }).catch((error) => {
+    console.warn(
+      "[line-webhook-processor] telegram mirror failed",
+      error instanceof Error ? error.message : "unknown",
+    );
   });
 
   fireAndForgetAudit(dependencies, {
