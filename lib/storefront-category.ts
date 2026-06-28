@@ -114,9 +114,18 @@ const fetchCategoryProductPage = unstable_cache(
   { tags: [...CATEGORY_CACHE_TAGS, "storefront:products"] },
 );
 
+export type StorefrontCategoryProductItem = Awaited<
+  ReturnType<typeof fetchCategoryProductPage>
+>["products"][number];
+
+export async function getStorefrontCategoryProductPageById(categoryId: string, page: number = 1) {
+  const safePage = Math.max(1, page);
+  const { products, total } = await fetchCategoryProductPage(categoryId, safePage);
+  return { products, total, page: safePage, pageSize: PAGE_SIZE };
+}
+
 export async function getStorefrontCategoryPageData(categorySlug: string, page: number = 1) {
   const category = await getActiveStorefrontCategoryBySlug(categorySlug);
-  const safePage = Math.max(1, page);
-  const { products, total } = await fetchCategoryProductPage(category.id, safePage);
-  return { category, products, total, page: safePage, pageSize: PAGE_SIZE };
+  const pageData = await getStorefrontCategoryProductPageById(category.id, page);
+  return { category, ...pageData };
 }

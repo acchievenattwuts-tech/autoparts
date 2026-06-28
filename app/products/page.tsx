@@ -8,7 +8,6 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
-import ProductsHero from "./ProductsHero";
 import SearchResults from "./search/SearchResults";
 import { absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
@@ -352,8 +351,6 @@ const ProductsPage = async ({ searchParams }: Props) => {
         searchQuery={q}
       />
       <main className="min-h-screen bg-gray-50 pt-16">
-        <ProductsHero />
-
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <SearchResults
             renderNonce={renderNonce}

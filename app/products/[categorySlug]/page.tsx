@@ -10,11 +10,9 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
-import ProductCard from "@/components/shared/ProductCard";
-import Pagination from "@/components/shared/Pagination";
-import ScrollReveal from "@/components/shared/ScrollReveal";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
+import CategoryProductGrid from "./CategoryProductGrid";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
@@ -30,7 +28,6 @@ import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 
 interface Props {
   params: Promise<{ categorySlug: string }>;
-  searchParams: Promise<{ page?: string }>;
 }
 
 const getCategorySupportArticles = (categoryName: string) => {
@@ -99,16 +96,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-const CategoryPage = async ({ params, searchParams }: Props) => {
-  const [{ categorySlug }, { page: pageParam }] = await Promise.all([params, searchParams]);
-  const page = Math.max(1, parseInt(pageParam ?? "1", 10) || 1);
+const CategoryPage = async ({ params }: Props) => {
+  const { categorySlug } = await params;
 
   let config: Awaited<ReturnType<typeof getSiteConfig>> | null = null;
   let categoryData: Awaited<ReturnType<typeof getStorefrontCategoryPageData>>;
 
   try {
     config = await getSiteConfig();
-    categoryData = await getStorefrontCategoryPageData(categorySlug, page);
+    categoryData = await getStorefrontCategoryPageData(categorySlug, 1);
   } catch (error) {
     if (!isDatabaseConnectionExhaustionError(error)) {
       throw error;
@@ -118,7 +114,6 @@ const CategoryPage = async ({ params, searchParams }: Props) => {
   }
 
   const { category, products, total, pageSize } = categoryData;
-  const totalPages = Math.ceil(total / pageSize);
   const canonicalPath = getCategoryPath(category);
   const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
   const supportArticles = getCategorySupportArticles(category.name);
@@ -203,29 +198,14 @@ const CategoryPage = async ({ params, searchParams }: Props) => {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-          {products.length === 0 ? (
-            <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-16 text-center text-slate-500 shadow-sm">
-              ยังไม่มีสินค้าที่เปิดใช้งานในหมวดนี้ตอนนี้
-            </div>
-          ) : (
-            <>
-              <p className="mb-4 text-sm text-slate-500">
-                แสดง {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} จาก {total.toLocaleString("th-TH")} รายการ
-              </p>
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                {products.map((product, index) => (
-                  <ScrollReveal key={product.id} delay={index * 50} className="h-full">
-                    <ProductCard product={product} lineUrl={config.shopLineUrl} />
-                  </ScrollReveal>
-                ))}
-              </div>
-              <Pagination
-                currentPage={page}
-                totalPages={totalPages}
-                basePath={canonicalPath}
-              />
-            </>
-          )}
+          <CategoryProductGrid
+            categoryId={category.id}
+            initialProducts={products}
+            initialTotal={total}
+            initialPage={1}
+            pageSize={pageSize}
+            lineUrl={config.shopLineUrl}
+          />
         </section>
 
         <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">

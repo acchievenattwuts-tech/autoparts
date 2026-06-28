@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
-import Pagination from "@/components/shared/Pagination";
 import type { SearchProductItem } from "@/lib/storefront-product-search";
 import ProductFilterBar from "../ProductFilterBar";
 import {
+  loadMoreSearchProductsAction,
   searchProductsAction,
   type SearchFilterInput,
 } from "./search-products-actions";
 import { PRODUCT_FILTER_COUNT_EVENT } from "@/components/shared/StorefrontFilterTrigger";
+
+const AUTO_LOAD_PAGE_LIMIT = 5;
 
 type CarBrand = {
   id: string;
@@ -89,10 +91,27 @@ const buildSearchUrl = (f: FiltersState, basePath: string): string => {
   if (f.yearMax !== null) params.set("yearMax", String(f.yearMax));
   if (f.priceMin !== null) params.set("priceMin", String(f.priceMin));
   if (f.priceMax !== null) params.set("priceMax", String(f.priceMax));
-  if (f.page > 1) params.set("page", String(f.page));
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
 };
+
+const ProductCardSkeleton = () => (
+  <div className="h-full min-h-[22.25rem] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm sm:min-h-[25.75rem] lg:min-h-[26.25rem]">
+    <div className="aspect-square w-full animate-pulse bg-slate-100" />
+    <div className="space-y-3 p-3 sm:p-4">
+      <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
+      <div className="space-y-2">
+        <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+        <div className="h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+      </div>
+      <div className="h-3 w-1/2 animate-pulse rounded bg-slate-100" />
+      <div className="pt-6">
+        <div className="h-3 w-16 animate-pulse rounded bg-slate-100" />
+        <div className="mt-2 h-7 w-24 animate-pulse rounded bg-slate-100" />
+      </div>
+    </div>
+  </div>
+);
 
 const SearchResults = ({
   initialProducts,
@@ -116,12 +135,14 @@ const SearchResults = ({
   >(initialRequiredTokenFallback);
   const [isTransitionPending, startTransition] = useTransition();
   const [isRouteSyncPending, setIsRouteSyncPending] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isPending = isTransitionPending || isRouteSyncPending;
   const [animKey, setAnimKey] = useState(0);
   const gridSectionRef = useRef<HTMLDivElement>(null);
-  const skipNextScrollRef = useRef(true);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevNonceRef = useRef(renderNonce);
   const latestRequestIdRef = useRef(0);
+  const latestLoadMoreIdRef = useRef(0);
   // true while a server re-render is triggered by our own AJAX filter (not user nav)
   const isAjaxUpdateRef = useRef(false);
   const router = useRouter();
@@ -146,9 +167,42 @@ const SearchResults = ({
     setFilters(initialFilters);
     setMeta(initialMeta);
     setRequiredTokenFallback(initialRequiredTokenFallback);
+    setIsLoadingMore(false);
     setAnimKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderNonce]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
+    const resetToInitial = (scrollToTop: boolean) => {
+      setProducts(initialProducts);
+      setTotal(initialTotal);
+      setDidYouMean(initialDidYouMean);
+      setFilters(initialFilters);
+      setMeta(initialMeta);
+      setRequiredTokenFallback(initialRequiredTokenFallback);
+      setIsLoadingMore(false);
+      setAnimKey((k) => k + 1);
+      if (scrollToTop) window.scrollTo({ top: 0, behavior: "auto" });
+    };
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) resetToInitial(true);
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, [
+    initialDidYouMean,
+    initialFilters,
+    initialMeta,
+    initialProducts,
+    initialRequiredTokenFallback,
+    initialTotal,
+  ]);
 
   const applyFilters = (
     next: FiltersState,
@@ -156,6 +210,8 @@ const SearchResults = ({
   ) => {
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
+    latestLoadMoreIdRef.current += 1;
+    setIsLoadingMore(false);
     const input: SearchFilterInput = {
       q: next.q || undefined,
       brand: next.brand || undefined,
@@ -242,6 +298,76 @@ const SearchResults = ({
     });
   };
 
+  const hasMore = total > products.length && filters.page < meta.totalPages;
+  const canAutoLoad = hasMore && filters.page < AUTO_LOAD_PAGE_LIMIT;
+
+  const loadMoreProducts = useCallback(async () => {
+    if (isPending || isLoadingMore || !hasMore) return;
+
+    const requestId = latestLoadMoreIdRef.current + 1;
+    latestLoadMoreIdRef.current = requestId;
+    const nextPage = filters.page + 1;
+    setIsLoadingMore(true);
+
+    const input: SearchFilterInput = {
+      q: filters.q || undefined,
+      brand: filters.brand || undefined,
+      category: filters.category || undefined,
+      models: filters.models,
+      year: filters.year,
+      page: nextPage,
+      categories: filters.categories,
+      partsBrands: filters.partsBrands,
+      carBrands: filters.carBrands,
+      yearMin: filters.yearMin,
+      yearMax: filters.yearMax,
+      priceMin: filters.priceMin,
+      priceMax: filters.priceMax,
+    };
+
+    try {
+      const result = await loadMoreSearchProductsAction(input);
+      if (latestLoadMoreIdRef.current !== requestId) return;
+
+      setProducts((current) => {
+        const seen = new Set(current.map((product) => product.id));
+        const appended = result.products.filter((product) => !seen.has(product.id));
+        return [...current, ...appended];
+      });
+      setTotal(result.total);
+      setMeta({
+        pageStart: products.length > 0 ? 1 : result.pageStart,
+        pageEnd: Math.max(meta.pageEnd, result.pageEnd),
+        totalPages: result.totalPages,
+      });
+      setFilters((current) => ({ ...current, page: result.page }));
+      setRequiredTokenFallback(result.requiredTokenFallback);
+    } finally {
+      if (latestLoadMoreIdRef.current === requestId) {
+        setIsLoadingMore(false);
+      }
+    }
+  }, [filters, hasMore, isLoadingMore, isPending, meta.pageEnd, products.length]);
+
+  useEffect(() => {
+    if (!canAutoLoad || isLoadingMore) return;
+
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreProducts();
+        }
+      },
+      { rootMargin: "900px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [canAutoLoad, isLoadingMore, loadMoreProducts]);
+
   // Apply-on-submit: FilterBar maintains its own draft state and submits the
   // complete next FiltersState shape at once when user clicks "ตกลง".
   const handleApplyFilters = (draft: {
@@ -290,18 +416,9 @@ const SearchResults = ({
     );
   };
 
-  const handlePageChange = (page: number) => {
-    applyFilters({ ...filters, page }, "grid");
-  };
-
   const handleDidYouMeanClick = (suggestion: string) => {
     applyFilters({ ...filters, q: suggestion, page: 1 }, "none");
   };
-
-  // Sync state back if browser back/forward changes URL (e.g. external)
-  useEffect(() => {
-    skipNextScrollRef.current = false;
-  }, []);
 
   const hasFilter =
     Boolean(filters.q) ||
@@ -484,19 +601,36 @@ const SearchResults = ({
                       />
                     </div>
                   ))}
+                  {isLoadingMore &&
+                    Array.from({ length: 6 }).map((_, index) => (
+                      <ProductCardSkeleton key={`loading-more-${index}`} />
+                    ))}
                 </div>
 
-                {meta.totalPages > 1 && (
-                  <div className="mt-8 rounded-3xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-6">
-                    <Pagination
-                      currentPage={filters.page}
-                      totalPages={meta.totalPages}
-                      buildHref={(page) =>
-                        buildSearchUrl({ ...filters, page }, basePath)
-                      }
-                      onNavigate={handlePageChange}
-                      isPending={isPending}
-                    />
+                {hasMore && (
+                  <div ref={loadMoreRef} className="mt-8 flex justify-center">
+                    {canAutoLoad ? (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-500 shadow-sm">
+                        <Loader2 className="h-4 w-4 animate-spin text-[#f97316]" />
+                        <span>กำลังโหลดสินค้าเพิ่มเติม...</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreProducts()}
+                        disabled={isLoadingMore}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-[#10213d] shadow-sm transition hover:border-[#f97316]/40 hover:bg-orange-50 hover:text-[#f97316] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>กำลังโหลด...</span>
+                          </>
+                        ) : (
+                          <span>ดูเพิ่มเติม</span>
+                        )}
+                      </button>
+                    )}
                   </div>
                 )}
               </>

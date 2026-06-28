@@ -39,6 +39,25 @@ const EMPTY_RESULT: SearchProductsResult = {
   pageEnd: 0,
 };
 
+const getSearchProductsResult = async (
+  input: SearchFilterInput,
+): Promise<SearchProductsResult> =>
+  getStorefrontProductSearchPageData({
+    q: input.q,
+    category: input.category,
+    brand: input.brand,
+    models: input.models,
+    year: input.year ?? null,
+    page: input.page,
+    categories: input.categories,
+    partsBrands: input.partsBrands,
+    carBrands: input.carBrands,
+    yearMin: input.yearMin ?? null,
+    yearMax: input.yearMax ?? null,
+    priceMin: input.priceMin ?? null,
+    priceMax: input.priceMax ?? null,
+  });
+
 export async function searchProductsAction(
   input: SearchFilterInput,
 ): Promise<SearchProductsResult> {
@@ -84,21 +103,7 @@ export async function searchProductsAction(
   } as const;
 
   try {
-    const result = await getStorefrontProductSearchPageData({
-      q,
-      category,
-      brand,
-      models,
-      year: year ?? null,
-      page,
-      categories,
-      partsBrands,
-      carBrands,
-      yearMin: yearMin ?? null,
-      yearMax: yearMax ?? null,
-      priceMin: priceMin ?? null,
-      priceMax: priceMax ?? null,
-    });
+    const result = await getSearchProductsResult(parsed.data);
 
     const userAgent = (await headers()).get("user-agent");
     await logProductSearchTelemetry({
@@ -111,6 +116,20 @@ export async function searchProductsAction(
     return result;
   } catch (error) {
     console.error("[searchProductsAction] failed", error);
+    return EMPTY_RESULT;
+  }
+}
+
+export async function loadMoreSearchProductsAction(
+  input: SearchFilterInput,
+): Promise<SearchProductsResult> {
+  const parsed = SearchInputSchema.safeParse(input);
+  if (!parsed.success) return EMPTY_RESULT;
+
+  try {
+    return await getSearchProductsResult(parsed.data);
+  } catch (error) {
+    console.error("[loadMoreSearchProductsAction] failed", error);
     return EMPTY_RESULT;
   }
 }
