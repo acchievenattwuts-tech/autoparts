@@ -60,6 +60,20 @@ const nextConfig: NextConfig = {
   // Remove X-Powered-By header (hides tech stack from attackers)
   poweredByHeader: false,
 
+  // Keep Prisma packages as a SINGLE runtime instance instead of letting webpack
+  // bundle (and duplicate) them. The driver-adapter raw-SQL path builds queries
+  // via `Sql` from @prisma/client-runtime-utils and splices nested fragments with
+  // an `instanceof Sql` check. If that package is bundled into more than one chunk
+  // the check fails across copies, so `Prisma.join(...)` interpolated into
+  // `$executeRaw` is treated as a scalar bind value — emitting `FROM (VALUES $2)`
+  // and a "syntax error at or near $2" (only in the production bundle; dev/source
+  // has a single copy). Externalizing forces one `require()` instance.
+  serverExternalPackages: [
+    "@prisma/client",
+    "@prisma/client-runtime-utils",
+    "@prisma/adapter-pg",
+  ],
+
   experimental: {
     // Vercel Pro supports more CPU resources during build — increased from 1.
     cpus: 4,
