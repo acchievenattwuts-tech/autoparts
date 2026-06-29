@@ -1173,9 +1173,12 @@ export async function updatePurchase(
           const supplierValue = supplierId || null;
           const values = Prisma.join(
             syncRows.map((r) => {
-              const landedCost = canUpdateLandedAllocationInPlace
-                ? Prisma.sql`${safeSqlNumber(r.landedCostPerSelectedUnit)}::numeric`
-                : Prisma.sql`NULL::numeric`;
+              // Keep landed cost as a plain value (number | null) instead of a
+              // nested Prisma.sql fragment. NULL leaves pi."landedCost" untouched
+              // via the COALESCE below — behaviour is identical to before.
+              const landedCostValue: number | null = canUpdateLandedAllocationInPlace
+                ? safeSqlNumber(r.landedCostPerSelectedUnit)
+                : null;
               return Prisma.sql`(
                 ${r.id},
                 ${r.lineNo}::int,
@@ -1184,7 +1187,7 @@ export async function updatePurchase(
                 ${r.showUnitName},
                 ${safeSqlNumber(r.showPricePerUnit)}::numeric,
                 ${safeSqlNumber(r.unitScale)}::numeric,
-                ${landedCost},
+                ${landedCostValue}::numeric,
                 ${r.moreDetail}::text
               )`;
             }),
