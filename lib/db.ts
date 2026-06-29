@@ -73,6 +73,66 @@ const normalizeDatabaseUrl = (rawUrl: string | undefined): string => {
   return parsedUrl.toString();
 };
 
+// ─── TEMP DIAGNOSTIC: raw-query failure logging ─────────────────────────────
+// Wraps the driver adapter so any queryRaw/executeRaw that throws prints the
+// final `$1..$n` SQL string and arg count before re-throwing. Recursively wraps
+// transactions (startTransaction) since failing writes run inside a tx.
+// REMOVE this block + the wrap call once the failing query is identified.
+type RawDriverQuery = { sql?: unknown; args?: unknown };
+
+function isRawQueryMethod(prop: string | symbol): boolean {
+  return prop === "queryRaw" || prop === "executeRaw";
+}
+
+function logRawFailure(method: string, query: RawDriverQuery, error: unknown): void {
+  const sql = typeof query?.sql === "string" ? query.sql : "(no sql)";
+  const argCount = Array.isArray(query?.args) ? query.args.length : "n/a";
+  const code = (error as { code?: string })?.code ?? "";
+  console.error(`[RAWFAIL] ${method} code=${code} argCount=${argCount} sql=${sql}`);
+}
+
+function wrapQueryable<T extends object>(queryable: T): T {
+  return new Proxy(queryable, {
+    get(target, prop, receiver) {
+      const original = Reflect.get(target, prop, receiver);
+      if (typeof original !== "function") return original;
+      if (isRawQueryMethod(prop)) {
+        return async (query: RawDriverQuery): Promise<unknown> => {
+          try {
+            return await (original as (q: RawDriverQuery) => Promise<unknown>).call(target, query);
+          } catch (error) {
+            logRawFailure(String(prop), query, error);
+            throw error;
+          }
+        };
+      }
+      if (prop === "startTransaction") {
+        return async (...args: unknown[]): Promise<unknown> => {
+          const tx = await (original as (...a: unknown[]) => Promise<object>).apply(target, args);
+          return wrapQueryable(tx);
+        };
+      }
+      return (original as (...a: unknown[]) => unknown).bind(target);
+    },
+  });
+}
+
+function wrapAdapterForRawErrorLogging<T extends object>(adapter: T): T {
+  return new Proxy(adapter, {
+    get(target, prop, receiver) {
+      const original = Reflect.get(target, prop, receiver);
+      if (typeof original !== "function") return original;
+      if (prop === "connect" || prop === "connectToShadowDb") {
+        return async (...args: unknown[]): Promise<unknown> => {
+          const connection = await (original as (...a: unknown[]) => Promise<object>).apply(target, args);
+          return wrapQueryable(connection);
+        };
+      }
+      return (original as (...a: unknown[]) => unknown).bind(target);
+    },
+  });
+}
+
 function createPrismaClient() {
   const connectionLimit = getPositiveNumber(process.env.DB_POOL_MAX, DEFAULT_DB_POOL_MAX, 1);
   const idleTimeoutMillis = getPositiveNumber(process.env.DB_IDLE_TIMEOUT_MS, DEFAULT_DB_IDLE_TIMEOUT_MS, 1_000);
@@ -84,12 +144,16 @@ function createPrismaClient() {
   const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
   // Pass PoolConfig directly to avoid type conflict between pg versions
-  const adapter = new PrismaPg({
+  const baseAdapter = new PrismaPg({
     connectionString,
     max: connectionLimit,
     idleTimeoutMillis,
     connectionTimeoutMillis,
   });
+  // TEMP DIAGNOSTIC (remove after capturing): log the exact SQL + arg count that
+  // the pg driver fails on, so a "syntax error at or near $N" can be traced to
+  // the precise raw query. Zero overhead on the success path.
+  const adapter = wrapAdapterForRawErrorLogging(baseAdapter);
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
