@@ -180,6 +180,29 @@ export const matchPartTypeToCategoryHint = (partType: string | null | undefined)
 };
 
 /**
+ * Resolves a car model name to its brand when the name UNAMBIGUOUSLY identifies a
+ * single active model in the catalog (exact, case-insensitive). Returns null when
+ * the name is unknown or shared across brands (e.g. "2", "City") — callers must
+ * never let an ambiguous model hijack the brand. Used to correct a wrong/missing
+ * brand from the model (e.g. carried-over "Toyota" + "D-Max" → Isuzu).
+ */
+async function resolveModelExact(
+  carModel: string,
+): Promise<{ brandName: string; modelName: string } | null> {
+  const rows = await db.carModel.findMany({
+    where: {
+      isActive: true,
+      name: { equals: carModel, mode: "insensitive" },
+      carBrand: { isActive: true },
+    },
+    select: { name: true, carBrand: { select: { name: true } } },
+    take: 2,
+  });
+  if (rows.length !== 1) return null;
+  return { brandName: rows[0].carBrand.name, modelName: rows[0].name };
+}
+
+/**
  * Case-insensitive resolution against CarBrand / CarModel / Category. Prefers an
  * exact (insensitive) name match; for car models, scopes to the resolved brand and
  * falls back to a `contains` match (e.g. AI "Mazda 2" vs master "2").
@@ -244,8 +267,8 @@ export async function resolveLineFitmentFilters(
     else if (categoryRow) filters.categoryName = categoryRow.name;
     if (brandRow) filters.carBrandName = brandRow.name;
 
-    // Car model only when we have a resolved brand to scope it (model names like
-    // "2" / "City" are ambiguous across brands). Exact first, then contains.
+    // Car model resolution. Model names like "2" / "City" are ambiguous across
+    // brands, so when a brand is known we scope to it (exact then contains).
     if (brandRow && carModel) {
       const modelRow =
         (await db.carModel.findFirst({
@@ -264,7 +287,29 @@ export async function resolveLineFitmentFilters(
           },
           select: { name: true },
         }));
-      if (modelRow) filters.carModelName = modelRow.name;
+      if (modelRow) {
+        filters.carModelName = modelRow.name;
+      } else {
+        // Cross-brand correction: the brand resolved (e.g. carried-over "Toyota")
+        // but the model does NOT belong to it. The model is the more specific
+        // signal — if it EXACTLY (case-insensitive) names exactly one active model
+        // in the catalog, trust the model and override the brand to the model's
+        // real brand (e.g. "Toyota" + "D-Max" → Isuzu D-Max). Exact-only keeps
+        // ambiguous short names ("2", "City") from hijacking the brand.
+        const corrected = await resolveModelExact(carModel);
+        if (corrected) {
+          filters.carBrandName = corrected.brandName;
+          filters.carModelName = corrected.modelName;
+        }
+      }
+    } else if (!brandRow && carModel) {
+      // No brand given (customer typed only a model, e.g. "คอมแอร์ Mu-x"). Resolve
+      // the brand FROM the model when it is unambiguous.
+      const corrected = await resolveModelExact(carModel);
+      if (corrected) {
+        filters.carBrandName = corrected.brandName;
+        filters.carModelName = corrected.modelName;
+      }
     }
   } catch {
     // Resolution is best-effort precision; never block search on a lookup failure.

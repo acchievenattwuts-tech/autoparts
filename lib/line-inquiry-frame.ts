@@ -100,14 +100,25 @@ export function reconcileInquiryFrame(
     newPart && safeBase.partType && normalizeSearchText(newPart) !== normalizeSearchText(safeBase.partType),
   );
 
+  // Vehicle-slot merge. A NEW car model that differs from the carried one means the
+  // customer switched vehicles — the stored brand/year belong to the OLD car and
+  // must not stick (otherwise e.g. carried brand "Toyota" + new model "D-Max"
+  // yields the impossible "Toyota D-Max", which later hard-filters to Toyota). When
+  // the model changes, only carry brand/year if THIS turn supplied them.
+  const modelChanged = Boolean(
+    latest.carModel &&
+      safeBase.carModel &&
+      normalizeSearchText(latest.carModel) !== normalizeSearchText(safeBase.carModel),
+  );
+  const vehicle = {
+    carBrand: latest.carBrand ?? (modelChanged ? null : safeBase.carBrand),
+    carModel: latest.carModel ?? safeBase.carModel,
+    year: latest.year ?? (modelChanged ? null : safeBase.year),
+  };
+
   if (topicShift) {
     return {
-      frame: {
-        partType: latest.partType,
-        carBrand: latest.carBrand ?? safeBase.carBrand,
-        carModel: latest.carModel ?? safeBase.carModel,
-        year: latest.year ?? safeBase.year,
-      },
+      frame: { partType: latest.partType, ...vehicle },
       topicShift: true,
     };
   }
@@ -115,9 +126,7 @@ export function reconcileInquiryFrame(
   return {
     frame: {
       partType: latest.partType ?? safeBase.partType,
-      carBrand: latest.carBrand ?? safeBase.carBrand,
-      carModel: latest.carModel ?? safeBase.carModel,
-      year: latest.year ?? safeBase.year,
+      ...vehicle,
     },
     topicShift: false,
   };
