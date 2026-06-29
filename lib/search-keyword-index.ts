@@ -141,6 +141,12 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
  * state. Cheap at this scale (≈1,600 rows), and runs daily via cron + on every
  * catalog/master mutation via the storefront revalidate hook.
  */
+// Generous envelopes for the rebuild transaction (see call site below). 60s of
+// work is well under the Supabase 120s statement_timeout, and 10s to acquire a
+// pooled connection rides out a short burst instead of failing fast at 2s.
+const REFRESH_TX_TIMEOUT_MS = 60_000;
+const REFRESH_TX_MAX_WAIT_MS = 10_000;
+
 export async function refreshSearchKeywordIndex(): Promise<number> {
   const rows = await buildSearchKeywordRows();
   if (rows.length === 0) {
@@ -151,7 +157,8 @@ export async function refreshSearchKeywordIndex(): Promise<number> {
 
   const runStartedAt = new Date();
 
-  await db.$transaction(async (tx) => {
+  await db.$transaction(
+    async (tx) => {
     // Bulk upsert every built row in a single statement. Touched rows (inserted or
     // updated) get updatedAt = runStartedAt; rows not present this run keep their
     // older updatedAt and are deleted below.
@@ -178,11 +185,20 @@ export async function refreshSearchKeywordIndex(): Promise<number> {
         "updatedAt" = ${runStartedAt}
     `);
 
-    // Remove rows that no longer exist in the catalog (not touched this run).
-    await tx.$executeRaw(Prisma.sql`
-      DELETE FROM "SearchKeyword" WHERE "updatedAt" < ${runStartedAt}
-    `);
-  });
+      // Remove rows that no longer exist in the catalog (not touched this run).
+      await tx.$executeRaw(Prisma.sql`
+        DELETE FROM "SearchKeyword" WHERE "updatedAt" < ${runStartedAt}
+      `);
+    },
+    // The default Prisma interactive-transaction limits (timeout 5s / maxWait 2s)
+    // are far too tight for this job: the bulk upsert of ~1,600 rows as one large
+    // parameterized statement plus the stale-delete regularly runs past 5s, and
+    // under a burst of master-data mutations the small per-instance pool (max 5)
+    // can take longer than 2s to hand out a connection. Both produced the P2028
+    // "expired transaction" / "unable to start a transaction" errors. Give the
+    // job room: 60s of work and 10s to acquire a connection.
+    { timeout: REFRESH_TX_TIMEOUT_MS, maxWait: REFRESH_TX_MAX_WAIT_MS },
+  );
 
   return rows.length;
 }
@@ -195,10 +211,41 @@ export async function refreshSearchKeywordIndex(): Promise<number> {
  * guaranteed catch-all (and on serverless a fire-and-forget may be cut off, which
  * is exactly why the cron exists).
  */
+// In-process coalescing guard. A single master-data save fans out into several
+// revalidate hooks (and a rapid sequence of edits fires many), each calling this.
+// Without coalescing they would all start a rebuild at once, piling concurrent
+// transactions onto the small per-instance pool (max 5) and starving it — the
+// exact contention behind the P2028 cascade. So: while a rebuild is in flight we
+// don't start another; instead we mark "rerun pending" so exactly one more run
+// fires afterwards to capture the latest data. This is per-instance only (state
+// doesn't persist across serverless instances), which is fine — the daily cron
+// remains the guaranteed catch-all.
+let inFlightRefresh: Promise<void> | null = null;
+let rerunPending = false;
+
+function runRefreshCoalesced(): Promise<void> {
+  inFlightRefresh = refreshSearchKeywordIndex()
+    .then(() => undefined)
+    .catch((error) => {
+      console.error("[search-keyword] background refresh failed", error);
+    })
+    .finally(() => {
+      inFlightRefresh = null;
+      if (rerunPending) {
+        rerunPending = false;
+        void runRefreshCoalesced();
+      }
+    });
+  return inFlightRefresh;
+}
+
 export function triggerSearchKeywordRefresh(): void {
-  void refreshSearchKeywordIndex().catch((error) => {
-    console.error("[search-keyword] background refresh failed", error);
-  });
+  if (inFlightRefresh) {
+    // A rebuild is already running — guarantee one more run picks up this change.
+    rerunPending = true;
+    return;
+  }
+  void runRefreshCoalesced();
 }
 
 const MAX_SUGGESTIONS = 16;

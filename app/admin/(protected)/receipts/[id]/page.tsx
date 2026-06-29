@@ -70,8 +70,11 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const canUpdate = hasPermissionAccess(role, permissions, "receipts.update");
   const { id } = await params;
 
-  const [receipt, contents, primaryTransferAccount] = await db.$transaction([
-    db.receipt.findUnique({
+  // Sequential awaits inside one interactive transaction keep all three reads on
+  // a single pooled connection (1 request = 1 connection) without the pg-adapter
+  // "client.query() while already executing" warning the array/batch form emits.
+  const { receipt, contents, primaryTransferAccount } = await db.$transaction(async (tx) => {
+    const receipt = await tx.receipt.findUnique({
       where: { id },
       include: {
         customer: true,
@@ -85,9 +88,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           },
         },
       },
-    }),
-    db.siteContent.findMany(),
-    db.cashBankAccount.findFirst({
+    });
+    const contents = await tx.siteContent.findMany();
+    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -98,8 +101,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         bankName: true,
         accountNo: true,
       },
-    }),
-  ]);
+    });
+    return { receipt, contents, primaryTransferAccount };
+  });
 
   if (!receipt) notFound();
 

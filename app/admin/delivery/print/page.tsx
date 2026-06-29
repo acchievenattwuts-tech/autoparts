@@ -67,8 +67,11 @@ const DeliveryPrintPage = async ({
   const idList = ids.split(",").filter(Boolean).slice(0, 100);
   if (idList.length === 0) notFound();
 
-  const [sales, siteContents, primaryTransferAccount] = await db.$transaction([
-    db.sale.findMany({
+  // Sequential awaits inside one interactive transaction keep all three reads on
+  // a single pooled connection (1 request = 1 connection) without the pg-adapter
+  // "client.query() while already executing" warning the array/batch form emits.
+  const { sales, siteContents, primaryTransferAccount } = await db.$transaction(async (tx) => {
+    const sales = await tx.sale.findMany({
       where: { id: { in: idList }, fulfillmentType: "DELIVERY", status: "ACTIVE" },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
       select: {
@@ -112,9 +115,9 @@ const DeliveryPrintPage = async ({
           },
         },
       },
-    }),
-    db.siteContent.findMany(),
-    db.cashBankAccount.findFirst({
+    });
+    const siteContents = await tx.siteContent.findMany();
+    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -127,8 +130,9 @@ const DeliveryPrintPage = async ({
         accountNo: true,
         promptPayId: true,
       },
-    }),
-  ]);
+    });
+    return { sales, siteContents, primaryTransferAccount };
+  });
 
   if (sales.length === 0) notFound();
   const shopConfig = mapSiteConfig(siteContents);

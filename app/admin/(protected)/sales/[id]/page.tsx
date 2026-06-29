@@ -114,8 +114,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
 
-  const [sale, siteContents, primaryTransferAccount] = await db.$transaction([
-    db.sale.findUnique({
+  // Sequential awaits inside one interactive transaction keep all three reads on
+  // a single pooled connection (1 request = 1 connection) without the pg-adapter
+  // "client.query() while already executing" warning the array/batch form emits.
+  const { sale, siteContents, primaryTransferAccount } = await db.$transaction(async (tx) => {
+    const sale = await tx.sale.findUnique({
       where: { id },
       include: {
         items: {
@@ -144,9 +147,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         _count: { select: { deliveryProofs: true } },
         shopeeOrderImport: { select: { id: true, orderSn: true } },
       },
-    }),
-    db.siteContent.findMany(),
-    db.cashBankAccount.findFirst({
+    });
+    const siteContents = await tx.siteContent.findMany();
+    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -159,8 +162,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         accountNo: true,
         promptPayId: true,
       },
-    }),
-  ]);
+    });
+    return { sale, siteContents, primaryTransferAccount };
+  });
 
   if (!sale) notFound();
   const cfg = mapSiteConfig(siteContents);
