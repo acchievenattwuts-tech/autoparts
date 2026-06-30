@@ -25,6 +25,7 @@ import {
   VatType,
 } from "@/lib/generated/prisma";
 import { generateTrackingToken } from "@/lib/delivery-tracking";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -696,6 +697,8 @@ export async function cancelSale(
   });
   if (!sale)                        return { error: "ไม่พบเอกสาร" };
   if (sale.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("Sale", saleId, "cancel");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   // Reference chain: ตรวจ CN ที่ยัง active
   if (sale.creditNotes.length > 0) {
@@ -823,6 +826,8 @@ export async function updateSale(
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("Sale", id, "update");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
   if (existing.creditNotes.length > 0) {
     const nos = existing.creditNotes.map((cn) => cn.cnNo).join(", ");
     return { error: `ไม่สามารถแก้ไขได้ มีใบลดหนี้ที่อ้างอิงอยู่: ${nos}` };

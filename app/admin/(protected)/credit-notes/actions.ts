@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateCNNo } from "@/lib/doc-number";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CNRefundMethod,
@@ -615,6 +616,8 @@ export async function cancelCreditNote(
   });
   if (!cn)                        return { error: "ไม่พบเอกสาร" };
   if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("CreditNote", cnId, "cancel");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   // ตรวจสอบ receipt ที่อ้างถึง CN นี้ (เฉพาะ CREDIT_DEBT)
   if (cn.settlementType === "CREDIT_DEBT") {
@@ -720,6 +723,8 @@ export async function updateCreditNote(
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("CreditNote", id, "update");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   // ถ้ามี Receipt อ้างถึง CN นี้อยู่ → ไม่อนุญาตให้แก้ไข
   if (existing.settlementType === "CREDIT_DEBT") {

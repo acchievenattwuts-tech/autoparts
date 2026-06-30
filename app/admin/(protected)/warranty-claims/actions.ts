@@ -34,12 +34,25 @@ import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { requirePermission } from "@/lib/require-auth";
 import { recalculateStockCard, writeStockCard } from "@/lib/stock-card";
 import {
+  buildMutationBlockMessage,
+  checkDocumentMutation,
+  type DocumentMutationAction,
+} from "@/lib/document-mutation-guard";
+import {
   formatDateOnlyForInput,
   getThailandDateKey,
   parseDateOnlyToDate,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+
+async function getWarrantyClaimMutationBlockError(
+  id: string,
+  action: DocumentMutationAction,
+): Promise<string | null> {
+  const result = await checkDocumentMutation("WarrantyClaim", id, action);
+  return buildMutationBlockMessage(result);
+}
 
 const createClaimSchema = z.object({
   warrantyId: z.string().min(1).max(50),
@@ -414,6 +427,8 @@ export async function updateClaim(
     select: { status: true },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "update");
+  if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status === WarrantyClaimStatus.CLOSED || claim.status === WarrantyClaimStatus.CANCELLED) {
     return { error: "ไม่สามารถแก้ไขใบเคลมที่ปิดหรือยกเลิกแล้ว" };
   }
@@ -491,6 +506,8 @@ export async function sendClaimToSupplier(
     },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "update");
+  if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status !== WarrantyClaimStatus.DRAFT) return { error: "สถานะไม่อนุญาตให้ส่งเคลม" };
 
   const sentDate = parseDateOnlyToDate(sentAt);
@@ -589,6 +606,8 @@ export async function closeClaim(
     },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "update");
+  if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status !== WarrantyClaimStatus.SENT_TO_SUPPLIER) {
     return { error: "ต้องส่งซัพพลายเออร์ก่อนปิดเคลม" };
   }
@@ -749,6 +768,8 @@ export async function returnClaimToCustomer(
     },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "update");
+  if (mutationBlockError) return { error: mutationBlockError };
   if (claim.claimType !== ClaimType.CUSTOMER_WAIT) {
     return { error: "สถานะส่งคืนลูกค้าใช้ได้เฉพาะเคลมแบบลูกค้ารอเคลม" };
   }
@@ -855,6 +876,9 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
 
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "reopen");
+  if (mutationBlockError) return { error: mutationBlockError };
+
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
@@ -958,6 +982,8 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
     },
   });
   if (!claim) return { error: "ไม่พบใบเคลม" };
+  const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "cancel");
+  if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status === WarrantyClaimStatus.CANCELLED) return { error: "ยกเลิกไปแล้ว" };
 
   try {

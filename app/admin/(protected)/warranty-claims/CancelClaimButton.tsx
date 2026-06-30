@@ -4,7 +4,15 @@ import { useRouter } from "next/navigation";
 import CancelDocButton from "@/components/shared/CancelDocButton";
 import { cancelClaimAction } from "./actions";
 
-const CancelClaimButton = ({ claimId, claimNo }: { claimId: string; claimNo: string }) => {
+const CancelClaimButton = ({
+  claimId,
+  claimNo,
+  disabledReason,
+}: {
+  claimId: string;
+  claimNo: string;
+  disabledReason?: string | null;
+}) => {
   const router = useRouter();
   return (
     <CancelDocButton
@@ -13,6 +21,7 @@ const CancelClaimButton = ({ claimId, claimNo }: { claimId: string; claimNo: str
       idFieldName="claimId"
       cancelAction={cancelClaimAction}
       onSuccess={() => router.refresh()}
+      disabledReason={disabledReason}
     />
   );
 };

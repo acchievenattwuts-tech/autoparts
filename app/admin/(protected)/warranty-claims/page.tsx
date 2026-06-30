@@ -12,6 +12,7 @@ import CancelClaimButton from "./CancelClaimButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
+import { buildMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -128,6 +129,10 @@ const ClaimListPage = async ({
         status: true,
         outcome: true,
         supplierName: true,
+        purchaseReturns: {
+          where: { status: "ACTIVE" },
+          select: { id: true, returnNo: true },
+        },
         warranty: {
           select: {
             unitSeq: true,
@@ -318,7 +323,19 @@ const ClaimListPage = async ({
                             >
                               <Pencil size={14} /> แก้ไข
                             </Link>
-                            <CancelClaimButton claimId={claim.id} claimNo={claim.claimNo} />
+                            <CancelClaimButton
+                              claimId={claim.id}
+                              claimNo={claim.claimNo}
+                              disabledReason={buildMutationBlockMessage({
+                                blocked: claim.purchaseReturns.length > 0,
+                                reason: claim.purchaseReturns.length > 0 ? "ถูกนำไปใช้ที่ใบลดหนี้ซื้อ" : null,
+                                references: claim.purchaseReturns.map((purchaseReturn) => ({
+                                  entityType: "PurchaseReturn",
+                                  id: purchaseReturn.id,
+                                  refNo: purchaseReturn.returnNo,
+                                })),
+                              })}
+                            />
                           </>
                         )}
                       </div>

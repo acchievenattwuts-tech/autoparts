@@ -6,9 +6,11 @@ import { notFound } from "next/navigation";
 
 import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
+import { buildMutationBlockMessage, checkDocumentMutation } from "@/lib/document-mutation-guard";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
@@ -136,7 +138,15 @@ const ClaimDetailPage = async ({ params }: Props) => {
   ]);
 
   if (!claim) notFound();
-  const activityEvents = await getDocumentActivityTimeline("WarrantyClaim", claim.id);
+  const [activityEvents, mutationBlock] = await Promise.all([
+    getDocumentActivityTimeline("WarrantyClaim", claim.id),
+    checkDocumentMutation("WarrantyClaim", claim.id, "update"),
+  ]);
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = mutationBlock.references.map((ref) => ({
+    href: ref.entityType === "PurchaseReturn" ? `/admin/purchase-returns/${ref.id}` : "#",
+    label: ref.refNo,
+  }));
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";
@@ -205,6 +215,13 @@ const ClaimDetailPage = async ({ params }: Props) => {
       />
 
       <DocumentActivityTimeline events={activityEvents} />
+
+      {mutationBlockMessage && (
+        <DocumentMutationBlockedNotice
+          message={mutationBlockMessage}
+          references={mutationBlockReferences}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -463,6 +480,8 @@ const ClaimDetailPage = async ({ params }: Props) => {
               claimType={claim.claimType}
               outcome={claim.outcome}
               isLotControl={claim.warranty.product.isLotControl}
+              mutationBlockedReason={mutationBlockMessage}
+              mutationBlockReferences={mutationBlockReferences}
             />
           </div>
         )}

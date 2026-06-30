@@ -11,6 +11,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CashBankDirection,
@@ -814,6 +815,8 @@ export async function cancelPurchaseReturn(
   });
   if (!ret) return { error: "ไม่พบเอกสาร" };
   if (ret.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("PurchaseReturn", ret.id, "cancel");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   const activeRefs = await getActiveSupplierPaymentRefs(ret.id);
   if (activeRefs.length > 0) {
@@ -916,6 +919,8 @@ export async function updatePurchaseReturn(
   if (existing.status === "CANCELLED") {
     return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
   }
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("PurchaseReturn", id, "update");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   const activeRefs = await getActiveSupplierPaymentRefs(id);
   if (activeRefs.length > 0) {

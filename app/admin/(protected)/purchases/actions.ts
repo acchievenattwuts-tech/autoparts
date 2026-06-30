@@ -12,6 +12,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generatePurchaseNo } from "@/lib/doc-number";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   PaymentMethod,
@@ -736,6 +737,8 @@ export async function cancelPurchase(
   });
   if (!purchase)                        return { error: "ไม่พบเอกสาร" };
   if (purchase.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("Purchase", purchaseId, "cancel");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   // Reference chain check: ห้ามยกเลิกถ้ามีใบคืนสินค้าที่ยัง active
   if (purchase.purchaseReturns.length > 0) {
@@ -838,6 +841,8 @@ export async function updatePurchase(
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("Purchase", id, "update");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
   if (existing.purchaseReturns.length > 0) {
     const nos = existing.purchaseReturns.map((r) => r.returnNo).join(", ");
     return { error: `ไม่สามารถแก้ไขได้ มีใบคืนสินค้าที่อ้างอิงอยู่: ${nos}` };

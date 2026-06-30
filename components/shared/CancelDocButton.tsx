@@ -9,13 +9,15 @@ interface CancelDocButtonProps {
   idFieldName: string;   // เช่น "saleId", "purchaseId", "adjustmentId"
   cancelAction: (formData: FormData) => Promise<{ success?: boolean; error?: string }>;
   onSuccess?:  () => void;
+  disabledReason?: string | null;
 }
 
-const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }: CancelDocButtonProps) => {
+const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, disabledReason }: CancelDocButtonProps) => {
   const [isPending, startTransition] = useTransition();
   const [showModal, setShowModal]    = useState(false);
   const [cancelNote, setCancelNote]  = useState("");
   const [error, setError]            = useState("");
+  const isDisabled = Boolean(disabledReason);
 
   const handleConfirm = () => {
     setError("");
@@ -39,8 +41,13 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess }:
     <>
       <button
         type="button"
-        onClick={() => { setShowModal(true); setError(""); }}
-        className="inline-flex items-center gap-1 text-xs text-red-500 hover:text-red-700 transition-colors"
+        onClick={() => {
+          if (isDisabled) return;
+          setShowModal(true);
+          setError("");
+        }}
+        disabled={isDisabled}
+        className="inline-flex items-center gap-1 text-xs text-red-500 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:text-gray-300 dark:disabled:text-slate-600"
         title="ยกเลิกเอกสาร"
       >
         <XCircle size={14} /> ยกเลิก

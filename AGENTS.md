@@ -28,6 +28,16 @@ When introducing a new admin menu, admin page entrypoint, or user-facing admin w
 
 When adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, you must use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern in the same round. These flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not regress back to a full page refresh.
 
+# Transaction Reference Guard Rule
+
+When changing any transaction document update, cancel, reopen, rollback, or status-transition flow, you must preserve downstream reference safety in the same round. If an active downstream document uses the current document, the server action must block the mutation before changing data, stock, cash/bank movements, audit state, or status.
+
+Server-side guards are mandatory and must be treated as the source of truth. UI disabled states, hidden buttons, confirmation messages, or client-side checks are only user-experience helpers and must never be the only protection because Server Actions can be invoked directly.
+
+When a mutation is blocked because the document has active downstream usage, show a user-facing reason and, when the downstream document IDs are available, show the referenced document numbers as links. The guard message and UI disabled reason should come from the same helper/service whenever practical so the action behavior and preview/detail page do not drift.
+
+When adding a new transaction type or a new document relationship, update both the document activity timeline relation map and the transaction mutation guard coverage in the same round. Do not add timeline visibility for a downstream relationship without deciding whether update/cancel/reopen should be blocked.
+
 # Database Date/Time Schema Rule
 
 All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless a narrower PostgreSQL type is deliberately approved for that exact field. Do not add bare `DateTime` or PostgreSQL `timestamp without time zone`; date/time storage must preserve the instant semantics used by `lib/th-date.ts`.

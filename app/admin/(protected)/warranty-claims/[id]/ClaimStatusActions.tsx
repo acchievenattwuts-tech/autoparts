@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import CancelDocButton from "@/components/shared/CancelDocButton";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import { getThailandDateKey } from "@/lib/th-date";
 import {
   cancelClaimAction,
@@ -20,6 +21,8 @@ interface Props {
   claimType: string;
   outcome: string | null;
   isLotControl: boolean;
+  mutationBlockedReason?: string | null;
+  mutationBlockReferences?: Array<{ href: string; label: string }>;
 }
 
 const inputCls =
@@ -33,6 +36,8 @@ const ClaimStatusActions = ({
   claimType,
   outcome,
   isLotControl,
+  mutationBlockedReason,
+  mutationBlockReferences = [],
 }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -110,6 +115,7 @@ const ClaimStatusActions = ({
     });
   };
 
+  const isMutationBlocked = Boolean(mutationBlockedReason);
   const canReturnToCustomer =
     currentStatus === "CLOSED" && claimType === "CUSTOMER_WAIT" && outcome === "RECEIVED";
 
@@ -123,6 +129,14 @@ const ClaimStatusActions = ({
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>
       )}
 
+      {mutationBlockedReason && (
+        <DocumentMutationBlockedNotice
+          message={mutationBlockedReason}
+          references={mutationBlockReferences}
+          compact
+        />
+      )}
+
       {currentStatus === "DRAFT" && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-700">ส่งสินค้าไปซัพพลายเออร์</h3>
@@ -132,7 +146,7 @@ const ClaimStatusActions = ({
           </div>
           <button
             onClick={handleSend}
-            disabled={isPending}
+            disabled={isPending || isMutationBlocked}
             className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             {isPending ? "กำลังบันทึก..." : "ยืนยันส่งซัพพลายเออร์"}
@@ -216,7 +230,7 @@ const ClaimStatusActions = ({
           )}
           <button
             onClick={handleClose}
-            disabled={isPending}
+            disabled={isPending || isMutationBlocked}
             className="w-full px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             {isPending ? "กำลังบันทึก..." : "ปิดเคลม"}
@@ -243,7 +257,7 @@ const ClaimStatusActions = ({
           </div>
           <button
             onClick={handleReturnToCustomer}
-            disabled={isPending}
+            disabled={isPending || isMutationBlocked}
             className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             {isPending ? "กำลังบันทึก..." : "ยืนยันส่งคืนลูกค้า"}
@@ -261,7 +275,7 @@ const ClaimStatusActions = ({
                 "ย้อนกลับเป็นสถานะ [ส่งซัพพลายเออร์แล้ว] ? หากเคยรับสินค้ากลับแล้ว ระบบจะย้อน Stock และ Lot ของการปิดเคลมให้",
               )
             }
-            disabled={isPending}
+            disabled={isPending || isMutationBlocked}
             className="w-full px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 border border-amber-200"
           >
             {isPending ? "กำลังดำเนินการ..." : "ย้อนกลับเป็น ส่งซัพพลายเออร์แล้ว"}
@@ -276,7 +290,7 @@ const ClaimStatusActions = ({
             onClick={() =>
               handleReopen("ย้อนกลับเป็นสถานะ [ปิดเคลม] ? ระบบจะคืน Stock และ Lot ของการส่งคืนลูกค้าให้")
             }
-            disabled={isPending}
+            disabled={isPending || isMutationBlocked}
             className="w-full px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 border border-amber-200"
           >
             {isPending ? "กำลังดำเนินการ..." : "ย้อนกลับเป็น ปิดเคลม"}
@@ -292,6 +306,7 @@ const ClaimStatusActions = ({
             idFieldName="claimId"
             cancelAction={cancelClaimAction}
             onSuccess={() => router.push("/admin/warranty-claims")}
+            disabledReason={mutationBlockedReason}
           />
         </div>
       )}
