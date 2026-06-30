@@ -67,11 +67,13 @@ const DeliveryPrintPage = async ({
   const idList = ids.split(",").filter(Boolean).slice(0, 100);
   if (idList.length === 0) notFound();
 
-  // Sequential awaits inside one interactive transaction keep all three reads on
-  // a single pooled connection (1 request = 1 connection) without the pg-adapter
-  // "client.query() while already executing" warning the array/batch form emits.
-  const { sales, siteContents, primaryTransferAccount } = await db.$transaction(async (tx) => {
-    const sales = await tx.sale.findMany({
+  // Read-only page: issue the reads on the autocommit client (no interactive
+  // transaction). Each query — and the nested relation loads Prisma's interpreter
+  // fans out — gets its own pooled connection, so they run in parallel instead of
+  // being serialized onto a single pinned client (which both emitted the pg
+  // "client.query() while already executing" warning and slowed the page).
+  const [sales, siteContents, primaryTransferAccount] = await Promise.all([
+    db.sale.findMany({
       where: { id: { in: idList }, fulfillmentType: "DELIVERY", status: "ACTIVE" },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
       select: {
@@ -115,9 +117,9 @@ const DeliveryPrintPage = async ({
           },
         },
       },
-    });
-    const siteContents = await tx.siteContent.findMany();
-    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
+    }),
+    db.siteContent.findMany(),
+    db.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -130,9 +132,8 @@ const DeliveryPrintPage = async ({
         accountNo: true,
         promptPayId: true,
       },
-    });
-    return { sales, siteContents, primaryTransferAccount };
-  });
+    }),
+  ]);
 
   if (sales.length === 0) notFound();
   const shopConfig = mapSiteConfig(siteContents);

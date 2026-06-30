@@ -72,11 +72,13 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const canUpdate = hasPermissionAccess(role, permissions, "receipts.update");
   const { id } = await params;
 
-  // Sequential awaits inside one interactive transaction keep all three reads on
-  // a single pooled connection (1 request = 1 connection) without the pg-adapter
-  // "client.query() while already executing" warning the array/batch form emits.
-  const { receipt, contents, primaryTransferAccount } = await db.$transaction(async (tx) => {
-    const receipt = await tx.receipt.findUnique({
+  // Read-only page: issue the reads on the autocommit client (no interactive
+  // transaction). Each query — and the nested relation loads Prisma's interpreter
+  // fans out — gets its own pooled connection, so they run in parallel instead of
+  // being serialized onto a single pinned client (which both emitted the pg
+  // "client.query() while already executing" warning and slowed the page).
+  const [receipt, contents, primaryTransferAccount] = await Promise.all([
+    db.receipt.findUnique({
       where: { id },
       include: {
         customer: true,
@@ -90,9 +92,9 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           },
         },
       },
-    });
-    const contents = await tx.siteContent.findMany();
-    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
+    }),
+    db.siteContent.findMany(),
+    db.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -103,9 +105,8 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         bankName: true,
         accountNo: true,
       },
-    });
-    return { receipt, contents, primaryTransferAccount };
-  });
+    }),
+  ]);
 
   if (!receipt) notFound();
   const activityEvents = await getDocumentActivityTimeline("Receipt", receipt.id);

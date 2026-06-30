@@ -116,11 +116,13 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const { id } = await params;
 
-  // Sequential awaits inside one interactive transaction keep all three reads on
-  // a single pooled connection (1 request = 1 connection) without the pg-adapter
-  // "client.query() while already executing" warning the array/batch form emits.
-  const { sale, siteContents, primaryTransferAccount } = await db.$transaction(async (tx) => {
-    const sale = await tx.sale.findUnique({
+  // Read-only page: issue the three reads on the autocommit client (no interactive
+  // transaction). Each query — and the nested relation loads Prisma's interpreter
+  // fans out — gets its own pooled connection, so they run in parallel instead of
+  // being serialized onto a single pinned client (which both emitted the pg
+  // "client.query() while already executing" warning and slowed the page).
+  const [sale, siteContents, primaryTransferAccount] = await Promise.all([
+    db.sale.findUnique({
       where: { id },
       include: {
         items: {
@@ -149,9 +151,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         _count: { select: { deliveryProofs: true } },
         shopeeOrderImport: { select: { id: true, orderSn: true } },
       },
-    });
-    const siteContents = await tx.siteContent.findMany();
-    const primaryTransferAccount = await tx.cashBankAccount.findFirst({
+    }),
+    db.siteContent.findMany(),
+    db.cashBankAccount.findFirst({
       where: {
         type: "BANK",
         isActive: true,
@@ -164,9 +166,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         accountNo: true,
         promptPayId: true,
       },
-    });
-    return { sale, siteContents, primaryTransferAccount };
-  });
+    }),
+  ]);
 
   if (!sale) notFound();
   const activityEvents = await getDocumentActivityTimeline("Sale", sale.id);
