@@ -41,10 +41,12 @@ const SupplierAdvanceForm = ({
   suppliers,
   cashBankAccounts,
   initialData,
+  submitLocked = false,
 }: {
   suppliers: SupplierOption[];
   cashBankAccounts: CashBankAccountOption[];
   initialData?: InitialData;
+  submitLocked?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -77,6 +79,8 @@ const SupplierAdvanceForm = ({
   const handleSubmit = () => {
     setError("");
     setSuccess("");
+
+    if (submitLocked) return;
 
     if (!supplierId) {
       setError("กรุณาเลือกซัพพลายเออร์");
@@ -220,7 +224,7 @@ const SupplierAdvanceForm = ({
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isPending}
+          disabled={isPending || submitLocked}
           className="inline-flex items-center gap-2 rounded-lg bg-[#f97316] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกเงินมัดจำ"}

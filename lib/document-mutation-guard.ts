@@ -102,6 +102,32 @@ export function buildMutationBlockMessage(result: MutationBlockResult): string |
   return `ไม่สามารถดำเนินการได้ เนื่องจาก${result.reason}${refs ? `: ${refs}` : ""}`;
 }
 
+const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
+  Sale: "/admin/sales",
+  Purchase: "/admin/purchases",
+  Receipt: "/admin/receipts",
+  CreditNote: "/admin/credit-notes",
+  PurchaseReturn: "/admin/purchase-returns",
+  SupplierPayment: "/admin/supplier-payments",
+  SupplierAdvance: "/admin/supplier-advances",
+  Expense: "/admin/expenses",
+  WarrantyClaim: "/admin/warranty-claims",
+};
+
+export type MutationBlockReferenceLink = {
+  href: string;
+  label: string;
+};
+
+export function buildMutationBlockReferenceLinks(
+  result: MutationBlockResult,
+): MutationBlockReferenceLink[] {
+  return result.references.map((ref) => ({
+    href: `${ENTITY_ROUTE[ref.entityType]}/${ref.id}`,
+    label: ref.refNo,
+  }));
+}
+
 export function createDocumentMutationGuard(database: GuardDb) {
   return {
     async check(

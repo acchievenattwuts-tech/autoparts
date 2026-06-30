@@ -7,6 +7,12 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+} from "@/lib/document-mutation-guard";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SupplierAdvanceForm from "../../SupplierAdvanceForm";
 
 const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -44,6 +50,10 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
   if (!advance) notFound();
   if (advance.status === "CANCELLED") redirect(`/admin/supplier-advances/${id}`);
 
+  const mutationBlock = await checkDocumentMutation("SupplierAdvance", id, "update");
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+
   return (
     <div>
       <div className="mb-6 flex items-center gap-2">
@@ -59,9 +69,19 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
 
       <h1 className="mb-6 font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">แก้ไขเงินมัดจำซัพพลายเออร์</h1>
 
+      {mutationBlockMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={mutationBlockMessage}
+            references={mutationBlockReferences}
+          />
+        </div>
+      )}
+
       <SupplierAdvanceForm
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
+        submitLocked={!!mutationBlockMessage}
         initialData={{
           id: advance.id,
           supplierId: advance.supplierId,

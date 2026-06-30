@@ -89,6 +89,7 @@ const CreditNoteForm = ({
   defaultVatType,
   defaultVatRate,
   initialData,
+  submitLocked = false,
 }: {
   products: ProductOption[];
   customers: CustomerOption[];
@@ -97,6 +98,7 @@ const CreditNoteForm = ({
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
+  submitLocked?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -276,6 +278,8 @@ const CreditNoteForm = ({
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (submitLocked) return;
 
     if (!customerId) {
       setError("กรุณาเลือกลูกค้า");
@@ -735,7 +739,7 @@ const CreditNoteForm = ({
         </button>
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || submitLocked}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึก Credit Note"}

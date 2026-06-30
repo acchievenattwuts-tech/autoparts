@@ -65,6 +65,7 @@ const PurchaseForm = ({
   defaultVatRate,
   initialData,
   editableLotOnEdit = false,
+  submitLocked = false,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -73,6 +74,7 @@ const PurchaseForm = ({
   defaultVatRate: number;
   initialData?: InitialData;
   editableLotOnEdit?: boolean;
+  submitLocked?: boolean;
 }) => {
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -324,6 +326,8 @@ const PurchaseForm = ({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(""); setSuccess("");
+
+    if (submitLocked) return;
 
     const formData = new FormData(e.currentTarget);
 
@@ -870,7 +874,7 @@ const PurchaseForm = ({
           className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:border-[#1e3a5f] bg-white text-gray-700 hover:text-[#1e3a5f] text-sm font-semibold rounded-lg transition-colors dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300">
           <Plus size={14} /> เพิ่มรายการ
         </button>
-        <button type="submit" disabled={isPending}
+        <button type="submit" disabled={isPending || submitLocked}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
           {isPending ? (
             <>

@@ -8,6 +8,12 @@ import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+} from "@/lib/document-mutation-guard";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 import { getTransactionSuppliers } from "@/lib/transaction-options";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
@@ -47,6 +53,10 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   if (!ret) notFound();
   if (ret.status === "CANCELLED") redirect(`/admin/purchase-returns/${id}`);
+
+  const mutationBlock = await checkDocumentMutation("PurchaseReturn", id, "update");
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
@@ -144,6 +154,14 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบคืนสินค้า</h1>
+      {mutationBlockMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={mutationBlockMessage}
+            references={mutationBlockReferences}
+          />
+        </div>
+      )}
       <PurchaseReturnForm
         products={products}
         suppliers={suppliers}
@@ -153,6 +171,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         defaultVatRate={config.vatRate}
         initialData={initialData}
         claimContext={claimContext}
+        submitLocked={!!mutationBlockMessage}
       />
     </div>
   );

@@ -8,6 +8,12 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+} from "@/lib/document-mutation-guard";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 import { getTransactionCustomers } from "@/lib/transaction-options";
@@ -37,6 +43,10 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
+
+  const mutationBlock = await checkDocumentMutation("CreditNote", id, "update");
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
     db.product.findMany({
@@ -132,6 +142,14 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบลดหนี้</h1>
+      {mutationBlockMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={mutationBlockMessage}
+            references={mutationBlockReferences}
+          />
+        </div>
+      )}
       <CreditNoteForm
         products={products}
         customers={customers}
@@ -140,6 +158,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}
+        submitLocked={!!mutationBlockMessage}
       />
     </div>
   );

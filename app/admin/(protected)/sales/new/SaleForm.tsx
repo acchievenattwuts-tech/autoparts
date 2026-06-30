@@ -118,6 +118,7 @@ const SaleForm = ({
   initialData,
   editableLotOnEdit = false,
   initialAvailableLots = {},
+  submitLocked = false,
 }: {
   products:       ProductOption[];
   suppliers:      SupplierOption[];
@@ -128,6 +129,7 @@ const SaleForm = ({
   initialData?:   InitialData;
   editableLotOnEdit?: boolean;
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
+  submitLocked?: boolean;
 }) => {
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -475,6 +477,8 @@ const SaleForm = ({
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (submitLocked) return;
 
     if (!selectedCustomerId) { setError("กรุณาเลือกลูกค้า"); return; }
 
@@ -1261,7 +1265,7 @@ const SaleForm = ({
           </button>
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || submitLocked}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
         >
           {isPending ? (

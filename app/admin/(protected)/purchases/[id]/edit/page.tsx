@@ -8,6 +8,12 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+} from "@/lib/document-mutation-guard";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseForm from "../../new/PurchaseForm";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { getTransactionSuppliers } from "@/lib/transaction-options";
@@ -40,6 +46,10 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
 
   if (!purchase) notFound();
   if (purchase.status === "CANCELLED") redirect(`/admin/purchases/${id}`);
+
+  const mutationBlock = await checkDocumentMutation("Purchase", id, "update");
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const suppliers = await getTransactionSuppliers([purchase.supplierId]);
   const rawProducts = await db.product.findMany({
@@ -119,6 +129,14 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบซื้อสินค้า</h1>
+      {mutationBlockMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={mutationBlockMessage}
+            references={mutationBlockReferences}
+          />
+        </div>
+      )}
       <PurchaseForm
         products={products}
         suppliers={suppliers}
@@ -127,6 +145,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         defaultVatRate={config.vatRate}
         initialData={initialData}
         editableLotOnEdit
+        submitLocked={!!mutationBlockMessage}
       />
     </div>
   );

@@ -104,6 +104,7 @@ const PurchaseReturnForm = ({
   prefillData,
   claimId,
   claimContext,
+  submitLocked = false,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -115,6 +116,7 @@ const PurchaseReturnForm = ({
   prefillData?: PrefillData;
   claimId?: string;
   claimContext?: ClaimContext | null;
+  submitLocked?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -361,6 +363,8 @@ const PurchaseReturnForm = ({
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (submitLocked) return;
 
     const form = e.currentTarget;
     const formData = new FormData(form);
@@ -869,7 +873,7 @@ const PurchaseReturnForm = ({
         </button>
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || submitLocked}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกการคืนสินค้า"}

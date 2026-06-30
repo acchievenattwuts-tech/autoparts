@@ -8,6 +8,12 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+} from "@/lib/document-mutation-guard";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
@@ -41,6 +47,10 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   if (!sale) notFound();
   if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
+
+  const mutationBlock = await checkDocumentMutation("Sale", id, "update");
+  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
@@ -207,6 +217,14 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบขาย</h1>
+      {mutationBlockMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={mutationBlockMessage}
+            references={mutationBlockReferences}
+          />
+        </div>
+      )}
       <SaleForm
         products={products}
         suppliers={suppliers}
@@ -217,6 +235,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         initialData={initialData}
         editableLotOnEdit
         initialAvailableLots={initialAvailableLots}
+        submitLocked={!!mutationBlockMessage}
       />
     </div>
   );
