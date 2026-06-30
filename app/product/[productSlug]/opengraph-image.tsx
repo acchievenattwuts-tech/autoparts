@@ -65,13 +65,18 @@ export default async function OpenGraphImage({ params }: Props) {
     notFound();
   }
 
-  // Load fonts up front so the fallback can reuse them. Passing an explicit font
-  // to the fallback is essential: with no `fonts`, satori tries to fetch a default
-  // font from fonts.googleapis.com at render time — that outbound request was
-  // failing in production and turned the "safe" fallback into a 500 as well.
-  const fonts = await loadFonts();
+  // Track fonts outside the try so the fallback can reuse them when they did load.
+  // Passing an explicit font to the rasterizer is essential: with no `fonts`, satori
+  // tries to fetch a default font from fonts.googleapis.com at render time — that
+  // outbound request has failed in production before.
+  let fonts: Awaited<ReturnType<typeof loadFonts>> | undefined;
 
   try {
+    // Load fonts inside the try so any failure (e.g. ENOENT if the .ttf is not
+    // bundled into the lambda) flows into the containment fallback below instead
+    // of escaping as a 500.
+    fonts = await loadFonts();
+
     return new ImageResponse(
       (
         <OgImageTemplate
@@ -84,8 +89,10 @@ export default async function OpenGraphImage({ params }: Props) {
       { ...size, fonts },
     );
   } catch (error) {
-    // Containment: never return a 500 to crawlers if rasterization fails.
-    // Fall back to a minimal plain image using the already-loaded fonts.
+    // Containment: never return a 500 to crawlers if font loading or rasterization
+    // fails. Fall back to a minimal plain ASCII image. Reuse the fonts when they
+    // loaded; only when font loading itself failed do we omit them (and the text is
+    // ASCII-only so satori's default suffices).
     console.error("[opengraph-image] render failed", error);
 
     return new ImageResponse(
@@ -100,13 +107,13 @@ export default async function OpenGraphImage({ params }: Props) {
             background: "#0f2140",
             color: "white",
             fontSize: 48,
-            fontFamily: "Sarabun",
+            fontFamily: fonts ? "Sarabun" : undefined,
           }}
         >
           www.sriwanparts.com
         </div>
       ),
-      { ...size, fonts },
+      fonts ? { ...size, fonts } : size,
     );
   }
 }

@@ -74,6 +74,17 @@ const nextConfig: NextConfig = {
     "@prisma/adapter-pg",
   ],
 
+  // The product OG-image route reads its Thai fonts off the filesystem at runtime
+  // via `path.join(process.cwd(), ...)`. Next.js file-tracing (nft) cannot statically
+  // see that dynamically-built path, so the .ttf files are NOT bundled into the
+  // Vercel serverless function — readFile then throws ENOENT and the route 500s.
+  // Force-include the font directory for that route's lambda.
+  outputFileTracingIncludes: {
+    "/product/[productSlug]/opengraph-image": [
+      "./app/product/[productSlug]/fonts/**",
+    ],
+  },
+
   experimental: {
     // Vercel Pro supports more CPU resources during build — increased from 1.
     cpus: 4,

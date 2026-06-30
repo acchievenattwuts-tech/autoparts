@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { generateGeminiEmbedding, GEMINI_EMBEDDING_DIMENSIONS } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 
@@ -70,17 +71,54 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
   return vectors;
 }
 
+/** Query-embedding cache lifetime. Search queries repeat heavily and an
+ *  embedding is deterministic for a given input + model, so a day-long cache cuts
+ *  the per-search Gemini round-trip (latency + quota) without changing results. */
+const EMBED_QUERY_CACHE_TTL_SECONDS = 60 * 60 * 24; // 1 day
+
+/**
+ * Cache key for a query embedding. Pure + exported for testability. The model
+ * dimension is folded into the key so swapping the embedding model can never
+ * serve a stale-shape vector from cache.
+ */
+export function buildQueryEmbeddingCacheKey(clippedQuery: string): string {
+  return `query-embedding:v${GEMINI_EMBEDDING_DIMENSIONS}:${clippedQuery}`;
+}
+
+/**
+ * Fetches + caches the embedding for an already-clipped query string. Throws on
+ * failure (no key / API error / bad shape) so a failed call is NEVER cached —
+ * unstable_cache only memoises successful vectors, letting the next request retry.
+ */
+const fetchCachedQueryEmbedding = (clippedQuery: string): Promise<number[]> =>
+  unstable_cache(
+    async () => {
+      const [vector] = await generateGeminiEmbedding([clippedQuery]);
+      if (!vector || vector.length !== GEMINI_EMBEDDING_DIMENSIONS) {
+        throw new Error(`EMBED_QUERY_INVALID:${vector?.length ?? "null"}`);
+      }
+      return vector;
+    },
+    [buildQueryEmbeddingCacheKey(clippedQuery)],
+    { revalidate: EMBED_QUERY_CACHE_TTL_SECONDS, tags: ["query-embedding"] },
+  )();
+
 /**
  * Embeds a single query string for semantic search. Returns null (never throws)
  * when semantic search is disabled, the input is empty, or embedding fails — the
  * caller then runs lexical-only search.
+ *
+ * The embedded text is `clip(trimmed)` — identical to the previous (uncached)
+ * implementation, so the resulting vector is byte-for-byte the same; only the
+ * Gemini round-trip is now memoised per query.
  */
 export async function embedQuery(text: string | null | undefined): Promise<number[] | null> {
   const trimmed = text?.trim();
   if (!trimmed || !isSemanticSearchEnabled()) return null;
+  const clipped = clip(trimmed);
+  if (!clipped) return null;
   try {
-    const [vector] = await generateGeminiEmbedding([clip(trimmed)]);
-    return vector && vector.length === GEMINI_EMBEDDING_DIMENSIONS ? vector : null;
+    return await fetchCachedQueryEmbedding(clipped);
   } catch {
     return null;
   }

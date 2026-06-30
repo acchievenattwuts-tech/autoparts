@@ -65,6 +65,92 @@ const SEARCH_V2_NAME_SIMILARITY = 0.18;
 const SEARCH_V2_TEXT_SIMILARITY = 0.12;
 const SEARCH_V2_OEM_SIMILARITY = 0.2;
 
+// Candidate-selection trigram threshold for the `%` operator. Set to the SMALLEST
+// of the four per-column similarity floors above so the GIN-indexed `%` probe is
+// the broadest possible gate — it never excludes a row the per-column
+// `similarity() >= ...` re-check would have kept. Result: the candidate OR becomes
+// a pure index BitmapOr (no seq scan) while staying byte-for-byte equivalent in
+// which rows it admits. The value MUST be applied with `SET LOCAL` inside the SAME
+// transaction as the query (see dbSearchTx) or pgbouncer would run the `%` probe
+// against the default 0.3 threshold on a different backend and silently drop rows.
+export const SEARCH_V2_TRGM_CANDIDATE_THRESHOLD = String(
+  Math.min(
+    SEARCH_V2_CODE_SIMILARITY,
+    SEARCH_V2_OEM_SIMILARITY,
+    SEARCH_V2_NAME_SIMILARITY,
+    SEARCH_V2_TEXT_SIMILARITY,
+  ),
+);
+
+// HNSW search-breadth for semantic recall. The pgvector default (ef_search=40) is
+// tuned for unfiltered ANN; our vector recall runs UNDER the hard `exactScope`
+// filters, which can discard most of the 40 nearest neighbours and leave few real
+// candidates. Raising ef_search widens the graph traversal so the recalled set
+// survives filtering — improving semantic recall quality at a small, bounded
+// latency cost (the recall itself is still capped at 100 rows + the 8s statement
+// timeout). Applied with SET LOCAL only when an embedding exists, so a DB without
+// the vector extension is never touched.
+export const SEARCH_V2_HNSW_EF_SEARCH = "100";
+
+/**
+ * Builds the candidate-selection OR fragment for the ranked query — the set of
+ * predicates that decide whether a product row even ENTERS the ranked set (scoring
+ * happens afterwards on this smaller set).
+ *
+ * Every branch here is GIN-trigram- or GIN-tsvector-indexable so the planner can
+ * resolve the whole OR as a BitmapOr index scan instead of a full sequential scan:
+ *   - prefix `LIKE q%`     → f_unaccent(lower(col)) trigram index
+ *   - contains `LIKE %q%`  → f_unaccent(lower(col)) trigram index
+ *   - `@@ tsquery`         → search_document GIN tsvector index
+ *   - `col % q`            → f_unaccent(lower(col)) trigram index (paired with the
+ *                            per-column `similarity() >= floor` re-check so the
+ *                            admitted set is identical to the previous bare
+ *                            `similarity() >= floor` predicate)
+ *
+ * Two former branches are intentionally OMITTED because they are logically
+ * SUBSUMED by branches above — dropping them keeps the candidate set identical
+ * while removing the non-indexable predicates that previously forced a seq scan:
+ *   - `f_unaccent(lower(code)) = q` ⊂ `code LIKE q%` (equality implies prefix)
+ *   - `f_unaccent(lower(name)) = q` ⊂ `name LIKE q%`
+ *   - `alias_text LIKE %q%`         ⊂ `search_text LIKE %q%` (search_text is the
+ *      concat of every field INCLUDING alias_text — see build_product_search_text)
+ *
+ * The `%` operator relies on pg_trgm.similarity_threshold being SET LOCAL to
+ * {@link SEARCH_V2_TRGM_CANDIDATE_THRESHOLD} inside the same transaction.
+ */
+export const buildCandidateTextMatchSql = (params: {
+  normalizedQuery: string;
+  prefixQuery: string;
+  containsQuery: string;
+  ts: PrismaTypes.Sql;
+}): PrismaTypes.Sql => {
+  const { normalizedQuery, prefixQuery, containsQuery, ts } = params;
+  return Prisma.sql`
+    f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR psd.search_document @@ ${ts}
+    OR (
+      f_unaccent(lower(psd.product_code)) % f_unaccent(lower(${normalizedQuery}))
+      AND similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
+    )
+    OR (
+      f_unaccent(lower(psd.oem_text)) % f_unaccent(lower(${normalizedQuery}))
+      AND similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
+    )
+    OR (
+      f_unaccent(lower(psd.product_name)) % f_unaccent(lower(${normalizedQuery}))
+      AND similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
+    )
+    OR (
+      f_unaccent(lower(psd.search_text)) % f_unaccent(lower(${normalizedQuery}))
+      AND similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
+    )
+  `;
+};
+
 /**
  * Transmission-aware soft ranking (Option A). When the customer's query clearly
  * states a transmission ("M/T" = manual, "A/T" = auto, or the Thai equivalents),
@@ -1210,21 +1296,8 @@ async function searchProductIdsV2(
   // keyword/alias/free-text/FTS/trigram, OR by semantic similarity (vector). The
   // FTS clause (`@@ tsQuery`) is the only term that varies between the precise AND
   // query and the OR recall fallback.
-  const buildTextMatchOr = (ts: PrismaTypes.Sql) => Prisma.sql`
-    f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
-    OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
-    OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
-    OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
-    OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
-    OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
-    OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))
-    OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsQuery}))
-    OR psd.search_document @@ ${ts}
-    OR similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_CODE_SIMILARITY}
-    OR similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_OEM_SIMILARITY}
-    OR similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
-    OR similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
-  `;
+  const buildTextMatchOr = (ts: PrismaTypes.Sql) =>
+    buildCandidateTextMatchSql({ normalizedQuery, prefixQuery, containsQuery, ts });
 
   const runRankedQuery = (
     ts: PrismaTypes.Sql,
@@ -1344,10 +1417,23 @@ async function searchProductIdsV2(
   const { vectorMatches, primaryRows } = await dbSearchTx(async (tx) => {
     const run = <R>(query: PrismaTypes.Sql): Promise<R> => tx.$queryRaw<R>(query);
 
+    // Pin the candidate `%` trigram threshold for THIS transaction so the indexed
+    // candidate OR (buildCandidateTextMatchSql) admits exactly the rows the
+    // per-column similarity floors expect. Must be in-transaction (pgbouncer).
+    await tx.$executeRaw`
+      SELECT set_config('pg_trgm.similarity_threshold', ${SEARCH_V2_TRGM_CANDIDATE_THRESHOLD}, true)
+    `;
+
     let vectorMatches: VectorMatch[] = [];
     if (queryEmbedding) {
       try {
         await tx.$executeRawUnsafe("SAVEPOINT vec_recall");
+        // Widen HNSW traversal so filtered semantic recall keeps enough real
+        // candidates. Inside the savepoint: a DB without the GUC rolls back here
+        // and degrades to lexical-only, never poisoning the ranked query.
+        await tx.$executeRaw`
+          SELECT set_config('hnsw.ef_search', ${SEARCH_V2_HNSW_EF_SEARCH}, true)
+        `;
         const qvec = toPgVectorLiteral(queryEmbedding);
         vectorMatches = await run<VectorMatch[]>(vectorRecallSql(qvec));
         await tx.$executeRawUnsafe("RELEASE SAVEPOINT vec_recall");
@@ -1370,6 +1456,19 @@ async function searchProductIdsV2(
     return { vectorMatches, primaryRows };
   });
 
+  // Same-transaction runner for the broad-OR fallback + out-of-range probes below.
+  // These ranked queries also use the indexed `%` candidate OR, so they need the
+  // pinned trigram threshold too — a bare dbSearchRaw would run `%` against the
+  // default 0.3 on a fresh backend and drop low-similarity rows. dbSearchTx still
+  // applies the 8s statement_timeout, so this is identical in cost to dbSearchRaw.
+  const runRankedRaw = <R>(query: PrismaTypes.Sql): Promise<R> =>
+    dbSearchTx(async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('pg_trgm.similarity_threshold', ${SEARCH_V2_TRGM_CANDIDATE_THRESHOLD}, true)
+      `;
+      return tx.$queryRaw<R>(query);
+    });
+
   let rows = primaryRows;
   if (rows.length === 0 && hasMultipleConcepts && !input.disableBroadFallback) {
     // Rare path (precise AND matched nothing): reuse the already-recalled vector
@@ -1377,7 +1476,7 @@ async function searchProductIdsV2(
     rows = await runRankedQuery(
       buildTsQuery(fallbackExpression),
       buildVectorFragments(vectorMatches),
-      dbSearchRaw,
+      runRankedRaw,
     );
   }
 
@@ -1389,14 +1488,14 @@ async function searchProductIdsV2(
   let total = rows.length > 0 ? coerceCount(rows[0].total_count) : 0;
   if (rows.length === 0 && skip > 0) {
     const vectorFrags = buildVectorFragments(vectorMatches);
-    const probePrimary = await runRankedQuery(tsQuery, vectorFrags, dbSearchRaw, 0, 1);
+    const probePrimary = await runRankedQuery(tsQuery, vectorFrags, runRankedRaw, 0, 1);
     if (probePrimary.length > 0) {
       total = coerceCount(probePrimary[0].total_count);
     } else if (hasMultipleConcepts && !input.disableBroadFallback) {
       const probeFallback = await runRankedQuery(
         buildTsQuery(fallbackExpression),
         vectorFrags,
-        dbSearchRaw,
+        runRankedRaw,
         0,
         1,
       );
