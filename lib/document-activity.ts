@@ -176,23 +176,23 @@ async function getAuditEvents(
 
 async function getSaleRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  const [receipts, creditNotes, claims] = await Promise.all([
-    db.receiptItem.findMany({
-      where: { saleId: id, receipt: { status: "ACTIVE" } },
-      select: {
-        paidAmount: true,
-        receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true } },
-      },
-    }),
-    db.creditNote.findMany({
-      where: { saleId: id, status: "ACTIVE" },
-      select: { id: true, cnNo: true, cnDate: true, createdAt: true, totalAmount: true },
-    }),
-    db.warrantyClaim.findMany({
-      where: { warranty: { saleId: id } },
-      select: { id: true, claimNo: true, claimDate: true, createdAt: true },
-    }),
-  ]);
+  // Sequential reads on the shared client — concurrent queries (Promise.all) on the
+  // pg adapter emit the "client.query() while already executing" deprecation warning.
+  const receipts = await db.receiptItem.findMany({
+    where: { saleId: id, receipt: { status: "ACTIVE" } },
+    select: {
+      paidAmount: true,
+      receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true } },
+    },
+  });
+  const creditNotes = await db.creditNote.findMany({
+    where: { saleId: id, status: "ACTIVE" },
+    select: { id: true, cnNo: true, cnDate: true, createdAt: true, totalAmount: true },
+  });
+  const claims = await db.warrantyClaim.findMany({
+    where: { warranty: { saleId: id } },
+    select: { id: true, claimNo: true, claimDate: true, createdAt: true },
+  });
 
   return [
     ...receipts.map((item) => buildRelationActivityEvent({
@@ -229,19 +229,18 @@ async function getSaleRelationEvents(id: string): Promise<DocumentActivityEvent[
 
 async function getPurchaseRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  const [returns, payments] = await Promise.all([
-    db.purchaseReturn.findMany({
-      where: { purchaseId: id, status: "ACTIVE" },
-      select: { id: true, returnNo: true, returnDate: true, createdAt: true, totalAmount: true },
-    }),
-    db.supplierPaymentItem.findMany({
-      where: { purchaseId: id, payment: { status: "ACTIVE" } },
-      select: {
-        paidAmount: true,
-        payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true } },
-      },
-    }),
-  ]);
+  // Sequential reads — see getSaleRelationEvents.
+  const returns = await db.purchaseReturn.findMany({
+    where: { purchaseId: id, status: "ACTIVE" },
+    select: { id: true, returnNo: true, returnDate: true, createdAt: true, totalAmount: true },
+  });
+  const payments = await db.supplierPaymentItem.findMany({
+    where: { purchaseId: id, payment: { status: "ACTIVE" } },
+    select: {
+      paidAmount: true,
+      payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true } },
+    },
+  });
 
   return [
     ...returns.map((ret) => buildRelationActivityEvent({
@@ -310,21 +309,20 @@ async function getReceiptRelationEvents(id: string): Promise<DocumentActivityEve
 
 async function getCreditNoteRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  const [cn, receipts] = await Promise.all([
-    db.creditNote.findUnique({
-      where: { id },
-      select: {
-        sale: { select: { id: true, saleNo: true, saleDate: true, createdAt: true } },
-      },
-    }),
-    db.receiptItem.findMany({
-      where: { cnId: id, receipt: { status: "ACTIVE" } },
-      select: {
-        paidAmount: true,
-        receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true } },
-      },
-    }),
-  ]);
+  // Sequential reads — see getSaleRelationEvents.
+  const cn = await db.creditNote.findUnique({
+    where: { id },
+    select: {
+      sale: { select: { id: true, saleNo: true, saleDate: true, createdAt: true } },
+    },
+  });
+  const receipts = await db.receiptItem.findMany({
+    where: { cnId: id, receipt: { status: "ACTIVE" } },
+    select: {
+      paidAmount: true,
+      receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true } },
+    },
+  });
 
   return [
     ...(cn?.sale ? [buildRelationActivityEvent({
@@ -351,21 +349,20 @@ async function getCreditNoteRelationEvents(id: string): Promise<DocumentActivity
 
 async function getPurchaseReturnRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  const [ret, payments] = await Promise.all([
-    db.purchaseReturn.findUnique({
-      where: { id },
-      select: {
-        purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true } },
-      },
-    }),
-    db.supplierPaymentItem.findMany({
-      where: { purchaseReturnId: id, payment: { status: "ACTIVE" } },
-      select: {
-        paidAmount: true,
-        payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true } },
-      },
-    }),
-  ]);
+  // Sequential reads — see getSaleRelationEvents.
+  const ret = await db.purchaseReturn.findUnique({
+    where: { id },
+    select: {
+      purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true } },
+    },
+  });
+  const payments = await db.supplierPaymentItem.findMany({
+    where: { purchaseReturnId: id, payment: { status: "ACTIVE" } },
+    select: {
+      paidAmount: true,
+      payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true } },
+    },
+  });
 
   return [
     ...(ret?.purchase ? [buildRelationActivityEvent({
@@ -528,10 +525,11 @@ export async function getDocumentActivityTimeline(
   entityType: DocumentActivityEntityType,
   entityId: string,
 ): Promise<DocumentActivityEvent[]> {
-  const [auditEvents, relationEvents] = await Promise.all([
-    getAuditEvents(entityType, entityId),
-    getRelationEvents(entityType, entityId),
-  ]);
+  // Sequential — each helper issues its own DB reads on the shared pg client;
+  // running them concurrently triggers the "client.query() while already executing"
+  // deprecation warning.
+  const auditEvents = await getAuditEvents(entityType, entityId);
+  const relationEvents = await getRelationEvents(entityType, entityId);
 
   return sortDocumentActivityEvents([...auditEvents, ...relationEvents]);
 }

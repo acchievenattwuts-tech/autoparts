@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import { normalizeSearchText } from "@/lib/search-normalization";
@@ -245,7 +246,17 @@ export function triggerSearchKeywordRefresh(): void {
     rerunPending = true;
     return;
   }
-  void runRefreshCoalesced();
+  // Run the rebuild via `after()` so on Vercel the function stays alive (waitUntil)
+  // until the transaction finishes, instead of returning the response and freezing
+  // the instance mid-transaction. A frozen instance let wall-clock time run past the
+  // 60s interactive-transaction window (observed 411s), producing the P2028 "expired
+  // transaction" errors. `after()` requires a request scope; if we're somehow outside
+  // one (e.g. a script), fall back to a plain fire-and-forget.
+  try {
+    after(() => runRefreshCoalesced());
+  } catch {
+    void runRefreshCoalesced();
+  }
 }
 
 const MAX_SUGGESTIONS = 16;

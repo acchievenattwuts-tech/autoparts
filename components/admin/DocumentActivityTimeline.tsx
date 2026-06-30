@@ -48,7 +48,7 @@ export default function DocumentActivityTimeline({ events }: Props) {
               className="relative grid grid-cols-[5.5rem_2rem_1fr] gap-3 pb-5 last:pb-0 sm:grid-cols-[7rem_2rem_1fr]"
             >
               {index < events.length - 1 ? (
-                <span className="absolute bottom-0 left-[6.45rem] top-8 w-px bg-gray-200 dark:bg-white/10 sm:left-[7.95rem]" />
+                <span className="absolute bottom-0 left-[6.45rem] top-8 w-px bg-gray-200 dark:bg-white/25 sm:left-[7.95rem]" />
               ) : null}
               <time className="pt-1 text-right text-xs leading-5 text-gray-500 dark:text-slate-400">
                 {formatDateTimeThai(event.occurredAt)}
