@@ -65,6 +65,68 @@ const SEARCH_V2_NAME_SIMILARITY = 0.18;
 const SEARCH_V2_TEXT_SIMILARITY = 0.12;
 const SEARCH_V2_OEM_SIMILARITY = 0.2;
 
+/**
+ * Transmission-aware soft ranking (Option A). When the customer's query clearly
+ * states a transmission ("M/T" = manual, "A/T" = auto, or the Thai equivalents),
+ * products whose text matches that transmission get a positive boost and products
+ * matching the OPPOSITE transmission get a small penalty. This is a *soft* signal:
+ * it only reorders otherwise-comparable results — it never hard-filters, so a
+ * radiator with no transmission keyword in its name stays a valid candidate.
+ *
+ * Kept well below the exact-code (1500) / OEM (1400) / contains (600) weights so a
+ * strong textual/code match can never be overturned by transmission alone.
+ */
+export const TRANSMISSION_MATCH_BOOST = 250;
+export const TRANSMISSION_MISMATCH_PENALTY = 150;
+
+export type TransmissionIntent = "manual" | "auto";
+
+// Latin forms need word boundaries so "auto"/"manual" fragments inside other
+// words don't trigger; Thai forms are distinctive enough to match directly.
+const MANUAL_QUERY_RE = /(^|[^a-z])(m\s*\/?\s*t|manual)([^a-z]|$)|เกียร์ธรรมดา|เกียร์กระปุก|ธรรมดา/i;
+const AUTO_QUERY_RE = /(^|[^a-z])(a\s*\/?\s*t|auto)([^a-z]|$)|เกียร์ออโต้|เกียร์อัตโนมัติ|ออโต้|อัตโนมัติ/i;
+
+/**
+ * Resolve transmission intent from the user query. Returns null when neither (or
+ * BOTH, i.e. ambiguous) transmissions are mentioned, so the boost stays off.
+ */
+export const detectTransmissionIntent = (
+  query: string,
+): TransmissionIntent | null => {
+  const manual = MANUAL_QUERY_RE.test(query);
+  const auto = AUTO_QUERY_RE.test(query);
+  if (manual && !auto) return "manual";
+  if (auto && !manual) return "auto";
+  return null;
+};
+
+// POSIX-regex alternations matched against the product's unaccented text to infer
+// the product's own transmission. f_unaccent is applied to BOTH sides at query
+// time so Thai tone marks (e.g. the ้ in "ออโต้") normalize consistently.
+export const MANUAL_PRODUCT_RE = "(m/t|เกียร์ธรรมดา|เกียร์กระปุก|manual)";
+export const AUTO_PRODUCT_RE = "(a/t|เกียร์ออโต้|เกียร์อัตโนมัติ|ออโต้|อัตโนมัติ|auto)";
+
+/**
+ * Build the SQL score fragment for transmission preference. Returns a literal `0`
+ * when there is no clear intent, so the ranked query is byte-identical to before.
+ */
+export const buildTransmissionBoostExpr = (
+  intent: TransmissionIntent | null,
+): PrismaTypes.Sql => {
+  if (!intent) return Prisma.sql`0`;
+  const haystack = Prisma.sql`f_unaccent(lower(
+    coalesce(psd.product_name, '') || ' ' ||
+    coalesce(psd.fitment_text, '') || ' ' ||
+    coalesce(psd.search_text, '')
+  ))`;
+  const wantRe = intent === "manual" ? MANUAL_PRODUCT_RE : AUTO_PRODUCT_RE;
+  const oppRe = intent === "manual" ? AUTO_PRODUCT_RE : MANUAL_PRODUCT_RE;
+  return Prisma.sql`(
+    (CASE WHEN ${haystack} ~ f_unaccent(${wantRe}) THEN ${TRANSMISSION_MATCH_BOOST} ELSE 0 END)
+    - (CASE WHEN ${haystack} ~ f_unaccent(${oppRe}) THEN ${TRANSMISSION_MISMATCH_PENALTY} ELSE 0 END)
+  )`;
+};
+
 type ProductSearchOrder = "createdAtDesc" | "codeDesc";
 
 type ProductSearchInput = {
@@ -793,6 +855,12 @@ async function searchProductIdsV2(
       `
     : Prisma.sql`0`;
 
+  // Transmission-aware soft boost (Option A). Derived once from the query; the SQL
+  // fragment is `0` whenever the customer did not clearly state a transmission.
+  const transmissionBoostExpr = buildTransmissionBoostExpr(
+    detectTransmissionIntent(normalizedQuery),
+  );
+
   const isActiveClause =
     typeof input.isActive === "boolean"
       ? Prisma.sql`AND psd.is_active = ${input.isActive}`
@@ -1214,6 +1282,10 @@ async function searchProductIdsV2(
 
           -- Year-match boost (Phase C Q3=C)
           ${yearBoostExpr} +
+
+          -- Transmission preference boost/penalty (Option A). Evaluates to 0 when
+          -- the query has no clear M/T or A/T intent, so ranking is unchanged.
+          ${transmissionBoostExpr} +
 
           -- Trigram fuzzy (accent-insensitive)
           GREATEST(
