@@ -2,10 +2,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: updatePurchase transaction can reach 180s on large documents
 
 import { db } from "@/lib/db";
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
@@ -34,6 +36,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   });
 
   if (!purchase) notFound();
+  const activityEvents = await getDocumentActivityTimeline("Purchase", purchase.id);
 
   const purchaseTypeLabel: Record<PurchaseType, string> = {
     CASH_PURCHASE: "ซื้อสด",
@@ -143,6 +146,8 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           )}
         </div>
       </div>
+
+      <DocumentActivityTimeline events={activityEvents} />
 
       <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">

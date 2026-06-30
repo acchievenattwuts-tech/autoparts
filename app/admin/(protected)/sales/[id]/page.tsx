@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MAVG recalc) can reach 180s
 
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
@@ -14,6 +15,7 @@ import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
@@ -167,6 +169,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   });
 
   if (!sale) notFound();
+  const activityEvents = await getDocumentActivityTimeline("Sale", sale.id);
   const cfg = mapSiteConfig(siteContents);
 
   const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
@@ -385,6 +388,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             ) : null}
           </div>
         </div>
+
+        <DocumentActivityTimeline events={activityEvents} />
 
         {sale.fulfillmentType === "DELIVERY" ? (
           <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900">

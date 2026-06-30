@@ -3,9 +3,11 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
@@ -47,6 +49,7 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
   });
 
   if (!advance) notFound();
+  const activityEvents = await getDocumentActivityTimeline("SupplierAdvance", advance.id);
 
   return (
     <div>
@@ -153,6 +156,8 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
           ) : null}
         </div>
       </div>
+
+      <DocumentActivityTimeline events={activityEvents} />
 
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">

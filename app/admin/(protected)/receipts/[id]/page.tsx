@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import NavLink from "@/components/shared/NavLink";
@@ -11,6 +12,7 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { PaymentMethod } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
@@ -106,6 +108,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   });
 
   if (!receipt) notFound();
+  const activityEvents = await getDocumentActivityTimeline("Receipt", receipt.id);
 
   const cfg = mapSiteConfig(contents);
   const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
@@ -246,6 +249,8 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             ) : null}
           </div>
         </div>
+
+        <DocumentActivityTimeline events={activityEvents} />
 
         <div className="no-print overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
           <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">

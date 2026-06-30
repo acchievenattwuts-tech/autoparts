@@ -4,9 +4,11 @@ import Link from "next/link";
 import { ChevronLeft, CreditCard, Printer } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
@@ -134,6 +136,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
   ]);
 
   if (!claim) notFound();
+  const activityEvents = await getDocumentActivityTimeline("WarrantyClaim", claim.id);
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";
@@ -200,6 +203,8 @@ const ClaimDetailPage = async ({ params }: Props) => {
           </>
         }
       />
+
+      <DocumentActivityTimeline events={activityEvents} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

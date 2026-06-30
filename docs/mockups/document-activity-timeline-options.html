@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Activity Timeline Options</title>
+  <style>
+    :root {
+      --ink: #122033;
+      --muted: #667085;
+      --line: #d9e2ec;
+      --paper: #ffffff;
+      --soft: #f5f7fa;
+      --navy: #1e3a5f;
+      --sky: #0ea5e9;
+      --green: #16a34a;
+      --amber: #d97706;
+      --rose: #e11d48;
+      --violet: #7c3aed;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #eef3f7;
+      color: var(--ink);
+      font-family: "Tahoma", "Noto Sans Thai", sans-serif;
+      line-height: 1.5;
+    }
+
+    .page {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .intro {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: 26px;
+      color: var(--navy);
+    }
+
+    .intro p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #075985;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .option {
+      overflow: hidden;
+      border: 1px solid #d7e0ea;
+      border-radius: 14px;
+      background: var(--paper);
+      box-shadow: 0 14px 32px rgba(18, 32, 51, 0.09);
+    }
+
+    .option-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      border-bottom: 1px solid #e5ebf2;
+      padding: 18px;
+    }
+
+    .letter {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 34px;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--navy);
+      color: white;
+      font-weight: 800;
+    }
+
+    .option-head h2 {
+      font-size: 17px;
+      color: var(--navy);
+    }
+
+    .option-head p {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mock {
+      min-height: 620px;
+      padding: 18px;
+      background: #f8fafc;
+    }
+
+    .doc-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      padding: 16px;
+    }
+
+    .doc-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #edf2f7;
+      padding-bottom: 12px;
+    }
+
+    .doc-title h3 {
+      font-size: 16px;
+      color: var(--navy);
+    }
+
+    .status {
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #166534;
+      padding: 3px 9px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding-top: 14px;
+    }
+
+    .field {
+      border-radius: 9px;
+      background: #f8fafc;
+      padding: 10px;
+      min-height: 58px;
+    }
+
+    .field span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .field strong {
+      display: block;
+      margin-top: 3px;
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .timeline-card {
+      margin-top: 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      padding: 16px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-title h3 {
+      font-size: 15px;
+      color: var(--navy);
+    }
+
+    .section-title span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 0;
+    }
+
+    .event {
+      position: relative;
+      display: grid;
+      grid-template-columns: 82px 28px 1fr;
+      gap: 10px;
+      padding-bottom: 18px;
+    }
+
+    .event:last-child { padding-bottom: 0; }
+
+    .event::before {
+      content: "";
+      position: absolute;
+      top: 24px;
+      bottom: -1px;
+      left: 95px;
+      width: 2px;
+      background: #d9e2ec;
+    }
+
+    .event:last-child::before { display: none; }
+
+    .time {
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+      line-height: 1.35;
+    }
+
+    .dot {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 999px;
+      color: white;
+      font-size: 14px;
+      font-weight: 800;
+      z-index: 1;
+    }
+
+    .create { background: var(--green); }
+    .edit { background: var(--amber); }
+    .use { background: var(--sky); }
+    .cancel { background: var(--rose); }
+    .system { background: var(--violet); }
+
+    .event h4 {
+      margin: 0;
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    .event p {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .link {
+      color: #0369a1;
+      font-weight: 700;
+    }
+
+    .side-layout {
+      display: grid;
+      grid-template-columns: 1fr 220px;
+      gap: 12px;
+    }
+
+    .side-panel {
+      border: 1px solid #dce5ef;
+      border-radius: 12px;
+      background: white;
+      padding: 13px;
+      min-height: 445px;
+    }
+
+    .side-event {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 8px;
+      border-bottom: 1px solid #eef2f6;
+      padding: 10px 0;
+    }
+
+    .side-event:first-of-type { padding-top: 0; }
+    .side-event:last-child { border-bottom: 0; }
+
+    .mini-dot {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      place-items: center;
+      border-radius: 999px;
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .side-event h4 {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    .side-event p {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .ledger {
+      overflow: hidden;
+      border: 1px solid #dce5ef;
+      border-radius: 12px;
+      background: white;
+    }
+
+    .ledger-row {
+      display: grid;
+      grid-template-columns: 76px 34px 1fr 72px;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid #eef2f6;
+      padding: 12px;
+    }
+
+    .ledger-row:last-child { border-bottom: 0; }
+
+    .ledger-row time {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .ledger-row h4 {
+      margin: 0;
+      font-size: 12px;
+    }
+
+    .ledger-row p {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .chip {
+      justify-self: end;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #075985;
+      padding: 4px 7px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .note {
+      border-left: 4px solid var(--sky);
+      border-radius: 10px;
+      background: white;
+      padding: 14px;
+      box-shadow: 0 8px 20px rgba(18, 32, 51, 0.06);
+    }
+
+    .note h3 {
+      font-size: 14px;
+      color: var(--navy);
+    }
+
+    .note p {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 1180px) {
+      .options, .notes { grid-template-columns: 1fr; }
+      .mock { min-height: auto; }
+    }
+
+    @media (max-width: 640px) {
+      .page { padding: 16px; }
+      .intro { display: block; }
+      .badge { margin-top: 12px; }
+      .field-grid, .side-layout { grid-template-columns: 1fr; }
+      .event { grid-template-columns: 68px 28px 1fr; }
+      .event::before { left: 81px; }
+      .ledger-row { grid-template-columns: 1fr; }
+      .chip { justify-self: start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <div>
+        <h1>Mockup: ประวัติ Transaction เอกสาร</h1>
+        <p>ตัวอย่างสำหรับ Option B: ใช้ AuditLog เดิม + relation ปลายทางจริง แสดงเฉพาะ Sale/Purchase/Receipt/CN/Purchase Return/Supplier Payment/Advance/Expense/Warranty Claim</p>
+      </div>
+      <span class="badge">เลือก 1 แบบก่อนเริ่ม implement</span>
+    </section>
+
+    <section class="options">
+      <article class="option">
+        <div class="option-head">
+          <div class="letter">A</div>
+          <div>
+            <h2>Timeline เต็มใต้สรุปเอกสาร</h2>
+            <p>อ่านง่ายที่สุด เหมาะกับหน้า detail ปัจจุบันที่เป็น card เต็มความกว้าง</p>
+          </div>
+        </div>
+        <div class="mock">
+          <div class="doc-card">
+            <div class="doc-title">
+              <h3>สรุปข้อมูลใบขาย</h3>
+              <span class="status">ใช้งาน</span>
+            </div>
+            <div class="field-grid">
+              <div class="field"><span>เลขที่เอกสาร</span><strong>SL-2026-00084</strong></div>
+              <div class="field"><span>วันที่</span><strong>30 มิ.ย. 2569</strong></div>
+              <div class="field"><span>ลูกค้า</span><strong>สมชาย แอร์รถยนต์</strong></div>
+            </div>
+          </div>
+
+          <div class="timeline-card">
+            <div class="section-title">
+              <h3>ประวัติเอกสาร</h3>
+              <span>5 เหตุการณ์</span>
+            </div>
+            <div class="timeline">
+              <div class="event">
+                <div class="time">30 มิ.ย. 69<br>16:42</div>
+                <div class="dot use">→</div>
+                <div>
+                  <h4>ถูกนำไปใช้ที่ใบเสร็จ <span class="link">RC-2026-00031</span></h4>
+                  <p>รับชำระ 2,450.00 บาท โดย นวพล</p>
+                </div>
+              </div>
+              <div class="event">
+                <div class="time">30 มิ.ย. 69<br>15:20</div>
+                <div class="dot edit">!</div>
+                <div>
+                  <h4>แก้ไขเอกสาร</h4>
+                  <p>เปลี่ยนวิธีรับชำระ และแก้หมายเหตุ โดย ศิริพร</p>
+                </div>
+              </div>
+              <div class="event">
+                <div class="time">30 มิ.ย. 69<br>14:55</div>
+                <div class="dot use">→</div>
+                <div>
+                  <h4>ถูกนำไปใช้ที่ใบลดหนี้ <span class="link">CN-2026-00009</span></h4>
+                  <p>รับคืนสินค้า 1 รายการ</p>
+                </div>
+              </div>
+              <div class="event">
+                <div class="time">30 มิ.ย. 69<br>09:18</div>
+                <div class="dot create">+</div>
+                <div>
+                  <h4>สร้างเอกสาร</h4>
+                  <p>สร้างใบขายโดย กานต์</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="letter">B</div>
+          <div>
+            <h2>Activity Panel ข้างขวา</h2>
+            <p>ดีสำหรับ desktop เห็นประวัติคู่กับรายละเอียด แต่ mobile ต้องย้ายลงล่าง</p>
+          </div>
+        </div>
+        <div class="mock">
+          <div class="side-layout">
+            <div>
+              <div class="doc-card">
+                <div class="doc-title">
+                  <h3>รายละเอียดใบซื้อ</h3>
+                  <span class="status">ใช้งาน</span>
+                </div>
+                <div class="field-grid">
+                  <div class="field"><span>เลขที่</span><strong>PO-2026-00118</strong></div>
+                  <div class="field"><span>ซัพพลายเออร์</span><strong>Denso Trading</strong></div>
+                  <div class="field"><span>ยอดสุทธิ</span><strong>18,600.00</strong></div>
+                  <div class="field"><span>ประเภท</span><strong>ซื้อเชื่อ</strong></div>
+                  <div class="field"><span>คงค้าง</span><strong>8,600.00</strong></div>
+                  <div class="field"><span>ผู้บันทึก</span><strong>กานต์</strong></div>
+                </div>
+              </div>
+              <div class="doc-card" style="margin-top:12px; min-height:210px;">
+                <div class="doc-title"><h3>รายการสินค้า</h3></div>
+              </div>
+            </div>
+
+            <aside class="side-panel">
+              <div class="section-title">
+                <h3>Activity</h3>
+                <span>ล่าสุดก่อน</span>
+              </div>
+              <div class="side-event">
+                <div class="mini-dot use">→</div>
+                <div><h4>จ่ายชำระ <span class="link">SP-00022</span></h4><p>30 มิ.ย. 16:30</p></div>
+              </div>
+              <div class="side-event">
+                <div class="mini-dot use">→</div>
+                <div><h4>คืนซื้อ <span class="link">PR-00014</span></h4><p>30 มิ.ย. 11:05</p></div>
+              </div>
+              <div class="side-event">
+                <div class="mini-dot edit">!</div>
+                <div><h4>แก้ไขเอกสาร</h4><p>29 มิ.ย. 18:12</p></div>
+              </div>
+              <div class="side-event">
+                <div class="mini-dot system">*</div>
+                <div><h4>ประมวลผล stock ใหม่</h4><p>29 มิ.ย. 18:12</p></div>
+              </div>
+              <div class="side-event">
+                <div class="mini-dot create">+</div>
+                <div><h4>สร้างเอกสาร</h4><p>29 มิ.ย. 09:41</p></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-head">
+          <div class="letter">C</div>
+          <div>
+            <h2>Compact Ledger</h2>
+            <p>แน่นและสแกนเร็ว เหมาะกับเอกสารที่มี chain เยอะ เช่น receipt/payment</p>
+          </div>
+        </div>
+        <div class="mock">
+          <div class="doc-card">
+            <div class="doc-title">
+              <h3>ใบรับชำระ RC-2026-00031</h3>
+              <span class="status">ใช้งาน</span>
+            </div>
+            <div class="field-grid">
+              <div class="field"><span>ลูกค้า</span><strong>สมชาย แอร์รถยนต์</strong></div>
+              <div class="field"><span>ยอดรับ</span><strong>5,850.00</strong></div>
+              <div class="field"><span>ช่องทาง</span><strong>โอนเงิน</strong></div>
+            </div>
+          </div>
+
+          <div class="timeline-card">
+            <div class="section-title">
+              <h3>ประวัติแบบสรุป</h3>
+              <span>กดเลขเอกสารเพื่อเปิดปลายทาง</span>
+            </div>
+            <div class="ledger">
+              <div class="ledger-row">
+                <time>30 มิ.ย.<br>16:44</time>
+                <div class="mini-dot create">+</div>
+                <div><h4>สร้างใบรับชำระ</h4><p>โดย นวพล</p></div>
+                <span class="chip">CREATE</span>
+              </div>
+              <div class="ledger-row">
+                <time>30 มิ.ย.<br>16:44</time>
+                <div class="mini-dot use">→</div>
+                <div><h4>ตัดยอดใบขาย <span class="link">SL-2026-00084</span></h4><p>รับชำระ 2,450.00 บาท</p></div>
+                <span class="chip">SALE</span>
+              </div>
+              <div class="ledger-row">
+                <time>30 มิ.ย.<br>16:44</time>
+                <div class="mini-dot use">→</div>
+                <div><h4>ใช้เครดิต CN <span class="link">CN-2026-00009</span></h4><p>เครดิต 3,400.00 บาท</p></div>
+                <span class="chip">CN</span>
+              </div>
+              <div class="ledger-row">
+                <time>30 มิ.ย.<br>16:45</time>
+                <div class="mini-dot system">*</div>
+                <div><h4>บันทึก movement เงินเข้า</h4><p>บัญชีธนาคารหลัก</p></div>
+                <span class="chip">CASH</span>
+              </div>
+              <div class="ledger-row">
+                <time>30 มิ.ย.<br>17:05</time>
+                <div class="mini-dot cancel">x</div>
+                <div><h4>ตัวอย่างสถานะยกเลิก</h4><p>จะแสดงเฉพาะเมื่อเอกสารถูกยกเลิกจริง</p></div>
+                <span class="chip">CANCEL</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="notes">
+      <div class="note">
+        <h3>ผมแนะนำแบบ A</h3>
+        <p>เข้ากับหน้า detail ปัจจุบันที่สุด อ่านชัดบน desktop/mobile และไม่เบียดเนื้อหาเอกสารเดิม</p>
+      </div>
+      <div class="note">
+        <h3>แบบ B ใช้พื้นที่คุ้ม</h3>
+        <p>ดีถ้าต้องการเห็น activity ตลอดเวลา แต่ layout บางหน้าจะต้องปรับ grid เพิ่ม</p>
+      </div>
+      <div class="note">
+        <h3>แบบ C เหมาะกับ power user</h3>
+        <p>สั้น กระชับ เหมาะกับเอกสารที่มีปลายทางหลายใบ แต่ความเป็น timeline จะน้อยกว่าแบบ A</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

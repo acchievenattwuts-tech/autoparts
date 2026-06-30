@@ -2,8 +2,10 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { ArrowLeft, Pencil } from "lucide-react";
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import SupplierPaymentCancelButton from "../SupplierPaymentCancelButton";
@@ -50,6 +52,7 @@ const SupplierPaymentDetailPage = async ({
     );
   }
 
+  const activityEvents = await getDocumentActivityTimeline("SupplierPayment", payment.id);
   const purchaseItems = payment.items.filter((item) => !!item.purchaseId);
   const creditItems = payment.items.filter((item) => !!item.purchaseReturnId);
   const advanceItems = payment.items.filter((item) => !!item.advanceId);
@@ -169,6 +172,8 @@ const SupplierPaymentDetailPage = async ({
           </div>
         ) : null}
       </div>
+
+      <DocumentActivityTimeline events={activityEvents} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">

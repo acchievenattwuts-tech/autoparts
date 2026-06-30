@@ -2,10 +2,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MAVG recalc) can reach 180s
 
 import { db } from "@/lib/db";
+import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import Link from "next/link";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
@@ -34,6 +36,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
   });
 
   if (!ret) notFound();
+  const activityEvents = await getDocumentActivityTimeline("PurchaseReturn", ret.id);
 
   const vatLabel: Record<string, string> = {
     NO_VAT:        "ไม่มี VAT",
@@ -132,6 +135,8 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
+
+      <DocumentActivityTimeline events={activityEvents} />
 
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
