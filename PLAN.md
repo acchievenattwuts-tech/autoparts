@@ -10,10 +10,10 @@
 - Tech หลัก: Next.js App Router, TypeScript strict, Prisma, PostgreSQL, NextAuth, Tailwind, Shadcn UI
 - ระบบ stock ใช้ `StockCard` เป็น source of truth สำหรับ movement และ moving average cost
 - กฎ cross-module สำคัญอยู่ใน [AGENTS.md](/D:/autoparts/AGENTS.md)
-- ตอนนี้ phase ที่ยัง active หลักคือ Cash/Bank Lite และงานติดตามหลัง rollout บางส่วน
+- Cash/Bank Lite (Phase 6.6) implement เสร็จและใช้งานจริงแล้ว — เหลือเฉพาะงานติดตามหลัง rollout บางส่วน
 
 ## Current Focus
-- `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite สำหรับธุรกิจเริ่มต้น
+- `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite — **เสร็จและใช้งานจริงแล้ว** (schema 4 model + 5-step permission + nav + posting wire ครบทุกเอกสารเงิน + ledger/transfer/adjustment report). รายละเอียดด้านล่าง Active Workstreams #1
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
 - Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
 - **Warranty Manual Mode + Cancel Flow (2026-05-28)** — เพิ่ม 2-mode บน `/admin/warranties/new` (WITH_SALE / NO_SALE) + ฟังก์ชันยกเลิกประกันที่สร้างเอง (เฉพาะ `createdVia = MANUAL`, hard delete, block ถ้ามี active claim) รายละเอียดอยู่ใน [docs/roadmap/active.md](/D:/autoparts/docs/roadmap/active.md)
@@ -24,21 +24,21 @@
 - รักษาเอกสารให้ AI อ่านง่าย: ใช้ไฟล์นี้เป็น index และย้ายรายละเอียดลงเอกสารเฉพาะเรื่อง
 
 ## Current Priorities
-- [ ] ยืนยันขอบเขตสุดท้ายของ `Phase 6.6` ก่อนแตะ schema และ flow บัญชี
-- [ ] ระบุ source of truth ของ cash/bank posting, transfer, opening balance, และ report impact
-- [ ] แตก detailed spec ของ Cash/Bank Lite เป็นเอกสารเฉพาะก่อนลงมือ implement
+- [x] `Phase 6.6` Cash/Bank Lite — implement เสร็จและใช้งานจริงแล้ว (schema/posting/transfer/adjustment/report ครบ)
 - [ ] ทยอยย้าย decision สำคัญจาก archive ไป `docs/decisions/`
 - [ ] ทยอยย้าย detailed module specs จาก archive ไป `docs/specs/`
 
 ## Active Workstreams
 ### 1. Cash/Bank Lite
-- สถานะ: ยังไม่เริ่ม implementation
-- เอกสาร active: [docs/roadmap/active.md](/D:/autoparts/docs/roadmap/active.md)
-- สิ่งที่ต้องกำหนดให้ชัดก่อน:
-  - schema หลัก
-  - transaction flows
-  - report impact
-  - reconciliation rules
+- สถานะ: **เสร็จและใช้งานจริงแล้ว** (Phase 6.6)
+- เอกสาร spec: [docs/specs/cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
+- สิ่งที่ทำเสร็จ:
+  - schema: `CashBankAccount` / `CashBankMovement` / `CashBankTransfer` / `CashBankAdjustment` (+opening balance/date, primary transfer account, low-balance threshold)
+  - posting: `lib/cash-bank.ts` (`replaceCashBankSourceMovements` / `clearCashBankSourceMovements` / `recalculateCashBankAccount`) wire เข้า sales, receipts, purchases, purchase-returns, credit-notes, expenses, supplier-payments, supplier-advances, delivery-commissions, และ Shopee create-sale/escrow
+  - UI: `/admin/cash-bank` (account manager) + `/ledger` + `/transfers` + `/adjustments` ครบ loading.tsx
+  - permission ครบ 5-step (`cash_bank.*` ใน access-control + route rules + requirePermission ใน page/action + nav `admin-navigation.ts`)
+  - report: `lib/cash-bank-report-queries.ts` → `/admin/reports/cash-bank-ledger` / `cash-bank-transfers` / `cash-bank-adjustments` + Excel/CSV export
+- Out of scope (ตาม spec, ยังไม่ทำตามตั้งใจ): full bank reconcile, bank statement import, payment run/clearing, slip attachment
 
 ### 2. SEO / AEO / AIO Follow-up
 - สถานะ: baseline หลักเสร็จแล้ว แต่ยังมี external/manual work ต่อเนื่อง
@@ -67,7 +67,7 @@
     - [ ] (Ops) รีวิว no-result report รายสัปดาห์ → เติม SearchSynonym/ProductAlias สำหรับคำที่ miss จริง (ใช้หน้า `reports/product-search-no-result` ที่ตอนนี้กรอง noise แล้ว)
 
 ### 4. Shopee Open Platform Integration (โมดูลแยกอิสระ)
-- สถานะ: **Phase A–E เสร็จ · Phase F core เสร็จ** (schema + sale-core refactor + create-sale service) · เหลือ Phase F UI (approval/filter/report/dashboard)
+- สถานะ: **Phase A–F เสร็จ** (schema + sale-core + create-sale service + UI ครบ: dashboard `/admin/marketplace/shopee`, orders list/detail, products, stock, channel filter ในรายงาน) · คงเหลือเฉพาะงานที่ต้อง verify กับ Shopee credentials จริง (live OAuth/item fetch/order pull/stock push/logistics/cancel-refund/escrow) — ดู [docs/shopee/PLAN-shopee.md](/D:/autoparts/docs/shopee/PLAN-shopee.md)
 - หลักการ: แยกโมดูลออกจากระบบเดิมทั้งหมด (`lib/shopee/*`, `app/admin/(protected)/marketplace/*`, `app/api/shopee/*`) ไม่กระทบ logic หน้าร้าน/backoffice เดิม
 - เอกสาร active:
   - [docs/shopee/README.md](/D:/autoparts/docs/shopee/README.md) — ภาพรวม + isolation principles
@@ -97,7 +97,7 @@
     - **A. core search** (`lib/product-search.ts` + `lib/search-synonyms.ts`): เดิม FTS แตก token แล้ว **OR** กันทั้งหมด + เลขสั้น "2" กลายเป็น `2:*` → match ทุกปี 20xx → ระเบิด. ใหม่: `expandQueryTokenGroups()` แยก query เป็น "คอนเซ็ปต์" แล้ว `buildTsQueryExpression()` ทำ **AND ข้ามคอนเซ็ปต์ / OR ภายใน synonym** + เลข 1-2 หลักเป็น exact lexeme (ไม่ prefix). มี **OR-fallback**: ถ้า AND (หลายคอนเซ็ปต์) ได้ 0 แถว → รันซ้ำด้วย OR กันเคสเจอ 0. กระทบทั้งเว็บ+LINE
     - **B. LINE structured filters**: `extractLineSearchIntent()` คืน {query, partType, carBrand, carModel, year}; `resolveLineFitmentFilters()` (`lib/line-fitment-resolve.ts`) map ชื่อ → master data จริง (CarBrand/CarModel/Category, case-insensitive) แล้วส่งเป็น **hard filter** เข้า search ผ่าน bridge `fitmentHints` (+เพิ่ม `categoryName`). ปลอดภัย: hint ที่ resolve ไม่ได้จะถูก drop (ไม่ทำให้เจอ 0)
     - unit tests: tsquery builder 6 + parseLineSearchIntent 4 + processor (resolved fitment hints) 1
-  - [ ] (17) Hybrid semantic search (Phase 1 — ยกระดับคุณภาพ retrieval) — **โค้ดเสร็จ + build ผ่าน, รอเปิดใช้งานจริง**:
+  - [x] (17) Hybrid semantic search (Phase 1 — ยกระดับคุณภาพ retrieval) — **เปิดใช้งานจริงแล้ว** (`PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel):
     - **Gated ทั้งหมด** ด้วย env `PRODUCT_SEARCH_SEMANTIC=on` (default off) → ถ้าไม่เปิด/ไม่มี embedding/ล้มเหลว = lexical เดิมเป๊ะ ไม่กระทบ logic อื่น
     - embedding client: `generateGeminiEmbedding()` ใน `lib/google-ai-client.ts` (**gemini-embedding-001** ผ่าน `embedContent` + `outputDimensionality=768` — text-embedding-004 ไม่รองรับบน key นี้) ใช้ key rotation เดียวกับ generate (400/404 ไม่ cooldown key); helper `lib/embeddings.ts` (`embedQuery`, `embedTexts`, `buildProductEmbeddingText`, `toPgVectorLiteral`, `isSemanticSearchEnabled`)
     - schema (อนุมัติแล้ว, รันผ่าน `npm run db:setup-search-v2`): `CREATE EXTENSION vector` + `product_search_documents.embedding vector(768)` + HNSW cosine index. คอลัมน์ embedding ถูกกันออกจาก `refresh_product_search_document` upsert (เหมือน sales_count) → text refresh ไม่ลบ vector
@@ -106,7 +106,7 @@
     - hybrid ใน `searchProductIdsV2`: vector recall (cosine, reuse exactScope filters เดิม) → inject เป็น candidate (`OR v.product_id IS NOT NULL`) + score boost (sim × 500, ต่ำกว่า exact/oem/contains) ใน ranked query เดียว → pagination/total semantics คงเดิม
     - unit tests: embeddings helpers 4
     - resolver part-type→category: `matchPartTypeToCategoryHint()` ใน `lib/line-fitment-resolve.ts` map คำที่ลูกค้า/AI พูด ("วาล์วแอร์", "คอยเย็น", "แผงแอร์"...) → หมวดจริงในระบบ (19 หมวด, alias เรียง specific→generic กันชน "วาล์ว"/"หม้อน้ำ"/"คอม") ก่อน fallback equals/contains → category hard filter ทำงานแม้คำพูดไม่ตรงชื่อหมวด + unit tests 3
-    - **ขั้นตอนเปิดใช้:** 1) `npm run db:setup-search-v2` ✅ (รันแล้ว — vector ext + คอลัมน์ + HNSW) 2) `npm run backfill:embeddings` ✅ (embed 598/598 สำเร็จ) 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel env **(เหลือขั้นนี้ — production ยังไม่เปิด)**
+    - **ขั้นตอนเปิดใช้:** 1) `npm run db:setup-search-v2` ✅ 2) `npm run backfill:embeddings` ✅ (embed 598/598) 3) ตั้ง `PRODUCT_SEARCH_SEMANTIC=on` ใน Vercel env ✅ **(เปิดใช้งานจริงแล้ว)**
     - ทดสอบจริงแล้ว: "หม้อน้ำ mazda 2" → หม้อน้ำ Mazda 2 ขึ้นอันดับ 1 (sim 0.84), "ตัวทำความเย็นแอร์วีออส" → เจอคอยล์เย็น/แผงแอร์ Vios (semantic เข้าใจคำบรรยาย)
 
   - [x] (18) Intent-gated retrieval (กันสินค้าหลุดมาตอบคำถามทั่วไป — เคส "ร้านอยู่ที่ไหน" ดันรายการคอมแอร์ Vigo + การ์ดมาด้วย):
@@ -167,22 +167,22 @@
 - ขอบเขตที่ยืนยันแล้ว: ย้าย bucket `products` (public), `line-chat` (public), `payment-slips` (private/PII) — **ไม่ย้าย** `purchase-ocr` (ชั่วคราว, ไม่กระทบ egress, คงไว้บน Supabase → ยังลบ `@supabase/supabase-js` ทั้งหมดไม่ได้). ลำดับ: public ก่อน (หยุดดูผล egress) แล้วค่อย payment-slips
 - การตัดสินใจที่อนุมัติแล้ว: payment-slips (private) เปลี่ยนจาก Supabase signed-URL → route สตรีมที่ตรวจ session admin (รออนุมัติดีไซน์ละเอียดก่อน Phase 3)
 - [x] **Phase 0 — เตรียม (additive, ไม่เปลี่ยนพฤติกรรม)**: เพิ่ม dep `@vercel/blob@2.4.1`; เพิ่ม env `BLOB_READ_WRITE_TOKEN` + flag ต่อ bucket `IMAGE_STORAGE_{PRODUCTS,LINE_CHAT,PAYMENT_SLIPS}` ใน `.env.example`; เพิ่ม `**.public.blob.vercel-storage.com` ใน `next.config.ts` (`images.remotePatterns` + CSP `img-src`); เพิ่ม `lib/storage-backend.ts` (`getStorageBackend`/`isBlobBackend`, default `supabase`)
-  - [ ] (งานเจ้าของร้าน) สร้าง Blob store ใน Vercel Dashboard + ตั้ง `BLOB_READ_WRITE_TOKEN` ใน Vercel env
+  - [x] (งานเจ้าของร้าน) สร้าง Blob store ใน Vercel Dashboard + ตั้ง `BLOB_READ_WRITE_TOKEN` ใน Vercel env — เสร็จแล้ว
 - [x] **Phase 1 — Public dual-write** (2026-06-23): เพิ่ม facade `lib/products-bucket-storage.ts` (`uploadProductsBucketObject`, เลือก backend ตาม `IMAGE_STORAGE_PRODUCTS`); wire 4 จุดอัปโหลด bucket `products` → product image (`products/actions.ts`), โลโก้ (`settings/company/actions.ts`), ลายเซ็น (`users/actions.ts`), delivery-proof (`sales/actions.ts`); เพิ่ม Blob branch ใน `line-chat-image-storage.ts` (flag `IMAGE_STORAGE_LINE_CHAT`). รูปเก่ายังโหลดผ่าน `/img` ได้ (render helper ปล่อย Blob URL ผ่านอยู่แล้ว + remotePatterns รับ host). Default flag = supabase → พฤติกรรมเดิมไม่เปลี่ยนจนกว่าจะ flip. tsc/lint ผ่าน
   - ข้อจำกัดที่ยอมรับไว้ (จัดการใน Phase 4): เมื่อ flag=blob, copy-to-code-folder เดิม (Supabase) จะ no-op กับ Blob URL (รูปค้างใต้ folder uploadCode เดิม ใช้งานได้ปกติ) และรูปสินค้า Blob ที่ถูกแทนที่จะค้างเป็น orphan รอ sweep ใน Phase 4
 - [x] **Phase 2 — Backfill public — DONE 2026-06-25** (รัน apply หลัง egress reset: migrated 2,375 + เก็บตก stragglers 3 = 2,378, เหลือ 0; flip `IMAGE_STORAGE_PRODUCTS`+`IMAGE_STORAGE_LINE_CHAT=blob` ใน Vercel แล้ว → รูปสาธารณะ serve จาก Blob หมด): `prisma/scripts/backfill-public-images-to-blob.ts` (`npm run backfill:public-images-blob [-- --apply]`) — download จาก Supabase → `put` ขึ้น Blob path เดิม → rewrite URL ใน DB (Product.imageUrl, ProductImage.url, SiteContent shop_logo_url, User.signatureUrl, DeliveryProof.signature/photo, LineMessage.imageUrl); idempotent (ข้าม Blob URL แล้ว), ไม่ลบ Supabase, dump rollback JSON (gitignored), เขียน AuditLog UPDATE/ImageStorageMigration. **dry-run พบ 2,375 แถว (products 2,373 + line-chat 2)**
   - download ใช้ `fetch(publicUrl)` ตรง (bucket เป็น public) → **ไม่ต้องใช้ `SUPABASE_SERVICE_ROLE_KEY`**, ต้องการแค่ `BLOB_READ_WRITE_TOKEN` (มีใน `.env.local` แล้ว)
   - [x] รันสำเร็จ 2026-06-25 หลัง egress reset (download `fetch(publicUrl)` ไม่ต้องใช้ service key) → เฝ้าดู egress ตก
-- [~] **Phase 3 — Payment slips (private/PII)** (code เสร็จ + backfill ย้าย 9 สลิปสำเร็จ 2026-06-25, รอ flip flag production):
+- [x] **Phase 3 — Payment slips (private/PII)** — **เสร็จและเปิดใช้งานจริงแล้ว** (code + backfill 9 สลิป + ตั้ง token + flip `IMAGE_STORAGE_PAYMENT_SLIPS=blob`):
   - **บทเรียน: Blob store มี 2 ชนิด public/private ระดับ store** — public store (รูปสินค้า) เก็บ private blob ไม่ได้ → ต้องสร้าง **private store แยก** + token `BLOB_SLIPS_READ_WRITE_TOKEN` (wire เข้า put/get/del + backfill ผ่าน option `token`). รูปสินค้ายังใช้ default `BLOB_READ_WRITE_TOKEN` (public store)
   - backfill `backfill-payment-slips-to-blob.ts` รัน apply → migrated 9/9, idempotent (รันซ้ำ skip 9). ไม่ rewrite DB (imageUrl เก็บ path เดิม)
-  - [ ] (รอเจ้าของ) ตั้ง `BLOB_SLIPS_READ_WRITE_TOKEN` ใน Vercel env → push โค้ด slip-token → flip `IMAGE_STORAGE_PAYMENT_SLIPS=blob`
+  - [x] (เจ้าของ) ตั้ง `BLOB_SLIPS_READ_WRITE_TOKEN` ใน Vercel env → push โค้ด slip-token → flip `IMAGE_STORAGE_PAYMENT_SLIPS=blob` — เสร็จแล้ว
   - storage `lib/line-payment-slip-storage.ts`: `storePaymentSlipImage` เพิ่ม Blob `put(access:'private')`; `deletePaymentSlipImage` ลบทั้ง Blob+Supabase (mixed-state); เพิ่ม `getPaymentSlipDisplayUrl` (route URL เมื่อ blob, signed URL เมื่อ supabase) + `readPaymentSlipImage` (Blob get → **fallback Supabase** ให้ slip ที่ยังไม่ backfill ใช้ได้หลัง flip)
   - route ใหม่ `app/api/admin/line-payment-slips/[id]/image/route.ts` (GET) — `requirePermission("line_payment_slips.view")` → stream, `Cache-Control: private, max-age=300`
   - display backend-aware: detail page `[id]/page.tsx` + gallery `line-payment-slip-gallery.ts` (blob → route URL, ข้าม signed-URL batch)
   - backfill `prisma/scripts/backfill-payment-slips-to-blob.ts` (`npm run backfill:payment-slips-blob`) — copy bytes Supabase→Blob private ที่ path เดิม, **ไม่ rewrite DB** (imageUrl เก็บ path), idempotent, AuditLog. dry-run พบ **9 slips**
   - security review: auth = view permission เดิม / by-id ไม่มี path injection / IDOR เท่าหน้าเดิม / Blob private + `private` cache (ไม่เข้า shared CDN) / token server-only / same-origin (CSP 'self')
-  - [ ] (บล็อก apply) ต้องมี `SUPABASE_SERVICE_ROLE_KEY` (bucket private) + egress reset. รันหลัง Phase 2 + ยืนยัน egress ตกแล้ว: `npm run backfill:payment-slips-blob -- --apply` → flip `IMAGE_STORAGE_PAYMENT_SLIPS=blob`
+  - [x] รัน apply backfill + flip flag เสร็จแล้ว: `npm run backfill:payment-slips-blob -- --apply` → `IMAGE_STORAGE_PAYMENT_SLIPS=blob`
 - [ ] Phase 4 — Cleanup: ลบไฟล์เก่า 3 bucket ใน Supabase, ลบโค้ด Supabase storage เฉพาะ 3 bucket (คง purchase-ocr), เอา flag ออก
 
 ## Source Of Truth Map

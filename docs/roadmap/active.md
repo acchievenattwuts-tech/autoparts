@@ -5,17 +5,19 @@
 - งานที่เสร็จแล้วแบบสรุปอยู่ที่ [completed.md](/D:/autoparts/docs/roadmap/completed.md)
 
 ## Active Now
-### Phase 6.6 - Cash/Bank Lite
-- สถานะ: planning
-- เป้าหมาย:
-  - มีโมดูลเงินสด/ธนาคารแบบ lite สำหรับธุรกิจเริ่มต้น
-  - รองรับ opening balance, income/expense movement, transfer, และรายงานพื้นฐาน
-- สิ่งที่ต้องทำต่อ:
-  - [ ] สรุป schema ที่จำเป็น
-  - [ ] สรุปหน้าจอหลัก
-  - [ ] สรุป posting flow ที่สัมพันธ์กับ receipts/payments/expenses
-  - [ ] สรุป impact กับรายงานปัจจุบัน
-  - [ ] แยก spec ลง [docs/specs/cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
+### Phase 6.6 - Cash/Bank Lite — เสร็จแล้ว (ใช้งานจริง)
+- สถานะ: **DONE** — implement เสร็จและใช้งานจริง
+- เป้าหมาย (บรรลุแล้ว):
+  - [x] โมดูลเงินสด/ธนาคารแบบ lite สำหรับธุรกิจเริ่มต้น
+  - [x] opening balance/date, income/expense movement, transfer, adjustment, รายงานพื้นฐาน
+- สิ่งที่ทำเสร็จ:
+  - [x] schema 4 model (`CashBankAccount/Movement/Transfer/Adjustment`)
+  - [x] หน้าจอ `/admin/cash-bank` + ledger + transfers + adjustments
+  - [x] posting flow `lib/cash-bank.ts` wire เข้าทุกเอกสารเงิน (sales/receipts/purchases/purchase-returns/credit-notes/expenses/supplier-payments/supplier-advances/delivery-commissions/Shopee)
+  - [x] รายงาน `lib/cash-bank-report-queries.ts` + Excel/CSV export
+  - [x] permission ครบ 5-step + nav
+  - [x] spec อยู่ที่ [docs/specs/cash-bank-lite.md](/D:/autoparts/docs/specs/cash-bank-lite.md)
+- คงเหลือ (out of scope ตามตั้งใจ): full bank reconcile, bank statement import, payment run/clearing, slip attachment
 
 ### Product Search Overhaul (OEM / Fitment / Synonym)
 - สถานะ: Phase A + B + C + D + E + F1 + F2 เสร็จ
@@ -72,9 +74,9 @@
   - [ ] periodic Core Web Vitals review
 
 ## Open Questions
-- Cash/Bank Lite จะใช้ ledger กลางแบบยืดหยุ่นเลยหรือใช้ model แบบง่ายเฉพาะธุรกิจเริ่มต้น
-- opening balance จะลงผ่าน document แยกหรือผ่าน setting/setup flow
-- cash/bank transfer ควรมี approval/state หรือใช้ post ทันที
+- (Resolved) Cash/Bank Lite ตัดสินใจใช้ model เฉพาะ (movement ledger ต่อบัญชี) — implement แล้ว
+- (Resolved) opening balance ลงที่ระดับ account (`openingBalance` + `openingDate`)
+- (Resolved) transfer ใช้ post ทันที + มี status ACTIVE/cancel
 
 ## Rules For Updating This File
 - เก็บเฉพาะงานที่ยังไม่จบหรือยังมี decision ค้าง

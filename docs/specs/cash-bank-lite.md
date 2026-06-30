@@ -6,7 +6,7 @@
 - ยังไม่ขยาย scope ไปเป็นระบบบัญชีเต็มหรือ bank reconcile เต็มรูปแบบ
 
 ## Status
-- Draft from archived plan
+- **Implemented & live** — schema 4 model, posting flow (`lib/cash-bank.ts`) wired เข้าทุกเอกสารเงิน, UI `/admin/cash-bank` (+ledger/transfers/adjustments), report queries (`lib/cash-bank-report-queries.ts`), permission ครบ 5-step
 
 ## Scope
 - cash/bank account master
