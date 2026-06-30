@@ -129,8 +129,9 @@ async function getAvailableSupplierDocuments(
     advanceOr.push({ supplierPayments: { some: { paymentId: excludePaymentId } } });
   }
 
-  const [purchases, credits, advances] = await Promise.all([
-    tx.purchase.findMany({
+  // Sequential awaits on the single transaction connection — Promise.all here
+  // triggers the pg-adapter "client.query() while already executing" warning.
+  const purchases = await tx.purchase.findMany({
       where: {
         supplierId,
         status: "ACTIVE",
@@ -149,8 +150,8 @@ async function getAvailableSupplierDocuments(
           select: { paidAmount: true },
         },
       },
-    }),
-    tx.purchaseReturn.findMany({
+  });
+  const credits = await tx.purchaseReturn.findMany({
       where: {
         supplierId,
         status: "ACTIVE",
@@ -169,8 +170,8 @@ async function getAvailableSupplierDocuments(
           select: { paidAmount: true },
         },
       },
-    }),
-    tx.supplierAdvance.findMany({
+  });
+  const advances = await tx.supplierAdvance.findMany({
       where: {
         supplierId,
         status: "ACTIVE",
@@ -188,8 +189,7 @@ async function getAvailableSupplierDocuments(
           select: { paidAmount: true },
         },
       },
-    }),
-  ]);
+  });
 
   return {
     purchases: purchases.map((purchase) => {

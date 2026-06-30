@@ -128,21 +128,21 @@ async function preloadPurchaseReturnLineMaps(
   productMap: Map<string, { avgCost: number; costPrice: number; inventoryTracking: string; isLotControl: boolean }>;
 }> {
   const productIds = [...new Set(items.map((item) => item.productId))];
-  const [units, products] = await Promise.all([
-    tx.productUnit.findMany({
-      where: {
-        OR: items.map((item) => ({
-          productId: item.productId,
-          name: item.unitName,
-        })),
-      },
-      select: { productId: true, name: true, scale: true },
-    }),
-    tx.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, avgCost: true, costPrice: true, inventoryTracking: true, isLotControl: true },
-    }),
-  ]);
+  // Sequential awaits on the single transaction connection — Promise.all here
+  // triggers the pg-adapter "client.query() while already executing" warning.
+  const units = await tx.productUnit.findMany({
+    where: {
+      OR: items.map((item) => ({
+        productId: item.productId,
+        name: item.unitName,
+      })),
+    },
+    select: { productId: true, name: true, scale: true },
+  });
+  const products = await tx.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, avgCost: true, costPrice: true, inventoryTracking: true, isLotControl: true },
+  });
 
   return {
     unitScaleMap: new Map(

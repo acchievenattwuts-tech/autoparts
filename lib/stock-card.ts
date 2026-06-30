@@ -341,19 +341,19 @@ export async function writeStockCard(
   const lc  = input.landedCost ?? 0;
   const usesRef = input.usesReferenceCost === true;
 
-  // Get max sorder and latest docDate (may be different rows)
-  const [maxSorderRow, latestDateRow] = await Promise.all([
-    tx.stockCard.findFirst({
-      where: { productId: input.productId },
-      orderBy: { sorder: "desc" },
-      select: { sorder: true },
-    }),
-    tx.stockCard.findFirst({
-      where: { productId: input.productId },
-      orderBy: { docDate: "desc" },
-      select: { docDate: true },
-    }),
-  ]);
+  // Get max sorder and latest docDate (may be different rows).
+  // Sequential awaits on the single transaction connection — Promise.all here
+  // triggers the pg-adapter "client.query() while already executing" warning.
+  const maxSorderRow = await tx.stockCard.findFirst({
+    where: { productId: input.productId },
+    orderBy: { sorder: "desc" },
+    select: { sorder: true },
+  });
+  const latestDateRow = await tx.stockCard.findFirst({
+    where: { productId: input.productId },
+    orderBy: { docDate: "desc" },
+    select: { docDate: true },
+  });
   const maxSorder = maxSorderRow ? maxSorderRow.sorder + 1 : 1;
 
   // Detect backdating: new docDate is before the latest existing row

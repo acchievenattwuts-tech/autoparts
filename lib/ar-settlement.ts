@@ -43,8 +43,10 @@ export async function getAvailableReceiptDocuments(
     cnOr.push({ receiptItems: { some: { receiptId: excludeReceiptId } } });
   }
 
-  const [sales, creditNotes] = await Promise.all([
-    tx.sale.findMany({
+  // Sequential awaits on the single transaction connection — running both via
+  // Promise.all triggers the pg-adapter "client.query() while already executing"
+  // deprecation warning (removed in pg@9).
+  const sales = await tx.sale.findMany({
       where: {
         customerId,
         paymentType: "CREDIT_SALE",
@@ -63,8 +65,8 @@ export async function getAvailableReceiptDocuments(
           select: { paidAmount: true },
         },
       },
-    }),
-    tx.creditNote.findMany({
+  });
+  const creditNotes = await tx.creditNote.findMany({
       where: {
         customerId,
         settlementType: "CREDIT_DEBT",
@@ -83,8 +85,7 @@ export async function getAvailableReceiptDocuments(
           select: { paidAmount: true },
         },
       },
-    }),
-  ]);
+  });
 
   return {
     sales: sales.map((sale) => {

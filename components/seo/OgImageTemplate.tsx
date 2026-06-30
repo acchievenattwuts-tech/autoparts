@@ -22,7 +22,7 @@ const OgImageTemplate = ({
         background:
           "linear-gradient(135deg, #0f2140 0%, #17335e 54%, #f97316 140%)",
         color: "white",
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "Sarabun, sans-serif",
       }}
     >
       <div
@@ -111,9 +111,10 @@ const OgImageTemplate = ({
             <h1
               style={{
                 margin: 0,
+                fontFamily: "Kanit, sans-serif",
                 fontSize: 72,
                 lineHeight: 1.04,
-                fontWeight: 800,
+                fontWeight: 700,
                 letterSpacing: "-0.04em",
               }}
             >
