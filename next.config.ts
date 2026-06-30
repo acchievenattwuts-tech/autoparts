@@ -79,10 +79,13 @@ const nextConfig: NextConfig = {
   // see that dynamically-built path, so the .ttf files are NOT bundled into the
   // Vercel serverless function — readFile then throws ENOENT and the route 500s.
   // Force-include the font directory for that route's lambda.
+  //
+  // Both key and value must be bracket-free globs: `[productSlug]` is a glob
+  // character class, so a pattern containing literal brackets never matches. The
+  // key uses `*` (matches the single dynamic segment) and the fonts live in the
+  // bracket-free lib/og-fonts directory.
   outputFileTracingIncludes: {
-    "/product/[productSlug]/opengraph-image": [
-      "./app/product/[productSlug]/fonts/**",
-    ],
+    "/product/*/opengraph-image": ["./lib/og-fonts/*.ttf"],
   },
 
   experimental: {

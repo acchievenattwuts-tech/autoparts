@@ -29,13 +29,13 @@ interface Props {
 // asset and import.meta.url resolves to a relative path (/_next/static/media/...)
 // with no origin, so fetch throws ERR_INVALID_URL. `process.cwd()` + a project
 // path is the standard next/og pattern and needs no origin/env.
-const FONT_DIR = path.join(
-  process.cwd(),
-  "app",
-  "product",
-  "[productSlug]",
-  "fonts",
-);
+//
+// Fonts live OUTSIDE this `[productSlug]` route folder on purpose: the square
+// brackets are glob character-class syntax, so an `outputFileTracingIncludes`
+// glob pointing into `app/product/[productSlug]/fonts/**` never matches and the
+// .ttf files are silently dropped from the lambda (ENOENT at runtime). A
+// bracket-free path (lib/og-fonts) lets the trace include actually bundle them.
+const FONT_DIR = path.join(process.cwd(), "lib", "og-fonts");
 
 const loadFonts = async (): Promise<
   { name: string; data: Buffer; weight: 400 | 700; style: "normal" }[]
