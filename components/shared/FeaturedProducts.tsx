@@ -5,9 +5,14 @@ import ProductCard from "@/components/shared/ProductCard";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import { db } from "@/lib/db";
 
+const FEATURED_COUNT = 8;
+const MAX_PER_CATEGORY = 2;
+// Over-fetch a pool of best-sellers so we can diversify categories client-side.
+const FEATURED_POOL_SIZE = 40;
+
 export const fetchHomeFeaturedProducts = unstable_cache(
-  async () =>
-    db.product.findMany({
+  async () => {
+    const pool = await db.product.findMany({
       where: { isActive: true, isStorefrontVisible: true, stock: { gt: 0 } },
       select: {
         id: true,
@@ -36,11 +41,46 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         },
       },
       orderBy: { saleItems: { _count: "desc" } },
-      take: 8,
-    }),
+      take: FEATURED_POOL_SIZE,
+    });
+
+    return diversifyByCategory(pool);
+  },
   ["storefront-featured-products"],
   { tags: ["storefront:products"] },
 );
+
+// Keep the strongest sellers but cap how many share a category, so the
+// storefront reflects the full breadth of the shop (brakes, filters, A/C, …)
+// instead of showing eight A/C parts in a row. Pool stays in best-seller order.
+const diversifyByCategory = <T extends { category: { slug: string | null } | null }>(
+  pool: T[],
+): T[] => {
+  const perCategory = new Map<string, number>();
+  const picked: T[] = [];
+  const overflow: T[] = [];
+
+  for (const product of pool) {
+    const key = product.category?.slug ?? "__uncategorized__";
+    const used = perCategory.get(key) ?? 0;
+    if (used < MAX_PER_CATEGORY) {
+      perCategory.set(key, used + 1);
+      picked.push(product);
+    } else {
+      overflow.push(product);
+    }
+    if (picked.length === FEATURED_COUNT) return picked;
+  }
+
+  // Not enough distinct categories to fill the grid — backfill with the
+  // remaining best-sellers so we never render fewer than FEATURED_COUNT.
+  for (const product of overflow) {
+    picked.push(product);
+    if (picked.length === FEATURED_COUNT) break;
+  }
+
+  return picked;
+};
 
 interface Props {
   lineUrl: string;
