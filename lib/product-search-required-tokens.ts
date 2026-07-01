@@ -1,4 +1,5 @@
 import { normalizeSearchText } from "@/lib/search-normalization";
+import { isCarYearRangeToken } from "@/lib/car-year-shorthand";
 
 const REQUIRED_TOKEN_RE = /^[\p{L}\p{N}_-]*\d[\p{L}\p{N}_-]*$/u;
 
@@ -22,6 +23,10 @@ export function extractProductSearchRequiredTokens(text?: string | null): string
     const cleaned = token.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
     if (cleaned.length < 3) continue;
     if (isPlausibleCarYear(cleaned)) continue;
+    // Car-year ranges ("12-15", "2012-2015") are fitment hints, not part codes —
+    // never let them become a hard required-token anchor (no product name
+    // contains "12-15", which would zero the search).
+    if (isCarYearRangeToken(cleaned)) continue;
     if (REQUIRED_TOKEN_RE.test(cleaned)) tokens.add(cleaned);
   }
   return Array.from(tokens);

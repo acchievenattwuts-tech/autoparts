@@ -73,6 +73,7 @@ import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/line-search-guards";
+import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   buildLineSearchAskReply,
   buildLineSearchFollowUp,
@@ -1322,7 +1323,12 @@ export async function processLineAiReply(
           partType: guardedSearchIntent?.partType ?? imageFields?.partType ?? null,
           carBrand: guardedSearchIntent?.carBrand ?? imageFields?.carBrand ?? null,
           carModel: guardedSearchIntent?.carModel ?? imageFields?.carModel ?? null,
-          year: guardedSearchIntent?.year ?? imageFields?.year ?? null,
+          // The classifier reports a single 4-digit C.E. year and often returns
+          // null for a colloquial range ("12-15"). Deterministically parse the
+          // range's START year from the customer's own text as a fallback so the
+          // fitment-year filter still applies (e.g. "คอยเย็น Avanza 12-15" → 2012).
+          // Grounded in customer text by construction, so it survives the year guard.
+          year: guardedSearchIntent?.year ?? imageFields?.year ?? parseCarYearRangeStart(input.text) ?? null,
         },
         { sessionStale },
       );
