@@ -21,6 +21,12 @@ interface Props {
   selectedOption?: SelectOption | null;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Auto-focus the search input when the dropdown opens. Defaults to true to
+   * preserve existing behavior; pass false to open without moving the cursor
+   * into the textbox (e.g. storefront finders where a keyboard pop-up is unwanted).
+   */
+  autoFocusSearch?: boolean;
 }
 
 const MAX_RESULTS = 50;
@@ -36,6 +42,7 @@ const SearchableSelect = ({
   selectedOption,
   placeholder = "โปรดระบุ",
   disabled = false,
+  autoFocusSearch = true,
 }: Props) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -108,7 +115,9 @@ const SearchableSelect = ({
     if (!disabled) {
       updateCoords();
       setOpen(true);
-      setTimeout(() => inputRef.current?.focus(), 0);
+      if (autoFocusSearch) {
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
     }
   };
 

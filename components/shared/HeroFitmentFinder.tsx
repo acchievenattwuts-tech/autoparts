@@ -115,6 +115,7 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
             value={brand}
             onChange={handleBrandChange}
             placeholder="เลือกยี่ห้อ"
+            autoFocusSearch={false}
           />
         </div>
         <div>
@@ -125,6 +126,7 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
             onChange={setModel}
             placeholder={brand ? "เลือกรุ่น" : "เลือกยี่ห้อก่อน"}
             disabled={!brand}
+            autoFocusSearch={false}
           />
         </div>
         <div>
@@ -134,6 +136,7 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
             value={year}
             onChange={setYear}
             placeholder="เลือกปี (ถ้ามี)"
+            autoFocusSearch={false}
           />
         </div>
         <div>
@@ -143,6 +146,7 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
             value={category}
             onChange={setCategory}
             placeholder="เลือกหมวด"
+            autoFocusSearch={false}
           />
         </div>
       </div>
