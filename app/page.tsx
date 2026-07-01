@@ -16,19 +16,29 @@ import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
 import { getPublicSiteConfig } from "@/lib/site-config";
+import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 import { LOCAL_SEO_KEYWORDS, ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
 
 const getStorefrontHomeData = cache(async () => {
-  const [config, categories, featuredProducts] = await Promise.all([
+  const [config, categories, featuredProducts, productFilters] = await Promise.all([
     getPublicSiteConfig(),
     fetchHomeCategories(),
     fetchHomeFeaturedProducts(),
+    getStorefrontProductFilters(),
   ]);
+
+  const finderBrands = productFilters.carBrands.map((brand) => ({
+    name: brand.name,
+    models: brand.carModels.map((model) => model.name),
+  }));
+  const finderCategories = productFilters.categories.map((category) => category.name);
 
   return {
     config,
     categories,
     featuredProducts,
+    finderBrands,
+    finderCategories,
   };
 });
 
@@ -59,7 +69,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home = async () => {
-  const { config, categories, featuredProducts } = await getStorefrontHomeData();
+  const { config, categories, featuredProducts, finderBrands, finderCategories } =
+    await getStorefrontHomeData();
 
   return (
     <>
@@ -76,6 +87,8 @@ const Home = async () => {
             lineUrl={config.shopLineUrl}
             shopPhone={config.shopPhone}
             shopName={config.shopName}
+            finderBrands={finderBrands}
+            finderCategories={finderCategories}
           />
         </ScrollReveal>
         <ScrollReveal delay={80}>

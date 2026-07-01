@@ -3,18 +3,23 @@ import Link from "next/link";
 import { ArrowRight, MessageCircleMore, Phone, ShieldCheck, Truck } from "lucide-react";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
+import HeroFitmentFinder, { type FinderBrand } from "@/components/shared/HeroFitmentFinder";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 interface HeroShowcaseProps {
   lineUrl?: string;
   shopPhone?: string;
   shopName?: string;
+  finderBrands?: FinderBrand[];
+  finderCategories?: string[];
 }
 
 const HeroShowcase = ({
   lineUrl = "",
   shopPhone,
   shopName = "",
+  finderBrands = [],
+  finderCategories = [],
 }: HeroShowcaseProps) => {
   const shopPhoneHref = shopPhone?.replace(/[^0-9+]/g, "");
   const ContactCard = shopPhoneHref ? "a" : "div";
@@ -50,9 +55,10 @@ const HeroShowcase = ({
       />
 
       <div className="absolute inset-y-0 left-0 w-full bg-[linear-gradient(90deg,rgba(237,245,255,0.98)_0%,rgba(237,245,255,0.92)_34%,rgba(237,245,255,0.34)_68%,rgba(237,245,255,0)_100%)]" />
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-18">
-        <div className="w-full">
-          <div className="max-w-3xl">
+      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl flex-col justify-center px-4 pb-14 pt-24 sm:px-6 lg:px-8 lg:pb-18">
+        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
+          {/* Left column — copy + CTAs */}
+          <div className="max-w-xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#3d5f92]/12 bg-white/86 px-4 py-1.5 shadow-sm backdrop-blur">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e]/70" />
@@ -61,7 +67,7 @@ const HeroShowcase = ({
               <span className="text-sm font-medium text-[#305182]">เช็กความตรงรุ่นก่อนสั่งทุกครั้ง</span>
             </div>
 
-            <div className="mt-8 max-w-xl">
+            <div className="mt-8">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#f97316]">
                 ร้านอะไหล่แอร์รถยนต์
               </p>
@@ -97,56 +103,45 @@ const HeroShowcase = ({
                 <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/88 p-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4d6fba]">
-                  Step 1
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#16345d]">ส่งข้อมูลรถหรือรูปอะไหล่</p>
-              </div>
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/88 p-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f97316]">
-                  Step 2
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#16345d]">ร้านเช็กและแจ้งรายการที่ตรงรุ่น</p>
-              </div>
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/88 p-4 shadow-sm backdrop-blur">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#4d6fba]">
-                  Step 3
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#16345d]">ค่อยยืนยันสั่งซื้อและจัดส่ง</p>
-              </div>
-            </div>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur">
-                <ShieldCheck className="h-5 w-5 text-[#4d6fba]" />
-                <p className="mt-3 text-sm font-semibold text-[#16345d]">เช็กก่อนสั่ง</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">ยืนยันรุ่นให้ก่อนทุกครั้ง</p>
-              </div>
-              <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur">
-                <Truck className="h-5 w-5 text-[#f97316]" />
-                <p className="mt-3 text-sm font-semibold text-[#16345d]">ส่งทั่วประเทศ</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">สรุปรายการแล้วจัดส่งต่อได้ทันที</p>
-              </div>
-              <ContactCard
-                {...(shopPhoneHref
-                  ? {
-                      href: `tel:${shopPhoneHref}`,
-                      "aria-label": `โทร ${shopPhone}`,
-                    }
-                  : {})}
-                className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#4d6fba]/25 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d6fba]/45"
-              >
-                <Phone className="h-5 w-5 text-[#4d6fba]" />
-                <p className="mt-3 text-sm font-semibold text-[#16345d]">ติดต่อสะดวก</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  {shopPhone ? `โทร ${shopPhone}` : "ทักแชตหรือส่งรูปอะไหล่เดิมได้"}
-                </p>
-              </ContactCard>
-            </div>
           </div>
+
+          {/* Right column — fitment finder */}
+          <div className="w-full">
+            <HeroFitmentFinder
+              brands={finderBrands}
+              categories={finderCategories}
+              lineUrl={lineUrl}
+            />
+          </div>
+        </div>
+
+        {/* Trust cards — full width below the split hero */}
+        <div className="mt-10 grid gap-3 sm:grid-cols-3 lg:max-w-3xl">
+          <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur">
+            <ShieldCheck className="h-5 w-5 text-[#4d6fba]" />
+            <p className="mt-3 text-sm font-semibold text-[#16345d]">เช็กก่อนสั่ง</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">ยืนยันรุ่นให้ก่อนทุกครั้ง</p>
+          </div>
+          <div className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur">
+            <Truck className="h-5 w-5 text-[#f97316]" />
+            <p className="mt-3 text-sm font-semibold text-[#16345d]">ส่งทั่วประเทศ</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">สรุปรายการแล้วจัดส่งต่อได้ทันที</p>
+          </div>
+          <ContactCard
+            {...(shopPhoneHref
+              ? {
+                  href: `tel:${shopPhoneHref}`,
+                  "aria-label": `โทร ${shopPhone}`,
+                }
+              : {})}
+            className="rounded-3xl border border-[#3d5f92]/10 bg-white/82 p-4 shadow-sm backdrop-blur transition hover:-translate-y-0.5 hover:border-[#4d6fba]/25 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d6fba]/45"
+          >
+            <Phone className="h-5 w-5 text-[#4d6fba]" />
+            <p className="mt-3 text-sm font-semibold text-[#16345d]">ติดต่อสะดวก</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              {shopPhone ? `โทร ${shopPhone}` : "ทักแชตหรือส่งรูปอะไหล่เดิมได้"}
+            </p>
+          </ContactCard>
         </div>
       </div>
     </section>
