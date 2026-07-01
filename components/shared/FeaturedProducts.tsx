@@ -9,6 +9,9 @@ const FEATURED_COUNT = 8;
 const MAX_PER_CATEGORY = 2;
 // Over-fetch a pool of best-sellers so we can diversify categories client-side.
 const FEATURED_POOL_SIZE = 40;
+// Best-seller ranking is derived from sale counts but is not real-time; refresh
+// it once a day so it stays fresh even when the catalog isn't being edited.
+const FEATURED_REVALIDATE_SECONDS = 86400;
 
 export const fetchHomeFeaturedProducts = unstable_cache(
   async () => {
@@ -47,7 +50,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
     return diversifyByCategory(pool);
   },
   ["storefront-featured-products"],
-  { tags: ["storefront:products"] },
+  { tags: ["storefront:products"], revalidate: FEATURED_REVALIDATE_SECONDS },
 );
 
 // Keep the strongest sellers but cap how many share a category, so the
