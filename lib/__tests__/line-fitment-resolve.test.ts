@@ -27,6 +27,52 @@ test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {
   assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: "Toyota", carModel: "All New", rawText: "All New" }), null);
 });
 
+test("maps safe sub-model / trim aliases to hard model filters", async () => {
+  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "V-Cross", rawText: "V-Cross" }), {
+    brandName: "Isuzu",
+    modelName: "D-Max",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: "Toyota", carModel: "Rocco", rawText: "Rocco" }), {
+    brandName: "Toyota",
+    modelName: "Hilux Revo",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Vigo Champ", rawText: "Vigo Champ" }), {
+    brandName: "Toyota",
+    modelName: "Hilux Vigo",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Hilux Champ", rawText: "Hilux Champ" }), {
+    brandName: "Toyota",
+    modelName: "Hilux Champ",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "NP300", rawText: "NP300" }), {
+    brandName: "Nissan",
+    modelName: "NP300",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Frontier", rawText: "Frontier" }), {
+    brandName: "Nissan",
+    modelName: "Frontier",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Wildtrak", rawText: "Wildtrak" }), {
+    brandName: "Ford",
+    modelName: "Ranger",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Raptor", rawText: "Raptor" }), {
+    brandName: "Ford",
+    modelName: "Ranger",
+  });
+});
+
+test("does not hard-map ambiguous trim words without enough context", async () => {
+  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+
+  assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Champ", rawText: "Champ" }), null);
+  assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Ativ", rawText: "Ativ" }), null);
+  assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Fit", rawText: "Fit" }), null);
+  assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Mega Cab", rawText: "Mega Cab" }), null);
+});
+
 test("disambiguates overlapping substrings via ordering", async () => {
   const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
   // "วาล์ว" appears in two categories — control valve must win when explicit.
