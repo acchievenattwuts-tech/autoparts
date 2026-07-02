@@ -1445,6 +1445,81 @@ test("price inquiry with a searchable part → searches, shows products, no admi
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
 });
 
+test("hidden-price customer asking price with matches → shows products then hands off to admin", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    showPrice: false, // ลูกค้าทั่วไป/unlinked — ซ่อนราคา
+    consolidatedQuery: "หม้อน้ำ d-max",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "universal",
+  });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ d-max ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "still searches so the customer sees what's in stock");
+  // Not the soft price-defer note (that's the garage/visible-price path); a real handoff note.
+  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ส่งเรื่องให้แอดมิน"), "handoff note after the matches");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin to quote price");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
+});
+
+test("hidden-price customer asking price with NO matches → hands off to admin directly", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    showPrice: false,
+    consolidatedQuery: "หม้อน้ำ ราคา",
+    intentPartType: "หม้อน้ำ",
+    intentPartKind: "universal",
+    searchIds: [],
+    searchTotal: 0,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ ราคาเท่าไหร่"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "AI defers price to admin");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
+  assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
+});
+
+test("visible-price customer (garage) asking price → shows products, no handoff", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    showPrice: true, // อู่ซ่อมรถ — เห็นราคาปกติ
+    consolidatedQuery: "หม้อน้ำ d-max",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "universal",
+  });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("หม้อน้ำ d-max ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "garage sees prices — AI stays active");
+  assert.equal(calls.notifyHandoffs.length, 0, "no admin handoff for a visible-price customer");
+});
+
 test("genuine purchase intent still hands off to admin", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({

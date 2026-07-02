@@ -255,6 +255,14 @@ const PURCHASE_HANDOFF_MESSAGE =
 // sees the options, and the exact price/promo is confirmed by a human.
 const PRICE_INQUIRY_DEFER_NOTE =
   "ส่วนเรื่องราคา/โปรโมชั่น เดี๋ยวจูนให้แอดมินมาช่วยสรุปให้นะคะ 🙏";
+// ลูกค้าที่ซ่อนราคา (ประเภททั่วไป/ยังไม่ผูกบัญชี) ถามราคา → ต้องส่งเรื่องให้แอดมินแจ้งราคาเอง
+// (สอดคล้องกับการซ่อนราคาหน้าเว็บ/แชท). กรณีเดียว (ไม่มีการ์ด) ใช้เป็นข้อความหลัก, กรณีมีการ์ดใช้เป็น note ต่อท้าย
+const PRICE_HIDDEN_HANDOFF_MESSAGE =
+  "จูนขอส่งเรื่องให้แอดมินช่วยแจ้งราคาให้นะคะ 🙏 รอแอดมินติดต่อกลับสักครู่ค่ะ 😊";
+const PRICE_HIDDEN_HANDOFF_NOTE =
+  "ส่วนเรื่องราคา จูนขอส่งเรื่องให้แอดมินช่วยแจ้งให้นะคะ 🙏 รอแอดมินติดต่อกลับสักครู่ค่ะ";
+// คำถามเชิงราคา (เสริมจาก regex intent เดิม) — จับ "พอมีราคา", "ขอสอบถามราคา", "กี่บาท" ที่ถูกจัดเป็น product inquiry
+const PRICE_QUESTION_RE = /(ราคา|กี่บาท|กี่ตัง)/;
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
@@ -1596,6 +1604,20 @@ export async function processLineAiReply(
         : [],
       showPrice,
     );
+
+    // ลูกค้าที่ซ่อนราคา (showPrice=false) ถามราคา → ต้องส่งเรื่องให้แอดมินแจ้งราคาเอง
+    // (อู่ที่ showPrice=true เห็นราคาปกติ จึงไม่เข้าเงื่อนไขนี้)
+    // ใช้คำว่า "ราคา/กี่บาท" ในข้อความ + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT ล้วน
+    // ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
+    const priceAskThisTurn =
+      route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
+    const hiddenPriceInquiry = liveMode && !showPrice && priceAskThisTurn;
+    //  - hiddenPriceWithProducts: เทิร์นนี้ค้นเจอสินค้า → โชว์การ์ด ("สอบถามราคา") ก่อน แล้วค่อย freeze+แจ้งแอดมิน
+    //  - hiddenPriceDirect: ถามราคาล้วน (ไม่มีสินค้า) → ส่งแอดมินตรง ไม่โชว์การ์ด
+    const hiddenPriceWithProducts =
+      hiddenPriceInquiry && productSearch.searched && products.length > 0;
+    const hiddenPriceDirect = hiddenPriceInquiry && !hiddenPriceWithProducts;
+
     const postSearchDeliveryFallback =
       liveMode &&
       productSearch.searched &&
@@ -1652,6 +1674,11 @@ export async function processLineAiReply(
       isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(input.text).catch(
         () => false,
       );
+    }
+    // ลูกค้าซ่อนราคาถามราคาแบบมีสินค้า → ต้องโชว์การ์ดก่อนแล้วค่อยส่งแอดมิน (ไม่ใช่ purchase handoff
+    // ที่ข้ามการ์ด) — ปลด purchase-intent เพื่อให้ไหลเข้าเส้นทางตอบสินค้าปกติ แล้ว handoffAfterSend จัดการ freeze
+    if (hiddenPriceWithProducts) {
+      isPurchaseIntent = false;
     }
 
     // FAQ grounding (จูน's voice, never fabricated). Try a grounded answer when:
@@ -1753,6 +1780,15 @@ export async function processLineAiReply(
               carModel: inquiryFrame?.carModel ?? null,
               failedSearchCount,
             },
+          }
+        // ลูกค้าซ่อนราคาถามราคาแบบไม่มีสินค้าใหม่ (follow-up) → ส่งแอดมินตรง (freeze + notify)
+        : hiddenPriceDirect
+        ? {
+            message: PRICE_HIDDEN_HANDOFF_MESSAGE,
+            reason: "PRICE_HIDDEN_HANDOFF",
+            handoff: true,
+            audit: "AI_PRICE_HIDDEN_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId },
           }
         : faqAnswer.answered
         ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
@@ -1944,6 +1980,12 @@ export async function processLineAiReply(
       }
     }
 
+    // ลูกค้าซ่อนราคา + ค้นเจอสินค้าใหม่ + ถามราคา → ส่งการ์ด/คำตอบสินค้าตามปกติ (โชว์ "สอบถามราคา")
+    // แล้วต่อท้ายด้วย note ส่งเรื่องราคา + freeze WAITING_ADMIN + แจ้งแอดมิน (จัดการที่ท้ายฟังก์ชัน)
+    if (!forcedResponse && hiddenPriceWithProducts && sendDecision.action === "send") {
+      handoffAfterSend = true;
+    }
+
     await dependencies.storeLineAiSuggestion({
       conversationId: input.conversation.id,
       lineMessageId: input.inboundMessage.id,
@@ -2004,11 +2046,13 @@ export async function processLineAiReply(
     // nudge so we never stack two follow-up bubbles.
     const followUpBubble =
       !forcedResponse && products.length > 0
-        ? regexPriceIntent
-          ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
-          : searchFollowUp
-            ? textMessage(buildLineSearchFollowUp(searchFollowUp))
-            : null
+        ? hiddenPriceWithProducts
+          ? textMessage(PRICE_HIDDEN_HANDOFF_NOTE)
+          : regexPriceIntent
+            ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
+            : searchFollowUp
+              ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+              : null
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
