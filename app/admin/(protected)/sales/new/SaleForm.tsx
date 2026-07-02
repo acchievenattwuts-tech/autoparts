@@ -1003,7 +1003,7 @@ const SaleForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">
-                  ราคาตั้ง/หน่วย
+                  ราคาขาย/หน่วย
                   <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">ก่อนลด</span>
                 </th>
                 <th className="text-left py-2 px-2 text-amber-600 font-medium w-28 dark:text-amber-400/80">
@@ -1291,7 +1291,7 @@ const SaleForm = ({
             {totalLineDiscount > 0 && (
               <>
                 <div className="flex justify-between text-gray-500 dark:text-slate-400">
-                  <span>ราคาตั้งรวม</span>
+                  <span>ราคาขายรวม</span>
                   <span className="font-medium dark:text-slate-300">
                     {grossBeforeLineDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>

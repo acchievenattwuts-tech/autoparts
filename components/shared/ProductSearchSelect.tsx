@@ -331,7 +331,15 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         </div>
       </div>
 
-      {typeof window !== "undefined" && dropdown && createPortal(dropdown, document.body)}
+      {typeof window !== "undefined" &&
+        dropdown &&
+        createPortal(
+          // The dropdown is portaled to <body>, outside the AdminShell `.dark`
+          // container, so `dark:` variants (used by the option presentation
+          // helper) would not activate. Re-establish the `.dark` scope here.
+          <div className={isDark ? "dark" : undefined}>{dropdown}</div>,
+          document.body,
+        )}
     </div>
   );
 };
