@@ -21,10 +21,10 @@ type CarBrandAliasSeed = {
 const carBrandAliasSeeds: CarBrandAliasSeed[] = [
   { brandName: "Toyota", aliases: ["โตโยต้า", "โตโยตา"] },
   { brandName: "Honda", aliases: ["ฮอนด้า", "ฮอนดา"] },
-  { brandName: "Nissan", aliases: ["นิสสัน", "นิสสน"] },
+  { brandName: "Nissan", aliases: ["นิสสัน", "นิสสน", "นิสัน"] },
   { brandName: "Mazda", aliases: ["มาสด้า"] },
-  { brandName: "Mitsubishi", aliases: ["มิตซูบิชิ", "มิตซู"] },
-  { brandName: "Isuzu", aliases: ["อีซูซุ", "อีซุซุ"] },
+  { brandName: "Mitsubishi", aliases: ["มิตซูบิชิ", "มิตซู", "มิซู", "มิซูบิชิ", "mitsubisi"] },
+  { brandName: "Isuzu", aliases: ["อีซูซุ", "อีซุซุ", "อีซูสุ", "อิซูซุ", "อิซูสุ", "isusu"] },
   { brandName: "Suzuki", aliases: ["ซูซูกิ", "ซูซุกิ"] },
   { brandName: "Ford", aliases: ["ฟอร์ด"] },
   { brandName: "Chevrolet", aliases: ["เชฟโรเลต", "เชฟโรเล็ต", "เชฟ", "chevy"] },
@@ -32,6 +32,9 @@ const carBrandAliasSeeds: CarBrandAliasSeed[] = [
   { brandName: "Lexus", aliases: ["เล็กซัส", "เลกซัส"] },
   { brandName: "HINO", aliases: ["ฮีโน่", "ฮีโน"] },
   { brandName: "MG", aliases: ["เอ็มจี"] },
+  { brandName: "UD", aliases: ["ยูดี", "ยูดีทรัค", "ud truck", "ud trucks"] },
+  { brandName: "Volkswagen", aliases: ["โฟล์ค", "โฟล์ก", "โฟล์คสวาเกน", "โฟล์กสวาเกน", "vw"] },
+  { brandName: "Roewe", aliases: ["โรวี", "โรวี่", "โรเว่"] },
 ];
 
 const main = async () => {

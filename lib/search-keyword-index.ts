@@ -69,6 +69,21 @@ const draft = (
   };
 };
 
+export function buildSynonymKeywordDrafts(
+  synonyms: Array<{ term: string; synonyms?: string[] | null }>,
+): DraftRow[] {
+  const rows: DraftRow[] = [];
+  for (const synonym of synonyms) {
+    const canonical = draft(synonym.term, "synonym", 300);
+    if (canonical) rows.push(canonical);
+    for (const alias of synonym.synonyms ?? []) {
+      const aliasRow = draft(synonym.term, "synonym", 300, null, alias);
+      if (aliasRow) rows.push(aliasRow);
+    }
+  }
+  return rows;
+}
+
 /**
  * Collects keyword draft rows from every source. De-duped by (normalized, kind),
  * keeping the highest popularity so the strongest signal wins.
@@ -96,7 +111,7 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
         select: { name: true, stock: true },
         take: 5000,
       }),
-      db.searchSynonym.findMany({ where: { isActive: true }, select: { term: true } }),
+      db.searchSynonym.findMany({ where: { isActive: true }, select: { term: true, synonyms: true } }),
       // Only queries that DID return results become suggestions — never dead ends.
       db.productSearchLog.findMany({
         where: { resultCount: { gt: 0 }, isBot: false },
@@ -117,7 +132,7 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
     drafts.push(draft(m.name, "carModel", 700, m.carBrand?.name ?? "รุ่นรถ"));
   for (const p of products)
     drafts.push(draft(p.name, "product", 100 + (p.stock > 0 ? 50 : 0), "สินค้า"));
-  for (const s of synonyms) drafts.push(draft(s.term, "synonym", 300));
+  drafts.push(...buildSynonymKeywordDrafts(synonyms));
   for (const l of hotLogs)
     drafts.push(draft(l.query, "synonym", 200 + Math.min(l.hitCount, 100)));
 

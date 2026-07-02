@@ -13,6 +13,20 @@ test("maps colloquial part-types to the right category hint", async () => {
   assert.equal(matchPartTypeToCategoryHint("กรองแอร์"), "Cabin air filter");
 });
 
+test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {
+  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "ออนิว", rawText: "ออนิว" }), {
+    brandName: "Isuzu",
+    modelName: "D-Max",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: "Isuzu", carModel: "All New", rawText: "All New" }), {
+    brandName: "Isuzu",
+    modelName: "D-Max",
+  });
+  assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: "Toyota", carModel: "All New", rawText: "All New" }), null);
+});
+
 test("disambiguates overlapping substrings via ordering", async () => {
   const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
   // "วาล์ว" appears in two categories — control valve must win when explicit.

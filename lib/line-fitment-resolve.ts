@@ -44,6 +44,36 @@ const trimOrNull = (value?: string | null): string | null => {
   return trimmed ? trimmed : null;
 };
 
+const normalizeAliasText = (value?: string | null): string =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+
+const ISUZU_DMAX_ALL_NEW_ALIASES = new Set([
+  "ออนิว",
+  "ออลนิว",
+  "allnew",
+  "allnewdmax",
+  "allnewd-max",
+]);
+
+export function resolveColloquialCarModelAlias(input: {
+  carBrand?: string | null;
+  carModel?: string | null;
+  rawText?: string | null;
+}): { brandName: string; modelName: string } | null {
+  const brand = normalizeAliasText(input.carBrand);
+  const candidates = [input.carModel, input.rawText].map(normalizeAliasText).filter(Boolean);
+  const isIsuzuScoped = !brand || brand === "isuzu" || brand === "อีซูซุ" || brand === "อีซูสุ";
+  if (!isIsuzuScoped) return null;
+
+  if (candidates.some((candidate) => ISUZU_DMAX_ALL_NEW_ALIASES.has(candidate))) {
+    return { brandName: "Isuzu", modelName: "D-Max" };
+  }
+  return null;
+}
+
 async function matchDbCategoryAlias(texts: Array<string | null | undefined>) {
   try {
     const rows = await getCachedCategoryAliasRows(() =>
@@ -217,6 +247,15 @@ export async function resolveLineFitmentFilters(
   const rawText = trimOrNull(input.rawText);
 
   const filters: LineFitmentFilters = {};
+  const colloquialModel = resolveColloquialCarModelAlias({
+    carBrand,
+    carModel,
+    rawText: [rawText, queryText].filter(Boolean).join(" "),
+  });
+  if (colloquialModel) {
+    filters.carBrandName = colloquialModel.brandName;
+    filters.carModelName = colloquialModel.modelName;
+  }
   // Include the raw customer text so a precise spoken keyword still resolves even
   // when the AI's partType/consolidated query dropped or rewrote it.
   const aliasMatch = await matchDbCategoryAlias([partType, queryText, rawText]);
@@ -265,10 +304,14 @@ export async function resolveLineFitmentFilters(
 
     if (categoryFromAlias) filters.categoryName = categoryFromAlias;
     else if (categoryRow) filters.categoryName = categoryRow.name;
-    if (brandRow) filters.carBrandName = brandRow.name;
+    if (!filters.carBrandName && brandRow) filters.carBrandName = brandRow.name;
 
     // Car model resolution. Model names like "2" / "City" are ambiguous across
     // brands, so when a brand is known we scope to it (exact then contains).
+    if (filters.carModelName) {
+      return filters;
+    }
+
     if (brandRow && carModel) {
       const modelRow =
         (await db.carModel.findFirst({
