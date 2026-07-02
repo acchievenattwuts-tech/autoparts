@@ -28,18 +28,6 @@ function clientIp(request: Request): string {
 }
 
 export async function POST(request: Request) {
-  const rate = await checkRateLimit({
-    key: `storefront-visit:${clientIp(request)}`,
-    limit: RATE_LIMIT_MAX_REQUESTS,
-    windowMs: RATE_LIMIT_WINDOW_MS,
-  });
-  if (!rate.ok) {
-    return NextResponse.json(
-      { ok: false },
-      { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
-    );
-  }
-
   let payload: StorefrontVisitPayload;
 
   try {
@@ -81,22 +69,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
-  await db.storefrontVisitDaily.upsert({
-    where: {
-      visitorKey_visitDay: {
+  const rate = await checkRateLimit({
+    key: `storefront-visit:${clientIp(request)}`,
+    limit: RATE_LIMIT_MAX_REQUESTS,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rate.ok) {
+    return NextResponse.json(
+      { ok: false },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
+    );
+  }
+
+  await db.storefrontVisitDaily.createMany({
+    data: [
+      {
         visitorKey,
         visitDay,
+        entryPath: pathname,
+        lastPath: pathname,
       },
-    },
-    update: {
-      lastPath: pathname,
-    },
-    create: {
-      visitorKey,
-      visitDay,
-      entryPath: pathname,
-      lastPath: pathname,
-    },
+    ],
+    skipDuplicates: true,
   });
 
   return NextResponse.json({ ok: true }, { status: 202 });

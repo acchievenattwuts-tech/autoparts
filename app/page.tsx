@@ -37,6 +37,7 @@ const getStorefrontHomeData = cache(async () => {
     config,
     categories,
     featuredProducts,
+    productFilters,
     finderBrands,
     finderCategories,
   };
@@ -69,7 +70,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home = async () => {
-  const { config, categories, featuredProducts, finderBrands, finderCategories } =
+  const { config, categories, featuredProducts, finderBrands, finderCategories, productFilters } =
     await getStorefrontHomeData();
 
   return (
@@ -80,6 +81,7 @@ const Home = async () => {
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
+        filterData={productFilters}
       />
       <main>
         <ScrollReveal>
