@@ -1445,54 +1445,57 @@ test("price inquiry with a searchable part → searches, shows products, no admi
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
 });
 
-test("hidden-price customer asking price (with matches) → hands off directly, no product cards/list", async () => {
+test("hidden-price customer naming a product + price → shows cards then hands off to admin", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     showPrice: false, // ลูกค้าทั่วไป/unlinked — ซ่อนราคา
-    consolidatedQuery: "หม้อน้ำ d-max",
-    intentPartType: "หม้อน้ำ",
-    intentCarModel: "D-Max",
+    consolidatedQuery: "คอยเย็นวีโก้",
+    intentPartType: "คอยล์เย็น", // ข้อความระบุสินค้าเอง → โชว์การ์ดก่อน handoff
+    intentCarModel: "Vigo",
     intentPartKind: "universal",
   });
   dependencies.getLineProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
-    textPayload("หม้อน้ำ d-max ราคาเท่าไหร่ครับ"),
+    textPayload("คอยเย็นวีโก้ เท่าไรครับ"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
     dependencies,
   );
 
   assert.equal(result.repliedCount, 1);
-  // Single handoff message — NOT the product list/cards (already shown while browsing).
-  assert.equal(calls.replies[0]?.messageCount, 1, "only the handoff bubble, no cards/list re-shown");
-  assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "defers price to admin");
-  assert.ok(!calls.replies[0]?.text.includes("P0496"), "does not repeat the product code/list");
+  assert.equal(calls.searches.length, 1, "searches so the customer sees what's in stock");
+  // Product answer bubble + handoff note (flex needs a base URL, absent in tests → 2 bubbles).
+  assert.ok((calls.replies[0]?.messageCount ?? 0) >= 2, "product answer + handoff note");
+  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ส่งเรื่องให้แอดมิน"), "handoff note after the matches");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin to quote price");
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
-  assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
 });
 
-test("hidden-price customer asking price with NO matches → hands off to admin directly", async () => {
+test("hidden-price customer asking bare price (no product named) → direct handoff, no cards re-shown", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     showPrice: false,
-    consolidatedQuery: "หม้อน้ำ ราคา",
-    intentPartType: "หม้อน้ำ",
+    // No intentPartType/car — the message names no product; the search only finds
+    // items via carried context. This is the "ราคาเท่าไร" follow-up after a list was shown.
+    consolidatedQuery: "ราคาเท่าไร",
     intentPartKind: "universal",
-    searchIds: [],
-    searchTotal: 0,
   });
+  dependencies.getLineProductSummaries = async () => [
+    { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500 },
+  ];
 
   const result = await processLineWebhookPayload(
-    textPayload("หม้อน้ำ ราคาเท่าไหร่"),
+    textPayload("ราคาเท่าไร"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
     dependencies,
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "AI defers price to admin");
+  assert.equal(calls.replies[0]?.messageCount, 1, "only the handoff bubble, no cards/list re-shown");
+  assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "defers price to admin");
+  assert.ok(!calls.replies[0]?.text.includes("P0073"), "does not repeat the product list");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
   assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));

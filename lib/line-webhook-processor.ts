@@ -259,8 +259,11 @@ const PRICE_INQUIRY_DEFER_NOTE =
 // (สอดคล้องกับการซ่อนราคาหน้าเว็บ/แชท). กรณีเดียว (ไม่มีการ์ด) ใช้เป็นข้อความหลัก, กรณีมีการ์ดใช้เป็น note ต่อท้าย
 const PRICE_HIDDEN_HANDOFF_MESSAGE =
   "จูนขอส่งเรื่องให้แอดมินช่วยแจ้งราคาให้นะคะ 🙏 รอแอดมินติดต่อกลับสักครู่ค่ะ 😊";
-// คำถามเชิงราคา (เสริมจาก regex intent เดิม) — จับ "พอมีราคา", "ขอสอบถามราคา", "กี่บาท" ที่ถูกจัดเป็น product inquiry
-const PRICE_QUESTION_RE = /(ราคา|กี่บาท|กี่ตัง)/;
+// ต่อท้ายการ์ด/รายการเมื่อเป็นสินค้าใหม่ที่เพิ่งถาม (topicShift) — โชว์ของก่อนแล้วส่งเรื่องราคาให้แอดมิน
+const PRICE_HIDDEN_HANDOFF_NOTE =
+  "ส่วนเรื่องราคา จูนขอส่งเรื่องให้แอดมินช่วยแจ้งให้นะคะ 🙏 รอแอดมินติดต่อกลับสักครู่ค่ะ";
+// คำถามเชิงราคา (เสริมจาก regex intent เดิม) — จับ "พอมีราคา", "ขอสอบถามราคา", "กี่บาท", "เท่าไร/เท่าไหร่"
+const PRICE_QUESTION_RE = /(ราคา|กี่บาท|กี่ตัง|เท่าไหร่|เท่าไร)/;
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
@@ -1603,14 +1606,24 @@ export async function processLineAiReply(
       showPrice,
     );
 
-    // ลูกค้าที่ซ่อนราคา (showPrice=false) ถามราคา → ส่งเรื่องให้แอดมินแจ้งราคาโดยตรง
-    // ไม่โชว์การ์ด/รายการสินค้าซ้ำ (การ์ดจะแสดงตอนลูกค้าค้นหาสินค้าปกติอยู่แล้ว การถามราคาคือ
-    // การส่งต่อให้คน). ใช้คำว่า "ราคา/กี่บาท" ในข้อความ + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม
-    // PURCHASE_INTENT ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
-    // อู่ (showPrice=true) เห็นราคาปกติ จึงไม่เข้าเงื่อนไขนี้
+    // ลูกค้าที่ซ่อนราคา (showPrice=false) ถามราคา → ส่งเรื่องให้แอดมินแจ้งราคา
+    // ใช้คำว่า "ราคา/กี่บาท/เท่าไร" ในข้อความ + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
+    // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา. อู่ (showPrice=true) เห็นราคาปกติ
+    //  - hiddenPriceWithProducts: ข้อความนี้ระบุชื่อสินค้าเอง (guardedSearchIntent มี part/car) + เจอสินค้า
+    //    → โชว์การ์ดก่อน แล้วต่อ note ส่งเรื่องราคา + freeze (ลูกค้าอยากเห็นว่ามีของ เช่น "คอยเย็นวีโก้ เท่าไร")
+    //  - hiddenPriceDirect: ถามราคาล้วน ไม่ได้ระบุสินค้าในข้อความ (เช่น "ราคาเท่าไร" ต่อจากที่โชว์ไปแล้ว)
+    //    → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ
     const priceAskThisTurn =
       route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
     const hiddenPriceInquiry = liveMode && !showPrice && priceAskThisTurn;
+    // guardedSearchIntent = evidence-gated intent ของ "ข้อความเทิร์นนี้" (เฉพาะสิ่งที่ลูกค้าพิมพ์จริง
+    // ไม่รวม history) → ใช้แยกว่าลูกค้าเปิดสินค้าใหม่ในข้อความนี้ หรือถามราคาล้วน
+    const currentTurnNamedProduct = Boolean(
+      guardedSearchIntent?.partType || guardedSearchIntent?.carModel || guardedSearchIntent?.carBrand,
+    );
+    const hiddenPriceWithProducts =
+      hiddenPriceInquiry && currentTurnNamedProduct && productSearch.searched && products.length > 0;
+    const hiddenPriceDirect = hiddenPriceInquiry && !hiddenPriceWithProducts;
 
     const postSearchDeliveryFallback =
       liveMode &&
@@ -1668,6 +1681,11 @@ export async function processLineAiReply(
       isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(input.text).catch(
         () => false,
       );
+    }
+    // ลูกค้าซ่อนราคาถามราคาสินค้าใหม่ → ต้องโชว์การ์ดก่อนแล้วค่อยส่งแอดมิน (ไม่ใช่ purchase handoff ที่ข้ามการ์ด)
+    // ปลด purchase-intent เพื่อให้ไหลเข้าเส้นทางตอบสินค้าปกติ แล้ว handoffAfterSend จัดการ freeze/notify
+    if (hiddenPriceWithProducts) {
+      isPurchaseIntent = false;
     }
 
     // FAQ grounding (จูน's voice, never fabricated). Try a grounded answer when:
@@ -1770,8 +1788,8 @@ export async function processLineAiReply(
               failedSearchCount,
             },
           }
-        // ลูกค้าซ่อนราคาถามราคา → ส่งแอดมินตรง ไม่โชว์การ์ด/รายการสินค้าซ้ำ (freeze + notify)
-        : hiddenPriceInquiry
+        // ลูกค้าซ่อนราคาถามราคาสินค้าเดิม/ล้วน → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ (freeze + notify)
+        : hiddenPriceDirect
         ? {
             message: PRICE_HIDDEN_HANDOFF_MESSAGE,
             reason: "PRICE_HIDDEN_HANDOFF",
@@ -1969,6 +1987,12 @@ export async function processLineAiReply(
       }
     }
 
+    // ลูกค้าซ่อนราคา + เปิดสินค้าใหม่ + ถามราคา → ตอบสินค้า/การ์ดตามปกติ ("สอบถามราคา") แล้วต่อท้าย
+    // note ส่งเรื่องราคา + freeze WAITING_ADMIN + แจ้งแอดมิน (freeze/notify จัดการที่ท้ายฟังก์ชัน)
+    if (!forcedResponse && hiddenPriceWithProducts && sendDecision.action === "send") {
+      handoffAfterSend = true;
+    }
+
     await dependencies.storeLineAiSuggestion({
       conversationId: input.conversation.id,
       lineMessageId: input.inboundMessage.id,
@@ -2029,11 +2053,13 @@ export async function processLineAiReply(
     // nudge so we never stack two follow-up bubbles.
     const followUpBubble =
       !forcedResponse && products.length > 0
-        ? regexPriceIntent
-          ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
-          : searchFollowUp
-            ? textMessage(buildLineSearchFollowUp(searchFollowUp))
-            : null
+        ? hiddenPriceWithProducts
+          ? textMessage(PRICE_HIDDEN_HANDOFF_NOTE)
+          : regexPriceIntent
+            ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
+            : searchFollowUp
+              ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+              : null
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
