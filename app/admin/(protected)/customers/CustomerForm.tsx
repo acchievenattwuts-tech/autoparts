@@ -7,7 +7,14 @@ import TaxIdInput from "@/components/shared/TaxIdInput";
 import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
 import { formatDateThai } from "@/lib/th-date";
 import { CUSTOMER_PHONE_EXAMPLE, formatCustomerPhoneInput } from "@/lib/customer-phone";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
+
+interface CustomerTypeOption {
+  id: string;
+  name: string;
+  showPrice: boolean;
+}
 
 interface CustomerFormProps {
   customer?: {
@@ -25,19 +32,25 @@ interface CustomerFormProps {
     source?: string | null;
     lineUserId?: string | null;
     lineLinkedAt?: Date | null;
+    customerTypeId?: string | null;
   };
+  customerTypeOptions: CustomerTypeOption[];
+  defaultCustomerTypeId?: string | null;
 }
 
 const inputCls =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-200";
 
-const CustomerForm = ({ customer }: CustomerFormProps) => {
+const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: CustomerFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isUnlinkPending, startUnlinkTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [customerTypeId, setCustomerTypeId] = useState<string>(
+    customer?.customerTypeId ?? defaultCustomerTypeId ?? "",
+  );
   const [pinLat, setPinLat] = useState<number | null>(customer?.defaultLatitude ?? null);
   const [pinLon, setPinLon] = useState<number | null>(customer?.defaultLongitude ?? null);
   const [pinSheetOpen, setPinSheetOpen] = useState(false);
@@ -162,6 +175,26 @@ const CustomerForm = ({ customer }: CustomerFormProps) => {
             />
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
               รูปแบบเดียวกับ LINE: {CUSTOMER_PHONE_EXAMPLE}
+            </p>
+          </div>
+
+          <div>
+            <label className={labelCls}>ประเภทลูกค้า</label>
+            <SearchableSelect
+              options={customerTypeOptions.map(
+                (t): SelectOption => ({
+                  id: t.id,
+                  label: t.name,
+                  sublabel: t.showPrice ? "แสดงราคาบน LINE" : "ซ่อนราคา (สอบถามราคา)",
+                }),
+              )}
+              value={customerTypeId}
+              onChange={setCustomerTypeId}
+              placeholder="เลือกประเภทลูกค้า"
+            />
+            <input type="hidden" name="customerTypeId" value={customerTypeId} />
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
+              คุมการแสดงราคาบน LINE — ว่างไว้ = ลูกค้าทั่วไป (ซ่อนราคา)
             </p>
           </div>
 

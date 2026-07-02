@@ -33,6 +33,7 @@ import {
   Wallet,
   Languages,
   KeyRound,
+  UserCog,
 } from "lucide-react";
 
 import type { PermissionKey } from "@/lib/access-control";
@@ -118,6 +119,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ค้นสินค้าบนมือถือ", href: "/admin/products/search", icon: PackageSearch, permission: "products.view", keywords: "mobile product search ค้นสินค้า มือถือ app สินค้า" },
       { label: "สินค้า", href: "/admin/products", icon: Package, permission: "products.view", keywords: "products สินค้า" },
       { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view", keywords: "customers ลูกค้า" },
+      { label: "ประเภทลูกค้า", href: "/admin/master/customer-types", icon: UserCog, permission: "master.view", keywords: "customer type ประเภทลูกค้า อู่ ทั่วไป แสดงราคา ซ่อนราคา master" },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view", keywords: "suppliers ซัพพลายเออร์ master" },
       { label: "หมวดหมู่สินค้า", href: "/admin/master/categories", icon: Tags, permission: "master.view", keywords: "categories หมวดหมู่สินค้า master" },
       { label: "แบรนด์อะไหล่", href: "/admin/master/parts-brands", icon: Award, permission: "master.view", keywords: "parts brands แบรนด์อะไหล่ master" },

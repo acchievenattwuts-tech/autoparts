@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { HIDE_STOREFRONT_PRICE } from "@/lib/storefront-pricing";
 
 export type CarModel = { id: string; name: string };
 export type CarBrand = { id: string; name: string; carModels: CarModel[] };
@@ -528,15 +529,17 @@ export const ProductFilterBody = ({ draft, setDraft, filterData }: FilterBodyPro
         />
       </div>
 
-      <div className="border-t border-slate-200 pt-4">
-        <PriceRange
-          priceMin={draft.priceMin}
-          priceMax={draft.priceMax}
-          onChange={({ priceMin, priceMax }) =>
-            setDraft((prev) => ({ ...prev, priceMin, priceMax }))
-          }
-        />
-      </div>
+      {!HIDE_STOREFRONT_PRICE && (
+        <div className="border-t border-slate-200 pt-4">
+          <PriceRange
+            priceMin={draft.priceMin}
+            priceMax={draft.priceMax}
+            onChange={({ priceMin, priceMax }) =>
+              setDraft((prev) => ({ ...prev, priceMin, priceMax }))
+            }
+          />
+        </div>
+      )}
     </div>
   );
 };

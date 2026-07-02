@@ -112,6 +112,7 @@ function createProcessorTestDeps(input?: {
   duplicateEventIds?: string[];
   conversationStatus?: LineConversationAiStatus;
   linkedCustomerId?: string | null;
+  showPrice?: boolean;
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
   imageConfidence?: "LOW" | "MEDIUM" | "HIGH";
   imageHints?: string[];
@@ -187,6 +188,9 @@ function createProcessorTestDeps(input?: {
     hasProcessedLineEvent: async (lineEventId) =>
       Boolean(input?.duplicate) || (typeof lineEventId === "string" && duplicateEventIds.has(lineEventId)),
     findActiveCustomerIdByLineUserId: async () => input?.linkedCustomerId ?? null,
+    // Default to visible so existing structural tests keep their original prices;
+    // hide-price behavior is covered by dedicated cases that pass showPrice: false.
+    resolveLineShowPrice: async () => input?.showPrice ?? true,
     getOrCreateLineConversation: async (conversationInput) => {
       calls.conversationInputs.push({
         lineUserId: conversationInput.lineUserId,

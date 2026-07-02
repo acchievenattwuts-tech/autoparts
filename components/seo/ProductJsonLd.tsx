@@ -7,7 +7,8 @@ interface ProductJsonLdProps {
   brandName?: string | null;
   sku: string;
   url: string;
-  price: number;
+  /** ราคา — ส่ง null/undefined เพื่อซ่อนราคาออกจาก structured data */
+  price?: number | null;
   currency?: string;
   inStock: boolean;
   categoryName?: string;
@@ -121,8 +122,8 @@ const ProductJsonLd = ({
             : undefined,
         offers: {
           "@type": "Offer",
-          priceCurrency: currency,
-          price,
+          priceCurrency: price != null ? currency : undefined,
+          price: price != null ? price : undefined,
           availability: inStock
             ? "https://schema.org/InStock"
             : "https://schema.org/OutOfStock",

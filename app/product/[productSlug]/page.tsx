@@ -37,7 +37,11 @@ import {
   getActiveStorefrontProductById,
   getRelatedStorefrontProductsByCategory,
 } from "@/lib/storefront-product";
-import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
+import {
+  getStorefrontDisplayPrices,
+  HIDE_STOREFRONT_PRICE,
+  STOREFRONT_PRICE_INQUIRY_LABEL,
+} from "@/lib/storefront-pricing";
 import {
   partitionProductFitments,
   PRODUCT_FITMENT_SECTION_COPY,
@@ -409,15 +413,31 @@ const ProductDetailPage = async ({ params }: Props) => {
                       <p className="mt-2 text-xs leading-5 text-slate-500">แจ้งรหัสนี้ให้ร้านเช็กได้เร็วขึ้น</p>
                     </div>
                     <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-white p-3">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">ราคาพิเศษ</p>
-                      <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
-                        <p className="text-3xl font-black leading-none text-[#f97316]">
-                          ฿{displayPrices.salePrice.toLocaleString("th-TH")}
-                        </p>
-                        <p className="pb-1 text-sm text-slate-400 line-through">
-                          ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
-                        </p>
-                      </div>
+                      {HIDE_STOREFRONT_PRICE ? (
+                        <>
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">ราคา</p>
+                          <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
+                            <p className="text-2xl font-black leading-none text-[#f97316] sm:text-3xl">
+                              {STOREFRONT_PRICE_INQUIRY_LABEL}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            แจ้งรหัสสินค้าให้ร้านเพื่อรับราคาล่าสุด
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">ราคาพิเศษ</p>
+                          <div className="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
+                            <p className="text-3xl font-black leading-none text-[#f97316]">
+                              ฿{displayPrices.salePrice.toLocaleString("th-TH")}
+                            </p>
+                            <p className="pb-1 text-sm text-slate-400 line-through">
+                              ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -678,7 +698,7 @@ const ProductDetailPage = async ({ params }: Props) => {
         brandName={product.brand?.name}
         sku={product.code}
         url={canonicalUrl}
-        price={Number(product.salePrice)}
+        price={HIDE_STOREFRONT_PRICE ? null : Number(product.salePrice)}
         inStock={product.stock > 0}
         categoryName={product.category.name}
         sellerName={config.shopName}

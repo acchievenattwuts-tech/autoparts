@@ -47,16 +47,28 @@ const getStorefrontSitemapData = unstable_cache(
   },
 );
 
-function getLatestDate(candidates: Array<Date | null | undefined>) {
+/**
+ * Coerce to a valid Date. Values read back from `unstable_cache` are JSON-round-
+ * tripped, so `Date` fields arrive as ISO strings — calling `.getTime()` on them
+ * throws. Normalising here keeps the sitemap build resilient to cache state.
+ */
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getLatestDate(candidates: Array<Date | string | null | undefined>) {
   let latest: Date | null = null;
 
   for (const candidate of candidates) {
-    if (!candidate) {
+    const date = toDate(candidate);
+    if (!date) {
       continue;
     }
 
-    if (latest === null || candidate.getTime() > latest.getTime()) {
-      latest = candidate;
+    if (latest === null || date.getTime() > latest.getTime()) {
+      latest = date;
     }
   }
 
@@ -120,13 +132,13 @@ export async function getStorefrontSitemap(): Promise<MetadataRoute.Sitemap> {
           product,
         }),
       ),
-      lastModified: product.updatedAt,
+      lastModified: toDate(product.updatedAt) ?? productsLastModified,
       changeFrequency: "weekly" as const,
       priority: 0.7,
     })),
     ...activeCategories.map((category) => ({
       url: absoluteUrl(getCategoryPath(category)),
-      lastModified: category.createdAt ?? productsLastModified,
+      lastModified: toDate(category.createdAt) ?? productsLastModified,
       changeFrequency: "weekly" as const,
       priority: 0.8,
     })),

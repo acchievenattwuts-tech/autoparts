@@ -69,7 +69,10 @@ const CustomersPage = async ({
   const [customers, total] = await Promise.all([
     db.customer.findMany({
       where: whereClause,
-      include: { _count: { select: { sales: true } } },
+      include: {
+        _count: { select: { sales: true } },
+        customerType: { select: { name: true, showPrice: true } },
+      },
       orderBy: { createdAt: "desc" },
       skip,
       take: PAGE_SIZE,
@@ -144,6 +147,7 @@ const CustomersPage = async ({
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อลูกค้า</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เบอร์โทร</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ประเภท</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ที่อยู่</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดซื้อ</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
@@ -153,7 +157,7 @@ const CustomersPage = async ({
             <tbody>
               {customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400 dark:text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-gray-400 dark:text-slate-500">
                     {search ? "ไม่พบลูกค้าที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
                   </td>
                 </tr>
@@ -194,6 +198,21 @@ const CustomersPage = async ({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{customer.phone ?? "-"}</td>
+                    <td className="px-4 py-3">
+                      {customer.customerType ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            customer.customerType.showPrice
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300"
+                              : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300"
+                          }`}
+                        >
+                          {customer.customerType.name}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 dark:text-slate-500">ทั่วไป</span>
+                      )}
+                    </td>
                     <td className="max-w-xs truncate px-4 py-3 text-gray-500 dark:text-slate-400">{customer.address ?? "-"}</td>
                     <td className="px-4 py-3 text-right text-gray-600 dark:text-slate-300">{customer._count.sales} ครั้ง</td>
                     <td className="px-4 py-3 text-center">

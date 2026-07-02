@@ -981,6 +981,8 @@ model Customer {
   source           String       @default("ADMIN")
   defaultLatitude  Float?
   defaultLongitude Float?
+  customerTypeId   String?
+  customerType     CustomerType? @relation(fields: [customerTypeId], references: [id])
   lineConversations LineConversation[]
   creditNotes      CreditNote[]
   receipts         Receipt[]
@@ -989,6 +991,24 @@ model Customer {
 
   @@index([name])
   @@index([lineLinkedAt])
+  @@index([customerTypeId])
+}
+
+/// ประเภทลูกค้า (master) — คุมการแสดงราคาบน LINE ต่อกลุ่มลูกค้า
+/// showPrice = true → กลุ่มนี้เห็นราคาจริง (เช่น อู่ซ่อมรถ)
+/// showPrice = false / ไม่ระบุประเภท → ซ่อนราคา แสดง "สอบถามราคา" (ลูกค้าทั่วไป)
+model CustomerType {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  showPrice Boolean    @default(false)
+  isActive  Boolean    @default(true)
+  sortOrder Int        @default(0)
+  isSystem  Boolean    @default(false)
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime   @updatedAt @db.Timestamptz(3)
+  customers Customer[]
+
+  @@index([isActive, sortOrder])
 }
 
 model Sale {

@@ -36,6 +36,10 @@ const customerSchema = z.object({
   creditTerm:       z.coerce.number().int().min(0).max(365).optional(),
   defaultLatitude:  z.coerce.number().finite().gte(-90).lte(90).optional(),
   defaultLongitude: z.coerce.number().finite().gte(-180).lte(180).optional(),
+  customerTypeId:   z.preprocess(
+    (value) => (value === "" || value == null ? undefined : value),
+    z.string().max(50).regex(/^[a-z0-9]+$/, "รหัสประเภทลูกค้าไม่ถูกต้อง").optional(),
+  ),
 });
 
 function toAuditCustomer(customer: {
@@ -52,6 +56,7 @@ function toAuditCustomer(customer: {
   lineUserId: string | null;
   lineLinkedAt: Date | null;
   isActive: boolean;
+  customerTypeId?: string | null;
 }) {
   return {
     id: customer.id,
@@ -67,6 +72,7 @@ function toAuditCustomer(customer: {
     lineUserId: customer.lineUserId,
     lineLinkedAt: customer.lineLinkedAt,
     isActive: customer.isActive,
+    customerTypeId: customer.customerTypeId ?? null,
   };
 }
 
@@ -84,10 +90,11 @@ export async function createCustomer(
     taxId:           normalizeOptionalTaxId(formData.get("taxId")),
     note:            formData.get("note")            || undefined,
     creditTerm:      formData.get("creditTerm")      || undefined,
+    customerTypeId:  formData.get("customerTypeId")  || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude, customerTypeId } = parsed.data;
   const code = await generateCustomerCode();
 
   try {
@@ -104,6 +111,7 @@ export async function createCustomer(
         creditTerm:       creditTerm       ?? null,
         defaultLatitude:  defaultLatitude  ?? null,
         defaultLongitude: defaultLongitude ?? null,
+        customerTypeId:   customerTypeId   ?? null,
       },
       select: {
         id: true,
@@ -119,6 +127,7 @@ export async function createCustomer(
         lineUserId: true,
         lineLinkedAt: true,
         isActive: true,
+        customerTypeId: true,
       },
     });
     await safeWriteAuditLog({
@@ -158,10 +167,11 @@ export async function updateCustomer(
     creditTerm:       formData.get("creditTerm")       || undefined,
     defaultLatitude:  formData.get("defaultLatitude")  || undefined,
     defaultLongitude: formData.get("defaultLongitude") || undefined,
+    customerTypeId:   formData.get("customerTypeId")   || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude } = parsed.data;
+  const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude, customerTypeId } = parsed.data;
 
   try {
     const requestContext = await getRequestContext();
@@ -181,6 +191,7 @@ export async function updateCustomer(
         lineUserId: true,
         lineLinkedAt: true,
         isActive: true,
+        customerTypeId: true,
       },
     });
     if (!existingCustomer) {
@@ -199,6 +210,7 @@ export async function updateCustomer(
         creditTerm:       creditTerm       ?? null,
         defaultLatitude:  defaultLatitude  ?? null,
         defaultLongitude: defaultLongitude ?? null,
+        customerTypeId:   customerTypeId   ?? null,
         isActive:         true,
       },
       select: {
@@ -215,6 +227,7 @@ export async function updateCustomer(
         lineUserId: true,
         lineLinkedAt: true,
         isActive: true,
+        customerTypeId: true,
       },
     });
     const diff = diffEntity(

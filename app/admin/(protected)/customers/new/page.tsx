@@ -3,11 +3,18 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
+import { db } from "@/lib/db";
+import { getActiveCustomerTypeOptions } from "@/lib/admin-master-options";
 import CustomerForm from "../CustomerForm";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
 const NewCustomerPage = async () => {
   await requirePermission("customers.create");
+
+  const [customerTypeOptions, systemType] = await Promise.all([
+    getActiveCustomerTypeOptions(),
+    db.customerType.findFirst({ where: { isSystem: true, isActive: true }, select: { id: true } }),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -23,7 +30,10 @@ const NewCustomerPage = async () => {
         title="เพิ่มลูกค้าใหม่"
         description="บันทึกข้อมูลติดต่อ ที่อยู่ และข้อมูลภาษีของลูกค้า"
       />
-      <CustomerForm />
+      <CustomerForm
+        customerTypeOptions={customerTypeOptions}
+        defaultCustomerTypeId={systemType?.id ?? null}
+      />
     </div>
   );
 };

@@ -107,6 +107,20 @@ export async function getLineProductSummaries(ids: string[]): Promise<LineMatche
     }));
 }
 
+/**
+ * บังคับซ่อนราคาสำหรับลูกค้าที่ไม่มีสิทธิ์เห็นราคา (ลูกค้าทั่วไป/unlinked)
+ * โดยเซ็ต salePrice = 0 ซึ่งเป็น sentinel เดิมของระบบ → ทั้ง Flex การ์ดและข้อความ AI
+ * จะ fallback เป็น "สอบถามราคา" อัตโนมัติ ไม่ต้องแก้ formatter/prompt แยก
+ * ลูกค้าที่ showPrice=true (เช่น อู่ซ่อมรถ) จะได้ราคาจริงตามเดิม
+ */
+export function applyLinePriceVisibility<T extends { salePrice: number }>(
+  products: T[],
+  showPrice: boolean,
+): T[] {
+  if (showPrice) return products;
+  return products.map((product) => ({ ...product, salePrice: 0 }));
+}
+
 const MAX_QUERY_LENGTH = 120;
 
 function normalizeSearchSeed(value?: string | null) {

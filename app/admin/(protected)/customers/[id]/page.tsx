@@ -73,6 +73,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     db.customer.findUnique({
       where: { id },
       include: {
+        customerType: { select: { name: true, showPrice: true } },
         sales: {
           orderBy: { saleDate: "desc" },
           take: 50,
@@ -191,6 +192,24 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <div>
             <p className="mb-1 text-gray-500 dark:text-slate-400">เลขผู้เสียภาษี</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{customer.taxId ?? "-"}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-gray-500 dark:text-slate-400">ประเภทลูกค้า</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
+              {customer.customerType ? (
+                <span className="inline-flex items-center gap-1.5">
+                  {customer.customerType.name}
+                  <AdminStatusBadge tone={customer.customerType.showPrice ? "success" : "muted"}>
+                    {customer.customerType.showPrice ? "เห็นราคา (LINE)" : "ซ่อนราคา (LINE)"}
+                  </AdminStatusBadge>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  ลูกค้าทั่วไป
+                  <AdminStatusBadge tone="muted">ซ่อนราคา (LINE)</AdminStatusBadge>
+                </span>
+              )}
+            </p>
           </div>
           <div>
             <p className="mb-1 text-gray-500 dark:text-slate-400">แหล่งที่มา</p>

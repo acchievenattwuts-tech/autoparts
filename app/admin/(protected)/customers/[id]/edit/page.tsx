@@ -5,6 +5,7 @@ import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import { notFound } from "next/navigation";
+import { getActiveCustomerTypeOptions } from "@/lib/admin-master-options";
 import CustomerForm from "../../CustomerForm";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 
@@ -13,7 +14,10 @@ const EditCustomerPage = async ({ params }: { params: Promise<{ id: string }> })
 
   const { id } = await params;
 
-  const customer = await db.customer.findUnique({ where: { id } });
+  const [customer, customerTypeOptions] = await Promise.all([
+    db.customer.findUnique({ where: { id } }),
+    getActiveCustomerTypeOptions(),
+  ]);
   if (!customer) notFound();
 
   return (
@@ -30,7 +34,7 @@ const EditCustomerPage = async ({ params }: { params: Promise<{ id: string }> })
         title="แก้ไขข้อมูลลูกค้า"
         description={customer.name}
       />
-      <CustomerForm customer={customer} />
+      <CustomerForm customer={customer} customerTypeOptions={customerTypeOptions} />
     </div>
   );
 };

@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
-import type { LineMatchedProductSummary } from "@/lib/line-product-search-bridge";
+import {
+  applyLinePriceVisibility,
+  type LineMatchedProductSummary,
+} from "@/lib/line-product-search-bridge";
 
 process.env.NEXTAUTH_URL = "https://shop.example.com";
 delete process.env.APP_BASE_URL;
@@ -61,6 +64,30 @@ test("price shows 'สอบถามราคา' when salePrice is zero", () =
   const msg = buildProductFlexMessage({ products: [product({ salePrice: 0 })], searchQuery: null, total: 1 });
   assert.ok(msg);
   assert.match(JSON.stringify(msg), /สอบถามราคา/);
+});
+
+test("applyLinePriceVisibility keeps real prices when showPrice is true (e.g. garage)", () => {
+  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
+  const visible = applyLinePriceVisibility(products, true);
+  assert.deepEqual(
+    visible.map((p) => p.salePrice),
+    [1200, 350],
+  );
+});
+
+test("applyLinePriceVisibility zeroes prices when showPrice is false (general customer)", () => {
+  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
+  const hidden = applyLinePriceVisibility(products, false);
+  assert.deepEqual(
+    hidden.map((p) => p.salePrice),
+    [0, 0],
+  );
+  // …and a hidden product renders as "สอบถามราคา" on the flex card.
+  const msg = buildProductFlexMessage({ products: hidden, searchQuery: null, total: 2 });
+  assert.ok(msg);
+  const json = JSON.stringify(msg);
+  assert.match(json, /สอบถามราคา/);
+  assert.doesNotMatch(json, /฿1,200|฿350/);
 });
 
 test("view-all URL carries the LINE search fitment filters (so web count matches)", () => {

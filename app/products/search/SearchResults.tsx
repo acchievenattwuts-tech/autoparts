@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
+import { HIDE_STOREFRONT_PRICE } from "@/lib/storefront-pricing";
 import type { SearchProductItem } from "@/lib/storefront-product-search";
 import ProductFilterBar from "../ProductFilterBar";
 import {
@@ -494,7 +495,8 @@ const SearchResults = ({
                     {" · "}
                   </>
                 )}
-                {(filters.priceMin !== null || filters.priceMax !== null) && (
+                {!HIDE_STOREFRONT_PRICE &&
+                  (filters.priceMin !== null || filters.priceMax !== null) && (
                   <>
                     ราคา:{" "}
                     {filters.priceMin !== null ? filters.priceMin.toLocaleString() : "0"}

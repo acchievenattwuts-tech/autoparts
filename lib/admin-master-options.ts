@@ -14,6 +14,7 @@ export const ADMIN_MASTER_OPTION_TAGS = {
   carBrands: "admin-master:car-brands",
   partsBrands: "admin-master:parts-brands",
   expenseCodes: "admin-master:expense-codes",
+  customerTypes: "admin-master:customer-types",
 } as const;
 
 export const getActiveCategoryOptions = unstable_cache(
@@ -39,6 +40,17 @@ export const getActivePartsBrandOptions = unstable_cache(
   async () => db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
   ["admin-master-parts-brands-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.partsBrands], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
+);
+
+export const getActiveCustomerTypeOptions = unstable_cache(
+  async () =>
+    db.customerType.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, showPrice: true },
+    }),
+  ["admin-master-customer-types-v1"],
+  { tags: [ADMIN_MASTER_OPTION_TAGS.customerTypes], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
 export const getActiveExpenseCodeOptions = unstable_cache(

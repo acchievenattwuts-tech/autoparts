@@ -52,6 +52,24 @@ export async function findActiveCustomerIdByLineUserId(lineUserId: string) {
   return customer?.isActive ? customer.id : null;
 }
 
+/**
+ * ตัดสินว่าลูกค้า LINE รายนี้ควร "เห็นราคา" บนแชท/Flex หรือไม่
+ * true  → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี showPrice=true (เช่น อู่ซ่อมรถ)
+ * false → ยังไม่ผูก / ไม่ระบุประเภท / ประเภทซ่อนราคา (ลูกค้าทั่วไป) → แสดง "สอบถามราคา"
+ */
+export async function resolveLineShowPrice(lineUserId: string): Promise<boolean> {
+  const customer = await db.customer.findUnique({
+    where: { lineUserId },
+    select: {
+      isActive: true,
+      customerType: { select: { showPrice: true, isActive: true } },
+    },
+  });
+  if (!customer?.isActive) return false;
+  if (!customer.customerType?.isActive) return false;
+  return customer.customerType.showPrice;
+}
+
 export async function getOrCreateLineConversation(input: {
   lineUserId: string;
   displayName?: string | null;

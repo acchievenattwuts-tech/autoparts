@@ -6,7 +6,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
-import { getStorefrontDisplayPrices } from "@/lib/storefront-pricing";
+import {
+  getStorefrontDisplayPrices,
+  HIDE_STOREFRONT_PRICE,
+  STOREFRONT_PRICE_INQUIRY_LABEL,
+} from "@/lib/storefront-pricing";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
@@ -77,7 +81,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
   };
 
   return (
-    <div className="group relative flex h-full min-h-[22.25rem] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#f97316]/45 hover:shadow-[0_20px_45px_rgba(15,23,42,0.16)] hover:ring-2 hover:ring-[#f97316]/12 focus-within:border-[#f97316]/55 focus-within:ring-2 focus-within:ring-[#f97316]/20 motion-reduce:transform-none sm:min-h-[25.75rem] lg:min-h-[26.25rem]">
+    <div className="group relative flex h-full min-h-[20.5rem] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#f97316]/45 hover:shadow-[0_20px_45px_rgba(15,23,42,0.16)] hover:ring-2 hover:ring-[#f97316]/12 focus-within:border-[#f97316]/55 focus-within:ring-2 focus-within:ring-[#f97316]/20 motion-reduce:transform-none sm:min-h-[23.75rem] lg:min-h-[24.25rem]">
 
       {/* Loading overlay — แสดงทันทีที่คลิก */}
       {isPending && (
@@ -136,27 +140,35 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
         </div>
 
         <div className="mt-auto pt-1.5">
-          <div className="flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs text-gray-400">ราคาปกติ</p>
-              <p className="text-xs text-gray-400 line-through">
-                ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
-              </p>
-              <p className="mt-1 text-xs font-bold text-emerald-600 sm:text-sm">ราคาพิเศษ</p>
-              <p className="text-xl font-extrabold leading-none text-[#f97316] sm:text-2xl">
-                ฿{displayPrices.salePrice.toLocaleString("th-TH")}
-              </p>
-              <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">
-                / {saleUnitLabel}
-              </p>
-            </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+            {HIDE_STOREFRONT_PRICE ? (
+              <div className="min-w-0">
+                <p className="whitespace-nowrap text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
+                  {STOREFRONT_PRICE_INQUIRY_LABEL}
+                </p>
+              </div>
+            ) : (
+              <div className="min-w-0">
+                <p className="text-xs text-gray-400">ราคาปกติ</p>
+                <p className="text-xs text-gray-400 line-through">
+                  ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
+                </p>
+                <p className="mt-1 text-xs font-bold text-emerald-600 sm:text-sm">ราคาพิเศษ</p>
+                <p className="text-xl font-extrabold leading-none text-[#f97316] sm:text-2xl">
+                  ฿{displayPrices.salePrice.toLocaleString("th-TH")}
+                </p>
+                <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">
+                  / {saleUnitLabel}
+                </p>
+              </div>
+            )}
 
-            <div className="relative z-20 shrink-0">
+            <div className="relative z-20 w-full sm:w-auto sm:shrink-0">
               <a
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} gap-1.5 px-3 py-2.5 text-[11px] sm:px-4 sm:text-xs`}
+                className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} w-full justify-center gap-1.5 px-3 py-2.5 text-[11px] sm:w-auto sm:px-4 sm:text-xs`}
               >
                 <MessageCircle size={11} />
                 สอบถาม

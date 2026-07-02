@@ -40,6 +40,7 @@ import {
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
+  resolveLineShowPrice,
   findStalledCoalescedConversationIds,
   getLineCoalesceState,
   getLineConversationForRecovery,
@@ -63,7 +64,11 @@ import {
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
 import { routeLineIntent } from "@/lib/line-intent-router";
 import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
-import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
+import {
+  applyLinePriceVisibility,
+  getLineProductSummaries,
+  searchLineProductInquiry,
+} from "@/lib/line-product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/line-fitment-extract";
@@ -118,6 +123,8 @@ export type LineWebhookProcessResult = {
 export type LineWebhookProcessorDependencies = {
   hasProcessedLineEvent: typeof hasProcessedLineEvent;
   findActiveCustomerIdByLineUserId: typeof findActiveCustomerIdByLineUserId;
+  /** Optional override; resolves whether the LINE user may see real prices. */
+  resolveLineShowPrice?: typeof resolveLineShowPrice;
   getOrCreateLineConversation: typeof getOrCreateLineConversation;
   appendLineMessage: typeof appendLineMessage;
   updateLineConversationState: typeof updateLineConversationState;
@@ -189,6 +196,7 @@ export type LineWebhookProcessorDependencies = {
 const defaultDependencies: LineWebhookProcessorDependencies = {
   hasProcessedLineEvent,
   findActiveCustomerIdByLineUserId,
+  resolveLineShowPrice,
   getOrCreateLineConversation,
   appendLineMessage,
   updateLineConversationState,
@@ -873,6 +881,11 @@ async function respondMultiSubject(
   const search = dependencies.searchLineProductInquiry;
   const summarize = dependencies.getLineProductSummaries;
   const productRoute = groupToRoute("product") ?? input.route;
+  // ราคาจะแสดงจริงเฉพาะลูกค้าที่ประเภทมี showPrice=true (เช่น อู่ซ่อมรถ)
+  // ที่เหลือ (ทั่วไป/unlinked) ซ่อนราคา → "สอบถามราคา"
+  const showPrice = await (dependencies.resolveLineShowPrice ?? resolveLineShowPrice)(
+    input.lineUserId,
+  ).catch(() => false);
 
   // Resolve each subject to a canonical category and keep the FIRST per distinct
   // category (decision 1 = ก: split on category, not car). Subjects whose category
@@ -928,7 +941,10 @@ async function respondMultiSubject(
     }).catch(() => null);
 
     const ids = productSearch?.searched ? productSearch.result.ids : [];
-    const products = ids.length > 0 ? await summarize(ids).catch(() => []) : [];
+    const products = applyLinePriceVisibility(
+      ids.length > 0 ? await summarize(ids).catch(() => []) : [],
+      showPrice,
+    );
 
     if (products.length === 0) {
       anyNotFound = true;
@@ -1571,10 +1587,15 @@ export async function processLineAiReply(
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
     // gatekeeping on chassis/OEM numbers they usually can't provide.
-    const products =
+    const showPrice = await (dependencies.resolveLineShowPrice ?? resolveLineShowPrice)(
+      input.lineUserId,
+    ).catch(() => false);
+    const products = applyLinePriceVisibility(
       productSearch.searched && productSearch.result.ids.length > 0
         ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
-        : [];
+        : [],
+      showPrice,
+    );
     const postSearchDeliveryFallback =
       liveMode &&
       productSearch.searched &&

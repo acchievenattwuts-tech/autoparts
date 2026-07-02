@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Search, Loader2, ArrowLeft, ArrowRight, X, Store } from "lucide-react";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
+import { HIDE_STOREFRONT_PRICE, STOREFRONT_PRICE_INQUIRY_LABEL } from "@/lib/storefront-pricing";
 
 interface AutocompleteItem {
   id: string;
@@ -91,6 +92,8 @@ const ProductAutocomplete = ({
   adminReturnTo,
 }: Props) => {
   const router = useRouter();
+  // ซ่อนราคาบนหน้าบ้านตามนโยบาย storefront — ฝั่งแอดมินยังเห็นราคาปกติ
+  const showItemPrice = mode === "admin" || !HIDE_STOREFRONT_PRICE;
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const modalInputRef = useRef<HTMLInputElement>(null);
@@ -477,14 +480,20 @@ const ProductAutocomplete = ({
                           {isThisPending ? (
                             <Loader2 size={18} className="animate-spin text-[#f97316]" />
                           ) : (
-                            <>
-                              <p className="text-sm font-bold text-[#f97316]">
-                                ฿{item.salePrice.toLocaleString("th-TH")}
+                            showItemPrice ? (
+                              <>
+                                <p className="text-sm font-bold text-[#f97316]">
+                                  ฿{item.salePrice.toLocaleString("th-TH")}
+                                </p>
+                                <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                  /{getDisplayUnitName(item)}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-xs font-semibold text-[#f97316]">
+                                {STOREFRONT_PRICE_INQUIRY_LABEL}
                               </p>
-                              <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                                /{getDisplayUnitName(item)}
-                              </p>
-                            </>
+                            )
                           )}
                         </div>
                       </button>
@@ -905,14 +914,20 @@ const ProductAutocomplete = ({
                           {isThisPending ? (
                             <Loader2 size={18} className="animate-spin text-[#f97316]" />
                           ) : (
-                            <>
-                              <p className="text-sm font-bold text-[#f97316]">
-                                ฿{item.salePrice.toLocaleString("th-TH")}
+                            showItemPrice ? (
+                              <>
+                                <p className="text-sm font-bold text-[#f97316]">
+                                  ฿{item.salePrice.toLocaleString("th-TH")}
+                                </p>
+                                <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                  /{getDisplayUnitName(item)}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-xs font-semibold text-[#f97316]">
+                                {STOREFRONT_PRICE_INQUIRY_LABEL}
                               </p>
-                              <p className="text-[10px] text-gray-400 dark:text-slate-500">
-                                /{getDisplayUnitName(item)}
-                              </p>
-                            </>
+                            )
                           )}
                         </div>
                       </button>
