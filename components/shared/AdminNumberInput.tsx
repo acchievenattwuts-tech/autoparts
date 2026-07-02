@@ -16,6 +16,7 @@ export default function AdminNumberInput({
   fallbackValue = 0,
   onBlur,
   onFocus,
+  onWheel,
   ...props
 }: AdminNumberInputProps) {
   const [draft, setDraft] = useState(() => toInputValue(value));
@@ -67,6 +68,12 @@ export default function AdminNumberInput({
         setIsFocused(false);
         commitValue(event.target.value);
         onBlur?.(event);
+      }}
+      onWheel={(event) => {
+        // Prevent mouse-wheel scroll from mutating the value while focused;
+        // the number must only change via typing.
+        event.currentTarget.blur();
+        onWheel?.(event);
       }}
     />
   );

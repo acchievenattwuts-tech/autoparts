@@ -231,7 +231,7 @@ const SearchableSelect = ({
                   onClick={() => handleSelect(option)}
                   className={`w-full px-3 py-2.5 text-left text-sm transition-colors ${
                     option.disabled
-                      ? "cursor-not-allowed opacity-50 " + (isDark ? "text-slate-500" : "text-gray-400")
+                      ? "cursor-not-allowed line-through " + (isDark ? "text-slate-400" : "text-gray-400")
                       : option.id === value
                         ? selectedOptionClassName
                         : defaultOptionClassName
