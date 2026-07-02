@@ -1445,7 +1445,7 @@ test("price inquiry with a searchable part → searches, shows products, no admi
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
 });
 
-test("hidden-price customer asking price with matches → shows products then hands off to admin", async () => {
+test("hidden-price customer asking price (with matches) → hands off directly, no product cards/list", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     showPrice: false, // ลูกค้าทั่วไป/unlinked — ซ่อนราคา
@@ -1465,11 +1465,13 @@ test("hidden-price customer asking price with matches → shows products then ha
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.equal(calls.searches.length, 1, "still searches so the customer sees what's in stock");
-  // Not the soft price-defer note (that's the garage/visible-price path); a real handoff note.
-  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ส่งเรื่องให้แอดมิน"), "handoff note after the matches");
+  // Single handoff message — NOT the product list/cards (already shown while browsing).
+  assert.equal(calls.replies[0]?.messageCount, 1, "only the handoff bubble, no cards/list re-shown");
+  assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "defers price to admin");
+  assert.ok(!calls.replies[0]?.text.includes("P0496"), "does not repeat the product code/list");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin to quote price");
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
+  assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
 });
 
 test("hidden-price customer asking price with NO matches → hands off to admin directly", async () => {
