@@ -5,6 +5,10 @@ export interface SaleFormLineItem {
   unitName: string;
   qty: number;
   salePrice: number;
+  /** Pre-discount list price per unit. salePrice = unitListPrice − lineDiscount/qty. */
+  unitListPrice: number;
+  /** Total discount amount for this line (baht), for reporting/print only. */
+  lineDiscount: number;
   warrantyDays: number;
   supplierId: string;
   supplierName: string;

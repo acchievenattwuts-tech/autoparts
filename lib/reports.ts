@@ -177,6 +177,8 @@ export type ReportsData = {
     grossSalesAmount: number;
     returnAmount: number;
     netSaleAmount: number;
+    /** Memo: total line-level discount granted (already excluded from netSaleAmount). */
+    lineDiscountTotal: number;
     byDay: SalesBucket[];
     byWeek: SalesBucket[];
     byMonth: SalesBucket[];
@@ -584,7 +586,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           note: true,
           cashBankAccount: { select: { name: true } },
           customer: { select: { code: true, name: true } },
-          items: { select: { quantity: true, costPrice: true } },
+          items: { select: { quantity: true, costPrice: true, lineDiscount: true } },
         },
       });
   const creditNotesPromise = db.creditNote.findMany({
@@ -849,6 +851,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     accountName: sale.cashBankAccount?.name ?? "-",
     note: sale.note ?? "",
     cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0),
+    // Memo only: total line-level discount granted on this sale. Never feeds
+    // revenue/COGS/profit — netAmount is already net of it.
+    lineDiscount: sale.items.reduce((sum, item) => sum + toNumber(item.lineDiscount), 0),
   }));
   const normalizedCreditNotes = creditNotes.map((creditNote) => {
     const saleCostMap = buildWeightedSaleCostMap(
@@ -933,6 +938,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
   ];
 
   const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0);
+  const lineDiscountTotal = normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0);
   const totalInvoices = normalizedSales.length;
   const creditNoteCostReversal = normalizedCreditNotes.reduce(
     (sum, creditNote) => sum + creditNote.cogsReversal,
@@ -1255,6 +1261,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       grossSalesAmount: grossSales,
       returnAmount: salesReturns,
       netSaleAmount: grossSales - salesReturns,
+      lineDiscountTotal,
       byDay: buildSalesBuckets(salesTransactions, "day"),
       byWeek: buildSalesBuckets(salesTransactions, "week"),
       byMonth: buildSalesBuckets(salesTransactions, "month"),
@@ -1368,6 +1375,7 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["สรุปรายงานขาย"]);
+  pushRow(["ส่วนลดระดับรายการรวม", data.salesSummary.lineDiscountTotal.toFixed(2)]);
   pushRow(["ช่วงเวลา", "จำนวนเอกสาร", "ยอดขาย", "ยอดคืน", "Net Sale", "VAT สุทธิ"]);
   for (const row of data.salesSummary.byDay) {
     pushRow([row.label, row.documentCount, row.grossSalesAmount.toFixed(2), row.returnAmount.toFixed(2), row.netSaleAmount.toFixed(2), row.vatAmount.toFixed(2)]);

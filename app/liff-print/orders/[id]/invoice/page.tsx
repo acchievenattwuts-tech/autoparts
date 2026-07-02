@@ -73,6 +73,8 @@ export default async function ExternalLiffOrderInvoicePage({
           id: true,
           quantity: true,
           salePrice: true,
+          unitListPrice: true,
+          lineDiscount: true,
           totalAmount: true,
           showQty: true,
           showUnitName: true,

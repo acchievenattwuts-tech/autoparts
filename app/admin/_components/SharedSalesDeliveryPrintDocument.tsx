@@ -39,6 +39,8 @@ type SalePrintItem = {
   id: string;
   quantity: NumericLike;
   salePrice: NumericLike;
+  unitListPrice?: NumericLike | null;
+  lineDiscount?: NumericLike | null;
   totalAmount: NumericLike;
   showQty?: NumericLike | null;
   showUnitName?: string | null;
@@ -220,6 +222,8 @@ const SharedSalesDeliveryPrintDocument = ({
             const displayQty = item.showQty != null ? Number(item.showQty) : Number(item.quantity);
             const displayUnitName = item.showUnitName ?? item.product.reportUnitName;
             const displayPrice = item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice);
+            const listPrice = item.unitListPrice != null ? Number(item.unitListPrice) : 0;
+            const hasLineDiscount = listPrice - displayPrice > 0.009;
 
             return (
               <tr key={item.id}>
@@ -238,7 +242,12 @@ const SharedSalesDeliveryPrintDocument = ({
                 </td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-center`}>{displayQty.toLocaleString("th-TH")}</td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{displayUnitName}</td>
-                <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(displayPrice)}</td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>
+                  {hasLineDiscount ? (
+                    <span className="block text-[10px] text-gray-500 line-through">{formatPrintNumber(listPrice)}</span>
+                  ) : null}
+                  <span className={hasLineDiscount ? "block font-medium" : undefined}>{formatPrintNumber(displayPrice)}</span>
+                </td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-right font-medium`}>{formatPrintNumber(Number(item.totalAmount))}</td>
               </tr>
             );

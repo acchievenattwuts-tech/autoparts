@@ -244,6 +244,17 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
             className="xl:col-span-3"
           />
         </div>
+        {data.salesSummary.lineDiscountTotal > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm dark:border-amber-400/30 dark:bg-amber-500/10">
+            <span className="font-medium text-amber-700 dark:text-amber-300">ส่วนลดระดับรายการรวม (ในบิลขาย)</span>
+            <span className="font-semibold text-amber-700 dark:text-amber-300">
+              ฿{formatCurrency(data.salesSummary.lineDiscountTotal)}
+            </span>
+            <span className="w-full text-xs text-amber-600/80 dark:text-amber-300/70">
+              เป็นข้อมูลอ้างอิงเท่านั้น — ยอดขาย/กำไรถูกหักส่วนลดนี้ไปแล้วในราคาสุทธิ ไม่กระทบการคำนวณกำไรซ้ำ
+            </span>
+          </div>
+        ) : null}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
           <SummaryCard
             label="จ่ายเงินจริง"

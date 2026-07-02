@@ -1101,6 +1101,8 @@ model SaleItem {
   productId        String
   quantity         Int
   salePrice        Decimal       @db.Decimal(10, 2)
+  unitListPrice    Decimal       @default(0) @db.Decimal(10, 2)
+  lineDiscount     Decimal       @default(0) @db.Decimal(10, 2)
   costPrice        Decimal       @db.Decimal(10, 2)
   totalAmount      Decimal       @db.Decimal(10, 2)
   subtotalAmount   Decimal       @default(0) @db.Decimal(10, 2)

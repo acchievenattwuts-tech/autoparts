@@ -188,11 +188,21 @@ const saleItemSchema = z.object({
   unitName:     z.string().min(1).max(20),
   qty:          z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   salePrice:    z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
+  unitListPrice: z.coerce.number().min(0).default(0),
+  lineDiscount:  z.coerce.number().min(0).default(0),
   warrantyDays: z.coerce.number().int().min(0).default(0),
   supplierId:   z.string().max(50).optional(),
   supplierName: z.string().max(200).optional(),
   moreDetail:   z.string().max(500).optional(),
   lotItems:     z.array(lotSubRowSchema).default([]),
+}).transform((item) => {
+  // salePrice is the source of truth for all money math. Derive/repair the
+  // display-only list price + line discount so they always satisfy:
+  //   unitListPrice >= salePrice  and  lineDiscount = (unitListPrice - salePrice) * qty
+  // This keeps totals/VAT/profit untouched even if the client sends stale values.
+  const unitListPrice = Math.max(item.unitListPrice, item.salePrice);
+  const lineDiscount = Math.round((unitListPrice - item.salePrice) * item.qty * 100) / 100;
+  return { ...item, unitListPrice, lineDiscount };
 });
 
 const saleSchema = z.object({
@@ -265,6 +275,8 @@ async function getSaleAuditSnapshot(saleId: string) {
           productId: true,
           quantity: true,
           salePrice: true,
+          unitListPrice: true,
+          lineDiscount: true,
           totalAmount: true,
           warrantyDays: true,
           supplierId: true,
@@ -313,6 +325,8 @@ async function getSaleAuditSnapshot(saleId: string) {
       productId: item.productId,
       quantity: item.quantity,
       salePrice: item.salePrice,
+      unitListPrice: item.unitListPrice,
+      lineDiscount: item.lineDiscount,
       totalAmount: item.totalAmount,
       warrantyDays: item.warrantyDays,
       supplierId: item.supplierId,
@@ -519,6 +533,8 @@ export async function createSale(
             productId:     item.productId,
             quantity:      Math.round(qtyInBase),
             salePrice:     item.salePrice,
+            unitListPrice: item.unitListPrice,
+            lineDiscount:  item.lineDiscount,
             costPrice:     costPerBase,
             totalAmount:   itemTotal,
             subtotalAmount: itemSubtotal,
@@ -1109,6 +1125,8 @@ export async function updateSale(
               showQty: item.qty,
               showUnitName: item.unitName,
               showPricePerUnit: item.salePrice,
+              unitListPrice: item.unitListPrice,
+              lineDiscount: item.lineDiscount,
               unitScale: displayScale,
               moreDetail: item.moreDetail || null,
               ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
@@ -1148,6 +1166,8 @@ export async function updateSale(
             productId: item.productId,
             quantity: Math.round(qtyInBase),
             salePrice: item.salePrice,
+            unitListPrice: item.unitListPrice,
+            lineDiscount: item.lineDiscount,
             costPrice: costPerBase,
             totalAmount: itemTotal,
             subtotalAmount: itemSubtotal,

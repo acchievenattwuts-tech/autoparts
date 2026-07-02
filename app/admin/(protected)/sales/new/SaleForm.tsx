@@ -82,7 +82,22 @@ interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, warrantyDays: 0, supplierId: "", supplierName: "", moreDetail: "", lotItems: [] });
+const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, unitListPrice: 0, lineDiscount: 0, warrantyDays: 0, supplierId: "", supplierName: "", moreDetail: "", lotItems: [] });
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Recompute the reporting line-discount total from list price vs net price. */
+const withLineDiscount = (item: LineItem): LineItem => ({
+  ...item,
+  lineDiscount: round2(Math.max(0, item.unitListPrice - item.salePrice) * item.qty),
+});
+
+/** Ensure a restored/legacy draft item carries the two new price fields. */
+const normalizeDraftItem = (item: LineItem): LineItem => {
+  const salePrice = item.salePrice ?? 0;
+  const unitListPrice = Math.max(item.unitListPrice ?? 0, salePrice);
+  return withLineDiscount({ ...item, salePrice, unitListPrice });
+};
 
 interface InitialData {
   id:              string;
@@ -142,7 +157,7 @@ const SaleForm = ({
   const [saleDate, setSaleDate] = useState(initialData?.saleDate ?? getThailandDateKey());
   const [saleType, setSaleType] = useState(initialData?.saleType ?? "RETAIL");
   const [note, setNote] = useState(initialData?.note ?? "");
-  const [items, setItems]         = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [items, setItems]         = useState<LineItem[]>(initialData?.items.map(normalizeDraftItem) ?? [emptyItem()]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState(initialData?.customerPhone ?? "");
@@ -217,7 +232,7 @@ const SaleForm = ({
     setVatType(draft.vatType);
     setVatRate(draft.vatRate);
     setCreditTerm(draft.creditTerm);
-    setItems(draft.items as LineItem[]);
+    setItems((draft.items as LineItem[]).map(normalizeDraftItem));
     setAvailableDraft(null);
     setDraftStatus("กู้คืน draft แล้ว");
   };
@@ -317,6 +332,8 @@ const SaleForm = ({
               productId: "",
               unitName: "",
               salePrice: 0,
+              unitListPrice: 0,
+              lineDiscount: 0,
               warrantyDays: 0,
               supplierId: "",
               supplierName: "",
@@ -338,6 +355,8 @@ const SaleForm = ({
               productId: product.id,
               unitName: product.saleUnitName ?? "",
               salePrice: product.salePrice ?? 0,
+              unitListPrice: product.salePrice ?? 0,
+              lineDiscount: 0,
               warrantyDays: product.warrantyDays ?? 0,
               supplierId: product.preferredSupplierId ?? "",
               supplierName: product.preferredSupplierName ?? "",
@@ -356,15 +375,58 @@ const SaleForm = ({
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
-        const updated = { ...item, [field]: value };
-        if (field === "qty" && item.productId) {
-          const prod = productMap.get(item.productId);
-          if (prod?.isLotControl && updated.lotItems.length === 1) {
-            updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+        let updated = { ...item, [field]: value };
+        if (field === "qty") {
+          if (item.productId) {
+            const prod = productMap.get(item.productId);
+            if (prod?.isLotControl && updated.lotItems.length === 1) {
+              updated.lotItems = [{ ...updated.lotItems[0], qty: Number(value) }];
+            }
           }
+          // qty affects the reporting discount total (per-unit discount × qty).
+          updated = withLineDiscount(updated);
         }
         return updated;
       })
+    );
+  };
+
+  // Price editing keeps salePrice (net) as the source of truth while
+  // maintaining the invariant unitListPrice >= salePrice. Each entry point
+  // recomputes the other fields so all three stay consistent.
+  const updateListPrice = (i: number, value: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== i) return item;
+        const unitListPrice = round2(value);
+        // Never let the list price fall below the net price.
+        const salePrice = Math.min(item.salePrice, unitListPrice);
+        return withLineDiscount({ ...item, unitListPrice, salePrice });
+      }),
+    );
+  };
+
+  const updateNetPrice = (i: number, value: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== i) return item;
+        const salePrice = round2(value);
+        // If net exceeds the current list price, raise the list price to match
+        // (i.e. no discount) so the invariant holds.
+        const unitListPrice = Math.max(item.unitListPrice, salePrice);
+        return withLineDiscount({ ...item, salePrice, unitListPrice });
+      }),
+    );
+  };
+
+  const updateDiscountPerUnit = (i: number, value: number) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== i) return item;
+        const discountPerUnit = Math.max(0, round2(value));
+        const salePrice = round2(Math.max(0, item.unitListPrice - discountPerUnit));
+        return withLineDiscount({ ...item, salePrice });
+      }),
     );
   };
 
@@ -449,6 +511,8 @@ const SaleForm = ({
     productMap.get(productId)?.units ?? [];
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
+  const totalLineDiscount = items.reduce((sum, it) => sum + it.lineDiscount, 0);
+  const grossBeforeLineDiscount = items.reduce((sum, it) => sum + it.qty * it.unitListPrice, 0);
   const effectiveShippingFee = fulfillmentType === "DELIVERY" ? shippingFee : 0;
   const discountedTotal = Math.max(0, totalAmount + effectiveShippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
@@ -738,7 +802,7 @@ const SaleForm = ({
           </div>
           )}
           <div>
-            <label className={labelCls}>ส่วนลดรวม (บาท)</label>
+            <label className={labelCls}>ส่วนลดท้ายบิล (บาท)</label>
             <AdminNumberInput
               name="discount"
               min={0}
@@ -938,7 +1002,18 @@ const SaleForm = ({
                 <th className="text-left py-2 px-2 text-gray-500 font-medium dark:text-slate-400">สินค้า</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">หน่วย</th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-24 dark:text-slate-400">จำนวน</th>
-                <th className="text-left py-2 px-2 text-gray-500 font-medium w-36 dark:text-slate-400">ราคาขาย/หน่วย</th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">
+                  ราคาตั้ง/หน่วย
+                  <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">ก่อนลด</span>
+                </th>
+                <th className="text-left py-2 px-2 text-amber-600 font-medium w-28 dark:text-amber-400/80">
+                  ส่วนลด/หน่วย
+                  <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">0 = ไม่ลด</span>
+                </th>
+                <th className="text-left py-2 px-2 text-gray-500 font-medium w-32 dark:text-slate-400">
+                  ราคาสุทธิ/หน่วย
+                  <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">หลังลด</span>
+                </th>
                 <th className="text-left py-2 px-2 text-gray-500 font-medium w-28 dark:text-slate-400">
                   ประกัน (วัน)
                   <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">0 = ไม่มี</span>
@@ -1028,11 +1103,31 @@ const SaleForm = ({
                     </td>
                     <td className="py-2 px-2">
                       <AdminNumberInput
+                        value={item.unitListPrice}
+                        min={0}
+                        step={0.01}
+                        onValueChange={(value) => updateListPrice(i, value)}
+                        className={inputCls}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <AdminNumberInput
+                        value={round2(Math.max(0, item.unitListPrice - item.salePrice))}
+                        min={0}
+                        step={0.01}
+                        onValueChange={(value) => updateDiscountPerUnit(i, value)}
+                        className={`${inputCls} ${item.unitListPrice - item.salePrice > 0.0001 ? "border-amber-400 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10" : ""}`}
+                        placeholder="0.00"
+                      />
+                    </td>
+                    <td className="py-2 px-2">
+                      <AdminNumberInput
                         value={item.salePrice}
                         min={0}
                         step={0.01}
-                        onValueChange={(value) => updateItem(i, "salePrice", value)}
-                        className={inputCls}
+                        onValueChange={(value) => updateNetPrice(i, value)}
+                        className={`${inputCls} font-medium`}
                         placeholder="0.00"
                       />
                     </td>
@@ -1065,7 +1160,7 @@ const SaleForm = ({
                   </tr>
                   {isLot && (
                     <tr className="bg-amber-50/60 dark:bg-amber-500/10">
-                      <td colSpan={8} className="px-4 pb-3 pt-1">
+                      <td colSpan={10} className="px-4 pb-3 pt-1">
                         {/* Lot header */}
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-400/40">
@@ -1193,6 +1288,22 @@ const SaleForm = ({
         {/* Totals summary */}
         <div className="mt-4 flex justify-end">
           <div className="w-64 space-y-2 text-sm">
+            {totalLineDiscount > 0 && (
+              <>
+                <div className="flex justify-between text-gray-500 dark:text-slate-400">
+                  <span>ราคาตั้งรวม</span>
+                  <span className="font-medium dark:text-slate-300">
+                    {grossBeforeLineDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                  <span>ส่วนลดระดับรายการ</span>
+                  <span className="font-medium">
+                    -{totalLineDiscount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between text-gray-600 dark:text-slate-400">
               <span>ยอดรวม</span>
               <span className="font-medium dark:text-slate-200">
@@ -1208,7 +1319,7 @@ const SaleForm = ({
               </div>
             )}
             <div className="flex justify-between text-gray-600 dark:text-slate-400">
-              <span>ส่วนลด</span>
+              <span>ส่วนลดท้ายบิล</span>
               <span className="font-medium text-red-500 dark:text-red-400">
                 -{discount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>

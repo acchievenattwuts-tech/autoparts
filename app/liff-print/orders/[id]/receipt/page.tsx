@@ -75,6 +75,8 @@ export default async function ExternalLiffOrderReceiptPage({
           id: true,
           quantity: true,
           salePrice: true,
+          unitListPrice: true,
+          lineDiscount: true,
           totalAmount: true,
           showQty: true,
           showUnitName: true,

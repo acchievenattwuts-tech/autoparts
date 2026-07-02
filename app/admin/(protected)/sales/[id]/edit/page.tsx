@@ -129,11 +129,16 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       item.showPricePerUnit != null
         ? Number(item.showPricePerUnit)
         : Number(item.salePrice);
+    // Legacy rows may have unitListPrice = 0 (pre-feature); fall back to the
+    // net price so the "list price" never renders below the actual price.
+    const displayListPrice = Math.max(Number(item.unitListPrice), displaySalePrice);
     return {
       productId:    item.productId,
       unitName:     displayUnitName,
       qty:          displayQty,
       salePrice:    displaySalePrice,
+      unitListPrice: displayListPrice,
+      lineDiscount: Number(item.lineDiscount),
       warrantyDays: item.warrantyDays ?? 0,
       supplierId:   item.supplierId ?? "",
       supplierName: item.supplierName ?? "",
