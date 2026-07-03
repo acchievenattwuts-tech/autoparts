@@ -1,14 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/shopee/cron/refresh-tokens",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/shopee/cron/pull-orders",
-      "schedule": "*/30 * * * *"
-    },
-    {
       "path": "/api/search/cron/refresh-popularity",
       "schedule": "0 18 * * *"
     },
@@ -22,7 +14,7 @@
     },
     {
       "path": "/api/line/ai-jobs/reconcile",
-      "schedule": "*/10 * * * *"
+      "schedule": "3-59/10 * * * *"
     },
     {
       "path": "/api/line/ai-jobs/cleanup",
