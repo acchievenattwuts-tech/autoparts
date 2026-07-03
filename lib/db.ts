@@ -102,6 +102,51 @@ export const db = globalForPrisma.prisma ?? createPrismaClient();
 // when warm, avoiding connection churn. Each cold start gets a fresh instance anyway.
 globalForPrisma.prisma = db;
 
+// ─── Transient connection retry ────────────────────────────────────────────
+// Under a bot crawl, many warm instances open connections at once and the
+// Supabase pooler (Supavisor, ~200 client cap) can drop/refuse a new one while
+// it is being established — surfacing as "Connection terminated due to
+// connection timeout" / "Connection terminated unexpectedly". These are
+// transient: the connection never carried a query, so a single retry after a
+// short backoff is safe (no risk of double-applying a write) and clears almost
+// all of the noise, including failed ISR cache revalidations.
+const TRANSIENT_DB_ERROR_PATTERN =
+  /connection terminated|connection timeout|ECONNRESET|Connection ended|too many connections|Closed the connection/i;
+
+const collectErrorMessages = (error: unknown, depth = 0): string => {
+  if (depth > 4 || !(error instanceof Error)) {
+    return typeof error === "string" ? error : "";
+  }
+  const causeMessage =
+    "cause" in error ? collectErrorMessages(error.cause, depth + 1) : "";
+  return `${error.message} ${causeMessage}`;
+};
+
+const isTransientDbError = (error: unknown): boolean =>
+  TRANSIENT_DB_ERROR_PATTERN.test(collectErrorMessages(error));
+
+const RETRY_BACKOFF_MS = 150;
+
+/**
+ * Run a read-only DB operation, retrying once on a transient connection-level
+ * failure. Use ONLY for idempotent reads (counts, findMany) — never for writes,
+ * since a retry could double-apply an operation that actually reached Postgres.
+ */
+export async function withDbRetry<T>(
+  fn: () => Promise<T>,
+  retries = 1,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries > 0 && isTransientDbError(error)) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+      return withDbRetry(fn, retries - 1);
+    }
+    throw error;
+  }
+}
+
 // Supabase statement_timeout = 2min (120s). TX_TIMEOUT must stay under that.
 // For normal routes (maxDuration=60s) this is still the effective ceiling.
 // For stock/bf (maxDuration=180s), multiple sequential transactions can each use up to 110s.

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { ReactElement } from "react";
 import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import OgImageTemplate from "@/components/seo/OgImageTemplate";
@@ -37,6 +38,13 @@ interface Props {
 // bracket-free path (lib/og-fonts) lets the trace include actually bundle them.
 const FONT_DIR = path.join(process.cwd(), "lib", "og-fonts");
 
+// The bundled OG fonts (Kanit, Sarabun) cover ASCII + the Thai block only, so
+// emoji in product descriptions (🚗 ✅ 📌 ⚠️ 🔍) have no glyph. Satori resolves
+// them via the `emoji` option below (EMOJI_PROVIDER) instead — it fetches a
+// colour SVG per emoji from a CDN at render time and inlines it, so the emoji
+// show up in the image exactly like the storefront description.
+const EMOJI_PROVIDER = "twemoji" as const;
+
 const loadFonts = async (): Promise<
   { name: string; data: Buffer; weight: 400 | 700; style: "normal" }[]
 > => {
@@ -49,6 +57,25 @@ const loadFonts = async (): Promise<
     { name: "Kanit", data: kanitBold, weight: 700, style: "normal" },
     { name: "Sarabun", data: sarabunRegular, weight: 400, style: "normal" },
   ];
+};
+
+// Rasterize eagerly by draining the ImageResponse body into a buffer. `new
+// ImageResponse(...)` is lazy: satori/resvg only run when Next pipes the body,
+// which happens AFTER the handler returns — outside any try/catch here — so a
+// rasterization failure used to escape as "failed to pipe response" (500).
+// Reading the body forces the render to complete (and throw) inside the try, so
+// the containment fallback can actually take over.
+const renderToImage = async (
+  element: ReactElement,
+  fonts: Awaited<ReturnType<typeof loadFonts>>,
+): Promise<Response> => {
+  const response = new ImageResponse(element, {
+    ...size,
+    fonts,
+    emoji: EMOJI_PROVIDER,
+  });
+  const body = await response.arrayBuffer();
+  return new Response(body, { headers: response.headers });
 };
 
 export default async function OpenGraphImage({ params }: Props) {
@@ -77,16 +104,14 @@ export default async function OpenGraphImage({ params }: Props) {
     // of escaping as a 500.
     fonts = await loadFonts();
 
-    return new ImageResponse(
-      (
-        <OgImageTemplate
-          eyebrow={product.category.name}
-          title={product.name}
-          description={buildStorefrontProductDescription(product)}
-          meta={product.brand?.name || product.code}
-        />
-      ),
-      { ...size, fonts },
+    return await renderToImage(
+      <OgImageTemplate
+        eyebrow={product.category.name}
+        title={product.name}
+        description={buildStorefrontProductDescription(product)}
+        meta={product.brand?.name || product.code}
+      />,
+      fonts,
     );
   } catch (error) {
     // Containment: never return a 500 to crawlers if font loading or rasterization
@@ -95,25 +120,39 @@ export default async function OpenGraphImage({ params }: Props) {
     // ASCII-only so satori's default suffices).
     console.error("[opengraph-image] render failed", error);
 
-    return new ImageResponse(
-      (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "#0f2140",
-            color: "white",
-            fontSize: 48,
-            fontFamily: fonts ? "Sarabun" : undefined,
-          }}
-        >
-          www.sriwanparts.com
-        </div>
-      ),
-      fonts ? { ...size, fonts } : size,
+    const fallback = (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#0f2140",
+          color: "white",
+          fontSize: 48,
+          fontFamily: fonts ? "Sarabun" : undefined,
+        }}
+      >
+        www.sriwanparts.com
+      </div>
     );
+
+    try {
+      if (fonts) {
+        return await renderToImage(fallback, fonts);
+      }
+      // Fonts never loaded — ASCII-only text renders fine with satori's default.
+      const response = new ImageResponse(fallback, size);
+      const body = await response.arrayBuffer();
+      return new Response(body, { headers: response.headers });
+    } catch (fallbackError) {
+      // Last-resort guard so even a fallback rasterization failure does not 500.
+      console.error("[opengraph-image] fallback render failed", fallbackError);
+      return new Response("", {
+        status: 204,
+        headers: { "Cache-Control": "public, max-age=60" },
+      });
+    }
   }
 }
