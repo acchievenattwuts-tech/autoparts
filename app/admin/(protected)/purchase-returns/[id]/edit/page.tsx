@@ -54,6 +54,12 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
   if (!ret) notFound();
   if (ret.status === "CANCELLED") redirect(`/admin/purchase-returns/${id}`);
 
+  const returnPayments = await db.documentPayment.findMany({
+    where: { docType: "CN_PURCHASE", docId: id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: { cashBankAccountId: true, amount: true },
+  });
+
   const mutationBlock = await checkDocumentMutation("PurchaseReturn", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
@@ -127,6 +133,10 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     type: ret.type,
     settlementType: ret.settlementType,
     cashBankAccountId: ret.cashBankAccountId ?? "",
+    payments: returnPayments.map((row) => ({
+      cashBankAccountId: row.cashBankAccountId,
+      amount: Number(row.amount),
+    })),
     note:       ret.note ?? "",
     vatType:    ret.vatType,
     vatRate:    Number(ret.vatRate),

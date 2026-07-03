@@ -43,6 +43,22 @@
   - report: `lib/cash-bank-report-queries.ts` → `/admin/reports/cash-bank-ledger` / `cash-bank-transfers` / `cash-bank-adjustments` + Excel/CSV export
 - Out of scope (ตาม spec, ยังไม่ทำตามตั้งใจ): full bank reconcile, bank statement import, payment run/clearing, slip attachment
 
+### 1.1 Multi-Channel Payment (Split Payment)
+- สถานะ: **Phase 1 นำร่อง Receipt เสร็จ** — ขยายเอกสารอื่นต่อ
+- เอกสาร spec: [docs/specs/multi-channel-payment.md](/D:/autoparts/docs/specs/multi-channel-payment.md)
+- สิ่งที่ทำเสร็จ:
+  - schema: `DocumentPayment` (polymorphic docType+docId, no FK) + enum `DocumentPaymentDocType`
+  - helper กลาง `lib/document-payments.ts` (parse/validate/replace/clear/toCashBankEntries) — reuse ได้ทุกเอกสาร
+  - Receipt: form split rows (บัญชี+จำนวนเงิน+เพิ่ม/ลบแถว), actions create/update/cancel, detail breakdown, audit snapshot มี payments[]
+  - shared UI `components/shared/PaymentChannelsInput.tsx` (reuse ทุกเอกสาร)
+  - back-compat: `<doc>.cashBankAccountId` = บัญชีแถวแรก (primary) — ข้อมูลเก่า/print/report เดิมไม่พัง; flow programmatic (Shopee/LINE) ยัง post movement บัญชีเดียวโดยไม่สร้าง DocumentPayment (detail fallback รองรับ)
+- [x] Phase 2: **Expense** (target=netAmount), **Purchase** (เฉพาะ CASH_PURCHASE, draft เก็บ payments), **Sale** (เฉพาะ CASH_SALE, draft เก็บ payments, `resolveSalePaymentMethodFromAccounts`) — form/actions/detail/edit ครบทุกตัว
+- [x] Phase 3: **SupplierPayment** (target=totalCashPaid), **SupplierAdvance** (target=totalAmount), **CreditNote** (เฉพาะ CASH_REFUND, OUT), **PurchaseReturn** (เฉพาะ CASH_REFUND, IN) — form/actions/detail/edit + audit payments[] ครบทุกตัว
+- [x] Phase 4 (print ใบเสร็จ): แสดง "รายละเอียดการรับชำระ" ทุกช่องทาง + ยอดรวม ในกล่อง "ชำระโดย" ครบทุกฟอร์ม (admin detail + LIFF + liff-print ผ่าน prop `payments`)
+- [x] Phase 4b (print Sale): `SharedSalesDeliveryPrintDocument` แสดง "รายละเอียดการรับชำระ" หลายช่องทางแล้ว — ครบทั้ง 6 caller (admin sale detail, delivery batch print, LIFF/liff-print receipt+invoice)
+- [x] Phase 5: report-queries account filter เป็น **multi-channel-aware** — helper `resolveAccountDocIds` + `accountWhereFilter` (OR ระหว่าง `cashBankAccountId` primary กับ docId ที่มี DocumentPayment บนบัญชีนั้น). Additive-only → ผลลัพธ์ข้อมูลเดิม (single-channel/legacy) ไม่เปลี่ยน; Cash/Bank Ledger (`cash-bank-report-queries.ts`) อ่าน `CashBankMovement` อยู่แล้วจึงถูกต้อง per-account เต็มรูปแบบ
+- **Multi-channel payment ครบทุก phase** ✅ (10 เอกสาร: Receipt, Sale, Purchase, Expense, CreditNote, PurchaseReturn, SupplierAdvance, SupplierPayment + print + reports)
+
 ### 2. SEO / AEO / AIO Follow-up
 - สถานะ: baseline หลักเสร็จแล้ว แต่ยังมี external/manual work ต่อเนื่อง
 - เอกสารอ้างอิง:

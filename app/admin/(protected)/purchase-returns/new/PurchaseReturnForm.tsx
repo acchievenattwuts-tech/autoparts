@@ -9,6 +9,7 @@ import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
@@ -64,6 +65,7 @@ interface InitialData {
   type: "RETURN" | "DISCOUNT" | "OTHER";
   settlementType: "CASH_REFUND" | "SUPPLIER_CREDIT";
   cashBankAccountId: string;
+  payments?: PaymentChannelRow[];
   note: string;
   vatType: string;
   vatRate: number;
@@ -144,7 +146,13 @@ const PurchaseReturnForm = ({
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "SUPPLIER_CREDIT">(
     seedData?.settlementType ?? "CASH_REFUND",
   );
-  const [cashBankAccountId, setCashBankAccountId] = useState(seedData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    seedData?.payments && seedData.payments.length > 0
+      ? seedData.payments
+      : seedData?.cashBankAccountId
+        ? [{ cashBankAccountId: seedData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [vatType, setVatType] = useState<string>(seedData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(seedData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(seedData?.initialAvailableLots ?? {});
@@ -350,14 +358,6 @@ const PurchaseReturnForm = ({
     return sum + item.qty * cost;
   }, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalBeforeVat, vatType as VatType, vatRate);
-  const cashBankOptions: SelectOption[] = cashBankAccounts.map((account) => ({
-    id: account.id,
-    label: account.name,
-    sublabel:
-      [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
-        .filter(Boolean)
-        .join(" | ") || undefined,
-  }));
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -378,12 +378,20 @@ const PurchaseReturnForm = ({
     formData.set("claimId", linkedClaimId);
     formData.set("type", returnType);
     formData.set("settlementType", settlementType);
-    formData.set("cashBankAccountId", settlementType === "CASH_REFUND" ? cashBankAccountId : "");
 
-    if (settlementType === "CASH_REFUND" && !cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีรับเงิน");
-      return;
+    let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
+    if (settlementType === "CASH_REFUND") {
+      const activePayments = payments.filter((row) => row.amount > 0);
+      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+      const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+      if (Math.abs(paymentsTotal - netAmount) > 0.005) {
+        setError(`ยอดรวมช่องทางรับเงินต้องเท่ากับยอดรับคืนสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+        return;
+      }
+      submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
     }
+    formData.set("payments", JSON.stringify(submitPayments));
 
     for (const item of items) {
       if (!item.productId) {
@@ -563,13 +571,12 @@ const PurchaseReturnForm = ({
           </div>
           {settlementType === "CASH_REFUND" ? (
             <div>
-              <label className={labelCls}>
-                บัญชีรับเงิน <span className="text-red-500">*</span>
-              </label>
-              <SearchableSelect
-                options={cashBankOptions}
-                value={cashBankAccountId}
-                onChange={setCashBankAccountId}
+              <PaymentChannelsInput
+                accounts={cashBankAccounts}
+                value={payments}
+                onChange={setPayments}
+                targetAmount={netAmount}
+                label="ช่องทางรับเงิน (รับคืน)"
                 placeholder="โปรดระบุบัญชีรับเงิน"
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะบันทึกเงินเข้า cash/bank ให้อัตโนมัติ</p>

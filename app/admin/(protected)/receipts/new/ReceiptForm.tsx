@@ -2,10 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+
+interface PaymentRow {
+  cashBankAccountId: string;
+  amount: number;
+}
 
 interface CustomerOption {
   id: string;
@@ -39,6 +45,7 @@ interface InitialData {
   receiptDate: string;
   paymentMethod: "CASH" | "TRANSFER";
   cashBankAccountId: string;
+  payments?: PaymentRow[];
   note: string;
   items: SelectedItem[];
 }
@@ -59,7 +66,13 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
   const [receiptDate, setReceiptDate] = useState(initialData?.receiptDate ?? today);
   const [creditSales, setCreditSales] = useState<CreditSaleItem[]>(initialCreditSales ?? []);
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>(initialData?.items ?? []);
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [note, setNote] = useState(initialData?.note ?? "");
   const [isLoadingSales, setIsLoadingSales] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -134,6 +147,33 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
   const cnTotal = selectedItems.filter((item) => item.isCN).reduce((sum, item) => sum + item.paidAmount, 0);
   const netTotal = saleTotal - cnTotal;
 
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+  const paymentsTotal = round2(payments.reduce((sum, row) => sum + (row.amount || 0), 0));
+  const remainingToAllocate = round2(netTotal - paymentsTotal);
+
+  const updatePaymentAccount = (index: number, accountId: string) => {
+    setPayments((prev) => prev.map((row, i) => (i === index ? { ...row, cashBankAccountId: accountId } : row)));
+  };
+  const updatePaymentAmount = (index: number, amount: number) => {
+    setPayments((prev) => prev.map((row, i) => (i === index ? { ...row, amount: Math.max(0, amount) } : row)));
+  };
+  const fillRemaining = (index: number) => {
+    setPayments((prev) =>
+      prev.map((row, i) =>
+        i === index ? { ...row, amount: round2(Math.max(0, (row.amount || 0) + remainingToAllocate)) } : row,
+      ),
+    );
+  };
+  const addPaymentRow = () => {
+    setPayments((prev) => [
+      ...prev,
+      { cashBankAccountId: "", amount: round2(Math.max(0, remainingToAllocate)) },
+    ]);
+  };
+  const removePaymentRow = (index: number) => {
+    setPayments((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
   const selectedCustomer = customerMap.get(customerId);
 
   const handleSubmit = () => {
@@ -152,16 +192,37 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       setError("ยอดของแต่ละรายการต้องมากกว่า 0");
       return;
     }
-    if (netTotal > 0 && !cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีรับเงิน");
-      return;
+    const activePayments = netTotal > 0 ? payments.filter((row) => row.amount > 0) : [];
+    if (netTotal > 0) {
+      if (activePayments.length === 0) {
+        setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง");
+        return;
+      }
+      if (activePayments.some((row) => !row.cashBankAccountId)) {
+        setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน");
+        return;
+      }
+      if (Math.abs(remainingToAllocate) > 0.005) {
+        setError(
+          `ยอดรวมช่องทางรับเงินต้องเท่ากับยอดสุทธิ (คงเหลือที่ต้องระบุ ${remainingToAllocate.toLocaleString(
+            "th-TH",
+            { minimumFractionDigits: 2 },
+          )} บาท)`,
+        );
+        return;
+      }
     }
 
     const formData = new FormData();
     formData.set("customerId", customerId);
     formData.set("customerName", selectedCustomer?.name ?? "");
     formData.set("receiptDate", receiptDate);
-    formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set(
+      "payments",
+      JSON.stringify(
+        activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount })),
+      ),
+    );
     formData.set("note", note);
     formData.set(
       "items",
@@ -323,25 +384,81 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ และถ้ายอดสุทธิไม่เกิน 0 จะถือว่าเป็นการตัดเครดิตโดยไม่มีการรับเงินจริง
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">
-              บัญชีรับเงิน {netTotal > 0 && <span className="text-red-500">*</span>}
-            </label>
-            <SearchableSelect
-              options={cashBankAccounts.map((account): SelectOption => ({
-                id: account.id,
-                label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
-                  .filter(Boolean)
-                  .join(" | ") || undefined,
-              }))}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
-              placeholder="โปรดระบุบัญชีรับเงิน"
-            />
-          </div>
+          {netTotal > 0 && (
+            <div className="md:col-span-2">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                  ช่องทางรับเงิน <span className="text-red-500">*</span>
+                </label>
+                <span
+                  className={`text-xs font-medium ${
+                    Math.abs(remainingToAllocate) > 0.005
+                      ? "text-orange-600 dark:text-orange-400"
+                      : "text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  คงเหลือที่ต้องระบุ {remainingToAllocate.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                </span>
+              </div>
 
-          <div>
+              <div className="space-y-2">
+                {payments.map((row, index) => (
+                  <div key={index} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex-1">
+                      <SearchableSelect
+                        options={cashBankAccounts.map((account): SelectOption => ({
+                          id: account.id,
+                          label: account.name,
+                          sublabel:
+                            [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
+                              .filter(Boolean)
+                              .join(" | ") || undefined,
+                        }))}
+                        value={row.cashBankAccountId}
+                        onChange={(value) => updatePaymentAccount(index, value)}
+                        placeholder="โปรดระบุบัญชีรับเงิน"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <AdminNumberInput
+                        min={0}
+                        step={0.01}
+                        value={row.amount}
+                        onValueChange={(value) => updatePaymentAmount(index, value)}
+                        className="w-32 rounded-lg border border-gray-200 px-3 py-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/30 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fillRemaining(index)}
+                        className="whitespace-nowrap rounded-lg border border-gray-200 px-2 py-2 text-xs text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
+                      >
+                        เติมยอดที่เหลือ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removePaymentRow(index)}
+                        disabled={payments.length <= 1}
+                        className="rounded-lg border border-gray-200 p-2 text-gray-400 transition-colors hover:border-red-300 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/20 dark:text-slate-400 dark:hover:border-red-400/50 dark:hover:text-red-400"
+                        aria-label="ลบช่องทาง"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={addPaymentRow}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
+              >
+                <Plus size={14} /> เพิ่มช่องทางรับเงิน
+              </button>
+            </div>
+          )}
+
+          <div className="md:col-span-2">
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">หมายเหตุ</label>
             <textarea
               value={note}

@@ -7,6 +7,7 @@ import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { getThailandDateKey } from "@/lib/th-date";
 
 interface ExpenseCodeOption {
@@ -34,6 +35,7 @@ interface InitialData {
   id: string;
   expenseDate: string;
   cashBankAccountId: string;
+  payments?: PaymentChannelRow[];
   vatType: string;
   vatRate: number;
   note: string;
@@ -61,7 +63,13 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
   const [success, setSuccess] = useState("");
 
   const [items, setItems]     = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
@@ -94,11 +102,21 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
       if (item.amount <= 0)    { setError("จำนวนเงินต้องมากกว่า 0 ทุกรายการ"); return; }
     }
 
-    if (!cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
+    const activePayments = payments.filter((row) => row.amount > 0);
+    if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+    if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+    const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+    if (Math.abs(paymentsTotal - netAmount) > 0.005) {
+      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+      return;
+    }
 
     const fd = new FormData(e.currentTarget);
     fd.set("items", JSON.stringify(items));
-    fd.set("cashBankAccountId", cashBankAccountId);
+    fd.set(
+      "payments",
+      JSON.stringify(activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))),
+    );
     fd.set("vatType", vatType);
     fd.set("vatRate", String(vatRate));
 
@@ -144,19 +162,6 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
         <div className="md:col-span-2">
           <label className={labelCls}>หมายเหตุ</label>
           <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} placeholder="หมายเหตุเอกสาร (ถ้ามี)" className={inputCls} />
-        </div>
-        <div className="md:col-span-3">
-          <label className={labelCls}>บัญชีจ่ายเงิน <span className="text-red-500">*</span></label>
-          <SearchableSelect
-            options={cashBankAccounts.map((account): SelectOption => ({
-              id: account.id,
-              label: account.name,
-              sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-            }))}
-            value={cashBankAccountId}
-            onChange={setCashBankAccountId}
-            placeholder="โปรดระบุบัญชีจ่ายเงิน"
-          />
         </div>
       </div>
 
@@ -304,6 +309,18 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
             </tfoot>
           </table>
         </div>
+      </div>
+
+      {/* Payment channels */}
+      <div className="border-t border-gray-100 pt-4 dark:border-white/10">
+        <PaymentChannelsInput
+          accounts={cashBankAccounts}
+          value={payments}
+          onChange={setPayments}
+          targetAmount={netAmount}
+          label="ช่องทางจ่ายเงิน"
+          placeholder="โปรดระบุบัญชีจ่ายเงิน"
+        />
       </div>
 
       {/* Actions */}

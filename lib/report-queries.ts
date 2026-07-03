@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import {
   DocStatus,
+  DocumentPaymentDocType,
   VatType,
   SaleType,
   SaleChannel,
@@ -29,6 +30,37 @@ function parseDate(s: string | undefined, fallback: Date): Date {
 
 function endOfDay(d: Date): Date {
   return parseDateOnlyToEndOfDay(formatDateOnlyForInput(d));
+}
+
+// Multi-channel-aware account filter.
+//
+// A document's `cashBankAccountId` holds only its primary (first) split-payment
+// channel. Filtering solely on that column would miss documents where the
+// selected account is a secondary channel. To stay account-accurate — without
+// changing results for single-channel/legacy data — resolve every docId that
+// has a DocumentPayment row on the account and match it via OR alongside the
+// legacy `cashBankAccountId` column.
+//
+// For legacy rows (cashBankAccountId set, no DocumentPayment) and new
+// single-channel rows (both point at the same account) the OR matches exactly
+// the same set as before, so existing report totals are unchanged.
+async function resolveAccountDocIds(
+  docType: DocumentPaymentDocType,
+  accountId: string,
+): Promise<string[]> {
+  const rows = await db.documentPayment.findMany({
+    where: { docType, cashBankAccountId: accountId },
+    select: { docId: true },
+  });
+  return [...new Set(rows.map((row) => row.docId))];
+}
+
+function accountWhereFilter(
+  accountId: string | undefined,
+  accountDocIds: string[],
+): { OR: Array<{ cashBankAccountId: string } | { id: { in: string[] } }> } | Record<string, never> {
+  if (!accountId) return {};
+  return { OR: [{ cashBankAccountId: accountId }, { id: { in: accountDocIds } }] };
 }
 
 export type ReportFilters = {
@@ -234,7 +266,10 @@ export type PaymentRow = {
 
 // Query: Sales Register
 
-function buildSalesReportWhere(filters: ReportFilters): Prisma.SaleWhereInput {
+function buildSalesReportWhere(
+  filters: ReportFilters,
+  accountDocIds: string[] = [],
+): Prisma.SaleWhereInput {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -242,7 +277,7 @@ function buildSalesReportWhere(filters: ReportFilters): Prisma.SaleWhereInput {
   return {
     saleDate: { gte: filters.from, lte: filters.to },
     ...statusFilter,
-    ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+    ...accountWhereFilter(filters.accountId, accountDocIds),
     ...(filters.paymentType && filters.paymentType !== "ALL"
       ? { paymentType: filters.paymentType as SalePaymentType }
       : {}),
@@ -260,8 +295,11 @@ export async function querySalesRows(
   pageSize: number | null = 100,
   pageNo: number = 0,
 ): Promise<SaleRow[]> {
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
+    : [];
   const sales = await db.sale.findMany({
-    where: buildSalesReportWhere(filters),
+    where: buildSalesReportWhere(filters, accountDocIds),
     select: {
         saleNo: true,
         saleDate: true,
@@ -357,7 +395,10 @@ export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
   vat: number;
   total: number;
 }> {
-  const where = buildSalesReportWhere(filters);
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
+    : [];
+  const where = buildSalesReportWhere(filters, accountDocIds);
   const [documentTotals, itemTotals] = await Promise.all([
     db.sale.aggregate({
       where,
@@ -377,12 +418,18 @@ export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
 }
 
 export async function countSalesRowsDocs(filters: ReportFilters): Promise<number> {
-  return db.sale.count({ where: buildSalesReportWhere(filters) });
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
+    : [];
+  return db.sale.count({ where: buildSalesReportWhere(filters, accountDocIds) });
 }
 
 // Query: Purchase Register
 
-function buildPurchaseReportWhere(filters: ReportFilters): Prisma.PurchaseWhereInput {
+function buildPurchaseReportWhere(
+  filters: ReportFilters,
+  accountDocIds: string[] = [],
+): Prisma.PurchaseWhereInput {
   const statusFilter: { status?: DocStatus } = filters.showCancelled
     ? {}
     : { status: "ACTIVE" };
@@ -390,7 +437,7 @@ function buildPurchaseReportWhere(filters: ReportFilters): Prisma.PurchaseWhereI
   return {
     purchaseDate: { gte: filters.from, lte: filters.to },
     ...statusFilter,
-    ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+    ...accountWhereFilter(filters.accountId, accountDocIds),
   };
 }
 
@@ -399,8 +446,11 @@ export async function queryPurchaseRows(
   pageSize: number | null = 100,
   pageNo: number = 0,
 ): Promise<PurchaseRow[]> {
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+    : [];
   const purchases = await db.purchase.findMany({
-    where: buildPurchaseReportWhere(filters),
+    where: buildPurchaseReportWhere(filters, accountDocIds),
     select: {
       purchaseNo: true,
       purchaseDate: true,
@@ -477,7 +527,10 @@ export async function queryPurchaseRowsTotals(filters: ReportFilters): Promise<{
   vat: number;
   total: number;
 }> {
-  const where = buildPurchaseReportWhere(filters);
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+    : [];
+  const where = buildPurchaseReportWhere(filters, accountDocIds);
   const [documentTotals, itemTotals] = await Promise.all([
     db.purchase.aggregate({
       where,
@@ -506,11 +559,15 @@ export async function queryCreditNoteRows(
     ? {}
     : { status: "ACTIVE" };
 
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId)
+    : [];
+
   const cns = await db.creditNote.findMany({
     where: {
       cnDate: { gte: filters.from, lte: filters.to },
       ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+      ...accountWhereFilter(filters.accountId, accountDocIds),
       ...(filters.cnType && filters.cnType !== "ALL"
         ? { type: filters.cnType as CreditNoteType }
         : {}),
@@ -592,6 +649,10 @@ export async function queryReceiptRows(
     ? {}
     : { status: "ACTIVE" };
 
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId)
+    : [];
+
   const receipts = await db.receipt.findMany({
     where: {
       receiptDate: { gte: filters.from, lte: filters.to },
@@ -599,7 +660,7 @@ export async function queryReceiptRows(
       ...(filters.paymentMethod && filters.paymentMethod !== "ALL"
         ? { paymentMethod: filters.paymentMethod as PaymentMethod }
         : {}),
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+      ...accountWhereFilter(filters.accountId, accountDocIds),
     },
     select: {
       receiptNo: true,
@@ -656,12 +717,15 @@ export async function queryPaymentRows(
 
   if (docType === "ALL" || docType === "PURCHASE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+      : [];
     const purchases = await db.purchase.findMany({
       where: {
         purchaseDate: { gte: filters.from, lte: filters.to },
         purchaseType: "CASH_PURCHASE",
         ...(filters.accountId
-          ? { cashBankAccountId: filters.accountId }
+          ? accountWhereFilter(filters.accountId, accountDocIds)
           : { cashBankAccountId: { not: null } }),
         ...statusFilter,
       },
@@ -700,11 +764,14 @@ export async function queryPaymentRows(
 
   if (docType === "ALL" || docType === "EXPENSE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId)
+      : [];
     const expenses = await db.expense.findMany({
       where: {
         expenseDate: { gte: filters.from, lte: filters.to },
         ...(filters.accountId
-          ? { cashBankAccountId: filters.accountId }
+          ? accountWhereFilter(filters.accountId, accountDocIds)
           : { cashBankAccountId: { not: null } }),
         ...statusFilter,
       },
@@ -883,11 +950,14 @@ export async function queryDailyReceiptRows(
 
   if (docType === "ALL" || docType === "CASH_SALE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
+      : [];
     const sales = await db.sale.findMany({
       where: {
         saleDate: { gte: filters.from, lte: filters.to },
         paymentType: "CASH_SALE",
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -923,10 +993,13 @@ export async function queryDailyReceiptRows(
 
   if (docType === "ALL" || docType === "RECEIPT") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId)
+      : [];
     const receipts = await db.receipt.findMany({
       where: {
         receiptDate: { gte: filters.from, lte: filters.to },
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -996,11 +1069,14 @@ export async function queryDailyPaymentRows(
 
   if (docType === "ALL" || docType === "PURCHASE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+      : [];
     const purchases = await db.purchase.findMany({
       where: {
         purchaseDate: { gte: filters.from, lte: filters.to },
         purchaseType: "CASH_PURCHASE",
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -1035,10 +1111,13 @@ export async function queryDailyPaymentRows(
 
   if (docType === "ALL" || docType === "EXPENSE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId)
+      : [];
     const expenses = await db.expense.findMany({
       where: {
         expenseDate: { gte: filters.from, lte: filters.to },
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -1082,10 +1161,13 @@ export async function queryDailyPaymentRows(
 
   if (docType === "ALL" || docType === "SUPPLIER_ADVANCE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_ADVANCE, filters.accountId)
+      : [];
     const advances = await db.supplierAdvance.findMany({
       where: {
         advanceDate: { gte: filters.from, lte: filters.to },
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -1120,12 +1202,15 @@ export async function queryDailyPaymentRows(
 
   if (docType === "ALL" || docType === "SUPPLIER_PAYMENT") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_PAYMENT, filters.accountId)
+      : [];
     const payments = await db.supplierPayment.findMany({
       where: {
         paymentDate: { gte: filters.from, lte: filters.to },
         // Exclude CREDIT payments — they have no real cash outflow (offset by advance/credit only)
         paymentMethod: { in: ["CASH", "TRANSFER"] },
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {
@@ -1174,11 +1259,14 @@ export async function queryDailyPaymentRows(
 
   if (docType === "ALL" || docType === "CN_REFUND") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId)
+      : [];
     const cns = await db.creditNote.findMany({
       where: {
         cnDate: { gte: filters.from, lte: filters.to },
         settlementType: "CASH_REFUND",
-        ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
+        ...accountWhereFilter(filters.accountId, accountDocIds),
         ...statusFilter,
       },
       select: {

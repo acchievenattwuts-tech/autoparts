@@ -44,6 +44,12 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
 
+  const cnPayments = await db.documentPayment.findMany({
+    where: { docType: "CN_SALE", docId: id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: { cashBankAccountId: true, amount: true },
+  });
+
   const mutationBlock = await checkDocumentMutation("CreditNote", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
@@ -125,6 +131,10 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     settlementType: cn.settlementType as CNSettlementType,
     refundMethod:   (cn.refundMethod ?? "CASH") as CNRefundMethod,
     cashBankAccountId: cn.cashBankAccountId ?? "",
+    payments: cnPayments.map((row) => ({
+      cashBankAccountId: row.cashBankAccountId,
+      amount: Number(row.amount),
+    })),
     note:           cn.note ?? "",
     vatType:        cn.vatType,
     vatRate:        Number(cn.vatRate),

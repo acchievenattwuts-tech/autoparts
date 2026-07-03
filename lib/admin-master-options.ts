@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 
 // Group-A master data: changes rarely, read repeatedly as dropdown options in
 // admin forms. Cached with a per-entity tag; each master's CRUD action calls
@@ -17,14 +17,17 @@ export const ADMIN_MASTER_OPTION_TAGS = {
   customerTypes: "admin-master:customer-types",
 } as const;
 
+export const loadActiveCategoryOptions = async () =>
+  withDbRetry(() => db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }));
+
 export const getActiveCategoryOptions = unstable_cache(
-  async () => db.category.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+  loadActiveCategoryOptions,
   ["admin-master-categories-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.categories], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
-export const getActiveCarBrandOptionsWithModels = unstable_cache(
-  async () =>
+export const loadActiveCarBrandOptionsWithModels = async () =>
+  withDbRetry(() =>
     db.carBrand.findMany({
       where: { isActive: true },
       orderBy: { name: "asc" },
@@ -32,34 +35,49 @@ export const getActiveCarBrandOptionsWithModels = unstable_cache(
         carModels: { where: { isActive: true }, orderBy: { name: "asc" } },
       },
     }),
+  );
+
+export const getActiveCarBrandOptionsWithModels = unstable_cache(
+  loadActiveCarBrandOptionsWithModels,
   ["admin-master-car-brands-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.carBrands], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
+export const loadActivePartsBrandOptions = async () =>
+  withDbRetry(() => db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }));
+
 export const getActivePartsBrandOptions = unstable_cache(
-  async () => db.partsBrand.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
+  loadActivePartsBrandOptions,
   ["admin-master-parts-brands-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.partsBrands], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
-export const getActiveCustomerTypeOptions = unstable_cache(
-  async () =>
+export const loadActiveCustomerTypeOptions = async () =>
+  withDbRetry(() =>
     db.customerType.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: { id: true, name: true, showPrice: true },
     }),
+  );
+
+export const getActiveCustomerTypeOptions = unstable_cache(
+  loadActiveCustomerTypeOptions,
   ["admin-master-customer-types-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.customerTypes], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
-export const getActiveExpenseCodeOptions = unstable_cache(
-  async () =>
+export const loadActiveExpenseCodeOptions = async () =>
+  withDbRetry(() =>
     db.expenseCode.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },
       select: { id: true, code: true, name: true },
     }),
+  );
+
+export const getActiveExpenseCodeOptions = unstable_cache(
+  loadActiveExpenseCodeOptions,
   ["admin-master-expense-codes-v1"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.expenseCodes], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );

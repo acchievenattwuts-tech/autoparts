@@ -32,6 +32,7 @@ export interface SaleDraftPayload {
   saleType: string;
   paymentType: "CASH_SALE" | "CREDIT_SALE";
   cashBankAccountId: string;
+  payments?: { cashBankAccountId: string; amount: number }[];
   fulfillmentType: "PICKUP" | "DELIVERY";
   shippingAddress: string;
   shippingFee: number;
@@ -99,7 +100,10 @@ export function parseSaleDraft(
       return null;
     }
 
-    return parsed as SaleDraftPayload;
+    return {
+      ...(parsed as SaleDraftPayload),
+      payments: Array.isArray(parsed.payments) ? parsed.payments : [],
+    };
   } catch {
     return null;
   }

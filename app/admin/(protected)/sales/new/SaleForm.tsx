@@ -7,6 +7,7 @@ import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
@@ -109,6 +110,7 @@ interface InitialData {
   paymentType:     "CASH_SALE" | "CREDIT_SALE";
   paymentMethod:   string;
   cashBankAccountId: string;
+  payments?:       PaymentChannelRow[];
   fulfillmentType:  "PICKUP" | "DELIVERY";
   shippingAddress:  string;
   shippingFee:      number;
@@ -165,7 +167,14 @@ const SaleForm = ({
   const [discount, setDiscount] = useState(initialData?.discount ?? 0);
 
   const [paymentType, setPaymentType] = useState<"CASH_SALE" | "CREDIT_SALE">(initialData?.paymentType ?? "CASH_SALE");
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
+  const primaryAccountId = payments[0]?.cashBankAccountId ?? "";
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? "PICKUP");
   const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? "");
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
@@ -198,7 +207,7 @@ const SaleForm = ({
       customerPhone: customerPhoneOverride,
       saleType,
       paymentType,
-      cashBankAccountId,
+      payments,
       fulfillmentType,
       shippingAddress,
       shippingFee,
@@ -211,7 +220,7 @@ const SaleForm = ({
       vatRate,
       creditTerm,
       items,
-    }), [cashBankAccountId, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
+    }), [payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const applyDraft = (draft: SaleDraftPayload) => {
     setSaleDate(draft.saleDate);
@@ -220,7 +229,13 @@ const SaleForm = ({
     setCustomerPhoneOverride(draft.customerPhone);
     setSaleType(draft.saleType);
     setPaymentType(draft.paymentType);
-    setCashBankAccountId(draft.cashBankAccountId);
+    setPayments(
+      draft.payments && draft.payments.length > 0
+        ? draft.payments
+        : draft.cashBankAccountId
+          ? [{ cashBankAccountId: draft.cashBankAccountId, amount: 0 }]
+          : [{ cashBankAccountId: "", amount: 0 }],
+    );
     setFulfillmentType(draft.fulfillmentType);
     setShippingAddress(draft.shippingAddress);
     setShippingFee(draft.shippingFee);
@@ -267,7 +282,8 @@ const SaleForm = ({
           customerPhone: customerPhoneOverride,
           saleType,
           paymentType,
-          cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
+          payments,
           fulfillmentType,
           shippingAddress,
           shippingFee,
@@ -290,7 +306,7 @@ const SaleForm = ({
     }, 2000);
 
     return () => window.clearTimeout(timeout);
-  }, [cashBankAccountId, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
+  }, [primaryAccountId, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -566,9 +582,17 @@ const SaleForm = ({
       setError("กรุณาเลือกประเภทขนส่ง");
       return;
     }
-    if (paymentType === "CASH_SALE" && !cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีรับเงิน");
-      return;
+    let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
+    if (paymentType === "CASH_SALE") {
+      const activePayments = payments.filter((row) => row.amount > 0);
+      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+      const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+      if (Math.abs(paymentsTotal - netAmount) > 0.005) {
+        setError(`ยอดรวมช่องทางรับเงินต้องเท่ากับยอดสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+        return;
+      }
+      submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
     }
 
     const form = e.currentTarget;
@@ -584,7 +608,7 @@ const SaleForm = ({
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
     formData.set("shippingMethod", fulfillmentType === "DELIVERY" ? shippingMethod : "NONE");
-    formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set("payments", JSON.stringify(submitPayments));
     formData.set("discount", String(discount));
     formData.set("note", note);
     formData.set("vatType", vatType);
@@ -781,20 +805,15 @@ const SaleForm = ({
           </div>
           {paymentType === "CASH_SALE" ? (
           <div>
-            <label className={labelCls}>
-              บัญชีรับเงิน <span className="text-red-500">*</span>
-            </label>
-            <SearchableSelect
-              options={cashBankAccounts.map((account): SelectOption => ({
-                id: account.id,
-                label: account.name,
-                sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-              }))}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
+            <PaymentChannelsInput
+              accounts={cashBankAccounts}
+              value={payments}
+              onChange={setPayments}
+              targetAmount={netAmount}
+              label="ช่องทางรับเงิน"
               placeholder="โปรดระบุบัญชีรับเงิน"
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">รองรับรับเงินหลายช่องทาง — ยอดรวมต้องเท่ากับยอดสุทธิ</p>
           </div>
           ) : (
           <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">

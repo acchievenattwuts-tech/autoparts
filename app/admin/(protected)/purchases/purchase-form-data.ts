@@ -56,6 +56,7 @@ export interface PurchaseDraftPayload {
   supplierId: string;
   purchaseType: string;
   cashBankAccountId: string;
+  payments?: { cashBankAccountId: string; amount: number }[];
   referenceNo: string;
   discount: number;
   shippingFee: number;
@@ -123,7 +124,10 @@ export function parsePurchaseDraft(
       return null;
     }
 
-    return parsed as PurchaseDraftPayload;
+    return {
+      ...(parsed as PurchaseDraftPayload),
+      payments: Array.isArray(parsed.payments) ? parsed.payments : [],
+    };
   } catch {
     return null;
   }

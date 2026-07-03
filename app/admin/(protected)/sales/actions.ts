@@ -31,8 +31,17 @@ import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
-import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
@@ -41,7 +50,7 @@ import {
   createWarrantySnapshots,
   getSaleUnitKey,
   preloadSaleDependencies,
-  resolveSalePaymentMethod,
+  resolveSalePaymentMethodFromAccounts,
 } from "@/lib/sale-core";
 
 const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
@@ -267,7 +276,8 @@ function buildSaleItemSignature(payload: {
 }
 
 async function getSaleAuditSnapshot(saleId: string) {
-  const sale = await db.sale.findUnique({
+  const [sale, payments] = await Promise.all([
+    db.sale.findUnique({
     where: { id: saleId },
     include: {
       items: {
@@ -286,7 +296,13 @@ async function getSaleAuditSnapshot(saleId: string) {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.SALE, docId: saleId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!sale) {
     return null;
@@ -332,6 +348,10 @@ async function getSaleAuditSnapshot(saleId: string) {
       supplierId: item.supplierId,
       supplierName: item.supplierName,
       moreDetail: item.moreDetail,
+    })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
     })),
   };
 }
@@ -431,7 +451,6 @@ export async function createSale(
     saveAsCustomerDefault,
     discount,
     note,
-    cashBankAccountId,
     vatType,
     vatRate,
     shippingMethod,
@@ -451,12 +470,24 @@ export async function createSale(
   if (deliveryValidationError) {
     return { error: deliveryValidationError };
   }
-  if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  let payments: DocumentPaymentRow[] = [];
+  if (paymentType === SalePaymentType.CASH_SALE) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
+    }
   }
 
-  const resolvedCashBankAccountId =
-    paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(saleDate);
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
@@ -465,9 +496,9 @@ export async function createSale(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
-      const resolvedPaymentMethod = await resolveSalePaymentMethod(
+      const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
-        resolvedCashBankAccountId,
+        payments.map((row) => row.cashBankAccountId),
       );
       const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
       const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
@@ -593,20 +624,24 @@ export async function createSale(
         });
       }
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SALE,
+        sale.id,
+        CashBankDirection.IN,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SALE,
         sale.id,
-        paymentType === SalePaymentType.CASH_SALE && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.IN,
-              amount: netAmount,
-              referenceNo: saleNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: saleNo,
+          note: note ?? null,
+        }),
       );
 
       await rebuildSaleProfitFacts(tx, sale.id);
@@ -746,6 +781,7 @@ export async function cancelSale(
     const cancelledAt = new Date();
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.SALE, saleId);
       // Reverse Lot balances before deleting StockCard rows
       for (const item of sale.items) {
         await reverseSaleLotBalance(tx, item.id, item.productId);
@@ -890,7 +926,7 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, cashBankAccountId, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -903,11 +939,24 @@ export async function updateSale(
   if (deliveryValidationError) {
     return { error: deliveryValidationError };
   }
-  if (paymentType === SalePaymentType.CASH_SALE && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+
+  let payments: DocumentPaymentRow[] = [];
+  if (paymentType === SalePaymentType.CASH_SALE) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
+    }
   }
-  const resolvedCashBankAccountId =
-    paymentType === SalePaymentType.CASH_SALE ? cashBankAccountId : undefined;
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(saleDate);
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
@@ -1022,9 +1071,9 @@ export async function updateSale(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSaleAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const resolvedPaymentMethod = await resolveSalePaymentMethod(
+      const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
-        resolvedCashBankAccountId,
+        payments.map((row) => row.cashBankAccountId),
       );
       const fallbackSignerName = existing.signerName ?? existing.user?.name ?? null;
       const fallbackSignerSignatureUrl =
@@ -1226,20 +1275,24 @@ export async function updateSale(
       // 4. Recalculate amountRemain after updating netAmount
       await recalculateSaleAmountRemain(tx, id);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SALE,
+        id,
+        CashBankDirection.IN,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SALE,
         id,
-        paymentType === SalePaymentType.CASH_SALE && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.IN,
-              amount: netAmount,
-              referenceNo: existing.saleNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: existing.saleNo,
+          note: note ?? null,
+        }),
       );
 
       await rebuildSaleProfitFacts(tx, id);

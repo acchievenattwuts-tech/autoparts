@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import {
   createSupplierPayment,
   getOutstandingSupplierDocuments,
@@ -44,6 +45,7 @@ type InitialData = {
   supplierId: string;
   paymentDate: string;
   cashBankAccountId: string;
+  payments?: PaymentChannelRow[];
   note: string;
   items: SelectedItem[];
 };
@@ -74,7 +76,13 @@ const SupplierPaymentForm = ({
   const [paymentDate, setPaymentDate] = useState(
     initialData?.paymentDate ?? getThailandDateKey(),
   );
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [note, setNote] = useState(initialData?.note ?? "");
   const [documents, setDocuments] = useState<SupplierSettlementDocumentBundle>(
     initialDocuments ?? { purchases: [], credits: [], advances: [] },
@@ -119,15 +127,6 @@ const SupplierPaymentForm = ({
         supplier.code,
         supplier.phone,
       ]
-        .filter(Boolean)
-        .join(" | ") || undefined,
-  }));
-
-  const accountOptions: SelectOption[] = cashBankAccounts.map((account) => ({
-    id: account.id,
-    label: account.name,
-    sublabel:
-      [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
         .filter(Boolean)
         .join(" | ") || undefined,
   }));
@@ -205,15 +204,23 @@ const SupplierPaymentForm = ({
       setError("ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ");
       return;
     }
-    if (netCashPaid > 0 && !cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีจ่ายเงิน");
-      return;
+    let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
+    if (netCashPaid > 0) {
+      const activePayments = payments.filter((row) => row.amount > 0);
+      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+      const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+      if (Math.abs(paymentsTotal - netCashPaid) > 0.005) {
+        setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดที่ต้องจ่าย (${netCashPaid.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+        return;
+      }
+      submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
     }
 
     const formData = new FormData();
     formData.set("supplierId", supplierId);
     formData.set("paymentDate", paymentDate);
-    formData.set("cashBankAccountId", netCashPaid > 0 ? cashBankAccountId : "");
+    formData.set("payments", JSON.stringify(submitPayments));
     formData.set("note", note);
     formData.set(
       "items",
@@ -380,17 +387,16 @@ const SupplierPaymentForm = ({
             หากยอดสุทธิหลังหักเครดิตและมัดจำเท่ากับ 0 ระบบจะบันทึกเป็นการตัดยอดโดยไม่มีการจ่ายเงินจริง
           </div>
 
-          <div>
-            <label className={labelCls}>
-              บัญชีจ่ายเงิน {netCashPaid > 0 ? <span className="text-red-500">*</span> : null}
-            </label>
-            <SearchableSelect
-              options={accountOptions}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
+          {netCashPaid > 0 ? (
+            <PaymentChannelsInput
+              accounts={cashBankAccounts}
+              value={payments}
+              onChange={setPayments}
+              targetAmount={netCashPaid}
+              label="ช่องทางจ่ายเงิน"
               placeholder="โปรดระบุบัญชีจ่ายเงิน"
             />
-          </div>
+          ) : null}
 
           <div>
             <label className={labelCls}>หมายเหตุ</label>

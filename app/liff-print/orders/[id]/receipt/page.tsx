@@ -111,6 +111,14 @@ export default async function ExternalLiffOrderReceiptPage({
   if (!sale) notFound();
 
   if (sale.paymentType === SalePaymentType.CASH_SALE) {
+    const salePayments = await db.documentPayment.findMany({
+      where: { docType: "SALE", docId: sale.id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    });
     const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
     const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
     const transferDocumentState = getTransferDocumentState({
@@ -144,6 +152,13 @@ export default async function ExternalLiffOrderReceiptPage({
           signerDisplayName={signerDisplayName}
           transferPrimaryAccount={null}
           receivedTransferAccount={receivedTransferAccount}
+          payments={salePayments.map((payment) => ({
+            accountName: payment.cashBankAccount.name,
+            accountType: payment.cashBankAccount.type,
+            bankName: payment.cashBankAccount.bankName,
+            accountNo: payment.cashBankAccount.accountNo,
+            amount: Number(payment.amount),
+          }))}
           promptPayQrDataUrl={promptPayQrDataUrl}
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
@@ -186,6 +201,15 @@ export default async function ExternalLiffOrderReceiptPage({
 
   if (!receipt) notFound();
 
+  const receiptPayments = await db.documentPayment.findMany({
+    where: { docType: "RECEIPT", docId: receipt.id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: {
+      amount: true,
+      cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+    },
+  });
+
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
   const receivedTransferAccount =
     receipt.paymentMethod === PaymentMethod.TRANSFER
@@ -219,6 +243,13 @@ export default async function ExternalLiffOrderReceiptPage({
         }}
         signerDisplayName={signerDisplayName}
         receivedTransferAccount={receivedTransferAccount}
+        payments={receiptPayments.map((payment) => ({
+          accountName: payment.cashBankAccount.name,
+          accountType: payment.cashBankAccount.type,
+          bankName: payment.cashBankAccount.bankName,
+          accountNo: payment.cashBankAccount.accountNo,
+          amount: Number(payment.amount),
+        }))}
         verify={verify}
         rootId="receipt"
         rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}

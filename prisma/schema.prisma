@@ -1640,6 +1640,7 @@ model CashBankAccount {
   promptPayId              String?
   lowBalanceThreshold      Decimal                 @default(0) @db.Decimal(10, 2)
   adjustments              CashBankAdjustment[]
+  documentPayments         DocumentPayment[]
   movements                CashBankMovement[]
   transfersFrom            CashBankTransfer[]      @relation("CashBankTransferFrom")
   transfersTo              CashBankTransfer[]      @relation("CashBankTransferTo")
@@ -1724,6 +1725,26 @@ model CashBankAdjustment {
   @@index([adjustDate])
   @@index([accountId, status])
   @@index([userId])
+}
+
+/// Split-payment lines for money documents (multi-channel receive/pay).
+/// Polymorphic: docId points at the owning document keyed by docType, with no
+/// DB-level FK — the owning Server Action is responsible for creating/clearing
+/// these rows in the same transaction that posts CashBankMovement entries.
+model DocumentPayment {
+  id                String                 @id @default(cuid())
+  docType           DocumentPaymentDocType
+  docId             String
+  lineNo            Int
+  cashBankAccountId String
+  direction         CashBankDirection
+  amount            Decimal                @db.Decimal(10, 2)
+  note              String?
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  cashBankAccount   CashBankAccount        @relation(fields: [cashBankAccountId], references: [id])
+
+  @@index([docType, docId])
+  @@index([cashBankAccountId])
 }
 
 model ReceiptItem {
@@ -2269,6 +2290,17 @@ enum CashBankSourceType {
 enum CashBankDirection {
   IN
   OUT
+}
+
+enum DocumentPaymentDocType {
+  SALE
+  RECEIPT
+  PURCHASE
+  EXPENSE
+  CN_SALE
+  CN_PURCHASE
+  SUPPLIER_ADVANCE
+  SUPPLIER_PAYMENT
 }
 
 enum CashBankTransferStatus {

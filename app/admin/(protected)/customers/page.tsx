@@ -20,6 +20,7 @@ import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
+import { isLineCustomerProfileIncomplete } from "@/lib/line-customer-profile";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
 const PAGE_SIZE = 50;
@@ -183,8 +184,7 @@ const CustomersPage = async ({
                             ผูก LINE แล้ว
                           </span>
                         ) : null}
-                        {customer.source === "LINE_LIFF" &&
-                        (!customer.shippingAddress || !customer.taxId) ? (
+                        {isLineCustomerProfileIncomplete(customer) ? (
                           <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                             ข้อมูลยังไม่ครบ
                           </span>

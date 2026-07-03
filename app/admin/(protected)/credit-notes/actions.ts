@@ -25,8 +25,17 @@ import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
-import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
@@ -224,19 +233,21 @@ function buildCreditNoteItemSignature(payload: {
 
 async function resolveCreditNoteRefundMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  accountId: string | undefined,
+  payments: DocumentPaymentRow[],
 ): Promise<CNRefundMethod | null> {
-  if (!accountId) return null;
+  if (payments.length === 0) return null;
 
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
-  if (!account) {
+  if (accounts.length !== accountIds.length) {
     throw new Error("ไม่พบบัญชีจ่ายเงิน");
   }
 
-  return account.type === "CASH" ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
 }
 
 async function validateCreditNoteSourceSale(
@@ -307,7 +318,8 @@ async function buildSaleReferenceCostMap(
 }
 
 async function getCreditNoteAuditSnapshot(creditNoteId: string) {
-  const creditNote = await db.creditNote.findUnique({
+  const [creditNote, payments] = await Promise.all([
+    db.creditNote.findUnique({
     where: { id: creditNoteId },
     include: {
       sale: {
@@ -339,7 +351,13 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.CN_SALE, docId: creditNoteId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!creditNote) return null;
 
@@ -376,6 +394,10 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
       subtotalAmount: item.subtotalAmount,
       moreDetail: item.moreDetail,
     })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
+    })),
   };
 }
 
@@ -409,16 +431,28 @@ export async function createCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
-  if (settlementType === CNSettlementType.CASH_REFUND && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
-  }
 
-  const resolvedCashBankAccountId =
-    settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
+  let payments: DocumentPaymentRow[] = [];
+  if (settlementType === CNSettlementType.CASH_REFUND) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+  }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(cnDate);
   const cnNo    = await generateCNNo(docDate);
   let createdCreditNoteId = "";
@@ -431,10 +465,7 @@ export async function createCreditNote(
         ? await buildSaleReferenceCostMap(tx, saleId)
         : new Map<string, number>();
 
-      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
-        tx,
-        resolvedCashBankAccountId,
-      );
+      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(tx, payments);
       // Create CreditNote header
       const cn = await tx.creditNote.create({
         data: {
@@ -547,20 +578,23 @@ export async function createCreditNote(
         await recalculateCNAmountRemain(tx, cn.id);
       }
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.CN_SALE,
+        cn.id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.CN_SALE,
         cn.id,
-        settlementType === CNSettlementType.CASH_REFUND && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.OUT,
-              amount: netAmount,
-              referenceNo: cnNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: cnNo,
+          note: note ?? null,
+        }),
       );
 
       await rebuildCreditNoteProfitFacts(tx, cn.id);
@@ -641,6 +675,7 @@ export async function cancelCreditNote(
     const beforeSnapshot = await getCreditNoteAuditSnapshot(cnId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.CN_SALE, cnId);
 
       // ถ้าเป็น RETURN ให้ reverse Lot + ลบ StockCard และ recalculate
       if (cn.type === "RETURN") {
@@ -761,16 +796,28 @@ export async function updateCreditNote(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { cnDate, customerId, customerName, saleId, type, settlementType, cashBankAccountId, note, vatType, vatRate, items: validItems } = parsed.data;
+  const { cnDate, customerId, customerName, saleId, type, settlementType, note, vatType, vatRate, items: validItems } = parsed.data;
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
-  if (settlementType === CNSettlementType.CASH_REFUND && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
-  }
 
-  const resolvedCashBankAccountId =
-    settlementType === CNSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
+  let payments: DocumentPaymentRow[] = [];
+  if (settlementType === CNSettlementType.CASH_REFUND) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+  }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(cnDate);
   const oldProductIds = [
     ...new Set(existing.items.map((i) => i.productId).filter((pid): pid is string => pid !== null)),
@@ -893,10 +940,7 @@ export async function updateCreditNote(
         ? await buildSaleReferenceCostMap(tx, saleId)
         : new Map<string, number>();
 
-      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(
-        tx,
-        resolvedCashBankAccountId,
-      );
+      const resolvedRefundMethod = await resolveCreditNoteRefundMethod(tx, payments);
 
       // 1. Reverse stock effects + delete items.
       //    Differential: only removed lines (and recalc only affected products).
@@ -1075,20 +1119,23 @@ export async function updateCreditNote(
       // 5. Recalculate CN amountRemain (totalAmount may have changed)
       await recalculateCNAmountRemain(tx, id);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.CN_SALE,
+        id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.CN_SALE,
         id,
-        settlementType === CNSettlementType.CASH_REFUND && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.OUT,
-              amount: netAmount,
-              referenceNo: existing.cnNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: existing.cnNo,
+          note: note ?? null,
+        }),
       );
 
       await rebuildCreditNoteProfitFacts(tx, id);

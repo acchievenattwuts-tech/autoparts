@@ -8,6 +8,7 @@ import { PurchaseType } from "@/lib/generated/prisma";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import PurchaseInvoiceUploader, { type AppliedOcrItem } from "./PurchaseInvoiceUploader";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { getThailandDateKey } from "@/lib/th-date";
@@ -44,6 +45,7 @@ interface InitialData {
   supplierId:   string;
   purchaseType: PurchaseType;
   cashBankAccountId: string;
+  payments?:    PaymentChannelRow[];
   referenceNo:  string;
   discount:     number;
   shippingFee:  number;
@@ -91,7 +93,14 @@ const PurchaseForm = ({
   const [purchaseType, setPurchaseType] = useState<PurchaseType>(
     initialData?.purchaseType ?? PurchaseType.CASH_PURCHASE,
   );
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
+  const primaryAccountId = payments[0]?.cashBankAccountId ?? "";
   const [creditTerm, setCreditTerm] = useState<string>(
     initialData?.creditTerm != null ? String(initialData.creditTerm) : "",
   );
@@ -121,7 +130,7 @@ const PurchaseForm = ({
       purchaseDate,
       supplierId,
       purchaseType,
-      cashBankAccountId,
+      payments,
       referenceNo,
       discount,
       shippingFee,
@@ -130,13 +139,19 @@ const PurchaseForm = ({
       vatRate,
       creditTerm,
       items,
-    }), [cashBankAccountId, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
+    }), [payments, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
 
   const applyDraft = (draft: PurchaseDraftPayload) => {
     setPurchaseDate(draft.purchaseDate);
     setSupplierId(draft.supplierId);
     setPurchaseType(draft.purchaseType as PurchaseType);
-    setCashBankAccountId(draft.cashBankAccountId);
+    setPayments(
+      draft.payments && draft.payments.length > 0
+        ? draft.payments
+        : draft.cashBankAccountId
+          ? [{ cashBankAccountId: draft.cashBankAccountId, amount: 0 }]
+          : [{ cashBankAccountId: "", amount: 0 }],
+    );
     setReferenceNo(draft.referenceNo);
     setDiscount(draft.discount);
     setShippingFee(draft.shippingFee);
@@ -173,7 +188,8 @@ const PurchaseForm = ({
           purchaseDate,
           supplierId,
           purchaseType,
-          cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
+          payments,
           referenceNo,
           discount,
           shippingFee,
@@ -192,7 +208,7 @@ const PurchaseForm = ({
     }, 2000);
 
     return () => window.clearTimeout(timeout);
-  }, [cashBankAccountId, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
+  }, [primaryAccountId, payments, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, moreDetail: "", lotItems: [] }]);
@@ -332,11 +348,24 @@ const PurchaseForm = ({
     const formData = new FormData(e.currentTarget);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
-    if (purchaseType === PurchaseType.CASH_PURCHASE && !cashBankAccountId) { setError("กรุณาเลือกบัญชีจ่ายเงิน"); return; }
+
+    let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
+    if (purchaseType === PurchaseType.CASH_PURCHASE) {
+      const activePayments = payments.filter((row) => row.amount > 0);
+      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+      const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+      if (Math.abs(paymentsTotal - netAmount) > 0.005) {
+        setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+        return;
+      }
+      submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
+    }
+
     formData.set("supplierId", supplierId);
     formData.set("purchaseDate", purchaseDate);
     formData.set("purchaseType", purchaseType);
-    formData.set("cashBankAccountId", purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : "");
+    formData.set("payments", JSON.stringify(submitPayments));
     formData.set("creditTerm", purchaseType === PurchaseType.CREDIT_PURCHASE ? creditTerm : "");
     formData.set("referenceNo", referenceNo);
     formData.set("note", note);
@@ -505,18 +534,15 @@ const PurchaseForm = ({
           </div>
           {purchaseType === PurchaseType.CASH_PURCHASE ? (
             <div>
-              <label className={labelCls}>บัญชีจ่ายเงิน <span className="text-red-500">*</span></label>
-              <SearchableSelect
-                options={cashBankAccounts.map((account): SelectOption => ({
-                  id: account.id,
-                  label: account.name,
-                  sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-                }))}
-                value={cashBankAccountId}
-                onChange={setCashBankAccountId}
+              <PaymentChannelsInput
+                accounts={cashBankAccounts}
+                value={payments}
+                onChange={setPayments}
+                targetAmount={netAmount}
+                label="ช่องทางจ่ายเงิน"
                 placeholder="โปรดระบุบัญชีจ่ายเงิน"
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะลงรายการเงินออกจากบัญชีเหล่านี้ให้อัตโนมัติ</p>
             </div>
           ) : (
             <div className="space-y-2">

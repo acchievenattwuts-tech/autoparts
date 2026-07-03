@@ -140,6 +140,23 @@ const DeliveryPrintPage = async ({
   if (sales.length === 0) notFound();
   const shopConfig = mapSiteConfig(siteContents);
 
+  // Batch-load split payments for all sales (avoid N+1 in the per-sale map).
+  const allSalePayments = await db.documentPayment.findMany({
+    where: { docType: "SALE", docId: { in: sales.map((sale) => sale.id) } },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: {
+      docId: true,
+      amount: true,
+      cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+    },
+  });
+  const paymentsBySaleId = new Map<string, typeof allSalePayments>();
+  for (const payment of allSalePayments) {
+    const list = paymentsBySaleId.get(payment.docId) ?? [];
+    list.push(payment);
+    paymentsBySaleId.set(payment.docId, list);
+  }
+
   return (
     <>
       <style>{`
@@ -223,6 +240,13 @@ const DeliveryPrintPage = async ({
               signerDisplayName={signerDisplayName}
               transferPrimaryAccount={transferPrimaryAccount}
               receivedTransferAccount={receivedTransferAccount}
+              payments={(paymentsBySaleId.get(sale.id) ?? []).map((payment) => ({
+                accountName: payment.cashBankAccount.name,
+                accountType: payment.cashBankAccount.type,
+                bankName: payment.cashBankAccount.bankName,
+                accountNo: payment.cashBankAccount.accountNo,
+                amount: Number(payment.amount),
+              }))}
               promptPayQrDataUrl={promptPayQrDataUrl}
               qrAmount={transferDocumentState.qrAmount}
               verify={verify}

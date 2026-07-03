@@ -19,21 +19,31 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   const canUpdate = hasPermissionAccess(role, permissions, "purchases.update");
   const { id } = await params;
 
-  const purchase = await db.purchase.findUnique({
-    where: { id },
-    include: {
-      supplier: { select: { name: true } },
-      user: { select: { name: true } },
-      cashBankAccount: { select: { name: true } },
-      items: {
-        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
-        include: {
-          product: { select: { code: true, name: true, purchaseUnitName: true, isLotControl: true } },
-          lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
+  const [purchase, purchasePayments] = await Promise.all([
+    db.purchase.findUnique({
+      where: { id },
+      include: {
+        supplier: { select: { name: true } },
+        user: { select: { name: true } },
+        cashBankAccount: { select: { name: true } },
+        items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+          include: {
+            product: { select: { code: true, name: true, purchaseUnitName: true, isLotControl: true } },
+            lotItems: { select: { lotNo: true, qty: true, unitCost: true, mfgDate: true, expDate: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    db.documentPayment.findMany({
+      where: { docType: "PURCHASE", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    }),
+  ]);
 
   if (!purchase) notFound();
   const activityEvents = await getDocumentActivityTimeline("Purchase", purchase.id);
@@ -120,14 +130,43 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ประเภทการซื้อ</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{purchaseTypeLabel[purchase.purchaseType] ?? purchase.purchaseType}</p>
           </div>
-          <div>
-            <p className="mb-0.5 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน / ช่องทางชำระ</p>
-            <p className="font-medium text-gray-900 dark:text-slate-100">
-              {purchase.purchaseType === "CASH_PURCHASE"
-                ? `${purchase.cashBankAccount?.name ?? "-"} / ${paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod}`
-                : "-"}
-            </p>
-          </div>
+          {purchase.purchaseType === "CASH_PURCHASE" && purchasePayments.length > 1 ? (
+            <div className="col-span-2 md:col-span-3">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">
+                ช่องทางจ่ายเงิน ({purchasePayments.length} ช่องทาง)
+              </p>
+              <div className="space-y-1">
+                {purchasePayments.map((payment, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-1.5 dark:border-white/10"
+                  >
+                    <span className="font-medium text-gray-900 dark:text-slate-100">
+                      {payment.cashBankAccount.name}
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                        {payment.cashBankAccount.type === "BANK"
+                          ? payment.cashBankAccount.bankName ?? "ธนาคาร"
+                          : "เงินสด"}
+                        {payment.cashBankAccount.accountNo ? ` | ${payment.cashBankAccount.accountNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                      {Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน / ช่องทางชำระ</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
+                {purchase.purchaseType === "CASH_PURCHASE"
+                  ? `${purchase.cashBankAccount?.name ?? "-"} / ${paymentMethodLabel[purchase.paymentMethod] ?? purchase.paymentMethod}`
+                  : "-"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{purchase.user?.name ?? "-"}</p>

@@ -77,7 +77,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   // fans out — gets its own pooled connection, so they run in parallel instead of
   // being serialized onto a single pinned client (which both emitted the pg
   // "client.query() while already executing" warning and slowed the page).
-  const [receipt, contents, primaryTransferAccount] = await Promise.all([
+  const [receipt, contents, primaryTransferAccount, receiptPayments] = await Promise.all([
     db.receipt.findUnique({
       where: { id },
       include: {
@@ -104,6 +104,14 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         name: true,
         bankName: true,
         accountNo: true,
+      },
+    }),
+    db.documentPayment.findMany({
+      where: { docType: "RECEIPT", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, code: true, type: true, bankName: true, accountNo: true } },
       },
     }),
   ]);
@@ -220,7 +228,32 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               <p className="mb-1 text-gray-500 dark:text-slate-400">ช่องทางชำระ</p>
               <p className="font-medium text-gray-900 dark:text-slate-100">{paymentMethodLabel[receipt.paymentMethod]}</p>
             </div>
-            {receivedTransferAccount ? (
+            {receiptPayments.length > 1 ? (
+              <div className="col-span-2 md:col-span-3">
+                <p className="mb-1 text-gray-500 dark:text-slate-400">ช่องทางรับเงิน ({receiptPayments.length} ช่องทาง)</p>
+                <div className="space-y-1">
+                  {receiptPayments.map((payment, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-1.5 text-sm dark:border-white/10"
+                    >
+                      <span className="font-medium text-gray-900 dark:text-slate-100">
+                        {payment.cashBankAccount.name}
+                        <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                          {payment.cashBankAccount.type === "BANK"
+                            ? payment.cashBankAccount.bankName ?? "ธนาคาร"
+                            : "เงินสด"}
+                          {payment.cashBankAccount.accountNo ? ` | ${payment.cashBankAccount.accountNo}` : ""}
+                        </span>
+                      </span>
+                      <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                        {Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : receivedTransferAccount ? (
               <div>
                 <p className="mb-1 text-gray-500 dark:text-slate-400">บัญชีรับโอน</p>
                 <p className="font-medium text-gray-900 dark:text-slate-100">
@@ -334,6 +367,13 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         }}
         signerDisplayName={signerDisplayName}
         receivedTransferAccount={receivedTransferAccount}
+        payments={receiptPayments.map((payment) => ({
+          accountName: payment.cashBankAccount.name,
+          accountType: payment.cashBankAccount.type,
+          bankName: payment.cashBankAccount.bankName,
+          accountNo: payment.cashBankAccount.accountNo,
+          amount: Number(payment.amount),
+        }))}
         verify={verify}
         rootId="receipt"
       />

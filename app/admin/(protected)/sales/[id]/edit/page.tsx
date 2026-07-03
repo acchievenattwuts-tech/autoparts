@@ -48,6 +48,12 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   if (!sale) notFound();
   if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
 
+  const salePayments = await db.documentPayment.findMany({
+    where: { docType: "SALE", docId: id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: { cashBankAccountId: true, amount: true },
+  });
+
   const mutationBlock = await checkDocumentMutation("Sale", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
@@ -197,6 +203,10 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     paymentType:     sale.paymentType as "CASH_SALE" | "CREDIT_SALE",
     paymentMethod:   sale.paymentMethod ?? "",
     cashBankAccountId: sale.cashBankAccountId ?? "",
+    payments: salePayments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: Number(payment.amount),
+    })),
     fulfillmentType: sale.fulfillmentType as "PICKUP" | "DELIVERY",
     shippingAddress: sale.shippingAddress ?? "",
     shippingFee:     Number(sale.shippingFee ?? 0),

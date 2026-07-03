@@ -99,6 +99,30 @@ export async function resolveSalePaymentMethod(
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
+/**
+ * Multi-channel variant: derive the sale's payment method label from a set of
+ * split-payment accounts (all cash → CASH, any bank → TRANSFER). Returns null
+ * when there are no channels (e.g. credit sale).
+ */
+export async function resolveSalePaymentMethodFromAccounts(
+  tx: SaleCoreTxClient,
+  accountIds: string[],
+): Promise<PaymentMethod | null> {
+  const uniqueIds = [...new Set(accountIds)];
+  if (uniqueIds.length === 0) return null;
+
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { type: true },
+  });
+  if (accounts.length !== uniqueIds.length) {
+    throw new Error("ไม่พบบัญชีรับเงิน");
+  }
+
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
 export async function assertLotBalanceAvailable(
   tx: SaleCoreTxClient,
   productId: string,

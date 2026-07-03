@@ -36,10 +36,15 @@ const EditSupplierPaymentPage = async ({
     return <div className="rounded-xl bg-white p-8 text-center text-gray-500 shadow-sm">ไม่พบเอกสาร</div>;
   }
 
-  const [suppliers, cashBankAccounts, initialDocuments] = await Promise.all([
+  const [suppliers, cashBankAccounts, initialDocuments, paymentPayments] = await Promise.all([
     getSupplierPaymentSupplierOptions(payment.supplierId),
     getActiveCashBankAccountOptions(),
     getOutstandingSupplierDocuments(payment.supplierId, payment.id),
+    db.documentPayment.findMany({
+      where: { docType: "SUPPLIER_PAYMENT", docId: payment.id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
   ]);
 
   return (
@@ -69,6 +74,10 @@ const EditSupplierPaymentPage = async ({
           supplierId: payment.supplierId,
       paymentDate: formatDateOnlyForInput(payment.paymentDate),
           cashBankAccountId: payment.cashBankAccountId ?? "",
+          payments: paymentPayments.map((row) => ({
+            cashBankAccountId: row.cashBankAccountId,
+            amount: Number(row.amount),
+          })),
           note: payment.note ?? "",
           items: payment.items.map((item) => ({
             kind: item.purchaseId

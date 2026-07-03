@@ -51,7 +51,17 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
   });
 
   if (!cn) notFound();
-  const activityEvents = await getDocumentActivityTimeline("CreditNote", cn.id);
+  const [activityEvents, cnPayments] = await Promise.all([
+    getDocumentActivityTimeline("CreditNote", cn.id),
+    db.documentPayment.findMany({
+      where: { docType: "CN_SALE", docId: cn.id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    }),
+  ]);
 
   return (
     <div>
@@ -114,6 +124,30 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
               {cn.refundMethod && ` (${refundMethodLabel[cn.refundMethod]})`}
             </p>
           </div>
+          {cnPayments.length > 1 && (
+            <div className="col-span-2 md:col-span-3">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">ช่องทางจ่ายเงิน (คืนเงิน) — {cnPayments.length} ช่องทาง</p>
+              <div className="space-y-1">
+                {cnPayments.map((row, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-1.5 dark:border-white/10"
+                  >
+                    <span className="font-medium text-gray-900 dark:text-slate-100">
+                      {row.cashBankAccount.name}
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                        {row.cashBankAccount.type === "BANK" ? row.cashBankAccount.bankName ?? "ธนาคาร" : "เงินสด"}
+                        {row.cashBankAccount.accountNo ? ` | ${row.cashBankAccount.accountNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                      {Number(row.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {cn.sale && (
             <div>
               <p className="mb-0.5 text-gray-500 dark:text-slate-400">อ้างอิงใบขาย</p>

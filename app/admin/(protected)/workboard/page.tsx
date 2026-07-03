@@ -169,7 +169,7 @@ const WorkboardPage = async () => {
             href="/admin/customers?source=LINE_LIFF"
             count={data.incompleteLineCustomers.count}
             tone="emerald"
-            summary="ลูกค้าที่สมัครผ่าน LINE แล้ว แต่ยังขาดที่อยู่จัดส่งหรือเลขผู้เสียภาษี"
+            summary="ลูกค้าที่สมัครผ่าน LINE แล้ว แต่ยังขาดที่อยู่จัดส่ง"
           >
             {data.incompleteLineCustomers.items.length === 0 ? (
               <EmptyState />
@@ -191,11 +191,6 @@ const WorkboardPage = async () => {
                           {item.missingShippingAddress ? (
                             <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
                               ขาดที่อยู่จัดส่ง
-                            </span>
-                          ) : null}
-                          {item.missingTaxId ? (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
-                              ขาดเลขผู้เสียภาษี
                             </span>
                           ) : null}
                         </div>

@@ -16,9 +16,19 @@ import {
   AuditAction,
   CashBankDirection,
   CashBankSourceType,
+  DocumentPaymentDocType,
   PaymentMethod,
 } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { recalculateSupplierAdvanceAmountRemain } from "@/lib/amount-remain";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -26,24 +36,47 @@ const supplierAdvanceSchema = z.object({
   supplierId: z.string().min(1, "กรุณาเลือกซัพพลายเออร์"),
   advanceDate: z.string().min(1, "กรุณาระบุวันที่"),
   totalAmount: z.coerce.number().positive("ยอดเงินมัดจำต้องมากกว่า 0"),
-  cashBankAccountId: z.string().min(1, "กรุณาเลือกบัญชีจ่ายเงิน"),
   note: z.string().max(500).optional(),
 });
 
 async function resolveSupplierAdvancePaymentMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  accountId: string,
+  payments: DocumentPaymentRow[],
 ): Promise<PaymentMethod> {
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
 
-  if (!account) {
+  if (accounts.length !== accountIds.length) {
     throw new Error("ไม่พบบัญชีจ่ายเงินที่เลือก");
   }
 
-  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+}
+
+/** Parse + validate advance payment channels (always requires full cash out). */
+function parseAdvancePayments(
+  formData: FormData,
+  totalAmount: number,
+): { ok: true; payments: DocumentPaymentRow[] } | { ok: false; error: string } {
+  let payments: DocumentPaymentRow[];
+  try {
+    payments = parseDocumentPaymentRows(formData.get("payments"));
+  } catch {
+    return { ok: false, error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  if (payments.length === 0) {
+    return { ok: false, error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  }
+  try {
+    assertPaymentsMatchTotal(payments, totalAmount);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  return { ok: true, payments };
 }
 
 async function getActiveSupplierPaymentRefs(advanceId: string): Promise<string[]> {
@@ -61,17 +94,24 @@ async function getActiveSupplierPaymentRefs(advanceId: string): Promise<string[]
 }
 
 async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
-  const advance = await db.supplierAdvance.findUnique({
-    where: { id: advanceId },
-    include: {
-      supplier: {
-        select: {
-          code: true,
-          name: true,
+  const [advance, payments] = await Promise.all([
+    db.supplierAdvance.findUnique({
+      where: { id: advanceId },
+      include: {
+        supplier: {
+          select: {
+            code: true,
+            name: true,
+          },
         },
       },
-    },
-  });
+    }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.SUPPLIER_ADVANCE, docId: advanceId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!advance) return null;
 
@@ -89,6 +129,10 @@ async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
     note: advance.note,
     cancelNote: advance.cancelNote,
     cancelledAt: advance.cancelledAt,
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
+    })),
   };
 }
 
@@ -106,7 +150,6 @@ export async function createSupplierAdvance(
       supplierId: formData.get("supplierId"),
       advanceDate: formData.get("advanceDate"),
       totalAmount: formData.get("totalAmount"),
-      cashBankAccountId: formData.get("cashBankAccountId"),
       note: formData.get("note") || undefined,
     });
   } catch (error) {
@@ -116,6 +159,11 @@ export async function createSupplierAdvance(
     return { success: false, error: "ข้อมูลไม่ถูกต้อง" };
   }
 
+  const paymentsResult = parseAdvancePayments(formData, parsed.totalAmount);
+  if (!paymentsResult.ok) return { success: false, error: paymentsResult.error };
+  const payments = paymentsResult.payments;
+  const primaryAccountId = derivePrimaryAccountId(payments);
+
   const advanceDate = parseDateOnlyToDate(parsed.advanceDate);
   const advanceNo = await generateSupplierAdvanceNo(advanceDate);
   let createdAdvanceId = "";
@@ -123,7 +171,7 @@ export async function createSupplierAdvance(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
-      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, parsed.cashBankAccountId);
+      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments);
 
       const advance = await tx.supplierAdvance.create({
         data: {
@@ -135,25 +183,28 @@ export async function createSupplierAdvance(
           amountRemain: parsed.totalAmount,
           paymentMethod,
           note: parsed.note?.trim() || null,
-          cashBankAccountId: parsed.cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
         },
       });
       createdAdvanceId = advance.id;
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SUPPLIER_ADVANCE,
+        advance.id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SUPPLIER_ADVANCE,
         advance.id,
-        [
-          {
-            accountId: parsed.cashBankAccountId,
-            txnDate: advanceDate,
-            direction: CashBankDirection.OUT,
-            amount: parsed.totalAmount,
-            referenceNo: advanceNo,
-            note: parsed.note?.trim() || null,
-          },
-        ],
+        toCashBankEntries(payments, {
+          txnDate: advanceDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: advanceNo,
+          note: parsed.note?.trim() || null,
+        }),
       );
     });
 
@@ -221,7 +272,6 @@ export async function updateSupplierAdvance(
       supplierId: formData.get("supplierId"),
       advanceDate: formData.get("advanceDate"),
       totalAmount: formData.get("totalAmount"),
-      cashBankAccountId: formData.get("cashBankAccountId"),
       note: formData.get("note") || undefined,
     });
   } catch (error) {
@@ -231,13 +281,18 @@ export async function updateSupplierAdvance(
     return { error: "ข้อมูลไม่ถูกต้อง" };
   }
 
+  const paymentsResult = parseAdvancePayments(formData, parsed.totalAmount);
+  if (!paymentsResult.ok) return { error: paymentsResult.error };
+  const payments = paymentsResult.payments;
+  const primaryAccountId = derivePrimaryAccountId(payments);
+
   const advanceDate = parseDateOnlyToDate(parsed.advanceDate);
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, parsed.cashBankAccountId);
+      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments);
 
       await tx.supplierAdvance.update({
         where: { id },
@@ -247,7 +302,7 @@ export async function updateSupplierAdvance(
           totalAmount: parsed.totalAmount,
           paymentMethod,
           note: parsed.note?.trim() || null,
-          cashBankAccountId: parsed.cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
         },
       });
 
@@ -255,20 +310,23 @@ export async function updateSupplierAdvance(
       // blindly resetting to totalAmount (which would erase existing applications)
       await recalculateSupplierAdvanceAmountRemain(tx, id);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SUPPLIER_ADVANCE,
+        id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SUPPLIER_ADVANCE,
         id,
-        [
-          {
-            accountId: parsed.cashBankAccountId,
-            txnDate: advanceDate,
-            direction: CashBankDirection.OUT,
-            amount: parsed.totalAmount,
-            referenceNo: existing.advanceNo,
-            note: parsed.note?.trim() || null,
-          },
-        ],
+        toCashBankEntries(payments, {
+          txnDate: advanceDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: existing.advanceNo,
+          note: parsed.note?.trim() || null,
+        }),
       );
     });
 
@@ -342,6 +400,7 @@ export async function cancelSupplierAdvance(
     const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(advance.id);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_ADVANCE, advance.id);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_ADVANCE, advance.id);
       await tx.supplierAdvance.update({
         where: { id: advance.id },
         data: {

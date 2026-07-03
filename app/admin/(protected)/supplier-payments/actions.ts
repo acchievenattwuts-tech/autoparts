@@ -15,6 +15,7 @@ import {
   AuditAction,
   CashBankDirection,
   CashBankSourceType,
+  DocumentPaymentDocType,
   PaymentMethod,
   Prisma,
   PurchaseReturnSettlementType,
@@ -26,6 +27,15 @@ import {
   recalculateSupplierAdvanceAmountRemain,
 } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
 type TxClient = Prisma.TransactionClient;
@@ -99,19 +109,21 @@ function sumPaidAmount(items: Array<{ paidAmount: Prisma.Decimal | number }>): n
 
 async function resolveSupplierPaymentMethod(
   tx: TxClient,
-  accountId: string | undefined,
+  payments: DocumentPaymentRow[],
   totalCashPaid: number,
 ): Promise<PaymentMethod> {
   if (totalCashPaid <= 0) return PaymentMethod.CREDIT;
-  if (!accountId) throw new Error("กรุณาเลือกบัญชีจ่ายเงิน");
+  if (payments.length === 0) throw new Error("กรุณาเลือกบัญชีจ่ายเงิน");
 
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
 
-  if (!account) throw new Error("ไม่พบบัญชีจ่ายเงิน");
-  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+  if (accounts.length !== accountIds.length) throw new Error("ไม่พบบัญชีจ่ายเงิน");
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
 async function getAvailableSupplierDocuments(
@@ -347,7 +359,8 @@ async function recalculateAffectedDocuments(
 }
 
 async function getSupplierPaymentAuditSnapshot(paymentId: string) {
-  const payment = await db.supplierPayment.findUnique({
+  const [payment, payments] = await Promise.all([
+    db.supplierPayment.findUnique({
     where: { id: paymentId },
     include: {
       supplier: {
@@ -381,7 +394,13 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.SUPPLIER_PAYMENT, docId: paymentId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!payment) return null;
 
@@ -406,6 +425,10 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
       advanceId: item.advanceId,
       advanceNo: item.advance?.advanceNo ?? null,
       paidAmount: item.paidAmount,
+    })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
     })),
   };
 }
@@ -441,9 +464,24 @@ export async function createSupplierPayment(
   if (totalCashPaid < 0) {
     return { success: false, error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ" };
   }
-  if (totalCashPaid > 0 && !parsed.cashBankAccountId) {
-    return { success: false, error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+
+  let payments: DocumentPaymentRow[] = [];
+  if (totalCashPaid > 0) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { success: false, error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { success: false, error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, totalCashPaid);
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
   }
+  const primaryAccountId = derivePrimaryAccountId(payments);
 
   const paymentDate = parseDateOnlyToDate(parsed.paymentDate);
   const paymentNo = await generateSupplierPaymentNo(paymentDate);
@@ -456,7 +494,7 @@ export async function createSupplierPayment(
       const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
       if (validationError) throw new Error(validationError);
 
-      const paymentMethod = await resolveSupplierPaymentMethod(tx, parsed.cashBankAccountId, totalCashPaid);
+      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid);
       const payment = await tx.supplierPayment.create({
         data: {
           paymentNo,
@@ -466,7 +504,7 @@ export async function createSupplierPayment(
           totalAmount: totalCashPaid,
           paymentMethod,
           note: parsed.note?.trim() || null,
-          cashBankAccountId: totalCashPaid > 0 ? parsed.cashBankAccountId ?? null : null,
+          cashBankAccountId: primaryAccountId,
         },
       });
       createdPaymentId = payment.id;
@@ -483,22 +521,23 @@ export async function createSupplierPayment(
       });
 
       await recalculateAffectedDocuments(tx, collectAffectedIds(parsed.items));
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SUPPLIER_PAYMENT,
+        payment.id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SUPPLIER_PAYMENT,
         payment.id,
-        totalCashPaid > 0 && parsed.cashBankAccountId
-          ? [
-              {
-                accountId: parsed.cashBankAccountId,
-                txnDate: paymentDate,
-                direction: CashBankDirection.OUT,
-                amount: totalCashPaid,
-                referenceNo: paymentNo,
-                note: parsed.note?.trim() || null,
-              },
-            ]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: paymentDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: paymentNo,
+          note: parsed.note?.trim() || null,
+        }),
       );
     });
 
@@ -567,9 +606,24 @@ export async function updateSupplierPayment(
   if (totalCashPaid < 0) {
     return { error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ" };
   }
-  if (totalCashPaid > 0 && !parsed.cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+
+  let payments: DocumentPaymentRow[] = [];
+  if (totalCashPaid > 0) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, totalCashPaid);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
   }
+  const primaryAccountId = derivePrimaryAccountId(payments);
 
   const oldAffectedIds = collectAffectedIds(existing.items);
   const newAffectedIds = collectAffectedIds(parsed.items);
@@ -588,7 +642,7 @@ export async function updateSupplierPayment(
       const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
       if (validationError) throw new Error(validationError);
 
-      const paymentMethod = await resolveSupplierPaymentMethod(tx, parsed.cashBankAccountId, totalCashPaid);
+      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid);
 
       await tx.supplierPaymentItem.deleteMany({ where: { paymentId: id } });
       await tx.supplierPayment.update({
@@ -599,7 +653,7 @@ export async function updateSupplierPayment(
           totalAmount: totalCashPaid,
           paymentMethod,
           note: parsed.note?.trim() || null,
-          cashBankAccountId: totalCashPaid > 0 ? parsed.cashBankAccountId ?? null : null,
+          cashBankAccountId: primaryAccountId,
         },
       });
 
@@ -615,22 +669,23 @@ export async function updateSupplierPayment(
       });
 
       await recalculateAffectedDocuments(tx, allAffectedIds);
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.SUPPLIER_PAYMENT,
+        id,
+        CashBankDirection.OUT,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.SUPPLIER_PAYMENT,
         id,
-        totalCashPaid > 0 && parsed.cashBankAccountId
-          ? [
-              {
-                accountId: parsed.cashBankAccountId,
-                txnDate: paymentDate,
-                direction: CashBankDirection.OUT,
-                amount: totalCashPaid,
-                referenceNo: existing.paymentNo,
-                note: parsed.note?.trim() || null,
-              },
-            ]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: paymentDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: existing.paymentNo,
+          note: parsed.note?.trim() || null,
+        }),
       );
     });
 
@@ -705,6 +760,7 @@ export async function cancelSupplierPayment(
     const beforeSnapshot = await getSupplierPaymentAuditSnapshot(payment.id);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_PAYMENT, payment.id);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_PAYMENT, payment.id);
       await tx.supplierPayment.update({
         where: { id: payment.id },
         data: {

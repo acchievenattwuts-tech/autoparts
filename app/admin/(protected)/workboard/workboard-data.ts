@@ -104,7 +104,6 @@ export type IncompleteLineCustomerItem = {
   phone: string | null;
   lineLinkedAt: Date | null;
   missingShippingAddress: boolean;
-  missingTaxId: boolean;
 };
 
 export type WorkboardData = {
@@ -582,7 +581,7 @@ async function queryIncompleteLineCustomers() {
   const where = {
     isActive: true,
     source: "LINE_LIFF" as const,
-    OR: [{ shippingAddress: null }, { shippingAddress: "" }, { taxId: null }, { taxId: "" }],
+    OR: [{ shippingAddress: null }, { shippingAddress: "" }],
   };
 
   const [count, rows] = await Promise.all([
@@ -597,7 +596,6 @@ async function queryIncompleteLineCustomers() {
         name: true,
         phone: true,
         shippingAddress: true,
-        taxId: true,
         lineLinkedAt: true,
       },
     }),
@@ -612,7 +610,6 @@ async function queryIncompleteLineCustomers() {
       phone: row.phone,
       lineLinkedAt: row.lineLinkedAt,
       missingShippingAddress: !row.shippingAddress,
-      missingTaxId: !row.taxId,
     })),
   };
 }

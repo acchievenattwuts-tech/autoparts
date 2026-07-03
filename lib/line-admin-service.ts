@@ -16,6 +16,12 @@ import { buildLineConversationStatePatch } from "@/lib/line-conversation-service
 const DEFAULT_TAKE = 30;
 const MAX_TAKE = 100;
 
+type LineConversationCustomerSummary = {
+  id: string;
+  name: string;
+  phone: string | null;
+};
+
 function normalizeTake(value?: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_TAKE;
   return Math.min(MAX_TAKE, Math.max(1, Math.trunc(value)));
@@ -41,11 +47,44 @@ function absoluteAppUrl(url: string): string {
   return `${getAppBaseUrl()}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
+async function getFallbackCustomersByLineUserIds(lineUserIds: string[]) {
+  const unresolvedLineUserIds = Array.from(new Set(lineUserIds.filter(Boolean)));
+  if (unresolvedLineUserIds.length === 0) {
+    return new Map<string, LineConversationCustomerSummary>();
+  }
+
+  const customers = await db.customer.findMany({
+    where: {
+      isActive: true,
+      lineUserId: { in: unresolvedLineUserIds },
+    },
+    select: {
+      id: true,
+      lineUserId: true,
+      name: true,
+      phone: true,
+    },
+  });
+
+  return new Map(
+    customers
+      .filter((customer): customer is typeof customer & { lineUserId: string } => Boolean(customer.lineUserId))
+      .map((customer) => [
+        customer.lineUserId,
+        {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+        },
+      ]),
+  );
+}
+
 export async function listLineConversations(input: {
   status?: LineConversationAiStatus | null;
   take?: number | null;
 }) {
-  return db.lineConversation.findMany({
+  const conversations = await db.lineConversation.findMany({
     where: input.status ? { aiStatus: input.status } : undefined,
     select: {
       id: true,
@@ -88,13 +127,22 @@ export async function listLineConversations(input: {
     ],
     take: normalizeTake(input.take),
   });
+
+  const fallbackCustomersByLineUserId = await getFallbackCustomersByLineUserIds(
+    conversations.filter((conversation) => !conversation.customer).map((conversation) => conversation.lineUserId),
+  );
+
+  return conversations.map((conversation) => ({
+    ...conversation,
+    customer: conversation.customer ?? fallbackCustomersByLineUserId.get(conversation.lineUserId) ?? null,
+  }));
 }
 
 export async function getLineConversationMessages(input: {
   conversationId: string;
   take?: number | null;
 }) {
-  const conversation = await db.lineConversation.findUnique({
+  const conversationRecord = await db.lineConversation.findUnique({
     where: { id: input.conversationId },
     select: {
       id: true,
@@ -107,7 +155,19 @@ export async function getLineConversationMessages(input: {
     },
   });
 
-  if (!conversation) return null;
+  if (!conversationRecord) return null;
+
+  const fallbackCustomer =
+    conversationRecord.customer ??
+    (await db.customer.findUnique({
+      where: { lineUserId: conversationRecord.lineUserId },
+      select: { id: true, name: true, phone: true },
+    }));
+
+  const conversation = {
+    ...conversationRecord,
+    customer: fallbackCustomer,
+  };
 
   const latestMessages = await db.lineMessage.findMany({
     where: { conversationId: input.conversationId },

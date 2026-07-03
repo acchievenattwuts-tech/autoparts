@@ -17,18 +17,28 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const canUpdate = hasPermissionAccess(role, permissions, "expenses.update");
   const { id } = await params;
 
-  const expense = await db.expense.findUnique({
-    where: { id },
-    include: {
-      user: { select: { name: true } },
-      items: {
-        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
-        include: {
-          expenseCode: { select: { code: true, name: true } },
+  const [expense, expensePayments] = await Promise.all([
+    db.expense.findUnique({
+      where: { id },
+      include: {
+        user: { select: { name: true } },
+        items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+          include: {
+            expenseCode: { select: { code: true, name: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    db.documentPayment.findMany({
+      where: { docType: "EXPENSE", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    }),
+  ]);
 
   if (!expense) notFound();
   const activityEvents = await getDocumentActivityTimeline("Expense", expense.id);
@@ -91,6 +101,34 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{expense.user?.name ?? "-"}</p>
           </div>
+          {expensePayments.length > 0 && (
+            <div className="col-span-2 md:col-span-3">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">
+                ช่องทางจ่ายเงิน{expensePayments.length > 1 ? ` (${expensePayments.length} ช่องทาง)` : ""}
+              </p>
+              <div className="space-y-1">
+                {expensePayments.map((payment, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-1.5 dark:border-white/10"
+                  >
+                    <span className="font-medium text-gray-900 dark:text-slate-100">
+                      {payment.cashBankAccount.name}
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                        {payment.cashBankAccount.type === "BANK"
+                          ? payment.cashBankAccount.bankName ?? "ธนาคาร"
+                          : "เงินสด"}
+                        {payment.cashBankAccount.accountNo ? ` | ${payment.cashBankAccount.accountNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                      {Number(payment.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {expense.note && (
             <div className="col-span-2 md:col-span-3">
               <p className="mb-0.5 text-gray-500 dark:text-slate-400">หมายเหตุ</p>

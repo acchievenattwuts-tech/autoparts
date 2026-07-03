@@ -50,6 +50,12 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
   if (!advance) notFound();
   if (advance.status === "CANCELLED") redirect(`/admin/supplier-advances/${id}`);
 
+  const advancePayments = await db.documentPayment.findMany({
+    where: { docType: "SUPPLIER_ADVANCE", docId: id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: { cashBankAccountId: true, amount: true },
+  });
+
   const mutationBlock = await checkDocumentMutation("SupplierAdvance", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
@@ -88,6 +94,10 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
       advanceDate: formatDateOnlyForInput(advance.advanceDate),
           totalAmount: Number(advance.totalAmount),
           cashBankAccountId: advance.cashBankAccountId ?? "",
+          payments: advancePayments.map((row) => ({
+            cashBankAccountId: row.cashBankAccountId,
+            amount: Number(row.amount),
+          })),
           note: advance.note ?? "",
         }}
       />

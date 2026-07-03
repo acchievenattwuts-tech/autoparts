@@ -16,7 +16,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const { id } = await params;
 
-  const [expense, expenseCodes, config, cashBankAccounts] = await Promise.all([
+  const [expense, expenseCodes, config, cashBankAccounts, expensePayments] = await Promise.all([
     db.expense.findUnique({
       where: { id },
       include: {
@@ -29,6 +29,11 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     getActiveExpenseCodeOptions(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
+    db.documentPayment.findMany({
+      where: { docType: "EXPENSE", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
   ]);
 
   if (!expense) notFound();
@@ -38,6 +43,10 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     id,
       expenseDate: formatDateOnlyForInput(expense.expenseDate),
     cashBankAccountId: expense.cashBankAccountId ?? "",
+    payments: expensePayments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: Number(payment.amount),
+    })),
     vatType:     expense.vatType,
     vatRate:     Number(expense.vatRate),
     note:        expense.note ?? "",

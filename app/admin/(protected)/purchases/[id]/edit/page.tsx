@@ -47,6 +47,12 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   if (!purchase) notFound();
   if (purchase.status === "CANCELLED") redirect(`/admin/purchases/${id}`);
 
+  const purchasePayments = await db.documentPayment.findMany({
+    where: { docType: "PURCHASE", docId: id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: { cashBankAccountId: true, amount: true },
+  });
+
   const mutationBlock = await checkDocumentMutation("Purchase", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
@@ -106,6 +112,10 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     supplierId: purchase.supplierId ?? "",
     purchaseType: purchase.purchaseType,
     cashBankAccountId: purchase.cashBankAccountId ?? "",
+    payments: purchasePayments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: Number(payment.amount),
+    })),
     referenceNo: purchase.referenceNo ?? "",
     discount: Number(purchase.discount),
     shippingFee: Number(purchase.shippingFee),

@@ -25,8 +25,17 @@ import { Prisma } from "@/lib/generated/prisma";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
-import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
+import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { refreshProductPurchaseLastFields } from "@/lib/product-purchase-last";
 
@@ -282,25 +291,28 @@ async function preloadPurchaseDependencies(
 async function resolvePurchasePaymentMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   purchaseType: PurchaseType,
-  accountId: string | undefined,
+  payments: DocumentPaymentRow[],
 ): Promise<PaymentMethod> {
   if (purchaseType === PurchaseType.CREDIT_PURCHASE) {
     return PaymentMethod.CREDIT;
   }
 
-  if (!accountId) {
+  if (payments.length === 0) {
     throw new Error("ไม่พบบัญชีจ่ายเงิน");
   }
 
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
-  if (!account) {
+  if (accounts.length !== accountIds.length) {
     throw new Error("ไม่พบบัญชีจ่ายเงิน");
   }
 
-  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+  // Mixed channels: label as transfer unless every channel is cash.
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
 async function refreshLatestPurchaseStockCardBalance(
@@ -420,7 +432,8 @@ function derivePurchasePaymentStatus(purchaseType: PurchaseType): PurchasePaymen
 }
 
 async function getPurchaseAuditSnapshot(purchaseId: string) {
-  const purchase = await db.purchase.findUnique({
+  const [purchase, payments] = await Promise.all([
+    db.purchase.findUnique({
     where: { id: purchaseId },
     include: {
       supplier: {
@@ -450,7 +463,13 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.PURCHASE, docId: purchaseId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!purchase) return null;
 
@@ -492,6 +511,10 @@ async function getPurchaseAuditSnapshot(purchaseId: string) {
       subtotalAmount: item.subtotalAmount,
       moreDetail: item.moreDetail,
     })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
+    })),
   };
 }
 
@@ -523,7 +546,7 @@ export async function createPurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   // Calculate totals — landed adjustment = shippingFee (raises cost) − discount (lowers cost),
   // allocated to lines by line value so MAVG reflects true net cost (IAS 2 compliant).
@@ -531,17 +554,26 @@ export async function createPurchase(
   const landedAllocations = allocateLandedByLineValue(validItems, shippingFee - discount);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
-  const resolvedCashBankAccountId =
-    purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
   const resolvedCreditTerm =
     purchaseType === PurchaseType.CREDIT_PURCHASE ? (creditTerm ?? null) : null;
 
-  if (purchaseType === PurchaseType.CASH_PURCHASE && !resolvedCashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  let payments: DocumentPaymentRow[] = [];
+  if (purchaseType === PurchaseType.CASH_PURCHASE) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
   }
-  if (false) {
-    return { error: "การชำระบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
-  }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
   const purchasePrefix = purchaseType === PurchaseType.CREDIT_PURCHASE ? "RRC" : "RR";
@@ -554,7 +586,7 @@ export async function createPurchase(
       const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
         tx,
         purchaseType,
-        resolvedCashBankAccountId,
+        payments,
       );
       const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
 
@@ -664,20 +696,24 @@ export async function createPurchase(
         validItems.map((item) => item.productId),
       );
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.PURCHASE,
+        purchase.id,
+        CashBankDirection.OUT,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.PURCHASE,
         purchase.id,
-        purchaseType === PurchaseType.CASH_PURCHASE && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: parseDateOnlyToDate(purchaseDate),
-              direction: CashBankDirection.OUT,
-              amount: netAmount,
-              referenceNo: purchaseNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: parseDateOnlyToDate(purchaseDate),
+          direction: CashBankDirection.OUT,
+          referenceNo: purchaseNo,
+          note: note ?? null,
+        }),
       );
     });
 
@@ -759,6 +795,7 @@ export async function cancelPurchase(
     const beforeSnapshot = await getPurchaseAuditSnapshot(purchaseId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.PURCHASE, purchaseId);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.PURCHASE, purchaseId);
       // Reverse Lot balances before deleting StockCard rows
       for (const item of purchase.items) {
         await reversePurchaseLotBalance(tx, item.id, item.productId);
@@ -875,23 +912,32 @@ export async function updatePurchase(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { supplierId, purchaseDate, purchaseType, cashBankAccountId, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
+  const { supplierId, purchaseDate, purchaseType, discount, shippingFee, note, referenceNo, vatType, vatRate, creditTerm, items: validItems } = parsed.data;
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.costPrice, 0);
   const landedAllocations = allocateLandedByLineValue(validItems, shippingFee - discount);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
-  const resolvedCashBankAccountId =
-    purchaseType === PurchaseType.CASH_PURCHASE ? cashBankAccountId : undefined;
   const resolvedCreditTerm =
     purchaseType === PurchaseType.CREDIT_PURCHASE ? (creditTerm ?? null) : null;
 
-  if (purchaseType === PurchaseType.CASH_PURCHASE && !resolvedCashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีจ่ายเงิน" };
+  let payments: DocumentPaymentRow[] = [];
+  if (purchaseType === PurchaseType.CASH_PURCHASE) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, netAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    }
   }
-  if (false) {
-    return { error: "การชำระบางส่วนของใบซื้อจะเปิดในรอบถัดไป กรุณาใช้ชำระเต็มหรือยังไม่ชำระก่อน" };
-  }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
@@ -1029,7 +1075,7 @@ export async function updatePurchase(
       const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
         tx,
         purchaseType,
-        resolvedCashBankAccountId,
+        payments,
       );
       const productIdsNeedingRecalc = new Set<string>();
 
@@ -1447,20 +1493,24 @@ export async function updatePurchase(
         new Set([...oldProductIds, ...validItems.map((item) => item.productId)]),
       );
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.PURCHASE,
+        id,
+        CashBankDirection.OUT,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.PURCHASE,
         id,
-        purchaseType === PurchaseType.CASH_PURCHASE && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: parseDateOnlyToDate(purchaseDate),
-              direction: CashBankDirection.OUT,
-              amount: netAmount,
-              referenceNo: existing.purchaseNo,
-              note: note ?? null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: parseDateOnlyToDate(purchaseDate),
+          direction: CashBankDirection.OUT,
+          referenceNo: existing.purchaseNo,
+          note: note ?? null,
+        }),
       );
     });
 

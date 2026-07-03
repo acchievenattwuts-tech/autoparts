@@ -17,6 +17,7 @@ import {
   CashBankDirection,
   CashBankSourceType,
   ClaimStockMovementType,
+  DocumentPaymentDocType,
   PurchaseReturnRefundMethod,
   PurchaseReturnSettlementType,
   PurchaseReturnType,
@@ -37,6 +38,15 @@ import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
@@ -289,19 +299,21 @@ const returnSchema = z.object({
 
 async function resolvePurchaseReturnRefundMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  accountId: string | undefined,
+  payments: DocumentPaymentRow[],
 ): Promise<PurchaseReturnRefundMethod | null> {
-  if (!accountId) return null;
+  if (payments.length === 0) return null;
 
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
-  if (!account) {
+  if (accounts.length !== accountIds.length) {
     throw new Error("ไม่พบบัญชีรับเงิน");
   }
 
-  return account.type === "CASH"
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash
     ? PurchaseReturnRefundMethod.CASH
     : PurchaseReturnRefundMethod.TRANSFER;
 }
@@ -551,7 +563,8 @@ async function validatePurchaseReturnClaim(
 }
 
 async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
-  const purchaseReturn = await db.purchaseReturn.findUnique({
+  const [purchaseReturn, payments] = await Promise.all([
+    db.purchaseReturn.findUnique({
     where: { id: purchaseReturnId },
     include: {
       purchase: {
@@ -584,7 +597,13 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.CN_PURCHASE, docId: purchaseReturnId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!purchaseReturn) return null;
 
@@ -621,6 +640,10 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
       subtotalAmount: item.subtotalAmount,
       detail: item.detail,
       moreDetail: item.moreDetail,
+    })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
     })),
   };
 }
@@ -662,16 +685,25 @@ export async function createPurchaseReturn(
     supplierId,
     type,
     settlementType,
-    cashBankAccountId,
     note,
     vatType,
     vatRate,
     items: validItems,
   } = parsed.data;
 
-  if (settlementType === PurchaseReturnSettlementType.CASH_REFUND && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  const isCashRefund = settlementType === PurchaseReturnSettlementType.CASH_REFUND;
+  let payments: DocumentPaymentRow[] = [];
+  if (isCashRefund) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+    }
   }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const docDate = parseDateOnlyToDate(returnDate);
   const returnNo = await generatePurchaseReturnNo(docDate);
@@ -686,9 +718,10 @@ export async function createPurchaseReturn(
       const lineData = await buildLineData(tx, validItems, vatType, vatRate);
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
-      const resolvedCashBankAccountId =
-        settlementType === PurchaseReturnSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
-      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, resolvedCashBankAccountId);
+      if (isCashRefund) {
+        assertPaymentsMatchTotal(payments, netAmount);
+      }
+      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, payments);
 
       const purchaseReturn = await tx.purchaseReturn.create({
         data: {
@@ -745,22 +778,23 @@ export async function createPurchaseReturn(
         await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
       }
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.CN_PURCHASE,
+        purchaseReturn.id,
+        CashBankDirection.IN,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.CN_PURCHASE,
         purchaseReturn.id,
-        settlementType === PurchaseReturnSettlementType.CASH_REFUND && resolvedCashBankAccountId
-          ? [
-              {
-                accountId: resolvedCashBankAccountId,
-                txnDate: docDate,
-                direction: CashBankDirection.IN,
-                amount: netAmount,
-                referenceNo: returnNo,
-                note: note?.trim() || null,
-              },
-            ]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: returnNo,
+          note: note?.trim() || null,
+        }),
       );
     }, { timeout: 180_000 });
 
@@ -850,6 +884,7 @@ export async function cancelPurchaseReturn(
       }
 
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_PURCHASE, ret.id);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.CN_PURCHASE, ret.id);
 
       await tx.purchaseReturn.update({
         where: { id: ret.id },
@@ -960,16 +995,25 @@ export async function updatePurchaseReturn(
     supplierId,
     type,
     settlementType,
-    cashBankAccountId,
     note,
     vatType,
     vatRate,
     items: validItems,
   } = parsed.data;
 
-  if (settlementType === PurchaseReturnSettlementType.CASH_REFUND && !cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  const isCashRefund = settlementType === PurchaseReturnSettlementType.CASH_REFUND;
+  let payments: DocumentPaymentRow[] = [];
+  if (isCashRefund) {
+    try {
+      payments = parseDocumentPaymentRows(formData.get("payments"));
+    } catch {
+      return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
+    }
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+    }
   }
+  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const docDate = parseDateOnlyToDate(returnDate);
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
@@ -1119,9 +1163,10 @@ export async function updatePurchaseReturn(
 
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
-      const resolvedCashBankAccountId =
-        settlementType === PurchaseReturnSettlementType.CASH_REFUND ? cashBankAccountId : undefined;
-      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, resolvedCashBankAccountId);
+      if (isCashRefund) {
+        assertPaymentsMatchTotal(payments, netAmount);
+      }
+      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, payments);
 
       await tx.purchaseReturn.update({
         where: { id },
@@ -1196,22 +1241,23 @@ export async function updatePurchaseReturn(
 
       await recalculatePurchaseReturnAmountRemain(tx, id);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.CN_PURCHASE,
+        id,
+        CashBankDirection.IN,
+        payments,
+      );
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.CN_PURCHASE,
         id,
-        settlementType === PurchaseReturnSettlementType.CASH_REFUND && resolvedCashBankAccountId
-          ? [
-              {
-                accountId: resolvedCashBankAccountId,
-                txnDate: docDate,
-                direction: CashBankDirection.IN,
-                amount: netAmount,
-                referenceNo: existing.returnNo,
-                note: note?.trim() || null,
-              },
-            ]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: existing.returnNo,
+          note: note?.trim() || null,
+        }),
       );
     }, { timeout: 180_000 });
 

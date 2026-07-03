@@ -9,6 +9,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { listPaymentSlipsByCustomer } from "@/lib/line-payment-slip-repository";
 import { paymentSlipStatusLabel } from "@/lib/line-payment-slip-display";
 import { requirePermission } from "@/lib/require-auth";
+import { isLineCustomerProfileIncomplete } from "@/lib/line-customer-profile";
 import { formatDateThai } from "@/lib/th-date";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
@@ -164,7 +165,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               {customer.lineUserId ? (
               <AdminStatusBadge tone="success">ผูก LINE แล้ว</AdminStatusBadge>
               ) : null}
-              {customer.source === "LINE_LIFF" && (!customer.shippingAddress || !customer.taxId) ? (
+              {isLineCustomerProfileIncomplete(customer) ? (
               <AdminStatusBadge tone="warning">ข้อมูลยังไม่ครบ</AdminStatusBadge>
               ) : null}
             </div>

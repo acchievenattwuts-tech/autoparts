@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { createSupplierAdvance, updateSupplierAdvance } from "./actions";
 import { getThailandDateKey } from "@/lib/th-date";
 
@@ -30,6 +31,7 @@ type InitialData = {
   advanceDate: string;
   totalAmount: number;
   cashBankAccountId: string;
+  payments?: PaymentChannelRow[];
   note: string;
 };
 
@@ -54,7 +56,13 @@ const SupplierAdvanceForm = ({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [advanceDate, setAdvanceDate] = useState(
     initialData?.advanceDate ?? getThailandDateKey(),
   );
@@ -65,15 +73,6 @@ const SupplierAdvanceForm = ({
     id: supplier.id,
     label: supplier.name,
     sublabel: [supplier.code, supplier.phone].filter(Boolean).join(" | ") || undefined,
-  }));
-
-  const accountOptions: SelectOption[] = cashBankAccounts.map((account) => ({
-    id: account.id,
-    label: account.name,
-    sublabel:
-      [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo]
-        .filter(Boolean)
-        .join(" | ") || undefined,
   }));
 
   const handleSubmit = () => {
@@ -94,8 +93,13 @@ const SupplierAdvanceForm = ({
       setError("ยอดเงินมัดจำต้องมากกว่า 0");
       return;
     }
-    if (!cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีจ่ายเงิน");
+
+    const activePayments = payments.filter((row) => row.amount > 0);
+    if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+    if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+    const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+    if (Math.abs(paymentsTotal - totalAmount) > 0.005) {
+      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดเงินมัดจำ (${totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
       return;
     }
 
@@ -103,7 +107,10 @@ const SupplierAdvanceForm = ({
     formData.set("supplierId", supplierId);
     formData.set("advanceDate", advanceDate);
     formData.set("totalAmount", String(totalAmount));
-    formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set(
+      "payments",
+      JSON.stringify(activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))),
+    );
     formData.set("note", note);
 
     startTransition(async () => {
@@ -175,17 +182,16 @@ const SupplierAdvanceForm = ({
           </div>
 
           <div>
-            <label className={labelCls}>
-              บัญชีจ่ายเงิน <span className="text-red-500">*</span>
-            </label>
-            <SearchableSelect
-              options={accountOptions}
-              value={cashBankAccountId}
-              onChange={setCashBankAccountId}
+            <PaymentChannelsInput
+              accounts={cashBankAccounts}
+              value={payments}
+              onChange={setPayments}
+              targetAmount={totalAmount}
+              label="ช่องทางจ่ายเงิน"
               placeholder="โปรดระบุบัญชีจ่ายเงิน"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-              ระบบจะลงรายการเงินออกจากบัญชีนี้ให้อัตโนมัติ
+              ระบบจะลงรายการเงินออกจากบัญชีเหล่านี้ให้อัตโนมัติ
             </p>
           </div>
 

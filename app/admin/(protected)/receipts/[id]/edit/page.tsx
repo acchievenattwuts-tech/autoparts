@@ -16,7 +16,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const { id } = await params;
 
-  const [receipt, cashBankAccounts] = await Promise.all([
+  const [receipt, cashBankAccounts, receiptPayments] = await Promise.all([
     db.receipt.findUnique({
       where: { id },
       include: {
@@ -47,6 +47,11 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       },
     }),
     getActiveCashBankAccountOptions(),
+    db.documentPayment.findMany({
+      where: { docType: "RECEIPT", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
   ]);
 
   if (!receipt) notFound();
@@ -173,6 +178,10 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       receiptDate:   formatDateOnlyForInput(receipt.receiptDate),
     paymentMethod: receipt.paymentMethod as "CASH" | "TRANSFER",
     cashBankAccountId: receipt.cashBankAccountId ?? "",
+    payments: receiptPayments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: Number(payment.amount),
+    })),
     note:          receipt.note ?? "",
     items: [
       // Sale items

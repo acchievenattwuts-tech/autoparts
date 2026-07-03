@@ -8,6 +8,7 @@ import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
@@ -70,6 +71,7 @@ interface InitialData {
   settlementType: "CASH_REFUND" | "CREDIT_DEBT";
   refundMethod: "CASH" | "TRANSFER";
   cashBankAccountId: string;
+  payments?: PaymentChannelRow[];
   note: string;
   vatType: string;
   vatRate: number;
@@ -113,8 +115,13 @@ const CreditNoteForm = ({
   const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
   const [cnType, setCnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
-  const [refundMethod, setRefundMethod] = useState<"CASH" | "TRANSFER">(initialData?.refundMethod ?? "CASH");
-  const [cashBankAccountId, setCashBankAccountId] = useState(initialData?.cashBankAccountId ?? "");
+  const [payments, setPayments] = useState<PaymentChannelRow[]>(
+    initialData?.payments && initialData.payments.length > 0
+      ? initialData.payments
+      : initialData?.cashBankAccountId
+        ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
+        : [{ cashBankAccountId: "", amount: 0 }],
+  );
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
@@ -308,9 +315,17 @@ const CreditNoteForm = ({
       }
     }
 
-    if (settlementType === "CASH_REFUND" && !cashBankAccountId) {
-      setError("กรุณาเลือกบัญชีจ่ายเงิน");
-      return;
+    let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
+    if (settlementType === "CASH_REFUND") {
+      const activePayments = payments.filter((row) => row.amount > 0);
+      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
+      const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+      if (Math.abs(paymentsTotal - netAmount) > 0.005) {
+        setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดคืนเงินสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+        return;
+      }
+      submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
     }
 
     const form = e.currentTarget;
@@ -318,7 +333,7 @@ const CreditNoteForm = ({
     formData.set("customerId", customerId);
     formData.set("customerName", customerName);
     formData.set("items", JSON.stringify(items));
-    formData.set("cashBankAccountId", cashBankAccountId);
+    formData.set("payments", JSON.stringify(submitPayments));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -388,7 +403,6 @@ const CreditNoteForm = ({
           <div>
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />
-            <input type="hidden" name="refundMethod" value={settlementType === "CASH_REFUND" ? refundMethod : ""} />
             <div className="flex rounded-lg border border-gray-300 overflow-hidden dark:border-white/20">
               <button
                 type="button"
@@ -412,20 +426,15 @@ const CreditNoteForm = ({
           </div>
           {settlementType === "CASH_REFUND" ? (
             <div>
-              <label className={labelCls}>
-                บัญชีจ่ายเงิน <span className="text-red-500">*</span>
-              </label>
-              <SearchableSelect
-                options={cashBankAccounts.map((account): SelectOption => ({
-                  id: account.id,
-                  label: account.name,
-                  sublabel: [account.code, account.type === "BANK" ? account.bankName : "เงินสด", account.accountNo].filter(Boolean).join(" | ") || undefined,
-                }))}
-                value={cashBankAccountId}
-                onChange={setCashBankAccountId}
+              <PaymentChannelsInput
+                accounts={cashBankAccounts}
+                value={payments}
+                onChange={setPayments}
+                targetAmount={netAmount}
+                label="ช่องทางจ่ายเงิน (คืนเงิน)"
                 placeholder="โปรดระบุบัญชีจ่ายเงิน"
               />
-              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะระบุช่องทางคืนเงินจากประเภทบัญชีให้อัตโนมัติ</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ระบบจะลงรายการเงินออกจากบัญชีเหล่านี้ให้อัตโนมัติ</p>
             </div>
           ) : (
             <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">

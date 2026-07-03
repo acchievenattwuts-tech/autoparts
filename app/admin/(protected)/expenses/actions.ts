@@ -10,10 +10,18 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { AuditAction, CashBankDirection, CashBankSourceType, VatType } from "@/lib/generated/prisma";
+import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, VatType } from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+} from "@/lib/document-payments";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -25,7 +33,6 @@ const expenseItemSchema = z.object({
 
 const expenseSchema = z.object({
   expenseDate: z.string().min(1, "กรุณาระบุวันที่"),
-  cashBankAccountId: z.string().min(1, "กรุณาเลือกบัญชีจ่ายเงิน"),
   vatType:     z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:     z.coerce.number().min(0).max(100).default(0),
   note:        z.string().max(500).optional(),
@@ -33,7 +40,8 @@ const expenseSchema = z.object({
 });
 
 async function getExpenseAuditSnapshot(expenseId: string) {
-  const expense = await db.expense.findUnique({
+  const [expense, payments] = await Promise.all([
+    db.expense.findUnique({
     where: { id: expenseId },
     include: {
       cashBankAccount: {
@@ -58,7 +66,13 @@ async function getExpenseAuditSnapshot(expenseId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.EXPENSE, docId: expenseId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!expense) {
     return null;
@@ -92,6 +106,10 @@ async function getExpenseAuditSnapshot(expenseId: string) {
       description: item.description,
       amount: item.amount,
     })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
+    })),
   };
 }
 
@@ -113,7 +131,6 @@ export async function createExpense(
 
   const parsed = expenseSchema.safeParse({
     expenseDate: formData.get("expenseDate"),
-    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:     formData.get("vatRate") || 0,
     note:        formData.get("note") || undefined,
@@ -125,6 +142,20 @@ export async function createExpense(
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate   = parseDateOnlyToDate(d.expenseDate);
+
+  let payments;
+  try {
+    payments = parseDocumentPaymentRows(formData.get("payments"));
+  } catch {
+    return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  if (payments.length === 0) return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  try {
+    assertPaymentsMatchTotal(payments, netAmount);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  const primaryAccountId = derivePrimaryAccountId(payments);
   const expenseNo = await generateExpenseNo(docDate);
 
   try {
@@ -134,7 +165,7 @@ export async function createExpense(
           expenseNo,
           expenseDate:    docDate,
           userId:         session.user.id!,
-          cashBankAccountId: d.cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
           totalAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
@@ -154,14 +185,25 @@ export async function createExpense(
       });
       createdExpenseId = expense.id;
 
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [{
-        accountId: d.cashBankAccountId,
-        txnDate: docDate,
-        direction: CashBankDirection.OUT,
-        amount: netAmount,
-        referenceNo: expenseNo,
-        note: d.note ?? null,
-      }]);
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.EXPENSE,
+        expense.id,
+        CashBankDirection.OUT,
+        payments,
+      );
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.EXPENSE,
+        expense.id,
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: expenseNo,
+          note: d.note ?? null,
+        }),
+      );
 
       await rebuildExpenseProfitFacts(tx, expense.id);
     });
@@ -218,6 +260,7 @@ export async function cancelExpense(
     const beforeSnapshot = await getExpenseAuditSnapshot(expenseId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.EXPENSE, expenseId);
       await tx.expense.update({
         where: { id: expenseId },
         data:  { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
@@ -278,7 +321,6 @@ export async function updateExpense(
 
   const parsed = expenseSchema.safeParse({
     expenseDate:       formData.get("expenseDate"),
-    cashBankAccountId: formData.get("cashBankAccountId") || undefined,
     vatType:           (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:           formData.get("vatRate") || 0,
     note:              formData.get("note") || undefined,
@@ -291,6 +333,20 @@ export async function updateExpense(
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate = parseDateOnlyToDate(d.expenseDate);
 
+  let payments;
+  try {
+    payments = parseDocumentPaymentRows(formData.get("payments"));
+  } catch {
+    return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  if (payments.length === 0) return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  try {
+    assertPaymentsMatchTotal(payments, netAmount);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+  }
+  const primaryAccountId = derivePrimaryAccountId(payments);
+
   try {
     const beforeSnapshot = await getExpenseAuditSnapshot(id);
     await dbTx(async (tx) => {
@@ -299,7 +355,7 @@ export async function updateExpense(
         where: { id },
         data: {
           expenseDate:    docDate,
-          cashBankAccountId: d.cashBankAccountId,
+          cashBankAccountId: primaryAccountId,
           totalAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
@@ -319,14 +375,25 @@ export async function updateExpense(
         })),
       });
 
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, id, [{
-        accountId: d.cashBankAccountId,
-        txnDate: docDate,
-        direction: CashBankDirection.OUT,
-        amount: netAmount,
-        referenceNo: existing.expenseNo,
-        note: d.note ?? null,
-      }]);
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.EXPENSE,
+        id,
+        CashBankDirection.OUT,
+        payments,
+      );
+
+      await replaceCashBankSourceMovements(
+        tx,
+        CashBankSourceType.EXPENSE,
+        id,
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.OUT,
+          referenceNo: existing.expenseNo,
+          note: d.note ?? null,
+        }),
+      );
 
       await rebuildExpenseProfitFacts(tx, id);
     });

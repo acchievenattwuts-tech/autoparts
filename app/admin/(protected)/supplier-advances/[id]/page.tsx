@@ -49,7 +49,17 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
   });
 
   if (!advance) notFound();
-  const activityEvents = await getDocumentActivityTimeline("SupplierAdvance", advance.id);
+  const [activityEvents, advancePayments] = await Promise.all([
+    getDocumentActivityTimeline("SupplierAdvance", advance.id),
+    db.documentPayment.findMany({
+      where: { docType: "SUPPLIER_ADVANCE", docId: advance.id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    }),
+  ]);
 
   return (
     <div>
@@ -116,12 +126,37 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ช่องทางจ่าย</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{paymentMethodLabel[advance.paymentMethod]}</p>
           </div>
-          <div>
-            <p className="mb-0.5 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน</p>
-            <p className="font-medium text-gray-900 dark:text-slate-100">
-              {advance.cashBankAccount ? `${advance.cashBankAccount.code} - ${advance.cashBankAccount.name}` : "-"}
-            </p>
-          </div>
+          {advancePayments.length > 1 ? (
+            <div className="col-span-2 md:col-span-3">
+              <p className="mb-1 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน ({advancePayments.length} ช่องทาง)</p>
+              <div className="space-y-1">
+                {advancePayments.map((row, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-1.5 dark:border-white/10"
+                  >
+                    <span className="font-medium text-gray-900 dark:text-slate-100">
+                      {row.cashBankAccount.name}
+                      <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                        {row.cashBankAccount.type === "BANK" ? row.cashBankAccount.bankName ?? "ธนาคาร" : "เงินสด"}
+                        {row.cashBankAccount.accountNo ? ` | ${row.cashBankAccount.accountNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                      {Number(row.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">บัญชีจ่ายเงิน</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
+                {advance.cashBankAccount ? `${advance.cashBankAccount.code} - ${advance.cashBankAccount.name}` : "-"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{advance.user?.name ?? "-"}</p>

@@ -11,10 +11,19 @@ import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
-import { AuditAction, PaymentMethod, Prisma } from "@/lib/generated/prisma";
+import { AuditAction, DocumentPaymentDocType, PaymentMethod, Prisma } from "@/lib/generated/prisma";
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import {
+  assertPaymentsMatchTotal,
+  clearDocumentPayments,
+  derivePrimaryAccountId,
+  parseDocumentPaymentRows,
+  replaceDocumentPayments,
+  toCashBankEntries,
+  type DocumentPaymentRow,
+} from "@/lib/document-payments";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getAvailableReceiptDocuments as getAvailableReceiptDocumentsForAR,
@@ -132,12 +141,11 @@ const receiptSchema = z.object({
   customerName:  z.string().max(100).optional(),
   receiptDate:   z.string().min(1),
   paymentMethod: z.nativeEnum(PaymentMethod).optional(),
-  cashBankAccountId: z.string().optional(),
   note:          z.string().max(500).optional(),
   items:         z.array(receiptItemSchema).min(1, "ต้องมีรายการชำระอย่างน้อย 1 รายการ"),
 });
 
-type ParsedReceipt = z.infer<typeof receiptSchema>;
+type ParsedReceipt = z.infer<typeof receiptSchema> & { payments: DocumentPaymentRow[] };
 
 function parseReceiptForm(
   formData: FormData,
@@ -148,11 +156,11 @@ function parseReceiptForm(
       customerName: formData.get("customerName") ?? undefined,
       receiptDate: formData.get("receiptDate"),
       paymentMethod: formData.get("paymentMethod") ?? undefined,
-      cashBankAccountId: formData.get("cashBankAccountId") ?? undefined,
       note: formData.get("note") ?? undefined,
       items: JSON.parse((formData.get("items") as string) ?? "[]"),
     });
-    return { success: true, data: parsed };
+    const payments = parseDocumentPaymentRows(formData.get("payments"));
+    return { success: true, data: { ...parsed, payments } };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -191,23 +199,26 @@ async function recalculateAffectedReceiptDocuments(
 }
 
 async function resolveReceiptPaymentMethod(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  accountId: string | undefined,
+  tx: TxClient,
+  payments: DocumentPaymentRow[],
   totalAmount: number,
 ): Promise<PaymentMethod> {
-  if (!accountId) {
+  if (payments.length === 0) {
     return totalAmount > 0 ? PaymentMethod.TRANSFER : PaymentMethod.CREDIT;
   }
 
-  const account = await tx.cashBankAccount.findUnique({
-    where: { id: accountId },
+  const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
+  const accounts = await tx.cashBankAccount.findMany({
+    where: { id: { in: accountIds } },
     select: { type: true },
   });
-  if (!account) {
+  if (accounts.length !== accountIds.length) {
     throw new Error("ไม่พบบัญชีรับเงิน");
   }
 
-  return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
+  // Mixed channels: label the receipt as a transfer unless every channel is cash.
+  const allCash = accounts.every((account) => account.type === "CASH");
+  return allCash ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
 }
 
 async function getReceiptSignerSnapshot(
@@ -232,7 +243,8 @@ async function getReceiptSignerSnapshot(
 }
 
 async function getReceiptAuditSnapshot(receiptId: string) {
-  const receipt = await db.receipt.findUnique({
+  const [receipt, payments] = await Promise.all([
+    db.receipt.findUnique({
     where: { id: receiptId },
     include: {
       items: {
@@ -254,7 +266,13 @@ async function getReceiptAuditSnapshot(receiptId: string) {
         },
       },
     },
-  });
+  }),
+    db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.RECEIPT, docId: receiptId },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+  ]);
 
   if (!receipt) return null;
 
@@ -277,6 +295,10 @@ async function getReceiptAuditSnapshot(receiptId: string) {
       cnId: item.cnId,
       cnNo: item.creditNote?.cnNo ?? null,
       paidAmount: item.paidAmount,
+    })),
+    payments: payments.map((payment) => ({
+      cashBankAccountId: payment.cashBankAccountId,
+      amount: payment.amount,
     })),
   };
 }
@@ -302,11 +324,20 @@ export async function createReceipt(
 
     // Sale items add to total; CN items are credits that reduce the total
     const totalAmount = calculateReceiptTotalAmount(parsed.items);
-    if (totalAmount > 0 && !parsed.cashBankAccountId) {
-      return { success: false, error: "กรุณาเลือกบัญชีรับเงิน" };
+    // Only positive net totals move real cash and require payment channels.
+    const payments = totalAmount > 0 ? parsed.payments : [];
+    if (totalAmount > 0) {
+      if (payments.length === 0) {
+        return { success: false, error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+      }
+      try {
+        assertPaymentsMatchTotal(payments, totalAmount);
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
+      }
     }
 
-    const resolvedCashBankAccountId = totalAmount > 0 ? parsed.cashBankAccountId : undefined;
+    const primaryAccountId = derivePrimaryAccountId(payments);
     const affectedIds = collectAffectedReceiptIds(parsed.items);
     const requestContext = await getRequestContext();
 
@@ -316,11 +347,7 @@ export async function createReceipt(
       if (validationError) throw new Error(validationError);
 
       const signerSnapshot = await getReceiptSignerSnapshot(tx, session.user!.id, docDate);
-      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
-        tx,
-        resolvedCashBankAccountId,
-        totalAmount,
-      );
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, totalAmount);
 
       const receipt = await tx.receipt.create({
         data: {
@@ -334,7 +361,7 @@ export async function createReceipt(
           signedAt: signerSnapshot.signedAt,
           totalAmount,
           paymentMethod: resolvedPaymentMethod,
-          cashBankAccountId: resolvedCashBankAccountId || null,
+          cashBankAccountId: primaryAccountId,
           note:          parsed.note || null,
         },
       });
@@ -352,20 +379,24 @@ export async function createReceipt(
 
       await recalculateAffectedReceiptDocuments(tx, affectedIds);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.RECEIPT,
+        receipt.id,
+        CashBankDirection.IN,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.RECEIPT,
         receipt.id,
-        totalAmount > 0 && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.IN,
-              amount: totalAmount,
-              referenceNo: receiptNo,
-              note: parsed.note || null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: receiptNo,
+          note: parsed.note || null,
+        }),
       );
     });
 
@@ -431,6 +462,7 @@ export async function cancelReceipt(
     const beforeSnapshot = await getReceiptAuditSnapshot(receiptId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
+      await clearDocumentPayments(tx, DocumentPaymentDocType.RECEIPT, receiptId);
       await tx.receipt.update({
         where: { id: receiptId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
@@ -498,11 +530,19 @@ export async function updateReceipt(
 
   const docDate     = parseDateOnlyToDate(parsed.receiptDate);
   const totalAmount = calculateReceiptTotalAmount(parsed.items);
-  if (totalAmount > 0 && !parsed.cashBankAccountId) {
-    return { error: "กรุณาเลือกบัญชีรับเงิน" };
+  const payments = totalAmount > 0 ? parsed.payments : [];
+  if (totalAmount > 0) {
+    if (payments.length === 0) {
+      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+    }
+    try {
+      assertPaymentsMatchTotal(payments, totalAmount);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
+    }
   }
 
-  const resolvedCashBankAccountId = totalAmount > 0 ? parsed.cashBankAccountId : undefined;
+  const primaryAccountId = derivePrimaryAccountId(payments);
   const oldAffectedIds = collectAffectedReceiptIds(existing.items);
   const newAffectedIds = collectAffectedReceiptIds(parsed.items);
   const allAffectedIds = {
@@ -523,11 +563,7 @@ export async function updateReceipt(
         existing.signerSignatureUrl ?? existing.user?.signatureUrl ?? null;
       const fallbackSignedAt = existing.signedAt ?? (fallbackSignerName ? docDate : null);
 
-      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(
-        tx,
-        resolvedCashBankAccountId,
-        totalAmount,
-      );
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, totalAmount);
 
       // 1. Delete old receipt items
       await tx.receiptItem.deleteMany({ where: { receiptId: id } });
@@ -544,7 +580,7 @@ export async function updateReceipt(
           signedAt: fallbackSignedAt,
           totalAmount,
           paymentMethod: resolvedPaymentMethod,
-          cashBankAccountId: resolvedCashBankAccountId || null,
+          cashBankAccountId: primaryAccountId,
           note:          parsed.note || null,
         },
       });
@@ -563,20 +599,24 @@ export async function updateReceipt(
       // 4. Recalculate amountRemain for all affected sales and CNs
       await recalculateAffectedReceiptDocuments(tx, allAffectedIds);
 
+      await replaceDocumentPayments(
+        tx,
+        DocumentPaymentDocType.RECEIPT,
+        id,
+        CashBankDirection.IN,
+        payments,
+      );
+
       await replaceCashBankSourceMovements(
         tx,
         CashBankSourceType.RECEIPT,
         id,
-        totalAmount > 0 && resolvedCashBankAccountId
-          ? [{
-              accountId: resolvedCashBankAccountId,
-              txnDate: docDate,
-              direction: CashBankDirection.IN,
-              amount: totalAmount,
-              referenceNo: existing.receiptNo,
-              note: parsed.note || null,
-            }]
-          : [],
+        toCashBankEntries(payments, {
+          txnDate: docDate,
+          direction: CashBankDirection.IN,
+          referenceNo: existing.receiptNo,
+          note: parsed.note || null,
+        }),
       );
     });
 

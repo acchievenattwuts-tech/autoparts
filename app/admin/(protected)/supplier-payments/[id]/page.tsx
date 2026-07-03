@@ -27,22 +27,32 @@ const SupplierPaymentDetailPage = async ({
   const canUpdate = hasPermissionAccess(role, permissions, "supplier_payments.update");
   const canCancel = hasPermissionAccess(role, permissions, "supplier_payments.cancel");
 
-  const payment = await db.supplierPayment.findUnique({
-    where: { id },
-    include: {
-      supplier: { select: { name: true, code: true, phone: true } },
-      cashBankAccount: { select: { name: true, code: true } },
-      user: { select: { name: true } },
-      items: {
-        orderBy: [{ lineNo: "asc" }, { id: "asc" }],
-        include: {
-          purchase: { select: { id: true, purchaseNo: true, purchaseDate: true } },
-          purchaseReturn: { select: { id: true, returnNo: true, returnDate: true } },
-          advance: { select: { id: true, advanceNo: true, advanceDate: true } },
+  const [payment, paymentPayments] = await Promise.all([
+    db.supplierPayment.findUnique({
+      where: { id },
+      include: {
+        supplier: { select: { name: true, code: true, phone: true } },
+        cashBankAccount: { select: { name: true, code: true } },
+        user: { select: { name: true } },
+        items: {
+          orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+          include: {
+            purchase: { select: { id: true, purchaseNo: true, purchaseDate: true } },
+            purchaseReturn: { select: { id: true, returnNo: true, returnDate: true } },
+            advance: { select: { id: true, advanceNo: true, advanceDate: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    db.documentPayment.findMany({
+      where: { docType: "SUPPLIER_PAYMENT", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: {
+        amount: true,
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+      },
+    }),
+  ]);
 
   if (!payment) {
     return (
@@ -121,11 +131,26 @@ const SupplierPaymentDetailPage = async ({
           <div className="rounded-lg bg-gray-50 p-4 dark:bg-white/5">
             <p className="text-sm text-gray-500 dark:text-slate-400">ช่องทาง / บัญชีจ่ายเงิน</p>
             <p className="mt-1 font-medium text-gray-900 dark:text-slate-100">{paymentMethodLabel[payment.paymentMethod]}</p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-              {payment.cashBankAccount
-                ? `${payment.cashBankAccount.name} (${payment.cashBankAccount.code})`
-                : "ไม่มีการจ่ายเงินจริง"}
-            </p>
+            {paymentPayments.length > 0 ? (
+              <div className="mt-1 space-y-1">
+                {paymentPayments.map((row, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700 dark:text-slate-300">
+                      {row.cashBankAccount.name}
+                      <span className="ml-1 text-xs text-gray-500 dark:text-slate-400">
+                        {row.cashBankAccount.type === "BANK" ? row.cashBankAccount.bankName ?? "ธนาคาร" : "เงินสด"}
+                        {row.cashBankAccount.accountNo ? ` | ${row.cashBankAccount.accountNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                      {Number(row.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">ไม่มีการจ่ายเงินจริง</p>
+            )}
           </div>
         </div>
 

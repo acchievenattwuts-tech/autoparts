@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
+import { isLineCustomerProfileIncomplete } from "@/lib/line-customer-profile";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { requirePermission } from "@/lib/require-auth";
 
@@ -83,7 +84,6 @@ export const GET = async (request: Request): Promise<NextResponse> => {
           lineUserId: true,
           lineLinkedAt: true,
           shippingAddress: true,
-          taxId: true,
         },
       });
       const relinkCandidateIds = customers
@@ -133,8 +133,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
             source: customer.source,
             linkKind,
             hasLineLink: Boolean(customer.lineUserId),
-            isProfileIncomplete:
-              customer.source === "LINE_LIFF" && (!customer.shippingAddress || !customer.taxId),
+            isProfileIncomplete: isLineCustomerProfileIncomplete(customer),
             lineLinkedAt: customer.lineLinkedAt?.toISOString() ?? null,
           };
         }),

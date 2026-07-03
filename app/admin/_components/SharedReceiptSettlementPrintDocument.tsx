@@ -58,6 +58,14 @@ type TransferAccount = {
   accountNo?: string | null;
 } | null;
 
+type ReceiptSettlementPayment = {
+  accountName: string;
+  accountType: "CASH" | "BANK";
+  bankName?: string | null;
+  accountNo?: string | null;
+  amount: NumericLike;
+};
+
 const PAYMENT_PRINT_LABELS: { key: "CASH" | "TRANSFER"; label: string }[] = [
   { key: "CASH", label: "เงินสด" },
   { key: "TRANSFER", label: "เงินโอน" },
@@ -73,6 +81,7 @@ const SharedReceiptSettlementPrintDocument = ({
   shopConfig,
   signerDisplayName,
   receivedTransferAccount,
+  payments,
   verify,
   rootId,
   rootClassName,
@@ -81,6 +90,7 @@ const SharedReceiptSettlementPrintDocument = ({
   shopConfig: PrintShopConfig;
   signerDisplayName: string;
   receivedTransferAccount: TransferAccount;
+  payments?: ReceiptSettlementPayment[];
   verify?: PrintDocumentVerifyBadge | null;
   rootId?: string;
   rootClassName?: string;
@@ -91,7 +101,15 @@ const SharedReceiptSettlementPrintDocument = ({
   const totalAmountInWords = formatThaiBahtText(Number(receipt.totalAmount));
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
-  const hasSupportBlock = receipt.paymentMethod === "CASH" || receipt.paymentMethod === "TRANSFER" || Boolean(receivedTransferAccount);
+  const hasPaymentBreakdown = Boolean(payments && payments.length > 0);
+  const paymentsTotal = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) ?? 0;
+  const hasCash = hasPaymentBreakdown
+    ? payments!.some((payment) => payment.accountType === "CASH")
+    : receipt.paymentMethod === "CASH";
+  const hasTransfer = hasPaymentBreakdown
+    ? payments!.some((payment) => payment.accountType === "BANK")
+    : receipt.paymentMethod === "TRANSFER";
+  const hasSupportBlock = hasCash || hasTransfer || Boolean(receivedTransferAccount) || hasPaymentBreakdown;
   const isCancelled = receipt.status === "CANCELLED";
 
   return (
@@ -213,13 +231,43 @@ const SharedReceiptSettlementPrintDocument = ({
                   {PAYMENT_PRINT_LABELS.map(({ key, label }) => (
                     <span key={key} className="flex items-center gap-1.5">
                       <span className={`inline-flex h-4 w-4 items-center justify-center ${PRINT_SECTION_BORDER_CLASS} text-[11px]`}>
-                        {receipt.paymentMethod === key ? "✓" : ""}
+                        {(key === "CASH" ? hasCash : hasTransfer) ? "✓" : ""}
                       </span>
                       {label}
                     </span>
                   ))}
                 </div>
-                {receipt.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
+                {hasPaymentBreakdown ? (
+                  <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
+                    <p className="mb-1 font-medium text-gray-900">รายละเอียดการรับชำระ</p>
+                    <table className="w-full text-[11px]">
+                      <tbody>
+                        {payments!.map((payment, index) => (
+                          <tr key={index}>
+                            <td className="py-0.5 pr-2 align-top">
+                              {payment.accountType === "CASH"
+                                ? `เงินสด — ${payment.accountName}`
+                                : `${payment.bankName || "เงินโอน"}${
+                                    payment.accountNo ? ` เลขที่ ${payment.accountNo}` : ""
+                                  } — ${payment.accountName}`}
+                            </td>
+                            <td className="whitespace-nowrap py-0.5 text-right font-mono text-[#1e3a5f]">
+                              {formatPrintNumber(Number(payment.amount))}
+                            </td>
+                          </tr>
+                        ))}
+                        {payments!.length > 1 ? (
+                          <tr className={PRINT_SECTION_TOP_BORDER_CLASS}>
+                            <td className="py-0.5 pr-2 font-medium text-gray-900">รวมรับชำระ</td>
+                            <td className="whitespace-nowrap py-0.5 text-right font-mono font-bold text-[#1e3a5f]">
+                              {formatPrintNumber(paymentsTotal)}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : receipt.paymentMethod === "TRANSFER" && receivedTransferAccount ? (
                   <div className={`mt-2 ${PRINT_SECTION_TOP_BORDER_CLASS} pt-2 text-gray-700`}>
                     <p className="font-medium text-gray-900">รับชำระเข้าบัญชี</p>
                     <p>{receivedTransferAccount.bankName || receivedTransferAccount.name}</p>

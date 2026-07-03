@@ -112,6 +112,14 @@ export default async function LiffOrderInvoicePage({
 
   if (!sale) notFound();
 
+  const salePayments = await db.documentPayment.findMany({
+    where: { docType: "SALE", docId: sale.id },
+    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+    select: {
+      amount: true,
+      cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+    },
+  });
   const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);
   const signerDisplayName = sale.signerName ?? sale.user?.name ?? "-";
   const transferDocumentState = getTransferDocumentState({
@@ -233,6 +241,13 @@ export default async function LiffOrderInvoicePage({
           signerDisplayName={signerDisplayName}
           transferPrimaryAccount={transferPrimaryAccount}
           receivedTransferAccount={receivedTransferAccount}
+          payments={salePayments.map((payment) => ({
+            accountName: payment.cashBankAccount.name,
+            accountType: payment.cashBankAccount.type,
+            bankName: payment.cashBankAccount.bankName,
+            accountNo: payment.cashBankAccount.accountNo,
+            amount: Number(payment.amount),
+          }))}
           promptPayQrDataUrl={promptPayQrDataUrl}
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
