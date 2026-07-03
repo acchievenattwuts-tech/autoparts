@@ -39,11 +39,21 @@ interface Props {
 const FONT_DIR = path.join(process.cwd(), "lib", "og-fonts");
 
 // The bundled OG fonts (Kanit, Sarabun) cover ASCII + the Thai block only, so
-// emoji in product descriptions (🚗 ✅ 📌 ⚠️ 🔍) have no glyph. Satori resolves
-// them via the `emoji` option below (EMOJI_PROVIDER) instead — it fetches a
-// colour SVG per emoji from a CDN at render time and inlines it, so the emoji
-// show up in the image exactly like the storefront description.
-const EMOJI_PROVIDER = "twemoji" as const;
+// emoji in product descriptions (🚗 ✅ 📌 ⚠️ 🔍) have no glyph. Rather than
+// resolving them via a CDN `emoji` provider (Satori fetches a colour SVG per
+// emoji at render time, and resvg intermittently fails to parse those buffers —
+// "svgload_buffer: SVG rendering failed" — which drops the whole product card to
+// the plain fallback), we strip emoji from the OG text entirely. The storefront
+// page keeps the emoji; only the shared-link preview image is emoji-free.
+//
+// Covers the emoji blocks plus the modifiers that make an emoji sequence
+// (variation selector U+FE0F, skin-tone modifiers U+1F3FB–FF, ZWJ U+200D, and
+// regional-indicator flags), then collapses the whitespace the removal leaves.
+const EMOJI_PATTERN =
+  /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{1F3FB}-\u{1F3FF}\u{200D}\u{20E3}]/gu;
+
+const stripEmoji = (raw: string): string =>
+  raw.replace(EMOJI_PATTERN, "").replace(/\s{2,}/g, " ").trim();
 
 const loadFonts = async (): Promise<
   { name: string; data: Buffer; weight: 400 | 700; style: "normal" }[]
@@ -72,7 +82,6 @@ const renderToImage = async (
   const response = new ImageResponse(element, {
     ...size,
     fonts,
-    emoji: EMOJI_PROVIDER,
   });
   const body = await response.arrayBuffer();
   return new Response(body, { headers: response.headers });
@@ -106,10 +115,10 @@ export default async function OpenGraphImage({ params }: Props) {
 
     return await renderToImage(
       <OgImageTemplate
-        eyebrow={product.category.name}
-        title={product.name}
-        description={buildStorefrontProductDescription(product)}
-        meta={product.brand?.name || product.code}
+        eyebrow={stripEmoji(product.category.name)}
+        title={stripEmoji(product.name)}
+        description={stripEmoji(buildStorefrontProductDescription(product))}
+        meta={stripEmoji(product.brand?.name || product.code)}
       />,
       fonts,
     );
