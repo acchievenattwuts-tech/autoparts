@@ -91,13 +91,22 @@
 
 ## Phase D — Messenger channel layer (adapter บาง)
 
-- [ ] D1. `app/api/messenger/webhook/route.ts` — GET verify challenge + POST ตรวจ `X-Hub-Signature-256` → `after()` coalesce → job (`dynamic="force-dynamic"`, `maxDuration=60`)
-- [ ] D2. `lib/messenger/messenger-messaging.ts` — Send API (`sendText`, `sendGenericTemplate`, `senderAction typing_on`), fetch user profile
-- [ ] D3. `lib/messenger/messenger-product-card.ts` — แปลงผลค้นหา → Generic Template / carousel (แทน Flex ที่ FB ไม่มี)
-- [ ] D4. `lib/messenger/messenger-image-service.ts` — รับ attachment (รูป/สลิป) จาก FB CDN → เข้า chat-core + payment-slip OCR pipeline เดิม
-- [ ] D5. `lib/messenger-webhook-processor.ts` — เลียนโครง `processLineAiReply` ฉีด transport ของ Messenger เรียก chat-core ตัวเดียวกับ LINE
-- [ ] D6. จัดการ **24-hour messaging window** ของ Meta (reply ปกติ vs. message tag เมื่อเกิน window)
-- [ ] D7. cron/QStash worker `app/api/messenger/ai-jobs/*` (process/reconcile/cleanup) mirror LINE ai-jobs + ลง Vercel cron config
+### Sub-stage 1 — core text flow ✅ DONE 2026-07-04
+- [x] D1. `app/api/messenger/webhook/route.ts` — GET verify challenge + POST ตรวจ `X-Hub-Signature-256` (HMAC raw body) → ACK เร็ว → `after()` process (`dynamic="force-dynamic"`, `maxDuration=60`); ตัด echo/receipt, idempotency ด้วย `mid`→`fbEventId`
+- [x] D2. `lib/messenger/messenger-messaging.ts` — Send API (`sendMessengerText`, `sendMessengerGenericTemplate`, `sendMessengerSenderAction` typing/seen, `fetchMessengerUserProfile`, `fetchMessengerAttachment`) + retry
+- [x] D2b. `lib/messenger/messenger-config.ts` — env config + `verifyMessengerSubscription` + `verifyMessengerSignature` (timing-safe) + Graph API v23.0
+- [x] D2c. `lib/messenger/messenger-conversation-repository.ts` — getOrCreate/append(idempotent)/recentForAi/showPrice/storeSuggestion/touch (mirror LINE repo, Messenger* tables)
+- [x] D5(core). `lib/messenger/messenger-webhook-processor.ts` — text flow reuse chat-core: `routeChatIntent`→`searchChatProductInquiry`→`getChatProductSummaries`→`generateChatSuggestion`→ ส่งข้อความ + carousel (แทน Flex); greeting/smalltalk ผ่าน `generateScopedConversationalReply`; respa handoff (aiStatus≠ACTIVE)
+- [x] env: เพิ่ม `MESSENGER_PAGE_ID/PAGE_ACCESS_TOKEN/APP_SECRET/VERIFY_TOKEN` ใน `.env.example`
+- [x] test: `messenger-config.test.ts` (8 pass — signature/subscription) · tsc 0 error · eslint ผ่าน
+
+### Sub-stage 2 — parity ที่เหลือ (ยังไม่ทำ)
+- [ ] D3. product-card: refine carousel (fitment did-you-mean, "ดูทั้งหมดบนเว็บ" link ตาม appliedFilters) ให้เทียบเท่า Flex
+- [ ] D4. `messenger-image-service.ts` — attachment รูป/สลิป จาก FB CDN → chat-core image classify + payment-slip OCR/reconcile pipeline เดิม (ตอนนี้ ack ชั่วคราว)
+- [ ] D5(full). coalescing (debounce + abort-on-newer + lock) mirror LINE, seq fields ที่ schema มีแล้ว
+- [ ] D6. **24-hour messaging window** — reply RESPONSE ปกติ vs. MESSAGE_TAG เมื่อเกิน window
+- [ ] D7. cron worker `app/api/messenger/ai-jobs/*` (process/reconcile/cleanup) + Vercel cron
+- [ ] note: system prompt บรรทัด "แชทใน LINE นี้" ต้อง parametrize ชื่อ channel (ตอนนี้ยัง hardcode LINE)
 
 ---
 
@@ -134,4 +143,5 @@
 - 2026-07-04: ยืนยัน decisions + domain, เริ่ม Phase B
 - 2026-07-04: Phase B Stage 1 เสร็จ — ย้าย 13 ไฟล์สมอง → `lib/chat-core/`, แก้ import 37 ไฟล์, tsc/lint เขียว, tests 313/314 (1 fail pre-existing)
 - 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314
-- 2026-07-04: Phase C เสร็จ — เพิ่ม 4 model Messenger + แก้ PaymentSlip (nullable + FK), `prisma db push` sync สำเร็จ, generate + tsc เขียว. **ถัดไป Phase D (webhook + transport + processor)**
+- 2026-07-04: Phase C เสร็จ — เพิ่ม 4 model Messenger + แก้ PaymentSlip (nullable + FK), `prisma db push` sync สำเร็จ, generate + tsc เขียว
+- 2026-07-04: Phase D sub-stage 1 เสร็จ — webhook route + Send API transport + config/signature + repository + core text processor (reuse chat-core), 8 tests เขียว, tsc/lint ผ่าน. ค้าง sub-stage 2 (image/slip, coalescing, 24h window, cron, channel-name parametrize)
