@@ -27,7 +27,11 @@ import {
   type LineSearchIntent,
 } from "@/lib/line-ai-service";
 import { resolveKnownQueryIntent } from "@/lib/known-query-intent";
-import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
+import {
+  isAccessoryOrChemicalIntent,
+  resolveLineFitmentFilters,
+  type LineFitmentFilters,
+} from "@/lib/line-fitment-resolve";
 import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
@@ -1504,6 +1508,22 @@ export async function processLineAiReply(
         ? []
         : findRecentFitmentTerms(recentMessages, input.inboundMessage.id);
 
+    // Accessory precision anchor: a universal/accessory inquiry (ฟองน้ำ, โอริง, น็อต,
+    // น้ำยา…) resolves to NO category, so the broad search can drift into other
+    // accessories that share generic tokens ("แอร์") or are semantic neighbours.
+    // Pass the head noun so the bridge can keep results on-topic (with a graceful
+    // fallback). Gated on accessory intent + no category → fitment parts untouched.
+    const accessoryHeadNoun =
+      !fitmentFilters.categoryName &&
+      inquiryFrame?.partType &&
+      (guardedSearchIntent?.partKind === "universal" ||
+        input.imageClassification?.partKind === "universal" ||
+        isAccessoryOrChemicalIntent(
+          [inquiryFrame.partType, consolidatedQuery, processText].filter(Boolean).join(" "),
+        ))
+        ? inquiryFrame.partType
+        : null;
+
     const productSearch =
       isNonProductTurn || gateBlocksSearch || imageOnlyLowConfidence
       ? ({
@@ -1527,6 +1547,7 @@ export async function processLineAiReply(
             carModelName: fitmentFilters.carModelName ?? null,
             fitmentYear: frameYear,
           },
+          accessoryHeadNoun,
         });
 
     if (isNonProductTurn) {

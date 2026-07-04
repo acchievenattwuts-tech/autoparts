@@ -37,6 +37,16 @@ export type LineProductSearchBridgeInput = {
     carModelName?: string | null;
     fitmentYear?: number | null;
   } | null;
+  /**
+   * Head noun for a universal/accessory inquiry (e.g. "ฟองน้ำ", "โอริง"). Set by the
+   * caller ONLY for accessory intents that resolve to no category. When present and
+   * no category filter applies, it is required (soft-anchored) so the results stay
+   * on-topic instead of drifting into other accessories that merely share generic
+   * tokens ("แอร์"/"ตู้แอร์") or are semantic neighbours ("โฟม" tape). If the strict
+   * search finds nothing, the requirement is dropped and the broad search runs — so
+   * the worst case is identical to the previous behaviour. Fitment parts (which
+   * resolve a category) never reach this path. */
+  accessoryHeadNoun?: string | null;
   take?: number;
 };
 
@@ -268,16 +278,48 @@ export async function searchLineProductInquiry(
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
   };
 
-  const result = await resolvedSearchFn({
+  // Accessory precision anchor: for a universal/accessory inquiry with NO category
+  // filter, require the head noun (e.g. "ฟองน้ำ") so results must actually be that
+  // kind of item — not tape/duct/drier that only share "แอร์"/"ตู้แอร์" or are
+  // semantic neighbours. Gated on the absence of a category filter, so fitment
+  // parts are never affected. Matched via the standard requiredTokens mechanism,
+  // which also checks alias_text (so an English-only alias like "foam strip"
+  // still counts).
+  const accessoryHeadNoun =
+    !baseFilters.categoryName ? normalizeSearchSeed(input.accessoryHeadNoun) : null;
+  const primaryRequiredTokens = accessoryHeadNoun
+    ? [...requiredTokens, accessoryHeadNoun]
+    : requiredTokens;
+
+  let result = await resolvedSearchFn({
     query,
     isActive: true,
     isStorefrontVisible: true,
     ...baseFilters,
-    ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
+    ...(primaryRequiredTokens.length > 0 ? { requiredTokens: primaryRequiredTokens } : {}),
     skip: 0,
     take: input.take ?? 5,
     cacheProfile: "storefront",
   });
+
+  // Graceful fallback: the strict head-noun search found nothing (e.g. the
+  // customer's word differs from the catalog wording). Drop the head-noun anchor
+  // and rerun the broad search — the worst case is exactly the previous behaviour,
+  // never a wrong "not found".
+  let accessoryHeadFallback = false;
+  if (result.total === 0 && accessoryHeadNoun) {
+    accessoryHeadFallback = true;
+    result = await resolvedSearchFn({
+      query,
+      isActive: true,
+      isStorefrontVisible: true,
+      ...baseFilters,
+      ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
+      skip: 0,
+      take: input.take ?? 5,
+      cacheProfile: "storefront",
+    });
+  }
 
   // No hits → try a "did you mean" spelling/synonym correction and re-search once.
   if (result.total === 0) {
@@ -325,7 +367,11 @@ export async function searchLineProductInquiry(
 
   return {
     searched: true,
-    reason: "SEARCHED_PRODUCT_INQUIRY",
+    reason: accessoryHeadNoun && !accessoryHeadFallback
+      ? "SEARCHED_ACCESSORY_HEAD_ANCHORED"
+      : accessoryHeadFallback
+        ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
+        : "SEARCHED_PRODUCT_INQUIRY",
     query,
     result,
     needsMoreInfo: result.total === 0 || result.ids.length === 0,

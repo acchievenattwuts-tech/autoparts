@@ -289,6 +289,70 @@ test("part number seed takes precedence over free text", async () => {
   assert.equal(result.query, "447220-1234");
 });
 
+test("accessory head noun is required when there is no category filter", async () => {
+  const calls: Array<string[] | null> = [];
+  const result = await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "มีฟองน้ำแบบเส้นไหมครับ",
+      accessoryHeadNoun: "ฟองน้ำ",
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      return { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ["ฟองน้ำ"]);
+  if (result.searched) assert.equal(result.reason, "SEARCHED_ACCESSORY_HEAD_ANCHORED");
+});
+
+test("accessory head noun falls back to a broad search when the strict one is empty", async () => {
+  const calls: Array<string[] | null> = [];
+  const result = await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "โฟมเส้น",
+      accessoryHeadNoun: "โฟมเส้น",
+    },
+    async (input) => {
+      const req = input.requiredTokens ?? null;
+      calls.push(req);
+      // Strict search (head noun required) finds nothing; broad search hits.
+      return req && req.includes("โฟมเส้น")
+        ? { ids: [], total: 0, mode: "v2", matchReasons: {} }
+        : { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], ["โฟมเส้น"]); // strict attempt
+  assert.equal(calls[1], null); // broad fallback drops the head noun
+  if (result.searched) assert.equal(result.reason, "SEARCHED_ACCESSORY_HEAD_FALLBACK");
+});
+
+test("accessory head noun is ignored when a category filter is present (fitment untouched)", async () => {
+  const calls: Array<string[] | null> = [];
+  await searchLineProductInquiry(
+    {
+      route: searchableRoute,
+      text: "หม้อน้ำ vios",
+      accessoryHeadNoun: "หม้อน้ำ",
+      fitmentHints: { categoryName: "หม้อน้ำ (Radiator)" },
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      return { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], null); // head noun NOT anchored because a category applies
+});
+
 test("numeric model or part tokens are sent as required tokens for LINE search", async () => {
   const calls: unknown[] = [];
 
