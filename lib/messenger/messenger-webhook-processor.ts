@@ -20,7 +20,9 @@ import {
   acquireMessengerConversationLock,
   appendMessengerMessage,
   bumpMessengerInboundSeq,
+  findStalledMessengerConversationIds,
   getMessengerCoalesceState,
+  getMessengerConversationPsid,
   getOrCreateMessengerConversation,
   getRecentMessengerMessagesForAi,
   getUnansweredMessengerMessages,
@@ -53,6 +55,12 @@ const MAX_CAROUSEL_PRODUCTS = 8;
 const RECENT_HISTORY_TAKE = 10;
 const COALESCE_DEBOUNCE_MS = 3_000;
 const COALESCE_LEASE_MS = 60_000;
+// Meta's standard messaging window: an automated reply is only allowed within 24h
+// of the customer's last message. Outside it, a generic auto-reply needs the
+// human_agent tag (a separately-reviewed permission we don't rely on), so we skip
+// the auto-reply rather than risk a Send API error / policy violation. The live
+// flow always answers within seconds; this only guards stale cron-recovery turns.
+const STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1_000;
 // Stop debouncing after this much wall-clock and do one final reply, so a chatty
 // customer can't push the owner past the 60s serverless ceiling.
 const OWNER_FINAL_PASS_AFTER_MS = 28_000;
@@ -100,6 +108,21 @@ function productToCarouselElement(
   };
 }
 
+/** Storefront "view all results" URL mirroring the applied fitment filters, so the
+ *  web page shows the same set the customer saw in chat. */
+function storefrontSearchUrl(
+  query: string,
+  filters: { categoryName: string | null; carBrandName: string | null; carModelName: string | null; fitmentYear: number | null },
+): string {
+  const params = new URLSearchParams();
+  params.set("q", query);
+  if (filters.categoryName) params.set("category", filters.categoryName);
+  if (filters.carBrandName) params.set("brand", filters.carBrandName);
+  if (filters.carModelName) params.set("model", filters.carModelName);
+  if (filters.fitmentYear) params.set("year", String(filters.fitmentYear));
+  return `${SITE_URL}/products?${params.toString()}`;
+}
+
 /**
  * Batch entry — called from the webhook's after(). Ingests every event (persist +
  * seq bump, no reply), then elects one owner per touched conversation to run the
@@ -143,6 +166,51 @@ export async function processMessengerBatch(
       await releaseMessengerConversationLock({ conversationId, owner }).catch(() => undefined);
     }
   }
+}
+
+// How quiet a conversation must be before the cron treats it as stalled (a live
+// owner debounces + replies well within this) — prevents racing a running owner.
+const RECOVERY_QUIET_MS = 90_000;
+const RECOVERY_BATCH_LIMIT = 50;
+
+/**
+ * Coalescing crash failsafe (run from the cron). If a webhook's after() dies
+ * after persisting messages but before replying, the conversation is left with
+ * unanswered messages and no live owner. This finds those (seq newer than
+ * processed + lock free + quiet long enough) and re-runs the owner loop. The lock
+ * + quiet window keep it from racing a still-running owner, so no duplicate reply.
+ */
+export async function recoverStalledMessengerConversations(
+  config: MessengerProcessorConfig,
+): Promise<{ recovered: number }> {
+  const quietBefore = new Date(Date.now() - RECOVERY_QUIET_MS);
+  const ids = await findStalledMessengerConversationIds({ quietBefore, take: RECOVERY_BATCH_LIMIT });
+
+  let recovered = 0;
+  for (const conversationId of ids) {
+    const psid = await getMessengerConversationPsid(conversationId);
+    if (!psid) continue;
+
+    const owner = `cron-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const acquired = await acquireMessengerConversationLock({
+      conversationId,
+      owner,
+      leaseMs: COALESCE_LEASE_MS,
+    }).catch(() => false);
+    if (!acquired) continue;
+
+    try {
+      await runMessengerOwnerLoop({ conversationId, psid, config });
+      recovered += 1;
+    } catch (error) {
+      console.error(
+        `[messenger] recovery owner loop failed for ${conversationId}: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    } finally {
+      await releaseMessengerConversationLock({ conversationId, owner }).catch(() => undefined);
+    }
+  }
+  return { recovered };
 }
 
 /** Persists one inbound message (idempotent) + bumps the coalesce seq. Returns the
@@ -250,6 +318,18 @@ async function replyToMessengerTurn(params: {
 
   const unanswered = await getUnansweredMessengerMessages(conversationId);
   if (unanswered.length === 0) return;
+
+  // 24-hour messaging window guard (only ever trips on stale cron-recovery turns).
+  const newestInboundAt = unanswered.reduce(
+    (max, m) => (m.createdAt > max ? m.createdAt : max),
+    unanswered[0].createdAt,
+  );
+  if (Date.now() - newestInboundAt.getTime() > STANDARD_MESSAGING_WINDOW_MS) {
+    console.warn(
+      `[messenger] skipping auto-reply outside 24h window for ${conversationId} (last inbound ${newestInboundAt.toISOString()})`,
+    );
+    return;
+  }
 
   const mergedText = unanswered
     .map((m) => m.text?.trim())
@@ -400,10 +480,22 @@ async function replyWithProductSearch(params: {
     text: suggestion.suggestedReply,
   });
   if (products.length > 0) {
+    const elements = products.map((p) => productToCarouselElement(p, showPrice));
+    // Append a "view all on web" card when the catalog has more matches than the
+    // carousel shows, linking to the storefront filtered to the same result set.
+    if (productSearch.result.total > products.length) {
+      const url = storefrontSearchUrl(productSearch.query, productSearch.appliedFilters);
+      elements.push({
+        title: `ดูสินค้าทั้งหมด ${productSearch.result.total} รายการ`,
+        subtitle: "เปิดหน้าเว็บเพื่อดูรายการที่ตรงกันทั้งหมด",
+        defaultActionUrl: url,
+        buttons: [{ type: "web_url", title: "ดูทั้งหมดบนเว็บ", url }],
+      });
+    }
     await sendMessengerGenericTemplate({
       pageAccessToken: params.pageAccessToken,
       psid: params.psid,
-      elements: products.map((p) => productToCarouselElement(p, showPrice)),
+      elements,
     });
   }
   await persistOutbound(params.conversationId, params.psid, suggestion.suggestedReply, {

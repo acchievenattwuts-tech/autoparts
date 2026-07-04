@@ -100,13 +100,13 @@
 - [x] env: เพิ่ม `MESSENGER_PAGE_ID/PAGE_ACCESS_TOKEN/APP_SECRET/VERIFY_TOKEN` ใน `.env.example`
 - [x] test: `messenger-config.test.ts` (8 pass — signature/subscription) · tsc 0 error · eslint ผ่าน
 
-### Sub-stage 2 — parity ที่เหลือ (ยังไม่ทำ)
-- [ ] D3. product-card: refine carousel (fitment did-you-mean, "ดูทั้งหมดบนเว็บ" link ตาม appliedFilters) ให้เทียบเท่า Flex
+### Sub-stage 2 — parity ที่เหลือ ✅ DONE 2026-07-04 (D3/D4/D6/D7 เสร็จ + D5 full)
+- [x] D3. ✅ DONE 2026-07-04 — carousel เพิ่มการ์ด "ดูสินค้าทั้งหมด N รายการ" ลิงก์ storefront `/products?q=&category=&brand=&model=&year=` ตาม `appliedFilters` เมื่อ total > ที่แสดง (mirror Flex view-all)
 - [x] D4. ✅ DONE 2026-07-04 — `messenger-image-service.ts`: ดึง attachment จาก FB CDN → `classifyImageContent` (extract เป็นฟังก์ชันกลางใน line-image-service, LINE delegate, behavior เดิม) → **payment_slip**: `ingestMessengerPaymentSlip` reuse OCR/storage เดิม เก็บ `PaymentSlip.messengerConversationId` (ขยาย `createPaymentSlip` รับ FK ใหม่, additive) → **part_image**: ป้อน hints เข้า `searchChatProductInquiry` ผ่าน helper `replyWithProductSearch` ร่วมกับ text path; tests 321/322 (fail เดิม), tsc/lint เขียว
 - [x] D5(full). ✅ DONE 2026-07-04 — coalescing: `processMessengerBatch` ingest ทุก event (persist+bumpSeq ไม่ตอบ) → elect owner ต่อ conversation (lock) → `runMessengerOwnerLoop` debounce 3s + latest-wins (seq เพิ่ม=รอใหม่) + final pass 28s → `replyToMessengerTurn` merge unanswered เป็น turn เดียว (รวม text, ใช้รูปล่าสุด) ตอบ**ครั้งเดียว** + markProcessedSeq; repo เพิ่ม bump/state/mark/lock/getUnanswered; tsc/lint เขียว, 8 tests ผ่าน
-- [ ] D6. **24-hour messaging window** — reply RESPONSE ปกติ vs. MESSAGE_TAG เมื่อเกิน window
-- [ ] D7. cron worker `app/api/messenger/ai-jobs/*` (process/reconcile/cleanup) + Vercel cron
-- [ ] note: system prompt บรรทัด "แชทใน LINE นี้" ต้อง parametrize ชื่อ channel (ตอนนี้ยัง hardcode LINE)
+- [x] D6. ✅ DONE 2026-07-04 — 24h messaging window guard: `replyToMessengerTurn` ข้าม auto-reply ถ้า inbound ล่าสุด > 24h (เลี่ยง Send API error/นโยบาย human_agent tag); live flow ตอบใน window เสมอ
+- [x] D7. ✅ DONE 2026-07-04 — `app/api/messenger/ai-jobs/recover/route.ts` (CRON_SECRET auth) → `recoverStalledMessengerConversations` หา conversation ค้าง (seq>processed + lock free + quiet 90s) แล้ว re-run owner loop; vercel cron `1-59/2 * * * *`; repo เพิ่ม `findStalledMessengerConversationIds`/`getMessengerConversationPsid`
+- [ ] note: system prompt บรรทัด "แชทใน LINE นี้" ยัง hardcode LINE — เว้นไว้เพื่อไม่แตะ prompt ที่ LINE ใช้ร่วม (ค่อย parametrize channel name ตอนทำ Phase E)
 
 ---
 
@@ -144,4 +144,5 @@
 - 2026-07-04: Phase B Stage 1 เสร็จ — ย้าย 13 ไฟล์สมอง → `lib/chat-core/`, แก้ import 37 ไฟล์, tsc/lint เขียว, tests 313/314 (1 fail pre-existing)
 - 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314
 - 2026-07-04: Phase C เสร็จ — เพิ่ม 4 model Messenger + แก้ PaymentSlip (nullable + FK), `prisma db push` sync สำเร็จ, generate + tsc เขียว
-- 2026-07-04: Phase D sub-stage 1 เสร็จ — webhook route + Send API transport + config/signature + repository + core text processor (reuse chat-core), 8 tests เขียว, tsc/lint ผ่าน. ค้าง sub-stage 2 (image/slip, coalescing, 24h window, cron, channel-name parametrize)
+- 2026-07-04: Phase D sub-stage 1 เสร็จ — webhook route + Send API transport + config/signature + repository + core text processor (reuse chat-core), 8 tests เขียว, tsc/lint ผ่าน
+- 2026-07-04: Phase D sub-stage 2 เสร็จ — D4 image/slip (classifyImageContent กลาง + ingest slip), D5 coalescing (batch+owner loop), D6 24h window guard, D7 cron recover + vercel cron, D3 view-all card. **Phase D ครบทุกข้อ → ถัดไป Phase E (admin/permission/notif/audit)**

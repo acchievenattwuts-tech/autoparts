@@ -239,6 +239,34 @@ export async function releaseMessengerConversationLock(input: {
   });
 }
 
+/** Coalescing crash failsafe: conversations with customer messages newer than the
+ *  last AI reply, no live owner (lock free / lease expired), quiet long enough that
+ *  a live owner would already have finished. The cron re-runs the owner loop for
+ *  these so a crashed webhook never leaves a customer unanswered. */
+export async function findStalledMessengerConversationIds(input: {
+  quietBefore: Date;
+  take: number;
+}): Promise<string[]> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "MessengerConversation"
+    WHERE "lastInboundSeq" > "lastProcessedSeq"
+      AND ("processingOwner" IS NULL OR "processingLeaseUntil" < NOW())
+      AND "lastCustomerMessageAt" IS NOT NULL
+      AND "lastCustomerMessageAt" < ${input.quietBefore}
+    ORDER BY "lastCustomerMessageAt" ASC
+    LIMIT ${input.take}`;
+  return rows.map((row) => row.id);
+}
+
+/** psid of a conversation (the owner loop needs it to address the Send API). */
+export async function getMessengerConversationPsid(conversationId: string): Promise<string | null> {
+  const row = await db.messengerConversation.findUnique({
+    where: { id: conversationId },
+    select: { psid: true },
+  });
+  return row?.psid ?? null;
+}
+
 const UNANSWERED_BURST_WINDOW_MS = 90_000;
 
 /** Inbound messages not yet answered (newer than the last outbound, within the

@@ -21,6 +21,10 @@
       "schedule": "0 20 * * *"
     },
     {
+      "path": "/api/messenger/ai-jobs/recover",
+      "schedule": "1-59/2 * * * *"
+    },
+    {
       "path": "/api/purchases/cron/cleanup-ocr-temp",
       "schedule": "0 3 * * *"
     }

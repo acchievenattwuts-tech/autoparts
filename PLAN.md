@@ -206,7 +206,7 @@
 - [ ] Phase 4 — Cleanup: ลบไฟล์เก่า 3 bucket ใน Supabase, ลบโค้ด Supabase storage เฉพาะ 3 bucket (คง purchase-ocr), เอา flag ออก
 
 ### 8. Facebook Messenger AI Agent (2026-07-04)
-- สถานะ: **Phase B+C เสร็จ, D sub-stage 1 เสร็จ** (B: สมองกลาง `lib/chat-core/`; C: 4 model + PaymentSlip; D1: webhook + Send API transport + processor core text flow reuse chat-core, 8 tests เขียว) · ค้าง D sub-stage 2 (image/slip, coalescing, 24h window, cron) แล้ว Phase E — checklist เต็มดู [PLAN-MESSENGER.md](/D:/autoparts/PLAN-MESSENGER.md)
+- สถานะ: **Phase B+C+D เสร็จครบ** (B: สมองกลาง `lib/chat-core/`; C: 4 model + PaymentSlip; D: webhook + Send API + processor เต็ม — text/รูป/สลิป OCR, coalescing, 24h window, cron recover — reuse chat-core, 8 tests เขียว) · ถัดไป Phase E (admin inbox/permission/notif/audit) แล้ว Phase A (Meta App Review) — checklist เต็มดู [PLAN-MESSENGER.md](/D:/autoparts/PLAN-MESSENGER.md)
 - เป้าหมาย: AI ตอบ DM Facebook ใช้สมอง + logic ค้นหาชุดเดียวกับ LINE OA (แก้ที่เดียว) — ตารางแยกใหม่ `MessengerConversation`, parity เต็มเท่า LINE, webhook `www.sriwanparts.com/api/messenger/webhook`
 - หลักการ: extract `lib/chat-core/` (channel-agnostic) แบบ clean repo-wide ไม่ใช้ shim → LINE ต้องทำงานเหมือนเดิม 100% (build เขียว + test เดิมผ่านทุกตัว)
 
