@@ -199,17 +199,23 @@ const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
   { keywords: ["หน้าครัช", "หน้าคลัช", "คลัชคอม", "มูเล่คอม", "clutch"], categoryMatch: "Compressor Clutch" },
   { keywords: ["คอมแอร์", "คอมเพรสเซอร์", "compressor"], categoryMatch: "(Compressor)" },
   { keywords: ["คอยล์เย็น", "คอยเย็น", "ตู้แอร์", "ตู้เย็น", "evaporator"], categoryMatch: "(Evaporator)" },
+  // Fan-blade / fan-motor entries MUST precede the generic "(Condenser)" entry
+  // below. The Condenser Fan Motor category NAME itself embeds "หน้าแผงแอร์"
+  // (and the word "Condenser"), so if the "แผงแอร์"/"condenser" → (Condenser) rule
+  // ran first it would mis-route a fan-motor part to the แผงแอร์ (Condenser)
+  // category — the exact bug seen with partType = the full canonical category name.
+  // Matching is first-hit by substring, so the more specific fan entries win here.
+  { keywords: ["ใบพัดลม", "ใบพัด", "fan blade"], categoryMatch: "Cooling Fan Blade" },
+  {
+    keywords: ["มอเตอร์พัดลม", "พัดลมหน้าแผง", "พัดลมหม้อน้ำ", "พัดลมหน้าเครื่อง", "condenser fan"],
+    categoryMatch: "Condenser Fan Motor",
+  },
   { keywords: ["คอยล์ร้อน", "แผงแอร์", "แผงร้อน", "รังผึ้งแอร์", "condenser"], categoryMatch: "(Condenser)" },
   { keywords: ["กรองแอร์", "ฟิลเตอร์แอร์", "cabin"], categoryMatch: "Cabin air filter" },
   { keywords: ["กรองอากาศ", "ไส้กรองอากาศ", "air filter"], categoryMatch: "(Air Filter)" },
   { keywords: ["ดรายเออร์", "ไดเออร์", "drier", "receiver"], categoryMatch: "Drier" },
   { keywords: ["รีซิสเตอร์", "resistor"], categoryMatch: "Blower Motor Resistor" },
   { keywords: ["โบเวอร์", "พัดลมแอร์", "มอเตอร์ตู้แอร์", "พัดลมตู้แอร์", "blower"], categoryMatch: "Blower Motor)" },
-  {
-    keywords: ["มอเตอร์พัดลม", "พัดลมหน้าแผง", "พัดลมหม้อน้ำ", "พัดลมหน้าเครื่อง", "condenser fan"],
-    categoryMatch: "Condenser Fan Motor",
-  },
-  { keywords: ["ใบพัดลม", "ใบพัด", "fan blade"], categoryMatch: "Cooling Fan Blade" },
   { keywords: ["ฝาหม้อน้ำ", "ฝาปิดหม้อน้ำ", "radiator cap"], categoryMatch: "Radiator Cap" },
   { keywords: ["น้ำยาหล่อเย็น", "คูลแลนท์", "coolant"], categoryMatch: "Radiator Coolant" },
   { keywords: ["สายน้ำยา", "ท่อน้ำยา", "a/c hose"], categoryMatch: "A/C Hose" },
@@ -354,11 +360,23 @@ export async function resolveLineFitmentFilters(
   const allowPartTypeCategoryLookup = !skipCategory && !categoryFromAlias && Boolean(partType);
 
   try {
-    const [brandRow, categoryRow] = await Promise.all([
+    const [brandRow, exactCategoryRow, categoryRow] = await Promise.all([
       carBrand
         ? db.carBrand.findFirst({
             where: { isActive: true, name: { equals: carBrand, mode: "insensitive" } },
             select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+      // Option B — highest-precedence path: when `partType` is ALREADY the exact
+      // canonical name of an active category, trust it verbatim and NEVER run it
+      // through the colloquial substring matcher. A prior frame / known-intent can
+      // store the full category name as partType (e.g. "…หน้าแผงแอร์ (Condenser Fan
+      // Motor)"), and that name embeds "แผงแอร์"/"condenser" — which the fuzzy
+      // matcher would mis-route to the (Condenser) category. Exact match kills that.
+      partType
+        ? db.category.findFirst({
+            where: { isActive: true, name: { equals: partType, mode: "insensitive" } },
+            select: { name: true },
           })
         : Promise.resolve(null),
       categoryHint
@@ -380,7 +398,10 @@ export async function resolveLineFitmentFilters(
         : Promise.resolve(null),
     ]);
 
-    if (categoryFromAlias) filters.categoryName = categoryFromAlias;
+    // Precedence: exact category name (partType == a real category) wins over the
+    // colloquial alias, which wins over the fuzzy hint / contains lookup.
+    if (exactCategoryRow) filters.categoryName = exactCategoryRow.name;
+    else if (categoryFromAlias) filters.categoryName = categoryFromAlias;
     else if (categoryRow) filters.categoryName = categoryRow.name;
     if (!filters.carBrandName && brandRow) filters.carBrandName = brandRow.name;
 

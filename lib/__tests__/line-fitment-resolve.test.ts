@@ -86,6 +86,31 @@ test("disambiguates overlapping substrings via ordering", async () => {
   assert.equal(matchPartTypeToCategoryHint("หน้าครัชคอมแอร์"), "Compressor Clutch");
 });
 
+test("does not mis-route a fan-motor part-type to the Condenser category", async () => {
+  const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
+  // Regression for the production bug: partType carried the FULL canonical category
+  // name, which embeds "หน้าแผงแอร์" + "Condenser". The generic "แผงแอร์"→(Condenser)
+  // rule used to win first and route the fan motor to แผงแอร์ (Condenser).
+  assert.equal(
+    matchPartTypeToCategoryHint("มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)"),
+    "Condenser Fan Motor",
+  );
+  // Colloquial fan-motor keywords resolve to the fan-motor category.
+  assert.equal(matchPartTypeToCategoryHint("มอเตอร์พัดลม"), "Condenser Fan Motor");
+  assert.equal(matchPartTypeToCategoryHint("พัดลมหน้าแผง"), "Condenser Fan Motor");
+  assert.equal(matchPartTypeToCategoryHint("พัดลมหม้อน้ำ"), "Condenser Fan Motor");
+  assert.equal(matchPartTypeToCategoryHint("พัดลมหน้าเครื่อง"), "Condenser Fan Motor");
+  assert.equal(matchPartTypeToCategoryHint("condenser fan"), "Condenser Fan Motor");
+  // Fan blade stays distinct and is not swallowed by the fan-motor entry.
+  assert.equal(matchPartTypeToCategoryHint("ใบพัดลม"), "Cooling Fan Blade");
+  // Regression: a genuine Condenser (แผงแอร์) part-type must still resolve to Condenser.
+  assert.equal(matchPartTypeToCategoryHint("แผงแอร์"), "(Condenser)");
+  assert.equal(matchPartTypeToCategoryHint("คอยล์ร้อน"), "(Condenser)");
+  assert.equal(matchPartTypeToCategoryHint("รังผึ้งแอร์"), "(Condenser)");
+  // Blower stays distinct too.
+  assert.equal(matchPartTypeToCategoryHint("พัดลมแอร์"), "Blower Motor)");
+});
+
 test("returns null for unknown / empty part-types", async () => {
   const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
   assert.equal(matchPartTypeToCategoryHint("อะไหล่แปลกๆ"), null);
