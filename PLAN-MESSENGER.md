@@ -112,10 +112,10 @@
 
 ## Phase E — Admin / Permissions / Notifications / Audit (.rules §7–8)
 
-- [ ] E1. เมนู `/admin/messenger-conversations` (mirror line-conversations inbox) + `loading.tsx` ทุก segment + `force-dynamic` + date filter
-- [ ] E2. Permission ครบ 5 ขั้น: key ใน `access-control.ts`, route rule, `requirePermission` ใน page, `requirePermission` ในทุก Server Action, sidebar
-- [ ] E3. Notification: เพิ่ม `NotificationType.MESSENGER_*` + helper ใน `lib/notifications.ts` → bell + Telegram พร้อมกัน (Iron Rule)
-- [ ] E4. Audit Log ทุก mutation (toggle AI, link customer, manual reply, export)
+- [x] E1. ✅ DONE 2026-07-04 — inbox `/admin/messenger-conversations` (list + `[id]` detail) mirror LINE: `messenger-admin-service.ts` (list/getMessages/pause/resume/waiting/close/sendAdminMessage), `loading.tsx` ทุก segment, `force-dynamic`, status filter; client `MessengerConversationPanel` (ปุ่มสถานะ + reply); admin reply ส่งด้วย `HUMAN_AGENT` tag (ตอบได้นอก 24h window)
+- [x] E2. ✅ DONE 2026-07-04 — permission 5 ขั้น: 3 key ใน `access-control.ts` (view/reply/manage กลุ่ม "Facebook Messenger"), route rule `/admin/messenger-conversations`, `requirePermission("...view")` ใน page ทั้ง 2, `requirePermission` ในทุก Server Action (manage/reply), sidebar navItem. (mirror LINE: ไม่ให้ staff default เช่นเดียวกับ line_conversations)
+- [x] E4. ✅ DONE 2026-07-04 — ทุก mutation เขียน central `AuditLog` ผ่าน `safeWriteAuditLog` (action=UPDATE, entityRef=เหตุการณ์จริง MESSENGER_ADMIN_PAUSE/RESUME/…/SEND_MESSAGE) — ตามที่ตกลงใช้ audit กลาง
+- [ ] E3. Notification — **ค้าง รอ confirm**: ต้องเพิ่ม `NotificationType.MESSENGER_*` (enum = schema change ต้องขออนุมัติก่อน `prisma db push`) + helper ใน `lib/notifications.ts` → bell + Telegram (Iron Rule)
 
 ---
 

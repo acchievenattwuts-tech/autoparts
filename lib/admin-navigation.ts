@@ -67,6 +67,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view", keywords: "receipt รับชำระ" },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view", keywords: "credit note cn ลดหนี้" },
       { label: "LINE OA Conversations", href: "/admin/line-conversations", icon: MessageCircle, permission: "line_conversations.view", keywords: "line oa chat conversations ai agent reply customer" },
+      { label: "Messenger Conversations", href: "/admin/messenger-conversations", icon: MessageCircle, permission: "messenger_conversations.view", keywords: "facebook messenger fb chat conversations ai agent reply customer dm" },
       { label: "สลิปการชำระเงิน (LINE)", href: "/admin/line-payment-slips", icon: Receipt, permission: "line_payment_slips.view", keywords: "line payment slip สลิป โอนเงิน หลักฐานการโอน ตรวจสลิป ชำระเงิน ocr" },
     ],
   },

@@ -131,6 +131,10 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "line_payment_slips.view", group: "LINE OA", label: "ดูสลิปการชำระเงินจาก LINE" },
   { key: "line_payment_slips.manage", group: "LINE OA", label: "ตรวจสอบ/อนุมัติสลิปการชำระเงินจาก LINE" },
 
+  { key: "messenger_conversations.view", group: "Facebook Messenger", label: "ดูบทสนทนา Messenger" },
+  { key: "messenger_conversations.reply", group: "Facebook Messenger", label: "ตอบบทสนทนา Messenger" },
+  { key: "messenger_conversations.manage", group: "Facebook Messenger", label: "จัดการสถานะ AI ในบทสนทนา Messenger" },
+
   { key: "marketplace.view", group: "ช่องทางขาย", label: "ดูการเชื่อมต่อ Shopee/Marketplace" },
   { key: "marketplace.manage", group: "ช่องทางขาย", label: "จัดการการเชื่อมต่อและตั้งค่า Marketplace" },
   { key: "marketplace.sync", group: "ช่องทางขาย", label: "สั่ง sync Marketplace (ดึงออเดอร์/ส่งสต็อก)" },
@@ -296,6 +300,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/line-ai-keys", permission: "line_ai_keys.view" },
   { prefix: "/admin/line-payment-slips", permission: "line_payment_slips.view" },
   { prefix: "/admin/line-conversations", permission: "line_conversations.view" },
+  { prefix: "/admin/messenger-conversations", permission: "messenger_conversations.view" },
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
