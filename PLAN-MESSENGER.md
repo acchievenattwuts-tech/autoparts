@@ -78,11 +78,14 @@
 
 ต้อง confirm field กับเจ้าของก่อน `prisma db push` (ตาม .rules §8)
 
-- [ ] C1. เพิ่ม model `MessengerConversation` (mirror `LineConversation`: psid, pageId, displayName, pictureUrl, status, aiEnabled, linked customerId …) — timestamp ใช้ `@db.Timestamptz(3)`
-- [ ] C2. เพิ่ม model `MessengerMessage` (mirror `LineMessage`: role, text, attachments, intent, confidence, mid, createdAt …) — idempotency key บน FB message id (`mid`)
-- [ ] C3. reuse enum เดิมเป็น enum กลาง
-- [ ] C4. สรุปทุก field ให้เจ้าของ confirm → `prisma db push`
-- [ ] C5. index ครบ (field ใน where/orderBy/FK)
+### ✅ DONE 2026-07-04 (confirm field + push แล้ว)
+- [x] C1. `MessengerConversation` (mirror `LineConversation` + `pageId`/`psid`, `@@unique([pageId, psid])`) — Timestamptz(3) ครบ
+- [x] C2. `MessengerMessage` (mirror `LineMessage`; `psid`/`mid`/`fbEventId @unique` แทน line ids, ตัด replyToken)
+- [x] C2b. `MessengerAiJob` + `MessengerAiSuggestion` (mirror LINE) — สร้างครบ 4 model รอบเดียว
+- [x] C3. reuse enum เดิมทั้งหมดเป็น enum กลาง (`LineConversationAiStatus`, `LineMessageDirection`, `LineMessageType`, `LineIntent`, `LineDeliveryMode/Status`, `LineAiJobType/Status`, `LineAiConfidence`, `LineAiSuggestionStatus`)
+- [x] C4. `PaymentSlip` option (ก): `conversationId`+`lineUserId` → nullable, เพิ่ม `messengerConversationId` FK + index (ไม่มี data loss, ไม่กระทบ pipeline LINE); back-relation ใน User(2)+Customer(1)
+- [x] C5. index ครบ mirror LINE; audit ใช้ `AuditLog` กลาง (ไม่มี MessengerAiAuditLog)
+- [x] `prisma validate` + `prisma db push` (sync สำเร็จ) + `prisma generate` (client มี 4 model) + `tsc` 0 error
 
 ---
 
@@ -130,4 +133,5 @@
 
 - 2026-07-04: ยืนยัน decisions + domain, เริ่ม Phase B
 - 2026-07-04: Phase B Stage 1 เสร็จ — ย้าย 13 ไฟล์สมอง → `lib/chat-core/`, แก้ import 37 ไฟล์, tsc/lint เขียว, tests 313/314 (1 fail pre-existing)
-- 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314. **Phase B ครบทั้ง Stage → พร้อมไป Phase C (schema)**
+- 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314
+- 2026-07-04: Phase C เสร็จ — เพิ่ม 4 model Messenger + แก้ PaymentSlip (nullable + FK), `prisma db push` sync สำเร็จ, generate + tsc เขียว. **ถัดไป Phase D (webhook + transport + processor)**

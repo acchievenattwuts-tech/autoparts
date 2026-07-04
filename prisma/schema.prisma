@@ -41,6 +41,8 @@ model User {
   lineSummaryDispatches         LineDailySummaryDispatch[]
   lineConversationsAssigned     LineConversation[]         @relation("LineConversationAssignedAdmin")
   lineMessagesAdminAuthored     LineMessage[]              @relation("LineMessageAdminAuthor")
+  messengerConversationsAssigned MessengerConversation[]   @relation("MessengerConversationAssignedAdmin")
+  messengerMessagesAdminAuthored MessengerMessage[]        @relation("MessengerMessageAdminAuthor")
   paymentSlipsReviewed          PaymentSlip[]              @relation("PaymentSlipReviewer")
   profitExplanationHistories    ProfitExplanationHistory[]
   purchases                     Purchase[]
@@ -233,6 +235,121 @@ model LineAiSuggestion {
   @@index([status, createdAt])
 }
 
+// ── Facebook Messenger AI Chat (channel-agnostic brain in lib/chat-core) ──
+// Mirrors the LINE conversation subsystem. Reuses the Line*-named enums as
+// channel-neutral shared enums. Audit uses the central AuditLog (no dedicated
+// MessengerAiAuditLog).
+model MessengerConversation {
+  id                    String                   @id @default(cuid())
+  pageId                String
+  psid                  String
+  displayName           String?
+  pictureUrl            String?
+  aiStatus              LineConversationAiStatus @default(ACTIVE)
+  customerId            String?
+  assignedAdminId       String?
+  pausedReason          String?
+  lastCustomerMessageAt DateTime?                @db.Timestamptz(3)
+  lastAdminMessageAt    DateTime?                @db.Timestamptz(3)
+  lastInboundSeq        Int                      @default(0)
+  lastProcessedSeq      Int                      @default(0)
+  processingOwner       String?
+  processingLeaseUntil  DateTime?                @db.Timestamptz(3)
+  inquiryPartType       String?
+  inquiryCarBrand       String?
+  inquiryCarModel       String?
+  inquiryYear           Int?
+  inquiryUpdatedAt      DateTime?                @db.Timestamptz(3)
+  pausedAt              DateTime?                @db.Timestamptz(3)
+  resumedAt             DateTime?                @db.Timestamptz(3)
+  closedAt              DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+  assignedAdmin         User?                    @relation("MessengerConversationAssignedAdmin", fields: [assignedAdminId], references: [id])
+  customer              Customer?                @relation(fields: [customerId], references: [id])
+  messages              MessengerMessage[]
+  aiJobs                MessengerAiJob[]
+  aiSuggestions         MessengerAiSuggestion[]
+  paymentSlips          PaymentSlip[]
+
+  @@unique([pageId, psid])
+  @@index([aiStatus, updatedAt])
+  @@index([assignedAdminId])
+  @@index([customerId])
+  @@index([lastCustomerMessageAt])
+}
+
+model MessengerMessage {
+  id             String                  @id @default(cuid())
+  conversationId String
+  psid           String
+  mid            String?
+  fbEventId      String?                 @unique
+  direction      LineMessageDirection
+  messageType    LineMessageType
+  intent         LineIntent?
+  text           String?
+  imageUrl       String?
+  rawEvent       Json?
+  deliveryMode   LineDeliveryMode?
+  deliveryStatus LineDeliveryStatus?
+  adminUserId    String?
+  sentAt         DateTime?               @db.Timestamptz(3)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+  adminUser      User?                   @relation("MessengerMessageAdminAuthor", fields: [adminUserId], references: [id])
+  conversation   MessengerConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  aiJobs         MessengerAiJob[]
+  aiSuggestions  MessengerAiSuggestion[]
+
+  @@index([conversationId, createdAt])
+  @@index([psid, createdAt])
+  @@index([mid])
+  @@index([direction, createdAt])
+  @@index([intent, createdAt])
+}
+
+model MessengerAiJob {
+  id                 String                @id @default(cuid())
+  conversationId     String
+  messengerMessageId String?
+  jobType            LineAiJobType
+  status             LineAiJobStatus       @default(PENDING)
+  payload            Json?
+  result             Json?
+  error              String?
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  startedAt          DateTime?             @db.Timestamptz(3)
+  finishedAt         DateTime?             @db.Timestamptz(3)
+  conversation       MessengerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messengerMessage   MessengerMessage?     @relation(fields: [messengerMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([messengerMessageId])
+  @@index([jobType, status, createdAt])
+}
+
+model MessengerAiSuggestion {
+  id                 String                 @id @default(cuid())
+  conversationId     String
+  messengerMessageId String?
+  intent             LineIntent?
+  suggestedReply     String
+  confidence         LineAiConfidence
+  matchedProducts    Json?
+  reasoningSummary   String?
+  status             LineAiSuggestionStatus @default(DRAFT)
+  deliveryMode       LineDeliveryMode?
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  sentAt             DateTime?              @db.Timestamptz(3)
+  conversation       MessengerConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messengerMessage   MessengerMessage?      @relation(fields: [messengerMessageId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([messengerMessageId])
+  @@index([intent, confidence])
+  @@index([status, createdAt])
+}
+
 model LineAiAuditLog {
   id             String            @id @default(cuid())
   conversationId String?
@@ -248,9 +365,10 @@ model LineAiAuditLog {
 
 model PaymentSlip {
   id                       String                        @id @default(cuid())
-  conversationId           String
-  lineUserId               String
+  conversationId           String?
+  lineUserId               String?
   lineMessageId            String?
+  messengerConversationId  String?
   imageUrl                 String?
   detectedAmount           Decimal?                      @db.Decimal(10, 2)
   detectedTransferDatetime DateTime?                     @db.Timestamptz(3)
@@ -266,11 +384,13 @@ model PaymentSlip {
   createdAt                DateTime                      @default(now()) @db.Timestamptz(3)
   reviewedAt               DateTime?                     @db.Timestamptz(3)
   reviewedById             String?
-  conversation             LineConversation              @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation             LineConversation?             @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messengerConversation    MessengerConversation?        @relation(fields: [messengerConversationId], references: [id], onDelete: Cascade)
   matchedSale              Sale?                         @relation(fields: [matchedSaleId], references: [id])
   reviewedBy               User?                         @relation("PaymentSlipReviewer", fields: [reviewedById], references: [id])
 
   @@index([conversationId, createdAt])
+  @@index([messengerConversationId, createdAt])
   @@index([lineUserId, createdAt])
   @@index([lineMessageId])
   @@index([matchedSaleId])
@@ -984,6 +1104,7 @@ model Customer {
   customerTypeId   String?
   customerType     CustomerType? @relation(fields: [customerTypeId], references: [id])
   lineConversations LineConversation[]
+  messengerConversations MessengerConversation[]
   creditNotes      CreditNote[]
   receipts         Receipt[]
   sales            Sale[]
