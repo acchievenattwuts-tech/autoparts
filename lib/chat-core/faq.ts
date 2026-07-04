@@ -1,7 +1,7 @@
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import { storefrontFaqItems } from "@/lib/storefront-content";
-import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/line-ai-service";
+import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/chat-core/ai-service";
 
 /**
  * Answers general customer questions grounded ONLY in the shop's real FAQ

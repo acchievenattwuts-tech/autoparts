@@ -25,16 +25,16 @@ import {
   generateScopedConversationalReply,
   type LineReplyHistoryItem,
   type LineSearchIntent,
-} from "@/lib/line-ai-service";
-import { resolveKnownQueryIntent } from "@/lib/known-query-intent";
+} from "@/lib/chat-core/ai-service";
+import { resolveKnownQueryIntent } from "@/lib/chat-core/known-query-intent";
 import {
   isAccessoryOrChemicalIntent,
   resolveLineFitmentFilters,
   type LineFitmentFilters,
-} from "@/lib/line-fitment-resolve";
-import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
+} from "@/lib/chat-core/fitment-resolve";
+import { normalizeInboundLineQuery } from "@/lib/chat-core/text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
+import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/chat-core/intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   acquireLineConversationLock,
@@ -66,35 +66,35 @@ import {
   updateLineConversationState,
 } from "@/lib/line-conversation-repository";
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
-import { routeLineIntent } from "@/lib/line-intent-router";
+import { routeLineIntent } from "@/lib/chat-core/intent-router";
 import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
 import {
   applyLinePriceVisibility,
   getLineProductSummaries,
   searchLineProductInquiry,
-} from "@/lib/line-product-search-bridge";
+} from "@/lib/chat-core/product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
-import { extractFitmentTerms } from "@/lib/line-fitment-extract";
-import { answerFromLineFaq } from "@/lib/line-faq";
+import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
+import { answerFromLineFaq } from "@/lib/chat-core/faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
-import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/line-search-guards";
+import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/chat-core/search-guards";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   buildLineSearchAskReply,
   buildLineSearchFollowUp,
   decideLineSearchGate,
-} from "@/lib/line-search-gate";
+} from "@/lib/chat-core/search-gate";
 import {
   boundMessagesToSession,
   buildFrameQuery,
   isFrameStale,
   reconcileInquiryFrame,
   type InquiryFrame,
-} from "@/lib/line-inquiry-frame";
+} from "@/lib/chat-core/inquiry-frame";
 
 export type LineWebhookProcessorConfig = {
   channelAccessToken: string | null;
@@ -882,7 +882,7 @@ async function respondMultiSubject(
   input: ProcessLineAiReplyInput,
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  subjects: import("@/lib/line-ai-service").LineSubject[],
+  subjects: import("@/lib/chat-core/ai-service").LineSubject[],
 ): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED } | null> {
   if (!config.channelAccessToken) return null;
 
@@ -905,7 +905,7 @@ async function respondMultiSubject(
   // doesn't resolve still split by their raw part type so we never silently merge
   // two clearly different parts.
   type ResolvedSubject = {
-    subject: import("@/lib/line-ai-service").LineSubject;
+    subject: import("@/lib/chat-core/ai-service").LineSubject;
     key: string;
     fitment: LineFitmentFilters;
   };

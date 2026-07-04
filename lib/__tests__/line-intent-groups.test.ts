@@ -7,7 +7,7 @@ import {
   groupToRoute,
   intentToGroup,
   isLineMessageGroup,
-} from "@/lib/line-intent-groups";
+} from "@/lib/chat-core/intent-groups";
 
 test("guard groups are exactly the money/commitment intents", () => {
   assert.deepEqual(

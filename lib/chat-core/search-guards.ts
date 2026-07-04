@@ -1,7 +1,7 @@
 import { buildSearchVariants, normalizeSearchText, tokenizeSearchVariants } from "@/lib/search-normalization";
-import type { LineReplyHistoryItem, LineSearchIntent } from "@/lib/line-ai-service";
+import type { LineReplyHistoryItem, LineSearchIntent } from "@/lib/chat-core/ai-service";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
-import { resolveBrandVariants } from "@/lib/line-brand-variants";
+import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
 
 /**
  * Tokens with 3+ chars and a digit are usually model codes / part fragments in

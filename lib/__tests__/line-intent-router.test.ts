@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
-import { routeLineIntent } from "@/lib/line-intent-router";
+import { routeLineIntent } from "@/lib/chat-core/intent-router";
 
 test("routes product inquiry text to searchable intent", () => {
   const result = routeLineIntent({

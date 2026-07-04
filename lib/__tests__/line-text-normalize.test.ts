@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
+import { normalizeInboundLineQuery } from "@/lib/chat-core/text-normalize";
 
 test("splits a digit anchor glued onto a Thai word", () => {
   // The reported bug: "134" (R134a) fused to Thai letters never tokenized.

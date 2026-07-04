@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
 test("maps colloquial part-types to the right category hint", async () => {
-  const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
+  const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
   assert.equal(matchPartTypeToCategoryHint("วาล์วแอร์"), "(Expansion Valve)");
   assert.equal(matchPartTypeToCategoryHint("คอยเย็น"), "(Evaporator)");
   assert.equal(matchPartTypeToCategoryHint("คอยล์เย็น"), "(Evaporator)");
@@ -14,7 +14,7 @@ test("maps colloquial part-types to the right category hint", async () => {
 });
 
 test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {
-  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+  const { resolveColloquialCarModelAlias } = await import("@/lib/chat-core/fitment-resolve");
 
   assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "ออนิว", rawText: "ออนิว" }), {
     brandName: "Isuzu",
@@ -28,7 +28,7 @@ test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {
 });
 
 test("maps safe sub-model / trim aliases to hard model filters", async () => {
-  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+  const { resolveColloquialCarModelAlias } = await import("@/lib/chat-core/fitment-resolve");
 
   assert.deepEqual(resolveColloquialCarModelAlias({ carBrand: null, carModel: "V-Cross", rawText: "V-Cross" }), {
     brandName: "Isuzu",
@@ -65,7 +65,7 @@ test("maps safe sub-model / trim aliases to hard model filters", async () => {
 });
 
 test("does not hard-map ambiguous trim words without enough context", async () => {
-  const { resolveColloquialCarModelAlias } = await import("@/lib/line-fitment-resolve");
+  const { resolveColloquialCarModelAlias } = await import("@/lib/chat-core/fitment-resolve");
 
   assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Champ", rawText: "Champ" }), null);
   assert.equal(resolveColloquialCarModelAlias({ carBrand: null, carModel: "Ativ", rawText: "Ativ" }), null);
@@ -74,7 +74,7 @@ test("does not hard-map ambiguous trim words without enough context", async () =
 });
 
 test("disambiguates overlapping substrings via ordering", async () => {
-  const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
+  const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
   // "วาล์ว" appears in two categories — control valve must win when explicit.
   assert.equal(matchPartTypeToCategoryHint("คอนโทรลวาล์วคอมแอร์"), "Compressor Control Valve");
   // "หม้อน้ำ" appears in Radiator / Radiator Cap / Coolant — specifics win.
@@ -87,7 +87,7 @@ test("disambiguates overlapping substrings via ordering", async () => {
 });
 
 test("does not mis-route a fan-motor part-type to the Condenser category", async () => {
-  const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
+  const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
   // Regression for the production bug: partType carried the FULL canonical category
   // name, which embeds "หน้าแผงแอร์" + "Condenser". The generic "แผงแอร์"→(Condenser)
   // rule used to win first and route the fan motor to แผงแอร์ (Condenser).
@@ -112,7 +112,7 @@ test("does not mis-route a fan-motor part-type to the Condenser category", async
 });
 
 test("returns null for unknown / empty part-types", async () => {
-  const { matchPartTypeToCategoryHint } = await import("@/lib/line-fitment-resolve");
+  const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
   assert.equal(matchPartTypeToCategoryHint("อะไหล่แปลกๆ"), null);
   assert.equal(matchPartTypeToCategoryHint(""), null);
   assert.equal(matchPartTypeToCategoryHint(null), null);
@@ -120,7 +120,7 @@ test("returns null for unknown / empty part-types", async () => {
 
 test("skips the part-category hint for accessory / chemical intents", async () => {
   const { matchPartTypeToCategoryHint, isAccessoryOrChemicalIntent } = await import(
-    "@/lib/line-fitment-resolve"
+    "@/lib/chat-core/fitment-resolve"
   );
   // The bug case: cleaner name embeds "คอยเย็น" but must NOT resolve to Evaporator.
   assert.equal(matchPartTypeToCategoryHint("น้ำยาล้างคอยเย็น"), null);

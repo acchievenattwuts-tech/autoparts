@@ -1,8 +1,8 @@
 import { LineAiConfidence, LineIntent } from "@/lib/generated/prisma";
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
-import type { LineProductSearchBridgeResult } from "@/lib/line-product-search-bridge";
-import { isLineMessageGroup, type LineMessageGroup } from "@/lib/line-intent-groups";
+import type { LineProductSearchBridgeResult } from "@/lib/chat-core/product-search-bridge";
+import { isLineMessageGroup, type LineMessageGroup } from "@/lib/chat-core/intent-groups";
 
 export type LineAiSuggestionDraft = {
   suggestedReply: string;

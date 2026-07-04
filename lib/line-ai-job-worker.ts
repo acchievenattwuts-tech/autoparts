@@ -14,7 +14,7 @@ import {
   updateLineAiJob,
   updateLineConversationState,
 } from "@/lib/line-conversation-repository";
-import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/line-product-search-bridge";
+import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/chat-core/product-search-bridge";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import {
   processLineAiReply,

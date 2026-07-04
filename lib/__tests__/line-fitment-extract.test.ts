@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractFitmentTerms } from "@/lib/line-fitment-extract";
+import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
 
 test("extracts car keyword + year", () => {
   assert.deepEqual(extractFitmentTerms("มีคอมแอร์ vios 2017 ไหม"), ["vios", "2017"]);

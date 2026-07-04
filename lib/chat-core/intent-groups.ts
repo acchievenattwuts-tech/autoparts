@@ -1,5 +1,5 @@
 import { LineIntent } from "@/lib/generated/prisma";
-import type { LineIntentRouteResult } from "@/lib/line-intent-router";
+import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
 
 /**
  * The intent groups the AI classifier sorts a customer message into (Phase:

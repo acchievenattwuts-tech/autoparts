@@ -1,12 +1,12 @@
 import { unstable_cache } from "next/cache";
 import { LineIntent } from "@/lib/generated/prisma";
-import { extractLineSearchIntent } from "@/lib/line-ai-service";
-import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/line-search-guards";
-import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/line-fitment-resolve";
+import { extractLineSearchIntent } from "@/lib/chat-core/ai-service";
+import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/chat-core/search-guards";
+import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/chat-core/fitment-resolve";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { normalizeInboundLineQuery } from "@/lib/line-text-normalize";
+import { normalizeInboundLineQuery } from "@/lib/chat-core/text-normalize";
 import { normalizeSearchText } from "@/lib/search-normalization";
-import { resolveKnownQueryIntent } from "@/lib/known-query-intent";
+import { resolveKnownQueryIntent } from "@/lib/chat-core/known-query-intent";
 import { PRODUCT_SEARCH_TAG } from "@/lib/product-search-cache";
 
 /**

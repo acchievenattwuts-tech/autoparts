@@ -5,7 +5,7 @@ process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_te
 
 // Typed only — the value is imported dynamically inside each test AFTER the env var
 // is set above (a top-level import is hoisted and would eval lib/db before then).
-import type { Entry } from "@/lib/known-query-intent";
+import type { Entry } from "@/lib/chat-core/known-query-intent";
 
 const entries = (map: Record<string, Entry[]>): Map<string, Entry[]> =>
   new Map(Object.entries(map));
@@ -13,7 +13,7 @@ const entries = (map: Record<string, Entry[]>): Map<string, Entry[]> =>
 test("Option A: promotes a synonym misspelling to the carModel hard filter", async () => {
   // "starda" resolved only to a synonym whose canonical term is "Strada"; the
   // synonym term re-resolves to a carModel. It must become carModelName.
-  const { deriveKnownQueryFilters } = await import("@/lib/known-query-intent");
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({
     dictionaryNorms: ["หม้อน้ำ", "starda"],
     entriesByNorm: entries({
@@ -32,7 +32,7 @@ test("Option A: promotes a synonym misspelling to the carModel hard filter", asy
 });
 
 test("Option A: a synonym that maps to a part (not a vehicle) does NOT become a filter", async () => {
-  const { deriveKnownQueryFilters } = await import("@/lib/known-query-intent");
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({
     dictionaryNorms: ["คอมแอร์"],
     entriesByNorm: entries({
@@ -50,7 +50,7 @@ test("Option A: a synonym that maps to a part (not a vehicle) does NOT become a 
 
 test("Option B: a bare numeric token (engine cc) does NOT alone make the query context-free", async () => {
   // "หม้อน้ำ 2500" with no vehicle: category only + numeric code must fall to the LLM.
-  const { deriveKnownQueryFilters } = await import("@/lib/known-query-intent");
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({
     dictionaryNorms: ["หม้อน้ำ"],
     entriesByNorm: entries({
@@ -65,7 +65,7 @@ test("Option B: a bare numeric token (engine cc) does NOT alone make the query c
 });
 
 test("Option B: a real part-number anchor (letters/hyphen) stays context-free", async () => {
-  const { deriveKnownQueryFilters } = await import("@/lib/known-query-intent");
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({
     dictionaryNorms: [],
     entriesByNorm: entries({}),
@@ -76,7 +76,7 @@ test("Option B: a real part-number anchor (letters/hyphen) stays context-free", 
 });
 
 test("direct carModel/category entries still win without any synonym expansion", async () => {
-  const { deriveKnownQueryFilters } = await import("@/lib/known-query-intent");
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({
     dictionaryNorms: ["หม้อน้ำ", "vios"],
     entriesByNorm: entries({

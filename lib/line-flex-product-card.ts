@@ -1,5 +1,5 @@
 import type { LineFlexMessage } from "@/lib/line-daily-summary";
-import type { LineMatchedProductSummary } from "@/lib/line-product-search-bridge";
+import type { LineMatchedProductSummary } from "@/lib/chat-core/product-search-bridge";
 import { getProductSlug } from "@/lib/product-slug";
 import { toProductImageCdnPath, toPublicStorageCdnPath } from "@/lib/product-image-url";
 

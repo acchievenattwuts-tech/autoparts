@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getBrandVariants, resolveBrandVariants } from "@/lib/line-brand-variants";
+import { getBrandVariants, resolveBrandVariants } from "@/lib/chat-core/brand-variants";
 
 test("maps an English brand to its Thai spellings (and back)", () => {
   const toyota = getBrandVariants("Toyota");

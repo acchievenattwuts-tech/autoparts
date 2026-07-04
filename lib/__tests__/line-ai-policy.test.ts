@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { LineAiConfidence, LineConversationAiStatus, LineDeliveryMode, LineIntent } from "@/lib/generated/prisma";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
-import type { LineIntentRouteResult } from "@/lib/line-intent-router";
+import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
 
 const productRoute: LineIntentRouteResult = {
   intent: LineIntent.PRODUCT_INQUIRY_TEXT,

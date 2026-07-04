@@ -8,7 +8,7 @@ import {
   buildFrameQuery,
   SESSION_IDLE_MS,
   type InquiryFrame,
-} from "@/lib/line-inquiry-frame";
+} from "@/lib/chat-core/inquiry-frame";
 
 const frame = (over: Partial<InquiryFrame> = {}): InquiryFrame => ({
   partType: null,

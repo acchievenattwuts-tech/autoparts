@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decideLineSearchGate, type LineSearchGateFields } from "@/lib/line-search-gate";
+import { decideLineSearchGate, type LineSearchGateFields } from "@/lib/chat-core/search-gate";
 
 function fields(overrides: Partial<LineSearchGateFields>): LineSearchGateFields {
   return {

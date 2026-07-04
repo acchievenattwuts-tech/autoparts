@@ -1,6 +1,6 @@
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
-import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/line-ai-service";
+import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/chat-core/ai-service";
 
 /**
  * Lightweight classifier that decides whether a customer message expresses intent

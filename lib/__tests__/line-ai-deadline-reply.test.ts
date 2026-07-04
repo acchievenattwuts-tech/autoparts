@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
 // Imported dynamically inside tests so the DATABASE_URL stub above is set before
-// @/lib/line-ai-service (which transitively loads the db client) is evaluated.
-const loadService = () => import("@/lib/line-ai-service");
+// @/lib/chat-core/ai-service (which transitively loads the db client) is evaluated.
+const loadService = () => import("@/lib/chat-core/ai-service");
 
 test("buildMissingFitmentQuestion asks only for the missing slots", async () => {
   const { buildMissingFitmentQuestion } = await loadService();

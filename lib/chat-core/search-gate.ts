@@ -1,4 +1,4 @@
-import type { LinePartKind } from "@/lib/line-ai-service";
+import type { LinePartKind } from "@/lib/chat-core/ai-service";
 
 /**
  * Pre-search completeness gate for LINE product turns.

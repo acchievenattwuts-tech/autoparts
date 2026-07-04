@@ -1,6 +1,6 @@
 import { LineIntent } from "@/lib/generated/prisma";
-import type { LineIntentRouteResult } from "@/lib/line-intent-router";
-import { extractLineRequiredSearchTokens } from "@/lib/line-search-guards";
+import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
+import { extractLineRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 type ProductSearchInput = {

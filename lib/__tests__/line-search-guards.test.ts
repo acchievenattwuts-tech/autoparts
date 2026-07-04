@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { guardLineSearchIntent } from "@/lib/line-search-guards";
-import type { LineSearchIntent } from "@/lib/line-ai-service";
+import { guardLineSearchIntent } from "@/lib/chat-core/search-guards";
+import type { LineSearchIntent } from "@/lib/chat-core/ai-service";
 
 const baseIntent = (over: Partial<LineSearchIntent>): LineSearchIntent => ({
   group: "product",

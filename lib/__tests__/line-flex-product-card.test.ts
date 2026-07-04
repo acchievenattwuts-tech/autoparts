@@ -5,7 +5,7 @@ import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
 import {
   applyLinePriceVisibility,
   type LineMatchedProductSummary,
-} from "@/lib/line-product-search-bridge";
+} from "@/lib/chat-core/product-search-bridge";
 
 process.env.NEXTAUTH_URL = "https://shop.example.com";
 delete process.env.APP_BASE_URL;

@@ -10,7 +10,7 @@ import {
 } from "@/lib/generated/prisma";
 import type { LineWebhookProcessorDependencies, LineWebhookProcessorConfig } from "@/lib/line-webhook-processor";
 import type { LineImageClassification } from "@/lib/line-image-service";
-import type { LineSearchIntent } from "@/lib/line-ai-service";
+import type { LineSearchIntent } from "@/lib/chat-core/ai-service";
 
 type StoredInquiryFrame = {
   partType: string | null;
