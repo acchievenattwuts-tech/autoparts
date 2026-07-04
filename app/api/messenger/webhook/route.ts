@@ -11,7 +11,7 @@ import {
   verifyMessengerSubscription,
 } from "@/lib/messenger/messenger-config";
 import {
-  processMessengerInbound,
+  processMessengerBatch,
   type MessengerInboundEvent,
 } from "@/lib/messenger/messenger-webhook-processor";
 
@@ -90,16 +90,12 @@ export async function POST(request: NextRequest) {
   const pageAccessToken = config.pageAccessToken;
 
   after(async () => {
-    for (const event of events) {
-      try {
-        await processMessengerInbound(event, { pageAccessToken });
-      } catch (error) {
-        console.error(
-          `[messenger-webhook] processing failed for psid=${event.psid}: ${
-            error instanceof Error ? error.message : "unknown"
-          }`,
-        );
-      }
+    try {
+      await processMessengerBatch(events, { pageAccessToken });
+    } catch (error) {
+      console.error(
+        `[messenger-webhook] batch processing failed: ${error instanceof Error ? error.message : "unknown"}`,
+      );
     }
   });
 

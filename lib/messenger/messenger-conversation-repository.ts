@@ -177,6 +177,98 @@ export async function storeMessengerAiSuggestion(input: {
   });
 }
 
+// ── Coalescing (debounce + latest-wins + lock) ──────────────────────────────
+
+/** Bumps the inbound seq for a new customer message + stamps activity time.
+ *  Returns the seq assigned to this message. */
+export async function bumpMessengerInboundSeq(conversationId: string): Promise<number> {
+  const updated = await db.messengerConversation.update({
+    where: { id: conversationId },
+    data: { lastInboundSeq: { increment: 1 }, lastCustomerMessageAt: new Date() },
+    select: { lastInboundSeq: true },
+  });
+  return updated.lastInboundSeq;
+}
+
+export async function getMessengerCoalesceState(conversationId: string): Promise<{
+  lastInboundSeq: number;
+  lastProcessedSeq: number;
+  aiStatus: LineConversationAiStatus;
+} | null> {
+  return db.messengerConversation.findUnique({
+    where: { id: conversationId },
+    select: { lastInboundSeq: true, lastProcessedSeq: true, aiStatus: true },
+  });
+}
+
+export async function markMessengerProcessedSeq(input: {
+  conversationId: string;
+  seq: number;
+}): Promise<void> {
+  await db.messengerConversation.update({
+    where: { id: input.conversationId },
+    data: { lastProcessedSeq: input.seq },
+  });
+}
+
+/** Acquires the short-lived per-conversation processing lock. */
+export async function acquireMessengerConversationLock(input: {
+  conversationId: string;
+  owner: string;
+  leaseMs: number;
+}): Promise<boolean> {
+  const now = new Date();
+  const leaseUntil = new Date(now.getTime() + input.leaseMs);
+  const result = await db.messengerConversation.updateMany({
+    where: {
+      id: input.conversationId,
+      OR: [{ processingOwner: null }, { processingLeaseUntil: { lt: now } }],
+    },
+    data: { processingOwner: input.owner, processingLeaseUntil: leaseUntil },
+  });
+  return result.count === 1;
+}
+
+export async function releaseMessengerConversationLock(input: {
+  conversationId: string;
+  owner: string;
+}): Promise<void> {
+  await db.messengerConversation.updateMany({
+    where: { id: input.conversationId, processingOwner: input.owner },
+    data: { processingOwner: null, processingLeaseUntil: null },
+  });
+}
+
+const UNANSWERED_BURST_WINDOW_MS = 90_000;
+
+/** Inbound messages not yet answered (newer than the last outbound, within the
+ *  burst window) — merged into a single turn by the owner. */
+export async function getUnansweredMessengerMessages(
+  conversationId: string,
+  withinMs: number = UNANSWERED_BURST_WINDOW_MS,
+) {
+  const lastOutbound = await db.messengerMessage.findFirst({
+    where: {
+      conversationId,
+      direction: { in: [LineMessageDirection.OUTBOUND_AI, LineMessageDirection.OUTBOUND_ADMIN] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  const windowStart = new Date(Date.now() - withinMs);
+  const lowerBound =
+    lastOutbound && lastOutbound.createdAt > windowStart ? lastOutbound.createdAt : windowStart;
+  return db.messengerMessage.findMany({
+    where: {
+      conversationId,
+      direction: LineMessageDirection.INBOUND,
+      createdAt: { gt: lowerBound },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, text: true, messageType: true, imageUrl: true, intent: true, createdAt: true },
+  });
+}
+
 /** Marks the conversation's last inbound/admin activity timestamps. */
 export async function touchMessengerConversationActivity(input: {
   conversationId: string;

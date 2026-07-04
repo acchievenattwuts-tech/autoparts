@@ -103,7 +103,7 @@
 ### Sub-stage 2 — parity ที่เหลือ (ยังไม่ทำ)
 - [ ] D3. product-card: refine carousel (fitment did-you-mean, "ดูทั้งหมดบนเว็บ" link ตาม appliedFilters) ให้เทียบเท่า Flex
 - [x] D4. ✅ DONE 2026-07-04 — `messenger-image-service.ts`: ดึง attachment จาก FB CDN → `classifyImageContent` (extract เป็นฟังก์ชันกลางใน line-image-service, LINE delegate, behavior เดิม) → **payment_slip**: `ingestMessengerPaymentSlip` reuse OCR/storage เดิม เก็บ `PaymentSlip.messengerConversationId` (ขยาย `createPaymentSlip` รับ FK ใหม่, additive) → **part_image**: ป้อน hints เข้า `searchChatProductInquiry` ผ่าน helper `replyWithProductSearch` ร่วมกับ text path; tests 321/322 (fail เดิม), tsc/lint เขียว
-- [ ] D5(full). coalescing (debounce + abort-on-newer + lock) mirror LINE, seq fields ที่ schema มีแล้ว
+- [x] D5(full). ✅ DONE 2026-07-04 — coalescing: `processMessengerBatch` ingest ทุก event (persist+bumpSeq ไม่ตอบ) → elect owner ต่อ conversation (lock) → `runMessengerOwnerLoop` debounce 3s + latest-wins (seq เพิ่ม=รอใหม่) + final pass 28s → `replyToMessengerTurn` merge unanswered เป็น turn เดียว (รวม text, ใช้รูปล่าสุด) ตอบ**ครั้งเดียว** + markProcessedSeq; repo เพิ่ม bump/state/mark/lock/getUnanswered; tsc/lint เขียว, 8 tests ผ่าน
 - [ ] D6. **24-hour messaging window** — reply RESPONSE ปกติ vs. MESSAGE_TAG เมื่อเกิน window
 - [ ] D7. cron worker `app/api/messenger/ai-jobs/*` (process/reconcile/cleanup) + Vercel cron
 - [ ] note: system prompt บรรทัด "แชทใน LINE นี้" ต้อง parametrize ชื่อ channel (ตอนนี้ยัง hardcode LINE)

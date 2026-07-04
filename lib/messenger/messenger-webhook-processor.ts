@@ -17,12 +17,17 @@ import { getProductSlug } from "@/lib/product-slug";
 import { SITE_URL } from "@/lib/seo";
 import {
   DuplicateMessengerEventError,
+  acquireMessengerConversationLock,
   appendMessengerMessage,
+  bumpMessengerInboundSeq,
+  getMessengerCoalesceState,
   getOrCreateMessengerConversation,
   getRecentMessengerMessagesForAi,
+  getUnansweredMessengerMessages,
+  markMessengerProcessedSeq,
+  releaseMessengerConversationLock,
   resolveMessengerShowPrice,
   storeMessengerAiSuggestion,
-  touchMessengerConversationActivity,
 } from "@/lib/messenger/messenger-conversation-repository";
 import {
   fetchMessengerUserProfile,
@@ -33,19 +38,24 @@ import {
 } from "@/lib/messenger/messenger-messaging";
 
 /**
- * Core Facebook Messenger inbound-message pipeline. Reuses the shared brain in
- * lib/chat-core (intent routing, product search, AI suggestion) so LINE and
- * Messenger answer identically. Transport (Send API) + persistence (Messenger*
- * tables) are the only channel-specific parts.
+ * Facebook Messenger inbound pipeline. Reuses the shared brain in lib/chat-core
+ * (intent routing, product search, AI suggestion, image classify + slip OCR) so
+ * LINE and Messenger answer identically — transport (Send API) and persistence
+ * (Messenger* tables) are the only channel-specific parts.
  *
- * Scope note (Phase D sub-stage 1): implements the text conversation flow —
- * product inquiry (search + carousel), greeting, and conservative fallbacks.
- * Image/OCR/payment-slip handling and burst coalescing are added in a later
- * sub-stage (tracked in PLAN-MESSENGER.md).
+ * Burst coalescing (latest-wins debounce + per-conversation lock): a webhook POST
+ * (or several arriving close together) ingests every message WITHOUT replying,
+ * then one elected owner debounces, merges the unanswered messages into a single
+ * turn, and sends exactly one reply — so a 3-line burst yields one answer.
  */
 
 const MAX_CAROUSEL_PRODUCTS = 8;
 const RECENT_HISTORY_TAKE = 10;
+const COALESCE_DEBOUNCE_MS = 3_000;
+const COALESCE_LEASE_MS = 60_000;
+// Stop debouncing after this much wall-clock and do one final reply, so a chatty
+// customer can't push the owner past the 60s serverless ceiling.
+const OWNER_FINAL_PASS_AFTER_MS = 28_000;
 
 export type MessengerInboundEvent = {
   pageId: string;
@@ -61,6 +71,12 @@ export type MessengerInboundEvent = {
 export type MessengerProcessorConfig = {
   pageAccessToken: string;
 };
+
+type ChatHistoryItem = { role: "customer" | "shop"; text: string };
+
+function realSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function productToCarouselElement(
   product: ChatMatchedProductSummary,
@@ -85,17 +101,58 @@ function productToCarouselElement(
 }
 
 /**
- * Handles one inbound Messenger message end to end: idempotent persist → route →
- * (search + suggest) → send reply + optional product carousel → persist outbound.
- * Designed to run inside the webhook's `after()` background phase.
+ * Batch entry — called from the webhook's after(). Ingests every event (persist +
+ * seq bump, no reply), then elects one owner per touched conversation to run the
+ * debounce + single-reply turn.
  */
-export async function processMessengerInbound(
+export async function processMessengerBatch(
+  events: MessengerInboundEvent[],
+  config: MessengerProcessorConfig,
+): Promise<void> {
+  const touched = new Map<string, string>(); // conversationId → psid
+
+  for (const event of events) {
+    try {
+      const ingested = await ingestMessengerInbound(event, config);
+      if (ingested) touched.set(ingested.conversationId, ingested.psid);
+    } catch (error) {
+      console.error(
+        `[messenger] ingest failed for psid=${event.psid}: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    }
+  }
+
+  for (const [conversationId, psid] of touched) {
+    const owner = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const acquired = await acquireMessengerConversationLock({
+      conversationId,
+      owner,
+      leaseMs: COALESCE_LEASE_MS,
+    }).catch(() => false);
+    // Another worker owns this burst — our messages are persisted + seq-bumped,
+    // so that owner will merge and answer them. Nothing to do.
+    if (!acquired) continue;
+
+    try {
+      await runMessengerOwnerLoop({ conversationId, psid, config });
+    } catch (error) {
+      console.error(
+        `[messenger] owner loop failed for ${conversationId}: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+    } finally {
+      await releaseMessengerConversationLock({ conversationId, owner }).catch(() => undefined);
+    }
+  }
+}
+
+/** Persists one inbound message (idempotent) + bumps the coalesce seq. Returns the
+ *  conversation to process, or null when it was a duplicate / empty / not found. */
+async function ingestMessengerInbound(
   event: MessengerInboundEvent,
   config: MessengerProcessorConfig,
-): Promise<{ status: "replied" | "skipped" | "duplicate"; reason?: string }> {
+): Promise<{ conversationId: string; psid: string } | null> {
   const { pageAccessToken } = config;
 
-  // Resolve the sender profile (best-effort — never block the reply on it).
   let displayName: string | null = null;
   let pictureUrl: string | null = null;
   try {
@@ -115,9 +172,6 @@ export async function processMessengerInbound(
     pictureUrl,
   });
 
-  const messageType = event.hasAttachment ? LineMessageType.IMAGE : LineMessageType.TEXT;
-
-  // Persist inbound (idempotent via fbEventId unique index).
   try {
     await appendMessengerMessage({
       conversationId: conversation.id,
@@ -125,42 +179,96 @@ export async function processMessengerInbound(
       mid: event.mid,
       fbEventId: event.fbEventId,
       direction: LineMessageDirection.INBOUND,
-      messageType,
+      messageType: event.hasAttachment ? LineMessageType.IMAGE : LineMessageType.TEXT,
       text: event.text,
       imageUrl: event.attachmentUrls[0] ?? null,
       rawEvent: { attachmentUrls: event.attachmentUrls },
     });
   } catch (error) {
-    if (error instanceof DuplicateMessengerEventError) {
-      return { status: "duplicate" };
-    }
+    if (error instanceof DuplicateMessengerEventError) return null;
     throw error;
   }
 
-  await touchMessengerConversationActivity({
-    conversationId: conversation.id,
-    lastCustomerMessageAt: new Date(),
-  });
+  await bumpMessengerInboundSeq(conversation.id);
+  return { conversationId: conversation.id, psid: event.psid };
+}
 
-  // Respect handoff / paused state — a human admin has taken over.
-  if (conversation.aiStatus !== LineConversationAiStatus.ACTIVE) {
-    return { status: "skipped", reason: `AI_${conversation.aiStatus}` };
+/**
+ * Debounce + latest-wins loop for one conversation. Waits for the customer to go
+ * quiet (no newer inbound seq), then answers the merged unanswered turn exactly
+ * once and records the processed seq. A final forced pass caps total wall-clock.
+ */
+async function runMessengerOwnerLoop(params: {
+  conversationId: string;
+  psid: string;
+  config: MessengerProcessorConfig;
+}): Promise<void> {
+  const { conversationId, psid, config } = params;
+  const startedAt = Date.now();
+
+  // Typing indicator up front (best-effort).
+  await sendMessengerSenderAction({ pageAccessToken: config.pageAccessToken, psid, action: "mark_seen" }).catch(() => {});
+  await sendMessengerSenderAction({ pageAccessToken: config.pageAccessToken, psid, action: "typing_on" }).catch(() => {});
+
+  for (;;) {
+    const state = await getMessengerCoalesceState(conversationId);
+    if (!state) return;
+    if (state.lastProcessedSeq >= state.lastInboundSeq) return; // nothing new
+
+    // Handoff / paused — a human admin took over. Mark processed so the failsafe
+    // doesn't keep retrying, and stay silent.
+    if (state.aiStatus !== LineConversationAiStatus.ACTIVE) {
+      await markMessengerProcessedSeq({ conversationId, seq: state.lastInboundSeq });
+      return;
+    }
+
+    const seqAtStart = state.lastInboundSeq;
+    const forceFinal = Date.now() - startedAt >= OWNER_FINAL_PASS_AFTER_MS;
+
+    if (!forceFinal) {
+      await realSleep(COALESCE_DEBOUNCE_MS);
+      const after = await getMessengerCoalesceState(conversationId);
+      // A newer message landed during the debounce — loop and wait again.
+      if (after && after.lastInboundSeq > seqAtStart) continue;
+    }
+
+    await replyToMessengerTurn({ conversationId, psid, config });
+    await markMessengerProcessedSeq({ conversationId, seq: seqAtStart });
+    return;
   }
+}
 
-  // Typing indicator (best-effort).
-  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "mark_seen" }).catch(() => {});
-  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "typing_on" }).catch(() => {});
+/** Builds one merged turn from the unanswered inbound messages and sends a single
+ *  reply (payment slip / part image / text product search / conversational). */
+async function replyToMessengerTurn(params: {
+  conversationId: string;
+  psid: string;
+  config: MessengerProcessorConfig;
+}): Promise<void> {
+  const { conversationId, psid, config } = params;
+  const pageAccessToken = config.pageAccessToken;
 
-  const history = await loadHistory(conversation.id);
+  const unanswered = await getUnansweredMessengerMessages(conversationId);
+  if (unanswered.length === 0) return;
 
-  // ── Image attachment: classify (shared vision) → payment slip or part search ──
-  if (event.hasAttachment && event.attachmentUrls[0]) {
-    const { classification, content } = await classifyMessengerImage(event.attachmentUrls[0]);
+  const mergedText = unanswered
+    .map((m) => m.text?.trim())
+    .filter((t): t is string => Boolean(t))
+    .join("\n")
+    .trim();
+  // Use the most recent attachment in the burst as the representative image.
+  const latestImageUrl = [...unanswered].reverse().find((m) => Boolean(m.imageUrl))?.imageUrl ?? null;
+
+  const history = await loadHistory(conversationId);
+
+  // ── Image turn: classify (shared vision) → payment slip or part search ──
+  if (latestImageUrl) {
+    const { classification, content } = await classifyMessengerImage(latestImageUrl);
 
     if (classification.kind === "payment_slip") {
       try {
         await ingestMessengerPaymentSlip({
-          messengerConversationId: conversation.id,
+          messengerConversationId: conversationId,
           content,
           ocr: classification.ocr ?? null,
         });
@@ -168,9 +276,9 @@ export async function processMessengerInbound(
         console.error(`[messenger] slip ingest failed: ${error instanceof Error ? error.message : "unknown"}`);
       }
       const reply = "ได้รับสลิปแล้วนะคะ 🙏 เดี๋ยวจูนตรวจสอบยอดโอนให้ค่ะ";
-      await sendMessengerText({ pageAccessToken, psid: event.psid, text: reply });
-      await persistOutbound(conversation.id, event.psid, reply, { intent: LineIntent.PAYMENT_SLIP_IMAGE });
-      return { status: "replied", reason: "PAYMENT_SLIP" };
+      await sendMessengerText({ pageAccessToken, psid, text: reply });
+      await persistOutbound(conversationId, psid, reply, { intent: LineIntent.PAYMENT_SLIP_IMAGE });
+      return;
     }
 
     if (classification.kind === "part_image") {
@@ -184,12 +292,12 @@ export async function processMessengerInbound(
       };
       const replied = await replyWithProductSearch({
         pageAccessToken,
-        conversationId: conversation.id,
-        psid: event.psid,
+        conversationId,
+        psid,
         route: partRoute,
         bridgeInput: {
           route: partRoute,
-          text: event.text ?? null,
+          text: mergedText || null,
           extractedPartNumber: classification.partNumber ?? null,
           extractedImageHints: classification.searchHints,
           fitmentHints: {
@@ -199,56 +307,49 @@ export async function processMessengerInbound(
             fitmentYear: classification.year ?? null,
           },
         },
-        originalText: event.text?.trim() || "(ลูกค้าส่งรูปอะไหล่)",
+        originalText: mergedText || "(ลูกค้าส่งรูปอะไหล่)",
         history,
       });
-      if (replied) return { status: "replied", reason: "PART_IMAGE_INQUIRY" };
+      if (replied) return;
     }
 
-    // Unknown image (or part image that produced no query) — ask for details.
+    // Unknown image (or part image with no query) — ask for details.
     const ack = "ได้รับรูปแล้วนะคะ 😊 รบกวนแจ้งรุ่นรถ/ปี หรือพิมพ์ชื่ออะไหล่ที่ต้องการเพิ่มเติมได้ไหมคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ";
-    await sendMessengerText({ pageAccessToken, psid: event.psid, text: ack });
-    await persistOutbound(conversation.id, event.psid, ack, { intent: LineIntent.UNKNOWN });
-    return { status: "replied", reason: "IMAGE_ACK" };
+    await sendMessengerText({ pageAccessToken, psid, text: ack });
+    await persistOutbound(conversationId, psid, ack, { intent: LineIntent.UNKNOWN });
+    return;
   }
 
-  const text = event.text?.trim() ?? "";
-  if (!text) {
-    return { status: "skipped", reason: "EMPTY_MESSAGE" };
-  }
+  if (!mergedText) return;
 
-  const route = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+  const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: mergedText });
 
-  // ── Product inquiry: search the shared catalog and present real matches ──
   if (route.allowsSearch) {
     const replied = await replyWithProductSearch({
       pageAccessToken,
-      conversationId: conversation.id,
-      psid: event.psid,
+      conversationId,
+      psid,
       route,
-      bridgeInput: { route, text },
-      originalText: text,
+      bridgeInput: { route, text: mergedText },
+      originalText: mergedText,
       history,
     });
-    if (replied) return { status: "replied", reason: "PRODUCT_INQUIRY" };
+    if (replied) return;
   }
 
   // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
   const group = intentToGroup(route.intent);
   let reply: string;
   if (group === "smalltalk" || group === "out_of_scope") {
-    reply = await generateScopedConversationalReply({ group, latestText: text, history });
+    reply = await generateScopedConversationalReply({ group, latestText: mergedText, history });
   } else {
-    const suggestion = await generateChatSuggestion({ intent: route.intent, originalText: text, history });
+    const suggestion = await generateChatSuggestion({ intent: route.intent, originalText: mergedText, history });
     reply = suggestion.suggestedReply;
   }
 
-  await sendMessengerText({ pageAccessToken, psid: event.psid, text: reply });
-  await persistOutbound(conversation.id, event.psid, reply, { intent: route.intent });
-  return { status: "replied", reason: `INTENT_${route.intent}` };
+  await sendMessengerText({ pageAccessToken, psid, text: reply });
+  await persistOutbound(conversationId, psid, reply, { intent: route.intent });
 }
-
-type ChatHistoryItem = { role: "customer" | "shop"; text: string };
 
 async function loadHistory(conversationId: string): Promise<ChatHistoryItem[]> {
   const rows = await getRecentMessengerMessagesForAi(conversationId, RECENT_HISTORY_TAKE);
