@@ -1,13 +1,18 @@
-import { LineConversationAiStatus, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
+import { LineConversationAiStatus, LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
 import { generateChatSuggestion, generateScopedConversationalReply } from "@/lib/chat-core/ai-service";
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
-import { routeChatIntent } from "@/lib/chat-core/intent-router";
+import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import {
   applyChatPriceVisibility,
   getChatProductSummaries,
   searchChatProductInquiry,
+  type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
+import {
+  classifyMessengerImage,
+  ingestMessengerPaymentSlip,
+} from "@/lib/messenger/messenger-image-service";
 import { getProductSlug } from "@/lib/product-slug";
 import { SITE_URL } from "@/lib/seo";
 import {
@@ -142,13 +147,69 @@ export async function processMessengerInbound(
     return { status: "skipped", reason: `AI_${conversation.aiStatus}` };
   }
 
-  // Image/attachment handling (OCR, payment slip) is a later sub-stage. For now
-  // acknowledge conservatively so the customer is never left without a reply.
-  if (event.hasAttachment && !event.text) {
-    const ack = "ได้รับรูปแล้วนะคะ 🙏 เดี๋ยวจูนส่งต่อให้แอดมินช่วยตรวจสอบให้ค่ะ";
+  // Typing indicator (best-effort).
+  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "mark_seen" }).catch(() => {});
+  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "typing_on" }).catch(() => {});
+
+  const history = await loadHistory(conversation.id);
+
+  // ── Image attachment: classify (shared vision) → payment slip or part search ──
+  if (event.hasAttachment && event.attachmentUrls[0]) {
+    const { classification, content } = await classifyMessengerImage(event.attachmentUrls[0]);
+
+    if (classification.kind === "payment_slip") {
+      try {
+        await ingestMessengerPaymentSlip({
+          messengerConversationId: conversation.id,
+          content,
+          ocr: classification.ocr ?? null,
+        });
+      } catch (error) {
+        console.error(`[messenger] slip ingest failed: ${error instanceof Error ? error.message : "unknown"}`);
+      }
+      const reply = "ได้รับสลิปแล้วนะคะ 🙏 เดี๋ยวจูนตรวจสอบยอดโอนให้ค่ะ";
+      await sendMessengerText({ pageAccessToken, psid: event.psid, text: reply });
+      await persistOutbound(conversation.id, event.psid, reply, { intent: LineIntent.PAYMENT_SLIP_IMAGE });
+      return { status: "replied", reason: "PAYMENT_SLIP" };
+    }
+
+    if (classification.kind === "part_image") {
+      const partRoute: ChatIntentRouteResult = {
+        intent: LineIntent.PART_IMAGE_INQUIRY,
+        allowsSearch: true,
+        requiresAdmin: false,
+        requiresImageAnalysis: false,
+        requiresMoreInfo: false,
+        reason: "MESSENGER_PART_IMAGE",
+      };
+      const replied = await replyWithProductSearch({
+        pageAccessToken,
+        conversationId: conversation.id,
+        psid: event.psid,
+        route: partRoute,
+        bridgeInput: {
+          route: partRoute,
+          text: event.text ?? null,
+          extractedPartNumber: classification.partNumber ?? null,
+          extractedImageHints: classification.searchHints,
+          fitmentHints: {
+            categoryName: classification.partType ?? null,
+            carBrandName: classification.carBrand ?? null,
+            carModelName: classification.carModel ?? null,
+            fitmentYear: classification.year ?? null,
+          },
+        },
+        originalText: event.text?.trim() || "(ลูกค้าส่งรูปอะไหล่)",
+        history,
+      });
+      if (replied) return { status: "replied", reason: "PART_IMAGE_INQUIRY" };
+    }
+
+    // Unknown image (or part image that produced no query) — ask for details.
+    const ack = "ได้รับรูปแล้วนะคะ 😊 รบกวนแจ้งรุ่นรถ/ปี หรือพิมพ์ชื่ออะไหล่ที่ต้องการเพิ่มเติมได้ไหมคะ เดี๋ยวจูนช่วยเช็กให้ค่ะ";
     await sendMessengerText({ pageAccessToken, psid: event.psid, text: ack });
-    await persistOutbound(conversation.id, event.psid, ack, null);
-    return { status: "replied", reason: "ATTACHMENT_ACK" };
+    await persistOutbound(conversation.id, event.psid, ack, { intent: LineIntent.UNKNOWN });
+    return { status: "replied", reason: "IMAGE_ACK" };
   }
 
   const text = event.text?.trim() ?? "";
@@ -156,52 +217,20 @@ export async function processMessengerInbound(
     return { status: "skipped", reason: "EMPTY_MESSAGE" };
   }
 
-  // Typing indicator (best-effort).
-  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "mark_seen" }).catch(() => {});
-  await sendMessengerSenderAction({ pageAccessToken, psid: event.psid, action: "typing_on" }).catch(() => {});
-
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text });
-  const historyRows = await getRecentMessengerMessagesForAi(conversation.id, RECENT_HISTORY_TAKE);
-  const history = historyRows
-    .filter((row) => Boolean(row.text))
-    .map((row) => ({
-      role: row.direction === LineMessageDirection.INBOUND ? ("customer" as const) : ("shop" as const),
-      text: row.text ?? "",
-    }));
 
   // ── Product inquiry: search the shared catalog and present real matches ──
   if (route.allowsSearch) {
-    const productSearch = await searchChatProductInquiry({ route, text });
-    let products: ChatMatchedProductSummary[] = [];
-    if (productSearch.searched) {
-      const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
-      const showPrice = await resolveMessengerShowPrice(conversation.id);
-      products = applyChatPriceVisibility(await getChatProductSummaries(ids), showPrice);
-
-      const suggestion = await generateChatSuggestion({
-        intent: route.intent,
-        originalText: text,
-        productSearch,
-        history,
-        products: products.map((p) => ({ name: p.name, code: p.code, salePrice: p.salePrice })),
-      });
-
-      await sendMessengerText({ pageAccessToken, psid: event.psid, text: suggestion.suggestedReply });
-      if (products.length > 0) {
-        await sendMessengerGenericTemplate({
-          pageAccessToken,
-          psid: event.psid,
-          elements: products.map((p) => productToCarouselElement(p, showPrice)),
-        });
-      }
-      await persistOutbound(conversation.id, event.psid, suggestion.suggestedReply, {
-        intent: route.intent,
-        confidence: suggestion.confidence,
-        matchedProducts: products,
-        reasoningSummary: suggestion.reasoningSummary,
-      });
-      return { status: "replied", reason: "PRODUCT_INQUIRY" };
-    }
+    const replied = await replyWithProductSearch({
+      pageAccessToken,
+      conversationId: conversation.id,
+      psid: event.psid,
+      route,
+      bridgeInput: { route, text },
+      originalText: text,
+      history,
+    });
+    if (replied) return { status: "replied", reason: "PRODUCT_INQUIRY" };
   }
 
   // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
@@ -217,6 +246,72 @@ export async function processMessengerInbound(
   await sendMessengerText({ pageAccessToken, psid: event.psid, text: reply });
   await persistOutbound(conversation.id, event.psid, reply, { intent: route.intent });
   return { status: "replied", reason: `INTENT_${route.intent}` };
+}
+
+type ChatHistoryItem = { role: "customer" | "shop"; text: string };
+
+async function loadHistory(conversationId: string): Promise<ChatHistoryItem[]> {
+  const rows = await getRecentMessengerMessagesForAi(conversationId, RECENT_HISTORY_TAKE);
+  return rows
+    .filter((row) => Boolean(row.text))
+    .map((row) => ({
+      role: row.direction === LineMessageDirection.INBOUND ? ("customer" as const) : ("shop" as const),
+      text: row.text ?? "",
+    }));
+}
+
+/**
+ * Shared product-inquiry reply used by both the text and part-image paths: runs
+ * the shared catalog search, applies price visibility, asks the shared AI to draft
+ * the reply, then sends text + product carousel and persists. Returns false when
+ * the search decided not to run (caller falls back to a conservative reply).
+ */
+async function replyWithProductSearch(params: {
+  pageAccessToken: string;
+  conversationId: string;
+  psid: string;
+  route: ChatIntentRouteResult;
+  bridgeInput: ChatProductSearchBridgeInput;
+  originalText: string;
+  history: ChatHistoryItem[];
+}): Promise<boolean> {
+  const productSearch = await searchChatProductInquiry(params.bridgeInput);
+  if (!productSearch.searched) return false;
+
+  const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
+  const showPrice = await resolveMessengerShowPrice(params.conversationId);
+  const products: ChatMatchedProductSummary[] = applyChatPriceVisibility(
+    await getChatProductSummaries(ids),
+    showPrice,
+  );
+
+  const suggestion = await generateChatSuggestion({
+    intent: params.route.intent,
+    originalText: params.originalText,
+    productSearch,
+    history: params.history,
+    products: products.map((p) => ({ name: p.name, code: p.code, salePrice: p.salePrice })),
+  });
+
+  await sendMessengerText({
+    pageAccessToken: params.pageAccessToken,
+    psid: params.psid,
+    text: suggestion.suggestedReply,
+  });
+  if (products.length > 0) {
+    await sendMessengerGenericTemplate({
+      pageAccessToken: params.pageAccessToken,
+      psid: params.psid,
+      elements: products.map((p) => productToCarouselElement(p, showPrice)),
+    });
+  }
+  await persistOutbound(params.conversationId, params.psid, suggestion.suggestedReply, {
+    intent: params.route.intent,
+    confidence: suggestion.confidence,
+    matchedProducts: products,
+    reasoningSummary: suggestion.reasoningSummary,
+  });
+  return true;
 }
 
 async function persistOutbound(

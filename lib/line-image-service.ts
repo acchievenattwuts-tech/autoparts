@@ -216,24 +216,25 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
  * (missing keys/token, expired content, vision/parse error) degrades safely to an
  * "unknown" classification so the webhook pipeline is never broken by an image.
  */
-export async function classifyLineImage(input: {
-  channelAccessToken: string | null;
-  lineMessageId: string | null;
-}): Promise<LineImageClassification> {
-  if (!input.channelAccessToken || !input.lineMessageId || !hasGeminiKeysConfigured()) {
+/**
+ * Channel-agnostic image classification: takes the already-fetched image bytes
+ * and runs the shared vision prompt. Used by both LINE (via classifyLineImage,
+ * which fetches from the LINE content API first) and Messenger (which fetches
+ * the attachment from the Facebook CDN). Keeping the Gemini call + parsing here
+ * means the classification behaviour stays identical across channels — one place
+ * to change the prompt / model settings.
+ */
+export async function classifyImageContent(
+  content: LineMessageContent,
+): Promise<LineImageClassification> {
+  if (!hasGeminiKeysConfigured()) {
     return { ...UNKNOWN_FALLBACK, reason: "MISSING_TOKEN_OR_KEYS" };
+  }
+  if (!content.mimeType.startsWith("image/")) {
+    return { ...UNKNOWN_FALLBACK, reason: "NO_IMAGE_CONTENT" };
   }
 
   try {
-    const content = await fetchLineMessageContent({
-      channelAccessToken: input.channelAccessToken,
-      messageId: input.lineMessageId,
-    });
-
-    if (!content || !content.mimeType.startsWith("image/")) {
-      return { ...UNKNOWN_FALLBACK, reason: "NO_IMAGE_CONTENT" };
-    }
-
     const { text } = await generateGeminiContent({
       prompt: CLASSIFY_PROMPT,
       images: [{ mimeType: content.mimeType, dataBase64: content.dataBase64 }],
@@ -255,4 +256,24 @@ export async function classifyLineImage(input: {
   } catch {
     return { ...UNKNOWN_FALLBACK, reason: "IMAGE_CLASSIFICATION_ERROR" };
   }
+}
+
+export async function classifyLineImage(input: {
+  channelAccessToken: string | null;
+  lineMessageId: string | null;
+}): Promise<LineImageClassification> {
+  if (!input.channelAccessToken || !input.lineMessageId || !hasGeminiKeysConfigured()) {
+    return { ...UNKNOWN_FALLBACK, reason: "MISSING_TOKEN_OR_KEYS" };
+  }
+
+  const content = await fetchLineMessageContent({
+    channelAccessToken: input.channelAccessToken,
+    messageId: input.lineMessageId,
+  });
+
+  if (!content || !content.mimeType.startsWith("image/")) {
+    return { ...UNKNOWN_FALLBACK, reason: "NO_IMAGE_CONTENT" };
+  }
+
+  return classifyImageContent(content);
 }

@@ -102,7 +102,7 @@
 
 ### Sub-stage 2 — parity ที่เหลือ (ยังไม่ทำ)
 - [ ] D3. product-card: refine carousel (fitment did-you-mean, "ดูทั้งหมดบนเว็บ" link ตาม appliedFilters) ให้เทียบเท่า Flex
-- [ ] D4. `messenger-image-service.ts` — attachment รูป/สลิป จาก FB CDN → chat-core image classify + payment-slip OCR/reconcile pipeline เดิม (ตอนนี้ ack ชั่วคราว)
+- [x] D4. ✅ DONE 2026-07-04 — `messenger-image-service.ts`: ดึง attachment จาก FB CDN → `classifyImageContent` (extract เป็นฟังก์ชันกลางใน line-image-service, LINE delegate, behavior เดิม) → **payment_slip**: `ingestMessengerPaymentSlip` reuse OCR/storage เดิม เก็บ `PaymentSlip.messengerConversationId` (ขยาย `createPaymentSlip` รับ FK ใหม่, additive) → **part_image**: ป้อน hints เข้า `searchChatProductInquiry` ผ่าน helper `replyWithProductSearch` ร่วมกับ text path; tests 321/322 (fail เดิม), tsc/lint เขียว
 - [ ] D5(full). coalescing (debounce + abort-on-newer + lock) mirror LINE, seq fields ที่ schema มีแล้ว
 - [ ] D6. **24-hour messaging window** — reply RESPONSE ปกติ vs. MESSAGE_TAG เมื่อเกิน window
 - [ ] D7. cron worker `app/api/messenger/ai-jobs/*` (process/reconcile/cleanup) + Vercel cron

@@ -19,15 +19,17 @@ function toRawOcr(ocr: PaymentSlipOcr): Prisma.InputJsonValue {
  * from transactional truth — never confirms a payment or touches receipt/AR.
  */
 export async function createPaymentSlip(input: {
-  conversationId: string;
-  lineUserId: string;
+  conversationId?: string | null;
+  messengerConversationId?: string | null;
+  lineUserId?: string | null;
   lineMessageId?: string | null;
   ocr: PaymentSlipOcr;
 }) {
   return db.paymentSlip.create({
     data: {
-      conversationId: input.conversationId,
-      lineUserId: input.lineUserId,
+      conversationId: input.conversationId ?? null,
+      messengerConversationId: input.messengerConversationId ?? null,
+      lineUserId: input.lineUserId ?? null,
       lineMessageId: input.lineMessageId ?? null,
       detectedAmount: input.ocr.amount ?? null,
       detectedTransferDatetime: input.ocr.transferDatetimeIso
