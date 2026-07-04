@@ -84,6 +84,21 @@ const MODEL_SYNONYM_CLUSTERS: string[][] = [
   ["Mazda2", "มาสด้า2"],
   ["Mazda3", "มาสด้า3"],
   ["CX-5", "ซีเอ็กซ์5"],
+  // 2026-07 gap-fill: log-evidenced ("deka" typed by customers) + curated Thai/English
+  // misspellings for popular models, each verified not to collide with another model.
+  // member[0] is an existing canonical so these merge into the current cluster.
+  ["DECA", "deka", "เดคก้า"],
+  ["Vios", "วิออส", "ไวออส"],
+  ["Yaris", "ยาลิส", "ยาริด"],
+  ["Camry", "แคมมี่"],
+  ["Fortuner", "ฟอร์ทูนเนอร์"],
+  ["Almera", "อัลมิร่า", "อัลเมียร่า"],
+  ["Triton", "ไทตัน"],
+  ["Ciaz", "เชียส"],
+  ["Colorado", "โคราโด"],
+  ["Vigo", "วีโก๊"],
+  ["Strada", "สตาด้า"],
+  ["Navara", "นาวาด้า"],
 ];
 
 const dryRun = process.argv.includes("--dry-run");
