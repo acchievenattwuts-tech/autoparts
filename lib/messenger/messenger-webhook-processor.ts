@@ -13,6 +13,11 @@ import {
   classifyMessengerImage,
   ingestMessengerPaymentSlip,
 } from "@/lib/messenger/messenger-image-service";
+import {
+  notifyMessengerNeedsAdmin,
+  notifyMessengerNewConversation,
+  notifyMessengerPaymentSlip,
+} from "@/lib/notifications";
 import { getProductSlug } from "@/lib/product-slug";
 import { SITE_URL } from "@/lib/seo";
 import {
@@ -20,6 +25,7 @@ import {
   acquireMessengerConversationLock,
   appendMessengerMessage,
   bumpMessengerInboundSeq,
+  escalateMessengerConversationToAdmin,
   findStalledMessengerConversationIds,
   getMessengerCoalesceState,
   getMessengerConversationPsid,
@@ -84,6 +90,14 @@ type ChatHistoryItem = { role: "customer" | "shop"; text: string };
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Fire a notification without ever breaking the business flow (Iron Rule: bell +
+ *  Telegram together — createNotification handles both). */
+function safeNotify(promise: Promise<unknown>): void {
+  void promise.catch((error) => {
+    console.warn(`[messenger] notification failed: ${error instanceof Error ? error.message : "unknown"}`);
+  });
 }
 
 function productToCarouselElement(
@@ -233,7 +247,7 @@ async function ingestMessengerInbound(
     console.warn(`[messenger] profile lookup failed for ${event.psid}: ${error instanceof Error ? error.message : "unknown"}`);
   }
 
-  const conversation = await getOrCreateMessengerConversation({
+  const { conversation, created } = await getOrCreateMessengerConversation({
     pageId: event.pageId,
     psid: event.psid,
     displayName,
@@ -255,6 +269,17 @@ async function ingestMessengerInbound(
   } catch (error) {
     if (error instanceof DuplicateMessengerEventError) return null;
     throw error;
+  }
+
+  // A brand-new customer just started chatting → alert admins (bell + Telegram).
+  if (created) {
+    safeNotify(
+      notifyMessengerNewConversation({
+        conversationId: conversation.id,
+        displayName: conversation.displayName ?? displayName,
+        text: event.text,
+      }),
+    );
   }
 
   await bumpMessengerInboundSeq(conversation.id);
@@ -355,6 +380,7 @@ async function replyToMessengerTurn(params: {
       } catch (error) {
         console.error(`[messenger] slip ingest failed: ${error instanceof Error ? error.message : "unknown"}`);
       }
+      safeNotify(notifyMessengerPaymentSlip({ conversationId }));
       const reply = "ได้รับสลิปแล้วนะคะ 🙏 เดี๋ยวจูนตรวจสอบยอดโอนให้ค่ะ";
       await sendMessengerText({ pageAccessToken, psid, text: reply });
       await persistOutbound(conversationId, psid, reply, { intent: LineIntent.PAYMENT_SLIP_IMAGE });
@@ -403,6 +429,19 @@ async function replyToMessengerTurn(params: {
   if (!mergedText) return;
 
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: mergedText });
+
+  // ── Handoff: intents the AI must not answer (claims, price haggling, order
+  // status…) escalate to a human admin instead of the AI guessing ──
+  if (route.requiresAdmin) {
+    await escalateMessengerConversationToAdmin(conversationId);
+    safeNotify(
+      notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
+    );
+    const reply = "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+    await sendMessengerText({ pageAccessToken, psid, text: reply });
+    await persistOutbound(conversationId, psid, reply, { intent: route.intent });
+    return;
+  }
 
   if (route.allowsSearch) {
     const replied = await replyWithProductSearch({

@@ -22,6 +22,9 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   LINE_NEW_CUSTOMER: "ลูกค้าใหม่จาก LINE",
   LINE_OLD_CUSTOMER_LINKED: "ลูกค้าเก่าผูก LINE",
   LINE_OLD_CUSTOMER_RELINKED: "ลูกค้าเก่าผูก LINE ใหม่",
+  MESSENGER_NEW_CONVERSATION: "ลูกค้า Messenger ทักครั้งแรก",
+  MESSENGER_PAYMENT_SLIP: "สลิปโอนเงินจาก Messenger รอตรวจสอบ",
+  MESSENGER_HANDOFF: "ลูกค้า Messenger รอแอดมินตอบ",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -89,6 +92,9 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   LINE_NEW_CUSTOMER: "🆕",
   LINE_OLD_CUSTOMER_LINKED: "🔗",
   LINE_OLD_CUSTOMER_RELINKED: "🔗",
+  MESSENGER_NEW_CONVERSATION: "💬",
+  MESSENGER_PAYMENT_SLIP: "🧾",
+  MESSENGER_HANDOFF: "🙋",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

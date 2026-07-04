@@ -143,6 +143,75 @@ export async function notifyLineOaNeedsAdmin(input: {
   });
 }
 
+const MESSENGER_PREVIEW_MAX_LENGTH = 80;
+
+function messengerPreview(text?: string | null, messageType?: string | null): string {
+  const trimmed = text?.trim();
+  if (trimmed) {
+    return trimmed.length > MESSENGER_PREVIEW_MAX_LENGTH
+      ? `${trimmed.slice(0, MESSENGER_PREVIEW_MAX_LENGTH)}…`
+      : trimmed;
+  }
+  return messageType === "IMAGE" ? "[รูปภาพ]" : "[ข้อความใหม่]";
+}
+
+/** A brand-new Messenger customer just started a conversation. */
+export async function notifyMessengerNewConversation(input: {
+  conversationId: string;
+  displayName?: string | null;
+  text?: string | null;
+}): Promise<number> {
+  const who = input.displayName?.trim() || "ลูกค้า Messenger";
+  return createNotification({
+    type: NotificationType.MESSENGER_NEW_CONVERSATION,
+    severity: NotificationSeverity.INFO,
+    title: "ลูกค้า Messenger ทักครั้งแรก",
+    body: `${who}: ${messengerPreview(input.text)}`,
+    link: `/admin/messenger-conversations/${input.conversationId}`,
+    entityType: "MessengerConversation",
+    entityId: input.conversationId,
+    dedupeKey: `messenger-new:${input.conversationId}`,
+  });
+}
+
+/** A Messenger customer sent a payment slip that needs admin review. */
+export async function notifyMessengerPaymentSlip(input: {
+  conversationId: string;
+  displayName?: string | null;
+}): Promise<number> {
+  const who = input.displayName?.trim() || "ลูกค้า Messenger";
+  return createNotification({
+    type: NotificationType.MESSENGER_PAYMENT_SLIP,
+    severity: NotificationSeverity.WARNING,
+    title: "มีสลิปโอนเงินจาก Messenger รอตรวจสอบ",
+    body: `${who} ส่งสลิปการชำระเงิน`,
+    link: `/admin/messenger-conversations/${input.conversationId}`,
+    entityType: "MessengerConversation",
+    entityId: input.conversationId,
+    dedupeKey: `messenger-slip:${input.conversationId}`,
+  });
+}
+
+/** The Messenger AI escalated a conversation to a human admin. */
+export async function notifyMessengerNeedsAdmin(input: {
+  conversationId: string;
+  displayName?: string | null;
+  text?: string | null;
+  messageType?: string | null;
+}): Promise<number> {
+  const who = input.displayName?.trim() || "ลูกค้า Messenger";
+  return createNotification({
+    type: NotificationType.MESSENGER_HANDOFF,
+    severity: NotificationSeverity.WARNING,
+    title: "ลูกค้า Messenger รอแอดมินตอบ",
+    body: `${who}: ${messengerPreview(input.text, input.messageType)}`,
+    link: `/admin/messenger-conversations/${input.conversationId}`,
+    entityType: "MessengerConversation",
+    entityId: input.conversationId,
+    dedupeKey: `messenger-handoff:${input.conversationId}`,
+  });
+}
+
 export type NotificationListItem = {
   id: string;
   type: NotificationType;

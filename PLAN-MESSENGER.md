@@ -115,7 +115,7 @@
 - [x] E1. ✅ DONE 2026-07-04 — inbox `/admin/messenger-conversations` (list + `[id]` detail) mirror LINE: `messenger-admin-service.ts` (list/getMessages/pause/resume/waiting/close/sendAdminMessage), `loading.tsx` ทุก segment, `force-dynamic`, status filter; client `MessengerConversationPanel` (ปุ่มสถานะ + reply); admin reply ส่งด้วย `HUMAN_AGENT` tag (ตอบได้นอก 24h window)
 - [x] E2. ✅ DONE 2026-07-04 — permission 5 ขั้น: 3 key ใน `access-control.ts` (view/reply/manage กลุ่ม "Facebook Messenger"), route rule `/admin/messenger-conversations`, `requirePermission("...view")` ใน page ทั้ง 2, `requirePermission` ในทุก Server Action (manage/reply), sidebar navItem. (mirror LINE: ไม่ให้ staff default เช่นเดียวกับ line_conversations)
 - [x] E4. ✅ DONE 2026-07-04 — ทุก mutation เขียน central `AuditLog` ผ่าน `safeWriteAuditLog` (action=UPDATE, entityRef=เหตุการณ์จริง MESSENGER_ADMIN_PAUSE/RESUME/…/SEND_MESSAGE) — ตามที่ตกลงใช้ audit กลาง
-- [ ] E3. Notification — **ค้าง รอ confirm**: ต้องเพิ่ม `NotificationType.MESSENGER_*` (enum = schema change ต้องขออนุมัติก่อน `prisma db push`) + helper ใน `lib/notifications.ts` → bell + Telegram (Iron Rule)
+- [x] E3. ✅ DONE 2026-07-04 — Notification (bell + Telegram, Iron Rule): เพิ่ม enum `MESSENGER_NEW_CONVERSATION`/`MESSENGER_PAYMENT_SLIP`/`MESSENGER_HANDOFF` (db push แล้ว) + helper ใน `lib/notifications.ts` + label/emoji ใน `lib/telegram.ts`; wire processor: ลูกค้าใหม่ทักครั้งแรก (getOrCreate คืน `created`), รับสลิป, handoff (escalation ใหม่: `route.requiresAdmin` → set WAITING_ADMIN + แจ้ง + ข้อความส่งต่อแอดมิน). ทุก call ใช้ `safeNotify` (ไม่ทำ flow พัง). tsc/lint/tests เขียว
 
 ---
 
@@ -145,4 +145,5 @@
 - 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314
 - 2026-07-04: Phase C เสร็จ — เพิ่ม 4 model Messenger + แก้ PaymentSlip (nullable + FK), `prisma db push` sync สำเร็จ, generate + tsc เขียว
 - 2026-07-04: Phase D sub-stage 1 เสร็จ — webhook route + Send API transport + config/signature + repository + core text processor (reuse chat-core), 8 tests เขียว, tsc/lint ผ่าน
-- 2026-07-04: Phase D sub-stage 2 เสร็จ — D4 image/slip (classifyImageContent กลาง + ingest slip), D5 coalescing (batch+owner loop), D6 24h window guard, D7 cron recover + vercel cron, D3 view-all card. **Phase D ครบทุกข้อ → ถัดไป Phase E (admin/permission/notif/audit)**
+- 2026-07-04: Phase D sub-stage 2 เสร็จ — D4 image/slip (classifyImageContent กลาง + ingest slip), D5 coalescing (batch+owner loop), D6 24h window guard, D7 cron recover + vercel cron, D3 view-all card. Phase D ครบทุกข้อ
+- 2026-07-04: Phase E เสร็จครบ — E1 inbox (list+detail+panel), E2 permission 5 ขั้น, E4 audit กลาง, E3 notification (3 enum + helper + wire processor + handoff escalation). **Phase B–E ครบ → เหลือ Phase A (Meta App Review, งานเจ้าของร้าน) + Phase F (rollout/QA)**

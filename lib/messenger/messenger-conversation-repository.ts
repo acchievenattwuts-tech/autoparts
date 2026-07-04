@@ -49,24 +49,64 @@ export async function getOrCreateMessengerConversation(input: {
   displayName?: string | null;
   pictureUrl?: string | null;
   customerId?: string | null;
-}) {
-  const now = new Date();
-  return db.messengerConversation.upsert({
+}): Promise<{ conversation: { id: string; aiStatus: LineConversationAiStatus; displayName: string | null }; created: boolean }> {
+  const existing = await db.messengerConversation.findUnique({
     where: { pageId_psid: { pageId: input.pageId, psid: input.psid } },
-    update: {
-      displayName: input.displayName ?? undefined,
-      pictureUrl: input.pictureUrl ?? undefined,
-      customerId: input.customerId ?? undefined,
-    },
-    create: {
-      pageId: input.pageId,
-      psid: input.psid,
-      displayName: input.displayName ?? null,
-      pictureUrl: input.pictureUrl ?? null,
-      customerId: input.customerId ?? null,
-      aiStatus: LineConversationAiStatus.ACTIVE,
-      createdAt: now,
-      updatedAt: now,
+    select: { id: true, aiStatus: true, displayName: true },
+  });
+  if (existing) {
+    // Refresh profile fields best-effort when they change.
+    if (input.displayName || input.pictureUrl || input.customerId) {
+      await db.messengerConversation.update({
+        where: { id: existing.id },
+        data: {
+          displayName: input.displayName ?? undefined,
+          pictureUrl: input.pictureUrl ?? undefined,
+          customerId: input.customerId ?? undefined,
+        },
+      });
+    }
+    return { conversation: existing, created: false };
+  }
+
+  const now = new Date();
+  try {
+    const conversation = await db.messengerConversation.create({
+      data: {
+        pageId: input.pageId,
+        psid: input.psid,
+        displayName: input.displayName ?? null,
+        pictureUrl: input.pictureUrl ?? null,
+        customerId: input.customerId ?? null,
+        aiStatus: LineConversationAiStatus.ACTIVE,
+        createdAt: now,
+        updatedAt: now,
+      },
+      select: { id: true, aiStatus: true, displayName: true },
+    });
+    return { conversation, created: true };
+  } catch (error) {
+    // Concurrent POSTs raced to create the same (pageId, psid) — re-read the winner.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const winner = await db.messengerConversation.findUnique({
+        where: { pageId_psid: { pageId: input.pageId, psid: input.psid } },
+        select: { id: true, aiStatus: true, displayName: true },
+      });
+      if (winner) return { conversation: winner, created: false };
+    }
+    throw error;
+  }
+}
+
+/** Escalates a conversation to WAITING_ADMIN when the AI hands off (no audit /
+ *  admin actor — this is an automated escalation, not an admin action). */
+export async function escalateMessengerConversationToAdmin(conversationId: string): Promise<void> {
+  await db.messengerConversation.update({
+    where: { id: conversationId },
+    data: {
+      aiStatus: LineConversationAiStatus.WAITING_ADMIN,
+      pausedAt: new Date(),
+      pausedReason: "AI_HANDOFF",
     },
   });
 }
